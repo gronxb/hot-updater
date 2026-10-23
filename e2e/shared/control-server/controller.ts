@@ -34,6 +34,7 @@ import {
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
+import { currentE2eTarget } from "../targets.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -222,20 +223,24 @@ const REPO_DIR = path.resolve(__dirname, "../../..");
 // The CLI the example app installs, as `npx hot-updater` runs it there.
 const HOT_UPDATER_CLI_PATH = publishedBin("hot-updater");
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
-const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
+// The React Native app of this run's E2E target (examples/<target>/e2e.json).
+const EXAMPLE_DIR = path.join(REPO_DIR, currentE2eTarget().appDir);
 const E2E_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/e2eApp/patchSurface.ts",
 );
 // The brownfield widget runtime: its own entry, patch surface, and channel
-// (examples/v0.85.0/index.widget.js and src/widgetApp).
+// (the app's index.widget.js and src/widgetApp).
 const E2E_WIDGET_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/widgetApp/patchSurface.ts",
 );
 const WIDGET_ENTRY_FILE = "index.widget.js";
 const WIDGET_CHANNEL = "widget";
-const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
+// The env file the app's hot-updater.config.ts loads: the caller's, or the app's.
+const HOT_UPDATER_ENV_FILE = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH
+  ? path.resolve(REPO_DIR, process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH)
+  : path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
@@ -268,7 +273,7 @@ const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
 const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
 const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 // Read by the brownfield host's framework and library before React Native
-// starts (examples/v0.85.0 HotUpdaterExampleBrownfield and brownfieldlib).
+// starts (the app's HotUpdaterExampleBrownfield and brownfieldlib).
 const E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY = "HotUpdaterE2ENativeCheck";
 const E2E_ANDROID_NATIVE_CHECK_PREFS_FILE = "HotUpdaterE2E.xml";
 const E2E_ANDROID_NATIVE_CHECK_PREFS_KEY = "nativeCheck";

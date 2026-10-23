@@ -63,9 +63,46 @@ runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
 
-## Brownfield track
+## Targets
 
-`--track brownfield` runs the same scenarios against the example packaged as
+A target is an app the scenarios run against: a directory under `examples/`
+with an `e2e.json`. `--target <name>` selects `examples/<name>`; the default is
+`v0.85.0`.
+
+```sh
+pnpm -w e2e -- --platform android --target v0.85.0 --device emulator-5554
+pnpm -w e2e:build -- --platform ios --target v0.85.0
+```
+
+Every target app has the same identity, so the scenarios' deep links, the
+driver and the bot need no per-target settings: app name `HotUpdaterExample`,
+Android package `com.hotupdaterexample`, iOS bundle ID
+`org.reactjs.native.example.HotUpdaterExample`, URL scheme `hotupdaterexample`.
+[`shared/targets.spec.ts`](shared/targets.spec.ts) checks each target's native
+projects for it. `e2e.json` holds what differs, with paths relative to its
+directory:
+
+- `suite`: the scenario suite, `default` unless the target is brownfield.
+- `app`: the React Native app whose JavaScript ships, when it is another
+  directory. Its `hot-updater.config.ts`, `keys/`, `.env.hotupdater` and
+  `Gemfile` are the run's.
+- `ios.workspace`, `ios.scheme`, `ios.podEnv`: the Xcode workspace and scheme
+  (`HotUpdaterExample` by default) and the environment of `pod install`.
+- `fingerprintExtraSources`: native sources the local run's fingerprint hashes
+  beyond the defaults.
+- `brownfield`: the host apps' Xcode project and scheme, the framework scheme,
+  and the Gradle task that publishes the library. The installed binary is then
+  the host's.
+
+Without `--target`, a run uses `HOT_UPDATER_E2E_TARGET`, then the example the
+bot wrote the provider env file into (`HOT_UPDATER_E2E_ENV_TARGET_RELATIVE_DIR`)
+when it is a target, then `v0.85.0`. `--track brownfield` selects the
+brownfield target.
+
+## Brownfield target
+
+`--track brownfield` (the `brownfield-host` target) runs the same scenarios
+against the example packaged as
 an XCFramework and an AAR inside the native apps in
 [`examples/brownfield-host`](../examples/brownfield-host), as the
 [brownfield guide](<../docs/content/docs/(latest)/guides/brownfield.mdx>)
@@ -78,7 +115,7 @@ pnpm -w e2e -- --platform ios --track brownfield --device <simulator-UDID>
 pnpm -w e2e -- --platform android --track brownfield --device emulator-5554
 ```
 
-The track runs the `brownfield` suite,
+The target runs the `brownfield` suite,
 [`brownfield-scenario-names.json`](brownfield-scenario-names.json): every
 default scenario except the three a native app shell cannot host, a headless
 launch and the two that reload from JavaScript, plus the two brownfield-only

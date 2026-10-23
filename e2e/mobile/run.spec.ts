@@ -24,15 +24,15 @@ describe("mobile wrapper", () => {
     );
   });
 
-  it("runs a track's suite and rejects scenarios outside it", () => {
+  it("runs a target's suite and rejects scenarios outside it", () => {
     const args = ["--platform", "android", "--device", "emulator-5558"];
     const brownfield = parseMobileOptions(
       [...args, "--track", "brownfield"],
       {},
     );
-    expect(brownfield.track).toBe("brownfield");
+    expect(brownfield.target.name).toBe("brownfield-host");
     expect(brownfield.scenarios).toEqual(listScenarioNames("brownfield"));
-    expect(parseMobileOptions(args, {}).track).toBe("greenfield");
+    expect(parseMobileOptions(args, {}).target.name).toBe("v0.85.0");
     expect(() =>
       parseMobileOptions(
         [
@@ -45,7 +45,7 @@ describe("mobile wrapper", () => {
         {},
       ),
     ).toThrow(
-      "Unknown scenario for the brownfield track: headless-launch-keeps-staged-bundle",
+      "Unknown scenario for the brownfield-host target: headless-launch-keeps-staged-bundle",
     );
   });
 

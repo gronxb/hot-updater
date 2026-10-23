@@ -1,7 +1,7 @@
 # Brownfield host apps
 
 Native iOS and Android apps for the E2E brownfield track
-([`e2e/README.md`](../../e2e/README.md#brownfield-track)). They embed
+([`e2e/README.md`](../../e2e/README.md#brownfield-target)). They embed
 `examples/v0.85.0` packaged as an XCFramework and an AAR, following the
 [brownfield guide](../../docs/content/docs/(latest)/guides/brownfield.mdx), and
 show its React Native root on every launch.

@@ -4,13 +4,15 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createNativeBuildPlan } from "../mobile/build.ts";
+import { loadE2eTarget } from "./targets.ts";
+
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const androidAppDir = path.join(repoDir, "examples/v0.85.0/android/app");
 
 describe("Android E2E native setup", () => {
   it("builds a debuggable release APK with the fixed minimum Bundle ID and selected ABIs", () => {
     const [command] = createNativeBuildPlan(
-      { platform: "android", dryRun: true },
+      { platform: "android", target: loadE2eTarget("v0.85.0"), dryRun: true },
       repoDir,
       {},
     );

@@ -9,7 +9,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createNativeBuildPlan } from "../mobile/build.ts";
 import { runMobile } from "../mobile/run.ts";
 import { publishedBin } from "../shared/published.ts";
-import { parseE2eTrack } from "../shared/tracks.ts";
+import { loadE2eTarget, resolveE2eTargetName } from "../shared/targets.ts";
 import { localMutableFiles, preserveFiles } from "./files.ts";
 import {
   createLocalProfile,
@@ -205,6 +205,18 @@ export async function runLocal(
   requestedDevice: string | undefined,
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
+  const flag = (name: string) => {
+    const index = argv.indexOf(name);
+    return index >= 0 ? argv[index + 1] : undefined;
+  };
+  const target = loadE2eTarget(
+    resolveE2eTargetName(
+      { target: flag("--target"), track: flag("--track") },
+      env,
+      root,
+    ),
+    root,
+  );
   const cancellation = new AbortController();
   const interrupt = () =>
     cancellation.abort(new Error("Local E2E interrupted"));
@@ -277,6 +289,7 @@ export async function runLocal(
     ];
     profile = createLocalProfile({
       root,
+      target,
       platform,
       runDir,
       id,
@@ -289,7 +302,7 @@ export async function runLocal(
     });
     console.log(`Local E2E: ${platform} ${device}; results: ${runDir}`);
     await command("pnpm", ["-w", "build"]);
-    const cli = publishedBin("hot-updater");
+    const cli = publishedBin("hot-updater", "hot-updater", profile.appDir);
     restoreFiles = await preserveFiles(
       profile.appDir,
       localMutableFiles,
@@ -303,7 +316,7 @@ export async function runLocal(
     );
     await fs.chmod(path.join(profile.appDir, ".env.hotupdater"), 0o600);
     const config = path.join(profile.appDir, "hot-updater.config.ts");
-    await fs.writeFile(config, localAppConfig("fingerprint"));
+    await fs.writeFile(config, localAppConfig("fingerprint", target));
     const cliCommand = (args: string[], cwd = profile!.appDir) =>
       command(process.execPath, [cli, ...args], cwd, profile!.env);
     const keyDir = path.join(runDir, "keys");
@@ -318,11 +331,10 @@ export async function runLocal(
     }
     await fs.chmod(path.join(profile.appDir, "keys/private-key.pem"), 0o600);
     await cliCommand(["keys", "export-public", "--yes"]);
-    const trackIndex = argv.indexOf("--track");
     const builds = createNativeBuildPlan(
       {
         platform,
-        track: parseE2eTrack(trackIndex >= 0 ? argv[trackIndex + 1] : undefined),
+        target,
         deviceId: device,
         dryRun: false,
       },
@@ -339,7 +351,7 @@ export async function runLocal(
     for (const build of builds.filter((build) => build.command === "bundle"))
       await runBuild(build);
     await cliCommand(["fingerprint", "create"]);
-    await fs.writeFile(config, localAppConfig("appVersion"));
+    await fs.writeFile(config, localAppConfig("appVersion", target));
     for (const build of builds.filter((build) => build.command !== "bundle"))
       await runBuild(build);
 

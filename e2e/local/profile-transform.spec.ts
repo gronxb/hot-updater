@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { createNativeBuildPlan } from "../mobile/build.ts";
+import { loadE2eTarget } from "../shared/targets.ts";
 import { createLocalProfile } from "./profile.ts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -80,7 +81,7 @@ describe("Release JSX runtime", () => {
     "evaluates native %s Release routes with an inherited development environment",
     (platform) => {
       const command = createNativeBuildPlan(
-        { platform, track: "greenfield", dryRun: false },
+        { platform, target: loadE2eTarget("v0.85.0"), dryRun: false },
         root,
       ).at(-1)!;
       expect(
@@ -96,6 +97,7 @@ describe("Release JSX runtime", () => {
   it("evaluates local native and OTA routes with the same production runtime", () => {
     const profile = createLocalProfile({
       root,
+      target: loadE2eTarget("v0.85.0"),
       platform: "ios",
       runDir: "/unused-local-profile",
       id: "jsx-runtime-test",
