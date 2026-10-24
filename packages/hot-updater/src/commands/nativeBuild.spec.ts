@@ -268,14 +268,18 @@ describe("handleNativeBuildFind", () => {
       json: true,
     });
 
-    expect(resolveNativeAppVersion).toHaveBeenCalledWith("ios", {
-      ios: {
-        scheme: "Example",
-        bundleIdentifier: "com.example",
-        configuration: "Release",
+    expect(resolveNativeAppVersion).toHaveBeenCalledWith(
+      "ios",
+      {
+        ios: {
+          scheme: "Example",
+          bundleIdentifier: "com.example",
+          configuration: "Release",
+        },
+        android: undefined,
       },
-      android: undefined,
-    });
+      undefined,
+    );
     expect(generateFingerprint).not.toHaveBeenCalled();
     expect(output()).toEqual({
       platform: "ios",
@@ -319,6 +323,12 @@ describe("handleNativeBuildFind", () => {
       appVersion: "3.0.0",
       channel: "qa",
     });
+    resolveNativeAppVersion.mockImplementation(
+      async (_platform: unknown, _scope: unknown, baseVersion?: string) => ({
+        version: baseVersion ?? null,
+        candidates: [],
+      }),
+    );
     await register("1", {
       platform: "android",
       channel: "qa",
@@ -333,7 +343,12 @@ describe("handleNativeBuildFind", () => {
       platform: "android",
     });
     expect(prebuild).not.toHaveBeenCalled();
-    expect(resolveNativeAppVersion).not.toHaveBeenCalled();
+    // The native project still names a scheme's own version.
+    expect(resolveNativeAppVersion).toHaveBeenCalledWith(
+      "android",
+      {},
+      "3.0.0",
+    );
     expect(getChannel).not.toHaveBeenCalled();
     expect(output()).toMatchObject({
       platform: "android",

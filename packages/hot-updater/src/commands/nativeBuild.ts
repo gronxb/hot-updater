@@ -160,17 +160,16 @@ const resolveScope = async (
       appVersion: null,
     };
   }
-  if (prebuildValues.appVersion !== undefined) {
-    return {
-      platform,
-      channel: buildChannel,
-      fingerprintHash: null,
-      appVersion: prebuildValues.appVersion,
-    };
-  }
   const versionScope =
     scheme === undefined ? {} : nativeBuildAppVersionScope(config, scheme);
-  let resolved = await resolveNativeAppVersion(platform, versionScope);
+  // The version the prebuild would write stands for the one it overwrites,
+  // so a scheme's own version in the native project, such as a product
+  // flavor's, still wins, as in the build.
+  let resolved = await resolveNativeAppVersion(
+    platform,
+    versionScope,
+    prebuildValues.appVersion,
+  );
   const prebuild = buildAdapter.nativeBuild?.prebuild;
   if (!resolved.version && resolved.candidates.length === 0 && prebuild) {
     // No native project declares a version, and the adapter can't say what

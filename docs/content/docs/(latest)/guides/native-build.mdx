@@ -226,7 +226,9 @@ npx hot-updater native-build find -p ios -s release
 It reads the native projects and writes nothing to them. With the Expo build
 adapter it reads the app version and channel `expo prebuild` would write from
 the Expo config, with the project's own config plugins, and doesn't run
-prebuild; `ios/` and `android/` stay as they are. Other adapters read
+prebuild; `ios/` and `android/` stay as they are. A product flavor's own
+`versionName` in `android/` still overrides the Expo version, as it does in
+the build. Other adapters read
 `ios/` and `android/` as they are. Only when no native project declares an
 app version, and the build adapter can't tell, does it run the adapter's
 prebuild, and it says so first.

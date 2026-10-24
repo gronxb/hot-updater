@@ -142,4 +142,56 @@ describe("native-build find on a native project", () => {
       expect(await hashTree(cwd)).toEqual(before);
     },
   );
+
+  it("keeps a product flavor's own version over what an Expo-style prebuild writes", async () => {
+    // The prebuild rewrites defaultConfig's versionName and the app's
+    // Info.plist; a flavor's versionName stays, and a build of it reads it.
+    await fs.writeFile(
+      path.join(cwd, "android/app/build.gradle"),
+      `android {
+  defaultConfig {
+    versionName "1.0.0-stale"
+  }
+  productFlavors {
+    staging {
+      versionName "5.5.1"
+    }
+    production {
+    }
+  }
+}
+`,
+    );
+    loadConfig.mockResolvedValue({
+      ...(await loadConfig()),
+      nativeBuild: {
+        android: {
+          staging: { variant: "stagingRelease" },
+          production: { variant: "productionRelease" },
+        },
+        ios: { release: { scheme: "App" } },
+      },
+      build: async () => ({
+        name: "expo",
+        nativeBuild: {
+          prebuild,
+          getNativeProjectValues: async () => ({ appVersion: "3.0.0" }),
+        },
+      }),
+    });
+    const before = await hashTree(cwd);
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+    const find = async (platform: "ios" | "android", scheme: string) => {
+      await handleNativeBuildFind({ platform, scheme, json: true });
+      return JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))
+        .appVersion;
+    };
+
+    expect(await find("android", "staging")).toBe("5.5.1");
+    expect(await find("android", "production")).toBe("3.0.0");
+    // Info.plist says 2.3.4 until the prebuild writes 3.0.0.
+    expect(await find("ios", "release")).toBe("3.0.0");
+    expect(prebuild).not.toHaveBeenCalled();
+    expect(await hashTree(cwd)).toEqual(before);
+  });
 });

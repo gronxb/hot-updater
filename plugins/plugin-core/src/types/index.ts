@@ -90,7 +90,11 @@ export interface BuildAdapter {
      * project as it is.
      */
     getNativeProjectValues?: (args: { platform: Platform }) => Promise<{
-      /** The app version the native build would have. */
+      /**
+       * The app version the prebuild writes as the app's own: Android's
+       * `defaultConfig` `versionName`, which a product flavor's still
+       * overrides, and the iOS app's Info.plist.
+       */
       readonly appVersion?: string;
       /** The channel the native build would embed. */
       readonly channel?: string;
