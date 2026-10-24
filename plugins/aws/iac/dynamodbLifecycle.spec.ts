@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
   waitUntilTableExists: mocks.waitUntilTableExists,
 }));
 
-import { DynamoDBManager } from "./dynamodb";
+import { DynamoDBManager, DynamoDBPointInTimeRecoveryError } from "./dynamodb";
 
 const compatibleTable = {
   TableArn:
@@ -51,6 +51,26 @@ const compatibleTable = {
     MaxWriteRequestUnits: 100,
   },
 } as const;
+
+const continuousBackupsUnavailable = () =>
+  Object.assign(new Error("Backups have not yet been enabled for this table"), {
+    name: "ContinuousBackupsUnavailableException",
+  });
+
+const givenNewTable = () => {
+  mocks.describeTable
+    .mockRejectedValueOnce({ name: "ResourceNotFoundException" })
+    .mockResolvedValue({ Table: compatibleTable });
+  mocks.createTable.mockResolvedValue({});
+  mocks.waitUntilTableExists.mockResolvedValue({ state: "SUCCESS" });
+  mocks.describeContinuousBackups.mockResolvedValue({
+    ContinuousBackupsDescription: {
+      PointInTimeRecoveryDescription: {
+        PointInTimeRecoveryStatus: "DISABLED",
+      },
+    },
+  });
+};
 
 const manager = () =>
   new DynamoDBManager("ap-northeast-2", {
@@ -81,6 +101,10 @@ describe("DynamoDB lifecycle reconciliation", () => {
     mocks.putItem.mockResolvedValue({});
     mocks.query.mockResolvedValue({ Items: [] });
     mocks.updateItem.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("does not rewrite enabled point-in-time recovery", async () => {
@@ -115,5 +139,39 @@ describe("DynamoDB lifecycle reconciliation", () => {
 
     expect(mocks.createTable).toHaveBeenCalledTimes(1);
     expect(mocks.updateContinuousBackups).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits until a new table accepts point-in-time recovery", async () => {
+    vi.useFakeTimers();
+    givenNewTable();
+    mocks.updateContinuousBackups
+      .mockRejectedValueOnce(continuousBackupsUnavailable())
+      .mockResolvedValue({});
+
+    const pending = manager().ensureTable("hot-updater-metadata");
+    await vi.runAllTimersAsync();
+
+    await expect(pending).resolves.toBeUndefined();
+    expect(mocks.updateContinuousBackups).toHaveBeenCalledTimes(2);
+    expect(mocks.describeTimeToLive).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up when point-in-time recovery stays unavailable", async () => {
+    vi.useFakeTimers();
+    givenNewTable();
+    mocks.updateContinuousBackups.mockRejectedValue(
+      continuousBackupsUnavailable(),
+    );
+
+    const pending = manager().ensureTable("hot-updater-metadata");
+    const assertion = expect(pending).rejects.toThrow(
+      DynamoDBPointInTimeRecoveryError,
+    );
+    await vi.runAllTimersAsync();
+
+    await assertion;
+    await expect(pending).rejects.toThrow("after 120 seconds");
+    expect(mocks.updateContinuousBackups).toHaveBeenCalledTimes(25);
+    expect(mocks.describeTimeToLive).not.toHaveBeenCalled();
   });
 });
