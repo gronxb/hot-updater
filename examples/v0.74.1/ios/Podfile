@@ -5,7 +5,9 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+# Xcode 27 builds nothing below iOS 15.0; React Native 0.74 supports 13.4.
+IOS_DEPLOYMENT_TARGET = '15.1'
+platform :ios, IOS_DEPLOYMENT_TARGET
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -36,5 +38,12 @@ target 'HotUpdaterExample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        if Gem::Version.new(config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']) < Gem::Version.new(IOS_DEPLOYMENT_TARGET)
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = IOS_DEPLOYMENT_TARGET
+        end
+      end
+    end
   end
 end

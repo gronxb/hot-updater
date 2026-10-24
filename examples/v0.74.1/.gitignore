@@ -78,3 +78,7 @@ yarn-error.log
 .hot-updater/output
 # hot-updater
 .env.hotupdater
+# E2E deploy fixtures the control server writes
+src/test/_fixture-archive-300mb-random.bmp
+src/test/_fixture-asset-heavy/
+keys/private-key.pem

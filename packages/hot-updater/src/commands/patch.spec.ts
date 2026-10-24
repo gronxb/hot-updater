@@ -109,6 +109,7 @@ describe("createPatch", () => {
       },
       {
         core: databaseHarness.database.core,
+        signingPublicKey: null,
         storageAdapter: mockStorageAdapter,
       },
       {

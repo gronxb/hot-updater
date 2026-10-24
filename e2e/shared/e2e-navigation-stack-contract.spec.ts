@@ -7,61 +7,61 @@ const repoDir = path.resolve(import.meta.dirname, "../..");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 const e2eAppIndexPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/index.tsx",
+  "examples/e2e-app/src/e2eApp/index.tsx",
 );
 const e2eAppShellPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/app-shell.tsx",
+  "examples/e2e-app/src/e2eApp/app-shell.tsx",
 );
 const e2eAppNavigationControllerPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/navigation-controller.ts",
+  "examples/e2e-app/src/e2eApp/navigation-controller.ts",
 );
 const e2eAppNavigationFallbackPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/navigation-fallback.tsx",
+  "examples/e2e-app/src/e2eApp/navigation-fallback.tsx",
 );
 const e2eAppReadyScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/ready-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/ready-screen.tsx",
 );
 const e2eAppRouteGroupDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routeGroups",
+  "examples/e2e-app/src/e2eApp/routeGroups",
 );
 const e2eAppRouteModulesDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes",
+  "examples/e2e-app/src/e2eApp/routes",
 );
 const e2eAppRoutesPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes.tsx",
+  "examples/e2e-app/src/e2eApp/routes.tsx",
 );
 const e2eAppRegisteredRouteElementsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/registered-route-elements.tsx",
+  "examples/e2e-app/src/e2eApp/registered-route-elements.tsx",
 );
 const e2eAppRouteElementsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes/route-elements.tsx",
+  "examples/e2e-app/src/e2eApp/routes/route-elements.tsx",
 );
 const e2eAppRouteRegistryDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes/registry",
+  "examples/e2e-app/src/e2eApp/routes/registry",
 );
 const e2eAppStackScreensPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
+  "examples/e2e-app/src/e2eApp/stack-screens.tsx",
 );
 const e2eAppStackScreensDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/stackScreens",
+  "examples/e2e-app/src/e2eApp/stackScreens",
 );
 const e2eAppRuntimeModelContextPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/runtime-model-context.tsx",
+  "examples/e2e-app/src/e2eApp/runtime-model-context.tsx",
 );
-const e2eAppSourceDir = path.join(repoDir, "examples/v0.85.0/src/e2eApp");
+const e2eAppSourceDir = path.join(repoDir, "examples/e2e-app/src/e2eApp");
 
 const sourceCodeLineCount = (source: string): number =>
   source.split("\n").filter((line) => {

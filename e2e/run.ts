@@ -7,8 +7,11 @@ import { parseMobileOptions, runMobile } from "./mobile/run.ts";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const usage = `Usage: pnpm e2e --platform ios|android [--device <UDID|serial>]
-                [--track greenfield|brownfield] [--scenario <name>]
+                [--target <example>] [--scenario <name>]
                 [--suite default|brownfield] [--dry-run] [--list]
+
+--target runs examples/<example> (one with an e2e.json); the default is v0.85.0.
+--track brownfield is the brownfield target.
 
 Local runs prepare PGlite, local S3 storage, signing keys, and the Release app.
 With no --device, exactly one booted device of the selected platform is required.
@@ -67,7 +70,7 @@ export async function runE2e(
           platform,
           device: device ?? "one booted device (resolved at execution)",
           profile: "standalone-kysely",
-          track: validated.track,
+          target: validated.target.name,
           scenarios: validated.scenarios,
           preparation: [
             "workspace build",

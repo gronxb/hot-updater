@@ -23,6 +23,8 @@ import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-
 import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
+import { postContentCrashNativeRecoveryScenario } from "./scenarios/post-content-crash-native-recovery.ts";
+import { postContentCrashNativeRollbackScenario } from "./scenarios/post-content-crash-native-rollback.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
 import { remoteConfigFetchActivateScenario } from "./scenarios/remote-config-fetch-activate.ts";
 import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished-crashed-bundle-skipped.ts";
@@ -82,6 +84,8 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   resumedBackgroundArchiveDownloadScenario,
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,
+  postContentCrashNativeRecoveryScenario,
+  postContentCrashNativeRollbackScenario,
   runtimeChannelCrashRestoreScenario,
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,

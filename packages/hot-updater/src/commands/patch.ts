@@ -1,4 +1,8 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import {
+  getBundleSigningPublicKey,
+  loadConfig,
+  p,
+} from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   type Platform,
@@ -39,12 +43,11 @@ export const createPatch = async (options: PatchOptions) => {
     return;
   }
 
-  const server = await loadServer(
-    await loadConfig(
-      { channel: options.channel, platform },
-      { credentials: true },
-    ),
+  const config = await loadConfig(
+    { channel: options.channel, platform },
+    { credentials: true },
   );
+  const server = await loadServer(config);
   try {
     const storageAdapter = server.storage;
     assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
@@ -65,6 +68,7 @@ export const createPatch = async (options: PatchOptions) => {
       },
       {
         core: server.core,
+        signingPublicKey: await getBundleSigningPublicKey(config.signing),
         storageAdapter,
       },
       {

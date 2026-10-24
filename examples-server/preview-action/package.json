@@ -3,7 +3,7 @@
   "private": true,
   "description": "The Postgres and MinIO backend, Console, and app config the preview action's CI proof runs examples/v0.85.0 on",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
   "type": "module",
   "scripts": {

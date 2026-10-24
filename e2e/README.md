@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 36 OTA, Remote Config, Console Insights, and vault scenarios locally and in the E2E bot
+Run the same 38 OTA, Remote Config, Console Insights, and vault scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -87,9 +87,58 @@ with its embedded public key. The console needs no profile of its own, so the
 scenario runs in every profile and in the bot unchanged. Its logs, under the
 results directory, include the tokens it issued.
 
-## Brownfield track
+## Targets
 
-`--track brownfield` runs the same scenarios against the example packaged as
+A target is an app the scenarios run against: a directory under `examples/`
+with an `e2e.json`. `--target <name>` selects `examples/<name>`; the default is
+`v0.85.0`.
+
+```sh
+pnpm -w e2e -- --platform android --target v0.85.0 --device emulator-5554
+pnpm -w e2e:build -- --platform ios --target v0.85.0
+```
+
+Every target app has the same identity, so the scenarios' deep links, the
+driver and the bot need no per-target settings: app name `HotUpdaterExample`,
+Android package `com.hotupdaterexample`, iOS bundle ID
+`org.reactjs.native.example.HotUpdaterExample`, URL scheme `hotupdaterexample`.
+[`shared/targets.spec.ts`](shared/targets.spec.ts) checks each target's native
+projects for it. `e2e.json` holds what differs, with paths relative to its
+directory:
+
+- `suite`: the scenario suite, `default` unless the target is brownfield.
+- `app`: the React Native app whose JavaScript ships, when it is another
+  directory. Its `hot-updater.config.ts`, `keys/`, `.env.hotupdater` and
+  `Gemfile` are the run's.
+- `ios.workspace`, `ios.scheme`, `ios.podEnv`: the Xcode workspace and scheme
+  (`HotUpdaterExample` by default) and the environment of `pod install`.
+- `android.pageSize`: the memory page size, in bytes, the Android device must
+  use. React Native before 0.77 ships native libraries aligned to 4 KB, which a
+  16 KB device opens behind a compatibility dialog, so such a target sets
+  `4096` and the run refuses any other device before a scenario starts. On an
+  Apple M4 Mac the Android 37 4 KB image boots without Hypervisor.framework
+  and hangs; Android 35's `google_apis` arm64 image boots.
+- `fingerprintExtraSources`: native sources the local run's fingerprint hashes
+  beyond the defaults.
+- `brownfield`: the host apps' Xcode project and scheme, the framework scheme,
+  and the Gradle task that publishes the library. The installed binary is then
+  the host's.
+
+Every target runs the same app, [`@examples/e2e-app`](../examples/e2e-app):
+a target app adds `@examples/e2e-app` as a dependency, registers it in
+`index.js`, keeps `App.tsx`, `src/e2eApp/patchSurface.ts` and the `src/test`
+assets the control server rewrites, and resolves the package's imports from
+itself in its bundler config.
+
+Without `--target`, a run uses `HOT_UPDATER_E2E_TARGET`, then the example the
+bot wrote the provider env file into (`HOT_UPDATER_E2E_ENV_TARGET_RELATIVE_DIR`)
+when it is a target, then `v0.85.0`. `--track brownfield` selects the
+brownfield target.
+
+## Brownfield target
+
+`--track brownfield` (the `brownfield-host` target) runs the same scenarios
+against the example packaged as
 an XCFramework and an AAR inside the native apps in
 [`examples/brownfield-host`](../examples/brownfield-host), as the
 [brownfield guide](<../docs/content/docs/(latest)/guides/brownfield.mdx>)
@@ -102,10 +151,11 @@ pnpm -w e2e -- --platform ios --track brownfield --device <simulator-UDID>
 pnpm -w e2e -- --platform android --track brownfield --device emulator-5554
 ```
 
-The track runs the `brownfield` suite,
+The target runs the `brownfield` suite,
 [`brownfield-scenario-names.json`](brownfield-scenario-names.json): every
-default scenario except the three a native app shell cannot host, a headless
-launch and the two that reload from JavaScript, plus the two brownfield-only
+default scenario except a headless launch, the two that reload from
+JavaScript, and the two of the native check after a crash past main's launch
+monitoring, plus the two brownfield-only
 scenarios of the native update check (`HotUpdaterInstance`), a required update
 staged before React Native starts and a minor one that applies at the next
 start, and three that run a second instance. `/e2e/jobs/enable-widget` turns

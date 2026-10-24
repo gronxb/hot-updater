@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "podEnv": { "RCT_USE_PREBUILT_RNCORE": "1", "RCT_USE_RN_DEP": "1" }
+  }
+}

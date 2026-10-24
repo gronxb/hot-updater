@@ -24,6 +24,8 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
 
     func fingerprintHash() -> String? { impl.getFingerprintHash() }
 
+    func recordRecoveryRequest(_ request: NativeCheckRequest) { impl.recordRecoveryRequest(request) }
+
     func crashHistory() -> [String] { impl.getCrashHistory() }
 
     func activeUpdateState() -> [String: Any] { impl.getActiveUpdateState() }

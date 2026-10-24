@@ -7,9 +7,10 @@ const defaultState = {
   progress: 0,
 };
 
-// e2e-build-config.cjs writes this before bundling; a test has no build.
+// @examples/e2e-app's build-config.cjs writes this before bundling; a test
+// has no build.
 jest.mock(
-  "./src/e2eBuildConfig",
+  "../e2e-app/src/e2eBuildConfig",
   () => ({
     HOT_UPDATER_API_KEY: undefined,
     HOT_UPDATER_APP_BASE_URL: undefined,

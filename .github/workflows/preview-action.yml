@@ -4,6 +4,8 @@ on:
       - "actions/preview/**"
       - "examples-server/preview-action/**"
       - "examples/v0.85.0/**"
+      # The app examples/v0.85.0 bundles and links natively.
+      - "examples/e2e-app/**"
       - "packages/hot-updater/src/commands/channel.ts"
       - "packages/hot-updater/src/commands/nativeBuild.ts"
       - "packages/hot-updater/src/commands/buildNative.ts"

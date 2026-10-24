@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { patchE2eScreenState } from "../e2eRuntimeConfig";
+import { patchE2eScreenState } from "@examples/e2e-app/config";
 import { E2E_SCENARIO_MARKER, loadE2EDeployBundleAssets } from "./patchSurface";
 import { hotUpdater } from "./runtime";
 

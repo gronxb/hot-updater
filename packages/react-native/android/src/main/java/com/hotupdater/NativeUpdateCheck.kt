@@ -23,6 +23,8 @@ internal class HotUpdaterImplUpdateCheckState(
 
     override fun getFingerprintHash(): String? = impl.getFingerprintHash()
 
+    override fun recordRecoveryRequest(request: NativeCheckRequest) = impl.recordRecoveryRequest(request)
+
     override fun getCrashHistory(): List<String> = impl.getCrashHistory()
 
     override fun getActiveUpdateState(): ActiveSelections {

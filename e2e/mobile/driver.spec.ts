@@ -701,6 +701,45 @@ describe("MobileAppDriver", () => {
     },
   );
 
+  it("accepts a proved app exit as the evidence of a post-content crash", async () => {
+    const f = fixture();
+    await f.app.launch("post-content crash", { expectCrash: true });
+    // Waiting on the store while the bundle runs keeps UI steps fenced.
+    await f.app.control("bundle verified", "/e2e/jobs/wait-for-metadata", {
+      bundleId: "bad",
+      verificationPending: false,
+    });
+    await expect(
+      f.app.assertText("premature", "runtime-bundle-id", "bad"),
+    ).rejects.toThrow("Native recovery must be verified");
+    await expect(f.app.verifyConsoleInsights(0)).rejects.toThrow(
+      "Native recovery evidence is missing",
+    );
+    await f.app.control("app exited", "/e2e/jobs/wait-for-app-exit", {
+      bundleId: "bad",
+    });
+    // The launch itself succeeded: the fatal came after its first content.
+    expect(f.app.expectedLaunchFailures).toBe(0);
+    f.locator.text = "builtin";
+    await f.app.assertText("after exit", "runtime-bundle-id", "builtin");
+  });
+
+  it("keeps the post-content crash unverified when the exit is not proved", async () => {
+    const f = fixture();
+    await f.app.launch("post-content crash", { expectCrash: true });
+    f.client.runJob.mockRejectedValueOnce(
+      new Error("The app stopped without bundle bad's post-content crash"),
+    );
+    await expect(
+      f.app.control("app exited", "/e2e/jobs/wait-for-app-exit", {
+        bundleId: "bad",
+      }),
+    ).rejects.toThrow("post-content crash");
+    await expect(f.app.verifyConsoleInsights(0)).rejects.toThrow(
+      "Native recovery evidence is missing",
+    );
+  });
+
   it("terminates externally launched hung apps through the pinned control target without reopening them", async () => {
     const f = fixture();
     f.device.closeApp.mockRejectedValue(new Error("no automation session"));

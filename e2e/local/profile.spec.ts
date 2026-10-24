@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { planAndroidReverses } from "../mobile/android-reverse.ts";
 import { createNativeBuildPlan } from "../mobile/build.ts";
 import { buildControlServerEnv } from "../shared/scripts/control-server-env.ts";
+import { loadE2eTarget } from "../shared/targets.ts";
 import { preserveFiles } from "./files.ts";
 import {
   createLocalProfile,
@@ -16,10 +17,13 @@ import {
   siloImage,
 } from "./profile.ts";
 
+const app = loadE2eTarget("v0.85.0");
+
 describe("local standalone profile", () => {
   it("isolates local services from inherited cloud client and native build settings", () => {
     const profile = createLocalProfile({
       root: "/checkout",
+      target: app,
       platform: "ios",
       runDir: "/checkout/e2e/results/run",
       id: "abc",
@@ -51,7 +55,7 @@ describe("local standalone profile", () => {
     expect(profile.env.CONTROL_URL).toBeUndefined();
     expect(profile.env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH).toBeUndefined();
     const builds = createNativeBuildPlan(
-      { platform: "ios", track: "greenfield", dryRun: false },
+      { platform: "ios", target: app, dryRun: false },
       profile.root,
       profile.env,
     );
@@ -68,12 +72,13 @@ describe("local standalone profile", () => {
     const file = localEnvFile(profile.env);
     expect(file).not.toContain("cloud-api-key");
     expect(file).not.toContain("outside.invalid");
-    expect(localAppConfig("appVersion")).not.toContain("local-admin");
+    expect(localAppConfig("appVersion", app)).not.toContain("local-admin");
   });
 
   it("uses Android loopback URLs allowed by native cleartext policy and reverse mappings", async () => {
     const profile = createLocalProfile({
       root: "/checkout",
+      target: app,
       platform: "android",
       runDir: "/checkout/e2e/results/run",
       id: "abc",

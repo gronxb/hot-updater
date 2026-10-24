@@ -30,52 +30,52 @@ const exampleE2eAppPatchSurfacePath = path.join(
 );
 const exampleE2eAppRuntimePath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/runtime.ts",
+  "examples/e2e-app/src/e2eApp/runtime.ts",
 );
 const exampleE2eAppComponentsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/components.tsx",
+  "examples/e2e-app/src/e2eApp/components.tsx",
 );
 const exampleE2eAppActionButtonScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/action-button-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/action-button-screen.tsx",
 );
 const exampleE2eAppInstallCurrentScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/install-current-channel-update-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/install-current-channel-update-action-screen.tsx",
 );
 const exampleE2eAppInstallRuntimeScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/install-runtime-channel-update-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/install-runtime-channel-update-action-screen.tsx",
 );
 const exampleE2eAppApplyCohortInputScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/apply-cohort-input-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/apply-cohort-input-action-screen.tsx",
 );
 const exampleE2eAppSetCohortQaScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/set-cohort-qa-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/set-cohort-qa-action-screen.tsx",
 );
 const exampleE2eAppRestoreInitialCohortScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/restore-initial-cohort-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/restore-initial-cohort-action-screen.tsx",
 );
 const exampleE2eAppResetRuntimeChannelScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/reset-runtime-channel-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/reset-runtime-channel-action-screen.tsx",
 );
 const exampleE2eAppUseRuntimePath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
+  "examples/e2e-app/src/e2eApp/useE2eRuntime.ts",
 );
 const exampleE2eAppResultScreenPaths = [
-  "examples/v0.85.0/src/e2eApp/screens/channel-action-result-screen.tsx",
-  "examples/v0.85.0/src/e2eApp/screens/update-action-result-screen.tsx",
-  "examples/v0.85.0/src/e2eApp/screens/cohort-action-result-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/channel-action-result-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/update-action-result-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/cohort-action-result-screen.tsx",
 ].map((screenPath) => path.join(repoDir, screenPath));
 const runtimeConfigPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
+  "examples/e2e-app/src/e2eRuntimeConfig.ts",
 );
 const androidDownloadServicePath = path.join(
   repoDir,
@@ -118,6 +118,8 @@ const defaultScenarioNames = [
   "resumed-background-archive-download",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
+  "post-content-crash-native-recovery",
+  "post-content-crash-native-rollback",
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
@@ -294,7 +296,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(36);
+    expect(new Set(listScenarioNames()).size).toBe(38);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {
@@ -308,6 +310,10 @@ describe("E2E scenario contract", () => {
       // native build `build:*` registers.
       "store-install-patches-from-built-in",
       "store-install-built-in-mismatch-downloads",
+      // The post-crash native check is proved on the example app first; a
+      // host's runtime may outlive a fatal of the React Native it embeds.
+      "post-content-crash-native-recovery",
+      "post-content-crash-native-rollback",
     ]);
 
     expect(listSuiteNames()).toEqual(["default", "brownfield"]);
@@ -1131,6 +1137,269 @@ describe("E2E scenario contract", () => {
       }
     },
   );
+
+  it.each([
+    ["crash-file", true],
+    ["safe-file", false],
+    ["019f0000-0000-7000-8000-000000000000", false],
+  ])(
+    "renders file %s after its first content, then crashes it past monitoring: %s",
+    async (bundleId, shouldCrash) => {
+      const source = await fs.readFile(controlServerControllerPath, "utf8");
+      const delay = Number(
+        source
+          .match(/const POST_CONTENT_CRASH_DELAY_MS = ([\d_]+);/)?.[1]
+          ?.replaceAll("_", ""),
+      );
+      // Main monitors a launch until its first content + 10 s; the delay
+      // runs from module evaluation, before that content.
+      expect(delay).toBeGreaterThanOrEqual(15_000);
+      const guardFactory = source.slice(
+        source.indexOf("  const crashGuardSource ="),
+        source.indexOf("  const deployAssetSource ="),
+      );
+      const guardSource = new Script(
+        `${guardFactory}\ncrashGuardSource;`,
+      ).runInNewContext({
+        mode: "crash-after-content",
+        safeBundleIds: ["safe-file"],
+        BUILT_IN_MIN_BUNDLE_ID_SUFFIX: "7000-8000-000000000000",
+        CRASH_GUARD_START: "/* E2E_CRASH_GUARD_START */",
+        CRASH_GUARD_END: "/* E2E_CRASH_GUARD_END */",
+        POST_CONTENT_CRASH_DELAY_MS: delay,
+        POST_CONTENT_CRASH_LOG_PREFIX: "HotUpdaterE2EPostContentCrash:",
+      });
+      const timers: { callback: () => void; delayMs: number }[] = [];
+      const logs: unknown[] = [];
+      const passedThrough: unknown[] = [];
+      const originalFetch = (input: unknown) => {
+        passedThrough.push(input);
+        return "network";
+      };
+      const context: Record<string, unknown> = {
+        console: { log: (line: unknown) => logs.push(line) },
+        fetch: originalFetch,
+        hotUpdater: { getManifest: () => ({ bundleId }) },
+        setTimeout: (callback: () => void, delayMs: number) => {
+          timers.push({ callback, delayMs });
+        },
+      };
+
+      // The bundle renders: nothing throws while its modules evaluate.
+      new Script(guardSource).runInNewContext(context);
+
+      if (!shouldCrash) {
+        expect(timers).toEqual([]);
+        expect(context.fetch).toBe(originalFetch);
+        return;
+      }
+      const fetch = context.fetch as (input: unknown) => unknown;
+      // Its own update check fails; every other request goes out.
+      await expect(
+        fetch(
+          "https://updates.example.com/hot-updater/release-catalogs/app-version/ios/production/1.0.0",
+        ),
+      ).rejects.toThrow("hot-updater e2e broken update check");
+      await expect(
+        fetch({
+          url: "https://updates.example.com/hot-updater/release-catalogs/app-version/android/production/1.0.0",
+        }),
+      ).rejects.toThrow("hot-updater e2e broken update check");
+      expect(fetch("https://updates.example.com/hot-updater/insights")).toBe(
+        "network",
+      );
+      expect(passedThrough).toEqual([
+        "https://updates.example.com/hot-updater/insights",
+      ]);
+
+      expect(timers.map(({ delayMs }) => delayMs)).toEqual([delay]);
+      timers[0]!.callback();
+      expect(logs).toEqual([`HotUpdaterE2EPostContentCrash:${bundleId}`]);
+      expect(timers).toHaveLength(2);
+      expect(() => timers[1]!.callback()).toThrow(
+        "hot-updater e2e post-content crash bundle",
+      );
+    },
+  );
+
+  it("reaches a post-content crash fix only through the next launch's native check", async () => {
+    const calls = await recordScenarioCalls(
+      "post-content-crash-native-recovery",
+    );
+    const deploys = calls.filter(
+      (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
+        call.kind === "control" && call.pathName === "/e2e/jobs/deploy-bundle",
+    );
+    expect(deploys.map((call) => call.body)).toEqual([
+      expect.objectContaining({ mode: "reset", safeBundleIds: [] }),
+      expect.objectContaining({
+        mode: "crash-after-content",
+        safeBundleIds: [
+          "$postCrashBuiltInBundleId",
+          "$postCrashStableBundleId",
+        ],
+      }),
+      // An ordinary update, which no startup check installs on its own.
+      expect.objectContaining({
+        forceUpdate: false,
+        marker: "post-content-fix-detox",
+        mode: "reset",
+      }),
+    ]);
+    const fixDeployIndex = calls.indexOf(deploys[2]!);
+    const afterFix = calls.slice(fixDeployIndex + 1);
+    // Nothing in JavaScript is asked to check or install after the fix ships.
+    expect(
+      afterFix.some((call) => call.kind === "tap" || call.kind === "reload"),
+    ).toBe(false);
+    expect(
+      afterFix.map((call) =>
+        call.kind === "control" ? call.pathName : call.kind,
+      ),
+    ).toEqual([
+      "launch",
+      "/e2e/jobs/wait-for-metadata",
+      "/e2e/jobs/wait-for-app-exit",
+      "launch",
+      "/e2e/jobs/wait-for-metadata",
+      "/e2e/assert-launch-report",
+      "assertText",
+      "assertText",
+      "assertText",
+      "/e2e/assert-metadata-active",
+    ]);
+    expect(afterFix[0]).toMatchObject({ options: { expectCrash: true } });
+    expect(afterFix[1]).toMatchObject({
+      body: {
+        bundleId: "$postCrashFixBundleId",
+        releaseId: "$postCrashFixReleaseId",
+        verificationPending: true,
+      },
+    });
+    expect(afterFix[2]).toMatchObject({
+      body: { bundleId: "$postCrashBundleId" },
+    });
+    expect(afterFix[3]).toMatchObject({ kind: "launch" });
+    expect(afterFix[3]).not.toHaveProperty("options.expectCrash");
+    expect(afterFix[5]).toMatchObject({
+      body: {
+        fromBundleId: "$postCrashBundleId",
+        status: "UPDATE_APPLIED",
+        toBundleId: "$postCrashFixBundleId",
+        toReleaseId: "$postCrashFixReleaseId",
+      },
+    });
+    expect(
+      afterFix
+        .filter((call) => call.kind === "assertText")
+        .map((call) => [call.testID, call.contains]),
+    ).toEqual([
+      ["runtime-bundle-id", "$postCrashFixBundleId"],
+      ["runtime-release-state", "$postCrashFixReleaseId"],
+      ["runtime-scenario-marker", "post-content-fix-detox"],
+    ]);
+  });
+
+  it("proves the crash bundle was verified at first content and kept after its crash", async () => {
+    for (const scenarioName of [
+      "post-content-crash-native-recovery",
+      "post-content-crash-native-rollback",
+    ]) {
+      const calls = await recordScenarioCalls(scenarioName);
+      const firstCrashLaunch = calls.findIndex(
+        (call) => call.kind === "launch" && call.options?.expectCrash === true,
+      );
+      expect(
+        calls
+          .slice(firstCrashLaunch + 1, firstCrashLaunch + 4)
+          .map((call) => (call.kind === "control" ? call.body : call.kind)),
+        scenarioName,
+      ).toEqual([
+        {
+          bundleId: "$postCrashBundleId",
+          releaseId: "$postCrashReleaseId",
+          verificationPending: false,
+        },
+        { bundleId: "$postCrashBundleId" },
+        { bundleId: "$postCrashBundleId" },
+      ]);
+      expect(
+        calls
+          .slice(firstCrashLaunch + 1, firstCrashLaunch + 4)
+          .map((call) => (call.kind === "control" ? call.pathName : null)),
+        scenarioName,
+      ).toEqual([
+        "/e2e/jobs/wait-for-metadata",
+        "/e2e/jobs/wait-for-app-exit",
+        "/e2e/assert-metadata-active",
+      ]);
+    }
+  });
+
+  it("rolls a disabled post-content crash back only through the next launch's native check", async () => {
+    const calls = await recordScenarioCalls(
+      "post-content-crash-native-rollback",
+    );
+    const disableIndex = calls.findIndex(
+      (call) =>
+        call.kind === "control" && call.pathName === "/e2e/jobs/patch-release",
+    );
+    expect(calls[disableIndex]).toMatchObject({
+      body: { enabled: false, releaseId: "$postCrashReleaseId" },
+    });
+    const afterDisable = calls.slice(disableIndex + 1);
+    expect(
+      afterDisable.some(
+        (call) =>
+          call.kind === "tap" ||
+          call.kind === "reload" ||
+          (call.kind === "control" &&
+            call.pathName === "/e2e/jobs/deploy-bundle"),
+      ),
+    ).toBe(false);
+    expect(
+      afterDisable.map((call) =>
+        call.kind === "control" ? call.pathName : call.kind,
+      ),
+    ).toEqual([
+      "launch",
+      "/e2e/jobs/wait-for-metadata",
+      "/e2e/jobs/wait-for-app-exit",
+      "launch",
+      "/e2e/jobs/wait-for-metadata",
+      "/e2e/assert-launch-report",
+      "assertText",
+      "assertText",
+      "assertText",
+      "/e2e/assert-metadata-active",
+    ]);
+    expect(afterDisable[0]).toMatchObject({ options: { expectCrash: true } });
+    // Staged for the next launch while the crash bundle still runs.
+    expect(afterDisable[1]).toMatchObject({
+      body: {
+        bundleId: "$postCrashStableBundleId",
+        releaseId: "$postCrashStableReleaseId",
+        verificationPending: true,
+      },
+    });
+    expect(afterDisable[5]).toMatchObject({
+      body: {
+        fromBundleId: "$postCrashBundleId",
+        status: "UPDATE_APPLIED",
+        toBundleId: "$postCrashStableBundleId",
+        toReleaseId: "$postCrashStableReleaseId",
+      },
+    });
+    expect(
+      afterDisable
+        .filter((call) => call.kind === "assertText")
+        .map((call) => [call.testID, call.contains]),
+    ).toEqual([
+      ["runtime-bundle-id", "$postCrashStableBundleId"],
+      ["runtime-release-state", "$postCrashStableReleaseId"],
+      ["runtime-scenario-marker", "post-content-rollback-stable-detox"],
+    ]);
+  });
 
   it("uses the checked-in native built-in marker for bootstrap assertions", async () => {
     // Given: provider jobs reuse the native app built during shared setup.

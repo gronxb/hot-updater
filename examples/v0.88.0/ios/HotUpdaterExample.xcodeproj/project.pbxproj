@@ -275,7 +275,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.hotupdaterexample";
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HotUpdaterExample;
 				PRODUCT_NAME = HotUpdaterExample;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -304,7 +304,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.hotupdaterexample";
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HotUpdaterExample;
 				PRODUCT_NAME = HotUpdaterExample;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;

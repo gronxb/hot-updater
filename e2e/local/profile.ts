@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import type { E2eTarget } from "../shared/targets.ts";
+
 export type LocalPlatform = "ios" | "android";
 
 export interface LocalProfile {
@@ -17,6 +19,7 @@ export interface LocalProfile {
 
 export function createLocalProfile(options: {
   root: string;
+  target: E2eTarget;
   platform: LocalPlatform;
   runDir: string;
   id: string;
@@ -27,7 +30,7 @@ export function createLocalProfile(options: {
   storagePassword: string;
   env: NodeJS.ProcessEnv;
 }): LocalProfile {
-  const appDir = path.join(options.root, "examples/v0.85.0");
+  const appDir = path.join(options.root, options.target.appDir);
   const providerUrl = `http://127.0.0.1:${options.providerPort}/hot-updater`;
   const runtimePort =
     options.platform === "android" ? 3107 : options.controlPort;
@@ -36,6 +39,7 @@ export function createLocalProfile(options: {
     NODE_ENV: "production",
     BABEL_ENV: "production",
     HOT_UPDATER_E2E_LOCAL_PROVIDER: "1",
+    HOT_UPDATER_E2E_TARGET: options.target.name,
     PORT: String(options.providerPort),
     TEST_DB_PATH: path.join(options.runDir, "database"),
     HOT_UPDATER_ADMIN_TOKEN: options.token,
@@ -83,7 +87,11 @@ export function createLocalProfile(options: {
   };
 }
 
-export function localAppConfig(strategy: "appVersion" | "fingerprint"): string {
+export function localAppConfig(
+  strategy: "appVersion" | "fingerprint",
+  target: E2eTarget,
+): string {
+  const extraSources = JSON.stringify(target.fingerprintExtraSources);
   return `import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -112,13 +120,7 @@ export default defineConfig({
   plugins: [insights(), remoteConfig()],
   fingerprint: {
     debug: true,
-    extraSources: {
-      ios: [
-        "ios/HotUpdaterExampleBrownfield/**/*.swift",
-        "ios/HotUpdaterExample.xcodeproj/project.pbxproj",
-      ],
-      android: ["android/brownfieldlib/src/**/*.kt", "android/brownfieldlib/build.gradle.kts"],
-    },
+    extraSources: ${extraSources},
   },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: { enabled: true, maxBaseBundles: 2 },

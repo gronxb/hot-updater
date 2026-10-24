@@ -2,7 +2,6 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import type { E2eTrack } from "../shared/tracks.ts";
 import type { MobileContext } from "./context.ts";
 
 export const RUNNER_VERSIONS = {
@@ -19,7 +18,8 @@ export interface MobileResult {
   headSha: string;
   profile: string;
   platform: "ios" | "android";
-  track: E2eTrack;
+  target: string;
+  track: "greenfield" | "brownfield";
   deviceId: string;
   session: string;
   selectedScenarios: string[];
@@ -41,6 +41,7 @@ export function mobileResultIdentity(context: MobileContext) {
     headSha: context.headSha,
     profile: context.profile,
     platform: context.platform,
+    target: context.target,
     track: context.track,
     deviceId: context.deviceId,
     session: context.session,

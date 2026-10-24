@@ -17,11 +17,13 @@ import {
   startControlServer,
 } from "../shared/scripts/control-server.ts";
 import {
-  defaultSuiteForTrack,
+  loadE2eTarget,
   nativeAppPath,
-  parseE2eTrack,
-} from "../shared/tracks.ts";
+  resolveE2eTargetName,
+  trackOf,
+} from "../shared/targets.ts";
 import { startOwnedAgentDeviceDaemon } from "./agent-device-daemon.ts";
+import { assertAndroidPageSize } from "./android-page-size.ts";
 import { acquireAndroidReverses } from "./android-reverse.ts";
 import { collectAttemptEvidence } from "./attempt.ts";
 import type { MobileContext } from "./context.ts";
@@ -54,6 +56,7 @@ export function parseMobileOptions(
     "results-dir",
     "suite",
     "scenario",
+    "target",
     "track",
   ];
   for (let i = 0; i < argv.length; i++) {
@@ -73,27 +76,27 @@ export function parseMobileOptions(
       throw new Error(`Duplicate argument: ${arg}`);
     else values[key] = value;
   }
-  const track = parseE2eTrack(values.track);
+  const target = loadE2eTarget(
+    resolveE2eTargetName({ target: values.target, track: values.track }, env),
+  );
   if (flags.has("--help") || flags.has("--list"))
-    return { values, flags, scenarios, track };
+    return { values, flags, scenarios, target };
   if (values.platform !== "ios" && values.platform !== "android")
     throw new Error("--platform must be ios or android");
   if (scenarios.length && values.suite)
     throw new Error("Use either --suite or --scenario, not both");
   const selected = scenarios.length
     ? scenarios
-    : [
-        ...resolveSuiteScenarioNames(
-          values.suite ?? defaultSuiteForTrack(track),
-        ),
-      ];
-  // A track runs only the scenarios its suite lists.
-  const known = new Set(listScenarioNames(defaultSuiteForTrack(track)));
+    : [...resolveSuiteScenarioNames(values.suite ?? target.suite)];
+  // A target runs only the scenarios its suite lists.
+  const known = new Set(listScenarioNames(target.suite));
   if (new Set(selected).size !== selected.length)
     throw new Error("Duplicate scenarios are not allowed");
   for (const name of selected)
     if (!known.has(name))
-      throw new Error(`Unknown scenario for the ${track} track: ${name}`);
+      throw new Error(
+        `Unknown scenario for the ${target.name} target: ${name}`,
+      );
   values.device ??=
     env.HOT_UPDATER_E2E_DEVICE_ID ??
     (values.platform === "android"
@@ -111,7 +114,7 @@ export function parseMobileOptions(
       "--device must identify an explicitly leased device (iOS requires a UDID)",
     );
   }
-  return { values, flags, scenarios: selected, track };
+  return { values, flags, scenarios: selected, target };
 }
 
 function positiveTimeout(value: string | undefined, fallback: number): number {
@@ -211,15 +214,15 @@ export async function runMobile(
   const options = parseMobileOptions(argv, env);
   if (options.flags.has("--help")) {
     console.log(
-      "pnpm -w e2e -- --prepared --platform ios|android --device <UDID|serial> [--track greenfield|brownfield] [--scenario <name>] [--suite default|brownfield] [--dry-run] [--list]",
+      "pnpm -w e2e -- --prepared --platform ios|android --device <UDID|serial> [--target <example>] [--scenario <name>] [--suite default|brownfield] [--dry-run] [--list]",
     );
     return 0;
   }
   if (options.flags.has("--list")) {
     console.log(
-      listScenarioNames(
-        options.values.suite ?? defaultSuiteForTrack(options.track),
-      ).join("\n"),
+      listScenarioNames(options.values.suite ?? options.target.suite).join(
+        "\n",
+      ),
     );
     return 0;
   }
@@ -228,7 +231,8 @@ export async function runMobile(
       JSON.stringify(
         {
           ...options.values,
-          track: options.track,
+          target: options.target.name,
+          track: trackOf(options.target),
           scenarios: options.scenarios,
           workers: 1,
           retries: 0,
@@ -267,13 +271,15 @@ export async function runMobile(
     HOT_UPDATER_E2E_CONTROL_PORT: controlPort,
     HOT_UPDATER_E2E_DEVICE_ID: deviceId,
     HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
-    HOT_UPDATER_E2E_TRACK: options.track,
+    HOT_UPDATER_E2E_TARGET: options.target.name,
+    HOT_UPDATER_E2E_TRACK: trackOf(options.target),
     HOT_UPDATER_E2E_CHANNEL_NAMESPACE:
       env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE ?? `mobile-${randomUUID()}`,
   });
   const context: MobileContext = {
     platform,
-    track: options.track,
+    target: options.target.name,
+    track: trackOf(options.target),
     deviceId,
     session,
     runId,
@@ -281,7 +287,7 @@ export async function runMobile(
     profile: options.values.profile ?? "local",
     resultsDir,
     appId: childEnv.HOT_UPDATER_E2E_APP_ID!,
-    appPath: nativeAppPath(options.track, platform, repoDir, env),
+    appPath: nativeAppPath(options.target, platform, repoDir, env),
     scenarioNames: options.scenarios,
     controlBaseUrl: `http://${childEnv.HOT_UPDATER_E2E_SERVER_HOST}:${controlPort}`,
     testTimeoutMs: positiveTimeout(
@@ -307,6 +313,8 @@ export async function runMobile(
   const reportPath = path.join(internalDir, "runner/report.json");
   try {
     await fs.access(context.appPath);
+    if (platform === "android")
+      await assertAndroidPageSize(options.target, deviceId, childEnv);
     daemon = await startOwnedAgentDeviceDaemon(childEnv, cancellation.signal);
     server = await startControlServer(platform, childEnv, {
       detached: true,
