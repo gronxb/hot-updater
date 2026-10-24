@@ -20,6 +20,9 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
+// A new table can be ACTIVE before it accepts point-in-time recovery.
+const PITR_MAX_ATTEMPTS = 25;
+const PITR_RETRY_DELAY_MS = 5_000;
 
 export class DynamoDBTableSchemaError extends Error {
   readonly name = "DynamoDBTableSchemaError";
@@ -41,6 +44,20 @@ export class DynamoDBTimeToLiveError extends Error {
   ) {
     super(
       `DynamoDB table "${tableName}" has TTL on "${attributeName}", but Hot Updater expires rows by "${DYNAMODB_TTL_ATTRIBUTE}". Turn TTL off on the table (aws dynamodb update-time-to-live --table-name ${tableName} --time-to-live-specification Enabled=false,AttributeName=${attributeName}), then rerun init.`,
+    );
+  }
+}
+
+export class DynamoDBPointInTimeRecoveryError extends InitError {
+  readonly name = "DynamoDBPointInTimeRecoveryError";
+
+  constructor(
+    readonly tableName: string,
+    cause: Error,
+  ) {
+    super(
+      `DynamoDB table "${tableName}" still refused point-in-time recovery after ${((PITR_MAX_ATTEMPTS - 1) * PITR_RETRY_DELAY_MS) / 1000} seconds: AWS reports continuous backups unavailable. Rerun \`hot-updater init\` to try again.`,
+      { cause },
     );
   }
 }
@@ -113,6 +130,10 @@ const isResourceNotFound = (error: unknown): boolean =>
   typeof error === "object" &&
   error !== null &&
   Reflect.get(error, "name") === "ResourceNotFoundException";
+
+const isContinuousBackupsUnavailable = (error: unknown): error is Error =>
+  error instanceof Error &&
+  error.name === "ContinuousBackupsUnavailableException";
 
 export const buildDynamoDBCreateTableInput = (tableName: string) =>
   ({
@@ -222,9 +243,7 @@ export class DynamoDBManager {
       ContinuousBackupsDescription?.PointInTimeRecoveryDescription
         ?.PointInTimeRecoveryStatus !== "ENABLED"
     ) {
-      await this.client.updateContinuousBackups(
-        buildDynamoDBBackupInput(tableName),
-      );
+      await this.enablePointInTimeRecovery(tableName);
     }
     // UpdateTimeToLive refuses a repeat, so an enabled TTL is left as it is.
     const { TimeToLiveDescription: ttl } = await this.client.describeTimeToLive(
@@ -238,5 +257,24 @@ export class DynamoDBManager {
       return;
     }
     await this.client.updateTimeToLive(buildDynamoDBTimeToLiveInput(tableName));
+  }
+
+  private async enablePointInTimeRecovery(tableName: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.client.updateContinuousBackups(
+          buildDynamoDBBackupInput(tableName),
+        );
+        return;
+      } catch (error) {
+        if (!isContinuousBackupsUnavailable(error)) throw error;
+        if (attempt === PITR_MAX_ATTEMPTS) {
+          throw new DynamoDBPointInTimeRecoveryError(tableName, error);
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, PITR_RETRY_DELAY_MS),
+        );
+      }
+    }
   }
 }
