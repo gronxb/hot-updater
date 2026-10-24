@@ -66,6 +66,34 @@ afterEach(async () => {
 });
 
 describe("prepareNativeBuild", () => {
+  it("names --scheme instead of asking for one under -i without a terminal", async () => {
+    const stdinIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      await expect(
+        prepareNativeBuild({
+          platform: "ios",
+          interactive: true,
+          operation: "build",
+        } as Parameters<typeof prepareNativeBuild>[0]),
+      ).resolves.toBeNull();
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", {
+        configurable: true,
+        value: stdinIsTTY,
+      });
+      process.exitCode = undefined;
+    }
+    expect(p.select).not.toHaveBeenCalled();
+    expect(p.log.error).toHaveBeenCalledWith(
+      "Which scheme do you use to build? Re-run with --scheme <release> in a non-interactive shell.",
+    );
+    expect(calls).toEqual([]);
+  });
+
   it("refuses an appVersion build that would embed a leftover fingerprint.json", async () => {
     await fs.writeFile(path.join(project, "fingerprint.json"), "{}");
 

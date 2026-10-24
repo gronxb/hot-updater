@@ -158,7 +158,8 @@ so a build it makes embeds the preview channel. Then, for each platform:
    match: the same fingerprint, from the config's fingerprint inputs, or with
    the `appVersion` strategy, the version of the app the scheme builds, and
    the kind of artifact the scheme builds, so a Simulator scheme never reuses
-   an `.ipa`, nor an APK scheme an `.aab`.
+   an `.ipa`, nor an APK scheme an `.aab`. It writes nothing to the native
+   projects; see [Find a build](/docs/guides/native-build#find-a-build).
 2. With no build, `hot-updater build:<platform> --scheme <scheme> --register --json`
    builds and registers one, and prints what its artifact embeds: the
    channel, and the fingerprint or app version. With one, the action skips
@@ -179,9 +180,12 @@ builds stay registered for the next pull request.
 
 <Callout type="warn">
   Keep the preview channel for native builds and pull request channels for
-  bundles. A channel a native build embeds can't be deleted, so the action
-  refuses a `channel` equal to `preview-channel`, and the cleanup fails when
-  a native build embeds the pull request's channel.
+  bundles. A channel a native build embeds can't be deleted while the build
+  is registered, so the action refuses a `channel` equal to
+  `preview-channel`, and the cleanup fails when a native build embeds the
+  pull request's channel. `hot-updater native-build delete <build id>`
+  deletes such a build; see
+  [Delete a build](/docs/guides/native-build#delete-a-build).
 </Callout>
 
 ## The comment

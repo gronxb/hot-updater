@@ -329,6 +329,17 @@ describe("Standalone core API over admin API protocol 2", () => {
     await expect(remote.getBundle(newerId)).resolves.toMatchObject({
       bundle: { id: newerId, platform: "android" },
     });
+
+    await expect(remote.deleteNativeBuild(newer.id)).resolves.toEqual({
+      deleted: true,
+      nativeBuild: newer,
+    });
+    await expect(remote.getNativeBuild(newer.id)).resolves.toBeNull();
+    await expect(remote.getBundle(newerId)).resolves.toBeNull();
+    await expect(remote.deleteNativeBuild(newer.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
   });
 });
 

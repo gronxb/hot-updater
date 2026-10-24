@@ -909,6 +909,20 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (result) => expect(result).toEqual({ deleted: true }),
   }),
   budget({
+    api: "native build delete: the build, its built-in bundle, and 1 write",
+    // Two point reads; the built-in bundle's counters say no patch names it,
+    // so its delete reads no patches.
+    read: ({ core }) => core.deleteNativeBuild(createBundleFixture("8011").id),
+    adapter: reads(2, 2, 0, 0),
+    engine: { calls: 2, rows: 2 },
+    writes: 1,
+    check: (result) =>
+      expect(result).toMatchObject({
+        deleted: true,
+        nativeBuild: { min_bundle_id: createBundleFixture("011").id },
+      }),
+  }),
+  budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
     // The event and install 2's head; then, in one batch get per aggregate,
     // the event's 4 sketch rows (its platform's usage of every app version

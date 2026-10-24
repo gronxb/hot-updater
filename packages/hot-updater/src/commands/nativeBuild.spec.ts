@@ -82,7 +82,11 @@ const nativeBuild = {
 };
 
 const prebuild = vi.fn();
-const build = vi.fn(async () => ({ nativeBuild: { prebuild } }));
+const getNativeProjectValues = vi.fn();
+const build = vi.fn(async () => ({
+  name: "test",
+  nativeBuild: { prebuild },
+}));
 
 const output = () =>
   JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
@@ -94,6 +98,7 @@ describe("handleNativeBuildFind", () => {
     loadConfig.mockResolvedValue({
       updateStrategy: "fingerprint",
       nativeBuild,
+      build,
     });
     loadServer.mockResolvedValue(
       testServer({ database: databaseHarness.database }),
@@ -120,6 +125,7 @@ describe("handleNativeBuildFind", () => {
     loadConfig.mockImplementation(async (loadedFor: unknown) => ({
       updateStrategy: "fingerprint",
       nativeBuild,
+      build,
       loadedFor,
     }));
     const { handleNativeBuildFind } = await import("./nativeBuild");
@@ -282,22 +288,113 @@ describe("handleNativeBuildFind", () => {
     });
   });
 
-  it("runs the adapter's prebuild before reading the app version, as a build does", async () => {
+  it("reads the app version from the native project as it is, without the adapter's prebuild", async () => {
     loadConfig.mockResolvedValue({
       updateStrategy: "appVersion",
       nativeBuild,
       build,
     });
-    resolveNativeAppVersion.mockImplementation(async () => {
-      expect(prebuild).toHaveBeenCalledWith({ platform: "ios" });
-      return { version: "2.1.0", candidates: [] };
+    resolveNativeAppVersion.mockResolvedValue({
+      version: "2.1.0",
+      candidates: [],
     });
     const { handleNativeBuildFind } = await import("./nativeBuild");
 
     await handleNativeBuildFind({ platform: "ios", json: true });
 
-    expect(resolveNativeAppVersion).toHaveBeenCalled();
-    expect(output().appVersion).toBe("2.1.0");
+    expect(prebuild).not.toHaveBeenCalled();
+    expect(output()).toMatchObject({ channel: "preview", appVersion: "2.1.0" });
+  });
+
+  it("looks up what the adapter's prebuild would write, without running it", async () => {
+    loadConfig.mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild,
+      build: async () => ({
+        name: "test",
+        nativeBuild: { prebuild, getNativeProjectValues },
+      }),
+    });
+    getNativeProjectValues.mockResolvedValue({
+      appVersion: "3.0.0",
+      channel: "qa",
+    });
+    await register("1", {
+      platform: "android",
+      channel: "qa",
+      fingerprintHash: null,
+      appVersion: "3.0.0",
+    });
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+
+    await handleNativeBuildFind({ platform: "android", json: true });
+
+    expect(getNativeProjectValues).toHaveBeenCalledWith({
+      platform: "android",
+    });
+    expect(prebuild).not.toHaveBeenCalled();
+    expect(resolveNativeAppVersion).not.toHaveBeenCalled();
+    expect(getChannel).not.toHaveBeenCalled();
+    expect(output()).toMatchObject({
+      platform: "android",
+      channel: "qa",
+      appVersion: "3.0.0",
+      nativeBuild: expect.objectContaining({
+        id: "01900000-0000-7000-8000-00000000b001",
+      }),
+    });
+
+    // --channel still names the channel to look on.
+    await handleNativeBuildFind({
+      platform: "android",
+      channel: "preview",
+      json: true,
+    });
+    expect(output()).toMatchObject({ channel: "preview", nativeBuild: null });
+  });
+
+  it("reads what the adapter can't tell from the native project", async () => {
+    loadConfig.mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild,
+      build: async () => ({
+        name: "test",
+        nativeBuild: { prebuild, getNativeProjectValues },
+      }),
+    });
+    getNativeProjectValues.mockResolvedValue({});
+    resolveNativeAppVersion.mockResolvedValue({
+      version: "2.1.0",
+      candidates: [],
+    });
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+
+    await handleNativeBuildFind({ platform: "ios", json: true });
+
+    expect(prebuild).not.toHaveBeenCalled();
+    expect(output()).toMatchObject({ channel: "preview", appVersion: "2.1.0" });
+  });
+
+  it("runs the prebuild, saying so, only when no native project declares a version", async () => {
+    loadConfig.mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild,
+      build,
+    });
+    resolveNativeAppVersion
+      .mockResolvedValueOnce({ version: null, candidates: [] })
+      .mockResolvedValueOnce({ version: "2.1.0", candidates: [] });
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+
+    await handleNativeBuildFind({ platform: "ios", channel: "qa", json: true });
+
+    expect(prebuild).toHaveBeenCalledTimes(1);
+    expect(prebuild).toHaveBeenCalledWith({ platform: "ios" });
+    expect(warn).toHaveBeenCalledWith(
+      "No ios native project to read the app version from: running the test build adapter's prebuild, which writes it.",
+    );
+    expect(output()).toMatchObject({ channel: "qa", appVersion: "2.1.0" });
   });
 
   it.each([

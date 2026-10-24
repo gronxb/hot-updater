@@ -138,6 +138,7 @@ export const createNativeBuildApi = (
   | "getNativeBuild"
   | "findNativeBuild"
   | "listNativeBuilds"
+  | "deleteNativeBuild"
 > => ({
   async registerNativeBuild(registration) {
     const problem = problemOf(registration);
@@ -213,6 +214,19 @@ export const createNativeBuildApi = (
       limit: 1,
     });
     return rows[0] === undefined ? null : pick(rows[0]);
+  },
+
+  async deleteNativeBuild(id) {
+    return db.transaction(async (tx) => {
+      const row = await tx.findOne("native_builds", { id });
+      if (row === null) return { deleted: false, reason: "not_found" } as const;
+      await tx.delete("native_builds", row);
+      // The built-in bundle was never counted in the bundle totals, so it is
+      // deleted without them; its patches cascade with it.
+      const bundle = await tx.findOne("bundles", { id: row.min_bundle_id });
+      if (bundle !== null) await tx.delete("bundles", bundle);
+      return { deleted: true, nativeBuild: pick(row) } as const;
+    });
   },
 
   async listNativeBuilds(input: KeysetInput) {

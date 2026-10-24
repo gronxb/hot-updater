@@ -10,6 +10,7 @@ import type {
   ChannelRow,
   HotUpdaterCoreApi,
   KeysetInput,
+  NativeBuildDeleteResult,
   NativeBuildRow,
   NativeBuildScope,
   PromoteReleaseResult,
@@ -378,5 +379,11 @@ export const createStandaloneCoreApi = (
         body: registration,
         requiredRoute: "native build",
       }))!,
+    deleteNativeBuild: async (id) =>
+      (await call<NativeBuildDeleteResult>(
+        "DELETE",
+        `/native-builds/${encode(id)}`,
+        { requiredRoute: "native build deletion" },
+      ))!,
   };
 };
