@@ -2048,6 +2048,215 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(Starts.viewStart(inForeground: false, isShown: { false }) == .waitForForeground)
     }
 
+    // MARK: - After main's watch
+
+    /// Main verified and its watch over: what each crash of the rest of the
+    /// process writes for main.
+    enum SessionCrash: CaseIterable {
+        case mainFatal
+        case unattributedFatal
+        case uncaughtException
+        case uncaughtExceptionAfterMainFatal
+    }
+
+    /// After its watch ends, main still writes its marker on its own fatal,
+    /// an unattributed one, or an uncaught exception: without rollback, and
+    /// naming the bundle it runs, so the next launch keeps that bundle and
+    /// only knows to check for a fix.
+    @Test(arguments: SessionCrash.allCases)
+    func mainRecordsEveryCrashAfterItsWatchWithoutRollback(crash: SessionCrash) throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let verified = try #require(coordinator.contentAppeared(owner: nil))
+        #expect(verified.launch.name == Self.main)
+        coordinator.finishMonitoring(name: Self.main, generation: verified.generation)
+        #expect(coordinator.launch(named: Self.main)?.isMonitoring == false)
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
+
+        switch crash {
+        case .mainFatal:
+            #expect(coordinator.chargeFatal(owner: Self.main) != nil)
+        case .unattributedFatal:
+            coordinator.chargeFatal(owner: nil)
+        case .uncaughtException:
+            coordinator.chargeUncaughtException()
+        case .uncaughtExceptionAfterMainFatal:
+            // The exception React Native's fatal raises, under main's claim.
+            #expect(coordinator.chargeFatal(owner: Self.main) != nil)
+            try FileManager.default.removeItem(at: scene.markerURL(Self.main))
+            coordinator.chargeUncaughtException()
+        }
+
+        let data = try Data(contentsOf: scene.markerURL(Self.main))
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let marker = PendingCrashRecovery.from(json: json)
+        #expect(marker.launchedBundleId == "main-next")
+        #expect(marker.shouldRollback == false)
+        // Nothing to roll back: the next launch consumes it and keeps the
+        // bundle main verified.
+        #expect(scene.nextLaunch()[Self.main]?.launchedBundleId == "main-next")
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
+        #expect(scene.crashHistory(Self.main).bundles.isEmpty)
+    }
+
+    /// The signal handler writes main's slot on any signal: after main's
+    /// watch it keeps the running bundle and never asks for rollback.
+    @Test
+    func mainsSlotKeepsItsBundleWithoutRollbackAfterItsWatch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let mainSlot = HotUpdaterRecoveryCoordinator.mainSlot
+        #expect(process.sink.bundleIds[mainSlot] == "main-next")
+        #expect(process.sink.flags[mainSlot] == true)
+
+        let verified = try #require(coordinator.contentAppeared(owner: nil))
+        coordinator.finishMonitoring(name: Self.main, generation: verified.generation)
+
+        #expect(process.sink.paths[mainSlot] == scene.markerURL(Self.main).path)
+        #expect(process.sink.bundleIds[mainSlot] == "main-next")
+        #expect(process.sink.flags[mainSlot] == false)
+        #expect(markers(coordinator)[mainSlot] == false)
+    }
+
+    /// The built-in bundle is named by no id.
+    @Test
+    func mainOnTheBuiltInBundleRecordsACrashAfterItsWatchWithoutAnId() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let markerURL = directory.appendingPathComponent("main.json")
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink)
+        coordinator.register(name: Self.main, markerURL: markerURL, storage: NoStorage())
+        let generation = coordinator.startMonitoring(name: Self.main, bundleId: nil, shouldRollback: false)
+        #expect(coordinator.contentAppeared(owner: nil) != nil)
+        coordinator.finishMonitoring(name: Self.main, generation: generation)
+
+        coordinator.chargeUncaughtException()
+
+        let marker = try #require(HotUpdaterCrashMarker.consume(at: markerURL))
+        #expect(marker.launchedBundleId == nil)
+        #expect(marker.shouldRollback == false)
+        #expect(sink.bundleIds[HotUpdaterRecoveryCoordinator.mainSlot] == .some(nil))
+    }
+
+    /// A named instance's fatal is its own crash, after main's watch too:
+    /// neither it nor the exception it raises writes main's marker, and a
+    /// native crash then writes only the named slot.
+    @Test
+    func aNamedFatalAfterMainsWatchWritesNoMarkerOfMain() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let verified = try #require(coordinator.contentAppeared(owner: nil))
+        coordinator.finishMonitoring(name: Self.main, generation: verified.generation)
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        let claim = try #require(coordinator.chargeFatal(owner: Self.widget))
+        coordinator.chargeUncaughtException()
+
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
+        #expect(FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+        #expect(markers(coordinator) == [widgetSlot: true])
+        coordinator.clearAttribution(claim: claim)
+
+        // Its watch over too: still none of main's.
+        try FileManager.default.removeItem(at: scene.markerURL(Self.widget))
+        let widget = try #require(coordinator.contentAppeared(owner: Self.widget))
+        coordinator.finishMonitoring(name: Self.widget, generation: widget.generation)
+        _ = try #require(coordinator.chargeFatal(owner: Self.widget))
+        coordinator.chargeUncaughtException()
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+    }
+
+    /// A development build records no crash of main's after its watch, as
+    /// before: a RedBox there is no reason to check for a fix. Its slot keeps
+    /// naming no bundle, as when the watch ended.
+    @Test(arguments: SessionCrash.allCases)
+    func aDevelopmentBuildRecordsNoCrashAfterMainsWatch(crash: SessionCrash) throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let markerURL = directory.appendingPathComponent("main.json")
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink, recordsCrashesAfterWatch: false)
+        coordinator.register(name: Self.main, markerURL: markerURL, storage: NoStorage())
+        let generation = coordinator.startMonitoring(name: Self.main, bundleId: "main-next", shouldRollback: false)
+        #expect(coordinator.contentAppeared(owner: nil) != nil)
+        coordinator.finishMonitoring(name: Self.main, generation: generation)
+
+        switch crash {
+        case .mainFatal:
+            coordinator.chargeFatal(owner: Self.main)
+        case .unattributedFatal:
+            coordinator.chargeFatal(owner: nil)
+        case .uncaughtException:
+            coordinator.chargeUncaughtException()
+        case .uncaughtExceptionAfterMainFatal:
+            coordinator.chargeFatal(owner: Self.main)
+            coordinator.chargeUncaughtException()
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: markerURL.path))
+        #expect(sink.bundleIds[HotUpdaterRecoveryCoordinator.mainSlot] == .some(nil))
+        #expect(sink.flags[HotUpdaterRecoveryCoordinator.mainSlot] == false)
+        // Nor does a signal: the slot names no marker for the handler to write.
+        #expect(sink.paths[HotUpdaterRecoveryCoordinator.mainSlot] == "")
+    }
+
+    /// A main registered by its module but never launched in this process
+    /// (a development server build beside a named instance) writes nothing.
+    @Test
+    func mainThatNeverLaunchedRecordsNoCrash() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let markerURL = directory.appendingPathComponent("main.json")
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        coordinator.register(name: Self.main, markerURL: markerURL, storage: NoStorage())
+
+        coordinator.chargeFatal(owner: Self.main)
+        coordinator.chargeFatal(owner: nil)
+        coordinator.chargeUncaughtException()
+
+        #expect(!FileManager.default.fileExists(atPath: markerURL.path))
+        #expect(markers(coordinator).isEmpty)
+    }
+
+    // MARK: - Content in the background
+
+    /// Content shown in the background is held for the foreground once, a
+    /// view torn down before then verifies nothing, and content without a
+    /// view is still main's.
+    @Test
+    func backgroundContentIsHeldForTheForegroundOnce() {
+        let content = HotUpdaterBackgroundContent()
+        var kept: NSObject? = NSObject()
+        var torn: NSObject? = NSObject()
+
+        #expect(content.hold(kept))
+        #expect(!content.hold(torn))
+        #expect(!content.hold(nil))
+        torn = nil
+
+        do {
+            let taken = content.takeAll()
+            #expect(taken.count == 2)
+            #expect(taken.first.flatMap { $0 } === kept)
+            #expect(taken.last.map { $0 == nil } == true)
+        }
+        #expect(content.takeAll().isEmpty)
+        // Held again after the foreground took it: the caller waits anew.
+        #expect(content.hold(kept))
+        kept = nil
+        #expect(content.takeAll().isEmpty)
+        _ = torn
+    }
+
     // MARK: - Sweeps
 
     @Test(arguments: ["main", "widget"])

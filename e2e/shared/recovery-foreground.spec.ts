@@ -8,6 +8,7 @@ type RecordedRecoveryCall = {
   readonly body?: JsonObject;
   readonly kind: "assertText" | "control" | "device" | "tap" | "typeText";
   readonly options?: { readonly expectCrash?: boolean };
+  readonly pathName?: string;
   readonly stage: string;
   readonly testID?: string;
 };
@@ -27,8 +28,8 @@ async function recordRecoveryCalls(
       calls.push({ kind: "device", stage });
       return Promise.resolve();
     },
-    control: (stage, _pathName, body) => {
-      calls.push({ body, kind: "control", stage });
+    control: (stage, pathName, body) => {
+      calls.push({ body, kind: "control", pathName, stage });
       return Promise.resolve();
     },
     launch: (stage, options) => {
@@ -78,6 +79,47 @@ describe("Native recovery foreground handling", () => {
       expect(calls.filter((call) => call.options?.expectCrash)).toEqual([
         { kind: "device", options: { expectCrash: true }, stage: crashStage },
       ]);
+    },
+  );
+
+  it.each([
+    [
+      "post-content-crash-native-recovery",
+      "relaunch post-content crash bundle after the fix",
+    ],
+    [
+      "post-content-crash-native-rollback",
+      "relaunch post-content crash bundle after disabling it",
+    ],
+  ] as const)(
+    "proves each post-content crash exit before any UI step in %s",
+    async (scenario, relaunchStage) => {
+      const calls = await recordRecoveryCalls(scenario);
+      const crashLaunches = calls.flatMap((call, index) =>
+        call.options?.expectCrash ? [index] : [],
+      );
+      expect(crashLaunches.map((index) => calls[index]?.stage)).toEqual([
+        "launch post-content crash bundle",
+        relaunchStage,
+      ]);
+      for (const launchIndex of crashLaunches) {
+        const exitIndex = calls.findIndex(
+          (call, index) =>
+            index > launchIndex &&
+            call.kind === "control" &&
+            call.pathName === "/e2e/jobs/wait-for-app-exit",
+        );
+        expect(exitIndex).toBeGreaterThan(launchIndex);
+        expect(calls[exitIndex]?.body).toEqual({
+          bundleId: "$postCrashBundleId",
+        });
+        // Only control-plane waits run while the crash bundle may be alive.
+        expect(
+          calls
+            .slice(launchIndex + 1, exitIndex)
+            .every((call) => call.kind === "control"),
+        ).toBe(true);
+      }
     },
   );
 

@@ -382,6 +382,13 @@ protocol NativeUpdateHost: NativeUpdateEventStorage {
     func releaseCatalogCache(_ partition: String) -> String?
     func setReleaseCatalogCache(_ partition: String, value: String) -> Bool
     func removeReleaseCatalogCache(_ partition: String)
+    /// The server answered `request`: main keeps it for its check after a
+    /// crash, as JavaScript's checks do.
+    func recordRecoveryRequest(_ request: NativeCheckRequest)
+}
+
+extension NativeUpdateHost {
+    func recordRecoveryRequest(_ request: NativeCheckRequest) {}
 }
 
 /// A promise rejection from a native method, as JavaScript receives it.
@@ -1225,13 +1232,17 @@ final class NativeUpdateChecker {
         )
         let strategyPath = strategy == .fingerprint ? "fingerprint" : "app-version"
         let catalogURL = "\(baseURL)/release-catalogs/\(strategyPath)/ios/\(channelKey)/\(Self.encodeURIComponent(strategyValue))"
-        // The server says this scope has no catalog yet: no update, not a failure.
-        guard let catalog = try await fetchReleaseCatalog(
+        let answer = try await fetchReleaseCatalog(
             baseURL: baseURL,
             url: catalogURL,
             expectedScope: expectedScope,
             options: options
-        ) else {
+        )
+        // The server answered with a valid catalog (checked as it was read),
+        // or with none yet.
+        host.recordRecoveryRequest(options)
+        // The server says this scope has no catalog yet: no update, not a failure.
+        guard let catalog = answer else {
             return nil
         }
         let catalogId = catalog.catalogId
@@ -1597,7 +1608,7 @@ final class NativeUpdateChecker {
     }
 
     /// Header names lowercased, as `new Headers(requestHeaders)` stores them.
-    private static func normalizedHeaders(_ headers: [String: String]) -> [String: String] {
+    static func normalizedHeaders(_ headers: [String: String]) -> [String: String] {
         var normalized = [String: String]()
         for (name, value) in headers {
             normalized[name.lowercased()] = value

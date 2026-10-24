@@ -44,12 +44,13 @@ const mocks = vi.hoisted(() => {
     getCohort: vi.fn(() => "123"),
     getCrashHistory: vi.fn(() => []),
     getDefaultChannel: vi.fn(() => CHANNEL),
-    getFingerprintHash: vi.fn(() => null),
+    getFingerprintHash: vi.fn((): string | null => null),
     getInstallId: vi.fn(() => "install-id"),
     getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
     isChannelSwitched: vi.fn(() => false),
     isReleaseSelectionCurrent: vi.fn(() => true),
     resetChannel: vi.fn(),
+    setStorageItem: vi.fn(),
     supportsArtifactFiles: vi.fn(() => true),
     stageBundle: vi.fn(
       async (): Promise<{
@@ -102,6 +103,7 @@ const createClient = (catalog = createCatalog()) => {
   };
   const resolveArtifact = vi.fn(async () => artifact);
   const session = {
+    baseURL: "https://updates.example.com/api",
     fetchReleaseCatalog,
     resolveArtifact,
   };
@@ -228,6 +230,112 @@ describe("checkForUpdate Release catalog protocol", () => {
         patchFallback: true,
       },
     ]);
+  });
+
+  it.each([
+    ["a catalog", createCatalog()],
+    ["no catalog yet", null],
+  ])(
+    "saves the request native checks with after a crash once the server answers with %s",
+    async (_answer, catalog) => {
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, fetchReleaseCatalog } = createClient(catalog as never);
+      await checkForUpdate({
+        emit,
+        client,
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeout: 8000,
+        updateStrategy: "appVersion",
+      }).catch(() => null);
+      expect(mocks.setStorageItem).toHaveBeenCalledWith(
+        "hot-updater/recovery-check-config",
+        JSON.stringify({
+          version: 1,
+          baseURL: "https://updates.example.com/api",
+          requestHeaders: { "x-api-key": "key" },
+          requestTimeoutMs: 8000,
+          updateStrategy: "appVersion",
+        }),
+      );
+      // Saved after the server answered.
+      expect(mocks.setStorageItem.mock.invocationCallOrder[0]).toBeGreaterThan(
+        fetchReleaseCatalog.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
+
+  it("keeps the saved recovery request when a check can't be made", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    const onError = vi.fn();
+    // A fingerprint check on a build without a fingerprint never reaches the
+    // server, and neither would native's repeat of it.
+    await checkForUpdate({
+      emit,
+      client,
+      onError,
+      updateStrategy: "fingerprint",
+    }).catch(() => null);
+    expect(fetchReleaseCatalog).not.toHaveBeenCalled();
+    expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the saved recovery request when the catalog fails validation", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient(
+      createCatalog({ scopeKey: "v1:app-version:ios:b3RoZXI" }),
+    );
+    await checkForUpdate({
+      emit,
+      client,
+      onError: vi.fn(),
+      updateStrategy: "appVersion",
+    }).catch(() => null);
+    expect(fetchReleaseCatalog).toHaveBeenCalledOnce();
+    expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the saved recovery request when the server never answers", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    // A header fetch refuses to send, a timeout, or no network.
+    fetchReleaseCatalog.mockRejectedValueOnce(
+      new TypeError("Invalid header name"),
+    );
+    await checkForUpdate({
+      emit,
+      client,
+      onError: vi.fn(),
+      requestHeaders: { "bad\nname": "value" },
+      updateStrategy: "appVersion",
+    }).catch(() => null);
+    expect(fetchReleaseCatalog).toHaveBeenCalledOnce();
+    expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      expect.anything(),
+    );
+  });
+
+  it("still checks when native can't save the recovery request", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.setStorageItem.mockImplementationOnce(() => {
+      throw new Error("no storage");
+    });
+    const update = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+    expect(update?.id).toBe(RELEASE_ID);
+    warn.mockRestore();
   });
 
   it.each(["nothing new", "failure"])(

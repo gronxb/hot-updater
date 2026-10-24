@@ -38,6 +38,9 @@ internal class HotUpdaterRecoveryManager(
     context: Context,
     environment: HotUpdaterInstanceEnvironment = HotUpdaterInstanceEnvironment.main,
     private val mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
+    // Main keeps recording crashes after its grace period ([stopMonitoring]);
+    // a debug build doesn't, as a RedBox is no reason to check for a fix.
+    private val recordsCrashesAfterContent: Boolean = true,
 ) {
     private val appContext = context.applicationContext
     private val name = environment.name
@@ -253,19 +256,32 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
-    /** Ends the grace period of the launch of [generation], unless a newer launch started. */
+    /**
+     * Ends the grace period of the launch of [generation], unless a newer
+     * launch started. Main's verified launch stays live for the rest of the
+     * process: a later crash still writes its marker, which never asks to
+     * roll back but tells the next launch to check for a fix natively, since
+     * the bundle's own update check may be what crashes.
+     */
     private fun stopMonitoring(generation: Long) {
         synchronized(lock) {
             if (generation != this.generation) return
             stopTask = null
             releaseRecoveryWatchdog()
-            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
-            launchState.stop()
             contentAppearedCallback = null
             crashOfAnotherInstanceCallback = null
             recoveryRestartCallback = null
             runtimeActivityCallback = null
             chargedCallback = null
+            if (isMain && recordsCrashesAfterContent && launchState.hasContentAppeared()) {
+                // The hooks installed on main's host stay, and the native
+                // slot keeps the verified bundle.
+                Log.d(TAG, "Stopping crash monitoring for current launch of $name; later crashes are still recorded")
+                updateNativeLaunchStateLocked()
+                return
+            }
+            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
+            launchState.stop()
             liveManagers.remove(name, this)
             updateNativeLaunchStateLocked()
         }
@@ -543,7 +559,9 @@ internal class HotUpdaterRecoveryManager(
             crashMarkerFile.absolutePath,
             launch?.bundleId,
             launch?.unverified == true || (charged && launch?.shouldRollback == true),
-            isMain,
+            // A debug build's main records no crash after its grace period,
+            // a signal included.
+            isMain && recordsCrashesAfterContent,
         )
     }
 
@@ -689,7 +707,11 @@ internal class HotUpdaterRecoveryManager(
         private val attribution: HotUpdaterRecoveryAttribution
             get() = HotUpdaterRecoveryAttribution.shared
 
-        /** The manager of each instance whose launch is monitored. */
+        /**
+         * The manager of each instance whose launch is monitored, and main's
+         * once its launch is verified, which records crashes until the
+         * process ends ([stopMonitoring]).
+         */
         private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
 
         private val signalHandlerLock = Any()

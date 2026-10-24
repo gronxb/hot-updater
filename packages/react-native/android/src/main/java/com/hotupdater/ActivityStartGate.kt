@@ -200,7 +200,7 @@ internal class ActivityStartGate(
 // androidx.startup initializer that lifecycle-process registers. It is STARTED
 // while an activity of this process is started, and stays at INITIALIZED when
 // an app removes that initializer, so the gate then waits for the next start.
-private fun hasStartedActivity(): Boolean =
+internal fun hasStartedActivity(): Boolean =
     runCatching {
         ProcessLifecycleOwner
             .get()

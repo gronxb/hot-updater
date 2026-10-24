@@ -47,6 +47,7 @@ import {
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
   startEnableWidgetJob,
+  startWaitForAppExitJob,
   startWaitForCrashMarkerJob,
   startPatchReleaseJob,
   startResetRemoteBundlesJob,
@@ -352,7 +353,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     instance?: unknown;
     marker?: string;
     message?: string;
-    mode?: "crash" | "hang" | "reset" | "slow-start";
+    mode?: "crash" | "crash-after-content" | "hang" | "reset" | "slow-start";
     patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
@@ -374,11 +375,15 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.mode !== "reset" &&
     payload.mode !== "crash" &&
+    payload.mode !== "crash-after-content" &&
     payload.mode !== "hang" &&
     payload.mode !== "slow-start"
   ) {
     return c.json(
-      { error: "mode must be reset, crash, hang, or slow-start" },
+      {
+        error:
+          "mode must be reset, crash, crash-after-content, hang, or slow-start",
+      },
       400,
     );
   }
@@ -617,6 +622,18 @@ app.post("/e2e/jobs/wait-for-crash-marker", async (c) => {
   }
   return c.json({
     jobId: startWaitForCrashMarkerJob({ bundleId: payload.bundleId, instance }),
+  });
+});
+
+// Main's fatal after its launch monitoring: nothing restarts the app, so the
+// wait proves the bundle's own crash ended it.
+app.post("/e2e/jobs/wait-for-app-exit", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+  return c.json({
+    jobId: startWaitForAppExitJob({ bundleId: payload.bundleId }),
   });
 });
 

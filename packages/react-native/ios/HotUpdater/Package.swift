@@ -19,6 +19,7 @@ let coreSources = [
     "LaunchPreparationLock.swift",
     "NativeUpdateCheck.swift",
     "NotificationExtension.swift",
+    "PostCrashUpdateCheck.swift",
     "ReleaseCatalog.swift",
     "ReleaseCatalogCacheService.swift",
     "ReleaseSelection.swift",

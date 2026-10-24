@@ -124,6 +124,9 @@ internal interface UpdateCheckState {
 
     fun removeReleaseCatalogCache(partition: String): Boolean
 
+    /** The server answered [request]: main keeps it for its check after a crash, as JavaScript's checks do. */
+    fun recordRecoveryRequest(request: NativeCheckRequest) {}
+
     fun getStorageItem(key: String): String?
 
     fun setStorageItem(
@@ -562,7 +565,7 @@ internal class NativeUpdateChecker(
                 ReleaseCatalogScope.Fingerprint(platform = PLATFORM, channelKey = channelKey, fingerprintHash = strategyValue)
             }
         val strategyPath = if (strategy == ReleaseStrategy.APP_VERSION) "app-version" else "fingerprint"
-        val catalog =
+        val answer =
             catalogClient.fetchReleaseCatalog(
                 baseURL = input.baseURL,
                 url =
@@ -572,11 +575,13 @@ internal class NativeUpdateChecker(
                 requestHeaders = options.requestHeaders,
                 requestTimeoutMillis = options.requestTimeoutMillis,
             )
-                // The server says this scope has no catalog yet: no update, not a failure.
-                ?: return null
-        if (!ReleaseCatalogs.hasExpectedScope(catalog.scopeKey, expectedScope)) {
+        if (answer != null && !ReleaseCatalogs.hasExpectedScope(answer.scopeKey, expectedScope)) {
             throw InvalidUpdateResponseException("Received an invalid Release catalog")
         }
+        // The server answered with a valid catalog, or with none yet.
+        state.recordRecoveryRequest(options)
+        // The server says this scope has no catalog yet: no update, not a failure.
+        val catalog = answer ?: return null
         val catalogId = catalog.catalogId
         val scopeKey = catalog.scopeKey
 

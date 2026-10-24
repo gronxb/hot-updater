@@ -130,14 +130,14 @@ export const hotUpdater = HotUpdater.init({
 
 ## Configuration reference
 
-| Option             | Type                                          | Required | Description                                                                          |
-| ------------------ | --------------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
-| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                                      |
+| Option             | Type                                          | Required | Description                                                                                        |
+| ------------------ | --------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                                                    |
 | `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()` and `remoteConfig()` |
-| `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                             |
-| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                      |
-| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                           |
-| `onError`          | `(error) => void`                             | No       | Default error handler for native launch reporting, `wrap`, update checks, and plugin errors   |
+| `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                                           |
+| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                                    |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                                         |
+| `onError`          | `(error) => void`                             | No       | Default error handler for native launch reporting, `wrap`, update checks, and plugin errors        |
 
 `baseURL` is the only React Native transport configuration. A GraphQL, RPC,
 or other custom backend must expose the Hot Updater HTTP protocol through an
@@ -147,6 +147,14 @@ See [`NotifyAppReadyResult`](/docs/react-native-api/notifyAppReady#return-value)
 for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
 callback example. A callback result describes local native state; it does not
 confirm Insights delivery to the server.
+
+Every update check the server answers saves the server, headers, timeout, and
+update strategy it used on the device. After a crash that doesn't roll back,
+native repeats that request to check for a fix without your JavaScript; see
+[crashes after the first render](/docs/concepts/automatic-rollback#crashes-after-the-first-render).
+A device saves nothing until its first check, so deferring `init` and your
+checks, for example until the user accepts your privacy terms, also defers
+every native request.
 
 `hotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.
