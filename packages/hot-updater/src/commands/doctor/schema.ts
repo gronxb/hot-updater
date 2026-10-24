@@ -105,9 +105,9 @@ const pendingResolution = (server: LoadedServer) => {
  * The schema the server's fence checks, against what this CLI's core and the
  * plugins in hot-updater.config.ts expect: one read through the server, which
  * passes the fence or fails it with every setting it found missing or
- * different. A fence that finds core's settings stale reports them before
- * the plugins'; `--fix` migrates both. Undefined when the fence passes, or the
- * read failed for another reason, which the server data checks report.
+ * different, core's and the plugins' together. Undefined when the fence
+ * passes, or the read failed for another reason, which the server data checks
+ * report.
  */
 export const checkSchema = async (
   context: DoctorContext,
@@ -275,6 +275,10 @@ const stillRefused = async (
   }
 };
 
+/** Whether a setting is a plugin's `schema.<id>`, not the engine's or core's. */
+const isPluginSetting = (key: string) =>
+  key !== "schema.engine" && key !== "schema.core";
+
 /** What to run for settings the provider's migrations do not create. */
 const uncoveredNote = (
   packageName: string,
@@ -369,8 +373,20 @@ export const migrateServerSchema = async (
               note: uncoveredNote(packageName, left),
             };
       }
+      // Core's settings are the provider's migrations' to write.
+      const behind = settings.filter(({ key }) => !isPluginSetting(key));
+      const uncovered = settings.filter(({ key }) => isPluginSetting(key));
       return {
-        skip: uncoveredNote(packageName, settings),
+        skip: [
+          ...(behind.length === 0
+            ? []
+            : [
+                `${packageName} has no migration this database has not run for ${behind.map(({ key }) => key).join(", ")}; install the ${packageName} version that matches this hot-updater.`,
+              ]),
+          ...(uncovered.length === 0
+            ? []
+            : [uncoveredNote(packageName, uncovered)]),
+        ].join(" "),
       };
     }
     case "migrator":

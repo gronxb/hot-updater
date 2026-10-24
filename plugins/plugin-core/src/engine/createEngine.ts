@@ -97,7 +97,8 @@ export const createEngine = (
   // Tooling creates the tables of the plugins a server runs, so their names
   // need to be free of core's and of each other's, not of anyone else's.
   if (modules.size > 0) validateSchema([coreModule, ...modules.values()]);
-  // A fenced database also waits for each plugin's settings row.
+  // A fenced database also waits for each plugin's settings row, checked
+  // with core's in one read so a refusal lists both.
   const name = fencedName(database.adapter);
   const fenced =
     name === undefined || plugins.length === 0

@@ -254,24 +254,115 @@ describe("doctor's schema check", () => {
     await expect(doctor()).resolves.not.toHaveProperty("details.schema");
   });
 
-  it("reports core's stale schema first, and --fix migrates core and the plugins", async () => {
+  it("reports core's stale schema with the plugins' missing tables in one run, and --fix migrates both", async () => {
     // What a database the previous minor release migrated records.
     await storeSetting("schema.core", "1.0.0");
     serverProject(database());
 
+    const pending = [
+      { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
+      { key: "schema.notes", expected: "1", found: null },
+    ];
     await expect(doctor()).resolves.toMatchObject({
       details: {
         schema: {
-          settings: [{ key: "schema.core", expected: "1.2.0", found: "1.0.0" }],
+          settings: pending,
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              message:
+                'The database has migrations to run before the server reads it: schema.core is "1.0.0", expected "1.2.0"; schema.notes is missing, expected "1".',
+              settings: pending,
+            },
+          ],
         },
       },
     });
     await expect(doctor({ fix: true })).resolves.toMatchObject({
       success: true,
-      details: { fixes: [{ repair: "schema", status: "applied" }] },
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            status: "applied",
+            wrote: ["schema.core 1.2.0", "schema.notes 1"],
+          },
+        ],
+      },
     });
-    const [row] = await adapter.get(SETTINGS_TABLE, [["schema.core"]]);
-    expect(row?.["value"]).toBe("1.2.0");
+    const rows = await adapter.get(SETTINGS_TABLE, [
+      ["schema.core"],
+      ["schema.notes"],
+    ]);
+    expect(rows.map((row) => row?.["value"])).toEqual(["1.2.0", "1"]);
+    await expect(doctor()).resolves.not.toHaveProperty("details.schema");
+  });
+
+  it("lists every pending group of a managed D1 database a release behind, as its migrations run them", async () => {
+    // A database the previous minor release's managed init created.
+    await migrateCoreSchema(adapter, "d1Database", [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
+    await storeSetting("schema.core", "1.0.0");
+    const migrateDatabase = vi.fn(async () => {
+      // What the provider's migrations do on this database.
+      await migrateCoreSchema(adapter, "d1Database", [
+        insights(),
+        apiKeys(),
+        remoteConfig(),
+        vault(),
+        notes,
+      ]);
+      return { applied: ["0002_hot-updater_1.2.0.sql"] };
+    });
+    vi.spyOn(INIT_PROVIDER_PACKAGES.cloudflare, "load").mockResolvedValue({
+      migrateDatabase,
+    } as never);
+    serverProject(database("d1Database", { generateSchema: vi.fn() }), [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      vault(),
+      notes,
+    ]);
+
+    const pending = [
+      { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
+      { key: "schema.vault", expected: "1.0.0", found: null },
+      { key: "schema.notes", expected: "1", found: null },
+    ];
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          settings: pending,
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              message:
+                'The database has migrations to run before the server reads it: schema.core is "1.0.0", expected "1.2.0"; schema.vault is missing, expected "1.0.0"; schema.notes is missing, expected "1".',
+              settings: pending,
+            },
+          ],
+        },
+      },
+    });
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            status: "applied",
+            wrote: ["migration 0002_hot-updater_1.2.0.sql"],
+          },
+        ],
+      },
+    });
+    expect(migrateDatabase).toHaveBeenCalledOnce();
+    await expect(doctor()).resolves.not.toHaveProperty("details.schema");
   });
 
   it("refuses to move a schema a newer release migrated back", async () => {
@@ -308,7 +399,12 @@ describe("doctor's schema check", () => {
       success: false,
       details: {
         schema: {
-          settings: [{ key: "schema.core", expected: "1.2.0", found: "9.0.0" }],
+          // The plugin's missing tables are listed, but a migration would
+          // write core's setting back.
+          settings: [
+            { key: "schema.core", expected: "1.2.0", found: "9.0.0" },
+            { key: "schema.notes", expected: "1", found: null },
+          ],
           issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }],
         },
         fixes: [],
@@ -448,6 +544,34 @@ describe("doctor's schema check", () => {
       details: {
         fixes: [
           { repair: "schema", status: "applied", wrote: ["schema.notes 1"] },
+        ],
+      },
+    });
+  });
+
+  it("asks for the provider package that matches when its migrations leave core's schema behind", async () => {
+    await storeSetting("schema.core", "1.0.0");
+    vi.spyOn(INIT_PROVIDER_PACKAGES.supabase, "load").mockResolvedValue({
+      migrateDatabase: async () => ({ applied: [] }),
+    } as never);
+    serverProject(
+      database("supabaseDatabase", {
+        generateSchema: vi.fn(),
+        createMigrator: undefined,
+      }),
+    );
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            status: "skipped",
+            note: expect.stringMatching(
+              /^@hot-updater\/supabase has no migration this database has not run for schema\.core; install the @hot-updater\/supabase version that matches this hot-updater\. .*schema\.notes belongs to a plugin they do not create/u,
+            ),
+          },
         ],
       },
     });
