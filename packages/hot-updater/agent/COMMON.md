@@ -5,10 +5,10 @@ operation-specific instructions and manifest.json before making changes.
 
 ## Establish the target
 
-- Before remote changes, check local tooling. The CLI needs Node 20.19+, but
-  app/provision-client-credential.mjs imports TypeScript and needs Node 22.18+
-  or Node 24+. Arrange that runtime for the helper before provisioning
-  resources; it can run separately from the app's Node version. Check the app's
+- Before remote changes, check local tooling. The CLI and
+  app/provision-client-credential.mjs, which imports TypeScript, need Node
+  22.23.4+, 24.22.1+, or 26.12.1+. Arrange that runtime before provisioning
+  resources; the helper can run separately from the app's Node version. Check the app's
   package-manager setup.
 
 - Inspect the workspace to locate the target React Native app, package manager,
@@ -148,7 +148,7 @@ command or generated files alone do not prove that a remote step is complete.
    from the directory whose .env.hotupdater contains the target provider
    settings: it loads that file before the credential helper's definition,
    which reads its database and storage settings as it loads. Use Node
-   22.18+ or Node 24+. Install the manifest.json packages where these files
+   22.23.4+, 24.22.1+, or 26.12.1+. Install the manifest.json packages where these files
    can resolve them (the default scaffold is nested in the app). From the app
    directory, run `node <scaffold-path>/app/provision-client-credential.mjs`.
 <!-- if credential -->

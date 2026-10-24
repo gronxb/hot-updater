@@ -160,6 +160,13 @@ class NativeUpdateCheckerTest {
             return true
         }
 
+        /** The requests the server answered, as main keeps them for its check after a crash. */
+        val recoveryRequests: MutableList<NativeCheckRequest> = java.util.Collections.synchronizedList(mutableListOf())
+
+        override fun recordRecoveryRequest(request: NativeCheckRequest) {
+            recoveryRequests += request
+        }
+
         override fun getStorageItem(key: String): String? = synchronized(storage) { storage[key] }
 
         override fun setStorageItem(
@@ -469,6 +476,38 @@ class NativeUpdateCheckerTest {
 
             assertEquals("INSTALL", update.transitionKind)
             assertEquals(0, state.resets.get())
+        }
+
+    @Test
+    fun `a check the server answered is kept for the check after a crash, a failed one is not`() =
+        runBlocking {
+            val state = FakeState()
+            val statuses = ArrayDeque(listOf(404, 500))
+            val transport =
+                FakeTransport {
+                    val status = statuses.removeFirst()
+                    UpdateCheckResponse(status, "", if (status == 404) mapOf("X-Hot-Updater-Catalog" to "none") else emptyMap(), "")
+                }
+            val checker = NativeUpdateChecker(state, transport)
+
+            // No catalog yet is still an answer.
+            assertNull(checker.checkForUpdate(OPTIONS))
+            assertEquals(listOf(OPTIONS), state.recoveryRequests.toList())
+
+            runCatching { checker.checkForUpdate(OPTIONS) }
+            assertEquals(1, state.recoveryRequests.size)
+        }
+
+    @Test
+    fun `a catalog of another scope is not kept for the check after a crash`() =
+        runBlocking {
+            val state = FakeState()
+            val otherScope = catalog(emptyList()).replace(SCOPE_KEY, "v1:app-version:android:b3RoZXI")
+            val transport = FakeTransport { UpdateCheckResponse(200, "", emptyMap(), otherScope) }
+            val checker = NativeUpdateChecker(state, transport)
+
+            assertTrue(runCatching { checker.checkForUpdate(OPTIONS) }.isFailure)
+            assertTrue(state.recoveryRequests.isEmpty())
         }
 
     @Test

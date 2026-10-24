@@ -7,7 +7,7 @@ import { Script } from "node:vm";
 import { transformFileSync } from "@babel/core";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
-const appRoot = path.resolve(import.meta.dirname, "../../examples/v0.85.0");
+const appRoot = path.resolve(import.meta.dirname, "../../examples/e2e-app");
 const publicSettings = {
   HOT_UPDATER_APP_BASE_URL: "https://updates.example.com/hot-updater",
   HOT_UPDATER_E2E_RUNTIME_CONFIG_URL:
@@ -23,8 +23,8 @@ async function buildPublicSettings(
   onTestFinished(() => rm(cwd, { recursive: true, force: true }));
   await mkdir(path.join(cwd, "src"));
   await copyFile(
-    path.join(appRoot, "e2e-build-config.cjs"),
-    path.join(cwd, "e2e-build-config.cjs"),
+    path.join(appRoot, "build-config.cjs"),
+    path.join(cwd, "build-config.cjs"),
   );
   if (file !== null) {
     await writeFile(path.join(cwd, "profile.env"), file);
@@ -38,7 +38,7 @@ async function buildPublicSettings(
     process.execPath,
     [
       "-e",
-      'require("./e2e-build-config.cjs"); process.stdout.write(JSON.stringify(require("./src/e2eBuildConfig.js")));',
+      'require("./build-config.cjs").writeE2eBuildConfig(process.cwd()); process.stdout.write(JSON.stringify(require("./src/e2eBuildConfig.js")));',
     ],
     {
       cwd,

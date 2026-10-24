@@ -7,7 +7,13 @@ import { styles } from "./styles";
 export const E2eStack = (): React.JSX.Element => (
   <Stack.Navigator
     initialRouteName="Ready"
-    screenOptions={{ contentStyle: styles.content, headerShown: false }}
+    // Every deep link resets the stack. Without an animation the previous
+    // screen leaves at once, so no read sees two screens' test IDs.
+    screenOptions={{
+      animation: "none",
+      contentStyle: styles.content,
+      headerShown: false,
+    }}
   >
     {registeredRouteElements}
   </Stack.Navigator>

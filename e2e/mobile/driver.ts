@@ -172,9 +172,12 @@ export class MobileAppDriver implements ScenarioAppDriver {
           this.values[options.saveResultAs] = value;
       }
       // Observe native recovery before any navigation can start a dead app.
+      // A crash after main's launch monitoring ends the app with nothing to
+      // restart it: its proved exit is the evidence.
       if (
         (this.pendingRecovery === "crash" &&
-          pathName === "/e2e/wait-for-crash-recovery") ||
+          (pathName === "/e2e/wait-for-crash-recovery" ||
+            pathName === "/e2e/jobs/wait-for-app-exit")) ||
         (this.pendingRecovery === "reload" &&
           pathName === "/e2e/jobs/wait-for-metadata" &&
           resolved?.verificationPending === false)

@@ -38,6 +38,7 @@ import {
   stageBundle,
   supportsArtifactFiles,
 } from "./native";
+import { saveRecoveryCheckConfig } from "./recoveryCheckConfig";
 import { hotUpdaterStore } from "./store";
 import { classifyUpdateError, InvalidUpdateResponseError } from "./updateError";
 
@@ -215,9 +216,17 @@ async function checkForReleaseCatalogUpdate(input: {
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,
   });
+  if (catalog !== null) validateCatalog(catalog, expectedScope);
+  // The server answered with a valid catalog, or with none yet: only such a
+  // request replaces the saved one, so one that fails keeps the last.
+  saveRecoveryCheckConfig({
+    baseURL: session.baseURL,
+    requestHeaders: options.requestHeaders,
+    requestTimeout: options.requestTimeout,
+    updateStrategy: options.updateStrategy,
+  });
   // The server says this scope has no catalog yet: no update, not a failure.
   if (catalog === null) return null;
-  validateCatalog(catalog, expectedScope);
   const catalogId = catalog.catalogId;
   const scopeKey = catalog.scopeKey;
 

@@ -224,6 +224,7 @@ function resolveIosDerivedDataPath(
 
   const scope = safeFileToken(
     [
+      env.HOT_UPDATER_E2E_TARGET,
       env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE,
       env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE,
       env.HOT_UPDATER_E2E_IOS_SIMULATOR_NAME,
@@ -233,10 +234,7 @@ function resolveIosDerivedDataPath(
       .filter(Boolean)
       .join("-"),
   );
-  return path.join(
-    os.tmpdir(),
-    `hotupdater-v085-ios-e2e-${scope || controlPort}`,
-  );
+  return path.join(os.tmpdir(), `hotupdater-ios-e2e-${scope || controlPort}`);
 }
 
 function resolveAppId(platform: E2ePlatform, env: NodeJS.ProcessEnv): string {

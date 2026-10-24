@@ -1,24 +1,30 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
+
+import { currentE2eTarget, REPOSITORY_ROOT } from "./targets.ts";
 
 /**
- * The example app E2E runs. e2e is no workspace package, so it reaches Hot
- * Updater's packages as the app installs them: the app's own dependencies,
- * and the packages `hot-updater` and `@hot-updater/server` depend on.
+ * The app of the E2E target this process runs (`HOT_UPDATER_E2E_TARGET`). e2e
+ * is no workspace package, so it reaches Hot Updater's packages as the app
+ * installs them: the app's own dependencies, and the packages `hot-updater`
+ * and `@hot-updater/server` depend on.
  */
-const APP = fileURLToPath(
-  new URL("../../examples/v0.85.0/package.json", import.meta.url),
-);
+const appPackageJson = (appDir?: string) =>
+  path.join(
+    appDir ?? path.join(REPOSITORY_ROOT, currentE2eTarget().appDir),
+    "package.json",
+  );
 
 type Exports = Record<string, unknown>;
 
 /** The directory of `name` for the app: its own dependency, or one of the CLI's or the server's. */
-const packageDir = (name: string): string => {
-  const app = createRequire(APP);
+const packageDir = (name: string, appDir?: string): string => {
+  const appPackage = appPackageJson(appDir);
+  const app = createRequire(appPackage);
   const parents = [
-    APP,
+    appPackage,
     app.resolve("hot-updater/package.json"),
     app.resolve("@hot-updater/server/package.json"),
   ];
@@ -67,10 +73,15 @@ export const importPublished = async <T = Exports>(
 
 /**
  * The file a package's `bin` names, from what the example app installs: the
- * command `npx <command>` runs in the app.
+ * command `npx <command>` runs in the app. `appDir` defaults to the app of
+ * this process's target.
  */
-export const publishedBin = (name: string, command = name): string => {
-  const dir = packageDir(name);
+export const publishedBin = (
+  name: string,
+  command = name,
+  appDir?: string,
+): string => {
+  const dir = packageDir(name, appDir);
   const { bin } = JSON.parse(
     readFileSync(path.join(dir, "package.json"), "utf8"),
   ) as { readonly bin?: string | Readonly<Record<string, string>> };

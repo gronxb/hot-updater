@@ -18,7 +18,7 @@ A production-ready Hot Updater server example using:
 
 ## Setup
 
-Use Node.js 20.19 or later for native environment-file loading.
+Use Node.js 22.23.4+, 24.22.1+, or 26.12.1+.
 
 1. Install and build the workspace dependencies from the repository root, then
    enter this package:

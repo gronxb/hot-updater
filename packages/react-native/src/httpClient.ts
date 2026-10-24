@@ -59,6 +59,8 @@ export type ResolvedArtifact =
     };
 
 export interface HotUpdaterHttpSession {
+  /** The server this session requests, with a baseURL function resolved. */
+  readonly baseURL: string;
   /** Resolves to null when the server says the scope has no catalog, so no update. */
   fetchReleaseCatalog: (
     params: ReleaseCatalogRequest,
@@ -143,6 +145,7 @@ const createSession = (
   baseURL: string,
   onResponse?: (response: UpdateHttpResponse) => void,
 ): HotUpdaterHttpSession => ({
+  baseURL,
   fetchReleaseCatalog: async (params): Promise<ReleaseCatalog | null> => {
     const channelKey = encodeChannelKey(params.channel);
     let strategyValue: string;

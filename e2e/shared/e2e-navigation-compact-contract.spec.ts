@@ -6,57 +6,57 @@ import { describe, expect, it } from "vitest";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const e2eAppIndexPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/index.tsx",
+  "examples/e2e-app/src/e2eApp/index.tsx",
 );
 const e2eAppRoutePathsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/route-paths.ts",
+  "examples/e2e-app/src/e2eApp/route-paths.ts",
 );
 const e2eAppTypesPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/types.ts",
+  "examples/e2e-app/src/e2eApp/types.ts",
 );
 const e2eAppScreenPathsDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screen-paths",
+  "examples/e2e-app/src/e2eApp/screen-paths",
 );
 const e2eAppRoutesPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes.tsx",
+  "examples/e2e-app/src/e2eApp/routes.tsx",
 );
 const e2eAppRegisteredRouteElementsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/registered-route-elements.tsx",
+  "examples/e2e-app/src/e2eApp/registered-route-elements.tsx",
 );
 const e2eAppRouteElementsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes/route-elements.tsx",
+  "examples/e2e-app/src/e2eApp/routes/route-elements.tsx",
 );
 const e2eAppScreensIndexPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/index.ts",
+  "examples/e2e-app/src/e2eApp/screens/index.ts",
 );
 const e2eAppTopLevelScreensPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens.tsx",
+  "examples/e2e-app/src/e2eApp/screens.tsx",
 );
 const e2eAppScreenTestIDsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screen-test-ids.ts",
+  "examples/e2e-app/src/e2eApp/screen-test-ids.ts",
 );
 const e2eAppComponentsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/components.tsx",
+  "examples/e2e-app/src/e2eApp/components.tsx",
 );
 const e2eAppStylesPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/styles.ts",
+  "examples/e2e-app/src/e2eApp/styles.ts",
 );
 const e2eAppScreensDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens",
+  "examples/e2e-app/src/e2eApp/screens",
 );
-const e2eAppSourceDir = path.join(repoDir, "examples/v0.85.0/src/e2eApp");
+const e2eAppSourceDir = path.join(repoDir, "examples/e2e-app/src/e2eApp");
 const mobileDriverPath = path.join(repoDir, "e2e/mobile/driver.ts");
 const sharedScreenRoutesPath = path.join(
   repoDir,

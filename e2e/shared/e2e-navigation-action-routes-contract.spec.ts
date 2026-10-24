@@ -6,19 +6,19 @@ import { describe, expect, it } from "vitest";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const e2eAppRoutePathsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/route-paths.ts",
+  "examples/e2e-app/src/e2eApp/route-paths.ts",
 );
 const e2eAppScreenPathsDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screen-paths",
+  "examples/e2e-app/src/e2eApp/screen-paths",
 );
 const e2eAppScreensIndexPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/index.ts",
+  "examples/e2e-app/src/e2eApp/screens/index.ts",
 );
 const e2eAppScreensDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens",
+  "examples/e2e-app/src/e2eApp/screens",
 );
 const mobileDriverPath = path.join(repoDir, "e2e/mobile/driver.ts");
 const sharedScreenRoutesPath = path.join(
@@ -42,15 +42,15 @@ const controlServerScreenStatePath = path.join(
 );
 const e2eRuntimeConfigPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
+  "examples/e2e-app/src/e2eRuntimeConfig.ts",
 );
 const e2eRuntimeHookPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
+  "examples/e2e-app/src/e2eApp/useE2eRuntime.ts",
 );
 const e2eScreenStatePersistencePath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screen-state-persistence.ts",
+  "examples/e2e-app/src/e2eApp/screen-state-persistence.ts",
 );
 
 const collectSourceFiles = async (

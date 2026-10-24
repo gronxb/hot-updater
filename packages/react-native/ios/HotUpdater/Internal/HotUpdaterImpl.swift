@@ -149,6 +149,20 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let recoveryManager: HotUpdaterRecoveryManager
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
+    /// Main only: the native update check of the first launch with UI after
+    /// a crash. None in a development build.
+    private let postCrashUpdateCheck: HotUpdaterPostCrashUpdateCheck?
+
+    /// A development build, where a crash is a RedBox during development,
+    /// never a reason to check for a fix: main records no crash after its
+    /// watch and never checks after one.
+    static let isDevelopmentBuild: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
     // Read by native update checks on other threads while React Native sets it.
     private let launchSelectionLock = NSLock()
     private var launchSelectionValue: LaunchSelection?
@@ -282,6 +296,13 @@ private func hotUpdaterGetMinBundleId() -> String {
         self.recoveryManager = recoveryManager
         self.releaseCatalogCache = releaseCatalogCache
         self.keyValueStorage = keyValueStorage
+        self.postCrashUpdateCheck = environment.isMain && !HotUpdaterImpl.isDevelopmentBuild
+            ? HotUpdaterPostCrashUpdateCheck(
+                storage: keyValueStorage,
+                whenShown: HotUpdaterImpl.whenAppIsActive,
+                check: HotUpdaterImpl.checkAfterCrash
+            )
+            : nil
         super.init()
         recoveryManager.onRollbackCharged = { [weak self] in
             self?.invalidateLaunchPreparation()
@@ -382,6 +403,11 @@ private func hotUpdaterGetMinBundleId() -> String {
             HotUpdaterMainBundle.shared.note(bundle)
         }
         let bundleURL = prepareLaunchIfNeeded(bundle: bundle).bundleURL
+        // After the launch lock is released: the check reads the launch
+        // through it, and never holds up React Native's start.
+        if environment.isMain, self === HotUpdaterNativeUpdateBridge.sharedImpl {
+            postCrashUpdateCheck?.startIfNeeded()
+        }
         if !environment.isMain, let bundleURL {
             // The runtime started with this URL finds this impl by it.
             HotUpdaterNativeUpdateBridge.router.record(launchURL: bundleURL, name: environment.name)
@@ -1004,7 +1030,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             // Settles what the previous process left first, so the check reads the
             // selection, launch state, and crash history this launch will use.
             // Each instance consumes only its own crash marker.
-            bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager.consumePendingCrashRecovery() })
+            bundleStorage.settlePreviousLaunch(pendingRecovery: { self.consumePendingCrashRecovery() })
             return bundleStorage.peekLaunchBundleId()
         }
     }
@@ -1094,7 +1120,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         // retry replaces it.
         let (selection, generation, epoch) = launchEpoch.prepareCurrent(
             prepare: {
-                let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+                let pendingRecovery = consumePendingCrashRecovery()
                 return bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
             },
             startMonitoring: { selection in
@@ -1122,6 +1148,61 @@ private func hotUpdaterGetMinBundleId() -> String {
         currentLaunchSelection = selection
         currentLaunchSelectionEpoch = epoch
         return selection
+    }
+
+    /// Keeps a native check's request the server answered for main's check
+    /// after a crash, as JavaScript's checks do; an app that checks only
+    /// natively has no other. Nothing for a named instance or in a
+    /// development build, which have no such check.
+    func recordRecoveryRequest(_ request: NativeCheckRequest) {
+        guard postCrashUpdateCheck != nil, let json = HotUpdaterRecoveryCheckConfig.json(for: request) else { return }
+        keyValueStorage.setItem(HotUpdaterRecoveryCheckConfig.storageKey, value: json)
+    }
+
+    /// This instance's crash marker; for main outside a development build,
+    /// a marker that doesn't roll back also leaves the post-crash update
+    /// check pending.
+    private func consumePendingCrashRecovery() -> PendingCrashRecovery? {
+        guard let postCrashUpdateCheck else {
+            return recoveryManager.consumePendingCrashRecovery()
+        }
+        return postCrashUpdateCheck.consumeMarker { recoveryManager.consumePendingCrashRecovery() }
+    }
+
+    /// Runs `action` once the app is active: a launch without UI, such as a
+    /// silent push, leaves the post-crash check to a later foreground.
+    private static func whenAppIsActive(_ action: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            if UIApplication.shared.applicationState == .active {
+                action()
+                return
+            }
+            NSLog("[HotUpdaterRecovery] Post-crash update check: skipped until the app becomes active")
+            // Boxed: the observer block may not capture a mutable variable.
+            let registration = HotUpdaterObserverRegistration()
+            registration.token = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                guard let token = registration.token else { return }
+                NotificationCenter.default.removeObserver(token)
+                registration.token = nil
+                action()
+            }
+        }
+    }
+
+    /// Main's native check of the current channel, which stages an update it
+    /// finds for the next launch; no reload.
+    private static func checkAfterCrash(
+        _ request: NativeCheckRequest
+    ) async throws -> HotUpdaterPostCrashUpdateCheck.Outcome {
+        let checker = HotUpdaterNativeUpdateBridge.checker(impl: HotUpdaterNativeUpdateBridge.sharedImpl)
+        guard let update = try await checker.checkForUpdate(request) else {
+            return .noUpdate
+        }
+        return try await update.updateBundle() ? .staged(bundleId: update.bundleId) : .superseded
     }
 
     // A background launch, such as a silent push, may never render. Only a
@@ -1170,6 +1251,12 @@ private func hotUpdaterGetMinBundleId() -> String {
         launchStartObservers = []
         launchStartObserversGeneration = nil
     }
+}
+
+/// A one-shot notification observer's token, which its own block removes.
+/// Main thread only.
+private final class HotUpdaterObserverRegistration {
+    var token: NSObjectProtocol?
 }
 
 /// One instance's crash recovery: consumes its marker at launch, watches its
@@ -1396,9 +1483,15 @@ private final class HotUpdaterSignalCrashSlots: HotUpdaterCrashSlotSink {
 final class HotUpdaterRecoveryHub: NSObject {
     static let shared = HotUpdaterRecoveryHub()
 
-    let coordinator = HotUpdaterRecoveryCoordinator(sink: HotUpdaterSignalCrashSlots())
+    let coordinator = HotUpdaterRecoveryCoordinator(
+        sink: HotUpdaterSignalCrashSlots(),
+        recordsCrashesAfterWatch: !HotUpdaterImpl.isDevelopmentBuild
+    )
     /// The launch each runtime runs, by its module.
     private let runtimeLaunches = HotUpdaterRuntimeLaunches()
+    /// Content that appeared in the background, until the foreground.
+    private let backgroundContent = HotUpdaterBackgroundContent()
+    private var backgroundContentObservers: [NSObjectProtocol] = []
 
     override init() {
         super.init()
@@ -1728,6 +1821,17 @@ final class HotUpdaterRecoveryHub: NSObject {
 
     @objc private func handleContentDidAppear(_ notification: Notification) {
         let view = notification.object as AnyObject?
+        // React Native posts content on the main thread, where UIApplication
+        // is read. Content the app shows in the background verifies nothing
+        // until the app comes to the foreground (`HotUpdaterBackgroundContent`).
+        if Thread.isMainThread, UIApplication.shared.applicationState == .background {
+            holdUntilForeground(view)
+            return
+        }
+        contentAppeared(view)
+    }
+
+    private func contentAppeared(_ view: AnyObject?) {
         let owner = owner(of: view)
         // A view no runtime claims is main's, as it always was, unless a
         // named runtime that has no module yet may have shown it.
@@ -1760,6 +1864,24 @@ final class HotUpdaterRecoveryHub: NSObject {
         manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
         if verified.launch.name != mainName {
             releaseHeldContent()
+        }
+    }
+
+    /// Main thread only.
+    private func holdUntilForeground(_ view: AnyObject?) {
+        guard backgroundContent.hold(view) else { return }
+        backgroundContentObservers = [
+            UIApplication.willEnterForegroundNotification,
+            UIApplication.didBecomeActiveNotification,
+        ].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.backgroundContentObservers.forEach { NotificationCenter.default.removeObserver($0) }
+                self.backgroundContentObservers = []
+                for view in self.backgroundContent.takeAll() {
+                    self.contentAppeared(view)
+                }
+            }
         }
     }
 

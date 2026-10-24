@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { loadE2eTarget } from "../shared/targets.ts";
 import { recordAttempt } from "./attempt.ts";
 import { createNativeBuildPlan } from "./build.ts";
 import type { MobileContext } from "./context.ts";
@@ -38,6 +39,9 @@ vi.mock("./agent-device-daemon.ts", () => ({
 }));
 vi.mock("./android-reverse.ts", () => ({
   acquireAndroidReverses: mocked.acquireReverse,
+}));
+vi.mock("./android-page-size.ts", () => ({
+  assertAndroidPageSize: vi.fn(async () => {}),
 }));
 
 import { runMobile } from "./run.ts";
@@ -219,7 +223,7 @@ describe("mobile wrapper resource lifecycle", () => {
       env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH = derivedDataPath;
       const root = path.resolve(import.meta.dirname, "../..");
       const xcode = createNativeBuildPlan(
-        { platform: "ios", track: "greenfield", dryRun: true },
+        { platform: "ios", target: loadE2eTarget("v0.85.0"), dryRun: true },
         root,
         env,
       ).find((command) => command.command === "xcodebuild")!;

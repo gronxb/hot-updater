@@ -78,6 +78,31 @@ a launch still rolls back.
 This protection requires a native app build containing the updated SDK; an OTA
 bundle alone cannot add it to an already installed native binary.
 
+## Crashes after the first render
+
+A crash after the first render does not roll back. By then the new bundle may
+have changed what the app stores, so returning to the previous bundle is not
+safe. Expo Updates follows the same rule.
+
+Such a crash can still trap users when the bundle crashes inside your update
+flow: its JavaScript never gets far enough to download a fix. Native covers
+that case. When a crash doesn't roll the bundle back, however long after the
+first render it happens, the next launch checks for an update natively in the
+background, without your JavaScript. Whatever it finds applies at the launch
+after that. A crash that rolls back needs no check: the bundle it restores
+already rendered. To recover devices, deploy a fixed
+bundle, or disable the bad Release so the server rolls them back. A device that
+keeps crashing picks it up within two restarts.
+
+The native check repeats your app's last update check that reached your
+server: each check the server answers, from JavaScript or from the native
+`checkForUpdate` of a brownfield app, saves its server, headers, timeout, and
+update strategy on the device. A check that fails keeps the one saved before.
+A device that never checked, for example because the user hasn't accepted your
+privacy terms yet, sends no request. A launch that didn't crash sends
+none either. A launch without UI waits for the next launch that shows UI. A
+debug build never runs this check: a crash there is a development error.
+
 ## What happens during rollback?
 
 When rollback happens, Hot Updater:

@@ -78,5 +78,8 @@ yarn-error.log
 .hot-updater/output
 .env.hotupdater
 
-# Public Hot Updater settings generated before bundling
-src/hotUpdaterBuildConfig.js
+
+# E2E deploy fixtures the control server writes
+src/test/_fixture-archive-300mb-random.bmp
+src/test/_fixture-asset-heavy/
+keys/private-key.pem

@@ -1,7 +1,7 @@
 import React from "react";
 import { Image } from "react-native";
 
-import { E2eHotUpdaterApp } from "./src/e2eApp";
+import { E2eHotUpdaterApp } from "@examples/e2e-app";
 import {
   E2E_SCENARIO_MARKER,
   loadE2EDeployBundleAssets,

@@ -9,6 +9,8 @@ module.exports = {
   moduleNameMapper: {
     "^react-native($|/.*)": `${reactNativePath}/$1`,
   },
+  // @examples/e2e-app resolves its imports from this app, as the bundler does.
+  resolver: require.resolve("@examples/e2e-app/jest-resolver"),
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   // The reuse QA font loads like the preset's image assets.
   transform: {

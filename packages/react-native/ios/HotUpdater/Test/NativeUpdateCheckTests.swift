@@ -1013,6 +1013,41 @@ struct NativeUpdateCheckTests {
         #expect(host.stageFinished.isOpen)
     }
 
+    // MARK: Recovery request
+
+    /// A check the server answered, with a catalog or with none yet, is the
+    /// request main's check after a crash repeats.
+    @Test(arguments: [false, true])
+    func anAnsweredCheckIsKeptForTheCheckAfterACrash(hasCatalog: Bool) async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            hasCatalog
+                ? NativeUpdateResponse(status: 200, headers: [:], body: catalog(releases: [descriptor(release2, bundle2)]))
+                : NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": "none"], body: "")
+        }
+        let checker = makeChecker(host, transport)
+
+        _ = try await checker.checkForUpdate(options(headers: ["X-API-Key": "secret"]))
+
+        let kept = try #require(host.recoveryRequests.first)
+        #expect(host.recoveryRequests.count == 1)
+        #expect(kept.requestHeaders == ["X-API-Key": "secret"])
+    }
+
+    /// A check the server never answered keeps the request kept before.
+    @Test
+    func aFailedCheckKeepsNoRecoveryRequest() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 500, headers: [:], body: "oops")
+        }
+        let checker = makeChecker(host, transport)
+
+        _ = try? await checker.checkForUpdate(options())
+
+        #expect(host.recoveryRequests.isEmpty)
+    }
+
     // MARK: Errors
 
     @Test
@@ -1583,6 +1618,8 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
     /// The last staging's files response reporter.
     private(set) var filesResponse: ((Int, String?) -> Void)?
     private(set) var resets = 0
+    /// The requests the server answered, as main keeps them for its check after a crash.
+    private(set) var recoveryRequests: [NativeCheckRequest] = []
     /// Opened when native `updateBundle` is first called, and when it first returns.
     let stageStarted = Latch()
     let stageFinished = Latch()
@@ -1648,6 +1685,12 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
         stageStarted.open()
         defer { stageFinished.open() }
         return try await stage(params, progress)
+    }
+
+    func recordRecoveryRequest(_ request: NativeCheckRequest) {
+        lock.lock()
+        recoveryRequests.append(request)
+        lock.unlock()
     }
 
     func resetChannel() async -> Bool {

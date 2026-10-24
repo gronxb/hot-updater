@@ -51,6 +51,8 @@ const expectedScenarioModuleFiles = [
   "launch-status-after-session-install.ts",
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
+  "post-content-crash-native-recovery.ts",
+  "post-content-crash-native-rollback.ts",
   "release-ota-recovery.ts",
   "remote-config-fetch-activate.ts",
   "republished-crashed-bundle-skipped.ts",

@@ -40,12 +40,20 @@ import {
   publishedBin,
   publishedConsoleServer,
 } from "../published.ts";
-import { nativeAppPath, parseE2eTrack } from "../tracks.ts";
+import { currentE2eTarget, nativeAppPath } from "../targets.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
+import {
+  advanceAppExitWait,
+  describeAppExitWaitFailure,
+  hasPostContentCrashAfterMarker,
+  initialAppExitWaitState,
+  isAppExitProved,
+  POST_CONTENT_CRASH_LOG_PREFIX,
+} from "./app-exit-wait.ts";
 import {
   createArchiveInterruption,
   interruptArchive,
@@ -145,9 +153,22 @@ type JobResult = Record<string, unknown>;
 
 // "slow-start" holds JavaScript before the first render, then renders: a healthy
 // bundle that a user can leave before it shows anything.
-type DeployMode = "crash" | "hang" | "reset" | "slow-start";
+// "crash-after-content" renders, fails its own JavaScript update check, and
+// throws a fatal long after its first content, once main's launch monitoring
+// (first content + 10 s) has ended: only a native check can reach a fix.
+type DeployMode =
+  | "crash"
+  | "crash-after-content"
+  | "hang"
+  | "reset"
+  | "slow-start";
 
 const SLOW_START_HOLD_MS = 30_000;
+// Counted from the bundle's module evaluation, which precedes its first
+// content, so it leaves the 10 s monitoring window a margin on a slow device.
+const POST_CONTENT_CRASH_DELAY_MS = 20_000;
+// From the start of the exit wait, which follows the crash launch.
+const POST_CONTENT_CRASH_EXIT_WAIT_MS = 60_000;
 
 type DeployedBundleRecord = {
   bundleId: string;
@@ -247,20 +268,24 @@ const REPO_DIR = path.resolve(__dirname, "../../..");
 // The CLI the example app installs, as `npx hot-updater` runs it there.
 const HOT_UPDATER_CLI_PATH = publishedBin("hot-updater");
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
-const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
+// The React Native app of this run's E2E target (examples/<target>/e2e.json).
+const EXAMPLE_DIR = path.join(REPO_DIR, currentE2eTarget().appDir);
 const E2E_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/e2eApp/patchSurface.ts",
 );
 // The brownfield widget runtime: its own entry, patch surface, and channel
-// (examples/v0.85.0/index.widget.js and src/widgetApp).
+// (the app's index.widget.js and src/widgetApp).
 const E2E_WIDGET_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/widgetApp/patchSurface.ts",
 );
 const WIDGET_ENTRY_FILE = "index.widget.js";
 const WIDGET_CHANNEL = "widget";
-const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
+// The env file the app's hot-updater.config.ts loads: the caller's, or the app's.
+const HOT_UPDATER_ENV_FILE = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH
+  ? path.resolve(REPO_DIR, process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH)
+  : path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
@@ -292,7 +317,7 @@ const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
 const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
 const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 // Read by the brownfield host's framework and library before React Native
-// starts (examples/v0.85.0 HotUpdaterExampleBrownfield and brownfieldlib).
+// starts (the app's HotUpdaterExampleBrownfield and brownfieldlib).
 const E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY = "HotUpdaterE2ENativeCheck";
 const E2E_ANDROID_NATIVE_CHECK_PREFS_FILE = "HotUpdaterE2E.xml";
 const E2E_ANDROID_NATIVE_CHECK_PREFS_KEY = "nativeCheck";
@@ -654,6 +679,60 @@ async function waitForArtifactRelease() {
 }
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
+
+/**
+ * The iOS launch's post-content crash line, read from launch time: the
+ * simulator keeps a JavaScript log line only for a stream that reads it, and
+ * a slow run can reach the delayed fatal before the exit wait starts.
+ */
+type IosLaunchLogStream = {
+  readonly process: ReturnType<typeof spawn>;
+  output: string;
+  error: Error | undefined;
+};
+let iosLaunchLogStream: IosLaunchLogStream | null = null;
+
+function startIosLaunchLogStream(): IosLaunchLogStream {
+  const child = spawn(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "log",
+      "stream",
+      "--level",
+      "debug",
+      "--style",
+      "compact",
+      "--predicate",
+      `eventMessage CONTAINS "${POST_CONTENT_CRASH_LOG_PREFIX}"`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const stream: IosLaunchLogStream = {
+    process: child,
+    output: "",
+    error: undefined,
+  };
+  child.on("error", (error) => {
+    stream.error = error;
+  });
+  child.stdout?.on("data", (chunk) => {
+    stream.output += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk) => {
+    stream.output += chunk.toString();
+  });
+  return stream;
+}
+
+function stopIosLaunchLogStream() {
+  iosLaunchLogStream?.process.kill();
+  iosLaunchLogStream = null;
+}
+
+process.once("exit", stopIosLaunchLogStream);
 
 function throwIfAborted(signal?: AbortSignal) {
   signal?.throwIfAborted();
@@ -1259,7 +1338,28 @@ async function renderAppScenario({
                 `    const hangUntil = Date.now() + ${mode === "hang" ? 600_000 : SLOW_START_HOLD_MS};`,
                 "    while (Date.now() < hangUntil) {}",
               ]
-            : ['    throw new Error("hot-updater e2e crash bundle");']),
+            : mode === "crash-after-content"
+              ? [
+                  // Its own update check fails, as a bundle whose update flow
+                  // is broken: a fix reaches it only through a native check.
+                  "    const E2E_FETCH = globalThis.fetch;",
+                  "    globalThis.fetch = (input, init) => {",
+                  '      const url = typeof input === "string" ? input : String(input && input.url ? input.url : input);',
+                  '      if (url.includes("/release-catalogs/")) {',
+                  '        return Promise.reject(new Error("hot-updater e2e broken update check"));',
+                  "      }",
+                  "      return E2E_FETCH(input, init);",
+                  "    };",
+                  // A timer's fatal leaves React and promises; the log line
+                  // goes out first, so the exit wait can tell it apart.
+                  "    setTimeout(() => {",
+                  `      console.log(${JSON.stringify(POST_CONTENT_CRASH_LOG_PREFIX)} + E2E_CURRENT_BUNDLE_ID);`,
+                  "      setTimeout(() => {",
+                  '        throw new Error("hot-updater e2e post-content crash bundle");',
+                  "      }, 500);",
+                  `    }, ${POST_CONTENT_CRASH_DELAY_MS});`,
+                ]
+              : ['    throw new Error("hot-updater e2e crash bundle");']),
           "  }",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
@@ -4001,6 +4101,44 @@ function readManifestAssetPaths(bundleId: string): string[] {
     : [];
 }
 
+const sameSet = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length &&
+  new Set(left).size === left.length &&
+  right.every((value) => left.includes(value));
+
+/**
+ * The assets whose hash differs between two installed Bundles' signed
+ * manifests: what an update between them must download, whatever the server
+ * selects. Both Bundles stay in the store while the target awaits
+ * verification; a missing manifest fails the assertion.
+ */
+function readChangedManifestAssetPaths(
+  currentBundleId: string | undefined,
+  targetBundleId: string,
+): string[] {
+  if (currentBundleId === undefined) {
+    throw new ProxyAssertionError(
+      "changed-assets needs the current Bundle to compare manifests",
+      { targetBundleId },
+    );
+  }
+  const current = readBundleManifestSnapshot(currentBundleId);
+  const target = readBundleManifestSnapshot(targetBundleId);
+  if (current.value === null || target.value === null) {
+    throw new ProxyAssertionError("A Bundle manifest to compare is missing", {
+      current,
+      target,
+    });
+  }
+  return readManifestAssetPaths(targetBundleId).filter((assetPath) => {
+    const targetHash = getManifestAssetFileHash(target, assetPath);
+    return (
+      targetHash === null ||
+      targetHash !== getManifestAssetFileHash(current, assetPath)
+    );
+  });
+}
+
 function getRemoteTransfer(url: string | null) {
   if (url === null) return { bytes: 0, requests: 0 };
   const pathname = new URL(url).pathname;
@@ -4013,7 +4151,14 @@ export function handleAssertBundleArtifactTransfers(input: {
   archiveResumes?: number;
   /** The Bundle the request came from; any, when omitted, as from built-in. */
   currentBundleId?: string;
-  fileRequests: number;
+  /**
+   * Whole-file asset requests, or `changed-assets`: every asset whose hash
+   * differs between the current and target Bundles' signed manifests, and
+   * no other, was selected and downloaded once, as a file unless patched.
+   * The count then follows the bundler, not the scenario: Metro and Re.Pack
+   * 5.4 also emit raw/keep.xml, which changes with the asset list.
+   */
+  fileRequests: number | "changed-assets";
   /** Artifact protocol v2 files requests; any, when omitted. */
   filesRequests?: number;
   maxRequestsPerAsset?: number;
@@ -4050,6 +4195,29 @@ export function handleAssertBundleArtifactTransfers(input: {
     (total, asset) => total + asset.file.requests,
     0,
   );
+  const changedAssetPaths =
+    input.fileRequests === "changed-assets"
+      ? readChangedManifestAssetPaths(
+          input.currentBundleId,
+          input.targetBundleId,
+        )
+      : null;
+  const expectedFileRequests =
+    changedAssetPaths === null
+      ? input.fileRequests
+      : changedAssetPaths.length - input.patchRequests;
+  const selectsChangedAssets =
+    changedAssetPaths === null ||
+    (sameSet(
+      artifact.assets.map((asset) => asset.path),
+      changedAssetPaths,
+    ) &&
+      sameSet(
+        assets
+          .filter((asset) => asset.file.requests + asset.patch.requests > 0)
+          .map((asset) => asset.path),
+        changedAssetPaths,
+      ));
   const patchRequests = assets.reduce(
     (total, asset) => total + asset.patch.requests,
     0,
@@ -4070,6 +4238,8 @@ export function handleAssertBundleArtifactTransfers(input: {
     archiveFailuresRemaining,
     archiveInterruption,
     assets,
+    changedAssetPaths,
+    expectedFileRequests,
     fileRequests,
     filesRequests: artifact.filesRequests,
     finalFiles,
@@ -4092,7 +4262,8 @@ export function handleAssertBundleArtifactTransfers(input: {
     );
   const matches =
     archive.requests === input.archiveRequests &&
-    fileRequests === input.fileRequests &&
+    fileRequests === expectedFileRequests &&
+    selectsChangedAssets &&
     patchRequests === input.patchRequests &&
     (input.filesRequests === undefined ||
       artifact.filesRequests === input.filesRequests) &&
@@ -5837,6 +6008,98 @@ async function waitForCrashMarker(
   );
 }
 
+// A process probe costs more than a store read, so the exit wait probes
+// once a second.
+const APP_EXIT_PROBE_INTERVAL_MS = 1_000;
+
+/**
+ * Waits until `bundleId`'s post-content fatal has ended the app: the line it
+ * logs right before the fatal, from this launch, then a process that stays
+ * stopped. Nothing restarts the app after a crash that main's monitoring no
+ * longer watches, so the scenario starts it again itself.
+ */
+async function waitForAppExit(
+  input: { bundleId: string },
+  signal?: AbortSignal,
+) {
+  const ios = fixtureSession.platform === "ios";
+  const launchLogMarker = ios ? null : androidLaunchLogMarker;
+  if (!ios && !launchLogMarker) {
+    throw new Error("Missing Android launch log marker");
+  }
+  // iOS reads the stream the launch started; a launch this server didn't
+  // prepare gets one from now.
+  if (ios && !iosLaunchLogStream) {
+    iosLaunchLogStream = startIosLaunchLogStream();
+  }
+  const stream = ios ? iosLaunchLogStream : null;
+  const readLogs = () =>
+    stream
+      ? stream.output
+      : captureCommand(
+          "adb",
+          [
+            "-s",
+            deviceId as string,
+            "logcat",
+            "-d",
+            "-v",
+            "brief",
+            "HotUpdaterE2E:I",
+            "ReactNativeJS:I",
+            "*:S",
+          ],
+          { allowFailure: true, maxBuffer: 1024 * 1024 },
+        );
+
+  let state = initialAppExitWaitState;
+  let logs = "";
+  const deadline = Date.now() + POST_CONTENT_CRASH_EXIT_WAIT_MS;
+  const logPath = `app-exit-${input.bundleId}-${Date.now()}.log`;
+  try {
+    while (true) {
+      throwIfAborted(signal);
+      if (stream?.error) throw stream.error;
+      logs = readLogs();
+      state = advanceAppExitWait(state, {
+        crashLogged: hasPostContentCrashAfterMarker(
+          logs,
+          launchLogMarker,
+          input.bundleId,
+        ),
+        running: isFixtureAppRunning(),
+      });
+      if (isAppExitProved(state, E2E_STOPPED_OBSERVATIONS_BEFORE_RELAUNCH)) {
+        // An uncaught fatal may leave the system's "app has stopped" dialog.
+        if (!ios) closeAndroidSystemDialogs();
+        logE2eFixture("post-content crash exit observed", {
+          bundleId: input.bundleId,
+          platform: fixtureSession.platform,
+          stoppedObservations: state.stoppedObservations,
+        });
+        return { exitedBundleId: input.bundleId };
+      }
+      if (Date.now() >= deadline) break;
+      await abortableSleep(APP_EXIT_PROBE_INTERVAL_MS, signal);
+    }
+  } finally {
+    if (stream) stopIosLaunchLogStream();
+    writeResultDiagnosticFile(logPath, logs);
+  }
+  throw createEndpointError(describeAppExitWaitFailure(state, input.bundleId), {
+    ...readCrashRecoveryDiagnostics(
+      "main",
+      createCrashRecoveryArtifactNames({
+        crashedBundleId: input.bundleId,
+        stableBundleId: "app-exit",
+      }),
+    ),
+    logPath,
+    state,
+    waitedMs: POST_CONTENT_CRASH_EXIT_WAIT_MS,
+  });
+}
+
 /**
  * Ends the app if it still runs and starts it again: the instance whose
  * marker asks for a rollback rolls back only at its next start.
@@ -5945,6 +6208,9 @@ async function prepareAppLaunch() {
       { allowFailure: true },
     );
     await sleep(E2E_POLL_INTERVAL_MS);
+    // Only this launch's lines count, as Android's launch marker bounds its.
+    stopIosLaunchLogStream();
+    iosLaunchLogStream = startIosLaunchLogStream();
     return prepareE2eStartupCheck();
   }
 
@@ -6005,7 +6271,11 @@ async function resetCheckoutInputs() {
       fixtureSession.appSourceFile,
     );
   }
-  if (!fixtureSession.widgetAppBackupPath) {
+  // Only a brownfield target's app has the widget runtime.
+  if (
+    !fixtureSession.widgetAppBackupPath &&
+    currentE2eTarget().kind === "brownfield"
+  ) {
     fixtureSession.widgetAppBackupPath = await backupFile(
       fixtureSession.widgetAppSourceFile,
     );
@@ -6046,13 +6316,15 @@ async function resetCheckoutInputs() {
     safeBundleIds: [],
   });
   // The widget's embedded bundle shows the same marker as the example's.
-  await applyAppScenario({
-    bundleProfile: "default",
-    marker: fixtureSession.initialMarker,
-    mode: "reset",
-    safeBundleIds: [],
-    sourceFile: fixtureSession.widgetAppSourceFile,
-  });
+  if (currentE2eTarget().kind === "brownfield") {
+    await applyAppScenario({
+      bundleProfile: "default",
+      marker: fixtureSession.initialMarker,
+      mode: "reset",
+      safeBundleIds: [],
+      sourceFile: fixtureSession.widgetAppSourceFile,
+    });
+  }
 }
 
 async function bootstrap(signal?: AbortSignal) {
@@ -7236,7 +7508,7 @@ async function registerNativeBuildFixture(input: { appVersion: string }) {
   });
   const platform = fixtureSession.platform;
   const artifactPath = nativeAppPath(
-    parseE2eTrack(process.env.HOT_UPDATER_E2E_TRACK),
+    currentE2eTarget(),
     platform,
     REPO_DIR,
     process.env,
@@ -8065,6 +8337,10 @@ export function startWaitForCrashMarkerJob(input: {
   instance: AppInstance;
 }) {
   return createJob((context) => waitForCrashMarker(input, context.signal));
+}
+
+export function startWaitForAppExitJob(input: { bundleId: string }) {
+  return createJob((context) => waitForAppExit(input, context.signal));
 }
 
 export async function handleWaitForCrashRecovery(

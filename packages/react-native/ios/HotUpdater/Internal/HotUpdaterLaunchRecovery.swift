@@ -83,7 +83,10 @@ protocol HotUpdaterCrashSlotSink: AnyObject {
 /// selected in the foreground, and its fatal before first content reloads it
 /// in-process. A named launch counts as started only once a view of its
 /// runtime is shown, since a runtime warmed up without UI must not be rolled
-/// back at the next start.
+/// back at the next start. After its watch ends, main still writes its marker
+/// on a crash of its own or of the process, without rollback: its next launch
+/// then checks for a fix natively, since this bundle's JavaScript may crash
+/// before it can.
 final class HotUpdaterRecoveryCoordinator {
     /// Native crash markers the signal handler can write, main's included.
     /// More instances than this still roll back an unfinished launch at their
@@ -142,6 +145,23 @@ final class HotUpdaterRecoveryCoordinator {
         fileprivate(set) var isCharged = false
         /// The directory of `markerURL` was created.
         fileprivate var hasMarkerDirectory = false
+
+        /// Main only, outside development builds: a crash after its watch
+        /// ended still writes its marker (`recordsCrashesAfterWatch`).
+        fileprivate var recordsAfterWatch = false
+
+        /// Whether a crash now writes this launch's marker: while it is
+        /// watched, and for main for the rest of the process once it
+        /// launched, so the next launch knows to check for a fix
+        /// (`HotUpdaterPostCrashUpdateCheck`).
+        fileprivate var recordsCrashes: Bool {
+            isMonitoring || (recordsAfterWatch && generation > 0)
+        }
+        /// The bundle a marker of this launch names: main's selected bundle
+        /// once its watch ended, which cleared `bundleId`.
+        fileprivate var markerBundleId: String? {
+            recordsAfterWatch && !isMonitoring ? selectedBundleId : bundleId
+        }
     }
 
     enum RecoveryRequest: Equatable {
@@ -251,9 +271,18 @@ final class HotUpdaterRecoveryCoordinator {
     /// verified and the next start would roll it back.
     static let heldContentBound: TimeInterval = 10
 
-    init(sink: HotUpdaterCrashSlotSink, now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    /// Main's crashes after its watch ended write its marker. A development
+    /// build turns this off: a RedBox is no reason to check for a fix.
+    private let recordsCrashesAfterWatch: Bool
+
+    init(
+        sink: HotUpdaterCrashSlotSink,
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        recordsCrashesAfterWatch: Bool = true
+    ) {
         self.sink = sink
         self.now = now
+        self.recordsCrashesAfterWatch = recordsCrashesAfterWatch
     }
 
     // MARK: - Instances
@@ -267,6 +296,7 @@ final class HotUpdaterRecoveryCoordinator {
                 return launch
             }
             let launch = Launch(name: name, markerURL: markerURL, storage: storage)
+            launch.recordsAfterWatch = launch.isMain && recordsCrashesAfterWatch
             launches[name] = launch
             return launch
         }
@@ -737,7 +767,8 @@ final class HotUpdaterRecoveryCoordinator {
         !launch.isMain && launch.isMonitoring && launch.isAwaitingContent && !launch.hasResolvedRuntime
     }
 
-    /// Ends the grace period after first content.
+    /// Ends the grace period after first content. Main's crashes are still
+    /// recorded afterwards, without rollback, naming the bundle it runs.
     func finishMonitoring(name: String, generation: Int) {
         withLock {
             guard let launch = launches[name], launch.generation == generation else { return }
@@ -873,7 +904,9 @@ final class HotUpdaterRecoveryCoordinator {
                 writeMarker(launch)
             }
             let claim = attribute(to: owner)
-            if launch.isMonitoring, !markerFirst {
+            // Main's marker is written after its watch ended too, without
+            // rollback.
+            if launch.recordsCrashes, !markerFirst {
                 writeMarker(launch)
             }
             return claim
@@ -1119,7 +1152,7 @@ final class HotUpdaterRecoveryCoordinator {
         charging {
             if let attributedName, let launch = launches[attributedName] {
                 // Not a later launch of the claimed instance.
-                if launch.isMonitoring, launch.generation == attributedGeneration {
+                if launch.recordsCrashes, launch.generation == attributedGeneration {
                     writeMarker(launch)
                 }
                 return
@@ -1191,9 +1224,9 @@ final class HotUpdaterRecoveryCoordinator {
 
     private func chargeUnattributedCrash() {
         for launch in launches.values {
-            // Main writes while it watches its launch, as it always has; a
-            // marker of a verified launch carries `shouldRollback: false`.
-            if launch.isMain ? launch.isMonitoring : launch.crashCountsAgainstLaunch {
+            // Main writes for the whole process once it launched; a marker
+            // of a verified launch carries `shouldRollback: false`.
+            if launch.isMain ? launch.recordsCrashes : launch.crashCountsAgainstLaunch {
                 writeMarker(launch)
             }
         }
@@ -1204,7 +1237,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// `onRollbackCharged` once the charge finishes (`charging`).
     private func writeMarker(_ launch: Launch) {
         HotUpdaterCrashMarker.write(
-            bundleId: launch.bundleId,
+            bundleId: launch.markerBundleId,
             shouldRollback: launch.shouldRollback,
             to: launch.markerURL
         )
@@ -1256,7 +1289,17 @@ final class HotUpdaterRecoveryCoordinator {
         guard let slot = launch.slot else { return }
         let flag = launch.crashCountsAgainstLaunch
         slotFlags[slot] = flag
-        sink.updateSlot(slot, markerPath: launch.markerURL.path, bundleId: launch.bundleId, shouldRollback: flag)
+        // Main's slot writes on any signal, and keeps naming its bundle
+        // after its watch ended. A development build's names no marker once
+        // the watch ended, so a signal then records nothing either: an empty
+        // path is a slot the signal handler skips.
+        let recordsNow = !launch.isMain || launch.isMonitoring || launch.recordsAfterWatch
+        sink.updateSlot(
+            slot,
+            markerPath: recordsNow ? launch.markerURL.path : "",
+            bundleId: launch.markerBundleId,
+            shouldRollback: flag
+        )
         if !launch.hasMarkerDirectory {
             try? FileManager.default.createDirectory(
                 at: launch.markerURL.deletingLastPathComponent(),
@@ -1551,3 +1594,40 @@ final class HotUpdaterRuntimeLaunches {
     }
 }
 
+/// First content that appeared while the app was in the background, such as
+/// the root view a silent push's launch creates. Nobody sees it, so it
+/// verifies no launch until the app comes to the foreground: the old
+/// architecture posts content for a root view even when the headless App
+/// renders nothing, which would otherwise verify a staged bundle no one saw.
+/// A view torn down before then verifies nothing.
+final class HotUpdaterBackgroundContent {
+    private struct Entry {
+        weak var view: AnyObject?
+        let hasView: Bool
+    }
+
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+
+    /// Holds `view`'s content for the foreground. Returns true for the first
+    /// one held, when the caller starts waiting for the foreground.
+    func hold(_ view: AnyObject?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.append(Entry(view: view, hasView: view != nil))
+        return entries.count == 1
+    }
+
+    /// The content held, once: the views still alive, and nil for content
+    /// that came without a view.
+    func takeAll() -> [AnyObject?] {
+        lock.lock()
+        let taken = entries
+        entries = []
+        lock.unlock()
+        return taken.compactMap { entry -> AnyObject?? in
+            if !entry.hasView { return .some(nil) }
+            return entry.view.map { .some($0) }
+        }
+    }
+}
