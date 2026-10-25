@@ -1,6 +1,5 @@
 import { bare } from "@hot-updater/bare";
 import { defineConfig } from "hot-updater";
-import { vault } from "hot-updater/plugins";
 
 import { database, storage } from "./shared.ts";
 
@@ -35,6 +34,5 @@ export default defineConfig({
   build: bare({ enableHermes: true, resetCache: false }),
   storage,
   database,
-  plugins: [vault()],
   updateStrategy: "fingerprint",
 });

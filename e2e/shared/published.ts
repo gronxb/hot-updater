@@ -91,15 +91,3 @@ export const publishedBin = (
   }
   return path.join(dir, target);
 };
-
-/**
- * The console server `hot-updater console` starts, from the console package
- * the CLI installs.
- */
-export const publishedConsoleServer = (): string =>
-  path.join(
-    packageDir("@hot-updater/console"),
-    ".output",
-    "server",
-    "index.mjs",
-  );
