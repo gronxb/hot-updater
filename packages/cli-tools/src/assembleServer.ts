@@ -10,7 +10,6 @@ import {
   type StorageAdapter,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { VaultLockedError } from "@hot-updater/server/plugins";
 
 /**
  * The server hot-updater.config.ts describes, as the CLI runs it: core and
@@ -55,40 +54,6 @@ export interface AssembleServerOptions {
 /** The storage of an assembly that reads no stored file: it owns no URI. */
 const noStorage = createStorageAdapter({ name: "none", protocol: "none" });
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-/**
- * The plugins' APIs as the CLI uses them: the vault's `reveal` and
- * `rewrap` refuse with `VaultLockedError`, even where the master keys are
- * set or the definition passes `vault({ masterKey })`. Secrets are
- * decrypted, and their data keys unwrapped, only in the Console, which
- * serves them to vault tokens and rewraps them on its Vault page; the CLI
- * still lists them and manages tokens.
- */
-export const lockVaultReveal = <T extends Readonly<Record<string, unknown>>>(
-  api: T,
-): T => {
-  const { vault } = api;
-  if (!isRecord(vault) || typeof vault.reveal !== "function") return api;
-  const reveal = () =>
-    Promise.reject(
-      new VaultLockedError(
-        "The CLI does not reveal vault secrets: the Console decrypts them, and serves them at /_hot-updater/vault/v1/resolve to a vault token.",
-      ),
-    );
-  const rewrap = () =>
-    Promise.reject(
-      new VaultLockedError(
-        "The CLI does not rewrap the vault: only the Console holds its master keys. Rewrap on the Console's Vault page, under Master keys.",
-      ),
-    );
-  return Object.freeze({
-    ...api,
-    vault: Object.freeze({ ...vault, reveal, rewrap }),
-  });
-};
-
 /** `createHotUpdater`, with public client routes unless a plugin provides clientAuth. */
 const createServer = (
   database: EngineDatabase,
@@ -113,8 +78,7 @@ const createServer = (
  *
  * Over `standaloneRepository(...)`, core is the server's admin API and the
  * plugins run on the server; here they are only checked, on a database
- * nothing reads, for what the CLI reads from them. The vault's `reveal`
- * refuses ({@link lockVaultReveal}).
+ * nothing reads, for what the CLI reads from them.
  */
 export function assembleServer(
   options: AssembleServerOptions & { readonly database: EngineDatabase },
@@ -147,7 +111,7 @@ export function assembleServer({
     database,
     core: server.core,
     plugins: server.plugins,
-    api: lockVaultReveal(server.api),
+    api: server.api,
     clientPlugins: server.clientPlugins,
     ...(server.clientAuth === undefined
       ? {}

@@ -10,16 +10,10 @@ import {
   migrateCoreSchema,
   type RemoteDatabase,
 } from "@hot-updater/plugin-core";
-import {
-  apiKeys,
-  insights,
-  type VaultApi,
-  vault,
-  VaultLockedError,
-} from "@hot-updater/server/plugins";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { assembleServer, lockVaultReveal } from "./assembleServer";
+import { assembleServer } from "./assembleServer";
 import { provisionClientCredential } from "./serverDefinition";
 
 const memory = (): EngineDatabase => ({
@@ -129,54 +123,6 @@ describe("assembleServer", () => {
     expect(() =>
       assembleServer({ database: remote, plugins: [{ id: "notes" } as never] }),
     ).toThrow(HotUpdaterConfigError);
-  });
-
-  it("never reveals or rewraps a vault secret, even with the master key in the env or the definition", async () => {
-    const masterKey = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
-    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", masterKey);
-    try {
-      for (const plugin of [vault(), vault({ masterKey })]) {
-        const server = assembleServer({
-          database: memory(),
-          plugins: [plugin],
-        });
-        const locked = server.api.vault as VaultApi;
-        // Sealing works where the key is, and listing and tokens need none.
-        const secret = await locked.put({
-          name: "release-keystore",
-          kind: "android-keystore",
-          value: { storePassword: "secret" },
-        });
-        await expect(locked.list()).resolves.toEqual([secret]);
-        const { token } = await locked.issueToken({
-          name: "ci",
-          scope: { secrets: { names: [secret.name] }, actions: ["read"] },
-        });
-        await expect(locked.verifyToken({ token })).resolves.toMatchObject({
-          ok: true,
-        });
-
-        await expect(
-          locked.reveal({ id: secret.id, actor: "cli" }),
-        ).rejects.toBeInstanceOf(VaultLockedError);
-        await expect(locked.rewrap()).rejects.toThrow(
-          "The CLI does not rewrap the vault",
-        );
-      }
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("locks only the vault, and leaves APIs without one as they are", () => {
-    const api = { apiKeys: {} };
-    expect(lockVaultReveal(api)).toBe(api);
-    const locked = lockVaultReveal({
-      apiKeys: api.apiKeys,
-      vault: { reveal() {} },
-    });
-    expect(locked.apiKeys).toBe(api.apiKeys);
-    expect(Object.isFrozen(locked.vault)).toBe(true);
   });
 
   it("types the plugins' APIs as present over a database the CLI opens itself", () => {

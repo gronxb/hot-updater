@@ -8,13 +8,11 @@ author: gronxb
 
 inputs:
   console-url:
-    description: The Console's URL, which serves the vault and signs bundles.
-    required: true
-  vault-token:
     description: >-
-      A vault token that may read deploy-credentials (and a vault: keystore)
-      and sign with the bundle signing key. Empty, as for a pull request from
-      a fork, skips the action.
+      The Console's URL, which the comment's install links and channel QR
+      code point at. The CLI reads its credentials through the config's
+      secrets adapter, the job's environment by default. A pull request from
+      a fork, which gets no secrets, is skipped.
     required: true
   platforms:
     description: The platforms to preview, comma-separated. iOS needs a macOS runner.
@@ -65,7 +63,6 @@ runs:
       run: node "$GITHUB_ACTION_PATH/src/main.mjs"
       env:
         INPUT_CONSOLE_URL: ${{ inputs.console-url }}
-        INPUT_VAULT_TOKEN: ${{ inputs.vault-token }}
         INPUT_PLATFORMS: ${{ inputs.platforms }}
         INPUT_ANDROID_SCHEME: ${{ inputs.android-scheme }}
         INPUT_IOS_SCHEME: ${{ inputs.ios-scheme }}

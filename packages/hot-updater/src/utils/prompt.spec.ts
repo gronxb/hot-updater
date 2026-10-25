@@ -17,9 +17,9 @@ const setTTY = (value: boolean) => {
   });
 };
 
-/** What the vault credential source says of a missing key, as the caller passes it. */
+/** What the preflight says of a missing key, as the caller passes it. */
 const UNAVAILABLE =
-  "asc-api-key is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put asc-api-key --kind asc-api-key`, and builds, CI's included, read it with their vault token.";
+  "asc-api-key is not in the env secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater).";
 const describeUnavailable = vi.fn(async () => UNAVAILABLE);
 const SIGN_IN = {
   account: "Apple Account",
@@ -60,7 +60,7 @@ describe("canPrompt", () => {
 });
 
 describe("canSignIn", () => {
-  it("lets a developer at a terminal sign in, asking the vault nothing", async () => {
+  it("lets a developer at a terminal sign in, describing nothing", async () => {
     setTTY(true);
     vi.stubEnv("CI", "");
 
@@ -76,7 +76,7 @@ describe("canSignIn", () => {
 
     await expect(canSignIn(SIGN_IN)).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      `${UNAVAILABLE} Hot Updater signs in to your Apple Account to issue it only at a terminal, never in CI (CI is set). Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.`,
+      `${UNAVAILABLE} Hot Updater signs in to your Apple Account to issue it only at a terminal, never in CI (CI is set). Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.`,
     );
     expect(process.exitCode).toBe(1);
   });
@@ -93,7 +93,7 @@ describe("canSignIn", () => {
       }),
     ).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-play is missing. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
+      "widget-play is missing. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.",
     );
   });
 });

@@ -6,5 +6,6 @@ import { database, storage } from "./shared.ts";
 export const hotUpdater = createHotUpdater({
   database,
   storage,
+  plugins: [],
   clientAccess: "public",
 });

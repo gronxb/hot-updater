@@ -1,17 +1,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
+
+import { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
 import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
+import { getCwd } from "./cwd";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { registerSecretValue } from "./secretMasking";
-import { createVaultCredentialSource } from "./vaultCredentialSource";
+import { describeSecret, getConfiguredSecrets } from "./secrets";
 
 export type { CredentialFiles } from "./credentialFiles";
+export { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
 
 /**
- * The credentials the CLI receives. A bundle signing key is never one of
- * them (the Console signs bundles remotely), and key/value deploy
- * credentials reach the CLI as environment variables.
+ * The build credentials the CLI resolves by name. Deploy credentials reach
+ * the config's adapters through `secretEnv`.
  */
 export interface Credentials {
   /** App Store Connect API key, for automatic signing and uploads. */
@@ -47,25 +51,6 @@ export interface CredentialRequest<TKind extends CredentialKind> {
   readonly name?: string;
 }
 
-/** A credential tagged with its kind, as a source returns it. */
-export type SourcedCredential = {
-  readonly [TKind in CredentialKind]: {
-    readonly kind: TKind;
-    readonly credential: Credentials[TKind];
-  };
-}[CredentialKind];
-
-/**
- * Where a resolver finds a credential no environment override sets, such as
- * the Console vault. It returns the credential of `request.kind`, writes
- * file values with `files`, so they are 0600 and deleted with the resolver's
- * other files, and throws when it cannot provide the item.
- */
-export type CredentialSource = (
-  request: { readonly kind: CredentialKind; readonly name: string },
-  context: { readonly files: CredentialFiles },
-) => Promise<SourcedCredential>;
-
 /**
  * Resolves the credentials a command needs. Commands call `dispose` in a
  * `finally` (or use `withCredentialResolver`); temporary files are also
@@ -81,37 +66,6 @@ export interface CredentialResolver {
    */
   dispose(): Promise<void>;
 }
-
-/**
- * The environment variables that override each kind, one entry per field.
- * A field with two names takes a file path or the file's contents; the path
- * wins when both are set.
- */
-export const CREDENTIAL_ENV_NAMES = {
-  "asc-api-key": [
-    ["HOT_UPDATER_ASC_KEY_PATH", "HOT_UPDATER_ASC_KEY"],
-    ["HOT_UPDATER_ASC_KEY_ID"],
-    ["HOT_UPDATER_ASC_ISSUER_ID"],
-  ],
-  "android-keystore": [
-    [
-      "HOT_UPDATER_ANDROID_KEYSTORE_PATH",
-      "HOT_UPDATER_ANDROID_KEYSTORE_BASE64",
-    ],
-    ["HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD"],
-    ["HOT_UPDATER_ANDROID_KEY_ALIAS"],
-    ["HOT_UPDATER_ANDROID_KEY_PASSWORD"],
-  ],
-  "play-service-account": [
-    [
-      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
-      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
-    ],
-  ],
-} as const satisfies Record<
-  CredentialKind,
-  readonly (readonly [string] | readonly [string, string])[]
->;
 
 /** Passwords are read as set: trimming would change them. */
 const UNTRIMMED_ENV_NAMES = new Set<string>([
@@ -134,10 +88,31 @@ const describeFields = (fields: readonly EnvField[]) => {
 
 /**
  * The sentence every "credential unavailable" message ends with: the
- * environment variables that provide `kind` without the vault.
+ * environment variables that provide `kind` whatever the secrets adapter.
  */
 export const credentialOverrideHint = (kind: CredentialKind): string =>
-  `Set ${describeFields(CREDENTIAL_ENV_NAMES[kind])} to provide ${kind} without the vault.`;
+  `Or set ${describeFields(CREDENTIAL_ENV_NAMES[kind])} to provide ${kind} from the environment.`;
+
+/**
+ * The command that stores a credential of `kind` as `name` through the
+ * config's `secrets` adapter, from the files a developer has, or, for the
+ * keys Hot Updater issues, with a sign-in.
+ */
+export const credentialPutCommand = (
+  kind: CredentialKind,
+  name: string = kind,
+): string => {
+  const put = `npx hot-updater secrets put ${name} --kind ${kind}`;
+  switch (kind) {
+    case "android-keystore":
+      return `${put} --keystore <release.jks> --key-alias <alias>`;
+    case "asc-api-key":
+    // Signs in with an Apple Account, and Hot Updater issues the key.
+    case "play-service-account":
+      // Signs in with Google, and Hot Updater issues the key.
+      return put;
+  }
+};
 
 export class CredentialUnavailableError extends Error {
   readonly kind: CredentialKind;
@@ -232,13 +207,8 @@ const fromEnv: {
       storeFile = await readFileField("android-keystore", keystore);
     } else {
       registerSecretValue(keystore.value);
-      const base64 = keystore.value.replace(/\s/g, "");
-      const contents = Buffer.from(base64, "base64");
-      if (
-        contents.length === 0 ||
-        contents.toString("base64").replace(/=+$/, "") !==
-          base64.replace(/=+$/, "")
-      ) {
+      const contents = decodeBase64(keystore.value);
+      if (!contents) {
         throw new CredentialUnavailableError(
           "android-keystore",
           `${keystore.name} is not a base64-encoded keystore.`,
@@ -272,29 +242,165 @@ const fromEnv: {
   },
 };
 
-const CREDENTIAL_FIELDS = {
-  "asc-api-key": ["keyPath", "keyId", "issuerId"],
-  "android-keystore": ["storeFile", "storePassword", "keyAlias", "keyPassword"],
-  "play-service-account": ["json"],
-} as const satisfies {
-  readonly [TKind in CredentialKind]: readonly (keyof Credentials[TKind])[];
+/** Fields of a service account that are no secret: its type and Google's endpoints. */
+/**
+ * Fields of a JSON credential that identify it rather than grant access:
+ * its IDs, key alias, and a service account's email, project, type, and
+ * Google's endpoints. They stay readable, as messages name them, and a
+ * short one, such as the alias `release`, would mask every word it is in.
+ */
+const isIdentifierField = (field: string) =>
+  [
+    "keyId",
+    "issuerId",
+    "keyAlias",
+    "type",
+    "project_id",
+    "client_email",
+    "client_id",
+    "universe_domain",
+  ].includes(field) ||
+  field.endsWith("_uri") ||
+  field.endsWith("_url");
+
+const registerJsonSecrets = (
+  value: string,
+  fields: Readonly<Record<string, unknown>>,
+) => {
+  registerSecretValue(value);
+  for (const [field, entry] of Object.entries(fields)) {
+    if (typeof entry === "string" && !isIdentifierField(field)) {
+      registerSecretValue(entry);
+    }
+  }
 };
 
-const readSourcedCredential = <TKind extends CredentialKind>(
-  kind: TKind,
-  sourced: SourcedCredential,
-): Credentials[TKind] => {
-  const credential: Readonly<Record<string, unknown>> = sourced.credential;
-  const fields: readonly string[] = CREDENTIAL_FIELDS[kind];
-  if (
-    sourced.kind !== kind ||
-    !fields.every(
-      (field) => typeof credential[field] === "string" && credential[field],
-    )
-  ) {
-    throw new Error(`The credential source returned no valid ${kind}.`);
+/**
+ * Masks a credential's JSON value in the CLI's output: the whole value, and
+ * each field but those that identify it, such as `keyId` and `keyAlias`,
+ * so a password or a key a log prints alone stays masked. A value that is
+ * no JSON object is masked whole.
+ */
+export const registerCredentialValue = (value: string): void => {
+  const parsed = parseObject(value);
+  if (parsed) registerJsonSecrets(value, parsed);
+  else registerSecretValue(value);
+};
+
+const parseObject = (value: string): Record<string, unknown> | undefined => {
+  const parsed = parseServiceAccount(value);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined;
+};
+
+/**
+ * The fields of a JSON credential, each a non-empty string, or an error
+ * naming the shape `kind` takes.
+ */
+const readJsonFields = <TField extends string>(
+  kind: CredentialKind,
+  item: string,
+  value: string,
+  fields: readonly TField[],
+): Record<TField, string> => {
+  const parsed = parseObject(value);
+  const shape = `{${fields.map((field) => `"${field}"`).join(", ")}}`;
+  if (!parsed) {
+    throw new CredentialUnavailableError(
+      kind,
+      `${item} is not a JSON object: ${aKind(kind)} is one JSON value, ${shape}.`,
+    );
   }
-  return sourced.credential as Credentials[TKind];
+  registerJsonSecrets(value, parsed);
+  const missing = fields.filter(
+    (field) => typeof parsed[field] !== "string" || !parsed[field],
+  );
+  if (missing.length > 0) {
+    throw new CredentialUnavailableError(
+      kind,
+      `${item} has no ${missing.join(", ")}: ${aKind(kind)} is one JSON value, ${shape}.`,
+    );
+  }
+  return parsed as Record<TField, string>;
+};
+
+const aKind = (kind: string) =>
+  `${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind}`;
+
+/** A base64 value's bytes, or undefined when it is not base64. */
+const decodeBase64 = (value: string): Buffer | undefined => {
+  const base64 = value.replace(/\s/g, "");
+  const contents = Buffer.from(base64, "base64");
+  return contents.length > 0 &&
+    contents.toString("base64").replace(/=+$/, "") === base64.replace(/=+$/, "")
+    ? contents
+    : undefined;
+};
+
+/**
+ * Each kind from the one string a secrets adapter holds for it: a JSON
+ * object for the App Store Connect key (`p8` is the PEM) and the keystore
+ * (`keystore` is base64), and the service account's own JSON. File values
+ * are written with `files`; every value is masked.
+ */
+const fromSecretValue: {
+  readonly [TKind in CredentialKind]: (
+    value: string,
+    context: {
+      readonly files: CredentialFiles;
+      readonly name: string;
+      readonly item: string;
+    },
+  ) => Promise<Credentials[TKind]>;
+} = {
+  "asc-api-key": async (value, { files, item }) => {
+    const { keyId, issuerId, p8 } = readJsonFields("asc-api-key", item, value, [
+      "keyId",
+      "issuerId",
+      "p8",
+    ]);
+    return {
+      keyPath: await files.write(
+        `AuthKey_${keyId}.p8`,
+        p8.includes("\n") ? p8 : p8.replaceAll("\\n", "\n"),
+      ),
+      keyId,
+      issuerId,
+    };
+  },
+  "android-keystore": async (value, { files, name, item }) => {
+    const { keystore, storePassword, keyAlias, keyPassword } = readJsonFields(
+      "android-keystore",
+      item,
+      value,
+      ["keystore", "storePassword", "keyAlias", "keyPassword"],
+    );
+    const contents = decodeBase64(keystore);
+    if (!contents) {
+      throw new CredentialUnavailableError(
+        "android-keystore",
+        `${item}'s keystore is not a base64-encoded keystore.`,
+      );
+    }
+    return {
+      storeFile: await files.write(`${name}.keystore`, contents),
+      storePassword,
+      keyAlias,
+      keyPassword,
+    };
+  },
+  "play-service-account": async (value, { item }) => {
+    const parsed = parseObject(value);
+    if (!parsed) {
+      throw new CredentialUnavailableError(
+        "play-service-account",
+        `${item} is not a service account JSON object.`,
+      );
+    }
+    registerJsonSecrets(value, parsed);
+    return { json: value };
+  },
 };
 
 const registerCredentialSecrets = <TKind extends CredentialKind>(
@@ -318,6 +424,54 @@ const registerCredentialSecrets = <TKind extends CredentialKind>(
   }
 };
 
+/**
+ * Reads names from `secrets`, the names asked for in one turn of the event
+ * loop, such as a build's credentials, in one `get`. Nothing is cached.
+ */
+const createSecretLoader = (
+  secrets: () => SecretsAdapter,
+  cwd: () => string,
+) => {
+  type Waiter = {
+    readonly resolve: (value: string | undefined) => void;
+    readonly reject: (error: unknown) => void;
+  };
+  let batch: Map<string, Waiter[]> | undefined;
+
+  const flush = async (names: Map<string, Waiter[]>) => {
+    try {
+      const read = await secrets().get([...names.keys()], { cwd: cwd() });
+      for (const [name, waiters] of names) {
+        const value = Object.hasOwn(read, name) ? read[name] : undefined;
+        for (const waiter of waiters) {
+          waiter.resolve(
+            typeof value === "string" && value ? value : undefined,
+          );
+        }
+      }
+    } catch (error) {
+      for (const waiters of names.values()) {
+        for (const waiter of waiters) waiter.reject(error);
+      }
+    }
+  };
+
+  return (name: string): Promise<string | undefined> =>
+    new Promise((resolve, reject) => {
+      if (batch === undefined) {
+        const names = new Map<string, Waiter[]>();
+        batch = names;
+        setTimeout(() => {
+          batch = undefined;
+          void flush(names);
+        }, 0);
+      }
+      const waiters = batch.get(name) ?? [];
+      waiters.push({ resolve, reject });
+      batch.set(name, waiters);
+    });
+};
+
 export interface CreateCredentialResolverOptions {
   /**
    * Environment values read after `process.env`, the same lookup as
@@ -325,28 +479,38 @@ export interface CreateCredentialResolverOptions {
    */
   readonly env?: Readonly<Record<string, string>>;
   /**
-   * Where to find an item no environment override sets. Defaults to the
-   * Console's vault, which `HOT_UPDATER_CONSOLE_URL` and
-   * `HOT_UPDATER_VAULT_TOKEN` connect to.
+   * Where to find an item no environment override sets, or a function that
+   * returns it when an item resolves, for a command whose config loads
+   * after the resolver is created. Defaults to the config `loadConfig` last
+   * loaded, `env()` when it sets none.
    */
-  readonly source?: CredentialSource;
+  readonly secrets?: SecretsAdapter | (() => SecretsAdapter);
+  /** The project directory the adapter is given. Defaults to `getCwd()`. */
+  readonly cwd?: string;
 }
 
 /**
  * Resolves each item from its environment overrides when any is set, and
- * otherwise from `source`, the Console's vault by default, so overrides
- * never reach the vault. When the source fails, such as when the Console is
- * not reached, the error names the environment variables that can provide
- * the item instead. Nothing is cached, values are never written to disk
- * except as 0600 temporary files, and every secret is masked in logs.
+ * otherwise from the config's `secrets` adapter as one value named by the
+ * item, so overrides never reach the store. When the adapter fails or holds
+ * no such value, the error names the environment variables that can
+ * provide the item instead. Nothing is cached, values are never written to
+ * disk except as 0600 temporary files, are never set in `process.env`, and
+ * every secret is masked in logs.
  */
 export const createCredentialResolver = ({
   env = {},
-  source = createVaultCredentialSource({ env }),
+  secrets,
+  cwd,
 }: CreateCredentialResolverOptions = {}): CredentialResolver => {
   const files = createCredentialFiles();
   const resolved = new Map<string, Promise<unknown>>();
   let disposal: Promise<void> | undefined;
+  const adapter = () =>
+    typeof secrets === "function"
+      ? secrets()
+      : (secrets ?? getConfiguredSecrets());
+  const load = createSecretLoader(adapter, () => cwd ?? getCwd());
 
   const resolveItem = async <TKind extends CredentialKind>(
     kind: TKind,
@@ -371,22 +535,31 @@ export const createCredentialResolver = ({
       return credential;
     }
 
-    let credential: Credentials[TKind];
+    const store = adapter();
+    const item = name === kind ? kind : `${name} (${kind})`;
+    let value: string | undefined;
     try {
-      credential = readSourcedCredential(
-        kind,
-        await source({ kind, name }, { files }),
-      );
+      value = await load(name);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new CredentialUnavailableError(
         kind,
-        `${reason} ${credentialOverrideHint(kind)}`,
+        `The ${store.name} secrets adapter could not read ${item}: ${reason} ${credentialOverrideHint(kind)}`,
         { cause: error },
       );
     }
-    registerCredentialSecrets(kind, credential);
-    return credential;
+    if (value === undefined) {
+      throw new CredentialUnavailableError(
+        kind,
+        `${item} is not in the ${store.name} secrets adapter (${describeSecret(store, name)}). Store it once with \`${credentialPutCommand(kind, name)}\`. ${credentialOverrideHint(kind)}`,
+      );
+    }
+    registerSecretValue(value);
+    return fromSecretValue[kind](value, {
+      files,
+      name,
+      item: `The ${store.name} secrets adapter's ${item}`,
+    });
   };
 
   return {

@@ -193,9 +193,7 @@ export async function migrate(options: MigrateOptions) {
     s.start("Loading configuration and analyzing schema");
 
     // Load hotUpdater instance from config file
-    const { hotUpdater } = await loadHotUpdater(configPath, {
-      credentials: true,
-    });
+    const { hotUpdater } = await loadHotUpdater(configPath);
 
     // Every database on the storage engine migrates through its migrator:
     // drizzle-kit and Prisma apply their tables, so theirs set what the ORM

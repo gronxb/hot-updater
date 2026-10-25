@@ -39,7 +39,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("../utils/native/playServiceAccount", () => ({
   ensurePlayServiceAccount: vi.fn(async ({ name }: { name: string }) => {
     events.push(`ensure ${name}`);
-    return { status: "stored", version: 1 };
+    return { status: "stored" };
   }),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
@@ -201,7 +201,6 @@ describe("build:android --upload play-internal", () => {
     vi.mocked(ensurePlayServiceAccount).mockResolvedValueOnce({
       status: "issued",
       email: "hot-updater-play@p.iam.gserviceaccount.com",
-      version: 1,
     });
     vi.mocked(uploadToPlay).mockRejectedValueOnce(
       new Error("Opening a Google Play edit failed (HTTP 403)."),

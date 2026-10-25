@@ -136,105 +136,130 @@ describe("loadConfig", () => {
     }
   });
 
-  it("sets the vault's deploy credentials in process.env before the config reads them, when .env.hotupdater holds only the connection", async () => {
-    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
-    vi.stubEnv("HU_SPEC_S3_SECRET", "");
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (input, init) => {
-        const request = new Request(input, init);
-        expect(request.headers.get("authorization")).toBe(
-          `Bearer hu_vault_${"L".repeat(43)}`,
-        );
-        if (request.method === "GET") {
-          return Response.json({
-            secrets: [
-              {
-                id: "sec-1",
-                name: "deploy-credentials",
-                kind: "deploy-credentials",
-                version: 1,
-                metadata: { variables: ["HU_SPEC_S3_SECRET"] },
-                createdAtMs: 0,
-                updatedAtMs: 0,
-              },
-            ],
-          });
-        }
-        return Response.json({
-          secrets: [
-            {
-              name: "deploy-credentials",
-              kind: "deploy-credentials",
-              version: 1,
-              value: { HU_SPEC_S3_SECRET: "from-the-vault" },
-            },
-          ],
-          errors: [],
-        });
-      });
-    await writeProjectFile(
-      projectRoot,
-      ".env.hotupdater",
-      [
-        "HOT_UPDATER_CONSOLE_URL=http://localhost:3000",
-        `HOT_UPDATER_VAULT_TOKEN=hu_vault_${"L".repeat(43)}`,
-      ].join("\n"),
+  it("defaults secrets to env() and registers it for secret: references", async () => {
+    const { loadConfig } = await import("./loadConfig");
+    const { getConfiguredSecrets } = await import("./secrets");
+
+    const config = await loadConfig(null);
+
+    expect(config.secrets.name).toBe("env");
+    expect(config.secrets.set).toBeUndefined();
+    expect(getConfiguredSecrets()).toBe(config.secrets);
+  });
+
+  it("takes the secrets adapter whole, and the config's own copy of secretEnv reads through it without touching process.env", async () => {
+    // Given: a config that imports secretEnv as its own module copy, as a
+    // project's config imports hot-updater
+    vi.stubEnv("HU_SPEC_DEPLOY_TOKEN", undefined);
+    const get = vi.fn(async (names: readonly string[]) =>
+      Object.fromEntries(names.map((name) => [name, `store:${name}`])),
     );
+    const secrets = Object.freeze({ name: "spec-store", get });
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", secrets);
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
-      'export default { storage: { name: "s3Storage", protocol: "s3", secret: process.env.HU_SPEC_S3_SECRET } };\n',
+      [
+        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        'const deploy = secretEnv(["HU_SPEC_DEPLOY_TOKEN"]);',
+        "export default {",
+        "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__,",
+        '  storage: { name: "s3Storage", protocol: "s3", credentials: deploy },',
+        "};",
+        "",
+      ].join("\n"),
     );
+    const before = { ...process.env };
 
     try {
-      const { loadPlatformConfigs } = await import("./loadConfig");
-      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
-        channel: "production",
-        credentials: true,
-      });
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+      // Loading reads no secret.
+      expect(get).not.toHaveBeenCalled();
 
-      expect(ios!.config.storage).toMatchObject({ secret: "from-the-vault" });
-      expect(android!.config.storage).toMatchObject({
-        secret: "from-the-vault",
+      // When: the storage adapter asks for its credentials
+      const credentials = (
+        config.storage as unknown as {
+          credentials: () => Promise<Record<string, string>>;
+        }
+      ).credentials;
+      const values = await credentials();
+
+      // Then
+      expect(config.secrets).toBe(secrets);
+      expect(values).toEqual({
+        HU_SPEC_DEPLOY_TOKEN: "store:HU_SPEC_DEPLOY_TOKEN",
       });
-      // Once per process: a list and a resolve.
-      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(get).toHaveBeenCalledWith(["HU_SPEC_DEPLOY_TOKEN"], {
+        cwd: expect.any(String),
+      });
+      expect(process.env).toEqual(before);
+      // The CLI's own masker hides what the config's copy resolved.
+      const { maskSecretValues } = await import("./secretMasking");
+      expect(maskSecretValues("token store:HU_SPEC_DEPLOY_TOKEN")).toBe(
+        "token ********",
+      );
     } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { envSecrets, setConfiguredSecrets } = await import("./secrets");
+      setConfiguredSecrets(envSecrets());
       vi.unstubAllEnvs();
     }
   });
 
-  it("reaches no Console unless the command asks for credentials, even with the connection set", async () => {
-    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
-    vi.stubEnv("HU_SPEC_S3_SECRET", undefined);
-    const fetch = vi.spyOn(globalThis, "fetch");
-    await writeProjectFile(
-      projectRoot,
-      ".env.hotupdater",
-      [
-        "HOT_UPDATER_CONSOLE_URL=http://localhost:3000",
-        `HOT_UPDATER_VAULT_TOKEN=hu_vault_${"L".repeat(43)}`,
-      ].join("\n"),
-    );
+  it("binds each secretEnv to the secrets of the config that created it, whatever config loads after", async () => {
+    // Given: a config function whose secrets adapter depends on the platform
+    const storeOf = (name: string) => ({
+      name,
+      get: vi.fn(async (names: readonly string[]) =>
+        Object.fromEntries(names.map((key) => [key, `${name}:${key}`])),
+      ),
+    });
+    const stores = {
+      ios: storeOf("ios-store"),
+      android: storeOf("android-store"),
+      none: storeOf("none-store"),
+    };
+    vi.stubEnv("HU_SPEC_SCOPED_TOKEN", undefined);
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", stores);
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
-      'export default { storage: { name: "s3Storage", protocol: "s3", secret: process.env.HU_SPEC_S3_SECRET } };\n',
+      [
+        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        "export default (options) => ({",
+        "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__[options?.platform ?? 'none'],",
+        '  storage: { name: "s3Storage", protocol: "s3", credentials: secretEnv(["HU_SPEC_SCOPED_TOKEN"]) },',
+        "});",
+        "",
+      ].join("\n"),
     );
+    type Credentials = { credentials: () => Promise<Record<string, string>> };
 
     try {
       const { loadConfig, loadPlatformConfigs } = await import("./loadConfig");
-      // As fingerprints, native builds, and the Expo config plugin load it.
-      const config = await loadConfig(null);
-      await loadConfig({ platform: "ios", channel: "production" });
-      await loadPlatformConfigs(["ios", "android"], { channel: "production" });
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+      // As the fingerprint loads it, after the platform configs.
+      await loadConfig(null);
 
-      expect(config.storage).toMatchObject({ secret: undefined });
-      expect(fetch).not.toHaveBeenCalled();
+      // Then
+      await expect(
+        (ios!.config.storage as unknown as Credentials).credentials(),
+      ).resolves.toEqual({
+        HU_SPEC_SCOPED_TOKEN: "ios-store:HU_SPEC_SCOPED_TOKEN",
+      });
+      await expect(
+        (android!.config.storage as unknown as Credentials).credentials(),
+      ).resolves.toEqual({
+        HU_SPEC_SCOPED_TOKEN: "android-store:HU_SPEC_SCOPED_TOKEN",
+      });
+      expect(stores.none.get).not.toHaveBeenCalled();
     } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { envSecrets, setConfiguredSecrets } = await import("./secrets");
+      setConfiguredSecrets(envSecrets());
       vi.unstubAllEnvs();
     }
   });
@@ -334,7 +359,6 @@ describe("loadConfig", () => {
       const { loadPlatformConfigs } = await import("./loadConfig");
       const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
         channel: "production",
-        credentials: true,
       });
 
       expect(Reflect.get(globalThis, "__HOT_UPDATER_TEST_LOADS__")).toBe(1);

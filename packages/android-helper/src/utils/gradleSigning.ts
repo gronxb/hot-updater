@@ -1,8 +1,9 @@
 import {
   type CredentialResolver,
   createCredentialResolver,
+  assertUnreservedEnv,
   p,
-  parseVaultReference,
+  parseSecretReference,
 } from "@hot-updater/cli-tools";
 
 import type { EnrichedNativeBuildAndroidScheme } from "./enrichNativeBuildAndroidScheme";
@@ -15,8 +16,9 @@ const isDebugVariant = (variant: string) => /debug$/i.test(variant);
  * `ORG_GRADLE_PROJECT_*` variables as project properties, so the passwords
  * never appear in the Gradle command line. The keystore is resolved only
  * here: a debug variant, or a scheme without `signing`, resolves nothing.
- * Without `credentials`, it resolves from the environment or the Console's
- * vault, and the temporary files are deleted when the process exits.
+ * Without `credentials`, it resolves from the environment or the config's
+ * `secrets` adapter, and the temporary files are deleted when the process
+ * exits.
  */
 export const resolveGradleSigningEnv = async ({
   schemeConfig,
@@ -38,15 +40,19 @@ export const resolveGradleSigningEnv = async ({
 
   const keystore = await (credentials ?? createCredentialResolver()).resolve({
     kind: "android-keystore",
-    name: parseVaultReference(reference, "signing.keystore"),
+    name: parseSecretReference(reference, "signing.keystore"),
   });
-  return {
-    "ORG_GRADLE_PROJECT_android.injected.signing.store.file":
-      keystore.storeFile,
-    "ORG_GRADLE_PROJECT_android.injected.signing.store.password":
-      keystore.storePassword,
-    "ORG_GRADLE_PROJECT_android.injected.signing.key.alias": keystore.keyAlias,
-    "ORG_GRADLE_PROJECT_android.injected.signing.key.password":
-      keystore.keyPassword,
-  };
+  return assertUnreservedEnv(
+    {
+      "ORG_GRADLE_PROJECT_android.injected.signing.store.file":
+        keystore.storeFile,
+      "ORG_GRADLE_PROJECT_android.injected.signing.store.password":
+        keystore.storePassword,
+      "ORG_GRADLE_PROJECT_android.injected.signing.key.alias":
+        keystore.keyAlias,
+      "ORG_GRADLE_PROJECT_android.injected.signing.key.password":
+        keystore.keyPassword,
+    },
+    "The Gradle signing environment",
+  );
 };

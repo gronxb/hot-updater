@@ -6,15 +6,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const {
-    createCredentialResolver,
-    createVaultCredentialSource,
-    maskSecretValues,
-    registerSecretValue,
-  } = await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  const { createCredentialResolver, maskSecretValues, registerSecretValue } =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     createCredentialResolver,
-    createVaultCredentialSource,
     maskSecretValues,
     registerSecretValue,
     p: { log: { info: vi.fn(), warn: vi.fn(), success: vi.fn() } },
@@ -23,7 +18,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 import {
   createCredentialResolver,
-  createVaultCredentialSource,
   maskSecretValues,
   p,
 } from "@hot-updater/cli-tools";
@@ -507,40 +501,16 @@ describe("uploadToPlay", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("uploads with a play-service-account from the Console's vault, and writes the JSON to no file", async () => {
+  it("uploads with a play-service-account from the secrets adapter, and writes the JSON to no file", async () => {
     // Every temporary file the resolver or the upload could write lands here.
     const tmp = await fs.mkdtemp(path.join(dir, "tmp-"));
     vi.stubEnv("TMPDIR", tmp);
-    const env = {
-      HOT_UPDATER_CONSOLE_URL: "https://console.example.com",
-      HOT_UPDATER_VAULT_TOKEN: `hu_vault_${"A".repeat(43)}`,
-    };
-    const vaultRequests: unknown[] = [];
-    const consoleFetch = vi.fn(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        vaultRequests.push({
-          url: String(input),
-          body: JSON.parse(String(init?.body)),
-        });
-        return Response.json({
-          secrets: [
-            {
-              name: "play-service-account",
-              kind: "play-service-account",
-              version: 1,
-              value: {
-                serviceAccount:
-                  Buffer.from(serviceAccountJson).toString("base64"),
-              },
-            },
-          ],
-          errors: [],
-        });
-      },
-    ) as unknown as typeof globalThis.fetch;
+    const get = vi.fn(async (names: readonly string[]) =>
+      Object.fromEntries(names.map((name) => [name, serviceAccountJson])),
+    );
     const resolver = createCredentialResolver({
-      env,
-      source: createVaultCredentialSource({ env, fetch: consoleFetch }),
+      secrets: { name: "spec-store", get },
+      cwd: dir,
     });
     const { fetch, requests } = createRecordingFetch(successRoutes());
 
@@ -555,12 +525,7 @@ describe("uploadToPlay", () => {
     });
     await resolver.dispose();
 
-    expect(vaultRequests).toEqual([
-      {
-        url: "https://console.example.com/_hot-updater/vault/v1/resolve",
-        body: { names: ["play-service-account"] },
-      },
-    ]);
+    expect(get).toHaveBeenCalledWith(["play-service-account"], { cwd: dir });
     expect(requests.at(-1)!.url).toBe(`${EDIT}:commit`);
     expect(os.tmpdir()).toBe(tmp);
     await expect(fs.readdir(tmp)).resolves.toEqual([]);

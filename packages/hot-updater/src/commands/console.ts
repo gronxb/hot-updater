@@ -1,16 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import {
-  type ConfigResponse,
-  getCwd,
-  loadConfig,
-  loadVaultDeployCredentials,
-  p,
-  resolveVaultConnection,
-  VAULT_CONNECTION_ENV_NAMES,
-} from "@hot-updater/cli-tools";
+import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 const CONSOLE_READY_TIMEOUT_MS = 15_000;
@@ -33,14 +26,34 @@ type WaitForConsoleReadyOptions = {
 
 const getConsoleServerUrl = (port: number) => `http://127.0.0.1:${port}`;
 
+/**
+ * The variable the console server reads its per-run session secret from,
+ * and the query parameter of the link that hands it to the browser, as
+ * `@hot-updater/console` names them.
+ */
+const CONSOLE_SESSION_ENV = "HOT_UPDATER_CONSOLE_SESSION";
+const CONSOLE_SESSION_PARAM = "hot-updater-session";
+
+/**
+ * `url` on the console with the run's session secret, which the console
+ * trades for a cookie: the link to open it with.
+ */
+export const withConsoleSession = (url: string | URL, session: string) => {
+  const sessionUrl = new URL(url);
+  sessionUrl.searchParams.set(CONSOLE_SESSION_PARAM, session);
+  return sessionUrl.toString();
+};
+
 export const getConsoleServerEnv = (
   port: number,
+  session: string,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv => ({
   ...processEnv,
   PORT: port.toString(),
   NITRO_PORT: port.toString(),
   NITRO_HOST: "127.0.0.1",
+  [CONSOLE_SESSION_ENV]: session,
 });
 
 export const isConsoleServerReady = async (port: number) => {
@@ -101,44 +114,19 @@ export const getConsolePort = async (config?: ConfigResponse) => {
   return $config.console.port;
 };
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-/** Whether `url` is the console this command starts on `port`. */
-const isThisConsole = (url: string, port: number) => {
-  try {
-    const parsed = new URL(url);
-    return (
-      LOOPBACK_HOSTS.has(parsed.hostname) &&
-      Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)) === port
-    );
-  } catch {
-    return false;
-  }
-};
-
 /**
- * Sets the vault's deploy credentials in `process.env`, which the console's
- * server inherits as it loads the config, when the connection variables
- * name another Console. The console started on `port` cannot serve its own
- * database and storage credentials before it runs, so those stay in its
- * environment or `.env.hotupdater`.
+ * Starts the console on `port`, on this machine only, with a session
+ * secret of its own: `listeningListener` gets it once the console answers,
+ * to open it with `withConsoleSession`. The console serves no page or
+ * server function to a browser without it.
  */
-export const loadConsoleCredentials = async (port: number) => {
-  const cwd = getCwd();
-  const read = await resolveVaultConnection({ cwd });
-  if (read.ok && isThisConsole(read.connection.url, port)) {
-    p.log.warn(
-      `${VAULT_CONNECTION_ENV_NAMES.url} is this console (${read.connection.url}), which cannot serve the credentials it starts with: keep its database and storage credentials in the environment or .env.hotupdater.`,
-    );
-    return;
-  }
-  await loadVaultDeployCredentials(cwd);
-};
-
 export const openConsole = async (
   port: number,
-  listeningListener?: ((info: { port: number }) => void) | undefined,
+  listeningListener?:
+    | ((info: { port: number; session: string }) => void)
+    | undefined,
 ) => {
+  const session = randomBytes(32).toString("base64url");
   const require = createRequire(import.meta.url);
   const consolePkgPath = require.resolve("@hot-updater/console/package.json");
   const consoleDir = path.dirname(consolePkgPath);
@@ -150,7 +138,7 @@ export const openConsole = async (
   );
 
   const child = execa("node", [nitroServerPath], {
-    env: getConsoleServerEnv(port),
+    env: getConsoleServerEnv(port, session),
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
@@ -193,7 +181,7 @@ export const openConsole = async (
 
   try {
     await waitForConsoleReady({ child, port });
-    listeningListener?.({ port });
+    listeningListener?.({ port, session });
   } catch (error) {
     cleanupProcessListeners();
     stopChild("SIGTERM");

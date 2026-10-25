@@ -32,11 +32,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     run({ resolve, dispose: vi.fn() }),
   ),
 }));
-// Issuing a missing key is ascApiKey.spec's; here the vault holds it.
+// Issuing a missing key is ascApiKey.spec's; here the secrets adapter holds it.
 vi.mock("../utils/native/ascApiKey", () => ({
   ensureAscApiKey: vi.fn(async ({ name }: { name: string }) => {
     events.push(`ensure asc-api-key ${name}`);
-    return { status: "stored", version: 1 };
+    return { status: "stored" };
   }),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
@@ -77,8 +77,15 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
   }),
 }));
 
-import { CredentialUnavailableError, p } from "@hot-updater/cli-tools";
+import {
+  CredentialUnavailableError,
+  envSecrets,
+  p,
+  setConfiguredSecrets,
+  withCredentialResolver,
+} from "@hot-updater/cli-tools";
 
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { buildAndroidNative, buildIosNative } from "./buildNative";
 
 beforeEach(() => {
@@ -91,7 +98,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     prebuildScheme.current = {
       androidScheme: {
         packageName: "com.example.app",
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
     };
 
@@ -109,7 +116,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       androidScheme: {
         packageName: "com.example.app",
         variant: "stagingDebug",
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
     };
 
@@ -122,7 +129,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     prebuildScheme.current = {
       iosScheme: {
         bundleIdentifier: "com.example.app",
-        signing: { ascApiKey: "vault:widget-asc" },
+        signing: { ascApiKey: "secret:widget-asc" },
       },
     };
 
@@ -141,7 +148,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       iosScheme: {
         bundleIdentifier: "com.example.app",
         simulator: true,
-        signing: { ascApiKey: "vault:widget-asc" },
+        signing: { ascApiKey: "secret:widget-asc" },
       },
     };
 
@@ -150,18 +157,18 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     expect(events).toEqual(["prebuild", "build"]);
   });
 
-  it("fails before the prebuild when the vault lacks the keystore", async () => {
+  it("fails before the prebuild when the secrets adapter lacks the keystore", async () => {
     prebuildScheme.current = {
       androidScheme: {
         packageName: "com.example.app",
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
     };
     resolve.mockImplementationOnce(async (request) => {
       events.push(`resolve ${request.kind} ${request.name}`);
       throw new CredentialUnavailableError(
         "android-keystore",
-        "release-keystore (android-keystore) is not in the vault at https://console.example.com.",
+        "release-keystore (android-keystore) is not in the env secrets adapter.",
       );
     });
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -178,7 +185,38 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       "exit",
     ]);
     expect(p.log.error).toHaveBeenCalledWith(
-      "release-keystore (android-keystore) is not in the vault at https://console.example.com.",
+      "release-keystore (android-keystore) is not in the env secrets adapter.",
     );
+  });
+
+  it("resolves from the prepared config's secrets adapter, whatever config loads after it", async () => {
+    // Given: the platform config's adapter, and a later load, such as the
+    // fingerprint's loadConfig(null), registering another
+    const own = { name: "platform-store", get: vi.fn() };
+    prebuildScheme.current = {
+      secrets: own,
+      iosScheme: {
+        bundleIdentifier: "com.example.app",
+        signing: { ascApiKey: "secret:widget-asc" },
+      },
+    };
+    vi.mocked(ensureAscApiKey).mockImplementationOnce(async () => {
+      setConfiguredSecrets({ name: "later-load", get: vi.fn() });
+      return { status: "stored" };
+    });
+
+    try {
+      await buildIosNative({ interactive: false, scheme: "release" });
+
+      // Then: the sign-in preflight and the resolver use the config's own
+      const [, options] = vi.mocked(withCredentialResolver).mock.calls[0]!;
+      const secrets = options?.secrets;
+      expect(typeof secrets === "function" ? secrets() : secrets).toBe(own);
+      expect(ensureAscApiKey).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "widget-asc", secrets: own }),
+      );
+    } finally {
+      setConfiguredSecrets(envSecrets());
+    }
   });
 });

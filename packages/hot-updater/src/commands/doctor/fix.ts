@@ -144,7 +144,7 @@ const REPAIRS: readonly {
     codes: ["MISSING_PUBLIC_KEY", "PUBLIC_KEY_MISMATCH"],
     writesNativeFiles: true,
     run: async () => {
-      const config = await loadConfig(null, { credentials: true });
+      const config = await loadConfig(null);
       const publicKey = config.signing
         ? await getBundleSigningPublicKey(config.signing, { cwd: getCwd() })
         : null;

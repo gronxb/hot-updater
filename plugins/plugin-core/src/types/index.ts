@@ -153,14 +153,14 @@ export interface NativeBuildAndroidScheme {
 
   /**
    * Signs a release variant with a keystore the CLI resolves: `keystore` is
-   * `vault:<name>`, an `android-keystore` secret in the Console's vault,
-   * which the `HOT_UPDATER_ANDROID_KEYSTORE_*` environment variables
-   * override. Debug variants keep the debug keystore and resolve nothing.
-   * Without it, the variant's own `signingConfig` signs.
+   * `secret:<name>`, the `android-keystore` the config's `secrets` adapter
+   * holds as `<name>`, which the `HOT_UPDATER_ANDROID_KEYSTORE_*`
+   * environment variables override. Debug variants keep the debug keystore
+   * and resolve nothing. Without it, the variant's own `signingConfig` signs.
    *
-   * @example { keystore: "vault:release-keystore" }
+   * @example { keystore: "secret:release-keystore" }
    */
-  signing?: { keystore: `vault:${string}` };
+  signing?: { keystore: `secret:${string}` };
 }
 
 export type IosBuildDestination =
@@ -279,15 +279,15 @@ export interface NativeBuildIosScheme {
 
   /**
    * Signs a device build with automatic signing, authenticated by an App
-   * Store Connect API key the CLI resolves: `ascApiKey` is `vault:<name>`,
-   * an `asc-api-key` secret in the Console's vault, which the
-   * `HOT_UPDATER_ASC_KEY*` environment variables override. Simulator builds
-   * resolve nothing. Without it, the project's signing settings and Xcode's
-   * accounts sign.
+   * Store Connect API key the CLI resolves: `ascApiKey` is `secret:<name>`,
+   * the `asc-api-key` the config's `secrets` adapter holds as `<name>`,
+   * which the `HOT_UPDATER_ASC_KEY*` environment variables override.
+   * Simulator builds resolve nothing. Without it, the project's signing
+   * settings and Xcode's accounts sign.
    *
-   * @example { ascApiKey: "vault:asc-api-key" }
+   * @example { ascApiKey: "secret:asc-api-key" }
    */
-  signing?: { ascApiKey: `vault:${string}` };
+  signing?: { ascApiKey: `secret:${string}` };
 }
 
 export interface PlatformConfig {
@@ -436,6 +436,46 @@ export interface BundleSigningAdapter {
   }) => Promise<{ readonly signature: Uint8Array }>;
 }
 
+/**
+ * What a secrets adapter is given with each call. It carries no secret: an
+ * adapter reads its own credentials, such as a token or a CLI sign-in.
+ */
+export interface SecretsContext {
+  /** The project directory the CLI runs in. */
+  readonly cwd: string;
+}
+
+/**
+ * Where the CLI reads secrets by name: the build credentials `secret:<name>`
+ * references, and the deploy credentials `secretEnv([...])` names. Values
+ * are strings: binary is base64, and a credential with several fields is one
+ * JSON value per name. Hot Updater's adapters ship in `hot-updater/secrets`;
+ * a store of your own implements this.
+ */
+export interface SecretsAdapter {
+  readonly name: string;
+  /**
+   * Reads `names` in one call. A name the store does not hold maps to
+   * `undefined`; any other failure, such as a missing permission or an
+   * unreachable store, throws.
+   */
+  readonly get: (
+    names: readonly string[],
+    context: SecretsContext,
+  ) => Promise<Readonly<Record<string, string | undefined>>>;
+  /**
+   * Stores `value` as `name`, replacing what it held. Absent when the store
+   * is read-only to Hot Updater.
+   */
+  readonly set?: (
+    name: string,
+    value: string,
+    context: SecretsContext,
+  ) => Promise<void>;
+  /** Where the user finds `name` in the store, such as a URL or a path, for messages. */
+  readonly describe?: (name: string) => string;
+}
+
 /** Built-in local PEM signing. */
 export type LocalSigningConfig =
   | {
@@ -580,6 +620,13 @@ export type ConfigInput = {
    * ```
    */
   signing?: SigningConfig;
+  /**
+   * Where the CLI reads the secrets the config names: `secret:<name>` build
+   * credentials and `secretEnv([...])` deploy credentials.
+   *
+   * @default env()
+   */
+  secrets?: SecretsAdapter;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
   /** Where the CLI uploads bundles: the same adapter as the server's `storage`. */
   storage: StorageAdapter;

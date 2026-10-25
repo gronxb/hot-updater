@@ -27,6 +27,8 @@ export { parseJsonOutput };
  *
  * @typedef {object} PullRequestEvent
  * @property {string} action
+ * @property {boolean} fromFork Whether the pull request comes from a fork,
+ *   whose workflow runs get no secrets.
  * @property {number} number
  * @property {string} title
  * @property {string} headSha
@@ -407,17 +409,17 @@ export const runCleanup = async (deps, inputs, event) => {
 
 /**
  * Runs the action for a pull request event: a preview while it is open, the
- * cleanup once it is closed. Without a vault token, as for a pull request
- * from a fork, which gets no secrets, it does nothing.
+ * cleanup once it is closed. A pull request from a fork, whose run gets no
+ * secrets, does nothing.
  *
  * @param {Deps} deps
  * @param {Record<string, string | undefined>} env
  * @param {PullRequestEvent} event
  */
 export const runAction = async (deps, env, event) => {
-  if (!env["INPUT_VAULT_TOKEN"]?.trim()) {
+  if (event.fromFork) {
     deps.log.notice(
-      "No vault token, as for a pull request from a fork, which gets no secrets: skipping the preview.",
+      "The pull request comes from a fork, whose run gets no secrets: skipping the preview.",
     );
     return { skipped: true };
   }

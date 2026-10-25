@@ -5,7 +5,7 @@ import {
   type CredentialResolver,
   type Credentials,
   createCredentialResolver,
-  parseVaultReference,
+  parseSecretReference,
 } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
@@ -16,8 +16,8 @@ import type { EnrichedNativeBuildIosScheme } from "./enrichNativeBuildIosScheme"
  * scheme's App Store Connect API key: the xcodebuild arguments, and the key.
  * The key is resolved only here, for a device build of a scheme with
  * `signing`. Without `credentials`, it resolves from the environment or the
- * Console's vault, and the temporary files are deleted when the process
- * exits.
+ * config's `secrets` adapter, and the temporary files are deleted when the
+ * process exits.
  */
 export const resolveXcodeSigning = async ({
   schemeConfig,
@@ -39,7 +39,7 @@ export const resolveXcodeSigning = async ({
 
   const apiKey = await (credentials ?? createCredentialResolver()).resolve({
     kind: "asc-api-key",
-    name: parseVaultReference(reference, "signing.ascApiKey"),
+    name: parseSecretReference(reference, "signing.ascApiKey"),
   });
   return {
     authenticationArgs: [

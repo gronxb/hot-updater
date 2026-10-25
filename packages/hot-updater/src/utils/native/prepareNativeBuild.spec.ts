@@ -138,28 +138,8 @@ describe("prepareNativeBuild", () => {
         "release",
       ),
     });
-    // build:* without --register: no vault credentials, so no Console.
     expect(vi.mocked(loadConfig).mock.calls).toEqual([
-      [{ platform: "ios", channel: "" }, { credentials: false }],
-    ]);
-  });
-
-  it("loads the vault's credentials before the first config load of a build it registers", async () => {
-    vi.mocked(resolveNativeAppVersion).mockResolvedValueOnce({
-      version: "1.0.0",
-    } as Awaited<ReturnType<typeof resolveNativeAppVersion>>);
-
-    await prepareNativeBuild({
-      platform: "ios",
-      scheme: "release",
-      interactive: false,
-      operation: "build",
-      credentials: true,
-    });
-
-    // Firebase's adapters bind the default app on the first load.
-    expect(vi.mocked(loadConfig).mock.calls).toEqual([
-      [{ platform: "ios", channel: "" }, { credentials: true }],
+      [{ platform: "ios", channel: "" }],
     ]);
   });
 

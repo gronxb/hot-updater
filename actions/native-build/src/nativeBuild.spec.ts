@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { credentialMasks } from "../../shared/cli.mjs";
 import { buildArgs, cliEnv, parseInputs, runAction } from "./nativeBuild.mjs";
 
 const env = (overrides: Record<string, string> = {}) => ({
-  INPUT_CONSOLE_URL: "https://console.example.com",
-  INPUT_VAULT_TOKEN: "hu_vault_token",
   INPUT_PLATFORM: "android",
   INPUT_SCHEME: "release",
   INPUT_UPLOAD: "play-internal",
@@ -51,7 +50,6 @@ const deps = (
 describe("parseInputs", () => {
   it("reads a build that registers and uploads to Google Play", () => {
     expect(parseInputs(env())).toEqual({
-      vault: { url: "https://console.example.com", token: "hu_vault_token" },
       platform: "android",
       scheme: "release",
       upload: "play-internal",
@@ -72,22 +70,7 @@ describe("parseInputs", () => {
     ).toMatchObject({ platform: "ios", upload: "testflight", register: true });
   });
 
-  it("reads no vault when neither connection input is set", () => {
-    expect(
-      parseInputs(env({ INPUT_CONSOLE_URL: "", INPUT_VAULT_TOKEN: "" })).vault,
-    ).toBeNull();
-  });
-
   it.each([
-    [
-      { INPUT_VAULT_TOKEN: "" },
-      "console-url is set but vault-token is empty: set both to read credentials from the vault, or neither to read them from the job's HOT_UPDATER_* environment variables. A workflow run from a fork gets no secrets.",
-    ],
-    [{ INPUT_CONSOLE_URL: "" }, "vault-token is set but console-url is empty"],
-    [
-      { INPUT_CONSOLE_URL: "console.example.com" },
-      "console-url must be the Console's http(s) URL.",
-    ],
     [{ INPUT_PLATFORM: "" }, "platform is required: ios or android."],
     [{ INPUT_PLATFORM: "web" }, "platform takes ios or android, not web."],
     [
@@ -113,22 +96,48 @@ describe("parseInputs", () => {
 });
 
 describe("cliEnv", () => {
-  it("gives the CLI the vault connection, and CI so it never signs in", () => {
-    expect(cliEnv({ PATH: "/bin" }, parseInputs(env()))).toEqual({
+  it("gives the CLI the job's variables, which env() reads, and CI so it never signs in", () => {
+    expect(
+      cliEnv({ PATH: "/bin", HOT_UPDATER_RELEASE_KEYSTORE: "{}" }),
+    ).toEqual({
       PATH: "/bin",
       CI: "true",
-      HOT_UPDATER_CONSOLE_URL: "https://console.example.com",
-      HOT_UPDATER_VAULT_TOKEN: "hu_vault_token",
+      HOT_UPDATER_RELEASE_KEYSTORE: "{}",
     });
   });
+});
 
-  it("keeps the job's HOT_UPDATER_* variables without a vault", () => {
+describe("credentialMasks", () => {
+  it("masks credential variables and the secret fields of JSON credentials, leaving identifiers and other variables", () => {
     expect(
-      cliEnv(
-        { CI: "true", HOT_UPDATER_ASC_KEY: "key" },
-        parseInputs(env({ INPUT_CONSOLE_URL: "", INPUT_VAULT_TOKEN: "" })),
-      ),
-    ).toEqual({ CI: "true", HOT_UPDATER_ASC_KEY: "key" });
+      credentialMasks({
+        HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD: "store-pass",
+        HOT_UPDATER_ASC_KEY:
+          "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----",
+        HOT_UPDATER_RELEASE_KEYSTORE: JSON.stringify({
+          keystore: "a2V5c3RvcmU=",
+          storePassword: "json-pass",
+          keyAlias: "release",
+          keyPassword: "json-key-pass",
+        }),
+        HOT_UPDATER_CHANNEL: "production",
+        PATH: "/bin",
+      }).sort(),
+    ).toEqual(
+      [
+        "store-pass",
+        "AAAA",
+        JSON.stringify({
+          keystore: "a2V5c3RvcmU=",
+          storePassword: "json-pass",
+          keyAlias: "release",
+          keyPassword: "json-key-pass",
+        }),
+        "a2V5c3RvcmU=",
+        "json-pass",
+        "json-key-pass",
+      ].sort(),
+    );
   });
 });
 
@@ -172,27 +181,13 @@ describe("runAction", () => {
   it("fails with the CLI's exit code, whose output names what is missing", async () => {
     const { deps: d, outputs } = deps({
       code: 1,
-      stdout:
-        "play-service-account is not in the vault at https://console.example.com.\n",
+      stdout: "play-service-account is not in the env secrets adapter.\n",
     });
 
     await expect(runAction(d, parseInputs(env()))).rejects.toThrow(
       "hot-updater build:android --scheme release --register --upload play-internal --json exited with 1: its output above says why.",
     );
     expect(outputs).toEqual({});
-  });
-
-  it("says when every credential comes from the environment", async () => {
-    const { deps: d } = deps();
-
-    await runAction(
-      d,
-      parseInputs(env({ INPUT_CONSOLE_URL: "", INPUT_VAULT_TOKEN: "" })),
-    );
-
-    expect(d.log.notice).toHaveBeenCalledWith(
-      "No console-url and vault-token: the CLI reads every credential from the job's HOT_UPDATER_* environment variables.",
-    );
   });
 
   it("refuses a build that register left unregistered", async () => {

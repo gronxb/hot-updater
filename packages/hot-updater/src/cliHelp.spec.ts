@@ -172,38 +172,20 @@ describe("CLI commands", () => {
     expect(help("api-key", "revoke")).toContain("-y, --yes");
   });
 
-  it("manages the Console vault with the core secrets command, without --app", () => {
+  it("stores build credentials with secrets put alone, without --app", () => {
     expect(help()).toMatch(
-      /^\s+secrets\s+Manage the Console vault's secrets and vault tokens$/m,
+      /^\s+secrets\s+Store build credentials in the secrets adapter$/m,
     );
     const secrets = help("secrets");
-    expect(secrets).toMatch(/^\s+list \[options\]\s/m);
-    expect(secrets).toMatch(/^\s+put \[options\] <name> \[variables\.\.\.\]/m);
-    expect(secrets).toMatch(/^\s+env <command\.\.\.>/m);
-    expect(secrets).toMatch(/^\s+import \[options\] \[file\]/m);
-    expect(secrets).toMatch(
-      /^\s+token\s+Issue, list, and revoke vault tokens$/m,
-    );
-    const token = help("secrets", "token");
-    expect(token).toMatch(/^\s+create \[options\] \[serverPath\]/m);
-    expect(token).toMatch(/^\s+list \[options\] \[serverPath\]/m);
-    expect(token).toMatch(/^\s+revoke \[options\] <id> \[serverPath\]/m);
-    for (const command of [
-      ["secrets", "list"],
-      ["secrets", "put"],
-      ["secrets", "env"],
-      ["secrets", "import"],
-      ["secrets", "token", "create"],
-    ]) {
-      expect(help(...command)).not.toContain("--app");
+    expect(secrets).toMatch(/^\s+put \[options\] <name>\s/m);
+    for (const removed of ["list", "env", "import", "token"]) {
+      expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
     }
+    expect(help("secrets", "put")).not.toContain("--app");
     const put = help("secrets", "put").replace(/\s+/gu, " ");
     expect(put).toContain('choices: "asc-api-key", "android-keystore"');
     expect(put).toContain("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD");
-    const importHelp = help("secrets", "import").replace(/\s+/gu, " ");
-    expect(importHelp).toContain('(default: ".env.hotupdater")');
-    expect(importHelp).toContain("--name <name> the deploy-credentials secret");
-    expect(importHelp).toContain("-y, --yes");
+    expect(help("keys", "generate")).not.toContain("--vault");
 
     const missing = run("secrets", "put", "release-keystore");
     expect(missing.status).toBe(1);

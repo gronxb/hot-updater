@@ -15,7 +15,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiKeys, insights, remoteConfig, vault } from "../plugins";
+import { apiKeys, insights, remoteConfig } from "../plugins";
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
 import { doctor } from "./doctor";
@@ -32,7 +32,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   readPackageUp: vi.fn(),
 }));
 
-/** A plugin a later release adds to the managed database, as vault() does. */
+/** A plugin a later release adds to the managed database. */
 const notes = definePlugin({
   id: "notes",
   schemaVersion: "1",
@@ -214,14 +214,14 @@ describe("doctor's schema check", () => {
     });
   });
 
-  it("migrates the vault's tables beside the managed plugins' with --fix, as a KV or Postgres database needs", async () => {
+  it("migrates a new plugin's tables beside the managed plugins' with --fix, as a KV or Postgres database needs", async () => {
     // A database an earlier release initialized for the managed plugins.
     await migrateCoreSchema(adapter, "memory", [
       insights(),
       apiKeys(),
       remoteConfig(),
     ]);
-    serverProject(database(), [insights(), apiKeys(), remoteConfig(), vault()]);
+    serverProject(database(), [insights(), apiKeys(), remoteConfig(), notes]);
 
     await expect(doctor()).resolves.toMatchObject({
       success: false,
@@ -230,9 +230,7 @@ describe("doctor's schema check", () => {
           issues: [
             {
               code: "SCHEMA_MIGRATION_PENDING",
-              settings: [
-                { key: "schema.vault", expected: "1.0.0", found: null },
-              ],
+              settings: [{ key: "schema.notes", expected: "1", found: null }],
             },
           ],
         },
@@ -246,7 +244,7 @@ describe("doctor's schema check", () => {
             repair: "schema",
             codes: ["SCHEMA_MIGRATION_PENDING"],
             status: "applied",
-            wrote: ["schema.vault 1.0.0"],
+            wrote: ["schema.notes 1"],
           },
         ],
       },
@@ -312,7 +310,6 @@ describe("doctor's schema check", () => {
         insights(),
         apiKeys(),
         remoteConfig(),
-        vault(),
         notes,
       ]);
       return { applied: ["0002_hot-updater_1.2.0.sql"] };
@@ -324,13 +321,11 @@ describe("doctor's schema check", () => {
       insights(),
       apiKeys(),
       remoteConfig(),
-      vault(),
       notes,
     ]);
 
     const pending = [
       { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
-      { key: "schema.vault", expected: "1.0.0", found: null },
       { key: "schema.notes", expected: "1", found: null },
     ];
     await expect(doctor()).resolves.toMatchObject({
@@ -342,7 +337,7 @@ describe("doctor's schema check", () => {
             {
               code: "SCHEMA_MIGRATION_PENDING",
               message:
-                'The database has migrations to run before the server reads it: schema.core is "1.0.0", expected "1.2.0"; schema.vault is missing, expected "1.0.0"; schema.notes is missing, expected "1".',
+                'The database has migrations to run before the server reads it: schema.core is "1.0.0", expected "1.2.0"; schema.notes is missing, expected "1".',
               settings: pending,
             },
           ],
