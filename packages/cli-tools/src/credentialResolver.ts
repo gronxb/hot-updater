@@ -479,11 +479,12 @@ export interface CreateCredentialResolverOptions {
    */
   readonly env?: Readonly<Record<string, string>>;
   /**
-   * Where to find an item no environment override sets. Defaults to the
-   * config's `secrets` adapter, `env()` when it sets none, looked up when
-   * an item resolves, after the config loaded.
+   * Where to find an item no environment override sets, or a function that
+   * returns it when an item resolves, for a command whose config loads
+   * after the resolver is created. Defaults to the config `loadConfig` last
+   * loaded, `env()` when it sets none.
    */
-  readonly secrets?: SecretsAdapter;
+  readonly secrets?: SecretsAdapter | (() => SecretsAdapter);
   /** The project directory the adapter is given. Defaults to `getCwd()`. */
   readonly cwd?: string;
 }
@@ -505,7 +506,10 @@ export const createCredentialResolver = ({
   const files = createCredentialFiles();
   const resolved = new Map<string, Promise<unknown>>();
   let disposal: Promise<void> | undefined;
-  const adapter = () => secrets ?? getConfiguredSecrets();
+  const adapter = () =>
+    typeof secrets === "function"
+      ? secrets()
+      : (secrets ?? getConfiguredSecrets());
   const load = createSecretLoader(adapter, () => cwd ?? getCwd());
 
   const resolveItem = async <TKind extends CredentialKind>(

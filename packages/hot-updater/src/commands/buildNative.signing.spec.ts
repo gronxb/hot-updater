@@ -77,8 +77,15 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
   }),
 }));
 
-import { CredentialUnavailableError, p } from "@hot-updater/cli-tools";
+import {
+  CredentialUnavailableError,
+  envSecrets,
+  p,
+  setConfiguredSecrets,
+  withCredentialResolver,
+} from "@hot-updater/cli-tools";
 
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { buildAndroidNative, buildIosNative } from "./buildNative";
 
 beforeEach(() => {
@@ -180,5 +187,36 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     expect(p.log.error).toHaveBeenCalledWith(
       "release-keystore (android-keystore) is not in the env secrets adapter.",
     );
+  });
+
+  it("resolves from the prepared config's secrets adapter, whatever config loads after it", async () => {
+    // Given: the platform config's adapter, and a later load, such as the
+    // fingerprint's loadConfig(null), registering another
+    const own = { name: "platform-store", get: vi.fn() };
+    prebuildScheme.current = {
+      secrets: own,
+      iosScheme: {
+        bundleIdentifier: "com.example.app",
+        signing: { ascApiKey: "secret:widget-asc" },
+      },
+    };
+    vi.mocked(ensureAscApiKey).mockImplementationOnce(async () => {
+      setConfiguredSecrets({ name: "later-load", get: vi.fn() });
+      return { status: "stored" };
+    });
+
+    try {
+      await buildIosNative({ interactive: false, scheme: "release" });
+
+      // Then: the sign-in preflight and the resolver use the config's own
+      const [, options] = vi.mocked(withCredentialResolver).mock.calls[0]!;
+      const secrets = options?.secrets;
+      expect(typeof secrets === "function" ? secrets() : secrets).toBe(own);
+      expect(ensureAscApiKey).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "widget-asc", secrets: own }),
+      );
+    } finally {
+      setConfiguredSecrets(envSecrets());
+    }
   });
 });

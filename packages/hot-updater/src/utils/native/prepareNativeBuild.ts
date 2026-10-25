@@ -23,6 +23,7 @@ import type {
   NativeBuildIosScheme,
   NativeBuildOptions,
   Platform,
+  SecretsAdapter,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -44,6 +45,8 @@ import type { NativeBuildTarget } from "./createNativeBuild";
 export type NativeBuildSchemeOptions = {
   /** The scheme's name. */
   scheme: string;
+  /** The config's `secrets` adapter, which the scheme's credentials resolve from. */
+  secrets: SecretsAdapter;
   androidScheme?: NativeBuildAndroidScheme;
   iosScheme?: NativeBuildIosScheme;
 };
@@ -143,8 +146,16 @@ export async function prepareNativeBuild(
 
   await options.beforePrebuild?.(
     platform === "ios"
-      ? { scheme, iosScheme: config.nativeBuild.ios[scheme]! }
-      : { scheme, androidScheme: config.nativeBuild.android[scheme]! },
+      ? {
+          scheme,
+          secrets: config.secrets,
+          iosScheme: config.nativeBuild.ios[scheme]!,
+        }
+      : {
+          scheme,
+          secrets: config.secrets,
+          androidScheme: config.nativeBuild.android[scheme]!,
+        },
   );
 
   // The adapter's prebuild writes the native projects, such as Expo's

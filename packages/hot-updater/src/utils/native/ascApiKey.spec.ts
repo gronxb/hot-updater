@@ -352,6 +352,33 @@ describe("ensureAscApiKey", () => {
     ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
   });
 
+  it("stores through a class adapter, keeping its methods and their receiver", async () => {
+    class FileStore implements SecretsAdapter {
+      readonly name = "class-store";
+      #held = new Map<string, string>();
+      async get(names: readonly string[]) {
+        return Object.fromEntries(
+          names.map((name) => [name, this.#held.get(name)]),
+        );
+      }
+      async set(name: string, value: string) {
+        this.#held.set(name, value);
+      }
+    }
+    const store = new FileStore();
+    setConfiguredSecrets(store);
+
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
+    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    expect(
+      JSON.parse((await store.get(["asc-api-key"]))["asc-api-key"]!),
+    ).toMatchObject({
+      keyId: "KEY1234567",
+    });
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
   it("asks which team when the sign-in landed in another", async () => {
     fakeStore();
     confirm.mockResolvedValueOnce(false);

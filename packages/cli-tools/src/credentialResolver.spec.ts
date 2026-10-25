@@ -199,6 +199,17 @@ describe("createCredentialResolver", () => {
     );
   });
 
+  it("reads the adapter a getter returns when an item resolves, not when the resolver is made", async () => {
+    let current: SecretsAdapter | undefined;
+    const resolver = createCredentialResolver({ secrets: () => current! });
+    current = fakeSecrets({ "play-service-account": "{}" });
+
+    await expect(
+      resolver.resolve({ kind: "play-service-account" }),
+    ).resolves.toEqual({ json: "{}" });
+    await resolver.dispose();
+  });
+
   it("resolves one item once", async () => {
     const secrets = fakeSecrets({ "play-service-account": "{}" });
     const resolver = createCredentialResolver({ secrets });

@@ -134,15 +134,15 @@ export const prepareIssuedCredential = async (
     );
   }
 
-  const { set } = secrets;
-  if (set === undefined) {
+  if (secrets.set === undefined) {
     throw new Error(
       `${name} is ${policy.what}, which Hot Updater issues when you sign in with ${policy.signIn} and stores through the config's secrets adapter, and the ${secrets.name} secrets adapter is read-only. Configure a secrets adapter that stores values, or set ${fields.map((field) => field.join(" or ")).join(", ")} to use a key you already have.`,
     );
   }
   return {
     status: "missing",
-    secrets: { ...secrets, set },
+    // The adapter itself, so a class keeps its methods and their receiver.
+    secrets: secrets as WritableSecrets,
     env: { ...(await readLoadedHotUpdaterEnv(cwd)), ...env },
   };
 };
