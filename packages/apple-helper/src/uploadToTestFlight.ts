@@ -10,10 +10,13 @@ import {
   registerSecretValue,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
-import { execa } from "execa";
 
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readIpaInfo } from "./utils/readIpaInfo";
+import {
+  APP_STORE_EXPORT_METHODS,
+  readExportMethod,
+} from "./utils/xcodeSigning";
 
 const API_URL = "https://api.appstoreconnect.apple.com";
 
@@ -252,9 +255,6 @@ const runConcurrently = async <T>(
   }
 };
 
-/** The export methods whose `.ipa` App Store Connect accepts. */
-const APP_STORE_EXPORT_METHODS = new Set(["app-store", "app-store-connect"]);
-
 /**
  * The App Store Connect API key a scheme's `.ipa` uploads with: the
  * `signing.ascApiKey` it signs with, or else the `asc-api-key` item. It reads
@@ -306,12 +306,7 @@ export const assertTestFlightExportOptions = async (
   if (!schemeConfig.exportOptionsPlist) {
     return;
   }
-  const { stdout, exitCode } = await execa(
-    "plutil",
-    ["-extract", "method", "raw", "-o", "-", schemeConfig.exportOptionsPlist],
-    { reject: false },
-  );
-  const method = exitCode === 0 ? stdout.trim() : "";
+  const method = await readExportMethod(schemeConfig.exportOptionsPlist);
   if (!APP_STORE_EXPORT_METHODS.has(method)) {
     throw new Error(
       `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${schemeConfig.hotUpdaterSchemeName}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,

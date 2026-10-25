@@ -149,6 +149,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);
   vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", TOKEN);
+  vi.stubEnv("CI", "");
   for (const name of [
     "HOT_UPDATER_ASC_KEY_PATH",
     "HOT_UPDATER_ASC_KEY",
@@ -229,13 +230,27 @@ describe("ensureAscApiKey", () => {
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-asc is not in the vault yet. Hot Updater issues it when you sign in with your Apple Account, which needs a terminal. Run `npx hot-updater secrets put widget-asc --kind asc-api-key` in a terminal once, and builds use the stored key, also in a non-interactive shell.",
+      "widget-asc (asc-api-key) is not in the vault at https://console.example.com, or the vault token's scope does not reach it, and Hot Updater signs in to your Apple Account only at a terminal, never without a terminal. Run `npx hot-updater secrets put widget-asc --kind asc-api-key` once on a machine where you can sign in, and give this build a vault token that reads widget-asc, or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
     );
     expect(ascApiKeySetupCommand("widget-asc")).toBe(
       "npx hot-updater secrets put widget-asc --kind asc-api-key",
     );
     expect(process.exitCode).toBe(1);
     // Nothing asked of the vault beyond the list, and no Apple prompt.
+    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    expect(text).not.toHaveBeenCalled();
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("never signs in in CI, even on a terminal the runner allocates", async () => {
+    vi.stubEnv("CI", "true");
+    const requests = fakeConsole();
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
+    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining("never in CI (CI is set)"),
+    );
     expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();

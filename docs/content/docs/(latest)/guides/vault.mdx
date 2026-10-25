@@ -337,53 +337,10 @@ jobs:
       - run: npx --no-install hot-updater deploy -p android
 ```
 
-This workflow builds the native apps when you run it, registers each build,
-and uploads it to TestFlight and Google Play's internal track:
-
-```yaml title=".github/workflows/native.yml"
-name: Native release
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-env:
-  HOT_UPDATER_CONSOLE_URL: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
-  HOT_UPDATER_VAULT_TOKEN: ${{ secrets.HOT_UPDATER_NATIVE_VAULT_TOKEN }}
-
-jobs:
-  ios:
-    runs-on: macos-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22
-
-      - run: npm ci
-
-      - run: npx --no-install hot-updater build:ios --scheme release --register --upload testflight
-
-  android:
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - run: npm ci
-
-      - run: npx --no-install hot-updater build:android --scheme release --register --upload play-internal
-```
+[Build and upload from CI](/docs/guides/ci-native-build) builds the native
+apps with the `ci-native` token and the `native-build` action, registers each
+build, and uploads it to TestFlight and Google Play's internal track, without
+signing in to an Apple or Google account.
 
 Each command reads its credentials from the console when it needs them,
 writes the files it signs with as temporary files only the runner's user can

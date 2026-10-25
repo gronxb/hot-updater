@@ -3,45 +3,63 @@ import path from "path";
 
 import {
   type CredentialResolver,
+  type Credentials,
   createCredentialResolver,
   parseVaultReference,
 } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 
 import type { EnrichedNativeBuildIosScheme } from "./enrichNativeBuildIosScheme";
 
 /**
- * The xcodebuild arguments that sign with automatic signing, authenticated by
- * the scheme's App Store Connect API key. The key is resolved only here, for
- * a device build of a scheme with `signing`. Without `credentials`, it
- * resolves from the environment or the Console's vault, and the temporary
- * files are deleted when the process exits.
+ * How a device build signs with automatic signing, authenticated by the
+ * scheme's App Store Connect API key: the xcodebuild arguments, and the key.
+ * The key is resolved only here, for a device build of a scheme with
+ * `signing`. Without `credentials`, it resolves from the environment or the
+ * Console's vault, and the temporary files are deleted when the process
+ * exits.
  */
-export const resolveXcodeAuthenticationArgs = async ({
+export const resolveXcodeSigning = async ({
   schemeConfig,
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   credentials?: Pick<CredentialResolver, "resolve">;
-}): Promise<string[] | undefined> => {
+}): Promise<
+  | {
+      authenticationArgs: string[];
+      apiKey: Credentials["asc-api-key"];
+    }
+  | undefined
+> => {
   const reference = schemeConfig.signing?.ascApiKey;
   if (!reference) {
     return undefined;
   }
 
-  const key = await (credentials ?? createCredentialResolver()).resolve({
+  const apiKey = await (credentials ?? createCredentialResolver()).resolve({
     kind: "asc-api-key",
     name: parseVaultReference(reference, "signing.ascApiKey"),
   });
-  return [
-    "-allowProvisioningUpdates",
-    "-authenticationKeyPath",
-    key.keyPath,
-    "-authenticationKeyID",
-    key.keyId,
-    "-authenticationKeyIssuerID",
-    key.issuerId,
-  ];
+  return {
+    authenticationArgs: [
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath",
+      apiKey.keyPath,
+      "-authenticationKeyID",
+      apiKey.keyId,
+      "-authenticationKeyIssuerID",
+      apiKey.issuerId,
+    ],
+    apiKey,
+  };
 };
+
+/** The xcodebuild arguments of `resolveXcodeSigning`. */
+export const resolveXcodeAuthenticationArgs = async (
+  ...args: Parameters<typeof resolveXcodeSigning>
+): Promise<string[] | undefined> =>
+  (await resolveXcodeSigning(...args))?.authenticationArgs;
 
 const APP_STORE_CONNECT_EXPORT_OPTIONS = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -68,3 +86,34 @@ export const writeAppStoreConnectExportOptions = async (directory: string) => {
   );
   return exportOptionsPlist;
 };
+
+/** The export methods whose `.ipa` App Store Connect takes. */
+export const APP_STORE_EXPORT_METHODS = new Set([
+  "app-store",
+  "app-store-connect",
+]);
+
+/** The `method` of export options, or "" when it has none or can't be read. */
+export const readExportMethod = async (exportOptionsPlist: string) => {
+  const { stdout, exitCode } = await execa(
+    "plutil",
+    ["-extract", "method", "raw", "-o", "-", exportOptionsPlist],
+    { reject: false },
+  );
+  return exitCode === 0 ? stdout.trim() : "";
+};
+
+/**
+ * Whether a device build exports for App Store Connect: with its
+ * `exportOptionsPlist`'s method, or, without one, as a scheme signing with
+ * an App Store Connect API key does. Such an `.ipa` is signed with Apple's
+ * cloud-managed distribution certificate, never with a development
+ * certificate the archive was signed with.
+ */
+export const exportsForAppStoreConnect = async (
+  schemeConfig: EnrichedNativeBuildIosScheme,
+): Promise<boolean> =>
+  !schemeConfig.exportOptionsPlist ||
+  APP_STORE_EXPORT_METHODS.has(
+    await readExportMethod(schemeConfig.exportOptionsPlist),
+  );

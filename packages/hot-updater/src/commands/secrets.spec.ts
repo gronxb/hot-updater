@@ -502,7 +502,7 @@ describe("hot-updater secrets put asc-api-key without a key", () => {
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Run `npx hot-updater secrets put widget-asc --kind asc-api-key` in a terminal once",
+        "Run `npx hot-updater secrets put widget-asc --kind asc-api-key` once on a machine where you can sign in",
       ),
     );
     expect(requests).toHaveLength(1);
@@ -994,4 +994,14 @@ describe("hot-updater secrets env", () => {
 
     expect(process.exitCode).toBe(7);
   });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

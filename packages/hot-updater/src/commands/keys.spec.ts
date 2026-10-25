@@ -28,6 +28,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,
+  nonInteractiveReason: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).nonInteractiveReason,
   colors: {
     blue: (value: string) => value,
     bold: (value: string) => value,
@@ -306,4 +309,14 @@ describe("keysRemove", () => {
       "Remove public keys from these files? Re-run with -y in a non-interactive shell.",
     );
   });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

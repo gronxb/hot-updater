@@ -7,11 +7,12 @@ import {
   resolveVaultConnection,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
+  vaultCredentialPutCommand,
   VaultRequestError,
   type VaultSecretMetadata,
 } from "@hot-updater/cli-tools";
 
-import { canPrompt } from "../prompt";
+import { canSignIn } from "../prompt";
 
 /**
  * The vault secrets Hot Updater issues itself after a sign-in, when a build
@@ -20,16 +21,16 @@ import { canPrompt } from "../prompt";
  */
 export type IssuedCredentialKind = "asc-api-key" | "play-service-account";
 
-/** The command that signs in once, in a terminal, and stores the key. */
+/** The command that signs in once, at a terminal, and stores the key. */
 export const credentialSetupCommand = (
   name: string,
   kind: IssuedCredentialKind,
-) => `npx hot-updater secrets put ${name} --kind ${kind}`;
+) => vaultCredentialPutCommand(kind, name);
 
 /**
- * Why there is no key to sign or upload with: there is no terminal to sign
- * in in, which `canPrompt` already reported, setting the exit code, or the
- * developer cancelled a prompt.
+ * Why there is no key to sign or upload with: the run is in CI or has no
+ * terminal to sign in at, which `canSignIn` already reported, setting the
+ * exit code, or the developer cancelled a prompt.
  */
 export class CredentialSetupRefusedError extends Error {
   constructor(message: string) {
@@ -45,6 +46,8 @@ export interface IssuedCredentialPolicy {
   readonly what: string;
   /** Who the developer signs in with, such as "your Apple Account". */
   readonly signIn: string;
+  /** The account `canSignIn` names, such as "Apple Account". */
+  readonly account: string;
   /** What to do about a secret of another kind under the key's name. */
   readonly otherKindFix: (name: string) => string;
 }
@@ -119,7 +122,8 @@ const assertWritable = async (
  *    `environment` is false, as `secrets put` stores in the vault anyway);
  * 2. a vault secret named `name` of the kind is used as it is, so CI builds
  *    with the stored key and never signs in;
- * 3. without a terminal, it refuses with the command that signs in once;
+ * 3. in CI or without a terminal, `canSignIn` refuses with the command
+ *    that signs in once;
  * 4. the vault token must be allowed to store `name`.
  *
  * The vault connection is read as every command reads it: the environment,
@@ -167,10 +171,13 @@ export const prepareIssuedCredential = async (
   }
 
   if (
-    !canPrompt(
-      `${name} is not in the vault yet. Hot Updater issues it when you sign in with ${policy.signIn}, which needs a terminal.`,
-      `Run \`${credentialSetupCommand(name, policy.kind)}\` in a terminal once, and builds use the stored key, also`,
-    )
+    !canSignIn({
+      account: policy.account,
+      kind: policy.kind,
+      name,
+      vaultUrl: client.url,
+      setupCommand: credentialSetupCommand(name, policy.kind),
+    })
   ) {
     throw new CredentialSetupRefusedError(
       `${name} is not in the vault, and there is no terminal to sign in with ${policy.signIn}.`,

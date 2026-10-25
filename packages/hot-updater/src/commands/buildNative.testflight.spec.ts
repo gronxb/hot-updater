@@ -282,9 +282,10 @@ describe("build:ios without an App Store Connect API key", () => {
       bundleIdentifier: "com.example.widget",
       read: true,
     });
-    // The signing key resolves while it builds, as before.
+    // The signing key resolves before the prebuild, with the build's others.
     expect(events).toEqual([
       "ensure widget-asc",
+      "resolve widget-asc",
       "prebuild",
       "build",
       "dispose",

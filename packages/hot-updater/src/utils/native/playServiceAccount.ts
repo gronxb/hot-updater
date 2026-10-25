@@ -28,6 +28,7 @@ const POLICY: IssuedCredentialPolicy = {
   kind: "play-service-account",
   what: "a Play service account",
   signIn: "Google",
+  account: "Google Account",
   otherKindFix: (name) => `remove ${name} in the Console, then run this again.`,
 };
 

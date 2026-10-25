@@ -527,3 +527,13 @@ describe("hot-updater remote-config over a server definition", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 });
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});

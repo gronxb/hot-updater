@@ -229,8 +229,50 @@ describe("the vault as the credential resolver's default source", () => {
     mockConsole(() => Response.json({ error: { code, message } }, { status }));
     const resolver = createCredentialResolver({ env: CONNECTION });
 
-    await expect(resolver.resolve({ kind: "asc-api-key" })).rejects.toThrow(
-      `${shown} Set HOT_UPDATER_ASC_KEY_PATH`,
+    const error = await resolver
+      .resolve({ kind: "asc-api-key" })
+      .catch((e: Error) => e);
+    expect((error as Error).message).toContain(shown);
+    expect((error as Error).message).toContain(
+      "Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY)",
+    );
+  });
+
+  it("names the command that stores each missing build credential once", async () => {
+    mockConsole();
+    const resolver = createCredentialResolver({ env: CONNECTION });
+
+    await expect(
+      resolver.resolve({ kind: "play-service-account" }),
+    ).rejects.toThrow(
+      "play-service-account is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put play-service-account --kind play-service-account`, and builds, CI's included, read it with their vault token. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
+    );
+    await expect(
+      resolver.resolve({ kind: "android-keystore", name: "widget-keystore" }),
+    ).rejects.toThrow(
+      "widget-keystore (android-keystore) is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`, and builds, CI's included, read it with their vault token. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH",
+    );
+  });
+
+  it("names the token to issue when the scope does not reach a credential", async () => {
+    mockConsole(() =>
+      Response.json(
+        {
+          error: {
+            code: "forbidden",
+            message:
+              "The vault token's scope does not allow reading play-service-account.",
+          },
+        },
+        { status: 403 },
+      ),
+    );
+    const resolver = createCredentialResolver({ env: CONNECTION });
+
+    await expect(
+      resolver.resolve({ kind: "play-service-account" }),
+    ).rejects.toThrow(
+      "The Console at https://console.example.com refused the request: The vault token's scope does not allow reading play-service-account. When play-service-account is stored, give the build a vault token whose scope allows read on it, such as one from `npx hot-updater secrets token create --name ci-native --secrets play-service-account,<the build's other secrets> --actions read`; when it is not, store it once with `npx hot-updater secrets put play-service-account --kind play-service-account`. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
     );
   });
 
@@ -251,7 +293,7 @@ describe("the vault as the credential resolver's default source", () => {
     await expect(
       resolver.resolve({ kind: "asc-api-key", name: "widget-asc" }),
     ).rejects.toThrow(
-      "The vault at https://console.example.com has no secret widget-asc.",
+      "widget-asc (asc-api-key) is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put widget-asc --kind asc-api-key`, and builds, CI's included, read it with their vault token. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
     );
   });
 });

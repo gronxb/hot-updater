@@ -8,13 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 let root: string;
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const { createMinBundleId, parseVaultReference } =
+  const { createMinBundleId, isCI, parseVaultReference } =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     createMinBundleId,
+    isCI,
     parseVaultReference,
     getCwd: () => root,
-    p: { log: { success: vi.fn(), warn: vi.fn(), error: vi.fn() } },
+    p: {
+      log: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    },
   };
 });
 vi.mock("./utils/readBuiltApp", () => ({
@@ -22,6 +25,18 @@ vi.mock("./utils/readBuiltApp", () => ({
     appVersion: "2.0.0",
     channel: appPath,
   })),
+}));
+vi.mock("execa", () => ({
+  // plutil reading an exportOptionsPlist's method: the file holds it.
+  execa: vi.fn(async (_file: string, args: string[]) => ({
+    exitCode: 0,
+    stdout: await fs.readFile(args.at(-1)!, "utf-8"),
+  })),
+}));
+vi.mock("./utils/ciSigningKeychain", () => ({
+  withSigningKeychain: vi.fn(async ({ run }: { run: () => Promise<unknown> }) =>
+    run(),
+  ),
 }));
 vi.mock("./utils/assertXcodebuildExist", () => ({
   assertXcodebuildExist: vi.fn(),
@@ -58,6 +73,7 @@ import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { buildIos } from "./buildIos";
+import { withSigningKeychain } from "./utils/ciSigningKeychain";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 
 const MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5";
@@ -101,6 +117,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -193,6 +210,81 @@ describe("buildIos", () => {
     const exportOptions = await fs.readFile(exportOptionsPlist, "utf-8");
     expect(exportOptions).toContain("<string>app-store-connect</string>");
     expect(exportOptions).toContain("<string>automatic</string>");
+  });
+
+  it.each([
+    ["true", true],
+    ["", false],
+  ])(
+    "archives and exports in a keychain of the build's own only in CI (CI=%j)",
+    async (ci, enabled) => {
+      vi.stubEnv("CI", ci);
+      const credentials = ascKeyResolver();
+
+      await buildIos({
+        schemeConfig: scheme({ signing: { ascApiKey: "vault:app-store-key" } }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials,
+      });
+
+      expect(withSigningKeychain).toHaveBeenCalledOnce();
+      expect(withSigningKeychain).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enabled,
+          apiKey: {
+            keyPath: "/tmp/AuthKey_ABC.p8",
+            keyId: "ABC",
+            issuerId: "issuer",
+          },
+        }),
+      );
+      expect(archiveXcodeProject).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    ["app-store-connect", true],
+    ["development", false],
+    ["release-testing", false],
+  ])(
+    "in CI, signs a %s export with the API key in a keychain of its own: %s",
+    async (method, enabled) => {
+      vi.stubEnv("CI", "true");
+      const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+      // The mocked plutil prints the file: its method.
+      await fs.writeFile(exportOptionsPlist, method);
+
+      await buildIos({
+        schemeConfig: scheme({
+          exportOptionsPlist,
+          signing: { ascApiKey: "vault:app-store-key" },
+        }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials: ascKeyResolver(),
+      });
+
+      expect(withSigningKeychain).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled }),
+      );
+      expect(exportXcodeArchive).toHaveBeenCalledWith(
+        expect.objectContaining({ authenticationArgs: AUTHENTICATION_ARGS }),
+      );
+    },
+  );
+
+  it("needs no keychain of its own for a build with the project's signing", async () => {
+    vi.stubEnv("CI", "true");
+    const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+    await fs.writeFile(exportOptionsPlist, "<plist/>");
+
+    await buildIos({
+      schemeConfig: scheme({ exportOptionsPlist }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+
+    expect(withSigningKeychain).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).toHaveBeenCalledOnce();
   });
 
   it("returns the archive of a device build it cannot export", async () => {

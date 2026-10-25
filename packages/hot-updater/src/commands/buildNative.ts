@@ -14,6 +14,7 @@ import {
 } from "@hot-updater/apple-helper";
 import {
   createMinBundleId,
+  type CredentialResolver,
   type Credentials,
   getCwd,
   CredentialUnavailableError,
@@ -28,7 +29,10 @@ import {
   createNativeBuild,
   type NativeBuildResult,
 } from "@/utils/native/createNativeBuild";
-import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
+import {
+  type NativeBuildSchemeOptions,
+  prepareNativeBuild,
+} from "@/utils/native/prepareNativeBuild";
 import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
@@ -76,10 +80,12 @@ const buildNativeInternal = async ({
         platform,
         operation: "build",
         credentials: register,
-        // A scheme the store would refuse, or a missing upload credential,
-        // fails before the prebuild and the build. The scheme's signing key
-        // is the same item, resolved once, and a service account stays in
-        // memory.
+        // A scheme the store would refuse, or a missing signing or upload
+        // credential, fails before the prebuild and the build, so a CI run
+        // without one stops at once. The resolver keeps each credential for
+        // the build, which resolves the signing ones again, an upload key
+        // that signs too is one item, and a service account stays in
+        // memory. Credentials asked for together share one vault request.
         beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
           const uploadKey =
             upload === "testflight"
@@ -87,9 +93,18 @@ const buildNativeInternal = async ({
                   resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
                 )
               : undefined;
+          const uploadServiceAccount =
+            upload === "play-internal"
+              ? await reportUploadFailure(async () =>
+                  resolvePlayUploadServiceAccount({
+                    scheme,
+                    androidScheme: androidScheme!,
+                  }),
+                )
+              : undefined;
           // The key the upload or the device build's signing resolves: a
           // developer without one signs in with their Apple Account here,
-          // before anything is built.
+          // before anything is built, and Hot Updater issues it.
           const ascApiKeyName =
             uploadKey?.name ??
             (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
@@ -113,23 +128,14 @@ const buildNativeInternal = async ({
               );
             }
           }
-          if (uploadKey) {
-            ascApiKey = await credentials.resolve(uploadKey);
-          }
-          if (upload === "play-internal") {
-            const request = await reportUploadFailure(async () =>
-              resolvePlayUploadServiceAccount({
-                scheme,
-                androidScheme: androidScheme!,
-              }),
-            );
+          if (uploadServiceAccount) {
             // A developer without one signs in with Google here, before
             // anything is built, and Hot Updater issues it.
             try {
               const packageName =
                 androidScheme!.applicationId ?? androidScheme!.packageName;
               const ensured = await ensurePlayServiceAccount({
-                name: request.name ?? request.kind,
+                name: uploadServiceAccount.name ?? uploadServiceAccount.kind,
                 ...(packageName ? { packageName } : {}),
                 read: true,
               });
@@ -141,8 +147,15 @@ const buildNativeInternal = async ({
                 { cause: e },
               );
             }
-            serviceAccount = await credentials.resolve(request);
           }
+          [, ascApiKey, serviceAccount] = await Promise.all([
+            resolveSigningCredentials(credentials, {
+              iosScheme,
+              androidScheme,
+            }),
+            uploadKey && credentials.resolve(uploadKey),
+            uploadServiceAccount && credentials.resolve(uploadServiceAccount),
+          ]);
         },
       });
       if (!preparedConfig) {
@@ -296,6 +309,38 @@ const summarizeNativeBuild = (result: NativeBuildResult): string => {
 };
 
 /**
+ * Resolves the credentials the build signs with: an iOS device build's
+ * `signing.ascApiKey`, and a release variant's `signing.keystore`, as
+ * `buildIos` and `buildAndroid` resolve them.
+ */
+const resolveSigningCredentials = async (
+  credentials: CredentialResolver,
+  {
+    iosScheme,
+    androidScheme,
+  }: Pick<NativeBuildSchemeOptions, "iosScheme" | "androidScheme">,
+): Promise<void> => {
+  const ascApiKey = iosScheme?.simulator
+    ? undefined
+    : iosScheme?.signing?.ascApiKey;
+  const keystore = /debug$/i.test(androidScheme?.variant ?? "Release")
+    ? undefined
+    : androidScheme?.signing?.keystore;
+  await Promise.all([
+    ascApiKey &&
+      credentials.resolve({
+        kind: "asc-api-key",
+        name: parseVaultReference(ascApiKey, "signing.ascApiKey"),
+      }),
+    keystore &&
+      credentials.resolve({
+        kind: "android-keystore",
+        name: parseVaultReference(keystore, "signing.keystore"),
+      }),
+  ]);
+};
+
+/**
  * A failure reported by its message alone, thrown so the credential
  * resolver deletes its temporary files before the process exits.
  */
@@ -323,7 +368,7 @@ const reportUploadFailure = async <T>(
 
 const catchError = (e: unknown): never => {
   if (e instanceof CredentialSetupRefusedError) {
-    // canPrompt reported why, with the command to run.
+    // canSignIn or canPrompt reported why, with the command to run.
   } else if (e instanceof ExecaError) {
     console.error(e);
   } else if (

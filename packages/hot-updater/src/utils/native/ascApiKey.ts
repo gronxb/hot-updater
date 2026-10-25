@@ -25,6 +25,7 @@ const POLICY: IssuedCredentialPolicy = {
   kind: "asc-api-key",
   what: "an App Store Connect API key",
   signIn: "your Apple Account",
+  account: "Apple Account",
   otherKindFix: (name) =>
     `name the key differently with signing.ascApiKey, or remove ${name} in the Console.`,
 };

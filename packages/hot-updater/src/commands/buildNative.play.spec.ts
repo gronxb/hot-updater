@@ -156,7 +156,7 @@ describe("build:android --upload play-internal", () => {
     });
   });
 
-  it("stops before the prebuild, reported by canPrompt, when there is no key and no terminal", async () => {
+  it("stops before the prebuild, reported by canSignIn, when there is no key and no terminal", async () => {
     vi.mocked(ensurePlayServiceAccount).mockRejectedValueOnce(
       new CredentialSetupRefusedError("no terminal"),
     );
