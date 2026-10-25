@@ -96,7 +96,9 @@ signs: a Debug variant keeps the debug keystore, and a simulator build signs
 nothing. A scheme without `signing` keeps the project's own signing settings.
 
 The CLI reaches the vault with `HOT_UPDATER_CONSOLE_URL` and
-`HOT_UPDATER_VAULT_TOKEN`, a token whose scope allows `read` on the secret.
+`HOT_UPDATER_VAULT_TOKEN`, a token whose scope allows `read` on the secret,
+from the environment or the project's `.env.hotupdater`. A variable set in the
+environment wins.
 [Secrets in the CLI](/docs/guides/secrets) covers storing secrets and
 issuing tokens.
 
@@ -117,6 +119,48 @@ before the build adapter's prebuild, so a missing one fails before anything is
 built; the error names the vault's URL, the command that stores the credential
 once, and these variables. [Build and upload from CI](/docs/guides/ci-native-build)
 runs builds that read them in CI, which never signs in.
+
+### Sign in with your Apple Account
+
+An iOS build that needs an App Store Connect API key, for
+`signing.ascApiKey` or [`--upload testflight`](#upload-to-testflight), and
+finds none issues one. In a terminal, sign in with your Apple Account when
+asked: Hot Updater asks for its email, and asc, the open-source
+[App Store Connect CLI](https://github.com/rorkai/App-Store-Connect-CLI)
+(MIT), asks for its password and two-factor code in its own prompts. Hot
+Updater then creates a team API key with the Admin role in that team, named
+`hot-updater <bundle ID> <date>`, stores it in the vault under the name the
+build resolves, and continues the build. It keeps only the issued key:
+neither the password nor the Apple session is saved.
+
+The Admin role lets `xcodebuild` create cloud-managed distribution
+certificates and provisioning profiles, so the Mac needs no signing identity
+of its own, and lets the build upload to TestFlight. Creating it needs the
+Account Holder or Admin role in the team.
+
+To sign in ahead of a build, such as before CI's first build, run:
+
+```package-install
+npx hot-updater secrets put asc-api-key --kind asc-api-key
+```
+
+CI (`CI` is set, even on a terminal a runner allocates) and other builds
+without a terminal use the stored key and never sign in. A build that finds no
+key there stops with that command.
+
+Before it asks for your Apple Account, the CLI checks everything that could
+fail afterwards: a `HOT_UPDATER_ASC_KEY*` override or a stored key is used as
+it is, and the vault token must allow `write` on the key's name, by name or
+by kind. The build reads the stored key with the token's `read`.
+When the vault refuses the issued key, the CLI revokes it again, so no key is
+left that nothing holds.
+
+The CLI uses the `asc` on your `PATH` when it is version 5.16.1 or later, and
+otherwise downloads asc 5.16.1 from its GitHub release into
+`~/Library/Caches/hot-updater`, checked against the release's published
+SHA-256. asc runs with its session, config, and the key's `.p8` in a
+temporary directory only your user can read, which the CLI deletes when it
+is done, and never reads your `~/.asc` or keychain.
 
 The Android build passes the keystore to Gradle as the signing properties
 Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
@@ -290,7 +334,9 @@ key ID and an issuer ID (App Store Connect → Users and Access → Integrations
 Team Keys), with the Admin, App Manager, or Developer role: the scheme's
 `signing.ascApiKey`, or else the vault's `asc-api-key` secret. The
 `HOT_UPDATER_ASC_KEY*` environment variables in
-[Provide signing credentials](#provide-signing-credentials) override it. The
+[Provide signing credentials](#provide-signing-credentials) override it.
+Without one, [sign in with your Apple Account](#sign-in-with-your-apple-account)
+when asked, and the CLI issues and stores it before it builds. The
 CLI resolves the key before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing key fails before either runs, and
 deletes the key's temporary file when the upload ends.

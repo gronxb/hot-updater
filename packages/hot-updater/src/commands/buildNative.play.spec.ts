@@ -37,7 +37,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   }),
 }));
 vi.mock("../utils/native/playServiceAccount", () => ({
-  PlayServiceAccountRefusedError: class extends Error {},
   ensurePlayServiceAccount: vi.fn(async ({ name }: { name: string }) => {
     events.push(`ensure ${name}`);
     return { status: "stored", version: 1 };
@@ -96,10 +95,8 @@ import { p } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 
-import {
-  ensurePlayServiceAccount,
-  PlayServiceAccountRefusedError,
-} from "../utils/native/playServiceAccount";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 import { buildAndroidNative } from "./buildNative";
 
 const AAB = "/out/app/build/outputs/bundle/app-staging-release.aab";
@@ -161,7 +158,7 @@ describe("build:android --upload play-internal", () => {
 
   it("stops before the prebuild, reported by canSignIn, when there is no key and no terminal", async () => {
     vi.mocked(ensurePlayServiceAccount).mockRejectedValueOnce(
-      new PlayServiceAccountRefusedError("no terminal"),
+      new CredentialSetupRefusedError("no terminal"),
     );
     const exit = mockExit();
 

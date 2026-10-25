@@ -29,9 +29,9 @@ import type {
   IssuePlayServiceAccountRequest,
 } from "@hot-updater/android-helper";
 
+import { CredentialSetupRefusedError } from "./issuedCredential";
 import {
   ensurePlayServiceAccount,
-  PlayServiceAccountRefusedError,
   playServiceAccountSetupCommand,
 } from "./playServiceAccount";
 
@@ -267,14 +267,22 @@ describe("ensurePlayServiceAccount", () => {
 
     await expect(
       withTTY(false, () => ensure({ name: "play-service-account" })),
-    ).rejects.toBeInstanceOf(PlayServiceAccountRefusedError);
+    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining(
         playServiceAccountSetupCommand("play-service-account"),
       ),
     );
     expect(process.exitCode).toBe(1);
-    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    // The vault is asked which it is: missing, or out of the token's scope.
+    expect(requests).toEqual([
+      { method: "GET", path: "/secrets" },
+      {
+        method: "POST",
+        path: "/resolve",
+        body: { names: ["play-service-account"] },
+      },
+    ]);
     expect(issue).not.toHaveBeenCalled();
   });
 
@@ -284,12 +292,21 @@ describe("ensurePlayServiceAccount", () => {
 
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).rejects.toBeInstanceOf(PlayServiceAccountRefusedError);
+    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
+    // A token scoped by kind can't read a name no secret has: the vault
+    // credential source's out-of-scope wording, as a build would print it.
     expect(log.error).toHaveBeenCalledWith(
-      `play-service-account is not in the vault at ${CONSOLE_URL}, or the vault token's scope does not reach it, and Hot Updater signs in to your Google Account only at a terminal, never in CI (CI is set). Run \`${playServiceAccountSetupCommand("play-service-account")}\` once on a machine where you can sign in, and give this build a vault token that reads play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.`,
+      `The Console at ${CONSOLE_URL} refused the request: forbidden When play-service-account is stored, give the build a vault token whose scope allows read on it, such as one from \`npx hot-updater secrets token create --name ci-native --secrets play-service-account,<the build's other secrets> --actions read\`; when it is not, store it once with \`${playServiceAccountSetupCommand("play-service-account")}\`. Hot Updater signs in to your Google Account to issue it only at a terminal, never in CI (CI is set). Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.`,
     );
     expect(process.exitCode).toBe(1);
-    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    expect(requests).toEqual([
+      { method: "GET", path: "/secrets" },
+      {
+        method: "POST",
+        path: "/resolve",
+        body: { names: ["play-service-account"] },
+      },
+    ]);
     expect(issue).not.toHaveBeenCalled();
   });
 

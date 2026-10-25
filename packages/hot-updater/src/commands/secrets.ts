@@ -8,8 +8,7 @@ import {
   makeEnv,
   p,
   parseLoadedEnv,
-  readLoadedHotUpdaterEnv,
-  readVaultConnection,
+  resolveVaultConnection,
   registerSecretValue,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
@@ -29,10 +28,9 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
-import {
-  ensurePlayServiceAccount,
-  PlayServiceAccountRefusedError,
-} from "../utils/native/playServiceAccount";
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 import { connectVault } from "../vaultEnv";
 import {
   confirmAction,
@@ -320,18 +318,24 @@ export const handleSecretsPut = async (
   options: SecretsPutOptions,
 ): Promise<void> => {
   printBanner();
-  if (options.kind === "play-service-account" && !hasValueFlags(options)) {
-    // No key file to store: sign in with Google, and Hot Updater issues one.
+  // No key to store: sign in, and Hot Updater issues one.
+  const issuedBySignIn =
+    options.kind === "asc-api-key"
+      ? { label: "App Store Connect API key", ensure: ensureAscApiKey }
+      : options.kind === "play-service-account"
+        ? { label: "Play service account", ensure: ensurePlayServiceAccount }
+        : undefined;
+  if (issuedBySignIn && !hasValueFlags(options)) {
     await reportFailure(async () => {
       try {
-        const result = await ensurePlayServiceAccount({
+        const result = await issuedBySignIn.ensure({
           name,
           // The vault is what this stores in, whatever the environment sets.
           environment: false,
         });
         if (result.status === "stored") {
           p.log.message(
-            ui.block("Play service account already stored", [
+            ui.block(`${issuedBySignIn.label} already stored`, [
               ui.kv("Name", name),
               ui.kv("Version", ui.version(`v${result.version}`)),
             ]),
@@ -339,7 +343,7 @@ export const handleSecretsPut = async (
         }
       } catch (error) {
         // canPrompt reported it.
-        if (error instanceof PlayServiceAccountRefusedError) return;
+        if (error instanceof CredentialSetupRefusedError) return;
         throw error;
       }
     });
@@ -587,7 +591,7 @@ export const handleSecretsImport = async (
     );
     // Config loads find the connection only in the environment or the
     // project's .env.hotupdater, before the config runs.
-    if (!readVaultConnection(await readLoadedHotUpdaterEnv(getCwd())).ok) {
+    if (!(await resolveVaultConnection()).ok) {
       p.log.warn(
         `Commands that use the config's database, storage, or signing read ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.`,
       );

@@ -656,6 +656,42 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     expect(malformed.status).toBe(400);
   });
 
+  // The CLI asks this before an Apple Account sign-in, so a token that
+  // cannot store the key it issues fails before anything is issued.
+  it("answers a write of an empty asc-api-key by the token's scope alone, storing nothing", async () => {
+    const { load, issue, vault: api } = await start();
+    const writer = await issue({
+      secrets: { names: ["widget-asc"] },
+      actions: ["read", "write"],
+    });
+    const reader = await issue({
+      secrets: { names: ["widget-asc"] },
+      actions: ["read"],
+    });
+    const probe = { kind: "asc-api-key", value: {}, expectedVersion: 0 };
+
+    const allowed = await put(load, writer, "widget-asc", probe);
+    expect(allowed.status).toBe(400);
+    await expect(allowed.json()).resolves.toMatchObject({
+      error: { code: "invalid_request" },
+    });
+    const refused = await put(load, reader, "widget-asc", probe);
+    expect(refused.status).toBe(403);
+    expect(
+      (await api.list()).some((secret) => secret.name === "widget-asc"),
+    ).toBe(false);
+
+    // A token scoped by kind may store a key that does not exist yet.
+    const byKind = await issue({
+      secrets: { kinds: ["asc-api-key"] },
+      actions: ["read", "write"],
+    });
+    expect((await put(load, byKind, "widget-asc", probe)).status).toBe(400);
+    expect(
+      (await api.list()).some((secret) => secret.name === "widget-asc"),
+    ).toBe(false);
+  });
+
   it("never reads a value back with write: a write-only token lists metadata and resolves nothing", async () => {
     const { load, issue } = await start();
     const token = await issue({

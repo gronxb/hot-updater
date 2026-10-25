@@ -461,6 +461,72 @@ describe("hot-updater secrets list and put, through the Console", () => {
   });
 });
 
+describe("hot-updater secrets put asc-api-key without a key", () => {
+  const withTTY = async (isTTY: boolean, run: () => Promise<void>) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: isTTY,
+      configurable: true,
+    });
+    try {
+      await run();
+    } finally {
+      if (descriptor) Object.defineProperty(process.stdin, "isTTY", descriptor);
+      else Reflect.deleteProperty(process.stdin, "isTTY");
+    }
+  };
+
+  it("keeps a stored key, without signing in", async () => {
+    const requests = mockConsole(() => ({ secrets: [SECRET] }));
+
+    await withTTY(true, () =>
+      handleSecretsPut("asc-api-key", { kind: "asc-api-key" }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      `GET ${CONSOLE_URL}/_hot-updater/vault/v1/secrets`,
+    ]);
+    expect(messages().join("\n")).toContain(
+      "App Store Connect API key already stored",
+    );
+  });
+
+  it("refuses to sign in without a terminal, naming the command to run in one", async () => {
+    const requests = mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [] }
+        : { secrets: [], errors: [{ name: "widget-asc", code: "not_found" }] },
+    );
+
+    await withTTY(false, () =>
+      handleSecretsPut("widget-asc", { kind: "asc-api-key" }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Store it once from a machine that reaches the Console, with `npx hot-updater secrets put widget-asc --kind asc-api-key`",
+      ),
+    );
+    // The list, and the resolve that tells a missing key from one out of scope.
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
+  });
+
+  it("still takes a key's files when any is passed", async () => {
+    const requests = mockConsole(() => ({ secrets: [] }));
+
+    await handleSecretsPut("asc-api-key", {
+      kind: "asc-api-key",
+      keyId: "KEY1",
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith("A asc-api-key needs --p8 <file>.");
+    expect(requests).toEqual([]);
+  });
+});
+
 describe("hot-updater secrets import", () => {
   const DEPLOY = {
     id: "sec-2",

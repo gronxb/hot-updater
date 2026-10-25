@@ -7,7 +7,7 @@ import type { CredentialSource, SourcedCredential } from "./credentialResolver";
 import { registerSecretValue } from "./secretMasking";
 import {
   createVaultClient,
-  readVaultConnection,
+  resolveVaultConnection,
   type ResolvedVaultSecret,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
@@ -160,7 +160,7 @@ const toCredential = async (
 };
 
 /** The build credentials the vault holds for the CLI. */
-type BuildCredentialKind =
+export type BuildCredentialKind =
   | "asc-api-key"
   | "android-keystore"
   | "play-service-account";
@@ -177,10 +177,10 @@ export const vaultCredentialPutCommand = (
 ): string => {
   const put = `npx hot-updater secrets put ${name} --kind ${kind}`;
   switch (kind) {
-    case "asc-api-key":
-      return `${put} --p8 <AuthKey.p8> --key-id <key-id> --issuer-id <issuer-id>`;
     case "android-keystore":
       return `${put} --keystore <release.jks> --key-alias <alias>`;
+    case "asc-api-key":
+    // Signs in with an Apple Account, and Hot Updater issues the key.
     case "play-service-account":
       // Signs in with Google, and Hot Updater issues the key.
       return put;
@@ -188,10 +188,15 @@ export const vaultCredentialPutCommand = (
 };
 
 /**
- * What to do when the vault can't give a build `name`: store it once, or,
- * when the token's scope does not reach it, issue a token that may read it.
+ * What to do when the vault can't give a build `name`, the one wording for
+ * it: the credential source says it when a build resolves `name`, and the
+ * sign-in guard when a run can't sign in to issue it. `error` is a
+ * `VaultSecretNotFoundError` when the vault has no `name` (store it once),
+ * or the Console's 403 when the token's scope does not reach it (issue a
+ * token that may read it, or store it when it is not stored). Any other
+ * error is returned as it is.
  */
-const describeUnavailable = (
+export const describeVaultCredentialUnavailable = (
   kind: BuildCredentialKind,
   name: string,
   error: unknown,
@@ -225,25 +230,26 @@ export const createVaultCredentialSource = ({
   readonly fetch?: typeof globalThis.fetch;
 } = {}): CredentialSource => {
   let load: ReturnType<typeof createVaultSecretLoader> | undefined;
+  // One read for the items a build asks for together, so they still share
+  // one resolve request.
+  let connecting: ReturnType<typeof resolveVaultConnection> | undefined;
 
   return async ({ kind, name }, { files }) => {
-    if (load === undefined) {
-      const read = readVaultConnection(env);
-      if (!read.ok) {
-        const item = name === kind ? kind : `${kind} ${name}`;
-        throw new Error(
-          `${item} resolves from the Console's vault, and ${read.missing.join(" and ")} ${read.missing.length === 1 ? "is" : "are"} not set. Set ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} to reach the vault.`,
-        );
-      }
-      load = createVaultSecretLoader(
-        createVaultClient({
-          ...read.connection,
-          ...(fetch === undefined ? {} : { fetch }),
-        }),
+    const read = await (connecting ??= resolveVaultConnection({ env }));
+    if (!read.ok) {
+      const item = name === kind ? kind : `${kind} ${name}`;
+      throw new Error(
+        `${item} resolves from the Console's vault, and ${read.missing.join(" and ")} ${read.missing.length === 1 ? "is" : "are"} not set in the environment or .env.hotupdater. Set ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} to reach the vault.`,
       );
     }
+    load ??= createVaultSecretLoader(
+      createVaultClient({
+        ...read.connection,
+        ...(fetch === undefined ? {} : { fetch }),
+      }),
+    );
     const secret = await load(name).catch((error: unknown) => {
-      throw describeUnavailable(kind, name, error);
+      throw describeVaultCredentialUnavailable(kind, name, error);
     });
     if (secret.kind !== kind) {
       throw new Error(

@@ -38,10 +38,9 @@ import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
-import {
-  ensurePlayServiceAccount,
-  PlayServiceAccountRefusedError,
-} from "../utils/native/playServiceAccount";
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 
 /**
  * `build:android` and `build:ios`: `register` also registers the build,
@@ -103,6 +102,32 @@ const buildNativeInternal = async ({
                   }),
                 )
               : undefined;
+          // The key the upload or the device build's signing resolves: a
+          // developer without one signs in with their Apple Account here,
+          // before anything is built, and Hot Updater issues it.
+          const ascApiKeyName =
+            uploadKey?.name ??
+            (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
+              ? parseVaultReference(
+                  iosScheme.signing.ascApiKey,
+                  "signing.ascApiKey",
+                )
+              : undefined);
+          if (ascApiKeyName) {
+            try {
+              await ensureAscApiKey({
+                name: ascApiKeyName,
+                bundleIdentifier: iosScheme!.bundleIdentifier,
+                read: true,
+              });
+            } catch (e) {
+              if (e instanceof CredentialSetupRefusedError) throw e;
+              throw new NativeBuildFailure(
+                e instanceof Error ? e.message : String(e),
+                { cause: e },
+              );
+            }
+          }
           if (uploadServiceAccount) {
             // A developer without one signs in with Google here, before
             // anything is built, and Hot Updater issues it.
@@ -116,7 +141,7 @@ const buildNativeInternal = async ({
               });
               serviceAccountIssued = ensured.status === "issued";
             } catch (e) {
-              if (e instanceof PlayServiceAccountRefusedError) throw e;
+              if (e instanceof CredentialSetupRefusedError) throw e;
               throw new NativeBuildFailure(
                 e instanceof Error ? e.message : String(e),
                 { cause: e },
@@ -342,7 +367,7 @@ const reportUploadFailure = async <T>(
 };
 
 const catchError = (e: unknown): never => {
-  if (e instanceof PlayServiceAccountRefusedError) {
+  if (e instanceof CredentialSetupRefusedError) {
     // canSignIn or canPrompt reported why, with the command to run.
   } else if (e instanceof ExecaError) {
     console.error(e);

@@ -13,11 +13,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("../utils/native/playServiceAccount", () => ({
-  PlayServiceAccountRefusedError: class extends Error {},
   ensurePlayServiceAccount,
 }));
 
-import { PlayServiceAccountRefusedError } from "../utils/native/playServiceAccount";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import { handleSecretsPut } from "./secrets";
 
 beforeEach(() => {
@@ -69,7 +68,7 @@ describe("hot-updater secrets put --kind play-service-account without a key file
 
   it("leaves a refusal canSignIn reported as it is", async () => {
     ensurePlayServiceAccount.mockRejectedValueOnce(
-      new PlayServiceAccountRefusedError("no terminal"),
+      new CredentialSetupRefusedError("no terminal"),
     );
 
     await handleSecretsPut("play-service-account", {

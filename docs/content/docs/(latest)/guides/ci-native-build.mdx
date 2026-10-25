@@ -38,17 +38,21 @@ that may write the secrets, as [Secrets in the CLI](/docs/guides/secrets)
 describes:
 
 ```package-install
-npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 AuthKey_ABC123DEF4.p8 --key-id ABC123DEF4 --issuer-id 00000000-0000-0000-0000-000000000000
+npx hot-updater secrets put asc-api-key --kind asc-api-key
 npx hot-updater secrets put release-keystore --kind android-keystore --keystore release.jks --key-alias release
 npx hot-updater secrets put play-service-account --kind play-service-account
 ```
 
-Without a key file, `secrets put play-service-account` signs you in with
+Without key files, `secrets put asc-api-key` signs you in with your Apple
+Account once and Hot Updater issues the App Store Connect API key, as
+[Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
+describes; `--p8 <AuthKey.p8> --key-id <id> --issuer-id <id>` stores a key you
+already have. Likewise, `secrets put play-service-account` signs you in with
 Google once and Hot Updater issues the service account's key, as
 [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
 describes; `--service-account <key.json>` stores a key you already have. A
-build that finds no service account in the vault also offers that sign-in, on
-your machine only: in CI it never signs in.
+build that finds no key in the vault also offers the sign-in, on your machine
+only: in CI it never signs in.
 
 `secrets put` reads the keystore's passwords from
 `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD` and `HOT_UPDATER_ANDROID_KEY_PASSWORD`,

@@ -8,7 +8,7 @@ import {
 import { registerSecretValue } from "./secretMasking";
 import {
   createVaultClient,
-  readVaultConnection,
+  resolveVaultConnection,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
   type VaultSecretMetadata,
@@ -131,7 +131,7 @@ const resolveDeployCredentials = async (
   cwd: string,
 ): Promise<Readonly<Record<string, string>>> => {
   const fileEnv = await readLoadedHotUpdaterEnv(cwd);
-  const read = readVaultConnection(fileEnv);
+  const read = await resolveVaultConnection({ cwd });
   if (!read.ok) return {};
   try {
     return await resolveVaultVariables(createVaultClient(read.connection), {

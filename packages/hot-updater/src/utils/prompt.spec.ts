@@ -17,12 +17,14 @@ const setTTY = (value: boolean) => {
   });
 };
 
+/** What the vault credential source says of a missing key, as the caller passes it. */
+const UNAVAILABLE =
+  "asc-api-key is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put asc-api-key --kind asc-api-key`, and builds, CI's included, read it with their vault token.";
+const describeUnavailable = vi.fn(async () => UNAVAILABLE);
 const SIGN_IN = {
   account: "Apple Account",
   kind: "asc-api-key",
-  name: "asc-api-key",
-  vaultUrl: "https://console.example.com",
-  setupCommand: "npx hot-updater secrets put asc-api-key --kind asc-api-key",
+  describeUnavailable,
 } as const;
 
 beforeEach(() => {
@@ -58,42 +60,40 @@ describe("canPrompt", () => {
 });
 
 describe("canSignIn", () => {
-  it("lets a developer at a terminal sign in", () => {
+  it("lets a developer at a terminal sign in, asking the vault nothing", async () => {
     setTTY(true);
     vi.stubEnv("CI", "");
 
-    expect(canSignIn(SIGN_IN)).toBe(true);
+    await expect(canSignIn(SIGN_IN)).resolves.toBe(true);
+    expect(describeUnavailable).not.toHaveBeenCalled();
     expect(log.error).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
   });
 
-  it("never signs in in CI, even on a terminal the runner allocates", () => {
+  it("never signs in in CI, even on a terminal the runner allocates", async () => {
     setTTY(true);
     vi.stubEnv("CI", "true");
 
-    expect(canSignIn(SIGN_IN)).toBe(false);
+    await expect(canSignIn(SIGN_IN)).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "asc-api-key is not in the vault at https://console.example.com, or the vault token's scope does not reach it, and Hot Updater signs in to your Apple Account only at a terminal, never in CI (CI is set). Run `npx hot-updater secrets put asc-api-key --kind asc-api-key` once on a machine where you can sign in, and give this build a vault token that reads asc-api-key, or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
+      `${UNAVAILABLE} Hot Updater signs in to your Apple Account to issue it only at a terminal, never in CI (CI is set). Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.`,
     );
     expect(process.exitCode).toBe(1);
   });
 
-  it("never signs in without a terminal, naming the item and its kind", () => {
+  it("never signs in without a terminal", async () => {
     setTTY(false);
     vi.stubEnv("CI", "");
 
-    expect(
+    await expect(
       canSignIn({
         account: "Google Account",
         kind: "play-service-account",
-        name: "widget-play",
-        vaultUrl: "https://console.example.com",
-        setupCommand:
-          "npx hot-updater secrets put widget-play --kind play-service-account",
+        describeUnavailable: async () => "widget-play is missing.",
       }),
-    ).toBe(false);
+    ).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-play (play-service-account) is not in the vault at https://console.example.com, or the vault token's scope does not reach it, and Hot Updater signs in to your Google Account only at a terminal, never without a terminal. Run `npx hot-updater secrets put widget-play --kind play-service-account` once on a machine where you can sign in, and give this build a vault token that reads widget-play, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.",
+      "widget-play is missing. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
     );
   });
 });

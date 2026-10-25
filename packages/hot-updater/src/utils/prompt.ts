@@ -1,6 +1,6 @@
 import {
-  CREDENTIAL_ENV_NAMES,
   type CredentialKind,
+  credentialOverrideHint,
   nonInteractiveReason,
   p,
 } from "@hot-updater/cli-tools";
@@ -21,47 +21,32 @@ export const canPrompt = (
   return false;
 };
 
-const describeEnvNames = (kind: CredentialKind) => {
-  const names = CREDENTIAL_ENV_NAMES[kind].map(([name, alternative]) =>
-    alternative ? `${name} (or ${alternative})` : name,
-  );
-  return names.length <= 2
-    ? names.join(" and ")
-    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
-};
-
 /**
  * Whether the command may sign in to `account` to issue the credential the
- * vault lacks as `name`. A sign-in needs someone at a terminal, so it never
- * starts in CI (`CI` is set), even on a terminal a runner allocates, or
- * without a terminal. There it logs what is missing and where, the command
- * that signs in once on a machine where someone can, and the environment
+ * vault lacks. A sign-in needs someone at a terminal, so it never starts in
+ * CI (`CI` is set), even on a terminal a runner allocates, or without a
+ * terminal. There it logs what a build resolving the credential would say
+ * (`describeUnavailable`: missing, so store it once, or out of the token's
+ * scope), that the sign-in runs only at a terminal, and the environment
  * variables that provide the credential without the vault, sets exit code
  * 1, and returns false.
  */
-export const canSignIn = ({
+export const canSignIn = async ({
   account,
   kind,
-  name,
-  vaultUrl,
-  setupCommand,
+  describeUnavailable,
 }: {
   /** What the developer signs in to, such as "Apple Account". */
   account: string;
   /** The credential the sign-in issues. */
   kind: CredentialKind;
-  /** The vault secret the build resolves. */
-  name: string;
-  /** The Console whose vault lacks it. */
-  vaultUrl: string;
-  /** The command that signs in once and stores the credential. */
-  setupCommand: string;
-}): boolean => {
+  /** Why the vault can't give the credential, as its source words it; asked only here. */
+  describeUnavailable: () => Promise<string>;
+}): Promise<boolean> => {
   const reason = nonInteractiveReason();
   if (reason === undefined) return true;
-  const item = name === kind ? kind : `${name} (${kind})`;
   p.log.error(
-    `${item} is not in the vault at ${vaultUrl}, or the vault token's scope does not reach it, and Hot Updater signs in to your ${account} only at a terminal, never ${reason}. Run \`${setupCommand}\` once on a machine where you can sign in, and give this build a vault token that reads ${name}, or set ${describeEnvNames(kind)} to provide it without the vault.`,
+    `${await describeUnavailable()} Hot Updater signs in to your ${account} to issue it only at a terminal, never ${reason}. ${credentialOverrideHint(kind)}`,
   );
   process.exitCode = 1;
   return false;

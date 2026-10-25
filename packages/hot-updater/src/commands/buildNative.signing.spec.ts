@@ -32,6 +32,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     run({ resolve, dispose: vi.fn() }),
   ),
 }));
+// Issuing a missing key is ascApiKey.spec's; here the vault holds it.
+vi.mock("../utils/native/ascApiKey", () => ({
+  ensureAscApiKey: vi.fn(async ({ name }: { name: string }) => {
+    events.push(`ensure asc-api-key ${name}`);
+    return { status: "stored", version: 1 };
+  }),
+}));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
@@ -122,6 +129,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     await buildIosNative({ interactive: false, scheme: "release" });
 
     expect(events).toEqual([
+      "ensure asc-api-key widget-asc",
       "resolve asc-api-key widget-asc",
       "prebuild",
       "build",
