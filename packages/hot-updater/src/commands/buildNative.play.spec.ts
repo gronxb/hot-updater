@@ -36,6 +36,12 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     }
   }),
 }));
+vi.mock("../utils/native/playServiceAccount", () => ({
+  ensurePlayServiceAccount: vi.fn(async ({ name }: { name: string }) => {
+    events.push(`ensure ${name}`);
+    return { status: "stored", version: 1 };
+  }),
+}));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
@@ -89,6 +95,8 @@ import { p } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 import { buildAndroidNative } from "./buildNative";
 
 const AAB = "/out/app/build/outputs/bundle/app-staging-release.aab";
@@ -115,6 +123,7 @@ describe("build:android --upload play-internal", () => {
 
     expect(events).toEqual([
       "check scheme",
+      "ensure play-service-account",
       "resolve play-service-account",
       "prebuild",
       "build",
@@ -131,6 +140,86 @@ describe("build:android --upload play-internal", () => {
       packageName: "com.example.app.staging",
       serviceAccount,
     });
+  });
+
+  it("asks for the key with the scheme's applicationId, which the build reads", async () => {
+    await buildAndroidNative({
+      interactive: false,
+      scheme: "release",
+      upload: "play-internal",
+    });
+
+    expect(ensurePlayServiceAccount).toHaveBeenCalledWith({
+      name: "play-service-account",
+      packageName: "com.example.app",
+      read: true,
+    });
+  });
+
+  it("stops before the prebuild, reported by canPrompt, when there is no key and no terminal", async () => {
+    vi.mocked(ensurePlayServiceAccount).mockRejectedValueOnce(
+      new CredentialSetupRefusedError("no terminal"),
+    );
+    const exit = mockExit();
+
+    await expect(
+      buildAndroidNative({
+        interactive: false,
+        scheme: "release",
+        upload: "play-internal",
+      }),
+    ).rejects.toThrow("exit");
+
+    expect(p.log.error).not.toHaveBeenCalled();
+    expect(events).not.toContain("prebuild");
+    expect(events).not.toContain("resolve play-service-account");
+    exit.mockRestore();
+  });
+
+  it("reports why the key could not be issued before the prebuild", async () => {
+    vi.mocked(ensurePlayServiceAccount).mockRejectedValueOnce(
+      new Error("Google Play has no app com.example.app."),
+    );
+    const exit = mockExit();
+
+    await expect(
+      buildAndroidNative({
+        interactive: false,
+        scheme: "release",
+        upload: "play-internal",
+      }),
+    ).rejects.toThrow("exit");
+
+    expect(p.log.error).toHaveBeenCalledWith(
+      "Google Play has no app com.example.app.",
+    );
+    expect(events).not.toContain("prebuild");
+    exit.mockRestore();
+  });
+
+  it("says a key issued in this run may not have its Play access yet when the upload fails", async () => {
+    vi.mocked(ensurePlayServiceAccount).mockResolvedValueOnce({
+      status: "issued",
+      email: "hot-updater-play@p.iam.gserviceaccount.com",
+      version: 1,
+    });
+    vi.mocked(uploadToPlay).mockRejectedValueOnce(
+      new Error("Opening a Google Play edit failed (HTTP 403)."),
+    );
+    const exit = mockExit();
+
+    await expect(
+      buildAndroidNative({
+        interactive: false,
+        scheme: "release",
+        upload: "play-internal",
+      }),
+    ).rejects.toThrow("exit");
+
+    expect(p.log.error).toHaveBeenCalledWith(
+      `Opening a Google Play edit failed (HTTP 403).\nIf Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in.\nThe build stays at ${AAB}.`,
+    );
+    exit.mockRestore();
   });
 
   it("uploads under the scheme's applicationId without aapt2", async () => {

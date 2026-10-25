@@ -28,10 +28,10 @@ import type {
 
 import {
   AscApiKeyNotStoredError,
-  AscApiKeyRefusedError,
   ascApiKeySetupCommand,
   ensureAscApiKey,
 } from "./ascApiKey";
+import { CredentialSetupRefusedError } from "./issuedCredential";
 
 const CONSOLE_URL = "https://console.example.com";
 const TOKEN = `hu_vault_${"T".repeat(43)}`;
@@ -227,7 +227,7 @@ describe("ensureAscApiKey", () => {
     const requests = fakeConsole();
     await expect(
       withTTY(false, () => ensure({ name: "widget-asc" })),
-    ).rejects.toBeInstanceOf(AscApiKeyRefusedError);
+    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
       "widget-asc is not in the vault yet. Hot Updater issues it when you sign in with your Apple Account, which needs a terminal. Run `npx hot-updater secrets put widget-asc --kind asc-api-key` in a terminal once, and builds use the stored key, also in a non-interactive shell.",
     );
@@ -400,9 +400,48 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toThrow(
-      "The vault does not list asc-api-key as the key just stored.",
+      "The App Store Connect API key KEY1234567 was not stored, so it was revoked again: the vault does not list it as the key just stored.",
     );
     expect(issued.revoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a stored key the token cannot read, and says so", async () => {
+    fakeConsole({ actions: ["write"] });
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
+    ).rejects.toThrow(
+      "asc-api-key is stored (v1), but the vault token cannot read it, which the build signs and uploads with.",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
+    expect(issued.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the key when nothing confirms whether the vault stored it", async () => {
+    fakeConsole();
+    issue.mockImplementationOnce(async (request) => {
+      // The write goes unanswered, and so does the list that would tell.
+      vi.mocked(globalThis.fetch).mockImplementationOnce(async () => {
+        throw new TypeError("fetch failed");
+      });
+      vi.mocked(globalThis.fetch).mockImplementationOnce(async () => {
+        throw new TypeError("fetch failed");
+      });
+      return {
+        p8: P8,
+        keyId: "KEY1234567",
+        issuerId: "issuer-1",
+        name: request.name,
+        team: {},
+        revoke: issued.revoke,
+        dispose: issued.dispose,
+      };
+    });
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
+    ).rejects.toThrow(
+      "Hot Updater could not confirm that the vault stored asc-api-key",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
   });
 
   it("asks which team when the sign-in landed in another", async () => {

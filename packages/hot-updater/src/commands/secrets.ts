@@ -27,10 +27,9 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
-import {
-  AscApiKeyRefusedError,
-  ensureAscApiKey,
-} from "../utils/native/ascApiKey";
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 import { connectVault } from "../vaultEnv";
 import {
   confirmAction,
@@ -300,6 +299,16 @@ const variablesSetElsewhere = (
       : [],
   );
 
+/** Whether `secrets put` was given any part of a value to store. */
+const hasValueFlags = (options: SecretsPutOptions) =>
+  Object.values(KIND_FLAGS)
+    .flat()
+    .some((flag) =>
+      flag === "variables"
+        ? (options.variables?.length ?? 0) > 0
+        : options[flag] !== undefined,
+    );
+
 /**
  * `secrets put`: stores a secret's next version through the Console, which
  * seals it with its master key; the token's scope must allow `write` on it.
@@ -309,24 +318,24 @@ export const handleSecretsPut = async (
   options: SecretsPutOptions,
 ): Promise<void> => {
   printBanner();
-  if (
-    options.kind === "asc-api-key" &&
-    options.p8 === undefined &&
-    options.keyId === undefined &&
-    options.issuerId === undefined
-  ) {
-    // No key to store: sign in with an Apple Account, and Hot Updater
-    // issues one.
+  // No key to store: sign in, and Hot Updater issues one.
+  const issuedBySignIn =
+    options.kind === "asc-api-key"
+      ? { label: "App Store Connect API key", ensure: ensureAscApiKey }
+      : options.kind === "play-service-account"
+        ? { label: "Play service account", ensure: ensurePlayServiceAccount }
+        : undefined;
+  if (issuedBySignIn && !hasValueFlags(options)) {
     await reportFailure(async () => {
       try {
-        const result = await ensureAscApiKey({
+        const result = await issuedBySignIn.ensure({
           name,
           // The vault is what this stores in, whatever the environment sets.
           environment: false,
         });
         if (result.status === "stored") {
           p.log.message(
-            ui.block("App Store Connect API key already stored", [
+            ui.block(`${issuedBySignIn.label} already stored`, [
               ui.kv("Name", name),
               ui.kv("Version", ui.version(`v${result.version}`)),
             ]),
@@ -334,7 +343,7 @@ export const handleSecretsPut = async (
         }
       } catch (error) {
         // canPrompt reported it.
-        if (error instanceof AscApiKeyRefusedError) return;
+        if (error instanceof CredentialSetupRefusedError) return;
         throw error;
       }
     });

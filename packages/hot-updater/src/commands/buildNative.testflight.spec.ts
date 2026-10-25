@@ -33,7 +33,6 @@ vi.mock("@hot-updater/apple-helper", () => ({
 }));
 vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
 vi.mock("../utils/native/ascApiKey", () => ({
-  AscApiKeyRefusedError: class AscApiKeyRefusedError extends Error {},
   ensureAscApiKey: vi.fn(async ({ name }: { name: string }) => {
     events.push(`ensure ${name}`);
     return { status: "stored", version: 1 };
@@ -105,10 +104,8 @@ import { p } from "@hot-updater/cli-tools";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 
-import {
-  AscApiKeyRefusedError,
-  ensureAscApiKey,
-} from "../utils/native/ascApiKey";
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import { buildIosNative } from "./buildNative";
 
 beforeEach(() => {
@@ -225,6 +222,7 @@ describe("build:ios without an App Store Connect API key", () => {
     expect(ensureAscApiKey).toHaveBeenCalledWith({
       name: "asc-api-key",
       bundleIdentifier: "com.example.app",
+      read: true,
     });
     expect(events.indexOf("ensure asc-api-key")).toBeLessThan(
       events.indexOf("prebuild"),
@@ -233,7 +231,7 @@ describe("build:ios without an App Store Connect API key", () => {
 
   it("builds nothing when there is no terminal to sign in in, and logs nothing more", async () => {
     vi.mocked(ensureAscApiKey).mockImplementationOnce(async () => {
-      throw new AscApiKeyRefusedError("no terminal");
+      throw new CredentialSetupRefusedError("no terminal");
     });
     const exit = mockExit();
 
@@ -282,6 +280,7 @@ describe("build:ios without an App Store Connect API key", () => {
     expect(ensureAscApiKey).toHaveBeenCalledWith({
       name: "widget-asc",
       bundleIdentifier: "com.example.widget",
+      read: true,
     });
     // The signing key resolves while it builds, as before.
     expect(events).toEqual([

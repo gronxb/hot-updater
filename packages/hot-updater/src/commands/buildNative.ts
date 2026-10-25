@@ -34,10 +34,9 @@ import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
-import {
-  AscApiKeyRefusedError,
-  ensureAscApiKey,
-} from "../utils/native/ascApiKey";
+import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 
 /**
  * `build:android` and `build:ios`: `register` also registers the build,
@@ -71,6 +70,7 @@ const buildNativeInternal = async ({
     return await withCredentialResolver(async (credentials) => {
       let ascApiKey: Credentials["asc-api-key"] | undefined;
       let serviceAccount: Credentials["play-service-account"] | undefined;
+      let serviceAccountIssued = false;
       const preparedConfig = await prepareNativeBuild({
         ...options,
         platform,
@@ -103,9 +103,10 @@ const buildNativeInternal = async ({
               await ensureAscApiKey({
                 name: ascApiKeyName,
                 bundleIdentifier: iosScheme!.bundleIdentifier,
+                read: true,
               });
             } catch (e) {
-              if (e instanceof AscApiKeyRefusedError) throw e;
+              if (e instanceof CredentialSetupRefusedError) throw e;
               throw new NativeBuildFailure(
                 e instanceof Error ? e.message : String(e),
                 { cause: e },
@@ -122,6 +123,24 @@ const buildNativeInternal = async ({
                 androidScheme: androidScheme!,
               }),
             );
+            // A developer without one signs in with Google here, before
+            // anything is built, and Hot Updater issues it.
+            try {
+              const packageName =
+                androidScheme!.applicationId ?? androidScheme!.packageName;
+              const ensured = await ensurePlayServiceAccount({
+                name: request.name ?? request.kind,
+                ...(packageName ? { packageName } : {}),
+                read: true,
+              });
+              serviceAccountIssued = ensured.status === "issued";
+            } catch (e) {
+              if (e instanceof CredentialSetupRefusedError) throw e;
+              throw new NativeBuildFailure(
+                e instanceof Error ? e.message : String(e),
+                { cause: e },
+              );
+            }
             serviceAccount = await credentials.resolve(request);
           }
         },
@@ -230,7 +249,14 @@ const buildNativeInternal = async ({
                 })) ?? androidSchemeConfig!.applicationId,
               serviceAccount: playServiceAccount,
             }),
-          `The build stays at ${result.artifactPath}.`,
+          [
+            serviceAccountIssued
+              ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
+              : undefined,
+            `The build stays at ${result.artifactPath}.`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
         );
         p.log.success(
           ui.line([
@@ -296,7 +322,7 @@ const reportUploadFailure = async <T>(
 };
 
 const catchError = (e: unknown): never => {
-  if (e instanceof AscApiKeyRefusedError) {
+  if (e instanceof CredentialSetupRefusedError) {
     // canPrompt reported why, with the command to run.
   } else if (e instanceof ExecaError) {
     console.error(e);
