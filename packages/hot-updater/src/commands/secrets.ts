@@ -189,7 +189,7 @@ export const handleSecretsPut = async (
       throw new Error(`--kind is one of ${SECRET_KINDS.join(", ")}.`);
     }
     // Registers the config's secrets adapter, which everything below uses.
-    const { secrets } = await loadConfig(null);
+    const { secrets, cacheDir } = await loadConfig(null);
 
     // No key to store: sign in, and Hot Updater issues one.
     const issuedBySignIn =
@@ -203,6 +203,8 @@ export const handleSecretsPut = async (
         const result = await issuedBySignIn.ensure({
           name,
           secrets,
+          // A read-only adapter's key is written there, with how to store it.
+          cacheDir,
           // The adapter is what this stores in, whatever the environment sets.
           environment: false,
         });
