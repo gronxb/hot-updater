@@ -181,7 +181,9 @@ npx --no-install hot-updater build:ios --scheme release --register --upload test
    in that keychain, so the CLI revokes the certificates it finds there
    through the App Store Connect API, then deletes the keychain with their
    keys. The export signs with the cloud-managed distribution certificate,
-   which never leaves Apple.
+   which never leaves Apple. A scheme whose `exportOptionsPlist` exports for
+   another method, such as `development`, may be signed with the certificate
+   Xcode creates, so it builds in the runner's own keychains and keeps it.
 5. It builds, registers the build, uploads it, and deletes the temporary files
    and the keychain.
 

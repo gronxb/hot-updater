@@ -15,13 +15,22 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     isCI,
     parseVaultReference,
     getCwd: () => root,
-    p: { log: { success: vi.fn(), warn: vi.fn(), error: vi.fn() } },
+    p: {
+      log: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    },
   };
 });
 vi.mock("./utils/readBuiltApp", () => ({
   readBuiltApp: vi.fn(async (appPath: string) => ({
     appVersion: "2.0.0",
     channel: appPath,
+  })),
+}));
+vi.mock("execa", () => ({
+  // plutil reading an exportOptionsPlist's method: the file holds it.
+  execa: vi.fn(async (_file: string, args: string[]) => ({
+    exitCode: 0,
+    stdout: await fs.readFile(args.at(-1)!, "utf-8"),
   })),
 }));
 vi.mock("./utils/ciSigningKeychain", () => ({
@@ -230,6 +239,36 @@ describe("buildIos", () => {
         }),
       );
       expect(archiveXcodeProject).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    ["app-store-connect", true],
+    ["development", false],
+    ["release-testing", false],
+  ])(
+    "in CI, signs a %s export with the API key in a keychain of its own: %s",
+    async (method, enabled) => {
+      vi.stubEnv("CI", "true");
+      const exportOptionsPlist = path.join(root, "ExportOptions.plist");
+      // The mocked plutil prints the file: its method.
+      await fs.writeFile(exportOptionsPlist, method);
+
+      await buildIos({
+        schemeConfig: scheme({
+          exportOptionsPlist,
+          signing: { ascApiKey: "vault:app-store-key" },
+        }),
+        minBundleId: MIN_BUNDLE_ID,
+        credentials: ascKeyResolver(),
+      });
+
+      expect(withSigningKeychain).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled }),
+      );
+      expect(exportXcodeArchive).toHaveBeenCalledWith(
+        expect.objectContaining({ authenticationArgs: AUTHENTICATION_ARGS }),
+      );
     },
   );
 

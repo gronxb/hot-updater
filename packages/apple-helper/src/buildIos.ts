@@ -18,6 +18,7 @@ import { createRandomTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readBuiltApp } from "./utils/readBuiltApp";
 import {
+  exportsForAppStoreConnect,
   resolveXcodeSigning,
   writeAppStoreConnectExportOptions,
 } from "./utils/xcodeSigning";
@@ -89,10 +90,19 @@ export const buildIos = async ({
     if (!signing) {
       return archiveAndExport({ schemeConfig, minBundleId, buildDirectory });
     }
-    // In CI, the archive and the export sign in a keychain of their own,
-    // whose certificates are revoked and deleted with it.
+    // In CI, an App Store Connect export signs in a keychain of its own,
+    // whose certificates are revoked and deleted with it: its .ipa is signed
+    // with the cloud-managed distribution certificate. Another export, such
+    // as a development one, may be signed with the certificate Xcode
+    // creates, so it keeps the runner's keychains and its certificates.
+    const appStoreConnect = await exportsForAppStoreConnect(schemeConfig);
+    if (isCI() && !appStoreConnect) {
+      p.log.info(
+        "This export isn't for App Store Connect, so it signs in the runner's own keychains and keeps the certificates Xcode creates.",
+      );
+    }
     return withSigningKeychain({
-      enabled: isCI(),
+      enabled: isCI() && appStoreConnect,
       apiKey: signing.apiKey,
       run: () =>
         archiveAndExport({

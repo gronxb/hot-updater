@@ -7,6 +7,7 @@ import {
   createCredentialResolver,
   parseVaultReference,
 } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 
 import type { EnrichedNativeBuildIosScheme } from "./enrichNativeBuildIosScheme";
 
@@ -85,3 +86,34 @@ export const writeAppStoreConnectExportOptions = async (directory: string) => {
   );
   return exportOptionsPlist;
 };
+
+/** The export methods whose `.ipa` App Store Connect takes. */
+export const APP_STORE_EXPORT_METHODS = new Set([
+  "app-store",
+  "app-store-connect",
+]);
+
+/** The `method` of export options, or "" when it has none or can't be read. */
+export const readExportMethod = async (exportOptionsPlist: string) => {
+  const { stdout, exitCode } = await execa(
+    "plutil",
+    ["-extract", "method", "raw", "-o", "-", exportOptionsPlist],
+    { reject: false },
+  );
+  return exitCode === 0 ? stdout.trim() : "";
+};
+
+/**
+ * Whether a device build exports for App Store Connect: with its
+ * `exportOptionsPlist`'s method, or, without one, as a scheme signing with
+ * an App Store Connect API key does. Such an `.ipa` is signed with Apple's
+ * cloud-managed distribution certificate, never with a development
+ * certificate the archive was signed with.
+ */
+export const exportsForAppStoreConnect = async (
+  schemeConfig: EnrichedNativeBuildIosScheme,
+): Promise<boolean> =>
+  !schemeConfig.exportOptionsPlist ||
+  APP_STORE_EXPORT_METHODS.has(
+    await readExportMethod(schemeConfig.exportOptionsPlist),
+  );
