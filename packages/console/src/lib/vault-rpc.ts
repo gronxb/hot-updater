@@ -120,6 +120,10 @@ export const getVaultKeysRpc = createServerFn({ method: "GET" })
  */
 export const rewrapVaultRpc = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
+  .validator((input: unknown): undefined => {
+    if (input !== undefined) throw new TypeError("Rewrap takes no input.");
+    return undefined;
+  })
   .handler(async (): Promise<VaultRewrapResult> => (await vaultApi()).rewrap());
 
 export const listVaultSecretsRpc = createServerFn({ method: "GET" })

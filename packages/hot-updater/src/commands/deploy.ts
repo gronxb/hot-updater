@@ -77,7 +77,7 @@ import {
   formatAppVersionCandidates,
   isAmbiguousAppVersion,
 } from "../utils/version/appVersionCandidates";
-import { getConsolePort, openConsole } from "./console";
+import { getConsolePort, openConsole, withConsoleSession } from "./console";
 import {
   commitDeployment,
   type DeploymentWrite,
@@ -1247,8 +1247,8 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
             initialValue: false,
           });
           if (!p.isCancel(result) && result) {
-            await openConsole(port, () => {
-              void open(url);
+            await openConsole(port, ({ session }) => {
+              void open(withConsoleSession(url, session));
             });
           }
         } else {
