@@ -86,17 +86,33 @@ const openPut = (call: Call) => {
 };
 
 const gitRemote = (url: string | undefined) =>
-  execaMock.mockImplementation(async (file: string, args: string[]) => {
-    if (file === "git" && args.join(" ") === "remote get-url origin") {
-      return url === undefined
-        ? { exitCode: 2, stdout: "", stderr: "error: No such remote 'origin'" }
-        : { exitCode: 0, stdout: `${url}\n`, stderr: "" };
-    }
-    if (file === "gh" && args.join(" ") === "auth token") {
-      return { exitCode: 0, stdout: `${USER_TOKEN}\n`, stderr: "" };
-    }
-    throw new Error(`unexpected command ${file} ${args.join(" ")}`);
-  });
+  execaMock.mockImplementation(
+    async (
+      file: string,
+      args: string[],
+      options: { env?: NodeJS.ProcessEnv; extendEnv?: boolean } = {},
+    ) => {
+      if (file === "git" && args.join(" ") === "remote get-url origin") {
+        return url === undefined
+          ? {
+              exitCode: 2,
+              stdout: "",
+              stderr: "error: No such remote 'origin'",
+            }
+          : { exitCode: 0, stdout: `${url}\n`, stderr: "" };
+      }
+      if (file === "gh" && args.join(" ") === "auth token") {
+        // As gh does: GH_TOKEN, then GITHUB_TOKEN, win over the stored login.
+        const env =
+          options.extendEnv === false
+            ? (options.env ?? {})
+            : { ...process.env, ...options.env };
+        const token = env["GH_TOKEN"] || env["GITHUB_TOKEN"] || USER_TOKEN;
+        return { exitCode: 0, stdout: `${token}\n`, stderr: "" };
+      }
+      throw new Error(`unexpected command ${file} ${args.join(" ")}`);
+    },
+  );
 
 const ghCalls = () =>
   execaMock.mock.calls.filter(([file]) => file === "gh").length;

@@ -108,7 +108,14 @@ const readToken = async (
         : `githubActions() has no token to write secrets with in CI. ${WORKFLOW_TOKEN_REFUSAL}`,
     );
   }
-  const result = await execa("gh", ["auth", "token"], { reject: false });
+  // gh prefers these variables to its stored login: without them, it
+  // returns the login instead of the workflow token skipped above.
+  const { GH_TOKEN: _, GITHUB_TOKEN: __, ...ghEnv } = process.env;
+  const result = await execa("gh", ["auth", "token"], {
+    env: ghEnv,
+    extendEnv: false,
+    reject: false,
+  });
   const token = result.exitCode === 0 ? result.stdout.trim() : "";
   if (token && !isInstallationToken(token)) return token;
   throw new Error(
