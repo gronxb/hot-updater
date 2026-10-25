@@ -19,7 +19,6 @@ work:
 - The server's database has run the migrations its core and plugins need
 - The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
-- The vault's master key is not kept with your database credentials
 
 With `--fix`, doctor also [repairs](#repair-issues) what it can repair itself.
 
@@ -187,25 +186,6 @@ Import it from the module the warning names and pass it to
 `doctor` cannot load the config's `database` and `plugins`, it warns
 `CLIENT_PLUGINS_UNCHECKED` with the reason, with `fixability` `blocked`: make
 them load, then rerun `doctor`.
-
-## Check the vault's master key
-
-The [vault](/docs/guides/console-deployment/vault) opens every secret with its
-master key, so the key belongs only in the console's runtime environment, apart
-from the database. `doctor` reads the names in each `.env*` file of the
-project, except `.env.example`, `.env.sample`, and `.env.template`, and warns
-`VAULT_MASTER_KEY_WITH_DATABASE_CREDENTIALS` when one sets
-`HOT_UPDATER_VAULT_MASTER_KEY` or `HOT_UPDATER_VAULT_MASTER_KEYS` beside a
-database credential, such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`,
-`HOT_UPDATER_CLOUDFLARE_API_TOKEN`, or `DATABASE_URL`:
-
-```text
-.env.hotupdater holds the vault's master key (HOT_UPDATER_VAULT_MASTER_KEY) beside database credentials (HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY): whoever reads it opens every secret in the vault.
-```
-
-When no file does, it checks the environment doctor runs in the same way. The
-warning does not fail the run, and its `fixability` is `blocked`: `--fix`
-never moves secrets. Move the master key to the console's deployment.
 
 ## Repair issues
 

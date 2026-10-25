@@ -106,7 +106,6 @@ describe("createConsoleRuntime over the database", () => {
       insights: true,
       insightsAnalytics: true,
       apiKeys: true,
-      vault: false,
       remoteConfig: true,
     });
     const model = await requireFeature(runtime, "insightsAnalytics");
@@ -199,7 +198,6 @@ describe("createConsoleRuntime over the database", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: true,
-      vault: false,
       remoteConfig: false,
     });
     await expect(requireFeature(runtime, "insights")).rejects.toEqual(
@@ -218,7 +216,6 @@ describe("createConsoleRuntime over the database", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
-      vault: false,
       remoteConfig: false,
     });
     await expect(requireFeature(runtime, "apiKeys")).rejects.toEqual(
@@ -242,7 +239,6 @@ describe("createConsoleRuntime for a self-hosted server", () => {
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
-      vault: false,
       remoteConfig: true,
     });
     expect(fetchAdmin).not.toHaveBeenCalled();
@@ -273,7 +269,6 @@ describe("createConsoleRuntime for a self-hosted server", () => {
         insights: false,
         insightsAnalytics: false,
         apiKeys: false,
-        vault: false,
         remoteConfig: false,
       });
       await expect(requireFeature(runtime, "insights")).rejects.toEqual(

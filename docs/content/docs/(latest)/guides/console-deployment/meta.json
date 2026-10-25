@@ -2,5 +2,5 @@
   "title": "Console deployment",
   "description": "Host the console with Nitro",
   "icon": "Cloud",
-  "pages": ["index", "cloudflare", "vercel", "netlify", "docker", "vault"]
+  "pages": ["index", "cloudflare", "vercel", "netlify", "docker"]
 }
