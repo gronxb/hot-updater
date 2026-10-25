@@ -407,6 +407,25 @@ describe("googleSecretManager set", () => {
     expect(fake.enabled(key)).toEqual([3]);
   });
 
+  it("keeps a version listed when its destroy request fails to connect", async () => {
+    const secrets = googleSecretManager({ project: "demo-project" });
+    await secrets.set?.("asc-api-key", "one", context);
+    const fetchFake = fake.fetchMock.getMockImplementation()!;
+    fake.fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).endsWith("/versions/1:destroy")) {
+        throw new TypeError("fetch failed: ECONNRESET");
+      }
+      return fetchFake(input, init);
+    });
+
+    await secrets.set?.("asc-api-key", "two", context);
+
+    expect(fake.enabled(key)).toEqual([1, 2]);
+    expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
+      "2,1",
+    );
+  });
+
   it("treats a version destroyed by someone else as destroyed", async () => {
     const secrets = googleSecretManager({ project: "demo-project" });
     await secrets.set?.("asc-api-key", "one", context);
@@ -446,6 +465,22 @@ describe("googleSecretManager set", () => {
     expect(fake.enabled(key)).toEqual([]);
     expect(fake.requests.some(({ url }) => url.endsWith(":addVersion"))).toBe(
       false,
+    );
+  });
+
+  it("names the stored version when listing it fails to connect", async () => {
+    const secrets = googleSecretManager({ project: "demo-project" });
+    await secrets.set?.("asc-api-key", "one", context);
+    const fetchFake = fake.fetchMock.getMockImplementation()!;
+    fake.fetchMock.mockImplementation(async (input, init) => {
+      if (init?.method === "PATCH") {
+        throw new TypeError("fetch failed: ECONNRESET");
+      }
+      return fetchFake(input, init);
+    });
+
+    await expect(secrets.set?.("asc-api-key", "two", context)).rejects.toThrow(
+      "googleSecretManager could not list version 2, which it stored, in projects/demo-project/secrets/asc-api-key's hot-updater-versions annotation, so the next set will not destroy it (fetch failed: ECONNRESET).",
     );
   });
 

@@ -339,15 +339,21 @@ export const googleSecretManager = ({
 
   /**
    * Destroys `version` of `secret`: true once it is destroyed, or already
-   * was, false when it could not be, so it stays listed for the next `set`.
+   * was, false when it could not be, even for a network failure, so it
+   * stays listed for the next `set`.
    */
   const destroy = async (token: string, secret: string, version: string) => {
-    const response = await request(
-      token,
-      "POST",
-      `${secret}/versions/${version}:destroy`,
-      {},
-    );
+    let response: GoogleResponse;
+    try {
+      response = await request(
+        token,
+        "POST",
+        `${secret}/versions/${version}:destroy`,
+        {},
+      );
+    } catch {
+      return false;
+    }
     return (
       response.ok ||
       response.status === 404 ||
@@ -429,34 +435,42 @@ export const googleSecretManager = ({
         });
       }
 
+      const notListed = `list version ${version}, which it stored, in ${secret}'s ${GOOGLE_SECRET_VERSIONS_ANNOTATION} annotation, so the next set will not destroy it`;
       let base = current;
       let updated: GoogleResponse | undefined;
-      for (let attempt = 0; attempt < ANNOTATION_ATTEMPTS; attempt += 1) {
-        if (attempt > 0) {
-          await delay(LATEST_RETRY_DELAYS_MS[attempt - 1] ?? 0);
-          base = (await readSecret(token, secret)) ?? {};
-        }
-        const listed = [...new Set([version, ...trackedVersions(base)])].filter(
-          (entry) => !destroyed.has(entry),
-        );
-        updated = await request(
-          token,
-          "PATCH",
-          `${secret}?updateMask=annotations`,
-          {
-            ...(base.etag === undefined ? {} : { etag: base.etag }),
-            annotations: {
-              ...base.annotations,
-              [GOOGLE_SECRET_VERSIONS_ANNOTATION]: listed.join(","),
+      try {
+        for (let attempt = 0; attempt < ANNOTATION_ATTEMPTS; attempt += 1) {
+          if (attempt > 0) {
+            await delay(LATEST_RETRY_DELAYS_MS[attempt - 1] ?? 0);
+            base = (await readSecret(token, secret)) ?? {};
+          }
+          const listed = [
+            ...new Set([version, ...trackedVersions(base)]),
+          ].filter((entry) => !destroyed.has(entry));
+          updated = await request(
+            token,
+            "PATCH",
+            `${secret}?updateMask=annotations`,
+            {
+              ...(base.etag === undefined ? {} : { etag: base.etag }),
+              annotations: {
+                ...base.annotations,
+                [GOOGLE_SECRET_VERSIONS_ANNOTATION]: listed.join(","),
+              },
             },
-          },
+          );
+          // A stale etag: another writer changed the secret since it was read.
+          if (updated.error.status !== "FAILED_PRECONDITION") break;
+        }
+      } catch (error) {
+        throw new Error(
+          `${ADAPTER_NAME} could not ${notListed} (${error instanceof Error ? error.message : String(error)}).`,
+          { cause: error },
         );
-        // A stale etag: another writer changed the secret since it was read.
-        if (updated.error.status !== "FAILED_PRECONDITION") break;
       }
       if (!updated?.ok) {
         throw requestError(
-          `list version ${version}, which it stored, in ${secret}'s ${GOOGLE_SECRET_VERSIONS_ANNOTATION} annotation, so the next set will not destroy it`,
+          notListed,
           updated as GoogleResponse,
           "secretmanager.secrets.update on the secret",
         );
