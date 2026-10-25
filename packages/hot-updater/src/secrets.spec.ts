@@ -12,6 +12,7 @@ describe("secrets exports", () => {
       "awsSecretsManager",
       "env",
       "githubActions",
+      "infisical",
     ]);
   });
 

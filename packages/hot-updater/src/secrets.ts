@@ -6,3 +6,8 @@ export {
   type AwsSecretsManagerOptions,
 } from "./awsSecretsManager";
 export { githubActions, type GitHubActionsOptions } from "./githubActions";
+export {
+  infisical,
+  type InfisicalAuth,
+  type InfisicalSecretsOptions,
+} from "./infisicalSecrets";
