@@ -69,9 +69,12 @@ config's `secrets` adapter stores values, the command stores the private key
 there and writes only `keys/public-key.pem`. When the adapter is read-only,
 such as `env()`, it writes `keys/private-key.pem` with owner-only permissions
 and prints the variable to store it as, such as a CI secret; delete the file
-once it is stored. The command never replaces a secret that already holds a
-value, since installed apps reject bundles signed with a new key: follow
-[Key Rotation](/docs/guides/bundle-signing#key-rotation) instead.
+once it is stored. The command never replaces a secret it reads a value
+from, since installed apps reject bundles signed with a new key: follow
+[Key Rotation](/docs/guides/bundle-signing#key-rotation) instead. A
+write-only store, such as
+[GitHub Actions secrets](/docs/guides/secrets-adapters/github-actions) outside
+a workflow, returns no value, so check that the name is unused there first.
 
 Without `--secret`, the command writes both files for `privateKeyPath`:
 
