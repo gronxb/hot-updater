@@ -55,6 +55,7 @@ import {
   envSecrets,
   maskSecretValues,
   setConfiguredSecrets,
+  withCredentialResolver,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -319,6 +320,26 @@ describe("ensureAscApiKey", () => {
       "other-key": "other-value",
     });
     expect(secrets.describe?.("asc-api-key")).toBe(file);
+
+    // The line the guidance tells the developer to write resolves the key.
+    const project = path.join(cacheDir, "project");
+    await fs.mkdir(project);
+    await fs.writeFile(
+      path.join(project, ".env.hotupdater"),
+      `HOT_UPDATER_ASC_API_KEY='${await fs.readFile(file, "utf-8")}'\n`,
+    );
+    const resolved = await withCredentialResolver(
+      async (credentials) => {
+        const key = await credentials.resolve({ kind: "asc-api-key" });
+        return { ...key, p8: await fs.readFile(key.keyPath, "utf-8") };
+      },
+      { secrets: envSecrets(), cwd: project },
+    );
+    expect(resolved).toMatchObject({
+      keyId: "KEY1234567",
+      issuerId: "issuer-1",
+      p8: P8,
+    });
   });
 
   it("names where a read-only adapter other than env() reads the key", async () => {
