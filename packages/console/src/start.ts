@@ -17,7 +17,7 @@ const sameOriginServerFunctions = createCsrfMiddleware({
 /**
  * The local console's lock, before any page, server function, or route:
  * this machine's `Host` only, changes from its own pages only, and the
- * run's session for everything but the `/_hot-updater/` routes. A hosted
+ * run's session for every page, server function, and route. A hosted
  * console has none: its sign-in guards it.
  */
 const localConsoleGuard = createMiddleware().server(

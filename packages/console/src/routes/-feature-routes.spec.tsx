@@ -19,7 +19,6 @@ import { Route as ApiKeysRoute } from "./api-keys";
 import { Route as InsightsRoute } from "./insights";
 import { Route as DistributionRoute } from "./insights_.distribution";
 import { Route as InstallationsRoute } from "./installations";
-import { Route as VaultRoute } from "./vault";
 
 vi.mock("@/components/ui/sidebar", () => ({ SidebarTrigger: () => null }));
 
@@ -35,7 +34,6 @@ const servedBy = (features: Partial<ConsoleFeatures>) => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
-      vault: false,
       ...features,
     },
     remote: false,
@@ -55,7 +53,6 @@ describe.each([
   ],
   ["/installations", InstallationsRoute.options, "insights", "Insights"],
   ["/api-keys", ApiKeysRoute.options, "apiKeys", "API keys"],
-  ["/vault", VaultRoute.options, "vault", "Vault"],
 ] as const)("%s", (path, options, feature, label) => {
   const guard = options.beforeLoad as unknown as FeatureGuard;
 
@@ -71,7 +68,6 @@ describe.each([
         queryClient: servedBy({
           insights: feature !== "insights",
           apiKeys: feature !== "apiKeys",
-          vault: feature !== "vault",
         }),
       },
     }).then(

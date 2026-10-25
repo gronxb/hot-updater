@@ -54,7 +54,6 @@
     "@hot-updater/plugin-api-keys": "workspace:*",
     "@hot-updater/plugin-insights": "workspace:*",
     "@hot-updater/plugin-remote-config": "workspace:*",
-    "@hot-updater/plugin-vault": "workspace:*",
     "rou3": "0.7.9",
     "verkit": "catalog:"
   },

@@ -22,7 +22,6 @@ describe("@hot-updater/server/plugins", () => {
           entry.apiKeys({ headerName: "x-client-key" }),
           entry.insights({ retention: { rawDays: 7, dailyDays: 30 } }),
           entry.remoteConfig(),
-          entry.vault(),
         ],
       });
 
@@ -30,7 +29,6 @@ describe("@hot-updater/server/plugins", () => {
         "apiKeys",
         "insights",
         "remoteConfig",
-        "vault",
       ]);
       expect(server.clientAuth?.varyHeaders).toEqual(["x-client-key"]);
       expect(server.api.insights.retention).toEqual({
@@ -43,7 +41,6 @@ describe("@hot-updater/server/plugins", () => {
       expect(entry.createInsightsModel).toBeTypeOf("function");
       expect(entry.createApiKeyModel).toBeTypeOf("function");
       expect(entry.validateRemoteConfigTemplate).toBeTypeOf("function");
-      expect(entry.VaultLockedError).toBeTypeOf("function");
       expect(entry).not.toHaveProperty("definePlugin");
     },
   );
