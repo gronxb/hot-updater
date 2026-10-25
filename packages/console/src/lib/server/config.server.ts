@@ -25,9 +25,8 @@ const loadCachedConfig = async (request: Request) => {
 
 /**
  * The console's config, core, and features, without the access check: for
- * routes that authenticate their own callers, such as the vault's, which
- * take a vault token instead of a session. Everything else goes through
- * {@link prepareConfig}.
+ * routes that take no session, such as a channel link's QR code. Everything
+ * else goes through {@link prepareConfig}.
  */
 export const loadConsole = async (request: Request = getRequest()) => {
   const config = await loadCachedConfig(request);

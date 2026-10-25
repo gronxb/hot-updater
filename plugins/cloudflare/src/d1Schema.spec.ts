@@ -10,12 +10,7 @@ import {
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  apiKeys,
-  insights,
-  remoteConfig,
-  vault,
-} from "@hot-updater/server/plugins";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   createBundleFixture,
   createReleaseCatalogTestStorage,
@@ -32,15 +27,10 @@ import {
 
 /**
  * The managed database's schema: core's tables, and those of the plugins the
- * managed Worker runs. An official plugin that only the CLI and console run,
- * such as the vault, joins this list, not the Worker's.
+ * managed Worker runs. An official plugin that only the CLI and console run
+ * joins this list, not the Worker's.
  */
-const managed = toolingTargetOf([
-  insights(),
-  apiKeys(),
-  remoteConfig(),
-  vault(),
-]);
+const managed = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
 
 const SCHEMA_FILE = path.resolve("plugins/cloudflare/sql/bundles.sql");
 const MIGRATIONS = path.resolve("plugins/cloudflare/worker/migrations");
@@ -200,48 +190,6 @@ describe("d1 schema", () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM _hu_write").all()).toEqual([
       { n: 0 },
     ]);
-    db.close();
-  });
-
-  it("lets the vault, which the Worker does not run, store and reveal secrets once a 1.1 database ran the next migration", async () => {
-    const db = new DatabaseSync(":memory:");
-    const hotUpdater = createHotUpdater({
-      database: sqliteD1(db),
-      storage: createReleaseCatalogTestStorage(),
-      plugins: [
-        insights(),
-        apiKeys(),
-        remoteConfig(),
-        vault({
-          masterKey: btoa(String.fromCharCode(...new Uint8Array(32).fill(7))),
-        }),
-      ],
-    });
-    for (const name of Object.keys(SHIPPED)) {
-      for (const statement of d1MigrationStatements(
-        await readMigration(name),
-      )) {
-        db.exec(statement);
-      }
-    }
-    await expect(hotUpdater.api.vault.list()).rejects.toBeInstanceOf(
-      HotUpdaterSchemaMigrationRequiredError,
-    );
-    for (const statement of d1MigrationStatements(
-      await readMigration(LATEST),
-    )) {
-      db.exec(statement);
-    }
-
-    const secret = await hotUpdater.api.vault.put({
-      name: "keystore",
-      kind: "android-keystore",
-      value: { storePassword: "secret" },
-    });
-    await expect(
-      hotUpdater.api.vault.reveal({ id: secret.id, actor: "test" }),
-    ).resolves.toEqual({ storePassword: "secret" });
-    await expect(hotUpdater.api.vault.list()).resolves.toEqual([secret]);
     db.close();
   });
 });
