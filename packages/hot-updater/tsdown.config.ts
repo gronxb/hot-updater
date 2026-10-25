@@ -11,6 +11,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "@aws-sdk/client-kms",
+      "@aws-sdk/credential-providers",
       "@google-cloud/kms",
       "google-auth-library",
     ],
