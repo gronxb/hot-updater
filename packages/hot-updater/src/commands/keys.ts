@@ -4,11 +4,16 @@ import path from "node:path";
 
 import {
   type ConfigResponse,
+  DEFAULT_SIGNING_KEY_SECRET,
+  describeSecret,
   getBundleSigningPublicKey,
   getCwd,
+  isSecretName,
   loadConfig,
   p,
+  registerSecretValue,
 } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
@@ -19,7 +24,9 @@ import { canPrompt } from "../utils/prompt";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
+  type KeyPair,
   saveKeyPair,
+  savePublicKey,
 } from "../utils/signing";
 
 export const ANDROID_KEY = "com.hotupdater.PUBLIC_KEY";
@@ -74,11 +81,66 @@ const getTrustAnchorChange = (
 export interface KeysGenerateOptions {
   output?: string;
   keySize?: 2048 | 4096;
+  /**
+   * Stores the private key through the config's `secrets` adapter as this
+   * name, `bundle-signing-key` for `true`, for `privateKey: "secret:<name>"`.
+   */
+  secret?: string | true;
 }
+
+const localSigningSnippet = (secretName?: string) =>
+  secretName === undefined
+    ? 'signing: {\n  enabled: true,\n  privateKeyPath: "./keys/private-key.pem",\n}'
+    : `signing: {\n  enabled: true,\n  privateKey: "secret:${secretName}",\n}`;
+
+/** Adds the private key's path to `.gitignore`, for the output block. */
+const ignorePrivateKey = (cwd: string, outputDir: string) => {
+  const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
+  const gitignoreUpdated = privateKeyGitignorePath
+    ? appendToProjectRootGitignore({
+        cwd,
+        globLines: [privateKeyGitignorePath],
+      })
+    : false;
+  return privateKeyGitignorePath === null
+    ? "outside project"
+    : gitignoreUpdated
+      ? privateKeyGitignorePath
+      : "unchanged";
+};
+
+type WritableSecrets = SecretsAdapter & Required<Pick<SecretsAdapter, "set">>;
+
+const isWritable = (secrets: SecretsAdapter): secrets is WritableSecrets =>
+  typeof secrets.set === "function";
+
+/**
+ * Stores the private key as `name` and reads it back. The public key file
+ * is created first, so an existing one fails before anything is stored, and
+ * removed if storing fails.
+ */
+const storePrivateKey = async (
+  secrets: WritableSecrets,
+  name: string,
+  keyPair: KeyPair,
+  outputDir: string,
+  cwd: string,
+) => {
+  await savePublicKey(keyPair.publicKey, outputDir, async () => {
+    await secrets.set(name, keyPair.privateKey, { cwd });
+    // A write-only store, such as GitHub Actions secrets, reads nothing back.
+    const stored = (await secrets.get([name], { cwd }))[name];
+    if (stored !== undefined && stored.trim() !== keyPair.privateKey.trim()) {
+      throw new Error(
+        `The ${secrets.name} secrets adapter stored ${name}, but reading it back returned another value (${describeSecret(secrets, name)}).`,
+      );
+    }
+  });
+};
 
 /**
  * Generate RSA key pair for code signing.
- * Usage: npx hot-updater keys:generate [--output ./keys] [--key-size 4096]
+ * Usage: npx hot-updater keys generate [--output ./keys] [--key-size 4096] [--secret [name]]
  */
 export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
   const cwd = getCwd();
@@ -89,53 +151,81 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     : path.join(cwd, "keys");
 
   const keySize = options.keySize ?? 4096;
+  const secretName =
+    options.secret === undefined
+      ? undefined
+      : options.secret === true
+        ? DEFAULT_SIGNING_KEY_SECRET
+        : options.secret;
 
   const spinner = p.spinner();
-  spinner.start(`Generating ${keySize}-bit RSA keys`);
+  let started = false;
 
   try {
+    let secrets: SecretsAdapter | undefined;
+    if (secretName !== undefined) {
+      if (!isSecretName(secretName)) {
+        throw new Error(
+          `"${secretName}" is no secret name: letters, digits, ".", "_", and "-", starting with a letter or a digit, up to 64 characters.`,
+        );
+      }
+      ({ secrets } = await loadConfig(null));
+      const held = (await secrets.get([secretName], { cwd }))[secretName];
+      if (typeof held === "string" && held.trim()) {
+        throw new Error(
+          `${secretName} already holds a value in the ${secrets.name} secrets adapter (${describeSecret(secrets, secretName)}), and keys generate never replaces it: installed apps reject bundles signed with a new key. Name another secret with --secret <name>, or follow the key rotation steps in the bundle signing guide.`,
+        );
+      }
+    }
+
+    spinner.start(`Generating ${keySize}-bit RSA keys`);
+    started = true;
     const keyPair = await generateKeyPair(keySize);
-    await saveKeyPair(keyPair, outputDir);
+    // Masked before anything stores or writes it, so no failure prints it.
+    registerSecretValue(keyPair.privateKey);
 
-    spinner.stop("Keys generated");
+    const publicKeyPath = path.join(outputDir, "public-key.pem");
+    if (
+      secrets !== undefined &&
+      secretName !== undefined &&
+      isWritable(secrets)
+    ) {
+      await storePrivateKey(secrets, secretName, keyPair, outputDir, cwd);
+      spinner.stop("Keys generated");
+      p.log.message(
+        ui.block("Keys", [
+          ui.kv("Private", describeSecret(secrets, secretName)),
+          ui.kv("Public", ui.path(publicKeyPath)),
+        ]),
+      );
+    } else {
+      await saveKeyPair(keyPair, outputDir);
+      spinner.stop("Keys generated");
+      const privateKeyPath = path.join(outputDir, "private-key.pem");
+      p.log.message(
+        ui.block("Keys", [
+          ui.kv("Private", ui.path(privateKeyPath)),
+          ui.kv("Public", ui.path(publicKeyPath)),
+          ui.kv("Gitignore", ignorePrivateKey(cwd, outputDir)),
+        ]),
+      );
+      if (secrets !== undefined && secretName !== undefined) {
+        // A read-only adapter, such as env(): the developer stores the key.
+        p.log.warn(
+          `The ${secrets.name} secrets adapter is read-only, so the private key is in ${privateKeyPath}, readable only by you. Store its contents as ${describeSecret(secrets, secretName)}, such as a CI secret, then delete the file.`,
+        );
+      }
+    }
 
-    // The public key is safe to commit and is required by native builds.
-    const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
-    const gitignoreUpdated = privateKeyGitignorePath
-      ? appendToProjectRootGitignore({
-          cwd,
-          globLines: [privateKeyGitignorePath],
-        })
-      : false;
-
-    p.log.message(
-      ui.block("Keys", [
-        ui.kv("Private", ui.path(path.join(outputDir, "private-key.pem"))),
-        ui.kv("Public", ui.path(path.join(outputDir, "public-key.pem"))),
-        ui.kv(
-          "Gitignore",
-          privateKeyGitignorePath === null
-            ? "outside project"
-            : gitignoreUpdated
-              ? privateKeyGitignorePath
-              : "unchanged",
-        ),
-      ]),
-    );
     p.log.message(
       ui.block("Config", [
-        ui.kv(
-          "Code",
-          ui.code(
-            'signing: {\n  enabled: true,\n  privateKeyPath: "./keys/private-key.pem",\n}',
-          ),
-        ),
+        ui.kv("Code", ui.code(localSigningSnippet(secretName))),
         ui.kv("Run", ui.command("hot-updater keys export-public")),
       ]),
     );
     p.log.warn("Keep private key secure.");
   } catch (error) {
-    spinner.error("Failed to generate keys");
+    if (started) spinner.error("Failed to generate keys");
     p.log.error((error as Error).message);
     process.exit(1);
   }

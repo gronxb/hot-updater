@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { BundleSigningAdapter } from "@hot-updater/plugin-core";
+import type {
+  BundleSigningAdapter,
+  SecretsAdapter,
+  SigningConfig,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,6 +15,7 @@ import {
   prepareBundleSigning,
   readBundleSigningPublicKeyFile,
 } from "./bundleSigning";
+import { envSecrets, setConfiguredSecrets } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -272,6 +277,58 @@ describe("getBundleSigningPublicKey", () => {
     await expect(
       getBundleSigningPublicKey({ enabled: false }, { cwd }),
     ).resolves.toBeNull();
+  });
+});
+
+describe("local signing with privateKey from the config's secrets", () => {
+  afterEach(() => setConfiguredSecrets(envSecrets()));
+
+  const configure = (values: Record<string, string>) => {
+    const get = vi.fn<SecretsAdapter["get"]>(async (names) =>
+      Object.fromEntries(names.map((name) => [name, values[name]])),
+    );
+    setConfiguredSecrets({ name: "fake", get });
+    return get;
+  };
+
+  it("reads the key once for the public key and every signature of a run", async () => {
+    const { privateKey, publicKey } = createKeyPair();
+    const get = configure({ "bundle-signing-key": privateKey });
+    const signing: SigningConfig = {
+      enabled: true,
+      privateKey: "secret:bundle-signing-key",
+    };
+
+    await expect(
+      getBundleSigningPublicKey(signing, { cwd: "/project" }),
+    ).resolves.toBe(publicKey);
+    const session = await prepareBundleSigning(signing, { cwd: "/project" });
+    const fileHash = "a".repeat(64);
+    const signature = await session!.signFileHash(fileHash);
+
+    expect(session?.publicKey).toBe(publicKey);
+    expect(
+      crypto.verify(
+        "RSA-SHA256",
+        Buffer.from(fileHash, "hex"),
+        publicKey,
+        Buffer.from(signature, "base64"),
+      ),
+    ).toBe(true);
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a deploy whose secret is missing, naming it", async () => {
+    configure({});
+
+    await expect(
+      prepareBundleSigning(
+        { enabled: true, privateKey: "secret:bundle-signing-key" },
+        { cwd: "/project" },
+      ),
+    ).rejects.toThrow(
+      "Failed to resolve the bundle signing provider public key. signing.privateKey reads the bundle signing key bundle-signing-key, which is not in the fake secrets adapter (bundle-signing-key in fake).",
+    );
   });
 });
 
