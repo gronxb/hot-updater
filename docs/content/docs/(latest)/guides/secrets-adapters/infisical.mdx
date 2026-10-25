@@ -1,8 +1,10 @@
 ---
 title: "Infisical"
 description: "Read and store the CLI's secrets in Infisical Cloud or your own Infisical instance."
-icon: Vault
+icon: LockKeyhole
 ---
+
+## Read secrets from Infisical
 
 `infisical()` from `hot-updater/secrets` reads the secrets the config names
 from an [Infisical](https://infisical.com) project, and stores the
@@ -37,7 +39,7 @@ export default defineConfig({
 
 Each name is one secret in the project, environment, and folder, such as
 `asc-api-key` or `CLOUDFLARE_API_TOKEN`. A credential with several fields is
-one JSON value, as the [secrets guide](/docs/guides/secrets#sign-native-builds-with-secrets)
+one JSON value, as [Secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
 lists for each kind.
 
 - `get` lists the folder's names, without their values, and then reads each
@@ -111,37 +113,25 @@ Infisical credential is stored in GitHub.
 3. Save the identity's ID as the repository variable
    `INFISICAL_MACHINE_IDENTITY_ID`, and give the job `id-token: write`:
 
-```yaml title=".github/workflows/native-release.yml"
-name: Native release
-
-on:
-  push:
-    tags: ["v*"]
-
+```yaml title=".github/workflows/native-release.yml (partial)"
 permissions:
   contents: read
   id-token: write
 
-jobs:
-  android:
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-      - run: npm ci
-      - run: npx --no-install hot-updater build:android --scheme release --upload play-internal
+# ...in the job:
+env:
+  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
+steps:
+  # ...checkout, Node, Java, and npm ci
+  - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+    with:
+      platform: android
+      scheme: release
+      upload: play-internal
 ```
+
+[Build and upload from CI](/docs/guides/ci-native-build#infisical) has the
+complete workflow.
 
 The build reads its signing and upload credentials, such as
 `android-keystore` and `play-service-account`, from Infisical as the

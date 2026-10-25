@@ -12,14 +12,15 @@ icon: Shield
 included in the React Native app unless you import or inject its values into
 app code. The client handler URL and client API key are included in the app.
 
-| Value                                              | Where it belongs                                                                        | What it controls                                                                                    |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Client handler URL                                 | React Native configuration                                                              | The update server the app contacts.                                                                 |
-| Client API key                                     | React Native configuration; provisioned through provider setup or the client access API | OTA reads and Insights writes. It is extractable from a distributed app and grants no admin access. |
-| Provider credentials                               | Local CLI, CI secret storage, or server configuration                                   | Cloud resources, storage, and database access. Never embed them in the app.                         |
-| Admin bearer token                                 | Server-side admin clients, such as a standalone repository configuration                | Administrative operations. Never send it to React Native or Console browser code.                   |
-| Signing public key                                 | Native app configuration                                                                | Verifies the publisher of downloaded artifacts.                                                     |
-| Signing private key or signing-service credentials | Local/CI private storage or a protected signing service                                 | Produces artifact signatures. Never embed them in the app.                                          |
+| Value                                              | Where it belongs                                                                                     | What it controls                                                                                    |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Client handler URL                                 | React Native configuration                                                                           | The update server the app contacts.                                                                 |
+| Client API key                                     | React Native configuration; provisioned through provider setup or the client access API              | OTA reads and Insights writes. It is extractable from a distributed app and grants no admin access. |
+| Provider credentials                               | The CLI's [`secrets` adapter](/docs/concepts/secrets), CI secret storage, or server configuration    | Cloud resources, storage, and database access. Never embed them in the app.                         |
+| Native build signing and store upload keys         | The CLI's [`secrets` adapter](/docs/concepts/secrets) or CI secret storage                           | App signing, TestFlight, and Google Play uploads. Never embed them in the app.                      |
+| Admin bearer token                                 | Server-side admin clients, such as a standalone repository configuration                             | Administrative operations. Never send it to React Native or Console browser code.                   |
+| Signing public key                                 | Native app configuration                                                                             | Verifies the publisher of downloaded artifacts.                                                     |
+| Signing private key or signing-service credentials | A KMS or protected signing service; a local PEM key in the CLI's `secrets` adapter or a private file | Produces artifact signatures. Never embed them in the app.                                          |
 
 A Supabase service-role key or Cloudflare API token is a provider credential,
 not a client API key. See [API key authentication](/docs/custom/api-key-authentication#security-boundary)
@@ -56,7 +57,7 @@ public client access; follow its [access policy setup](/docs/custom/api-key-auth
 
 Keep local provider credentials in `.env.hotupdater` and out of version control,
 or read them from a secrets store through the config's
-[`secrets` adapter](/docs/guides/secrets) with `secretEnv`, which hands them
+[`secrets` adapter](/docs/concepts/secrets) with `secretEnv`, which hands them
 only to the adapters that need them.
 Use your CI or provider's private credential storage for automated operations.
 The [agent infrastructure workflow](/docs/guides/agent-infrastructure) uses

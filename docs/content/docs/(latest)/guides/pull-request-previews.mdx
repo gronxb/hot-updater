@@ -23,8 +23,10 @@ every pull request:
 4. When the pull request closes, it deletes the channel and its bundles.
 
 The CLI reads the deploy credentials and the release keystore through the
-config's [`secrets` adapter](/docs/guides/secrets), the job's environment by
-default, and signs bundles with the config's
+config's [`secrets` adapter](/docs/concepts/secrets): the job's environment by
+default, or a secrets store the job signs in to, as
+[Build and upload from CI](/docs/guides/ci-native-build#add-the-workflow)
+shows for each adapter. It signs bundles with the config's
 [`signing` adapter](/docs/guides/bundle-signing). The workflow passes the
 Console's URL for the comment's links.
 
@@ -39,7 +41,7 @@ Console's URL for the comment's links.
 - Make the app [open channel links](/docs/guides/preview-builds#open-channel-links-in-the-app),
   with your preview channel, such as `preview`, in `defaultChannels`.
 - Read the deploy credentials with
-  [`secretEnv`](/docs/guides/secrets#deploy-credentials-with-secretenv), and
+  [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), and
   add their values to the repository's secrets.
 - Add a [native build scheme](/docs/guides/native-build#configure-schemes)
   for each previewed platform: a Release APK for Android, signed with a
@@ -73,15 +75,17 @@ export default defineConfig({
   },
   signing: {
     enabled: true,
-    privateKeyPath: process.env.HOT_UPDATER_SIGNING_KEY_PATH ?? "keys/private-key.pem",
+    privateKey: "secret:bundle-signing-key",
   },
   // ...build, storage, database, plugins
 });
 ```
 
 With `env()`, `secret:release-keystore` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
-the keystore's JSON value, as
-[Sign native builds with secrets](/docs/guides/secrets#sign-native-builds-with-secrets)
+the keystore's JSON value, and `secret:bundle-signing-key` reads
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, the
+[local signing](/docs/guides/signing/local) key's PEM, as
+[Sign native builds with secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
 describes. To keep the bundle signing key in a key management service
 instead of a file, use the [AWS KMS](/docs/guides/signing/aws-kms) or
 [Google Cloud KMS](/docs/guides/signing/google-cloud-kms) signing adapter.
@@ -117,20 +121,14 @@ jobs:
           distribution: temurin
           java-version: 17
       - run: npm ci
-      - name: Write the bundle signing key
-        env:
-          SIGNING_KEY: ${{ secrets.HOT_UPDATER_SIGNING_KEY }}
-        run: |
-          umask 077
-          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/signing-key.pem"
-          echo "HOT_UPDATER_SIGNING_KEY_PATH=$RUNNER_TEMP/signing-key.pem" >> "$GITHUB_ENV"
       # The tag of the hot-updater release your project installs.
       - uses: gronxb/hot-updater/actions/preview@v1.2.0
         env:
           HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
           # ...and the deploy variables your config reads with secretEnv
         with:
-          console-url: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
+          console-url: ${{ vars.CONSOLE_URL }}
           android-scheme: previewApk
 ```
 
@@ -148,7 +146,7 @@ job previews them in order and writes one comment:
         env:
           # ...the variables above
         with:
-          console-url: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
+          console-url: ${{ vars.CONSOLE_URL }}
           platforms: android,ios
           android-scheme: previewApk
           ios-scheme: previewSimulator

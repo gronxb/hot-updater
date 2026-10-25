@@ -133,7 +133,7 @@ through it, the path the server's own writes take:
 `secrets` is where the CLI reads the secrets the config names: the native
 build credentials a [`secret:<name>`](/docs/guides/native-build#provide-signing-credentials)
 reference names, and the deploy credentials `secretEnv` names. It defaults to
-`env()` from `hot-updater/secrets`, which reads each name from an environment
+[`env()`](/docs/guides/secrets-adapters/env) from `hot-updater/secrets`, which reads each name from an environment
 variable, in the environment or `.env.hotupdater`, and stores nothing.
 From the same module,
 [`awsSecretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager) and
@@ -176,7 +176,7 @@ export default defineConfig({
 });
 ```
 
-[Secrets in the CLI](/docs/guides/secrets) covers the adapter contract and
+[Secrets](/docs/concepts/secrets) covers the adapter contract and
 storing build credentials.
 
 ## Standalone Repository configuration

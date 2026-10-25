@@ -63,7 +63,7 @@ const writableSecrets = (values: Record<string, string> = {}) => {
     get: async (names) =>
       Object.fromEntries(names.map((name) => [name, values[name]])),
     set,
-    describe: (name) => `fake://vault/${name}`,
+    describe: (name) => `fake://store/${name}`,
   };
   return { secrets, set, values };
 };
@@ -116,7 +116,7 @@ describe("keys generate --secret", () => {
         .export({ format: "pem", type: "spki" }),
     ).toBe(publicKey);
     expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
-    expect(output()).toContain("fake://vault/bundle-signing-key");
+    expect(output()).toContain("fake://store/bundle-signing-key");
     expect(output()).not.toContain(privateKey.split("\n")[1]);
   });
 
@@ -166,7 +166,7 @@ describe("keys generate --secret", () => {
     expect(set).not.toHaveBeenCalled();
     expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
     expect(output()).toContain(
-      "bundle-signing-key already holds a value in the fake secrets adapter (fake://vault/bundle-signing-key), and keys generate never replaces it",
+      "bundle-signing-key already holds a value in the fake secrets adapter (fake://store/bundle-signing-key), and keys generate never replaces it",
     );
   });
 

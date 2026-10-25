@@ -41,7 +41,7 @@ export default defineConfig({
 as GitHub requires, and stores it under the name's environment variable name:
 `secret:asc-api-key` as `HOT_UPDATER_ASC_API_KEY`, and `CLOUDFLARE_API_TOKEN`
 as itself. Each credential is one
-[JSON value](/docs/guides/secrets#sign-native-builds-with-secrets), up to
+[JSON value](/docs/concepts/secrets#sign-native-builds-with-secrets), up to
 GitHub's 48 KB.
 
 GitHub never returns a secret's value, so the adapter reads only inside a
@@ -96,32 +96,18 @@ repository's:
 | `secret:play-service-account`         | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}` |
 | `secretEnv(["CLOUDFLARE_API_TOKEN"])` | `CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}`                         |
 
-```yaml title=".github/workflows/build-ios.yml"
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: macos-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          cache: npm
-          node-version: 22
-
-      - run: npm ci
-
-      - name: Build the signed app
-        run: npx --no-install hot-updater build:ios --scheme release
-        env:
-          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+```yaml title=".github/workflows/native-release.yml (partial)"
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  env:
+    HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+  with:
+    platform: ios
+    scheme: release
+    upload: testflight
 ```
+
+[Build and upload from CI](/docs/guides/ci-native-build#environment-variables)
+has the complete workflow for both platforms.
 
 Set the secrets only on the steps that need them, and keep an environment's
 secrets behind its protection rules, away from pull request workflows that run

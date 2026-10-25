@@ -6,7 +6,6 @@
     "../policy/security",
     "../guides/bundle-signing",
     "../concepts/secrets",
-    "../guides/secrets",
     "../custom/api-key-authentication"
   ]
 }

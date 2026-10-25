@@ -51,6 +51,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - `@hot-updater/server` is the runtime host. Its root is `createHotUpdater`, its types, the handlers, and `toNodeHandler`.
   - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins`).
   - Tooling reads a server definition only through its public read-only properties.
+- `hot-updater/secrets` and `hot-updater/signing` hold the CLI's official secrets and signing adapters. Their SDKs (`@aws-sdk/credential-providers`, `google-auth-library`, the KMS clients) are optional peers loaded only for local interactive auth or the signer in use; in CI, the secrets adapters sign in with the environment or OIDC over `fetch`.
 - `hot-updater/plugins` re-exports the official `apiKeys`, `insights`, and `remoteConfig` factories for `hot-updater.config.ts`. Server and hosted Console code imports `@hot-updater/server/plugins` instead of depending on the CLI package.
 - `@hot-updater/vercel` re-exports `postgres` from `@hot-updater/postgres`, the managed Vercel database, so a Vercel project's config imports and installs one package.
 - `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` and `remoteConfig` clients. It has no subpaths.
