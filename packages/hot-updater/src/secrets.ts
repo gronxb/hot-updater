@@ -7,6 +7,10 @@ export {
 } from "./awsSecretsManager";
 export { githubActions, type GitHubActionsOptions } from "./githubActions";
 export {
+  googleSecretManager,
+  type GoogleSecretManagerOptions,
+} from "./googleSecretManager";
+export {
   infisical,
   type InfisicalAuth,
   type InfisicalSecretsOptions,

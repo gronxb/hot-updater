@@ -135,9 +135,13 @@ build credentials a [`secret:<name>`](/docs/guides/native-build#provide-signing-
 reference names, and the deploy credentials `secretEnv` names. It defaults to
 `env()` from `hot-updater/secrets`, which reads each name from an environment
 variable, in the environment or `.env.hotupdater`, and stores nothing.
-[`githubActions()`](/docs/guides/secrets-adapters/github-actions) from the
-same module stores in a repository's GitHub Actions secrets, which a workflow
-reads as environment variables.
+From the same module,
+[`awsSecretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager) and
+[`googleSecretManager()`](/docs/guides/secrets-adapters/google-secret-manager)
+read and store in AWS Secrets Manager and Google Cloud Secret Manager, and
+[`githubActions()`](/docs/guides/secrets-adapters/github-actions) stores in a
+repository's GitHub Actions secrets, which a workflow reads as environment
+variables.
 [`infisical()`](/docs/guides/secrets-adapters/infisical) reads and stores them
 in an Infisical project, on Infisical Cloud or your own instance.
 

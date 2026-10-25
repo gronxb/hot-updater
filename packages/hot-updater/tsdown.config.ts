@@ -13,6 +13,7 @@ export default defineConfig({
       "@aws-sdk/client-kms",
       "@aws-sdk/credential-providers",
       "@google-cloud/kms",
+      "google-auth-library",
     ],
     onlyBundle: false,
   },
