@@ -73,6 +73,8 @@ describe("isReservedVariableName", () => {
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
     "HOT_UPDATER_SIGNING_TOKEN",
     "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
+    "INFISICAL_TOKEN",
+    "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
   ])("reserves %s", (name) => {
     expect(isReservedVariableName(name)).toBe(true);
   });
