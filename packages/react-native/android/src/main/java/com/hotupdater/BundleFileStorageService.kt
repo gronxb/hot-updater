@@ -1183,6 +1183,14 @@ class BundleFileStorageService(
     private fun rollbackPendingBundle(
         stagingBundleId: String,
         unfinishedLaunch: Boolean = false,
+    ): Boolean =
+        synchronized(releaseStateLock) {
+            rollbackPendingBundleLocked(stagingBundleId, unfinishedLaunch)
+        }
+
+    private fun rollbackPendingBundleLocked(
+        stagingBundleId: String,
+        unfinishedLaunch: Boolean,
     ): Boolean {
         val metadata = loadMetadataOrNull() ?: return false
         if (metadata.stagingBundleId != stagingBundleId) {
@@ -1231,18 +1239,22 @@ class BundleFileStorageService(
     }
 
     private fun applyPendingRecoveryIfNeeded(pendingRecovery: PendingCrashRecovery?) {
-        val metadata = loadMetadataOrNull() ?: return
-        val stagingBundleId = metadata.stagingBundleId ?: return
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return
+            val stagingBundleId = metadata.stagingBundleId ?: return
 
-        if (pendingRecovery?.shouldRollback == true &&
-            pendingRecovery.launchedBundleId == stagingBundleId &&
-            isVerificationPending(metadata)
-        ) {
-            rollbackPendingBundle(stagingBundleId)
+            if (pendingRecovery?.shouldRollback == true &&
+                pendingRecovery.launchedBundleId == stagingBundleId &&
+                isVerificationPending(metadata)
+            ) {
+                rollbackPendingBundle(stagingBundleId)
+            }
         }
     }
 
-    private fun selectLaunch(): LaunchSelection {
+    private fun selectLaunch(): LaunchSelection = synchronized(releaseStateLock) { selectLaunchLocked() }
+
+    private fun selectLaunchLocked(): LaunchSelection {
         val metadata = loadMetadataOrNull()
         if (metadata == null) {
             return LaunchSelection(
@@ -1263,7 +1275,7 @@ class BundleFileStorageService(
             }
 
             if (metadata.verificationPending && rollbackPendingBundle(stagingBundleId)) {
-                return selectLaunch()
+                return selectLaunchLocked()
             }
         }
 
@@ -1583,35 +1595,39 @@ class BundleFileStorageService(
 
     override fun markLaunchCompleted(currentBundleId: String?) {
         readyInterruptedLaunchRetry(currentBundleId)
-        val metadata = loadMetadataOrNull() ?: return
-        val stagingBundleId = metadata.stagingBundleId ?: return
-        if (!metadata.verificationPending || stagingBundleId != currentBundleId) {
-            return
-        }
+        // A Release selection can commit at the same time, from a native update
+        // check or JS; neither may save over the other's read.
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return
+            val stagingBundleId = metadata.stagingBundleId ?: return
+            if (!metadata.verificationPending || stagingBundleId != currentBundleId) {
+                return
+            }
 
-        val transition = metadata.pendingTransition
-        val fromBundleId = transition?.fromBundleId ?: getKnownLaunchBundleId(metadata)
-        saveMetadata(
-            metadata.copy(
-                stableBundleId = null,
-                stableSelection = null,
-                pendingUpdateStrategy = null,
-                pendingTransition = null,
-                verificationPending = false,
-                launchInProgress = false,
-                updatedAt = System.currentTimeMillis(),
-            ),
-        )
-        saveLaunchReport(
-            LaunchReport(
-                status = "UPDATE_APPLIED",
-                fromReleaseId = transition?.fromReleaseId,
-                fromBundleId = fromBundleId,
-                toReleaseId = transition?.toReleaseId,
-                toBundleId = stagingBundleId,
-                updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
-            ),
-        )
+            val transition = metadata.pendingTransition
+            val fromBundleId = transition?.fromBundleId ?: getKnownLaunchBundleId(metadata)
+            saveMetadata(
+                metadata.copy(
+                    stableBundleId = null,
+                    stableSelection = null,
+                    pendingUpdateStrategy = null,
+                    pendingTransition = null,
+                    verificationPending = false,
+                    launchInProgress = false,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+            saveLaunchReport(
+                LaunchReport(
+                    status = "UPDATE_APPLIED",
+                    fromReleaseId = transition?.fromReleaseId,
+                    fromBundleId = fromBundleId,
+                    toReleaseId = transition?.toReleaseId,
+                    toBundleId = stagingBundleId,
+                    updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
+                ),
+            )
+        }
     }
 
     // MARK: - notifyAppReady
@@ -1688,17 +1704,19 @@ class BundleFileStorageService(
             // Cleared before the rollbacks below, so the launch reports their RECOVERED.
             saveLaunchReport(null)
             applyPendingRecoveryIfNeeded(pendingRecovery())
-            // Only a new storage instance consumes an unfinished launch. Repeated bundle
-            // lookups or bridge reloads in this process must not reject its own launch.
-            val metadata = loadMetadataOrNull()
-            if (metadata?.verificationPending == true && metadata.launchInProgress) {
-                metadata.stagingBundleId?.let { rollbackPendingBundle(it, unfinishedLaunch = true) }
-            }
-            // A pending bundle whose file is gone rolls back, as selectLaunch does.
-            val settled = loadMetadataOrNull()
-            settled?.stagingBundleId?.let { stagingBundleId ->
-                if (settled.verificationPending && getBundleUrlForId(stagingBundleId) == null) {
-                    rollbackPendingBundle(stagingBundleId)
+            synchronized(releaseStateLock) {
+                // Only a new storage instance consumes an unfinished launch. Repeated bundle
+                // lookups or bridge reloads in this process must not reject its own launch.
+                val metadata = loadMetadataOrNull()
+                if (metadata?.verificationPending == true && metadata.launchInProgress) {
+                    metadata.stagingBundleId?.let { rollbackPendingBundle(it, unfinishedLaunch = true) }
+                }
+                // A pending bundle whose file is gone rolls back, as selectLaunch does.
+                val settled = loadMetadataOrNull()
+                settled?.stagingBundleId?.let { stagingBundleId ->
+                    if (settled.verificationPending && getBundleUrlForId(stagingBundleId) == null) {
+                        rollbackPendingBundle(stagingBundleId)
+                    }
                 }
             }
         }
@@ -2708,47 +2726,51 @@ class BundleFileStorageService(
 
     override suspend fun resetChannel(): Boolean =
         withContext(Dispatchers.IO) {
-            if (!setBundleURL(null)) {
-                return@withContext false
-            }
-
-            val clearedMetadata =
-                (loadMetadataOrNull() ?: BundleMetadata()).copy(
-                    isolationKey = isolationKey,
-                    stableBundleId = null,
-                    stagingBundleId = null,
-                    stableSelection = null,
-                    stagingSelection = null,
-                    pendingUpdateStrategy = null,
-                    pendingTransition = null,
-                    verificationPending = false,
-                    launchInProgress = false,
-                    // Selections made before the reset no longer stage; the
-                    // high-water marks stay, so an older catalog is still refused.
-                    currentSelectionContexts = emptyMap(),
-                    updatedAt = System.currentTimeMillis(),
-                )
-
-            if (!saveMetadata(clearedMetadata)) {
-                return@withContext false
-            }
-
-            saveLaunchReport(null)
-
-            getBundleStoreDir().listFiles()?.forEach { file ->
-                if (
-                    file.name == BundleMetadata.METADATA_FILENAME ||
-                    file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
-                    file.name == LaunchReport.LAUNCH_REPORT_FILENAME
-                ) {
-                    return@forEach
-                }
-
-                if (file.isDirectory) {
-                    file.deleteRecursively()
-                }
-            }
-
-            true
+            synchronized(releaseStateLock) { resetChannelLocked() }
         }
+
+    private fun resetChannelLocked(): Boolean {
+        if (!setBundleURL(null)) {
+            return false
+        }
+
+        val clearedMetadata =
+            (loadMetadataOrNull() ?: BundleMetadata()).copy(
+                isolationKey = isolationKey,
+                stableBundleId = null,
+                stagingBundleId = null,
+                stableSelection = null,
+                stagingSelection = null,
+                pendingUpdateStrategy = null,
+                pendingTransition = null,
+                verificationPending = false,
+                launchInProgress = false,
+                // Selections made before the reset no longer stage; the
+                // high-water marks stay, so an older catalog is still refused.
+                currentSelectionContexts = emptyMap(),
+                updatedAt = System.currentTimeMillis(),
+            )
+
+        if (!saveMetadata(clearedMetadata)) {
+            return false
+        }
+
+        saveLaunchReport(null)
+
+        getBundleStoreDir().listFiles()?.forEach { file ->
+            if (
+                file.name == BundleMetadata.METADATA_FILENAME ||
+                file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
+                file.name == LaunchReport.LAUNCH_REPORT_FILENAME
+            ) {
+                return@forEach
+            }
+
+            if (file.isDirectory) {
+                file.deleteRecursively()
+            }
+        }
+
+        return true
+    }
 }
