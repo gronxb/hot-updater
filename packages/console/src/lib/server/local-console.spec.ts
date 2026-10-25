@@ -118,6 +118,38 @@ describe("guardLocalConsoleRequest", () => {
     }
   });
 
+  it("serves a console on port 80, whose Host and Origin name no port", () => {
+    const options = { ...OPTIONS, port: "80" };
+    const cookie = `hot_updater_console_session_80=${SESSION}`;
+    for (const host of ["localhost", "localhost:80", "127.0.0.1"]) {
+      expect(
+        guardLocalConsoleRequest(
+          request(`http://${host}/?${LOCAL_CONSOLE_SESSION_PARAM}=${SESSION}`, {
+            host,
+          }),
+          options,
+        )?.status,
+        host,
+      ).toBe(303);
+    }
+    expect(
+      guardLocalConsoleRequest(
+        request("http://localhost/_serverFn/rewrapVaultRpc", {
+          host: "localhost",
+          method: "POST",
+          headers: { origin: "http://localhost", cookie },
+        }),
+        options,
+      ),
+    ).toBeUndefined();
+    expect(
+      guardLocalConsoleRequest(
+        request("http://localhost/", { host: "localhost:1422" }),
+        options,
+      )?.status,
+    ).toBe(403);
+  });
+
   it("refuses a change another origin sends, even with the session's cookie", () => {
     const crossOrigin: Record<string, string>[] = [
       { origin: "https://evil.example" },

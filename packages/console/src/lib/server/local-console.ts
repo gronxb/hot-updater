@@ -57,26 +57,39 @@ const cookieOf = (request: Request, name: string): string | undefined => {
   return undefined;
 };
 
-/** `host` when it names this machine on `port`, or undefined. */
-const loopbackHost = (
-  host: string | null,
-  port: string | undefined,
-): string | undefined => {
-  if (host === null) return undefined;
+interface HostParts {
+  readonly hostname: string;
+  /** The port, `80` when the host names none, as HTTP's default. */
+  readonly port: string;
+}
+
+/** A port as digits without leading zeros, so `80` and `080` agree. */
+const normalPort = (port: string) => String(Number(port));
+
+/** A `Host` header's name and port, or undefined when it is not one. */
+const hostPartsOf = (host: string): HostParts | undefined => {
+  const match = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?$/iu.exec(host);
+  if (!match) return undefined;
+  return {
+    hostname: match[1]!.toLowerCase(),
+    port: normalPort(match[2] ?? "80"),
+  };
+};
+
+/** Whether `origin` is the plain-HTTP origin of `host`. */
+const isOriginOf = (origin: string, host: HostParts | undefined) => {
+  if (host === undefined) return false;
   let parsed: URL;
   try {
-    parsed = new URL(`http://${host}`);
+    parsed = new URL(origin);
   } catch {
-    return undefined;
+    return false;
   }
-  if (
-    parsed.host !== host.toLowerCase() ||
-    !LOOPBACK_HOSTNAMES.has(parsed.hostname) ||
-    (port !== undefined && parsed.port !== port)
-  ) {
-    return undefined;
-  }
-  return parsed.host;
+  return (
+    parsed.protocol === "http:" &&
+    parsed.hostname === host.hostname &&
+    normalPort(parsed.port || "80") === host.port
+  );
 };
 
 const refuse = (status: 401 | 403, message: string) =>
@@ -105,9 +118,14 @@ export const guardLocalConsoleRequest = (
   request: Request,
   { session, port, checkHost }: LocalConsoleGuardOptions,
 ): Response | undefined => {
-  const host = request.headers.get("host");
-  const allowedHost = checkHost ? loopbackHost(host, port) : (host ?? "");
-  if (allowedHost === undefined) {
+  const header = request.headers.get("host");
+  const host = header === null ? undefined : hostPartsOf(header);
+  if (
+    checkHost &&
+    (host === undefined ||
+      !LOOPBACK_HOSTNAMES.has(host.hostname) ||
+      (port !== undefined && host.port !== normalPort(port)))
+  ) {
     return refuse(
       403,
       `This console answers only at http://localhost${port === undefined ? "" : `:${port}`}.`,
@@ -117,7 +135,7 @@ export const guardLocalConsoleRequest = (
     const origin = request.headers.get("origin");
     const site = request.headers.get("sec-fetch-site");
     if (
-      (origin !== null && origin !== `http://${allowedHost}`) ||
+      (origin !== null && !isOriginOf(origin, host)) ||
       (site !== null && site !== "same-origin" && site !== "none")
     ) {
       return refuse(403, "This console takes changes only from its own pages.");
