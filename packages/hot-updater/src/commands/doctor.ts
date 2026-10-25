@@ -8,6 +8,7 @@ import {
   loadConfig,
   p,
   readPackageUp,
+  nonInteractiveReason,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
@@ -986,7 +987,7 @@ export async function doctor(
 }
 
 const promptServerBaseUrl = async () => {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (nonInteractiveReason() !== undefined || !process.stdout.isTTY) {
     return undefined;
   }
 

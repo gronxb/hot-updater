@@ -1,4 +1,4 @@
-import { loadConfig } from "@hot-updater/cli-tools";
+import { loadConfig, nonInteractiveReason } from "@hot-updater/cli-tools";
 
 import { generateFingerprints } from "../../utils/fingerprint";
 import { type LoadedServer, loadServer } from "../../utils/loadServer";
@@ -28,7 +28,7 @@ export interface DoctorContext {
 
 export const createDoctorContext = (
   cwd: string,
-  nonInteractive = !process.stdin.isTTY,
+  nonInteractive = nonInteractiveReason() !== undefined,
 ): DoctorContext => {
   let server: Promise<LoadedServer | null> | undefined;
   let fingerprints: Promise<Fingerprints> | undefined;

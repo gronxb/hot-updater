@@ -16,6 +16,7 @@ import {
   type VaultClient,
   vaultSecretVariables,
   type VaultSecretMetadata,
+  nonInteractiveReason,
 } from "@hot-updater/cli-tools";
 import {
   VAULT_SECRET_KINDS,
@@ -149,10 +150,9 @@ const readBase64File = async (file: string, flag: string) => {
 const readPassword = async (envName: string, message: string) => {
   const fromEnv = process.env[envName];
   if (fromEnv) return fromEnv;
-  if (!process.stdin.isTTY) {
-    throw new Error(
-      `Set ${envName}: there is no terminal to ask for the password in.`,
-    );
+  const reason = nonInteractiveReason();
+  if (reason !== undefined) {
+    throw new Error(`Set ${envName}: the CLI asks for no password ${reason}.`);
   }
   const answer = await p.password({ message });
   if (p.isCancel(answer) || !answer) {
