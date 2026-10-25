@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -15,6 +16,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 
 import {
+  acquireWithLockf,
   createSigningKeychain,
   revokeKeychainCertificates,
   withSigningKeychain,
@@ -71,6 +73,17 @@ const fakeSecurity = ({
 
 let directory: string;
 const lock = () => path.join(directory, "locks", "signing-keychain.lock");
+
+/** A per-user lock that records when it is taken and released. */
+const fakeLock = (events: string[] = []) => ({
+  events,
+  acquireLock: vi.fn(async (lockPath: string) => {
+    events.push(`acquire ${path.basename(lockPath)}`);
+    return async () => {
+      events.push("release");
+    };
+  }),
+});
 let apiKey: { keyPath: string; keyId: string; issuerId: string };
 
 beforeEach(async () => {
@@ -100,6 +113,7 @@ describe("createSigningKeychain", () => {
       security,
       directory,
       lockPath: lock(),
+      acquireLock: fakeLock().acquireLock,
     });
 
     const keychainPath = keychain.path;
@@ -134,13 +148,19 @@ describe("createSigningKeychain", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
-  it("restores the keychains when setting one up fails", async () => {
+  it("restores the keychains and releases the lock when setting one up fails", async () => {
+    const lockFake = fakeLock();
     const { security, calls } = fakeSecurity({
       fail: (args) => args[0] === "unlock-keychain",
     });
 
     await expect(
-      createSigningKeychain({ security, directory, lockPath: lock() }),
+      createSigningKeychain({
+        security,
+        directory,
+        lockPath: lock(),
+        acquireLock: lockFake.acquireLock,
+      }),
     ).rejects.toThrow("security unlock-keychain failed");
 
     expect(calls.slice(-3)).toEqual([
@@ -151,12 +171,16 @@ describe("createSigningKeychain", () => {
         expect.stringMatching(/hot-updater-.*\.keychain-db$/),
       ],
     ]);
-    await expect(fs.stat(lock())).rejects.toThrow();
+    expect(lockFake.events).toEqual([
+      "acquire signing-keychain.lock",
+      "release",
+    ]);
     // Another build in the same process can create one again.
     const keychain = await createSigningKeychain({
       security: fakeSecurity().security,
       directory,
       lockPath: lock(),
+      acquireLock: fakeLock().acquireLock,
     });
     await keychain.dispose();
   });
@@ -170,6 +194,7 @@ describe("createSigningKeychain", () => {
       security,
       directory,
       lockPath: lock(),
+      acquireLock: fakeLock().acquireLock,
     });
     calls.length = 0;
     await keychain.dispose();
@@ -181,71 +206,64 @@ describe("createSigningKeychain", () => {
   });
 
   it("holds the user's lock from before the snapshot until the keychains are restored", async () => {
-    const lockPath = lock();
-    const { security, calls } = fakeSecurity();
-    let heldAtSnapshot = "";
-    security.mockImplementationOnce(async (args) => {
-      calls.push([...args]);
-      heldAtSnapshot = await fs.readFile(lockPath, "utf-8");
-      return `    "${LOGIN}"`;
+    const events: string[] = [];
+    const { acquireLock } = fakeLock(events);
+    const { security } = fakeSecurity();
+    security.mockImplementation(async (args) => {
+      events.push(`security ${args[0]}`);
+      if (args[0] === "list-keychains" && args.length === 3) {
+        return `    "${LOGIN}"`;
+      }
+      return "";
     });
 
     const keychain = await createSigningKeychain({
       security,
       directory,
-      lockPath,
+      lockPath: lock(),
+      acquireLock,
     });
-    expect(heldAtSnapshot).toBe(String(process.pid));
-
     await keychain.dispose();
-    await expect(fs.stat(lockPath)).rejects.toThrow();
+
+    expect(events[0]).toBe("acquire signing-keychain.lock");
+    expect(events[1]).toBe("security default-keychain");
+    expect(events.at(-2)).toBe("security delete-keychain");
+    expect(events.at(-1)).toBe("release");
   });
 
-  it("waits while another running build holds the lock, then takes it", async () => {
-    const lockPath = lock();
-    await fs.mkdir(path.dirname(lockPath), { recursive: true });
-    // The parent process: alive for the whole test.
-    await fs.writeFile(lockPath, String(process.ppid));
-    const { security, calls } = fakeSecurity();
+  it.runIf(process.platform === "darwin")(
+    "takes turns with lockf, and the kernel frees the lock of a holder that dies",
+    async () => {
+      const lockPath = lock();
+      const first = await acquireWithLockf(lockPath);
+      let second: (() => Promise<void>) | undefined;
+      const waiting = acquireWithLockf(lockPath).then((release) => {
+        second = release;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(second).toBeUndefined();
+      expect(log.info).toHaveBeenCalledWith(
+        "Waiting for another build that signs in a keychain of its own under this macOS user.",
+      );
+      await first();
+      await waiting;
+      await second!();
 
-    const creating = createSigningKeychain({
-      security,
-      directory,
-      lockPath,
-      pollMs: 10,
-    });
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    // Nothing of the user's keychain state is read while it waits.
-    expect(calls).toEqual([]);
-    expect(log.info).toHaveBeenCalledWith(
-      `Waiting for another build (process ${process.ppid}) that signs in a keychain of its own under this macOS user.`,
-    );
-
-    await fs.rm(lockPath);
-    const keychain = await creating;
-    expect(calls[0]).toEqual(["default-keychain", "-d", "user"]);
-    await keychain.dispose();
-  });
-
-  it("takes over a lock whose build is gone", async () => {
-    const lockPath = lock();
-    await fs.mkdir(path.dirname(lockPath), { recursive: true });
-    // No process has this ID: pids stop well below it.
-    await fs.writeFile(lockPath, "2147483646");
-
-    const keychain = await createSigningKeychain({
-      security: fakeSecurity().security,
-      directory,
-      lockPath,
-      pollMs: 10,
-    });
-
-    await expect(fs.readFile(lockPath, "utf-8")).resolves.toBe(
-      String(process.pid),
-    );
-    await keychain.dispose();
-    await expect(fs.readdir(path.dirname(lockPath))).resolves.toEqual([]);
-  });
+      // A holder killed outright: its lock goes with it.
+      const holder = spawn("lockf", ["-k", lockPath, "sleep", "30"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      for (;;) {
+        const probe = spawnSync("lockf", ["-k", "-t", "0", lockPath, "true"]);
+        if (probe.status === 75) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      process.kill(-holder.pid!, "SIGKILL");
+      const release = await acquireWithLockf(lockPath);
+      await release();
+    },
+  );
 
   it("lists the certificates Xcode created in it by serial number", async () => {
     const { security } = fakeSecurity({
@@ -255,6 +273,7 @@ describe("createSigningKeychain", () => {
       security,
       directory,
       lockPath: lock(),
+      acquireLock: fakeLock().acquireLock,
     });
 
     await expect(keychain.certificates()).resolves.toEqual([
@@ -388,6 +407,7 @@ describe("withSigningKeychain", () => {
         run,
         security,
         lockPath: lock(),
+        acquireLock: fakeLock().acquireLock,
       }),
     ).resolves.toBe("ipa");
     expect(calls).toEqual([]);
@@ -411,6 +431,7 @@ describe("withSigningKeychain", () => {
         run,
         security,
         lockPath: lock(),
+        acquireLock: fakeLock().acquireLock,
         fetch,
       }),
     ).rejects.toThrow("Archive failed");
@@ -426,5 +447,57 @@ describe("withSigningKeychain", () => {
       ["delete-keychain", keychainPath],
     ]);
     expect(requests.at(-1)!.method).toBe("DELETE");
+  });
+  it("revokes and restores before a termination signal ends the build, with the key file already gone", async () => {
+    const { security, calls } = fakeSecurity({
+      certificates: XCODE_CERTIFICATE,
+    });
+    const { fetch, requests } = mockAppStoreConnect();
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    let cancel: (reason: Error) => void = () => undefined;
+    const run = () =>
+      new Promise<never>((_, reject) => {
+        cancel = reject;
+      });
+
+    const building = withSigningKeychain({
+      enabled: true,
+      apiKey,
+      run,
+      security,
+      lockPath: lock(),
+      acquireLock: fakeLock().acquireLock,
+      fetch,
+    });
+    await vi.waitFor(() =>
+      expect(
+        calls.some(
+          (args) => args[0] === "default-keychain" && args.length === 5,
+        ),
+      ).toBe(true),
+    );
+    // The credential resolver deletes the key file on the same signal.
+    await fs.rm(apiKey.keyPath);
+    process.emit("SIGTERM", "SIGTERM");
+
+    await vi.waitFor(() => expect(requests.at(-1)?.method).toBe("DELETE"));
+    const keychainPath = calls.find(
+      (args) => args[0] === "create-keychain",
+    )![3]!;
+    expect(calls.slice(-4)).toEqual([
+      ["find-certificate", "-a", "-p", keychainPath],
+      ["default-keychain", "-d", "user", "-s", LOGIN],
+      ["list-keychains", "-d", "user", "-s", LOGIN, SYSTEM],
+      ["delete-keychain", keychainPath],
+    ]);
+
+    // The build's own handler stops xcodebuild, and the build ends.
+    cancel(new Error("xcodebuild was terminated"));
+    await expect(building).rejects.toThrow("xcodebuild was terminated");
+    // Cleaned up once.
+    expect(
+      requests.filter((request) => request.method === "DELETE"),
+    ).toHaveLength(1);
+    kill.mockRestore();
   });
 });

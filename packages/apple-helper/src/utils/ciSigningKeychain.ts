@@ -1,6 +1,6 @@
-import { spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import crypto from "crypto";
-import fs, { readFileSync, rmSync } from "fs";
+import fs from "fs";
 import os from "os";
 import path from "path";
 
@@ -62,6 +62,15 @@ export interface SigningKeychain {
 /** The keychain whose state the process restores if it exits first. */
 let live: { restore: () => void } | undefined;
 
+// An `exit` listener must be synchronous: it restores the keychains when the
+// process exits before the build disposes them. A termination signal is
+// handled by `withSigningKeychain`, which revokes before it restores.
+const restoreLive = () => {
+  live?.restore();
+  live = undefined;
+  process.off("exit", restoreLive);
+};
+
 /**
  * Where builds under one macOS user take turns: the default keychain and the
  * search list are the user's, not a process's, so two builds that overlap,
@@ -77,96 +86,67 @@ const defaultLockPath = () =>
     "signing-keychain.lock",
   );
 
-const isAlive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-};
+/** Takes the lock at a path, waiting while another holder has it, and returns its release. */
+export type AcquireLock = (lockPath: string) => Promise<() => Promise<void>>;
 
-const readHolder = async (file: string) =>
-  Number((await fs.promises.readFile(file, "utf-8").catch(() => "")).trim());
+/** lockf's exit code when `-t 0` finds the lock held. */
+const EX_TEMPFAIL = 75;
 
 /**
- * Takes the user's signing keychain lock, holding the process's ID, and
- * waits while a running build holds it. A lock whose build is gone, such as
- * one killed outright, is taken over: it is moved aside first, so of two
- * builds that find it only one removes it, and a lock another build took
- * meanwhile is put back.
+ * Holds `lockPath` with macOS's `lockf`, a kernel lock on the file kept by a
+ * helper that waits on this process's pipe: the kernel releases it when the
+ * helper ends, which is when the pipe closes, so a build that dies, even
+ * killed outright, leaves no lock behind and none needs taking over. The
+ * helper runs in its own process group, out of reach of a terminal's
+ * Ctrl+C, and never keeps this process alive.
  */
-const acquireLock = async (lockPath: string, pollMs: number) => {
+const holdWithLockf = (
+  lockPath: string,
+  wait: boolean,
+): Promise<(() => Promise<void>) | undefined> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(
+      "lockf",
+      [
+        "-k",
+        ...(wait ? [] : ["-t", "0"]),
+        lockPath,
+        "/bin/sh",
+        "-c",
+        "echo held; exec cat >/dev/null",
+      ],
+      { detached: true, stdio: ["pipe", "pipe", "ignore"] },
+    );
+    let held = false;
+    child.stdout.once("data", () => {
+      held = true;
+      child.unref();
+      (child.stdin as unknown as { unref?: () => void }).unref?.();
+      (child.stdout as unknown as { unref?: () => void }).unref?.();
+      const exited = new Promise<void>((done) =>
+        child.once("exit", () => done()),
+      );
+      resolve(async () => {
+        child.stdin.end();
+        await exited;
+      });
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (held) return;
+      if (!wait && code === EX_TEMPFAIL) resolve(undefined);
+      else reject(new Error(`lockf ${lockPath} exited with ${code}.`));
+    });
+  });
+
+export const acquireWithLockf: AcquireLock = async (lockPath) => {
   await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
-  let announced = false;
-  // The lock appears whole, holding its owner: the ID is written to a file
-  // of this process's own, which is then linked into place, and a link
-  // fails while any lock exists.
-  const claim = `${lockPath}.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
-  await fs.promises.writeFile(claim, String(process.pid));
-  try {
-    for (;;) {
-      try {
-        await fs.promises.link(claim, lockPath);
-        return;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-      const holder = await readHolder(lockPath);
-      if (!Number.isInteger(holder) || holder <= 0 || !isAlive(holder)) {
-        const aside = `${lockPath}.${process.pid}.stale`;
-        if (
-          await fs.promises.rename(lockPath, aside).then(
-            () => true,
-            () => false,
-          )
-        ) {
-          const moved = await readHolder(aside);
-          if (moved !== holder && Number.isInteger(moved) && isAlive(moved)) {
-            await fs.promises.link(aside, lockPath).catch(() => undefined);
-          }
-          await fs.promises.rm(aside, { force: true });
-        }
-        continue;
-      }
-      if (!announced) {
-        p.log.info(
-          `Waiting for another build (process ${holder}) that signs in a keychain of its own under this macOS user.`,
-        );
-        announced = true;
-      }
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
-    }
-  } finally {
-    await fs.promises.rm(claim, { force: true });
-  }
-};
-
-/** Removes the lock, if this process still holds it. */
-const releaseLockSync = (lockPath: string) => {
-  try {
-    if (Number(readFileSync(lockPath, "utf-8").trim()) === process.pid) {
-      rmSync(lockPath, { force: true });
-    }
-  } catch {
-    // Already gone.
-  }
-};
-
-const TERMINATION_SIGNALS = ["SIGHUP", "SIGINT", "SIGTERM"] as const;
-
-// An `exit` listener must be synchronous, and Node exits on a termination
-// signal without emitting `exit`, so both are listened to.
-const restoreLive = () => {
-  live?.restore();
-  live = undefined;
-  process.off("exit", restoreLive);
-  for (const signal of TERMINATION_SIGNALS) process.off(signal, onSignal);
-};
-
-const onSignal = (signal: NodeJS.Signals) => {
-  restoreLive();
-  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+  const release = await holdWithLockf(lockPath, false);
+  if (release) return release;
+  p.log.info(
+    "Waiting for another build that signs in a keychain of its own under this macOS user.",
+  );
+  return (await holdWithLockf(lockPath, true))!;
 };
 
 /**
@@ -179,28 +159,28 @@ export const createSigningKeychain = async ({
   security = runSecurity,
   directory = os.tmpdir(),
   lockPath = defaultLockPath(),
-  pollMs = 2_000,
+  acquireLock = acquireWithLockf,
 }: {
   security?: RunSecurity;
   directory?: string;
   /** The per-user lock builds take turns with. */
   lockPath?: string;
-  /** How often a build waiting for the lock checks it. */
-  pollMs?: number;
+  acquireLock?: AcquireLock;
 } = {}): Promise<SigningKeychain> => {
   if (live) {
     throw new Error("A signing keychain is already in use by this process.");
   }
-  // Held from before the snapshot until the keychains are restored.
-  live = { restore: () => releaseLockSync(lockPath) };
+  // Held from before the snapshot until the keychains are restored; the
+  // process's end releases it too.
+  live = { restore: () => undefined };
+  let releaseLock: () => Promise<void>;
   try {
-    await acquireLock(lockPath, pollMs);
+    releaseLock = await acquireLock(lockPath);
   } catch (error) {
     live = undefined;
     throw error;
   }
   process.on("exit", restoreLive);
-  for (const signal of TERMINATION_SIGNALS) process.on(signal, onSignal);
 
   let originalDefault: string | undefined;
   let originalSearchList: string[];
@@ -214,6 +194,7 @@ export const createSigningKeychain = async ({
     );
   } catch (error) {
     restoreLive();
+    await releaseLock();
     throw error;
   }
   const keychainPath = path.join(
@@ -233,7 +214,6 @@ export const createSigningKeychain = async ({
   live = {
     restore: () => {
       for (const args of restoreArgs) spawnSync("security", args);
-      releaseLockSync(lockPath);
     },
   };
 
@@ -248,10 +228,9 @@ export const createSigningKeychain = async ({
           );
         });
       }
-      releaseLockSync(lockPath);
       live = undefined;
       process.off("exit", restoreLive);
-      for (const signal of TERMINATION_SIGNALS) process.off(signal, onSignal);
+      await releaseLock().catch(() => undefined);
       if (failures.length > 0) {
         p.log.warn(
           `Restoring the keychains after the build failed (${failures.join("; ")}). Check \`security list-keychains -d user\` and \`security default-keychain -d user\`, and delete ${keychainPath} if it is left.`,
@@ -315,10 +294,13 @@ export const createSigningKeychain = async ({
 export const revokeKeychainCertificates = async ({
   certificates,
   apiKey,
+  privateKey,
   fetch = globalThis.fetch,
 }: {
   certificates: readonly KeychainCertificate[];
   apiKey: Credentials["asc-api-key"];
+  /** The key's private key, read already, as a cancelled build's is. */
+  privateKey?: crypto.KeyObject;
   fetch?: typeof globalThis.fetch;
 }): Promise<{ revoked: string[]; failed: string[] }> => {
   const revoked: string[] = [];
@@ -329,9 +311,11 @@ export const revokeKeychainCertificates = async ({
     `${commonName} (serial ${serialNumber})`;
   try {
     const token = createAppStoreConnectToken({
-      privateKey: crypto.createPrivateKey(
-        await fs.promises.readFile(apiKey.keyPath, "utf-8"),
-      ),
+      privateKey:
+        privateKey ??
+        crypto.createPrivateKey(
+          await fs.promises.readFile(apiKey.keyPath, "utf-8"),
+        ),
       keyId: apiKey.keyId,
       issuerId: apiKey.issuerId,
     });
@@ -401,10 +385,16 @@ export const revokeKeychainCertificates = async ({
   return { revoked, failed };
 };
 
+const TERMINATION_SIGNALS = ["SIGHUP", "SIGINT", "SIGTERM"] as const;
+
 /**
  * Runs `run`, the archive and export of a build that signs with an App
  * Store Connect API key, in a keychain of its own when `enabled` (in CI),
- * then revokes the certificates Xcode created in it and deletes it.
+ * then revokes the certificates Xcode created in it and deletes it. A
+ * termination signal does the same before the process ends with it: the
+ * certificates are read from the keychain before it is deleted, and the key
+ * is read into memory first, since the build's temporary key file is deleted
+ * on the signal. A second signal restores the keychains at once.
  */
 export const withSigningKeychain = async <T>({
   enabled,
@@ -412,6 +402,7 @@ export const withSigningKeychain = async <T>({
   run,
   security,
   lockPath,
+  acquireLock,
   fetch,
 }: {
   enabled: boolean;
@@ -419,18 +410,60 @@ export const withSigningKeychain = async <T>({
   run: () => Promise<T>;
   security?: RunSecurity;
   lockPath?: string;
+  acquireLock?: AcquireLock;
   fetch?: typeof globalThis.fetch;
 }): Promise<T> => {
   if (!enabled) return run();
-  const keychain = await createSigningKeychain({ security, lockPath });
+  const privateKey = crypto.createPrivateKey(
+    await fs.promises.readFile(apiKey.keyPath, "utf-8"),
+  );
+  const keychain = await createSigningKeychain({
+    security,
+    lockPath,
+    acquireLock,
+  });
   p.log.info(
     "Signing in a keychain of this build's own, deleted when it ends (CI is set).",
   );
+
+  let cleanup: Promise<void> | undefined;
+  const release = () => {
+    cleanup ??= (async () => {
+      const certificates = await keychain.certificates().catch(() => []);
+      await keychain.dispose();
+      await revokeKeychainCertificates({
+        certificates,
+        apiKey,
+        privateKey,
+        fetch,
+      });
+    })();
+    return cleanup;
+  };
+  const stopListening = () => {
+    for (const signal of TERMINATION_SIGNALS) process.off(signal, onSignal);
+  };
+  const onSignal = (signal: NodeJS.Signals) => {
+    if (cleanup) {
+      // Asked again: restore the keychains now, and end.
+      stopListening();
+      restoreLive();
+      process.kill(process.pid, signal);
+      return;
+    }
+    void release().finally(() => {
+      stopListening();
+      if (process.listenerCount(signal) === 0) {
+        process.kill(process.pid, signal);
+      }
+    });
+  };
+  for (const signal of TERMINATION_SIGNALS) process.on(signal, onSignal);
+
   try {
     return await run();
   } finally {
-    const certificates = await keychain.certificates().catch(() => []);
-    await keychain.dispose();
-    await revokeKeychainCertificates({ certificates, apiKey, fetch });
+    await release();
+    stopListening();
   }
 };

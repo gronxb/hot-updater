@@ -190,8 +190,9 @@ still uses it: the build's keychain comes first in the search list, and Xcode
 creates a certificate only when it finds no identity. The default keychain
 and the search list belong to the macOS user, so iOS builds under one user,
 such as two runner instances, take turns signing: a build waits while another
-holds `~/Library/Caches/hot-updater/signing-keychain.lock`, and takes over a
-lock whose build is gone.
+holds the kernel lock on `~/Library/Caches/hot-updater/signing-keychain.lock`,
+which a build that ends in any way releases. A cancelled build still revokes
+its certificates and restores the keychains before it stops.
 
 ## When a credential is missing
 
