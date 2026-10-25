@@ -138,6 +138,8 @@ variable, in the environment or `.env.hotupdater`, and stores nothing.
 [`githubActions()`](/docs/guides/secrets-adapters/github-actions) from the
 same module stores in a repository's GitHub Actions secrets, which a workflow
 reads as environment variables.
+[`infisical()`](/docs/guides/secrets-adapters/infisical) reads and stores them
+in an Infisical project, on Infisical Cloud or your own instance.
 
 `secretEnv([...names])` from `hot-updater` returns a function an adapter calls
 when it needs its credentials, so loading the config reads no secret. A name
