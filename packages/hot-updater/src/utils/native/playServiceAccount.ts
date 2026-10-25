@@ -18,12 +18,12 @@ import open from "open";
 import { ui } from "../cli-ui";
 import type { CreateGitHubSecrets } from "./githubSecret";
 import {
-  assertReadableCredential,
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   credentialSetupCommand,
   type IssuedCredentialPolicy,
   type IssuedCredentialTarget,
+  keepIssuedCopy,
   prepareIssuedCredential,
   storeIssuedCredential,
   withIssuedFile,
@@ -49,7 +49,15 @@ export type EnsurePlayServiceAccountResult =
   /** The secrets adapter holds the service account already: no sign-in. */
   | { readonly status: "stored" }
   /** The key was issued with a Google sign-in and stored. */
-  | { readonly status: "issued"; readonly email: string }
+  | {
+      readonly status: "issued";
+      readonly email: string;
+      /**
+       * Set when the adapter does not read the key back here, such as a
+       * write-only store: the adapter this run reads it with, from a copy.
+       */
+      readonly secrets?: SecretsAdapter;
+    }
   /**
    * The key was issued, and the adapter is read-only: it is in `file`, and
    * `secrets` is the adapter that reads it from there for this run.
@@ -204,7 +212,6 @@ export const ensurePlayServiceAccount = async ({
   name,
   packageName,
   env = {},
-  read = false,
   environment = true,
   secrets,
   cacheDir,
@@ -217,8 +224,6 @@ export const ensurePlayServiceAccount = async ({
   packageName?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
-  /** The caller resolves the key after this, so the adapter must read it back. */
-  read?: boolean;
   /** The adapter the key is read from and stored in, the config's by default. */
   secrets?: SecretsAdapter;
   /** An environment override of play-service-account counts as the key. */
@@ -320,16 +325,19 @@ export const ensurePlayServiceAccount = async ({
         ui.kv("Project", issued.projectId),
       ]),
     );
-    // The key is good whether or not the adapter reads it here: it stays.
-    if (read) {
-      assertReadableCredential({
-        secrets: store,
+    if (readable) return { status: "issued", email: issued.email };
+    // The adapter keeps the key, which builds here would not find.
+    return {
+      status: "issued",
+      email: issued.email,
+      secrets: await keepIssuedCopy({
+        policy: POLICY,
         name,
-        readable,
-        usage: "the build uploads with",
-      });
-    }
-    return { status: "issued", email: issued.email };
+        value: issued.json,
+        secrets: store,
+        file: target.file,
+      }),
+    };
   } finally {
     await issued.dispose();
   }

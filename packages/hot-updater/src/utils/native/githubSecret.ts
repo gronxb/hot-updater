@@ -10,6 +10,7 @@ import {
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
+import { githubActions } from "../../githubActions";
 import { ui } from "../cli-ui";
 
 /**
@@ -22,12 +23,6 @@ export type CreateGitHubSecrets = (options: {
   readonly repo: string;
   readonly token: string;
 }) => SecretsAdapter;
-
-/**
- * The adapter the offer writes with. Unset, Hot Updater makes no offer, and
- * the issued key's file and variables are the only way it is stored.
- */
-export const defaultGitHubSecrets: CreateGitHubSecrets | undefined = undefined;
 
 const GITHUB_REMOTE_PATTERN =
   /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/u;
@@ -86,7 +81,7 @@ export const findGitHubToken = async (
 };
 
 export type GitHubSecretOffer =
-  /** No adapter, terminal, GitHub remote, or token: nothing was asked. */
+  /** No terminal, GitHub remote, or token: nothing was asked. */
   | "unavailable"
   /** The developer said no, or cancelled. */
   | "declined"
@@ -104,7 +99,7 @@ export const offerGitHubSecret = async ({
   name,
   value,
   file,
-  createSecrets = defaultGitHubSecrets,
+  createSecrets = githubActions,
   findRepository = findGitHubRepository,
   findToken = findGitHubToken,
 }: {
@@ -112,13 +107,12 @@ export const offerGitHubSecret = async ({
   readonly value: string;
   /** The file that holds the key, which a failure points to. */
   readonly file: string;
+  /** The adapter that writes the secret, `githubActions()` unless set. */
   readonly createSecrets?: CreateGitHubSecrets;
   readonly findRepository?: (cwd: string) => Promise<string | undefined>;
   readonly findToken?: (cwd: string) => Promise<string | undefined>;
 }): Promise<GitHubSecretOffer> => {
-  if (!createSecrets || nonInteractiveReason() !== undefined) {
-    return "unavailable";
-  }
+  if (nonInteractiveReason() !== undefined) return "unavailable";
   const cwd = getCwd();
   const repository = await findRepository(cwd);
   if (!repository) return "unavailable";

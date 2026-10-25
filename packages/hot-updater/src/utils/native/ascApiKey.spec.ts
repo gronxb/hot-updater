@@ -151,9 +151,9 @@ const issue = vi.fn(
   }),
 );
 
-/** ensureAscApiKey with the stand-in sign-in. */
+/** ensureAscApiKey with the stand-in sign-in, and a cacheDir of its own. */
 const ensure = (options: Parameters<typeof ensureAscApiKey>[0]) =>
-  ensureAscApiKey({ issue, ...options });
+  ensureAscApiKey({ issue, cacheDir, ...options });
 
 let cacheDir: string;
 
@@ -241,7 +241,7 @@ describe("ensureAscApiKey", () => {
     vi.stubEnv("CI", "true");
     const { calls } = fakeStore();
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining("never in CI (CI is set)"),
@@ -265,7 +265,7 @@ describe("ensureAscApiKey", () => {
     setConfiguredSecrets(envSecrets());
     git.remote = undefined;
     const result = await withTTY(true, () =>
-      ensure({ name: "asc-api-key", cacheDir, read: true }),
+      ensure({ name: "asc-api-key", cacheDir }),
     );
 
     const file = path.join(cacheDir, "issued", "asc-api-key.json");
@@ -386,7 +386,7 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key", cacheDir })),
     ).rejects.toThrow(
-      `${file} holds an App Store Connect API key Hot Updater issued earlier, which is not stored yet.`,
+      `${file} holds an App Store Connect API key Hot Updater issued earlier, which builds here do not read yet.`,
     );
     expect(issue).not.toHaveBeenCalled();
     await expect(fs.readFile(file, "utf-8")).resolves.toBe("earlier key");
@@ -470,7 +470,6 @@ describe("ensureAscApiKey", () => {
           ensure({
             name: "asc-api-key",
             cacheDir,
-            read: true,
             githubSecrets: () => ({ name: "github", get: vi.fn(), set }),
           }),
         ),
@@ -531,7 +530,6 @@ describe("ensureAscApiKey", () => {
         ensure({
           name: "asc-api-key",
           bundleIdentifier: "com.example.app",
-          read: true,
         }),
       ),
     ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
@@ -647,22 +645,57 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a key a write-only adapter stored, and says the build can't read it yet", async () => {
-    fakeStore({ readBack: async () => undefined });
+  it("keeps a copy of a key a write-only adapter stored, which this run reads, and never revokes it", async () => {
+    const { held } = fakeStore({ readBack: async () => undefined });
+    const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
+
+    const file = path.join(cacheDir, "issued", "asc-api-key.json");
+    expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
+    const copy = await fs.readFile(file, "utf-8");
+    expect(copy).toBe(held.get("asc-api-key"));
+    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    const { secrets } = result as { secrets: SecretsAdapter };
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
-    ).rejects.toThrow(
-      "asc-api-key is stored, but the spec-store secrets adapter does not read it back, which the build signs and uploads with.",
+      secrets.get(["asc-api-key"], { cwd: cacheDir }),
+    ).resolves.toEqual({ "asc-api-key": copy });
+
+    const guidance = stripVTControlCharacters(
+      String(log.warn.mock.calls[0]![0]),
     );
+    expect(guidance).toContain("App Store Connect API key copied to a file");
+    expect(guidance).toContain(
+      "The spec-store secrets adapter stored asc-api-key (spec://asc-api-key), and does not read it back here",
+    );
+    expect(guidance).toContain(
+      `Set HOT_UPDATER_ASC_API_KEY to the contents of ${file}`,
+    );
+    expect(printed()).not.toContain("MIGHAgEA");
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
-  });
 
-  it("stores in a write-only adapter for secrets put, which reads nothing back", async () => {
-    fakeStore({ readBack: async () => undefined });
+    // The next sign-in for it stops at the copy, issuing no other key.
+    vi.clearAllMocks();
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    ).rejects.toThrow("which builds here do not read yet.");
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("uses the key from memory when its copy can't be written", async () => {
+    fakeStore({ readBack: async () => undefined });
+    const notADirectory = path.join(cacheDir, "file");
+    await fs.writeFile(notADirectory, "");
+    const result = await withTTY(true, () =>
+      ensure({ name: "asc-api-key", cacheDir: notADirectory }),
+    );
+    const { secrets } = result as { secrets: SecretsAdapter };
+    expect(
+      JSON.parse(
+        (await secrets.get(["asc-api-key"], { cwd: cacheDir }))["asc-api-key"]!,
+      ),
+    ).toMatchObject({ keyId: "KEY1234567", p8: P8 });
+    expect(String(log.warn.mock.calls[0]![0])).toContain("Writing a copy to");
+    expect(issued.revoke).not.toHaveBeenCalled();
   });
 
   it("stores through a class adapter, keeping its methods and their receiver", async () => {
@@ -682,7 +715,7 @@ describe("ensureAscApiKey", () => {
     setConfiguredSecrets(store);
 
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
     expect(
       JSON.parse((await store.get(["asc-api-key"]))["asc-api-key"]!),

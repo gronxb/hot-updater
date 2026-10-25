@@ -32,7 +32,11 @@ const { log, uploads, scheme, cacheDir } = vi.hoisted(() => ({
   },
   /** What each store upload was given, read while the upload runs. */
   uploads: [] as unknown[],
-  scheme: { platform: "ios" as "ios" | "android" },
+  scheme: {
+    platform: "ios" as "ios" | "android",
+    /** A write-only adapter, as GitHub Actions secrets outside a workflow. */
+    writeOnly: false,
+  },
   cacheDir: { path: "" },
 }));
 
@@ -114,7 +118,14 @@ vi.mock("@/utils/native/prepareNativeBuild", async () => {
   const { envSecrets } = await import("@hot-updater/cli-tools");
   return {
     prepareNativeBuild: vi.fn(async (options) => {
-      const secrets = envSecrets();
+      const secrets = scheme.writeOnly
+        ? {
+            name: "write-only",
+            get: async (names: readonly string[]) =>
+              Object.fromEntries(names.map((name) => [name, undefined])),
+            set: async () => {},
+          }
+        : envSecrets();
       if (scheme.platform === "ios") {
         await options.beforePrebuild?.({
           scheme: "release",
@@ -185,6 +196,7 @@ const printed = () =>
 beforeEach(async () => {
   vi.clearAllMocks();
   uploads.length = 0;
+  scheme.writeOnly = false;
   cacheDir.path = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-build-"),
   );
@@ -226,6 +238,23 @@ describe("a first build whose secrets adapter is env()", () => {
       p8: P8,
     });
     expect(printed()).toContain(file);
+    expect(printed()).not.toContain("MIGHAgEA");
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("uploads to TestFlight with the key a write-only adapter stored, from its copy", async () => {
+    scheme.platform = "ios";
+    scheme.writeOnly = true;
+    await withTTY(() =>
+      buildIosNative({
+        interactive: false,
+        scheme: "release",
+        upload: "testflight",
+      }),
+    );
+
+    expect(uploads).toEqual([{ keyId: "KEY1234567", p8: P8 }]);
+    expect(printed()).toContain("copied to a file");
     expect(printed()).not.toContain("MIGHAgEA");
     expect(log.error).not.toHaveBeenCalled();
   });

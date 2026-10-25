@@ -139,11 +139,15 @@ const buildNativeInternal = async ({
                   secrets,
                   cacheDir,
                   bundleIdentifier: iosScheme!.bundleIdentifier,
-                  read: true,
                 });
-                // A read-only adapter's key is in its file: this build
-                // signs and uploads with it from there.
-                if (ensured.status === "saved") secrets = ensured.secrets;
+                // A key builds here can't read from the adapter is in its
+                // file: this build signs and uploads with it from there.
+                if (
+                  (ensured.status === "saved" || ensured.status === "issued") &&
+                  ensured.secrets
+                ) {
+                  secrets = ensured.secrets;
+                }
               } catch (e) {
                 if (e instanceof CredentialSetupRefusedError) throw e;
                 throw new NativeBuildFailure(
@@ -163,7 +167,6 @@ const buildNativeInternal = async ({
                   secrets,
                   cacheDir,
                   ...(packageName ? { packageName } : {}),
-                  read: true,
                 });
                 if (ensured.status === "issued")
                   serviceAccountIssued = "stored";

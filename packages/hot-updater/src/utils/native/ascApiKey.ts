@@ -14,12 +14,12 @@ import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { ui } from "../cli-ui";
 import type { CreateGitHubSecrets } from "./githubSecret";
 import {
-  assertReadableCredential,
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   credentialSetupCommand,
   type IssuedCredentialPolicy,
   type IssuedCredentialTarget,
+  keepIssuedCopy,
   prepareIssuedCredential,
   storeIssuedCredential,
   withIssuedFile,
@@ -76,7 +76,15 @@ export type EnsureAscApiKeyResult =
   /** The secrets adapter holds the key already: no sign-in. */
   | { readonly status: "stored" }
   /** The key was issued with an Apple Account sign-in and stored. */
-  | { readonly status: "issued"; readonly keyId: string }
+  | {
+      readonly status: "issued";
+      readonly keyId: string;
+      /**
+       * Set when the adapter does not read the key back here, such as a
+       * write-only store: the adapter this run reads it with, from a copy.
+       */
+      readonly secrets?: SecretsAdapter;
+    }
   /**
    * The key was issued, and the adapter is read-only: it is in `file`, and
    * `secrets` is the adapter that reads it from there for this run.
@@ -194,7 +202,6 @@ export const ensureAscApiKey = async ({
   name,
   bundleIdentifier,
   env = {},
-  read = false,
   environment = true,
   secrets,
   cacheDir,
@@ -207,8 +214,6 @@ export const ensureAscApiKey = async ({
   bundleIdentifier?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
-  /** The caller resolves the key after this, so the adapter must read it back. */
-  read?: boolean;
   /** The adapter the key is read from and stored in, the config's by default. */
   secrets?: SecretsAdapter;
   /** An environment override of asc-api-key counts as the key. */
@@ -279,16 +284,19 @@ export const ensureAscApiKey = async ({
         ui.kv("In", describeSecret(store, name)),
       ]),
     );
-    // The key is good whether or not the adapter reads it here: it stays.
-    if (read) {
-      assertReadableCredential({
-        secrets: store,
+    if (readable) return { status: "issued", keyId: key.keyId };
+    // The adapter keeps the key, which builds here would not find.
+    return {
+      status: "issued",
+      keyId: key.keyId,
+      secrets: await keepIssuedCopy({
+        policy: POLICY,
         name,
-        readable,
-        usage: "the build signs and uploads with",
-      });
-    }
-    return { status: "issued", keyId: key.keyId };
+        value: storedValue(key),
+        secrets: store,
+        file: target.file,
+      }),
+    };
   } finally {
     await key.dispose();
   }

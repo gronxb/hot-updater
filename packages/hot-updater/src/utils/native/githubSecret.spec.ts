@@ -117,11 +117,6 @@ describe("offerGitHubSecret", () => {
       ...options,
     });
 
-  it("asks nothing without an adapter that writes GitHub Actions secrets", async () => {
-    await expect(withTTY(true, () => offer({}))).resolves.toBe("unavailable");
-    expect(confirm).not.toHaveBeenCalled();
-  });
-
   it("asks nothing in CI", async () => {
     vi.stubEnv("CI", "true");
     const createSecrets = vi.fn();
