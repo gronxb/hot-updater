@@ -558,6 +558,7 @@ const grantPlayAccess = async ({
   }
   try {
     await google("Granting access to the app", "POST", `${user}/grants`, {
+      name: `developers/${developerId}/users/${email}/grants/${packageName}`,
       packageName,
       appLevelPermissions: APP_PERMISSIONS,
     });

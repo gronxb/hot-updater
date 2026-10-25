@@ -87,19 +87,36 @@ const assertWritable = async (client: VaultClient, name: string) => {
   );
 };
 
-/** Whether the vault token may read `name`, which the build resolves after it is stored. */
-const assertReadable = async (client: VaultClient, name: string) => {
+/**
+ * Whether the vault token reads `name` back at `version`, as the build
+ * resolves it. Asked after the store: before it, the Console refuses a name
+ * no secret has to a token scoped by kind, which may read it once stored.
+ */
+const assertReadable = async (
+  client: VaultClient,
+  name: string,
+  version: number,
+) => {
   try {
-    await client.resolve([name]);
-  } catch (error) {
-    if (error instanceof VaultRequestError && error.status === 403) {
-      throw new Error(
-        `The vault token cannot read ${name}, which the build uploads with. Use a vault token whose scope allows read and write on ${name}.`,
-        { cause: error },
-      );
+    const { secrets } = await client.resolve([name]);
+    if (
+      secrets.some(
+        (secret) =>
+          secret.name === name &&
+          secret.kind === "play-service-account" &&
+          secret.version === version,
+      )
+    ) {
+      return;
     }
-    throw error;
+  } catch (error) {
+    if (!(error instanceof VaultRequestError && error.status === 403)) {
+      throw error;
+    }
   }
+  throw new Error(
+    `${name} is stored (v${version}), but the vault token cannot read it, which the build uploads with. Use a vault token whose scope allows read on ${name}, then run the build again: it uses the stored key without signing in.`,
+  );
 };
 
 const PACKAGE_NAME_PATTERN =
@@ -190,7 +207,8 @@ const storeIssued = async (
  * 2. a vault secret named `name` of kind play-service-account is used as it
  *    is, so CI uploads with the stored key and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once;
- * 4. the vault token must store (and, for a build, read) `name`.
+ * 4. the vault token must store `name`; a build's must also read it, which
+ *    is checked once it is stored.
  *
  * Only then does the developer sign in with Google, in a browser, through
  * `issue`, and the issued key is stored, read back, and deleted again if
@@ -212,7 +230,7 @@ export const ensurePlayServiceAccount = async ({
   packageName?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
-  /** The caller resolves the key after this, so the token must read it too. */
+  /** The caller resolves the key after this, so the token must read it back. */
   read?: boolean;
   /** An environment override of play-service-account counts as the key. */
   environment?: boolean;
@@ -257,7 +275,6 @@ export const ensurePlayServiceAccount = async ({
   }
 
   await assertWritable(client, name);
-  if (read) await assertReadable(client, name);
 
   const app = answered(
     await p.text({
@@ -329,6 +346,8 @@ export const ensurePlayServiceAccount = async ({
         ui.kv("Version", ui.version(`v${version}`)),
       ]),
     );
+    // The key is good whether or not this token reads it: it stays.
+    if (read) await assertReadable(client, name, version);
     return { status: "issued", email: issued.email, version };
   } finally {
     await issued.dispose();

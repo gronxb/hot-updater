@@ -85,9 +85,20 @@ const fakeConsole = ({
     if (request.method === "POST" && path === "/resolve") {
       if (!actions.includes("read")) return refuse(403, "forbidden");
       const names = (body as { names: string[] }).names;
+      // A token scoped by kind reads no name that no secret has.
+      if (names.some((name) => !secrets.some((s) => s.name === name))) {
+        return refuse(403, "forbidden");
+      }
       return Response.json({
-        secrets: [],
-        errors: names.map((name) => ({ name, code: "not_found" })),
+        secrets: secrets
+          .filter((secret) => names.includes(secret.name))
+          .map(({ name, kind, version }) => ({
+            name,
+            kind,
+            version,
+            value: { serviceAccount: Buffer.from(KEY_FILE).toString("base64") },
+          })),
+        errors: [],
       });
     }
     if (request.method === "PUT" && path.startsWith("/secrets/")) {
@@ -291,13 +302,16 @@ describe("ensurePlayServiceAccount", () => {
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("refuses a token a build cannot read the key back with before the sign-in", async () => {
+  it("keeps the stored key, and names the token, when a build's token cannot read it back", async () => {
     fakeConsole({ actions: ["write"] });
 
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account", read: true })),
-    ).rejects.toThrow("The vault token cannot read play-service-account");
-    expect(issue).not.toHaveBeenCalled();
+    ).rejects.toThrow(
+      "play-service-account is stored (v1), but the vault token cannot read it",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
+    expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("names the missing vault connection, and the override that works without one", async () => {
@@ -321,12 +335,14 @@ describe("ensurePlayServiceAccount", () => {
       ),
     ).resolves.toEqual({ status: "issued", email: EMAIL, version: 1 });
 
+    // A token scoped by kind reads the name only once the secret exists,
+    // so the read back comes after the store.
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /secrets",
       "PUT /secrets/play-service-account",
-      "POST /resolve",
       "PUT /secrets/play-service-account",
       "GET /secrets",
+      "POST /resolve",
     ]);
     // The probe stores nothing, and the key goes only to the vault.
     expect(requests[1]!.body).toEqual({
@@ -334,7 +350,7 @@ describe("ensurePlayServiceAccount", () => {
       value: {},
       expectedVersion: 0,
     });
-    expect(requests[3]!.body).toEqual({
+    expect(requests[2]!.body).toEqual({
       kind: "play-service-account",
       value: { serviceAccount: Buffer.from(KEY_FILE).toString("base64") },
       expectedVersion: 0,

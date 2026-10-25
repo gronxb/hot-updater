@@ -269,6 +269,7 @@ describe("createGoogleKeyIssuer", () => {
       email: EMAIL,
     });
     expect(body("POST", `${USER}/grants`)).toEqual({
+      name: `developers/1234/users/${EMAIL}/grants/com.example.app`,
       packageName: "com.example.app",
       appLevelPermissions: [
         "CAN_VIEW_NON_FINANCIAL_DATA",
