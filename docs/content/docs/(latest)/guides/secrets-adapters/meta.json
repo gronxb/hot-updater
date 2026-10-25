@@ -1,6 +1,6 @@
 {
   "title": "Secrets Adapters",
-  "description": "Read the CLI's secrets from a secrets manager, and store the keys it issues.",
+  "description": "Read and store the CLI's secrets in a secrets store.",
   "icon": "LockKeyhole",
   "pages": ["google-secret-manager"]
 }

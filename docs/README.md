@@ -30,8 +30,7 @@ and Plugins** section starts with its overview: an adapter fills one slot of a
 config (build, storage, database, secrets, signing), and a plugin is an entry of a
 `plugins` list (server, client) or an integration that wraps a build adapter.
 It keeps **Build Adapters**, **Storage Adapters**, **Database Adapters**,
-**Signing Adapters**, **Secrets Adapters** and **Integration Plugins** directly
-visible, then
+**Signing Adapters**, **Secrets Adapters** and **Integration Plugins** directly visible, then
 **Create an Adapter** (storage and database guides and the database adapter
 contract), **Create a Plugin** (server and client guides), and **Test and
 publish**.
