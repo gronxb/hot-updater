@@ -21,7 +21,10 @@ import java.net.URL
 import java.net.UnknownHostException
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLHandshakeException
 
@@ -1132,6 +1135,132 @@ class BundleFileStorageServiceTest {
                 loadMetadata(rootDir)?.pendingTransition,
             )
         }
+
+    @Test
+    fun `a selection committed while first content arrives keeps the launch verified`() {
+        val rootDir = temporaryFolder.newFolder("selection-during-launch-completion")
+        val race = LaunchCompletionRace(rootDir)
+
+        // The commit read the metadata before first content and writes it after.
+        val service =
+            race.run(
+                pausesWrite = { it.verificationPending && it.stagingSelection == race.newSelection },
+                first = { runBlocking { assertTrue(it.commitReleaseSelection(race.newSelection)) } },
+                duringPause = { it.markLaunchCompleted(race.bundleId) },
+            )
+
+        val metadata = loadMetadata(rootDir)
+        assertFalse(metadata?.verificationPending ?: true)
+        assertEquals(race.newSelection, metadata?.stagingSelection)
+        assertNull(metadata?.pendingTransition)
+        assertEquals(
+            mapOf(
+                "status" to "UPDATE_APPLIED",
+                "fromReleaseId" to "release-zero",
+                "fromBundleId" to "bundle-zero",
+                "toReleaseId" to "release-two",
+                "toBundleId" to race.bundleId,
+                "updateStrategy" to "appVersion",
+            ),
+            service.notifyAppReady(),
+        )
+
+        // The next launch runs the bundle as verified and reports nothing new.
+        val nextProcess = createService(rootDir)
+        val selection = nextProcess.prepareLaunch(null)
+        assertEquals(race.bundleId, selection.launchedBundleId)
+        assertFalse(selection.shouldRollbackOnCrash)
+        nextProcess.markLaunchCompleted(race.bundleId)
+        assertEquals(mapOf("status" to "UNCHANGED"), nextProcess.notifyAppReady())
+    }
+
+    @Test
+    fun `first content arriving while a selection commits keeps the selection`() {
+        val rootDir = temporaryFolder.newFolder("launch-completion-during-selection")
+        val race = LaunchCompletionRace(rootDir)
+
+        // First content read the metadata before the commit and writes it after.
+        val service =
+            race.run(
+                pausesWrite = { !it.verificationPending && it.stagingSelection == race.oldSelection },
+                first = { it.markLaunchCompleted(race.bundleId) },
+                duringPause = { runBlocking { assertTrue(it.commitReleaseSelection(race.newSelection)) } },
+            )
+
+        val metadata = loadMetadata(rootDir)
+        assertFalse(metadata?.verificationPending ?: true)
+        assertEquals(race.newSelection, metadata?.stagingSelection)
+        assertNull(metadata?.pendingTransition)
+        assertEquals("UPDATE_APPLIED", service.notifyAppReady()["status"])
+    }
+
+    /**
+     * A staged bundle pending its first content, whose Release a newer catalog
+     * selects again. [run] pauses the metadata write [pausesWrite] matches
+     * until the other writer returns, or a bound when that writer waits for
+     * the paused one.
+     */
+    private inner class LaunchCompletionRace(
+        private val rootDir: File,
+    ) {
+        val bundleId = "bundle-one"
+        val oldSelection = releaseSelection("release-one", bundleId, 1, "hash-1", "context-1")
+        val newSelection = releaseSelection("release-two", bundleId, 2, "hash-2", "context-2")
+
+        fun run(
+            pausesWrite: (BundleMetadata) -> Boolean,
+            first: (BundleFileStorageService) -> Unit,
+            duringPause: (BundleFileStorageService) -> Unit,
+        ): BundleFileStorageService {
+            val bundleDir = createBundleDir(rootDir, bundleId)
+            writeFile(bundleDir, "index.android.bundle")
+            writeManifest(bundleDir, listOf("index.android.bundle"))
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = bundleId,
+                    stagingSelection = oldSelection,
+                    verificationPending = true,
+                    pendingTransition = PendingSelectionTransition("release-zero", "bundle-zero", "release-one", bundleId),
+                ),
+            )
+            val paused = CountDownLatch(1)
+            val otherWriterReturned = CountDownLatch(1)
+            val hasPaused = AtomicBoolean(false)
+            val service =
+                createService(
+                    rootDir,
+                    metadataWriter = { metadata, file ->
+                        if (pausesWrite(metadata) && hasPaused.compareAndSet(false, true)) {
+                            paused.countDown()
+                            otherWriterReturned.await(2, TimeUnit.SECONDS)
+                        }
+                        metadata.saveToFile(file)
+                    },
+                )
+            val launch = service.prepareLaunch(null)
+            assertEquals(bundleId, launch.launchedBundleId)
+            assertTrue(launch.shouldRollbackOnCrash)
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"))
+
+            val executor = Executors.newFixedThreadPool(2)
+            try {
+                val firstWrite = executor.submit { first(service) }
+                assertTrue(paused.await(5, TimeUnit.SECONDS))
+                val otherWrite =
+                    executor.submit {
+                        duringPause(service)
+                        otherWriterReturned.countDown()
+                    }
+                firstWrite.get(10, TimeUnit.SECONDS)
+                otherWrite.get(10, TimeUnit.SECONDS)
+            } finally {
+                executor.shutdownNow()
+            }
+            return service
+        }
+    }
 
     @Test
     fun `a committed selection makes another scope's selection stale`() =

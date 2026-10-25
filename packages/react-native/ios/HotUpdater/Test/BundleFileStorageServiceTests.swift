@@ -1412,6 +1412,59 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aSelectionCommittedWhileFirstContentArrivesKeepsTheLaunchVerified() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let race = LaunchCompletionRace(documentsDirectory: workingDirectory)
+
+        // The commit read the metadata before first content and writes it after.
+        let service = try race.run(
+            pausesWrite: { $0.verificationPending && $0.stagingSelection?.releaseId == "release-two" },
+            first: { #expect($0.commitReleaseSelection(race.newSelection)) },
+            duringPause: { $0.markLaunchCompleted(bundleId: race.bundleId) }
+        )
+
+        let metadata = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(metadata.verificationPending == false)
+        #expect(metadata.stagingSelection?.releaseId == "release-two")
+        #expect(metadata.pendingSelectionTransition == nil)
+        let report = service.notifyAppReady()
+        #expect(report["status"] as? String == "UPDATE_APPLIED")
+        #expect(report["fromReleaseId"] as? String == "release-zero")
+        #expect(report["toReleaseId"] as? String == "release-two")
+        #expect(report["toBundleId"] as? String == race.bundleId)
+
+        // The next launch runs the bundle as verified and reports nothing new.
+        let nextProcess = makeStorageService(documentsDirectory: workingDirectory)
+        let selection = nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(selection.launchedBundleId == race.bundleId)
+        #expect(selection.shouldRollbackOnCrash == false)
+        nextProcess.markLaunchCompleted(bundleId: race.bundleId)
+        #expect(nextProcess.notifyAppReady()["status"] as? String == "UNCHANGED")
+    }
+
+    @Test
+    func firstContentArrivingWhileASelectionCommitsKeepsTheSelection() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let race = LaunchCompletionRace(documentsDirectory: workingDirectory)
+
+        // First content read the metadata before the commit and writes it after.
+        let service = try race.run(
+            pausesWrite: { !$0.verificationPending && $0.stagingSelection?.releaseId == "release-one" },
+            first: { $0.markLaunchCompleted(bundleId: race.bundleId) },
+            duringPause: { #expect($0.commitReleaseSelection(race.newSelection)) }
+        )
+
+        let metadata = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(metadata.verificationPending == false)
+        #expect(metadata.stagingSelection?.releaseId == "release-two")
+        #expect(metadata.stagingSelection?.generation == 2)
+        #expect(metadata.pendingSelectionTransition == nil)
+        #expect(service.notifyAppReady()["status"] as? String == "UPDATE_APPLIED")
+    }
+
+    @Test
     func aCommittedSelectionMakesAnotherScopesSelectionStale() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }
@@ -3723,7 +3776,8 @@ private func makeStorageService(
     preferences: PreferencesService = InMemoryPreferencesService(),
     downloadService: DownloadService = UnusedDownloadService(),
     builtInAssetResolver: BuiltInAssetResolver? = nil,
-    builtInBundleId: String = "builtin-bundle"
+    builtInBundleId: String = "builtin-bundle",
+    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) }
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: fileSystem ?? TestFileSystemService(
@@ -3734,7 +3788,8 @@ private func makeStorageService(
         isolationKey: testIsolationKey,
         builtInBundleIdProvider: { builtInBundleId },
         builtInAssetResolver: builtInAssetResolver,
-        downloadRetryDelay: 0
+        downloadRetryDelay: 0,
+        metadataWriter: metadataWriter
     )
 }
 
@@ -3905,6 +3960,99 @@ private func installRetriedBundle(
             fileHash: try #require(sha256(retriedBundleBytes, in: documentsDirectory))
         )]
     )
+}
+
+/// A staged bundle pending its first content, whose Release a newer catalog
+/// selects again. `run` pauses the metadata write `pausesWrite` matches until
+/// the other writer returns, or a bound when that writer waits for the paused
+/// one.
+private struct LaunchCompletionRace {
+    let documentsDirectory: URL
+    let bundleId = "bundle-one"
+    let newSelection = releaseSelection(
+        releaseId: "release-two",
+        bundleId: "bundle-one",
+        generation: 2,
+        catalogHash: "hash-2",
+        selectionContextHash: "context-2"
+    )
+
+    func run(
+        pausesWrite: @escaping (BundleMetadata) -> Bool,
+        first: @escaping (BundleFileStorageService) -> Void,
+        duringPause: @escaping (BundleFileStorageService) -> Void
+    ) throws -> BundleFileStorageService {
+        let bundleDirectory = try createBundleDirectory(documentsDirectory: documentsDirectory, bundleId: bundleId)
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundleDirectory, bundleId: bundleId)
+        try writeMetadata(
+            documentsDirectory: documentsDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stagingBundleId: bundleId,
+                stagingSelection: releaseSelection(
+                    releaseId: "release-one",
+                    bundleId: bundleId,
+                    generation: 1,
+                    catalogHash: "hash-1",
+                    selectionContextHash: "context-1"
+                ),
+                verificationPending: true,
+                pendingSelectionTransition: PendingSelectionTransition(
+                    fromReleaseId: "release-zero",
+                    fromBundleId: "bundle-zero",
+                    toReleaseId: "release-one",
+                    toBundleId: bundleId
+                )
+            )
+        )
+        let paused = DispatchSemaphore(value: 0)
+        let otherWriterReturned = DispatchSemaphore(value: 0)
+        let pauseLock = NSLock()
+        var hasPaused = false
+        let service = makeStorageService(
+            documentsDirectory: documentsDirectory,
+            metadataWriter: { metadata, file in
+                pauseLock.lock()
+                let pauses = !hasPaused && pausesWrite(metadata)
+                if pauses { hasPaused = true }
+                pauseLock.unlock()
+                if pauses {
+                    paused.signal()
+                    _ = otherWriterReturned.wait(timeout: .now() + 2)
+                }
+                return metadata.save(to: file)
+            }
+        )
+        let launch = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(launch.launchedBundleId == bundleId)
+        #expect(launch.shouldRollbackOnCrash)
+        #expect(service.acceptReleaseCatalog(
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ))
+
+        // Own threads: parallel tests can hold every thread of the global queues.
+        let firstReturned = DispatchSemaphore(value: 0)
+        let otherReturned = DispatchSemaphore(value: 0)
+        Thread {
+            first(service)
+            firstReturned.signal()
+        }.start()
+        #expect(paused.wait(timeout: .now() + 5) == .success)
+        Thread {
+            duringPause(service)
+            otherWriterReturned.signal()
+            otherReturned.signal()
+        }.start()
+        #expect(firstReturned.wait(timeout: .now() + 10) == .success)
+        #expect(otherReturned.wait(timeout: .now() + 10) == .success)
+        return service
+    }
 }
 
 private func releaseSelection(

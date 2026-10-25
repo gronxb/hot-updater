@@ -431,6 +431,7 @@ class BundleFileStorageService: BundleStorageService {
     private let builtInBundleIdProvider: () -> String
     private let builtInAssetResolver: BuiltInAssetResolver
     private let updateStrategyProvider: () -> UpdateStrategy
+    private let metadataWriter: (BundleMetadata, URL) -> Bool
     private let releaseStateLock = NSRecursiveLock()
 
     /// App-wide: every instance's storage reads the same install identity
@@ -871,7 +872,10 @@ class BundleFileStorageService: BundleStorageService {
                 builtInBundleIdProvider: @escaping () -> String = { "" },
                 builtInAssetResolver: BuiltInAssetResolver? = nil,
                 updateStrategyProvider: (() -> UpdateStrategy)? = nil,
-                downloadRetryDelay: TimeInterval = 1) {
+                downloadRetryDelay: TimeInterval = 1,
+                metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in
+                    metadata.save(to: file)
+                }) {
 
         self.fileSystem = fileSystem
         self.downloadRetryDelay = downloadRetryDelay
@@ -886,6 +890,7 @@ class BundleFileStorageService: BundleStorageService {
             defaultBundle: { instance.bundle }
         )
         self.updateStrategyProvider = updateStrategyProvider ?? { instance.updateStrategy() }
+        self.metadataWriter = metadataWriter
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
@@ -943,7 +948,7 @@ class BundleFileStorageService: BundleStorageService {
         }
         var updatedMetadata = metadata
         updatedMetadata.isolationKey = isolationKey
-        return updatedMetadata.save(to: file)
+        return metadataWriter(updatedMetadata, file)
     }
 
     private func loadLaunchReport() -> LaunchReport? {
@@ -1458,6 +1463,8 @@ class BundleFileStorageService: BundleStorageService {
     /// ended before first content without a crash marker.
     @discardableResult
     private func rollbackPendingBundle(_ stagingId: String, unfinishedLaunch: Bool = false) -> Bool {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         guard var metadata = loadMetadataOrNull(), metadata.stagingBundleId == stagingId else {
             return false
         }
@@ -1533,6 +1540,8 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func applyPendingRecoveryIfNeeded(_ pendingRecovery: PendingCrashRecovery?) {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         guard let metadata = loadMetadataOrNull(),
               let stagingBundleId = metadata.stagingBundleId,
               pendingRecovery?.shouldRollback == true,
@@ -2091,6 +2100,8 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func selectLaunch(bundle: Bundle) -> LaunchSelection {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         guard let metadata = loadMetadataOrNull() else {
             return LaunchSelection(
                 bundleURL: getFallbackBundleURL(bundle: bundle),
@@ -2171,6 +2182,8 @@ class BundleFileStorageService: BundleStorageService {
         // Cleared before the rollbacks below, so the launch reports their RECOVERED.
         saveLaunchReport(nil)
         applyPendingRecoveryIfNeeded(pendingRecovery())
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         // Only a new storage instance consumes an unfinished launch. Repeated bundle
         // lookups or bridge reloads in this process must not reject its own launch.
         if let metadata = loadMetadataOrNull(),
@@ -3119,6 +3132,10 @@ class BundleFileStorageService: BundleStorageService {
     func markLaunchCompleted(bundleId: String?) {
         // Before the guard: content from the built-in bundle (nil) also counts.
         readyInterruptedLaunchRetry(bundleId)
+        // A Release selection can commit at the same time, from a native update
+        // check or JavaScript; neither may save over the other's read.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         guard let bundleId,
               var metadata = loadMetadataOrNull(),
               metadata.verificationPending,
@@ -3325,6 +3342,8 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func resetChannel() -> Result<Bool, Error> {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         guard case .success = setBundleURL(localPath: nil) else {
             return .failure(BundleStorageError.unknown(nil))
         }
