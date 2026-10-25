@@ -342,6 +342,20 @@ describe("ensureAscApiKey", () => {
     });
   });
 
+  it("restricts only the issued directory, not a cacheDir it creates", async () => {
+    setConfiguredSecrets(envSecrets());
+    git.remote = undefined;
+    const custom = path.join(cacheDir, "custom", "cache");
+    await withTTY(true, () =>
+      ensure({ name: "asc-api-key", cacheDir: custom }),
+    );
+    const umask = process.umask();
+    expect((await fs.stat(custom)).mode & 0o777).toBe(0o777 & ~umask);
+    expect((await fs.stat(path.join(custom, "issued"))).mode & 0o777).toBe(
+      0o700,
+    );
+  });
+
   it("names where a read-only adapter other than env() reads the key", async () => {
     fakeStore({ writable: false });
     const githubSecrets = vi.fn();

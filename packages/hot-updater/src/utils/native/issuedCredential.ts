@@ -148,6 +148,8 @@ const prepareIssuedFile = async (
   }
   const directory = path.dirname(file);
   try {
+    // Only `issued` is the CLI's to restrict: cacheDir keeps its own mode.
+    await fs.mkdir(path.dirname(directory), { recursive: true });
     await fs.mkdir(directory, { recursive: true, mode: 0o700 });
     // mkdir leaves an existing directory's mode as it is.
     await fs.chmod(directory, 0o700);
