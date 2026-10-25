@@ -11,6 +11,7 @@ import {
   isConsoleServerReady,
   loadConsoleCredentials,
   waitForConsoleReady,
+  withConsoleSession,
 } from "./console";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -77,13 +78,29 @@ describe("getConsoleServerEnv", () => {
       expectedHost: "127.0.0.1",
     },
   ])("$name", ({ processEnv, expectedHost }) => {
-    const env = getConsoleServerEnv(4_321, processEnv);
+    const env = getConsoleServerEnv(4_321, "run-session", processEnv);
 
     expect(env).toMatchObject({
       PORT: "4321",
       NITRO_PORT: "4321",
       NITRO_HOST: expectedHost,
     });
+  });
+
+  it("gives the server the run's session, over one the shell set", () => {
+    expect(
+      getConsoleServerEnv(4_321, "run-session", {
+        HOT_UPDATER_CONSOLE_SESSION: "from-the-shell",
+      }),
+    ).toMatchObject({ HOT_UPDATER_CONSOLE_SESSION: "run-session" });
+  });
+});
+
+describe("withConsoleSession", () => {
+  it("adds the run's session to a console link, keeping its own query", () => {
+    expect(
+      withConsoleSession("http://localhost:1422/?platform=ios", "a-b_c"),
+    ).toBe("http://localhost:1422/?platform=ios&hot-updater-session=a-b_c");
   });
 });
 

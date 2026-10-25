@@ -33,6 +33,7 @@ import {
 import {
   getConsolePort,
   loadConsoleCredentials,
+  withConsoleSession,
   openConsole,
 } from "@/commands/console";
 import {
@@ -1067,7 +1068,13 @@ program
       process.exit(1);
     }
 
-    await openConsole(port);
+    await openConsole(port, ({ session }) => {
+      // The link carries this run's session: the console answers no
+      // other browser or process.
+      p.log.info(
+        `Console: ${withConsoleSession(`http://localhost:${port}`, session)}`,
+      );
+    });
   });
 
 program

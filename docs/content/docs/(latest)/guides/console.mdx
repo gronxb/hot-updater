@@ -69,11 +69,16 @@ The Bundles list and its detail sheet show an **ID** that matches
 [`hotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
 
-Start the local console:
+Start the local console, then open the link it prints:
 
 ```package-install
 npx hot-updater console
 ```
+
+The link carries a session made for that run, such as
+`http://localhost:1422/?hot-updater-session=...`. Opening it once gives the
+browser a cookie for the run; the console answers no other browser or
+process.
 
 When the database has not run a migration its schema or a configured plugin
 needs, such as after an upgrade or after adding a plugin to `plugins`, the
@@ -88,7 +93,13 @@ explains what it needs.
 ## Security model
 
 The CLI Console binds to loopback and loads the configured database and storage
-adapters on its server. With a direct database adapter, it does not call the Hot
+adapters on its server. Each run makes a new session that only the link it
+prints carries, as an HttpOnly, `SameSite=Strict` cookie once opened. Every
+page and server function needs that session, and the console refuses a
+request whose `Host` is not `localhost`, `127.0.0.1`, or `[::1]` on its port,
+so a site that points its name at your machine reaches nothing, and changes
+sent from another origin. Only the `/_hot-updater/` routes, which check a
+vault token on each request, answer without the session. With a direct database adapter, it does not call the Hot
 Updater HTTP handlers at all.
 
 When the configured database is `standaloneRepository`, point its `baseUrl` at

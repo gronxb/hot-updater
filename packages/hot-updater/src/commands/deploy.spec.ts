@@ -247,7 +247,10 @@ vi.mock("@/utils/version/getNativeAppVersion", () => ({
   getNativeAppVersion: vi.fn(),
 }));
 
-vi.mock("./console", () => ({
+vi.mock("./console", async (importOriginal) => ({
+  // The link it opens the console with stays real.
+  withConsoleSession: (await importOriginal<typeof import("./console")>())
+    .withConsoleSession,
   getConsolePort: vi.fn(),
   openConsole: vi.fn(),
 }));
@@ -596,7 +599,7 @@ describe("deploy rollout wiring", () => {
       vi.mocked(isPortReachable).mockResolvedValue(alreadyRunning);
       mockCli.p.confirm.mockResolvedValue(true);
       vi.mocked(openConsole).mockImplementation(async (port, onListening) => {
-        onListening?.({ port });
+        onListening?.({ port, session: "run-session" });
       });
       vi.mocked(open).mockResolvedValue({} as Awaited<ReturnType<typeof open>>);
 
@@ -615,9 +618,12 @@ describe("deploy rollout wiring", () => {
       );
       const url = new URL(vi.mocked(open).mock.calls[0]![0]);
       expect(url.origin).toBe("http://localhost:3000");
+      // A console it starts opens with that run's session; one already
+      // running opens with the session the browser holds.
       expect(Object.fromEntries(url.searchParams)).toEqual({
         platform: "ios",
         releaseId: release.id,
+        ...(alreadyRunning ? {} : { "hot-updater-session": "run-session" }),
       });
       expect(mockCli.p.note).toHaveBeenCalledWith(
         "Console: http://localhost:3000",
