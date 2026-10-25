@@ -423,7 +423,7 @@ secretsCommand
   .option("--key-alias <alias>", "android-keystore: the key's alias")
   .option(
     "--service-account <file>",
-    "play-service-account: the service account's JSON key file",
+    "play-service-account: the service account's JSON key file; without it, sign in with Google and Hot Updater issues the key",
   )
   .option(
     "--private-key <file>",
