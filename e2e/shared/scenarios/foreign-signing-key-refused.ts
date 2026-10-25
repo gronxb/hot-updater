@@ -5,6 +5,11 @@ import type { ScenarioDefinition } from "./types.ts";
  * bundle signed with any other private key is refused before it installs,
  * and the same bundle signed with the project's key installs. Only the key
  * differs between the two deploys, so the refusal is the signature's.
+ *
+ * The project's key comes from `secret:bundle-signing-key` through `env()`,
+ * with the key file moved away: the controller first sees a deploy without
+ * the variable refused for it, and the installed update proves the key read
+ * from the secret is the one the app embeds.
  */
 export const foreignSigningKeyRefusedScenario: ScenarioDefinition = {
   name: "foreign-signing-key-refused",
@@ -33,13 +38,14 @@ export const foreignSigningKeyRefusedScenario: ScenarioDefinition = {
     );
 
     await app.control(
-      "deploy the same bundle signed with the project's key",
+      "deploy the same bundle signed with the project's key from its secret",
       "/e2e/jobs/deploy-bundle",
       {
         channel: "production",
         marker: "foreign-signing-key-detox",
         mode: "reset",
         safeBundleIds: [],
+        signingKey: "secret",
         targetAppVersion: "1.0.x",
       },
       {

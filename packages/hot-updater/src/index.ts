@@ -830,6 +830,10 @@ keysCommand
     },
     4096,
   )
+  .option(
+    "--secret [name]",
+    "store the private key through the config's secrets adapter as this name (default: bundle-signing-key)",
+  )
   .action(keysGenerate);
 
 keysCommand

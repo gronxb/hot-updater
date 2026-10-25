@@ -96,3 +96,39 @@ export async function saveKeyPair(
 
   await Promise.all([privateKeyFile.close(), publicKeyFile.close()]);
 }
+
+/**
+ * Saves only the public key, after `store` keeps the private key elsewhere:
+ * the file is created first, so an existing key pair fails before anything
+ * is stored, and removed when `store` fails.
+ */
+export async function savePublicKey(
+  publicKey: string,
+  outputDir: string,
+  store: () => Promise<void>,
+): Promise<void> {
+  await fs.mkdir(outputDir, { recursive: true });
+
+  const publicKeyPath = path.join(outputDir, "public-key.pem");
+  let publicKeyFile: Awaited<ReturnType<typeof fs.open>>;
+  try {
+    publicKeyFile = await fs.open(publicKeyPath, "wx", 0o644);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error(
+        `A public key already exists in ${outputDir}. Move it before generating a new key pair.`,
+      );
+    }
+    throw error;
+  }
+
+  try {
+    await store();
+    await publicKeyFile.writeFile(publicKey);
+  } catch (error) {
+    await publicKeyFile.close().catch(() => undefined);
+    await fs.rm(publicKeyPath, { force: true });
+    throw error;
+  }
+  await publicKeyFile.close();
+}

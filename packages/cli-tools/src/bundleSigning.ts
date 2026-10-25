@@ -2,11 +2,16 @@ import crypto, { type KeyObject } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { SigningConfig } from "@hot-updater/plugin-core";
+import type {
+  BundleSigningAdapter,
+  SigningConfig,
+} from "@hot-updater/plugin-core";
 
 import { getCwd } from "./cwd.js";
 import {
   createLocalSigningAdapter,
+  getSigningSecrets,
+  LocalSigningKeyError,
   normalizeSigningConfig,
 } from "./localBundleSigning.js";
 
@@ -68,20 +73,51 @@ export const readBundleSigningPublicKeyFile = async (
 
 /**
  * `remoteSigning`'s errors with a reason it wrote itself, by name, as it may
- * come from another copy of plugin-core. Any other signing adapter error is
- * redacted: it may quote key material.
+ * come from another copy of plugin-core, and the local signer's errors that
+ * name its secret. Any other signing adapter error is redacted: it may quote
+ * key material.
  */
 const REMOTE_SIGNING_ERROR_NAME = "HotUpdaterRemoteSigningError";
 
 const signingFailure = (summary: string, error: unknown) =>
   new Error(
-    error instanceof Error && error.name === REMOTE_SIGNING_ERROR_NAME
+    error instanceof Error &&
+      (error.name === REMOTE_SIGNING_ERROR_NAME ||
+        error instanceof LocalSigningKeyError)
       ? `${summary} ${error.message}`
       : summary,
   );
 
+/**
+ * The local signer of each config's `signing` that reads its private key
+ * from a secret, so the commands of one run that sign and derive the public
+ * key read the secret once.
+ */
+const secretSigners = new WeakMap<object, BundleSigningAdapter>();
+
+const getSigningProvider = (
+  signing: SigningConfig | undefined,
+): BundleSigningAdapter | null => {
+  const normalized = normalizeSigningConfig(signing);
+  if (!normalized) return null;
+  if (!("enabled" in normalized)) return normalized;
+  if (normalized.privateKey === undefined) {
+    return createLocalSigningAdapter(normalized);
+  }
+  const key = signing as object;
+  const cached = secretSigners.get(key);
+  if (cached) return cached;
+  // The config's own adapter when loadConfig resolved `signing`, else the
+  // configured one.
+  const local = createLocalSigningAdapter(normalized, {
+    secrets: getSigningSecrets(key),
+  });
+  secretSigners.set(key, local);
+  return local;
+};
+
 const getProviderPublicKey = async (
-  provider: ReturnType<typeof createLocalSigningAdapter>,
+  provider: BundleSigningAdapter,
   cwd: string,
 ) => {
   try {
@@ -158,7 +194,7 @@ const createMemoizedSigner = ({
 };
 
 const preparePluginSigning = async (
-  signing: ReturnType<typeof createLocalSigningAdapter>,
+  signing: BundleSigningAdapter,
   cwd: string,
 ): Promise<BundleSigningSession> => {
   const providerPublicKey = await getProviderPublicKey(signing, cwd);
@@ -180,18 +216,11 @@ export const prepareBundleSigning = async (
   signing: SigningConfig | undefined,
   options: { readonly cwd?: string } = {},
 ): Promise<BundleSigningSession | null> => {
-  const normalized = normalizeSigningConfig(signing);
-  if (!normalized) {
+  const provider = getSigningProvider(signing);
+  if (!provider) {
     return null;
   }
-
-  const cwd = options.cwd ?? getCwd();
-  return preparePluginSigning(
-    "enabled" in normalized
-      ? createLocalSigningAdapter(normalized)
-      : normalized,
-    cwd,
-  );
+  return preparePluginSigning(provider, options.cwd ?? getCwd());
 };
 
 /** Resolves the public identity of the configured bundle signer. */
@@ -199,12 +228,9 @@ export const getBundleSigningPublicKey = async (
   signing: SigningConfig | undefined,
   options: { readonly cwd?: string } = {},
 ): Promise<string | null> => {
-  const normalized = normalizeSigningConfig(signing);
-  if (!normalized) return null;
-  const cwd = options.cwd ?? getCwd();
-  const provider =
-    "enabled" in normalized
-      ? createLocalSigningAdapter(normalized)
-      : normalized;
-  return exportPublicKey(await getProviderPublicKey(provider, cwd));
+  const provider = getSigningProvider(signing);
+  if (!provider) return null;
+  return exportPublicKey(
+    await getProviderPublicKey(provider, options.cwd ?? getCwd()),
+  );
 };

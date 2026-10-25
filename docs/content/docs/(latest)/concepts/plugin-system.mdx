@@ -192,11 +192,12 @@ Signing is independent of the storage and database adapters. Omit `signing` or
 set local `enabled: false` for unsigned deployments; Hot Updater never falls
 back from an enabled signer to an unsigned deployment.
 
-- Built-in local signing: Use `enabled: true` and `privateKeyPath`. Signing
-  is never enabled automatically.
-- `hot-updater/signing`: Use a compatible signing endpoint with
-  `remoteSigning`, or hardened managed-key custody with `awsKmsSigning` and
-  `googleCloudKmsSigning`.
+- `hot-updater/signing`: Keep the key in a KMS with `awsKmsSigning` and
+  `googleCloudKmsSigning`, or use a compatible signing endpoint with
+  `remoteSigning`.
+- Built-in local signing: Use `enabled: true` with `privateKey:
+  "secret:<name>"`, read through the config's `secrets` adapter, or with
+  `privateKeyPath`. Signing is never enabled automatically.
 
 Expo projects configure the native trust anchor independently through the
 `@hot-updater/expo` app plugin's `publicKeyPath`. This keeps EAS builds outside
