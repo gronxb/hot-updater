@@ -4,7 +4,8 @@ import {
   type IssuedAscApiKey,
   issueAscApiKey,
 } from "@hot-updater/apple-helper";
-import { p } from "@hot-updater/cli-tools";
+import { describeSecret, p, registerSecretValue } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { ui } from "../cli-ui";
 import {
@@ -15,6 +16,7 @@ import {
   type IssuedCredentialPolicy,
   prepareIssuedCredential,
   storeIssuedCredential,
+  type WritableSecrets,
 } from "./issuedCredential";
 
 /** The command that signs in once, in a terminal, and stores the key. */
@@ -26,12 +28,10 @@ const POLICY: IssuedCredentialPolicy = {
   what: "an App Store Connect API key",
   signIn: "your Apple Account",
   account: "Apple Account",
-  otherKindFix: (name) =>
-    `name the key differently with signing.ascApiKey, or remove ${name} in the Console.`,
 };
 
 /**
- * The key was issued but the vault does not hold it. `revoked` says whether
+ * The key was issued but the secrets adapter does not hold it. `revoked` says whether
  * it was revoked again, so nothing is left behind; when it is false, the
  * message names the key to revoke in App Store Connect.
  */
@@ -62,16 +62,12 @@ export class AscApiKeyNotStoredError extends Error {
 const KEY_ROLE = "ADMIN";
 
 export type EnsureAscApiKeyResult =
-  /** The environment overrides the key: nothing is looked up in the vault. */
+  /** The environment overrides the key: the secrets adapter is not read. */
   | { readonly status: "environment" }
-  /** The vault holds the key already: no sign-in. */
-  | { readonly status: "stored"; readonly version: number }
+  /** The secrets adapter holds the key already: no sign-in. */
+  | { readonly status: "stored" }
   /** The key was issued with an Apple Account sign-in and stored. */
-  | {
-      readonly status: "issued";
-      readonly keyId: string;
-      readonly version: number;
-    };
+  | { readonly status: "issued"; readonly keyId: string };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -89,30 +85,26 @@ const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * Stores `key` as `name`, and reads it back: the vault must list it with
- * the key's IDs. The key is revoked again, with the session it was issued
- * in, only when the vault does not hold it; one the vault may hold is kept,
- * since revoking it would leave the vault with a dead key.
+ * Stores `key` as `name`, one JSON value `{"keyId","issuerId","p8"}`, and
+ * reads it back. The key is revoked again, with the session it was issued
+ * in, only when the adapter surely does not hold it; one it may hold is
+ * kept, since revoking it would leave the store with a dead key.
  */
 const storeIssued = async (
-  client: Parameters<typeof storeIssuedCredential>[0]["client"],
+  secrets: WritableSecrets,
   name: string,
   key: IssuedAscApiKey,
-): Promise<number> => {
+): Promise<{ readonly readable: boolean }> => {
+  const value = JSON.stringify({
+    keyId: key.keyId,
+    issuerId: key.issuerId,
+    p8: key.p8,
+  });
+  // Masked before it is sent, so no failure can print it.
+  registerSecretValue(value);
+  registerSecretValue(key.p8);
   try {
-    return await storeIssuedCredential({
-      client,
-      name,
-      kind: "asc-api-key",
-      value: {
-        p8: Buffer.from(key.p8, "utf-8").toString("base64"),
-        keyId: key.keyId,
-        issuerId: key.issuerId,
-      },
-      isIssued: (listed) =>
-        listed.metadata["keyId"] === key.keyId &&
-        listed.metadata["issuerId"] === key.issuerId,
-    });
+    return await storeIssuedCredential({ secrets, name, value });
   } catch (error) {
     if (error instanceof CredentialNotStoredError) {
       const revoked = await key.revoke().catch(() => false);
@@ -126,7 +118,7 @@ const storeIssued = async (
       );
     }
     throw new Error(
-      `Hot Updater could not confirm that the vault stored ${name}: ${errorText(error)}\nThe key ${key.keyId} is kept. Run \`npx hot-updater secrets list\`: when ${name} is listed, run the build again; when it is not, revoke ${key.keyId} at ${ASC_INTEGRATIONS_URL}, then run this again.`,
+      `Hot Updater could not confirm that the ${secrets.name} secrets adapter stored ${name}: ${errorText(error)}\nThe key ${key.keyId} is kept. Check ${describeSecret(secrets, name)}: when it holds the key, run the build again; when it does not, revoke ${key.keyId} at ${ASC_INTEGRATIONS_URL}, then run this again.`,
       { cause: error },
     );
   }
@@ -137,12 +129,12 @@ const storeIssued = async (
  * resolve it, issuing one when it does not. Everything that can fail is
  * checked before any Apple sign-in (`prepareIssuedCredential`): an
  * environment override or a stored key is used as it is, a run without a
- * terminal refuses with the command that signs in once, and the vault token
- * must be allowed to store `name`.
+ * terminal refuses with the command that signs in once, and the config's
+ * `secrets` adapter must store values.
  *
  * Only then does the developer sign in with their Apple Account, through
  * `issue`, and the issued key is stored, read back, and revoked with the
- * same session if the vault does not hold it.
+ * same session if the adapter does not hold it.
  */
 export const ensureAscApiKey = async ({
   name,
@@ -150,16 +142,19 @@ export const ensureAscApiKey = async ({
   env = {},
   read = false,
   environment = true,
+  secrets,
   issue = issueAscApiKey,
 }: {
-  /** The vault secret builds resolve, `asc-api-key` unless `signing.ascApiKey` names another. */
+  /** The secret builds resolve, `asc-api-key` unless `signing.ascApiKey` names another. */
   name: string;
   /** The app the key is named after in App Store Connect. */
   bundleIdentifier?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
-  /** The caller resolves the key after this, so the token must read it back. */
+  /** The caller resolves the key after this, so the adapter must read it back. */
   read?: boolean;
+  /** The adapter the key is read from and stored in, the config's by default. */
+  secrets?: SecretsAdapter;
   /** An environment override of asc-api-key counts as the key. */
   environment?: boolean;
   /** How the key is issued after the Apple Account signs in. */
@@ -169,9 +164,10 @@ export const ensureAscApiKey = async ({
     name,
     env,
     environment,
+    ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
-  const { client } = prepared;
+  const { secrets: store } = prepared;
 
   const appleId = answered(
     await p.text({
@@ -205,26 +201,23 @@ export const ensureAscApiKey = async ({
     },
   });
   try {
-    const version = await storeIssued(client, name, key);
+    const { readable } = await storeIssued(store, name, key);
     p.log.success(
       ui.block("App Store Connect API key stored", [
         ui.kv("Secret", name),
-        ui.kv("Key ID", key.keyId),
-        ui.kv("Issuer ID", key.issuerId),
-        ui.kv("Version", ui.version(`v${version}`)),
+        ui.kv("In", describeSecret(store, name)),
       ]),
     );
-    // The key is good whether or not this token reads it: it stays.
+    // The key is good whether or not the adapter reads it here: it stays.
     if (read) {
-      await assertReadableCredential({
-        client,
+      assertReadableCredential({
+        secrets: store,
         name,
-        kind: "asc-api-key",
-        version,
+        readable,
         usage: "the build signs and uploads with",
       });
     }
-    return { status: "issued", keyId: key.keyId, version };
+    return { status: "issued", keyId: key.keyId };
   } finally {
     await key.dispose();
   }

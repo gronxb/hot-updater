@@ -1,7 +1,3 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, text, confirm } = vi.hoisted(() => ({
@@ -25,6 +21,12 @@ import type {
   IssueAscApiKeyRequest,
   IssuedAscApiKey,
 } from "@hot-updater/apple-helper";
+import {
+  envSecrets,
+  maskSecretValues,
+  setConfiguredSecrets,
+} from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import {
   AscApiKeyNotStoredError,
@@ -33,78 +35,55 @@ import {
 } from "./ascApiKey";
 import { CredentialSetupRefusedError } from "./issuedCredential";
 
-const CONSOLE_URL = "https://console.example.com";
-const TOKEN = `hu_vault_${"T".repeat(43)}`;
 const P8 =
   "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----";
 
-type Secret = {
-  name: string;
-  kind: string;
-  version: number;
-  metadata: Record<string, string>;
-};
-
 /**
- * A Console vault as its routes answer (packages/console vaultRoutes.ts,
- * whose spec pins the write probe): the token's scope decides before the
- * value does, and only a valid value is stored.
+ * A secrets adapter, made the config's, that records each call: `set`
+ * stores unless `setError` is given, and `readBack` replaces what `get`
+ * returns after a write, such as a write-only store's nothing.
  */
-const fakeConsole = ({
-  secrets = [] as Secret[],
-  actions = ["read", "write"] as string[],
-  putStatus,
+const fakeStore = ({
+  values = {},
+  writable = true,
+  setError,
+  readBack,
 }: {
-  secrets?: Secret[];
-  actions?: string[];
-  /** The answer to a valid write, such as 503 for a locked vault. */
-  putStatus?: number;
+  values?: Record<string, string>;
+  writable?: boolean;
+  setError?: Error;
+  readBack?: () => Promise<string | undefined>;
 } = {}) => {
-  const requests: { method: string; path: string; body?: unknown }[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const request = new Request(input, init);
-    const path = new URL(request.url).pathname.replace(
-      "/_hot-updater/vault/v1",
-      "",
-    );
-    const body =
-      request.method === "GET" ? undefined : await request.clone().json();
-    requests.push({ method: request.method, path, body });
-    const refuse = (status: number, code: string) =>
-      Response.json({ error: { code, message: code } }, { status });
-    if (request.method === "GET" && path === "/secrets") {
-      return Response.json({ secrets });
-    }
-    if (request.method === "POST" && path === "/resolve") {
-      if (!actions.includes("read")) return refuse(403, "forbidden");
-      const names = (body as { names: string[] }).names;
-      return Response.json({
-        secrets: [],
-        errors: names.map((name) => ({ name, code: "not_found" })),
-      });
-    }
-    if (request.method === "PUT" && path.startsWith("/secrets/")) {
-      if (!actions.includes("write")) return refuse(403, "forbidden");
-      const { kind, value } = body as {
-        kind: string;
-        value: { p8?: string; keyId?: string; issuerId?: string };
-      };
-      if (!value.p8 || !value.keyId || !value.issuerId) {
-        return refuse(400, "invalid_request");
-      }
-      if (putStatus) return refuse(putStatus, "vault_locked");
-      const secret = {
-        name: decodeURIComponent(path.slice("/secrets/".length)),
-        kind,
-        version: 1,
-        metadata: { keyId: value.keyId, issuerId: value.issuerId },
-      };
-      secrets.push(secret);
-      return Response.json({ secret }, { status: 201 });
-    }
-    return refuse(404, "not_found");
-  });
-  return requests;
+  const held = new Map(Object.entries(values));
+  const calls: string[] = [];
+  let written = false;
+  const store: SecretsAdapter = {
+    name: "spec-store",
+    describe: (name) => `spec://${name}`,
+    get: async (names) => {
+      calls.push(`get ${names.join(",")}`);
+      return Object.fromEntries(
+        await Promise.all(
+          names.map(async (name) => [
+            name,
+            written && readBack ? await readBack() : held.get(name),
+          ]),
+        ),
+      );
+    },
+    ...(writable
+      ? {
+          set: async (name: string, value: string) => {
+            calls.push(`set ${name}`);
+            written = true;
+            if (setError) throw setError;
+            held.set(name, value);
+          },
+        }
+      : {}),
+  };
+  setConfiguredSecrets(store);
+  return { store, held, calls };
 };
 
 const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
@@ -147,8 +126,6 @@ const ensure = (options: Parameters<typeof ensureAscApiKey>[0]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);
-  vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", TOKEN);
   vi.stubEnv("CI", "");
   for (const name of [
     "HOT_UPDATER_ASC_KEY_PATH",
@@ -163,194 +140,101 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setConfiguredSecrets(envSecrets());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe("ensureAscApiKey", () => {
-  it("uses an environment override as it is, without the vault", async () => {
+  it("uses an environment override as it is, without the secrets adapter", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY");
-    const requests = fakeConsole();
+    const { calls } = fakeStore();
     await expect(ensure({ name: "asc-api-key" })).resolves.toEqual({
       status: "environment",
     });
-    expect(requests).toEqual([]);
+    expect(calls).toEqual([]);
     expect(issue).not.toHaveBeenCalled();
   });
 
   it("uses a stored key without a terminal or a sign-in, as CI does", async () => {
-    const requests = fakeConsole({
-      secrets: [
-        { name: "asc-api-key", kind: "asc-api-key", version: 3, metadata: {} },
-      ],
-    });
+    const { calls } = fakeStore({ values: { "asc-api-key": "{}" } });
     await expect(
       withTTY(false, () => ensure({ name: "asc-api-key" })),
-    ).resolves.toEqual({ status: "stored", version: 3 });
-    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    ).resolves.toEqual({ status: "stored" });
+    expect(calls).toEqual(["get asc-api-key"]);
     expect(issue).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
   });
 
-  it("finds a stored key with the connection only in .env.hotupdater", async () => {
-    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
-    const project = await fs.mkdtemp(path.join(os.tmpdir(), "asc-key-"));
-    try {
-      await fs.writeFile(path.join(project, "package.json"), "{}");
-      await fs.writeFile(
-        path.join(project, ".env.hotupdater"),
-        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}\nHOT_UPDATER_VAULT_TOKEN=${TOKEN}\n`,
-      );
-      vi.spyOn(process, "cwd").mockReturnValue(project);
-      const requests = fakeConsole({
-        secrets: [
-          {
-            name: "asc-api-key",
-            kind: "asc-api-key",
-            version: 2,
-            metadata: {},
-          },
-        ],
-      });
-      await expect(ensure({ name: "asc-api-key" })).resolves.toEqual({
-        status: "stored",
-        version: 2,
-      });
-      expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
-    } finally {
-      await fs.rm(project, { recursive: true, force: true });
-    }
-  });
-
   it("refuses without a terminal, with the command that signs in once", async () => {
-    const requests = fakeConsole();
+    const { calls } = fakeStore();
     await expect(
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-asc (asc-api-key) is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put widget-asc --kind asc-api-key`, and builds, CI's included, read it with their vault token. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
+      "widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc). Store it once from a terminal with `npx hot-updater secrets put widget-asc --kind asc-api-key`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
     );
     expect(ascApiKeySetupCommand("widget-asc")).toBe(
       "npx hot-updater secrets put widget-asc --kind asc-api-key",
     );
     expect(process.exitCode).toBe(1);
-    // The vault is asked only whether the key is missing or out of scope,
-    // and nothing is written; no Apple prompt.
-    expect(requests).toEqual([
-      { method: "GET", path: "/secrets" },
-      { method: "POST", path: "/resolve", body: { names: ["widget-asc"] } },
-    ]);
+    // Nothing is written, and no Apple prompt.
+    expect(calls).toEqual(["get widget-asc"]);
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("words a key out of the token's scope as a build would, without a terminal", async () => {
-    fakeConsole({ actions: ["write"] });
-    await expect(
-      withTTY(false, () => ensure({ name: "asc-api-key" })),
-    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
-    expect(log.error).toHaveBeenCalledWith(
-      "The Console at https://console.example.com refused the request: forbidden When asc-api-key is stored, give the build a vault token whose scope allows read on it, such as one from `npx hot-updater secrets token create --name ci-native --secrets asc-api-key,<the build's other secrets> --actions read`; when it is not, store it once with `npx hot-updater secrets put asc-api-key --kind asc-api-key`. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
-    );
-  });
-
   it("never signs in in CI, even on a terminal the runner allocates", async () => {
     vi.stubEnv("CI", "true");
-    const requests = fakeConsole();
+    const { calls } = fakeStore();
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining("never in CI (CI is set)"),
     );
-    expect(requests).toEqual([
-      { method: "GET", path: "/secrets" },
-      { method: "POST", path: "/resolve", body: { names: ["asc-api-key"] } },
-    ]);
+    expect(calls).toEqual(["get asc-api-key"]);
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("refuses a token that cannot store the key before any Apple sign-in", async () => {
-    fakeConsole({ actions: ["read"] });
+  it("refuses a read-only adapter before any Apple sign-in", async () => {
+    fakeStore({ writable: false });
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).rejects.toThrow("The vault token cannot store asc-api-key");
+    ).rejects.toThrow(
+      "asc-api-key is an App Store Connect API key, which Hot Updater issues when you sign in with your Apple Account and stores through the config's secrets adapter, and the spec-store secrets adapter is read-only.",
+    );
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("asks only whether the token may store the key, which a kind-scoped token may before it exists", async () => {
-    const requests = fakeConsole({ actions: ["write"] });
-    await withTTY(true, () => ensure({ name: "asc-api-key" }));
-    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /secrets",
-      "PUT /secrets/asc-api-key",
-      "PUT /secrets/asc-api-key",
-      "GET /secrets",
-    ]);
-    expect(issue).toHaveBeenCalledTimes(1);
-  });
-
-  it("says the vault is where the key goes when it is not connected", async () => {
-    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", "");
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", "");
-    const requests = fakeConsole();
-    await expect(ensure({ name: "asc-api-key" })).rejects.toThrow(
-      "keeps in the Console's vault, and HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN are not set",
-    );
-    expect(requests).toEqual([]);
-  });
-
-  it("refuses a vault secret of another kind under the name", async () => {
-    fakeConsole({
-      secrets: [
-        { name: "asc-api-key", kind: "generic", version: 1, metadata: {} },
-      ],
-    });
-    await expect(ensure({ name: "asc-api-key" })).rejects.toThrow(
-      "is a generic, not an asc-api-key",
-    );
-    expect(issue).not.toHaveBeenCalled();
-  });
-
-  it("issues a key after the checks, stores it as an asc-api-key, and reads it back", async () => {
-    const requests = fakeConsole();
+  it("issues a key after the checks, stores it as one JSON value, and reads it back", async () => {
+    const { calls, held } = fakeStore();
 
     await expect(
       withTTY(true, () =>
         ensure({
           name: "asc-api-key",
           bundleIdentifier: "com.example.app",
+          read: true,
         }),
       ),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567", version: 1 });
+    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
 
-    expect(requests).toEqual([
-      { method: "GET", path: "/secrets" },
-      // The write probe, before the sign-in.
-      {
-        method: "PUT",
-        path: "/secrets/asc-api-key",
-        body: { kind: "asc-api-key", value: {}, expectedVersion: 0 },
-      },
-      {
-        method: "PUT",
-        path: "/secrets/asc-api-key",
-        body: {
-          kind: "asc-api-key",
-          value: {
-            p8: Buffer.from(P8).toString("base64"),
-            keyId: "KEY1234567",
-            issuerId: "issuer-1",
-          },
-          expectedVersion: 0,
-        },
-      },
-      { method: "GET", path: "/secrets" },
+    expect(calls).toEqual([
+      "get asc-api-key",
+      "set asc-api-key",
+      "get asc-api-key",
     ]);
+    const stored = held.get("asc-api-key")!;
+    expect(JSON.parse(stored)).toEqual({
+      keyId: "KEY1234567",
+      issuerId: "issuer-1",
+      p8: P8,
+    });
+    expect(maskSecretValues(`${stored}\n${P8}`)).not.toContain("MIGHAgEA");
     expect(issue).toHaveBeenCalledWith(
       expect.objectContaining({
         role: "ADMIN",
@@ -366,16 +250,16 @@ describe("ensureAscApiKey", () => {
     expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("revokes the key with its session when the Console does not keep it", async () => {
-    fakeConsole({ putStatus: 503 });
+  it("revokes the key with its session when the adapter does not keep it", async () => {
+    fakeStore({ setError: new Error("AccessDenied: PutSecretValue") });
     const error = await withTTY(true, () =>
       ensure({ name: "asc-api-key" }),
     ).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(AscApiKeyNotStoredError);
     expect(error).toMatchObject({ keyId: "KEY1234567", revoked: true });
-    expect((error as Error).message).toContain(
-      "The App Store Connect API key KEY1234567 was not stored, so it was revoked again: The Console at https://console.example.com answered 503",
+    expect((error as Error).message).toBe(
+      "The App Store Connect API key KEY1234567 was not stored, so it was revoked again: AccessDenied: PutSecretValue",
     );
     expect(issued.revoke).toHaveBeenCalledTimes(1);
     // Revoked before the session ends.
@@ -385,7 +269,7 @@ describe("ensureAscApiKey", () => {
   });
 
   it("names the key to revoke by hand when the revoke fails too", async () => {
-    fakeConsole({ putStatus: 503 });
+    fakeStore({ setError: new Error("AccessDenied") });
     issued.revoke.mockResolvedValueOnce(false);
     const error = await withTTY(true, () =>
       ensure({ name: "asc-api-key" }),
@@ -397,28 +281,18 @@ describe("ensureAscApiKey", () => {
     expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("revokes the key when the vault does not list it as stored", async () => {
-    fakeConsole();
+  it("keeps the key when a failed write still landed", async () => {
+    let stored: string | undefined;
+    fakeStore({
+      setError: new Error("socket hang up"),
+      readBack: async () => stored,
+    });
     issue.mockImplementationOnce(async (request) => {
-      // Another writer's metadata is listed right after the write.
-      vi.mocked(globalThis.fetch).mockImplementationOnce(async () =>
-        Response.json(
-          { secret: { name: "asc-api-key", version: 1 } },
-          { status: 201 },
-        ),
-      );
-      vi.mocked(globalThis.fetch).mockImplementationOnce(async () =>
-        Response.json({
-          secrets: [
-            {
-              name: "asc-api-key",
-              kind: "asc-api-key",
-              version: 1,
-              metadata: { keyId: "OTHER", issuerId: "issuer-1" },
-            },
-          ],
-        }),
-      );
+      stored = JSON.stringify({
+        keyId: "KEY1234567",
+        issuerId: "issuer-1",
+        p8: P8,
+      });
       return {
         p8: P8,
         keyId: "KEY1234567",
@@ -431,53 +305,55 @@ describe("ensureAscApiKey", () => {
     });
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).rejects.toThrow(
-      "The App Store Connect API key KEY1234567 was not stored, so it was revoked again: the vault does not list it as the key just stored.",
-    );
-    expect(issued.revoke).toHaveBeenCalledTimes(1);
+    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a stored key the token cannot read, and says so", async () => {
-    fakeConsole({ actions: ["write"] });
+  it("keeps the key when the adapter reads back another value", async () => {
+    fakeStore({ readBack: async () => '{"keyId":"OTHER"}' });
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
+    ).rejects.toThrow(
+      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: the spec-store secrets adapter stored asc-api-key, and reads back another value.\nThe key KEY1234567 is kept. Check spec://asc-api-key",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps the key when nothing confirms whether the adapter stored it", async () => {
+    fakeStore({
+      setError: new Error("socket hang up"),
+      readBack: async () => {
+        throw new Error("socket hang up");
+      },
+    });
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
+    ).rejects.toThrow(
+      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: socket hang up",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps a key a write-only adapter stored, and says the build can't read it yet", async () => {
+    fakeStore({ readBack: async () => undefined });
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
     ).rejects.toThrow(
-      "asc-api-key is stored (v1), but the vault token cannot read it, which the build signs and uploads with.",
+      "asc-api-key is stored, but the spec-store secrets adapter does not read it back, which the build signs and uploads with.",
     );
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the key when nothing confirms whether the vault stored it", async () => {
-    fakeConsole();
-    issue.mockImplementationOnce(async (request) => {
-      // The write goes unanswered, and so does the list that would tell.
-      vi.mocked(globalThis.fetch).mockImplementationOnce(async () => {
-        throw new TypeError("fetch failed");
-      });
-      vi.mocked(globalThis.fetch).mockImplementationOnce(async () => {
-        throw new TypeError("fetch failed");
-      });
-      return {
-        p8: P8,
-        keyId: "KEY1234567",
-        issuerId: "issuer-1",
-        name: request.name,
-        team: {},
-        revoke: issued.revoke,
-        dispose: issued.dispose,
-      };
-    });
+  it("stores in a write-only adapter for secrets put, which reads nothing back", async () => {
+    fakeStore({ readBack: async () => undefined });
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).rejects.toThrow(
-      "Hot Updater could not confirm that the vault stored asc-api-key",
-    );
-    expect(issued.revoke).not.toHaveBeenCalled();
+    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
   });
 
   it("asks which team when the sign-in landed in another", async () => {
-    fakeConsole();
+    fakeStore();
     confirm.mockResolvedValueOnce(false);
     text
       .mockResolvedValueOnce("dev@example.com")
@@ -502,9 +378,9 @@ describe("ensureAscApiKey", () => {
     expect(chosen).toBe("OTHERTEAM");
   });
 
-  it("stores in the vault for secrets put even when the environment overrides the key", async () => {
+  it("stores through the adapter for secrets put even when the environment overrides the key", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY");
-    fakeConsole();
+    fakeStore();
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key", environment: false })),
     ).resolves.toMatchObject({ status: "issued" });

@@ -187,7 +187,7 @@ your shell or `.env.hotupdater`, then store each credential:
 
 | Credential                                                        | Command                                                                                                                                                                                                              |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Deploy credentials, the variables of `.env.hotupdater`            | [`npx hot-updater secrets import`](/docs/guides/secrets#move-envhotupdater-into-the-vault), which leaves only the two connection variables in the file                                                               |
+| Deploy credentials, the variables of `.env.hotupdater`            | [`npx hot-updater secrets import`](/docs/guides/secrets#deploy-credentials-with-secretenv), which leaves only the two connection variables in the file                                                               |
 | A new bundle signing key                                          | [`npx hot-updater keys generate --vault`](/docs/guides/signing/remote#sign-with-the-console-vault), which writes only `keys/public-key.pem`. Embed it, and release the native app before its first signed OTA update |
 | The bundle signing key your app already embeds                    | `npx hot-updater secrets put bundle-signing-key --kind bundle-signing-key --private-key keys/private-key.pem`                                                                                                        |
 | App Store Connect API key, Android keystore, Play service account | [`npx hot-updater secrets put <name> --kind <kind>`](/docs/guides/secrets#store-a-secret), such as `secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey_ABC123.p8 --key-id ABC123 --issuer-id <id>`, with the kind's options. Without `--p8`, `--key-id`, and `--issuer-id`, [sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account) and Hot Updater issues the App Store Connect API key |
@@ -247,7 +247,7 @@ export default defineConfig({
   named after its kind unless you named it, such as `vault:android-keystore`.
 - The variables `secrets import` moved stay in the config as
   `process.env.HOT_UPDATER_*`: while the two connection variables are set,
-  [commands that use the database, storage, or signing](/docs/guides/secrets#move-envhotupdater-into-the-vault)
+  [commands that use the database, storage, or signing](/docs/guides/secrets#deploy-credentials-with-secretenv)
   set them from the vault before the config loads.
 
 </Step>
@@ -283,7 +283,7 @@ npx hot-updater secrets token create --name ci-native --secrets deploy-credentia
 ```
 
 Each token prints once. Add `--expires-in-days` to make one expire, and see
-[Issue a vault token](/docs/guides/secrets#issue-a-vault-token) for every
+[Issue a vault token](/docs/guides/secrets) for every
 option.
 
 </Tab>

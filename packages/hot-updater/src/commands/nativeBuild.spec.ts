@@ -133,12 +133,12 @@ describe("handleNativeBuildFind", () => {
     await handleNativeBuildFind({ platform: "android", json: true });
 
     // The scheme and target as the native build loads them, and the
-    // registry as registration loads it, with the vault's credentials.
-    expect(loadConfig).toHaveBeenCalledWith(
-      { platform: "android", channel: "" },
-      { credentials: true },
-    );
-    expect(loadConfig).toHaveBeenCalledWith(null, { credentials: true });
+    // registry as registration loads it.
+    expect(loadConfig).toHaveBeenCalledWith({
+      platform: "android",
+      channel: "",
+    });
+    expect(loadConfig).toHaveBeenCalledWith(null);
     expect(loadServer).toHaveBeenCalledWith(
       expect.objectContaining({ loadedFor: null }),
     );

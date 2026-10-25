@@ -35,7 +35,7 @@ vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
 vi.mock("../utils/native/ascApiKey", () => ({
   ensureAscApiKey: vi.fn(async ({ name }: { name: string }) => {
     events.push(`ensure ${name}`);
-    return { status: "stored", version: 1 };
+    return { status: "stored" };
   }),
 }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -61,7 +61,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async (options) => {
     const iosSchemeConfig = {
       configuration: "Release",
-      signing: { ascApiKey: "vault:asc-api-key" },
+      signing: { ascApiKey: "secret:asc-api-key" },
     } as unknown as EnrichedNativeBuildIosScheme;
     await options.beforePrebuild?.({ scheme: "release", iosScheme });
     events.push("prebuild");
@@ -102,7 +102,6 @@ import {
 import { p } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
-import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
@@ -144,11 +143,6 @@ describe("build:ios --upload testflight", () => {
       ipaPath: "/out/export/App.ipa",
       apiKey: ascApiKey,
     });
-    // --register loads the vault's deploy credentials with the config; the
-    // upload's App Store Connect key comes from the credential resolver.
-    expect(prepareNativeBuild).toHaveBeenCalledWith(
-      expect.objectContaining({ credentials: true }),
-    );
   });
 
   it("uploads nothing without --upload", async () => {
@@ -156,10 +150,6 @@ describe("build:ios --upload testflight", () => {
 
     expect(events).toEqual(["prebuild", "build", "dispose"]);
     expect(resolveTestFlightUploadKey).not.toHaveBeenCalled();
-    // Without --register the config loads with no vault credentials.
-    expect(prepareNativeBuild).toHaveBeenCalledWith(
-      expect.objectContaining({ credentials: false }),
-    );
   });
 
   it("refuses a scheme TestFlight would not take before the prebuild", async () => {
@@ -253,7 +243,7 @@ describe("build:ios without an App Store Connect API key", () => {
 
   it("reports a key that could not be issued, before the prebuild", async () => {
     vi.mocked(ensureAscApiKey).mockRejectedValueOnce(
-      new Error("The vault token cannot store asc-api-key."),
+      new Error("The env secrets adapter is read-only."),
     );
     const exit = mockExit();
     await expect(
@@ -264,7 +254,7 @@ describe("build:ios without an App Store Connect API key", () => {
       }),
     ).rejects.toThrow("exit");
     expect(p.log.error).toHaveBeenCalledWith(
-      "The vault token cannot store asc-api-key.",
+      "The env secrets adapter is read-only.",
     );
     expect(events).not.toContain("prebuild");
     exit.mockRestore();
@@ -274,7 +264,7 @@ describe("build:ios without an App Store Connect API key", () => {
     iosScheme = {
       configuration: "Release",
       bundleIdentifier: "com.example.widget",
-      signing: { ascApiKey: "vault:widget-asc" },
+      signing: { ascApiKey: "secret:widget-asc" },
     };
     await buildIosNative({ interactive: false, scheme: "release" });
     expect(ensureAscApiKey).toHaveBeenCalledWith({
@@ -295,7 +285,7 @@ describe("build:ios without an App Store Connect API key", () => {
   it.each([
     [
       "a simulator build",
-      { simulator: true, signing: { ascApiKey: "vault:asc-api-key" } },
+      { simulator: true, signing: { ascApiKey: "secret:asc-api-key" } },
     ],
     [
       "a scheme that signs with exportOptionsPlist",

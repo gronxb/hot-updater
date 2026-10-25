@@ -69,13 +69,6 @@ export async function prepareNativeBuild(
      * store upload's, changes nothing.
      */
     beforePrebuild?: (scheme: NativeBuildSchemeOptions) => Promise<void>;
-    /**
-     * The build is registered, through the config's database and storage:
-     * the vault's deploy credentials load before the config's first load,
-     * since some adapters, such as Firebase's, bind process-wide state when
-     * they are created.
-     */
-    credentials?: boolean;
   },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
@@ -86,10 +79,7 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  const config = await loadConfig(
-    { platform, channel: "" },
-    { credentials: options.credentials ?? false },
-  );
+  const config = await loadConfig({ platform, channel: "" });
   if (!config) {
     p.log.error("No config found. Please run `hot-updater init` first.");
     return null;

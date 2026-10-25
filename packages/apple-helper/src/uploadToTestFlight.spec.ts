@@ -9,14 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const {
     createCredentialResolver,
-    createVaultCredentialSource,
-    parseVaultReference,
+    parseSecretReference,
     registerSecretValue,
   } = await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     createCredentialResolver,
-    createVaultCredentialSource,
-    parseVaultReference,
+    parseSecretReference,
     registerSecretValue,
     p: { log: { info: vi.fn(), warn: vi.fn(), success: vi.fn() } },
   };
@@ -30,11 +28,7 @@ vi.mock("./utils/readIpaInfo", () => ({
   })),
 }));
 
-import {
-  createCredentialResolver,
-  createVaultCredentialSource,
-  p,
-} from "@hot-updater/cli-tools";
+import { createCredentialResolver, p } from "@hot-updater/cli-tools";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 
 import {
@@ -311,38 +305,18 @@ describe("uploadToTestFlight", () => {
     expect(p.log.warn).toHaveBeenCalledWith("A warning (90000)");
   });
 
-  it("uploads with an asc-api-key from the Console's vault, whose key file is gone afterwards", async () => {
-    const env = {
-      HOT_UPDATER_CONSOLE_URL: "https://console.example.com",
-      HOT_UPDATER_VAULT_TOKEN: `hu_vault_${"A".repeat(43)}`,
-    };
-    const vaultRequests: unknown[] = [];
-    const consoleFetch = vi.fn(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        vaultRequests.push({
-          url: String(input),
-          body: JSON.parse(String(init?.body)),
-        });
-        return Response.json({
-          secrets: [
-            {
-              name: "asc-api-key",
-              kind: "asc-api-key",
-              version: 1,
-              value: {
-                p8: (await fs.readFile(keyPath)).toString("base64"),
-                keyId: "KEY123",
-                issuerId: "issuer-uuid",
-              },
-            },
-          ],
-          errors: [],
-        });
-      },
-    ) as unknown as typeof globalThis.fetch;
+  it("uploads with an asc-api-key from the secrets adapter, whose key file is gone afterwards", async () => {
+    const value = JSON.stringify({
+      keyId: "KEY123",
+      issuerId: "issuer-uuid",
+      p8: await fs.readFile(keyPath, "utf-8"),
+    });
+    const get = vi.fn(async (names: readonly string[]) =>
+      Object.fromEntries(names.map((name) => [name, value])),
+    );
     const resolver = createCredentialResolver({
-      env,
-      source: createVaultCredentialSource({ env, fetch: consoleFetch }),
+      secrets: { name: "spec-store", get },
+      cwd: dir,
     });
     const { fetch, requests } = createRecordingFetch(successRoutes());
 
@@ -357,12 +331,7 @@ describe("uploadToTestFlight", () => {
     });
     await resolver.dispose();
 
-    expect(vaultRequests).toEqual([
-      {
-        url: "https://console.example.com/_hot-updater/vault/v1/resolve",
-        body: { names: ["asc-api-key"] },
-      },
-    ]);
+    expect(get).toHaveBeenCalledWith(["asc-api-key"], { cwd: dir });
     const { signingInput, signature } = decodeToken(
       requests[0]!.headers["Authorization"]!,
     );
@@ -1208,7 +1177,7 @@ describe("resolveTestFlightUploadKey", () => {
   it("uploads with the key the scheme signs with", () => {
     expect(
       resolveTestFlightUploadKey(
-        iosScheme({ signing: { ascApiKey: "vault:team-asc-key" } }),
+        iosScheme({ signing: { ascApiKey: "secret:team-asc-key" } }),
       ),
     ).toEqual({ kind: "asc-api-key", name: "team-asc-key" });
   });
@@ -1228,7 +1197,7 @@ describe("resolveTestFlightUploadKey", () => {
       resolveTestFlightUploadKey(
         iosScheme({
           simulator: true,
-          signing: { ascApiKey: "vault:asc-api-key" },
+          signing: { ascApiKey: "secret:asc-api-key" },
         }),
       ),
     ).toThrow(
@@ -1241,7 +1210,7 @@ describe("resolveTestFlightUploadKey", () => {
       resolveTestFlightUploadKey(
         iosScheme({
           configuration: "StagingDebug",
-          signing: { ascApiKey: "vault:asc-api-key" },
+          signing: { ascApiKey: "secret:asc-api-key" },
         }),
       ),
     ).toThrow(
@@ -1292,7 +1261,7 @@ describe("assertTestFlightExportOptions", () => {
 
   it("reads nothing for a scheme that exports with the API key", async () => {
     await assertTestFlightExportOptions(
-      scheme({ signing: { ascApiKey: "vault:asc-api-key" } }),
+      scheme({ signing: { ascApiKey: "secret:asc-api-key" } }),
     );
     expect(execa).not.toHaveBeenCalled();
   });

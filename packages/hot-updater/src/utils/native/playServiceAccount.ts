@@ -6,7 +6,13 @@ import {
   issuePlayServiceAccount,
   PLAY_CONSOLE_URL,
 } from "@hot-updater/android-helper";
-import { getHotUpdaterEnvValue, p } from "@hot-updater/cli-tools";
+import {
+  describeSecret,
+  getHotUpdaterEnvValue,
+  p,
+  registerSecretValue,
+} from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import open from "open";
 
 import { ui } from "../cli-ui";
@@ -18,6 +24,7 @@ import {
   type IssuedCredentialPolicy,
   prepareIssuedCredential,
   storeIssuedCredential,
+  type WritableSecrets,
 } from "./issuedCredential";
 
 /** The command that signs in once, in a terminal, and stores the key. */
@@ -29,20 +36,15 @@ const POLICY: IssuedCredentialPolicy = {
   what: "a Play service account",
   signIn: "Google",
   account: "Google Account",
-  otherKindFix: (name) => `remove ${name} in the Console, then run this again.`,
 };
 
 export type EnsurePlayServiceAccountResult =
-  /** The environment overrides the service account: nothing is looked up in the vault. */
+  /** The environment overrides the service account: the secrets adapter is not read. */
   | { readonly status: "environment" }
-  /** The vault holds the service account already: no sign-in. */
-  | { readonly status: "stored"; readonly version: number }
+  /** The secrets adapter holds the service account already: no sign-in. */
+  | { readonly status: "stored" }
   /** The key was issued with a Google sign-in and stored. */
-  | {
-      readonly status: "issued";
-      readonly email: string;
-      readonly version: number;
-    };
+  | { readonly status: "issued"; readonly email: string };
 
 const PACKAGE_NAME_PATTERN =
   /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/u;
@@ -77,33 +79,27 @@ const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * Stores `issued` as `name`, and reads it back: the vault must list it as
- * the service account just issued. The key is deleted again only when the
- * vault does not hold it; one the vault may hold is kept, since deleting it
- * would leave the vault with a dead key, and the message says which.
+ * Stores `issued` as `name`, the service account's own JSON, and reads it
+ * back. The key is deleted again only when the adapter surely does not
+ * hold it; one it may hold is kept, since deleting it would leave the store
+ * with a dead key, and the message says which.
  */
 const storeIssued = async (
-  client: Parameters<typeof storeIssuedCredential>[0]["client"],
+  secrets: WritableSecrets,
   name: string,
   issued: IssuedPlayServiceAccount,
-): Promise<number> => {
+): Promise<{ readonly readable: boolean }> => {
+  // Masked before it is sent, so no failure can print it.
+  registerSecretValue(issued.json);
   try {
-    return await storeIssuedCredential({
-      client,
-      name,
-      kind: "play-service-account",
-      value: {
-        serviceAccount: Buffer.from(issued.json, "utf-8").toString("base64"),
-      },
-      isIssued: (listed) => listed.metadata["clientEmail"] === issued.email,
-    });
+    return await storeIssuedCredential({ secrets, name, value: issued.json });
   } catch (error) {
     if (error instanceof CredentialNotStoredError) {
       const revoked = await issued.revoke();
       const keys = `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${issued.projectId}`;
       throw new Error(
         [
-          `The vault did not store ${name}: ${error.message}`,
+          `The ${secrets.name} secrets adapter did not store ${name}: ${error.message}`,
           revoked
             ? `The key ${issued.keyId} was deleted again.`
             : `Deleting the key ${issued.keyId} failed: delete it under the service account's keys at ${keys}.`,
@@ -113,7 +109,7 @@ const storeIssued = async (
       );
     }
     throw new Error(
-      `Hot Updater could not confirm that the vault stored ${name}: ${errorText(error)}\nThe key ${issued.keyId} is kept. Run \`npx hot-updater secrets list\`: when ${name} is listed, run the build again; when it is not, delete the key under the service account ${issued.email} in Google Cloud, then run this again.`,
+      `Hot Updater could not confirm that the ${secrets.name} secrets adapter stored ${name}: ${errorText(error)}\nThe key ${issued.keyId} is kept. Check ${describeSecret(secrets, name)}: when it holds the key, run the build again; when it does not, delete the key under the service account ${issued.email} in Google Cloud, then run this again.`,
       { cause: error },
     );
   }
@@ -126,16 +122,16 @@ const storeIssued = async (
  *
  * 1. an environment override of play-service-account
  *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
- * 2. a vault secret named `name` of kind play-service-account is used as it
+ * 2. a value the config's `secrets` adapter holds as `name` is used as it
  *    is, so CI uploads with the stored key and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once;
- * 4. the vault token must store `name`; a build's must also read it, which
- *    is checked once it is stored.
+ * 4. the adapter must store values; a build's must also read it back,
+ *    which is checked once it is stored.
  *
  * Only then does the developer sign in with Google, in a browser, through
  * `issue`, and the issued key is stored, read back, and deleted again if
  * storing it fails.
- * The vault is the only place a key is stored: the environment overrides
+ * The adapter is the only place a key is stored: the environment overrides
  * are read, never written.
  */
 export const ensurePlayServiceAccount = async ({
@@ -144,16 +140,19 @@ export const ensurePlayServiceAccount = async ({
   env = {},
   read = false,
   environment = true,
+  secrets,
   issue = issuePlayServiceAccount,
 }: {
-  /** The vault secret builds resolve, `play-service-account`. */
+  /** The secret builds resolve, `play-service-account`. */
   name: string;
   /** The app's package name, as the config sets it, which the prompt offers. */
   packageName?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
-  /** The caller resolves the key after this, so the token must read it back. */
+  /** The caller resolves the key after this, so the adapter must read it back. */
   read?: boolean;
+  /** The adapter the key is read from and stored in, the config's by default. */
+  secrets?: SecretsAdapter;
   /** An environment override of play-service-account counts as the key. */
   environment?: boolean;
   /** The sign-in that issues the key, android-helper's unless set. */
@@ -163,9 +162,10 @@ export const ensurePlayServiceAccount = async ({
     name,
     env,
     environment,
+    ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
-  const { client, env: fileEnv } = prepared;
+  const { secrets: store, env: fileEnv } = prepared;
 
   const app = answered(
     await p.text({
@@ -228,26 +228,25 @@ export const ensurePlayServiceAccount = async ({
   });
 
   try {
-    const version = await storeIssued(client, name, issued);
+    const { readable } = await storeIssued(store, name, issued);
     p.log.success(
       ui.block("Play service account stored", [
         ui.kv("Secret", name),
+        ui.kv("In", describeSecret(store, name)),
         ui.kv("Service account", issued.email),
         ui.kv("Project", issued.projectId),
-        ui.kv("Version", ui.version(`v${version}`)),
       ]),
     );
-    // The key is good whether or not this token reads it: it stays.
+    // The key is good whether or not the adapter reads it here: it stays.
     if (read) {
-      await assertReadableCredential({
-        client,
+      assertReadableCredential({
+        secrets: store,
         name,
-        kind: "play-service-account",
-        version,
+        readable,
         usage: "the build uploads with",
       });
     }
-    return { status: "issued", email: issued.email, version };
+    return { status: "issued", email: issued.email };
   } finally {
     await issued.dispose();
   }

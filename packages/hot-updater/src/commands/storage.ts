@@ -419,9 +419,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     );
   }
 
-  const server = await loadServer(
-    await loadConfig(null, { credentials: true }),
-  );
+  const server = await loadServer(await loadConfig(null));
 
   try {
     const storageAdapter = server.storage;

@@ -9,6 +9,14 @@ const { log, ensurePlayServiceAccount } = vi.hoisted(() => ({
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig: vi.fn(async () => ({
+    secrets: {
+      name: "spec-store",
+      get: async () => ({}),
+      set: async () => {},
+      describe: (name: string) => `spec://${name}`,
+    },
+  })),
   p: { isCancel: vi.fn(() => false), log },
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
@@ -30,30 +38,26 @@ afterEach(() => {
 });
 
 describe("hot-updater secrets put --kind play-service-account without a key file", () => {
-  it("signs in with Google and stores the issued key in the vault, whatever the environment overrides", async () => {
+  it("signs in with Google and stores the issued key through the secrets adapter, whatever the environment overrides", async () => {
     ensurePlayServiceAccount.mockResolvedValueOnce({
       status: "issued",
       email: "hot-updater-play@my-app.iam.gserviceaccount.com",
-      version: 1,
     });
 
     await handleSecretsPut("play-service-account", {
       kind: "play-service-account",
-      variables: [],
     });
 
     expect(ensurePlayServiceAccount).toHaveBeenCalledWith({
       name: "play-service-account",
+      secrets: expect.objectContaining({ name: "spec-store" }),
       environment: false,
     });
     expect(process.exitCode).toBeUndefined();
   });
 
-  it("says the vault has the key already", async () => {
-    ensurePlayServiceAccount.mockResolvedValueOnce({
-      status: "stored",
-      version: 2,
-    });
+  it("says the secrets adapter has the key already", async () => {
+    ensurePlayServiceAccount.mockResolvedValueOnce({ status: "stored" });
 
     await handleSecretsPut("play-service-account", {
       kind: "play-service-account",
@@ -63,7 +67,7 @@ describe("hot-updater secrets put --kind play-service-account without a key file
       stripVTControlCharacters(String(text)),
     );
     expect(message).toContain("Play service account already stored");
-    expect(message).toContain("v2");
+    expect(message).toContain("spec://play-service-account");
   });
 
   it("leaves a refusal canSignIn reported as it is", async () => {

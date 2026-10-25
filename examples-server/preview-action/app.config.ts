@@ -1,6 +1,5 @@
 import { bare } from "@hot-updater/bare";
 import { defineConfig } from "hot-updater";
-import { vault } from "hot-updater/plugins";
 import { remoteSigning } from "hot-updater/signing";
 
 import { database, storage } from "./shared.ts";
@@ -17,7 +16,7 @@ export default defineConfig({
       releaseApk: {
         packageName: "com.hotupdaterexample",
         aab: false,
-        signing: { keystore: "vault:android-keystore" },
+        signing: { keystore: "secret:android-keystore" },
       },
     },
     ios: {
@@ -33,7 +32,7 @@ export default defineConfig({
   build: bare({ enableHermes: true, resetCache: false }),
   storage,
   database,
-  plugins: [vault()],
+  plugins: [],
   console: { channelLinkPrefix: "hotupdaterexample://" },
   fingerprint: {
     debug: true,

@@ -1,25 +1,21 @@
 import {
   CREDENTIAL_ENV_NAMES,
-  createVaultClient,
+  credentialPutCommand,
+  describeSecret,
+  getConfiguredSecrets,
+  getCwd,
   getHotUpdaterEnvValue,
   readLoadedHotUpdaterEnv,
-  getCwd,
-  resolveVaultConnection,
-  VAULT_CONNECTION_ENV_NAMES,
-  type VaultClient,
-  describeVaultCredentialUnavailable,
-  vaultCredentialPutCommand,
-  VaultRequestError,
-  VaultSecretNotFoundError,
-  type VaultSecretMetadata,
 } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { canSignIn } from "../prompt";
 
 /**
- * The vault secrets Hot Updater issues itself after a sign-in, when a build
- * needs one and the vault has none: an App Store Connect API key after an
- * Apple Account sign-in, a Play service account after a Google one.
+ * The credentials Hot Updater issues itself after a sign-in, when a build
+ * needs one and the config's `secrets` adapter has none: an App Store
+ * Connect API key after an Apple Account sign-in, a Play service account
+ * after a Google one.
  */
 export type IssuedCredentialKind = "asc-api-key" | "play-service-account";
 
@@ -27,7 +23,7 @@ export type IssuedCredentialKind = "asc-api-key" | "play-service-account";
 export const credentialSetupCommand = (
   name: string,
   kind: IssuedCredentialKind,
-) => vaultCredentialPutCommand(kind, name);
+) => credentialPutCommand(kind, name);
 
 /**
  * Why there is no key to sign or upload with: the run is in CI or has no
@@ -50,95 +46,36 @@ export interface IssuedCredentialPolicy {
   readonly signIn: string;
   /** The account `canSignIn` names, such as "Apple Account". */
   readonly account: string;
-  /** What to do about a secret of another kind under the key's name. */
-  readonly otherKindFix: (name: string) => string;
 }
 
+/** A secrets adapter that stores values. */
+export type WritableSecrets = SecretsAdapter &
+  Required<Pick<SecretsAdapter, "set">>;
+
 export type PreparedCredential =
-  /** The environment overrides the key: nothing is looked up in the vault. */
+  /** The environment overrides the key: the adapter is not read. */
   | { readonly status: "environment" }
-  /** The vault holds the key already: no sign-in. */
-  | { readonly status: "stored"; readonly version: number }
+  /** The secrets adapter holds the key already: no sign-in. */
+  | { readonly status: "stored" }
   /**
-   * The vault has no key, and everything a sign-in needs holds: a terminal,
-   * and a vault token that may store it. `env` is the environment with the
-   * project's `.env.hotupdater` under it.
+   * The adapter has no key, and everything a sign-in needs holds: a
+   * terminal, and an adapter that stores values. `env` is the environment
+   * with the project's `.env.hotupdater` under it.
    */
   | {
       readonly status: "missing";
-      readonly client: VaultClient;
+      readonly secrets: WritableSecrets;
       readonly env: Readonly<Record<string, string>>;
     };
 
-const aKind = (kind: string) =>
-  `${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind}`;
-
-/**
- * Whether the vault token may write `name` as `kind`, asked without storing
- * anything: the Console checks a write's scope, by name or by kind, before
- * its value, so a write of an empty value is refused with 400 when the token
- * may write it and 403 when it may not. A 403 is logged as a denied write.
- * Read is not asked: before the secret exists, the Console refuses it to a
- * token scoped by kind, which may read it once stored.
- */
-const assertWritable = async (
-  client: VaultClient,
-  name: string,
-  policy: IssuedCredentialPolicy,
-) => {
-  try {
-    await client.put({
-      name,
-      kind: policy.kind,
-      value: {},
-      expectedVersion: 0,
-    });
-  } catch (error) {
-    if (!(error instanceof VaultRequestError)) throw error;
-    if (error.status === 400 && error.code === "invalid_request") return;
-    if (error.status === 403) {
-      throw new Error(
-        `The vault token cannot store ${name}, which keeps the key Hot Updater issues after you sign in with ${policy.signIn}. Use a vault token whose scope allows write on ${name} (hot-updater secrets token create --actions read,write), so you sign in only once.`,
-        { cause: error },
-      );
-    }
-    if (error.status === 404 || error.status === 405) {
-      throw new Error(
-        `The Console at ${client.url} does not store secrets from the CLI: upgrade it, then run this again.`,
-        { cause: error },
-      );
-    }
-    throw error;
-  }
-  // The Console never stores an empty value; reaching here means it did.
-  throw new Error(
-    `The Console at ${client.url} accepted an empty ${name}: remove it in the Console, then run this again.`,
-  );
-};
-
-/**
- * Why the vault can't give a build `name`, worded as the credential source
- * words it when a build resolves it: the vault tells a name it has no
- * secret for (store it once) from one the token's scope does not reach,
- * which a token scoped by kind sees for a missing secret too.
- */
-const describeUnavailable = async (
-  client: VaultClient,
+/** What the adapter's `name` holds, or why it can't be read, for messages. */
+const describeUnavailable = (
+  secrets: SecretsAdapter,
   name: string,
   kind: IssuedCredentialKind,
-): Promise<string> => {
-  let error: unknown;
-  try {
-    const { secrets } = await client.resolve([name]);
-    if (secrets.some((secret) => secret.name === name)) {
-      return `${name} is in the vault at ${client.url} now: run this again.`;
-    }
-    error = new VaultSecretNotFoundError(client.url, name);
-  } catch (caught) {
-    error = caught;
-  }
-  const described = describeVaultCredentialUnavailable(kind, name, error);
-  return described instanceof Error ? described.message : String(described);
+) => {
+  const item = name === kind ? kind : `${name} (${kind})`;
+  return `${item} is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}). Store it once from a terminal with \`${credentialSetupCommand(name, kind)}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there.`;
 };
 
 /**
@@ -146,17 +83,14 @@ const describeUnavailable = async (
  * after the developer signed in but storage:
  *
  * 1. an environment override of the kind is used as it is (unless
- *    `environment` is false, as `secrets put` stores in the vault anyway);
- * 2. a vault secret named `name` of the kind is used as it is, so CI builds
- *    with the stored key and never signs in;
+ *    `environment` is false, as `secrets put` stores in the adapter anyway);
+ * 2. a value the config's `secrets` adapter holds as `name` is used as it
+ *    is, so CI builds with the stored key and never signs in;
  * 3. in CI or without a terminal, `canSignIn` refuses with the command
  *    that signs in once;
- * 4. the vault token must be allowed to store `name`.
+ * 4. the adapter must store values (`set`).
  *
- * The vault connection is read as every command reads it: the environment,
- * then `env`, then the project's `.env.hotupdater`. The vault is the only
- * place an issued key is stored: environment overrides are read, never
- * written.
+ * The environment overrides are read, never written.
  */
 export const prepareIssuedCredential = async (
   policy: IssuedCredentialPolicy,
@@ -164,10 +98,13 @@ export const prepareIssuedCredential = async (
     name,
     env = {},
     environment = true,
+    secrets = getConfiguredSecrets(),
   }: {
     readonly name: string;
     readonly env?: Readonly<Record<string, string>>;
     readonly environment?: boolean;
+    /** The adapter the key is read from and stored in, the config's by default. */
+    readonly secrets?: SecretsAdapter;
   },
 ): Promise<PreparedCredential> => {
   const fields = CREDENTIAL_ENV_NAMES[policy.kind];
@@ -180,44 +117,37 @@ export const prepareIssuedCredential = async (
     return { status: "environment" };
   }
 
-  const connection = await resolveVaultConnection({ env });
-  if (!connection.ok) {
-    throw new Error(
-      `${name} is ${policy.what}, which Hot Updater issues when you sign in with ${policy.signIn} and keeps in the Console's vault, and ${connection.missing.join(" and ")} ${connection.missing.length === 1 ? "is" : "are"} not set. Set ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} (a token that may write ${name}), or set ${fields.map((field) => field.join(" or ")).join(", ")} to use a key you already have.`,
-    );
-  }
-  const client = createVaultClient(connection.connection);
-  const existing = (await client.list()).find((secret) => secret.name === name);
-  if (existing?.kind === policy.kind) {
-    return { status: "stored", version: existing.version };
-  }
-  if (existing) {
-    throw new Error(
-      `The vault's ${name} is ${aKind(existing.kind)}, not ${aKind(policy.kind)}: ${policy.otherKindFix(name)}`,
-    );
-  }
+  const cwd = getCwd();
+  const held = (await secrets.get([name], { cwd }))[name];
+  if (typeof held === "string" && held) return { status: "stored" };
 
   if (
     !(await canSignIn({
       account: policy.account,
       kind: policy.kind,
-      describeUnavailable: () => describeUnavailable(client, name, policy.kind),
+      describeUnavailable: async () =>
+        describeUnavailable(secrets, name, policy.kind),
     }))
   ) {
     throw new CredentialSetupRefusedError(
-      `${name} is not in the vault, and there is no terminal to sign in with ${policy.signIn}.`,
+      `${name} is not in the ${secrets.name} secrets adapter, and there is no terminal to sign in with ${policy.signIn}.`,
     );
   }
 
-  await assertWritable(client, name, policy);
+  const { set } = secrets;
+  if (set === undefined) {
+    throw new Error(
+      `${name} is ${policy.what}, which Hot Updater issues when you sign in with ${policy.signIn} and stores through the config's secrets adapter, and the ${secrets.name} secrets adapter is read-only. Configure a secrets adapter that stores values, or set ${fields.map((field) => field.join(" or ")).join(", ")} to use a key you already have.`,
+    );
+  }
   return {
     status: "missing",
-    client,
-    env: { ...(await readLoadedHotUpdaterEnv(getCwd())), ...env },
+    secrets: { ...secrets, set },
+    env: { ...(await readLoadedHotUpdaterEnv(cwd)), ...env },
   };
 };
 
-/** The vault surely does not hold the issued key: the caller revokes it. */
+/** The adapter surely does not hold the issued key: the caller revokes it. */
 export class CredentialNotStoredError extends Error {
   constructor(reason: string, options?: { cause?: unknown }) {
     super(reason, options);
@@ -226,8 +156,8 @@ export class CredentialNotStoredError extends Error {
 }
 
 /**
- * The vault may hold the issued key, which nothing confirmed: the caller
- * keeps the key, since revoking one the vault holds leaves it a dead key.
+ * The adapter may hold the issued key, which nothing confirmed: the caller
+ * keeps the key, since revoking one the adapter holds leaves it a dead key.
  */
 export class CredentialStoreUnconfirmedError extends Error {
   constructor(reason: string, options?: { cause?: unknown }) {
@@ -240,120 +170,74 @@ const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * Whether the Console answered a write, and so stored nothing: an
- * unanswered write or a server error may have stored it, but a locked vault
- * (503) never does.
- */
-const refusedWrite = (error: unknown) =>
-  error instanceof VaultRequestError &&
-  error.status !== undefined &&
-  (error.status < 500 || error.status === 503);
-
-/**
- * Stores an issued key as `name`, never over a key someone stored
- * meanwhile, and reads it back: the vault must list `name` as the key just
- * issued, which `isIssued` recognizes by its metadata. Returns the version.
- * Throws `CredentialNotStoredError` when the vault surely does not hold it,
- * and `CredentialStoreUnconfirmedError` when nothing tells.
+ * Stores an issued key's `value` as `name`, and reads it back: returns
+ * whether the adapter reads it as stored, which a write-only store does
+ * not. Throws `CredentialNotStoredError` only when the write failed and
+ * the adapter reads back no such value, so the caller may revoke the key,
+ * and `CredentialStoreUnconfirmedError` when nothing tells, or the adapter
+ * reads back another value: a key the store may hold is never revoked.
  */
 export const storeIssuedCredential = async ({
-  client,
+  secrets,
   name,
-  kind,
   value,
-  isIssued,
 }: {
-  readonly client: VaultClient;
+  readonly secrets: WritableSecrets;
   readonly name: string;
-  readonly kind: IssuedCredentialKind;
-  readonly value: Readonly<Record<string, string>>;
-  readonly isIssued: (listed: VaultSecretMetadata) => boolean;
-}): Promise<number> => {
-  /** The vault's `name` when it is the key just issued, from a fresh list. */
-  const listIssued = async () => {
-    const listed = (await client.list()).find(
-      (candidate) => candidate.name === name,
-    );
-    return listed?.kind === kind && isIssued(listed) ? listed : undefined;
-  };
+  readonly value: string;
+}): Promise<{ readonly readable: boolean }> => {
+  const cwd = getCwd();
+  const readBack = async () => (await secrets.get([name], { cwd }))[name];
 
-  let version: number;
   try {
-    version = (await client.put({ name, kind, value, expectedVersion: 0 }))
-      .version;
+    await secrets.set(name, value, { cwd });
   } catch (error) {
-    if (refusedWrite(error)) {
-      throw new CredentialNotStoredError(errorText(error), { cause: error });
-    }
-    // The write may have landed: the vault's list tells.
-    let held: Awaited<ReturnType<typeof listIssued>>;
+    // The write may have landed: a read tells.
+    let held: string | undefined;
     try {
-      held = await listIssued();
+      held = await readBack();
     } catch {
       throw new CredentialStoreUnconfirmedError(errorText(error), {
         cause: error,
       });
     }
+    if (held === value) return { readable: true };
     if (held === undefined) {
       throw new CredentialNotStoredError(errorText(error), { cause: error });
     }
-    return held.version;
-  }
-
-  let held: Awaited<ReturnType<typeof listIssued>>;
-  try {
-    held = await listIssued();
-  } catch (error) {
     throw new CredentialStoreUnconfirmedError(errorText(error), {
       cause: error,
     });
   }
-  if (held?.version !== version) {
-    throw new CredentialNotStoredError(
-      "the vault does not list it as the key just stored.",
+
+  const held = await readBack().catch(() => undefined);
+  if (held !== undefined && held !== value) {
+    throw new CredentialStoreUnconfirmedError(
+      `the ${secrets.name} secrets adapter stored ${name}, and reads back another value.`,
     );
   }
-  return version;
+  return { readable: held === value };
 };
 
 /**
- * Whether the vault token reads `name` back at `version`, as the build
- * resolves it. Asked after the store: before it, the Console refuses a name
- * no secret has to a token scoped by kind, which may read it once stored.
- * The key stays stored either way, so the next run does not sign in.
+ * The build resolves `name` right after it is issued: the adapter must read
+ * back what it stored. The key stays stored either way, so the next run does
+ * not sign in.
  */
-export const assertReadableCredential = async ({
-  client,
+export const assertReadableCredential = ({
+  secrets,
   name,
-  kind,
-  version,
+  readable,
   usage,
 }: {
-  readonly client: VaultClient;
+  readonly secrets: SecretsAdapter;
   readonly name: string;
-  readonly kind: IssuedCredentialKind;
-  readonly version: number;
+  readonly readable: boolean;
   /** What reads it, such as "the build uploads with". */
   readonly usage: string;
 }) => {
-  try {
-    const { secrets } = await client.resolve([name]);
-    if (
-      secrets.some(
-        (secret) =>
-          secret.name === name &&
-          secret.kind === kind &&
-          secret.version === version,
-      )
-    ) {
-      return;
-    }
-  } catch (error) {
-    if (!(error instanceof VaultRequestError && error.status === 403)) {
-      throw error;
-    }
-  }
+  if (readable) return;
   throw new Error(
-    `${name} is stored (v${version}), but the vault token cannot read it, which ${usage}. Use a vault token whose scope allows read on ${name}, then run the build again: it uses the stored key without signing in.`,
+    `${name} is stored, but the ${secrets.name} secrets adapter does not read it back, which ${usage}. Make ${describeSecret(secrets, name)} readable where the build runs, then run it again: it uses the stored key without signing in.`,
   );
 };

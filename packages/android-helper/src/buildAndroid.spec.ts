@@ -2,11 +2,12 @@ import type { CredentialResolver } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const { createMinBundleId, parseVaultReference } =
+  const { assertUnreservedEnv, createMinBundleId, parseSecretReference } =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
+    assertUnreservedEnv,
     createMinBundleId,
-    parseVaultReference,
+    parseSecretReference,
     getCwd: () => "/app",
     p: { log: { info: vi.fn() } },
   };
@@ -81,7 +82,7 @@ describe("buildAndroid", () => {
     await buildAndroid({
       schemeConfig: scheme({
         aab: true,
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -121,7 +122,7 @@ describe("buildAndroid", () => {
       await buildAndroid({
         schemeConfig: scheme({
           variant,
-          signing: { keystore: "vault:release-keystore" },
+          signing: { keystore: "secret:release-keystore" },
         }),
         minBundleId: MIN_BUNDLE_ID,
         credentials,

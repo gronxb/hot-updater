@@ -2,15 +2,27 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  type CredentialSource,
   CredentialUnavailableError,
   createCredentialResolver,
   withCredentialResolver,
 } from "./credentialResolver";
 import { maskSecretValues } from "./secretMasking";
+import { envSecrets, setConfiguredSecrets } from "./secrets";
+
+/** A secrets adapter holding `values`, whose `get` records each call. */
+const fakeSecrets = (
+  values: Readonly<Record<string, string>>,
+): SecretsAdapter & { get: ReturnType<typeof vi.fn> } => ({
+  name: "fake",
+  get: vi.fn(async (names: readonly string[]) =>
+    Object.fromEntries(names.map((name) => [name, values[name]])),
+  ),
+  describe: (name) => `fake://${name}`,
+});
 
 const P8_KEY = [
   "-----BEGIN PRIVATE KEY-----",
@@ -31,27 +43,28 @@ beforeEach(async () => {
   directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-credential-resolver-"),
   );
-  // The project the vault connection's .env.hotupdater is read from.
+  // The project whose .env.hotupdater env() reads.
   await fs.writeFile(path.join(directory, "package.json"), "{}");
   vi.spyOn(process, "cwd").mockReturnValue(directory);
 });
 
 afterEach(async () => {
+  setConfiguredSecrets(envSecrets());
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await fs.rm(directory, { force: true, recursive: true });
 });
 
 describe("createCredentialResolver", () => {
-  it("uses the environment override and never calls the source", async () => {
+  it("uses the environment override and never reads the secrets adapter", async () => {
     // Given
     const keyPath = path.join(directory, "AuthKey_ABC123.p8");
     await fs.writeFile(keyPath, P8_KEY);
     vi.stubEnv("HOT_UPDATER_ASC_KEY_PATH", keyPath);
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ABC123");
     vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
-    const source = vi.fn<CredentialSource>();
-    const resolver = createCredentialResolver({ source });
+    const secrets = fakeSecrets({});
+    const resolver = createCredentialResolver({ secrets });
 
     // When
     const credential = await resolver.resolve({ kind: "asc-api-key" });
@@ -62,7 +75,7 @@ describe("createCredentialResolver", () => {
       keyId: "ABC123",
       issuerId: "issuer-1",
     });
-    expect(source).not.toHaveBeenCalled();
+    expect(secrets.get).not.toHaveBeenCalled();
     await resolver.dispose();
   });
 
@@ -82,50 +95,123 @@ describe("createCredentialResolver", () => {
     await resolver.dispose();
   });
 
-  it("calls the source when no override is set", async () => {
-    const source = vi.fn<CredentialSource>(async (_request, { files }) => ({
-      kind: "play-service-account",
-      credential: {
-        json: await fs.readFile(
-          await files.write("play.json", '{"client_email":"ci@example.com"}'),
-          "utf-8",
-        ),
+  it("resolves a secret: name as one JSON value from the config's adapter", async () => {
+    // Given: the config's adapter, as loadConfig registers it
+    const keystore = Buffer.from([0xfe, 0xed, 0xfe, 0xed, 0x01]);
+    const secrets = fakeSecrets({
+      "release-keystore": JSON.stringify({
+        keystore: keystore.toString("base64"),
+        storePassword: "json-store-password",
+        keyAlias: "json-alias",
+        keyPassword: "json-key-password",
+      }),
+    });
+    setConfiguredSecrets(secrets);
+    const before = { ...process.env };
+
+    // When
+    await withCredentialResolver(async (resolver) => {
+      const credential = await resolver.resolve({
+        kind: "android-keystore",
+        name: "release-keystore",
+      });
+
+      // Then: the files hold the values, and process.env none of them
+      expect(path.basename(credential.storeFile)).toBe(
+        "release-keystore.keystore",
+      );
+      expect(await fs.readFile(credential.storeFile)).toEqual(keystore);
+      expect((await fs.stat(credential.storeFile)).mode & 0o777).toBe(0o600);
+      expect(credential).toMatchObject({
+        storePassword: "json-store-password",
+        keyAlias: "json-alias",
+        keyPassword: "json-key-password",
+      });
+    });
+    expect(secrets.get).toHaveBeenCalledWith(["release-keystore"], {
+      cwd: directory,
+    });
+    expect(process.env).toEqual(before);
+  });
+
+  it("maps an App Store Connect key's JSON fields, p8 as the PEM", async () => {
+    const secrets = fakeSecrets({
+      "asc-api-key": JSON.stringify({
+        keyId: "JSONKEY1",
+        issuerId: "json-issuer",
+        p8: P8_KEY,
+      }),
+    });
+
+    await withCredentialResolver(
+      async (resolver) => {
+        const { keyPath, keyId, issuerId } = await resolver.resolve({
+          kind: "asc-api-key",
+        });
+
+        expect([keyId, issuerId]).toEqual(["JSONKEY1", "json-issuer"]);
+        expect(path.basename(keyPath)).toBe("AuthKey_JSONKEY1.p8");
+        expect(await fs.readFile(keyPath, "utf-8")).toBe(P8_KEY);
       },
-    }));
-    const resolver = createCredentialResolver({ source });
+      { secrets },
+    );
+  });
+
+  it("takes a service account's own JSON as it is", async () => {
+    const json = JSON.stringify({ client_email: "ci@example.com" });
+    const resolver = createCredentialResolver({
+      secrets: fakeSecrets({ "release-play": json }),
+    });
 
     const credential = await resolver.resolve({
       kind: "play-service-account",
       name: "release-play",
     });
 
-    expect(credential).toEqual({ json: '{"client_email":"ci@example.com"}' });
-    expect(source).toHaveBeenCalledWith(
-      { kind: "play-service-account", name: "release-play" },
-      expect.objectContaining({ files: expect.anything() }),
-    );
+    expect(credential).toEqual({ json });
     await resolver.dispose();
+  });
+
+  it("reads the items asked for together in one get", async () => {
+    const secrets = fakeSecrets({
+      "asc-api-key": JSON.stringify({
+        keyId: "BATCH1",
+        issuerId: "issuer-1",
+        p8: P8_KEY,
+      }),
+      "play-service-account": "{}",
+    });
+
+    await withCredentialResolver(
+      async (resolver) => {
+        await Promise.all([
+          resolver.resolve({ kind: "asc-api-key" }),
+          resolver.resolve({ kind: "play-service-account" }),
+        ]);
+      },
+      { secrets },
+    );
+
+    expect(secrets.get).toHaveBeenCalledTimes(1);
+    expect(secrets.get).toHaveBeenCalledWith(
+      ["asc-api-key", "play-service-account"],
+      { cwd: directory },
+    );
   });
 
   it("resolves one item once", async () => {
-    const source = vi.fn<CredentialSource>(async () => ({
-      kind: "play-service-account",
-      credential: { json: "{}" },
-    }));
-    const resolver = createCredentialResolver({ source });
+    const secrets = fakeSecrets({ "play-service-account": "{}" });
+    const resolver = createCredentialResolver({ secrets });
 
     await resolver.resolve({ kind: "play-service-account" });
     await resolver.resolve({ kind: "play-service-account" });
 
-    expect(source).toHaveBeenCalledTimes(1);
+    expect(secrets.get).toHaveBeenCalledTimes(1);
     await resolver.dispose();
   });
 
-  it("fails naming the vault's and every replacement env var when nothing provides the item", async () => {
-    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", "");
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", "");
-    const fetch = vi.spyOn(globalThis, "fetch");
-    const resolver = createCredentialResolver();
+  it("fails naming the adapter, the put command, and every replacement env var when nothing provides the item", async () => {
+    const resolver = createCredentialResolver({ secrets: fakeSecrets({}) });
 
     const error = await resolver
       .resolve({ kind: "asc-api-key" })
@@ -133,9 +219,8 @@ describe("createCredentialResolver", () => {
 
     expect(error).toBeInstanceOf(CredentialUnavailableError);
     expect((error as Error).message).toBe(
-      "asc-api-key resolves from the Console's vault, and HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN are not set in the environment or .env.hotupdater. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
+      "asc-api-key is not in the fake secrets adapter (fake://asc-api-key). Store it once with `npx hot-updater secrets put asc-api-key --kind asc-api-key`. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
     );
-    expect(fetch).not.toHaveBeenCalled();
     expect((error as CredentialUnavailableError).envNames).toEqual([
       "HOT_UPDATER_ASC_KEY_PATH",
       "HOT_UPDATER_ASC_KEY",
@@ -144,13 +229,25 @@ describe("createCredentialResolver", () => {
     ]);
   });
 
-  it("adds the replacement env vars to the source's failure", async () => {
-    const reason = new Error(
-      "Cannot reach the Console at https://console.example.com.",
+  it("names env()'s JSON variable when the environment holds nothing", async () => {
+    await expect(
+      createCredentialResolver().resolve({
+        kind: "android-keystore",
+        name: "release-keystore",
+      }),
+    ).rejects.toThrow(
+      "release-keystore (android-keystore) is not in the env secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater).",
     );
+  });
+
+  it("adds the replacement env vars to the adapter's failure", async () => {
+    const reason = new Error("AccessDenied: secretsmanager:GetSecretValue");
     const resolver = createCredentialResolver({
-      source: async () => {
-        throw reason;
+      secrets: {
+        name: "aws",
+        get: async () => {
+          throw reason;
+        },
       },
     });
 
@@ -159,35 +256,39 @@ describe("createCredentialResolver", () => {
       .catch((caught: unknown) => caught);
 
     expect((error as Error).message).toBe(
-      "Cannot reach the Console at https://console.example.com. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore without the vault.",
+      "The aws secrets adapter could not read android-keystore: AccessDenied: secretsmanager:GetSecretValue Or set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore from the environment.",
     );
     expect((error as Error).cause).toBe(reason);
   });
 
-  it("fails when the source returns another kind", async () => {
+  it("fails naming the JSON shape a value lacks", async () => {
     const resolver = createCredentialResolver({
-      source: async () => ({
-        kind: "play-service-account",
-        credential: { json: "{}" },
+      secrets: fakeSecrets({
+        "asc-api-key": JSON.stringify({ keyId: "K", p8: "x" }),
+        "android-keystore": "not json",
       }),
     });
 
+    await expect(resolver.resolve({ kind: "asc-api-key" })).rejects.toThrow(
+      'The fake secrets adapter\'s asc-api-key has no issuerId: an asc-api-key is one JSON value, {"keyId", "issuerId", "p8"}.',
+    );
     await expect(
       resolver.resolve({ kind: "android-keystore" }),
     ).rejects.toThrow(
-      "The credential source returned no valid android-keystore. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH",
+      'The fake secrets adapter\'s android-keystore is not a JSON object: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
     );
+    await resolver.dispose();
   });
 
-  it("fails on a partial override instead of calling the source", async () => {
+  it("fails on a partial override instead of reading the adapter", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ABC123");
-    const source = vi.fn<CredentialSource>();
-    const resolver = createCredentialResolver({ source });
+    const secrets = fakeSecrets({});
+    const resolver = createCredentialResolver({ secrets });
 
     await expect(resolver.resolve({ kind: "asc-api-key" })).rejects.toThrow(
       "The environment overrides asc-api-key but HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY) and HOT_UPDATER_ASC_ISSUER_ID are not set.",
     );
-    expect(source).not.toHaveBeenCalled();
+    expect(secrets.get).not.toHaveBeenCalled();
   });
 
   it("fails when an override path cannot be read", async () => {
@@ -310,22 +411,26 @@ describe("credential temporary files", () => {
     const released = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let keyPath = "";
     const resolver = createCredentialResolver({
-      source: async (_request, { files }) => {
-        await released;
-        keyPath = await files.write("AuthKey_LATE.p8", P8_KEY);
-        return {
-          kind: "asc-api-key",
-          credential: { keyPath, keyId: "LATE", issuerId: "issuer-1" },
-        };
+      secrets: {
+        name: "late",
+        get: async () => {
+          await released;
+          return {
+            "asc-api-key": JSON.stringify({
+              keyId: "LATE",
+              issuerId: "issuer-1",
+              p8: P8_KEY,
+            }),
+          };
+        },
       },
     });
 
     const resolving = resolver.resolve({ kind: "asc-api-key" });
     const disposing = resolver.dispose();
     release();
-    await resolving;
+    const { keyPath } = await resolving;
     await disposing;
 
     expect(keyPath).not.toBe("");
@@ -371,15 +476,15 @@ describe("credential temporary files", () => {
     const onSpy = vi.spyOn(process, "on");
     const { createCredentialResolver: createFreshResolver } =
       await import("./credentialResolver");
-    const source: CredentialSource = async (_request, { files }) => ({
-      kind: "asc-api-key",
-      credential: {
-        keyPath: await files.write("AuthKey_EXIT.p8", P8_KEY),
-        keyId: "EXIT",
-        issuerId: "issuer-1",
-      },
+    const resolver = createFreshResolver({
+      secrets: fakeSecrets({
+        "asc-api-key": JSON.stringify({
+          keyId: "EXIT",
+          issuerId: "issuer-1",
+          p8: P8_KEY,
+        }),
+      }),
     });
-    const resolver = createFreshResolver({ source });
     const { keyPath } = await resolver.resolve({ kind: "asc-api-key" });
     const listenerOf = (event: string) =>
       onSpy.mock.calls.find(([name]) => name === event)?.[1] as (
@@ -471,5 +576,100 @@ describe("credential masking", () => {
     expect(masked).not.toContain("mask-play-private-key");
     expect(masked).not.toContain(P8_KEY.split("\n")[1]);
     expect(masked).toContain("alias release-alias, key MASKKEYID");
+  });
+
+  it("masks every field of a JSON credential the adapter holds", async () => {
+    // Given: a keystore and a service account as one JSON value each
+    const keystore = {
+      keystore: Buffer.from("json-masked-keystore").toString("base64"),
+      storePassword: "json-mask-store",
+      keyAlias: "json-mask-alias",
+      keyPassword: "json-mask-key",
+    };
+    const serviceAccount = {
+      type: "service_account",
+      client_email: "json-mask@project.iam.gserviceaccount.com",
+      private_key: "json-mask-private-key",
+      token_uri: "https://oauth2.googleapis.com/token",
+    };
+    const secrets = fakeSecrets({
+      "android-keystore": JSON.stringify(keystore),
+      "play-service-account": JSON.stringify(serviceAccount),
+    });
+
+    // When
+    await withCredentialResolver(
+      async (resolver) => {
+        await resolver.resolve({ kind: "android-keystore" });
+        await resolver.resolve({ kind: "play-service-account" });
+      },
+      { secrets },
+    );
+
+    // Then: no field prints, but a service account's type and endpoints
+    const masked = maskSecretValues(
+      [
+        ...Object.values(keystore),
+        ...Object.values(serviceAccount),
+        JSON.stringify(keystore),
+      ].join("\n"),
+    );
+    for (const value of [
+      ...Object.values(keystore),
+      serviceAccount.client_email,
+      serviceAccount.private_key,
+    ]) {
+      expect(masked).not.toContain(value);
+    }
+    expect(masked).toContain("https://oauth2.googleapis.com/token");
+  });
+});
+
+describe("env() as the secrets adapter", () => {
+  it("reads a credential's JSON value from its variable", async () => {
+    vi.stubEnv(
+      "HOT_UPDATER_ASC_API_KEY",
+      JSON.stringify({ keyId: "ENVJSON1", issuerId: "issuer-1", p8: P8_KEY }),
+    );
+
+    await withCredentialResolver(async (resolver) => {
+      const { keyId, keyPath } = await resolver.resolve({
+        kind: "asc-api-key",
+      });
+
+      expect(keyId).toBe("ENVJSON1");
+      expect(await fs.readFile(keyPath, "utf-8")).toBe(P8_KEY);
+    });
+  });
+
+  it("reads the JSON value from .env.hotupdater", async () => {
+    await fs.writeFile(
+      path.join(directory, ".env.hotupdater"),
+      `HOT_UPDATER_RELEASE_PLAY='${JSON.stringify({ client_email: "file@example.com" })}'\n`,
+    );
+
+    const credential = await withCredentialResolver((resolver) =>
+      resolver.resolve({ kind: "play-service-account", name: "release-play" }),
+    );
+
+    expect(JSON.parse(credential.json)).toEqual({
+      client_email: "file@example.com",
+    });
+  });
+
+  it("prefers the per-field variables over the JSON value", async () => {
+    vi.stubEnv(
+      "HOT_UPDATER_ASC_API_KEY",
+      JSON.stringify({ keyId: "FROMJSON", issuerId: "issuer-1", p8: P8_KEY }),
+    );
+    vi.stubEnv("HOT_UPDATER_ASC_KEY", P8_KEY);
+    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "FROMFIELDS");
+    vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
+
+    const { keyId } = await withCredentialResolver((resolver) =>
+      resolver.resolve({ kind: "asc-api-key" }),
+    );
+
+    expect(keyId).toBe("FROMFIELDS");
   });
 });

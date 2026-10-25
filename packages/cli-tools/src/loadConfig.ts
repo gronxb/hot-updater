@@ -6,6 +6,7 @@ import type {
   ConfiguredDatabase,
   Platform,
   RequiredDeep,
+  SecretsAdapter,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
 import { mergeWith } from "es-toolkit";
@@ -14,7 +15,7 @@ import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
-import { loadVaultDeployCredentials } from "./vaultVariables.js";
+import { envSecrets, setConfiguredSecrets } from "./secrets.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -100,7 +101,7 @@ const getDefaultConfig = (): Omit<ConfigInput, "database" | "storage"> => {
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing">
+  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing" | "secrets">
 > & {
   /** The server's database, or `standaloneRepository(...)`; absent when the config names none. */
   database?: ConfiguredDatabase;
@@ -109,6 +110,8 @@ export type ConfigResponse = RequiredDeep<
   /** The plugins the server runs; none when the config lists none. */
   plugins: readonly AnyHotUpdaterPlugin[];
   signing?: ReturnType<typeof normalizeSigningConfig>;
+  /** Where `secret:` references and `secretEnv` read from; `env()` unless the config sets another. */
+  secrets: SecretsAdapter;
 };
 
 type ConfigSource = Partial<ConfigInput> | null | undefined;
@@ -135,12 +138,14 @@ const mergeConfigSources = (...sources: ConfigSource[]) => {
   // without their symbol keys, such as the brand on Hot Updater's own plugins.
   const database = sources.find((source) => source?.database)?.database;
   const plugins = sources.find((source) => source?.plugins)?.plugins;
+  const secrets = sources.find((source) => source?.secrets)?.secrets;
   const signing = sources.find((source) => source?.signing)?.signing;
   const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
     ...(plugins ? { plugins } : {}),
+    ...(secrets ? { secrets } : {}),
     ...(signing ? { signing } : {}),
     ...(storage ? { storage } : {}),
   };
@@ -167,22 +172,8 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
-export interface LoadConfigCredentials {
-  /**
-   * The command uses the config's database, storage, or signing: before the
-   * file runs, the vault's deploy credentials go into `process.env` when
-   * `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN` are set, and a
-   * Console that cannot answer fails the load. Without it, loading reaches
-   * no network, as fingerprints and native builds need.
-   */
-  readonly credentials?: boolean;
-}
-
 /** Each load runs the config file again, which creates its adapters again. */
-const loadConfigFile = async ({
-  credentials = false,
-}: LoadConfigCredentials): Promise<ConfigFileExport | undefined> => {
-  if (credentials) await loadVaultDeployCredentials(getCwd());
+const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
   const { config } = await loadUnconfig<ConfigFileExport>(
     getConfigLoaderOptions(),
   );
@@ -197,9 +188,8 @@ const configFor = async (
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-  load: LoadConfigCredentials = {},
 ): Promise<ConfigResponse> =>
-  resolveConfig(await configFor(await loadConfigFile(load), options));
+  resolveConfig(await configFor(await loadConfigFile(), options));
 
 /**
  * hot-updater.config for each of `platforms`, with the file loaded once. A
@@ -209,14 +199,11 @@ export const loadConfig = async (
  */
 export const loadPlatformConfigs = async <TPlatform extends Platform>(
   platforms: readonly TPlatform[],
-  {
-    channel,
-    credentials,
-  }: { readonly channel: string } & LoadConfigCredentials,
+  { channel }: { readonly channel: string },
 ): Promise<
   { readonly platform: TPlatform; readonly config: ConfigResponse }[]
 > => {
-  const source = await loadConfigFile({ credentials });
+  const source = await loadConfigFile();
   const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
   for (const platform of platforms) {
     configs.push({
@@ -227,11 +214,18 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
   return configs;
 };
 
+/**
+ * The config with its defaults. Its `secrets` adapter becomes the one
+ * `secret:` references and `secretEnv` read from in this process.
+ */
 const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const signing = normalizeSigningConfig(mergedConfig.signing);
+  const secrets = mergedConfig.secrets ?? envSecrets();
+  setConfiguredSecrets(secrets);
   return {
     ...mergedConfig,
     signing,
+    secrets,
   } as ConfigResponse;
 };

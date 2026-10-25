@@ -1,6 +1,5 @@
 import { bare } from "@hot-updater/bare";
 import { defineConfig } from "hot-updater";
-import { vault } from "hot-updater/plugins";
 
 import { database, storage } from "./shared.ts";
 
@@ -16,11 +15,11 @@ export default defineConfig({
     android: {
       release: {
         packageName: "com.hotupdaterexample",
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
       widget: {
         packageName: "com.hotupdaterexample",
-        signing: { keystore: "vault:widget-keystore" },
+        signing: { keystore: "secret:widget-keystore" },
       },
     },
     ios: {
@@ -28,13 +27,13 @@ export default defineConfig({
         bundleIdentifier: "com.hotupdaterexample",
         scheme: "HotUpdaterExample",
         configuration: "Release",
-        signing: { ascApiKey: "vault:asc-api-key" },
+        signing: { ascApiKey: "secret:asc-api-key" },
       },
     },
   },
   build: bare({ enableHermes: true, resetCache: false }),
   storage,
   database,
-  plugins: [vault()],
+  plugins: [],
   updateStrategy: "fingerprint",
 });

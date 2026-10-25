@@ -2,15 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import {
-  type ConfigResponse,
-  getCwd,
-  loadConfig,
-  loadVaultDeployCredentials,
-  p,
-  resolveVaultConnection,
-  VAULT_CONNECTION_ENV_NAMES,
-} from "@hot-updater/cli-tools";
+import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 const CONSOLE_READY_TIMEOUT_MS = 15_000;
@@ -99,40 +91,6 @@ export const getConsolePort = async (config?: ConfigResponse) => {
 
   const $config = await loadConfig(null);
   return $config.console.port;
-};
-
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-/** Whether `url` is the console this command starts on `port`. */
-const isThisConsole = (url: string, port: number) => {
-  try {
-    const parsed = new URL(url);
-    return (
-      LOOPBACK_HOSTS.has(parsed.hostname) &&
-      Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)) === port
-    );
-  } catch {
-    return false;
-  }
-};
-
-/**
- * Sets the vault's deploy credentials in `process.env`, which the console's
- * server inherits as it loads the config, when the connection variables
- * name another Console. The console started on `port` cannot serve its own
- * database and storage credentials before it runs, so those stay in its
- * environment or `.env.hotupdater`.
- */
-export const loadConsoleCredentials = async (port: number) => {
-  const cwd = getCwd();
-  const read = await resolveVaultConnection({ cwd });
-  if (read.ok && isThisConsole(read.connection.url, port)) {
-    p.log.warn(
-      `${VAULT_CONNECTION_ENV_NAMES.url} is this console (${read.connection.url}), which cannot serve the credentials it starts with: keep its database and storage credentials in the environment or .env.hotupdater.`,
-    );
-    return;
-  }
-  await loadVaultDeployCredentials(cwd);
 };
 
 export const openConsole = async (

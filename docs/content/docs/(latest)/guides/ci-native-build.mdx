@@ -56,8 +56,9 @@ only: in CI it never signs in.
 
 `secrets put` reads the keystore's passwords from
 `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD` and `HOT_UPDATER_ANDROID_KEY_PASSWORD`,
-or asks for them. Store the deploy credentials `--register` uses with
-[`secrets import`](/docs/guides/secrets#move-envhotupdater-into-the-vault).
+or asks for them. The config's adapters read the deploy credentials
+`--register` uses with
+[`secretEnv`](/docs/guides/secrets#deploy-credentials-with-secretenv).
 
 The App Store Connect API key is a team key with the Admin role: CI signs
 with Xcode's cloud-managed distribution certificate, which only an Admin key

@@ -10,11 +10,12 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 
 ### Adapters and Plugins
 
-An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` (`@hot-updater/plugin-core`) is the public kit both are written against (the adapter contracts, the storage engine with its KV and SQL kits, and `definePlugin`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
+An adapter fills one slot of a config (`build`, `storage`, `database`, `secrets`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` (`@hot-updater/plugin-core`) is the public kit both are written against (the adapter contracts, the storage engine with its KV and SQL kits, and `definePlugin`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
 
 - **Build Adapters**: Handle bundling and the native fingerprint (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`. Bare and Rock fingerprint the native interface with cli-tools' `createInterfaceFingerprint` through `nativeBuild.fingerprint`; Expo, and any adapter without one, uses `@expo/fingerprint`
 - **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, Vercel Blob, Azure Blob Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/vercel/`, `plugins/azure/`, `plugins/standalone/`
 - **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, Cosmos DB, PostgreSQL) - use the same directories as storage and build on plugin-core's database kit; the built-in Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/` (`@hot-updater/server/adapters/*`)
+- **Secrets Adapters**: Read the secrets a config names, `secret:<name>` build credentials and `secretEnv([...])` deploy credentials, and store issued keys when the store writes (`env()`, the read-only default) - `SecretsAdapter` in plugin-core, implementations in `hot-updater/secrets` (source in `packages/cli-tools/src/secrets.ts`, resolution in `credentialResolver.ts`)
 - **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
 - **Integration Plugins**: Wrap a build adapter to upload source maps (Sentry, Datadog, BugSnag) - `plugins/*-plugin/`
 - **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin` from `@hot-updater/plugin-core` (source in `plugins/plugin-core/src/serverPlugin/`) - the official `insights()`, `apiKeys()`, `remoteConfig()`, and `vault()` are the packages `plugins/insights/` (`@hot-updater/plugin-insights`), `plugins/api-keys/` (`@hot-updater/plugin-api-keys`), `plugins/remote-config/` (`@hot-updater/plugin-remote-config`), and `plugins/vault/` (`@hot-updater/plugin-vault`), re-exported by `@hot-updater/server/plugins` for servers and hosted Consoles, and by `hot-updater/plugins` for CLI configuration
@@ -50,7 +51,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - `@hot-updater/server` is the runtime host. Its root is `createHotUpdater`, its types, the handlers, and `toNodeHandler`.
   - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins`).
   - Tooling reads a server definition only through its public read-only properties.
-- `hot-updater/plugins` re-exports the official `apiKeys`, `insights`, `remoteConfig`, and `vault` factories for `hot-updater.config.ts`. Server and hosted Console code imports `@hot-updater/server/plugins` instead of depending on the CLI package.
+- `hot-updater/plugins` re-exports the official `apiKeys`, `insights`, and `remoteConfig` factories for `hot-updater.config.ts`. Server and hosted Console code imports `@hot-updater/server/plugins` instead of depending on the CLI package.
 - `@hot-updater/plugin-vault` adds tables and `hotUpdater.api.vault`, and no endpoints: the Console serves the vault's routes and holds its master keys (`HOT_UPDATER_VAULT_MASTER_KEY`, or `HOT_UPDATER_VAULT_MASTER_KEYS` while they rotate), and only the Console rewraps them, so `vault()` goes only in the plugins of `hot-updater.config.ts` and `console.config.ts`. Managed server runtimes bundle it through `@hot-updater/server/plugins` but never run it.
 - `@hot-updater/vercel` re-exports `postgres` from `@hot-updater/postgres`, the managed Vercel database, so a Vercel project's config imports and installs one package.
 - `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` and `remoteConfig` clients. It has no subpaths.
@@ -71,8 +72,8 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
   - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
   - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
-  - `hot-updater secrets` is a built-in command for the Console's vault: `list`, `put`, `env`, and `import` go through the Console's `/_hot-updater/vault/v1/` routes with `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, and `token create|list|revoke` runs in process like `api-key`, without a master key. The CLI never decrypts a secret.
-  - The connection variables are written with `makeEnv` and read with `getHotUpdaterEnvValue`, from the environment or `.env.hotupdater`. While both are set, a `loadConfig(..., { credentials: true })` sets the variables of the `deploy-credentials` secrets the token reaches in `process.env` before it loads `hot-updater.config.ts` (`loadVaultDeployCredentials`), so `secrets import` leaves only those two in `.env.hotupdater` and configs keep reading `process.env`. Only loads whose config feeds the database, storage, or signing pass `credentials: true`; fingerprints, native builds without `--register`, `channel set`, and the Expo config plugin load offline. Adapters and signers check their credentials and create clients on first use, so a config without them still loads.
+  - `hot-updater secrets put <name> --kind <kind>` is a built-in command that stores a build credential through the config's `secrets` adapter (`set`), or, without the key's files, issues an App Store Connect key or a Play service account after an Apple or Google sign-in. Hot Updater hosts no secret.
+  - `loadConfig` makes the config's `secrets` adapter, `env()` by default, the one `secret:` references and `secretEnv` read from, on `globalThis` since the config file loads its own copy of Hot Updater's modules. Loading reads no secret: `secretEnv` returns a function adapters call on first use, and resolved values never go into the CLI's own `process.env`, only to the caller, 0600 temporary files, or a child's explicit environment, which `isReservedVariableName` guards. Adapters and signers check their credentials and create clients on first use, so a config without them still loads.
 
 ### Reference Projects
 
@@ -83,7 +84,7 @@ When working on helper packages, reference these external projects:
 
 ### Configuration
 
-Projects use `hot-updater.config.ts` (`defineConfig()`) for `build`, `storage`, `database`, and `plugins`, plus the deploy settings (`updateStrategy`, `signing`, `fingerprint`, `patch`, `platform`, `nativeBuild`, `console`, `cacheDir`). The config mirrors the server and never names server code:
+Projects use `hot-updater.config.ts` (`defineConfig()`) for `build`, `storage`, `database`, and `plugins`, plus the deploy settings (`updateStrategy`, `secrets`, `signing`, `fingerprint`, `patch`, `platform`, `nativeBuild`, `console`, `cacheDir`). The config mirrors the server and never names server code:
 
 - `storage` is the one adapter the CLI uploads with, the same adapter as the server's `createHotUpdater({ storage })`;
 - `database` is the server's database adapter, or `standaloneRepository({ baseUrl, commonHeaders })` to reach a self-hosted server's admin API;
@@ -159,18 +160,16 @@ npx hot-updater build:android --scheme release --register
 # Build an .ipa and upload it to TestFlight with the scheme's App Store Connect API key
 npx hot-updater build:ios --scheme release --upload testflight
 
-# Build an .aab and release it to Google Play's internal track with the vault's play-service-account
+# Build an .aab and release it to Google Play's internal track with the secrets adapter's play-service-account
 npx hot-updater build:android --scheme release --upload play-internal
 
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>
 npx hot-updater api-key list src/hotUpdater.ts
 
-# Store and list Console vault secrets, and issue vault tokens
-npx hot-updater secrets token create --name ci --secrets asc-api-key --actions read
+# Store a build credential through the config's secrets adapter, or sign in to issue one
 npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey.p8 --key-id <id> --issuer-id <id>
-npx hot-updater secrets env -- <command>
-npx hot-updater secrets import .env.hotupdater
+npx hot-updater secrets put play-service-account --kind play-service-account
 
 # Migrate a server's database (in the server project)
 npx hot-updater db migrate src/hotUpdater.ts

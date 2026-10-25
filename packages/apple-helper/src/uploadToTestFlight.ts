@@ -6,7 +6,7 @@ import {
   type CredentialRequest,
   type Credentials,
   p,
-  parseVaultReference,
+  parseSecretReference,
   registerSecretValue,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
@@ -290,7 +290,7 @@ export const resolveTestFlightUploadKey = ({
   return {
     kind: "asc-api-key",
     name: iosScheme.signing
-      ? parseVaultReference(iosScheme.signing.ascApiKey, "signing.ascApiKey")
+      ? parseSecretReference(iosScheme.signing.ascApiKey, "signing.ascApiKey")
       : "asc-api-key",
   };
 };

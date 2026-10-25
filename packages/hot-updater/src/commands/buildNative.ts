@@ -19,7 +19,7 @@ import {
   getCwd,
   CredentialUnavailableError,
   p,
-  parseVaultReference,
+  parseSecretReference,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
@@ -79,13 +79,12 @@ const buildNativeInternal = async ({
         ...options,
         platform,
         operation: "build",
-        credentials: register,
         // A scheme the store would refuse, or a missing signing or upload
         // credential, fails before the prebuild and the build, so a CI run
         // without one stops at once. The resolver keeps each credential for
         // the build, which resolves the signing ones again, an upload key
         // that signs too is one item, and a service account stays in
-        // memory. Credentials asked for together share one vault request.
+        // memory. Credentials asked for together share one secrets read.
         beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
           const uploadKey =
             upload === "testflight"
@@ -108,7 +107,7 @@ const buildNativeInternal = async ({
           const ascApiKeyName =
             uploadKey?.name ??
             (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
-              ? parseVaultReference(
+              ? parseSecretReference(
                   iosScheme.signing.ascApiKey,
                   "signing.ascApiKey",
                 )
@@ -330,12 +329,12 @@ const resolveSigningCredentials = async (
     ascApiKey &&
       credentials.resolve({
         kind: "asc-api-key",
-        name: parseVaultReference(ascApiKey, "signing.ascApiKey"),
+        name: parseSecretReference(ascApiKey, "signing.ascApiKey"),
       }),
     keystore &&
       credentials.resolve({
         kind: "android-keystore",
-        name: parseVaultReference(keystore, "signing.keystore"),
+        name: parseSecretReference(keystore, "signing.keystore"),
       }),
   ]);
 };

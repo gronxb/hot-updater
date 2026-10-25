@@ -15,7 +15,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 
 describe("ensureFingerprintConfig", () => {
-  it("loads the config without vault credentials, so a fingerprint reaches no Console", async () => {
+  it("loads the config as it is, reading no secret", async () => {
     vi.mocked(loadConfig).mockResolvedValue({
       updateStrategy: "fingerprint",
       build: () => ({ name: "bare", build: vi.fn() }),

@@ -1489,7 +1489,7 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     const reason =
-      "Failed to resolve the bundle signing provider public key. https://console.example.com/_hot-updater/signing answered 403 forbidden: The vault token may sign with a, b: scope a sign token to one bundle-signing-key by name.";
+      "Failed to resolve the bundle signing provider public key. https://signer.example.com/sign answered 403 forbidden: The signing token may sign with a, b: scope it to one key.";
     mockCli.prepareBundleSigning.mockRejectedValue(new Error(reason));
     const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
       throw new Error("process.exit");
