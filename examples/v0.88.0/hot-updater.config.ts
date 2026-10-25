@@ -20,6 +20,14 @@ export default defineConfig({
         configuration: "Release",
         installPods: true,
       },
+      // CI builds this one through `hot-updater build:ios` from a fresh ios/.
+      releaseSimulator: {
+        bundleIdentifier: "org.reactjs.native.example.HotUpdaterExample",
+        scheme: "HotUpdaterExample",
+        configuration: "Release",
+        simulator: true,
+        installPods: true,
+      },
     },
     android: {
       releaseApk: { packageName: "com.hotupdaterexample", aab: false },
