@@ -234,6 +234,16 @@ describe("createGoogleKeyIssuer", () => {
       `POST ${USER}/grants`,
       `POST ${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`,
     ]);
+    // Only Google's sign-in and the four APIs are reached.
+    expect(new Set(calls.map((call) => new URL(call.url).host))).toEqual(
+      new Set([
+        "oauth2.googleapis.com",
+        "androidpublisher.googleapis.com",
+        "cloudresourcemanager.googleapis.com",
+        "serviceusage.googleapis.com",
+        "iam.googleapis.com",
+      ]),
+    );
     for (const call of calls.filter(
       (c) => !c.url.startsWith("https://oauth2."),
     )) {
@@ -390,6 +400,43 @@ describe("createGoogleKeyIssuer", () => {
 
     expect(error.code).toBe("not-play-admin");
     expect(mutations()).toEqual([]);
+  });
+
+  it("names the Play Developer API disabled in the OAuth client's project, not a missing admin role, before any change", async () => {
+    routes[`GET ${API}/developers/1234/users?pageSize=1`] = () =>
+      serviceDisabled("projects/999");
+
+    const error = await issueError();
+
+    expect(error.code).toBe("api-not-enabled");
+    expect(error.message).toContain("OAuth client");
+    expect(mutations()).toEqual([]);
+  });
+
+  it("keeps Google's words in a Play Console refusal", async () => {
+    routes[`GET ${API}/developers/1234/users?pageSize=1`] = () =>
+      googleError(403, "PERMISSION_DENIED", "Something else went wrong.");
+
+    const error = await issueError();
+
+    expect(error.code).toBe("not-play-admin");
+    expect(error.message).toContain("(Google: Something else went wrong.)");
+  });
+
+  it("names a Play Console refusal to add the service account as a missing admin role", async () => {
+    routes[`POST ${USER}/grants`] = () =>
+      googleError(
+        403,
+        "PERMISSION_DENIED",
+        "The caller does not have permission",
+      );
+
+    const error = await issueError();
+
+    expect(error.code).toBe("not-play-admin");
+    expect(
+      called("POST", `${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`),
+    ).toEqual([]);
   });
 
   it("names an app Google Play does not have yet, with the manual first upload, before any change", async () => {

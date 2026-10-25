@@ -71,6 +71,28 @@ const isNotFound = (error: unknown) =>
   error instanceof GoogleApiError && error.status === 404;
 const isConflict = (error: unknown) =>
   error instanceof GoogleApiError && error.status === 409;
+/** The API is disabled in the OAuth client's own project: waiting does not help. */
+const clientApiDisabled = (error: GoogleApiError) =>
+  new PlayServiceAccountError(
+    "api-not-enabled",
+    `${error.apiMessage} The Google OAuth client Hot Updater signs in with belongs to that project, which must enable the API (see ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}).`,
+    { cause: error },
+  );
+
+/** Google's own words, after a message that names the likely cause. */
+const googleSays = (error: unknown) =>
+  error instanceof GoogleApiError && error.apiMessage
+    ? ` (Google: ${error.apiMessage})`
+    : "";
+
+/** A Play Console refusal, as `not-play-admin`. */
+const notPlayAdmin = (developerId: string, error: unknown) =>
+  new PlayServiceAccountError(
+    "not-play-admin",
+    `The Google Account you signed in with is not an admin of the Play Console developer account ${developerId}. Sign in with an account that has the Admin permission there (Users and permissions in ${PLAY_CONSOLE_URL})${googleSays(error)}.`,
+    { cause: error },
+  );
+
 const isDenied = (error: unknown) =>
   error instanceof GoogleApiError &&
   (error.status === 403 || error.apiStatus === "PERMISSION_DENIED");
@@ -204,20 +226,17 @@ const checkPlayConsole = async ({
       `${PUBLISHER_API}/developers/${developerId}/users?pageSize=1`,
     );
   } catch (error) {
+    // No project of the developer's is involved yet: a disabled API is the
+    // OAuth client's.
+    if (isServiceDisabled(error)) throw clientApiDisabled(error);
     if (isNotFound(error)) {
       throw new PlayServiceAccountError(
         "developer-not-found",
-        `Play Console has no developer account ${developerId}. Open ${PLAY_CONSOLE_URL}: the developer account ID is the number after /developers/ in the address.`,
+        `Play Console has no developer account ${developerId}. Open ${PLAY_CONSOLE_URL}: the developer account ID is the number after /developers/ in the address${googleSays(error)}.`,
         { cause: error },
       );
     }
-    if (isDenied(error)) {
-      throw new PlayServiceAccountError(
-        "not-play-admin",
-        `The Google Account you signed in with is not an admin of the Play Console developer account ${developerId}. Sign in with an account that has the Admin permission there (Users and permissions in ${PLAY_CONSOLE_URL}).`,
-        { cause: error },
-      );
-    }
+    if (isDenied(error)) throw notPlayAdmin(developerId, error);
     throw error;
   }
 
@@ -229,8 +248,10 @@ const checkPlayConsole = async ({
       `${PUBLISHER_API}/applications/${encodeURIComponent(packageName)}/edits`,
     );
   } catch (error) {
-    if (isNotFound(error) || isDenied(error))
+    if (isServiceDisabled(error)) throw clientApiDisabled(error);
+    if (isNotFound(error) || isDenied(error)) {
       throw appNotFound(packageName, developerId, error);
+    }
     throw error;
   }
   if (edit.id) {
@@ -250,7 +271,7 @@ const appNotFound = (
 ) =>
   new PlayServiceAccountError(
     "app-not-found",
-    `Google Play has no app ${packageName} in the developer account ${developerId}. Google takes the first .aab of a new app only in Play Console: create the app there, upload one .aab by hand (for example to internal testing), then run this again.`,
+    `Google Play has no app ${packageName} in the developer account ${developerId}. Google takes the first .aab of a new app only in Play Console: create the app there, upload one .aab by hand (for example to internal testing), then run this again${googleSays(cause)}.`,
     { cause },
   );
 
@@ -389,13 +410,7 @@ const whilePropagating = async <T>({
     } catch (error) {
       const disabled = isServiceDisabled(error);
       if (disabled && !consumerIs(error, project)) {
-        // Disabled in the OAuth client's project, not the developer's:
-        // waiting does not help.
-        throw new PlayServiceAccountError(
-          "api-not-enabled",
-          `${error.apiMessage} The Google OAuth client Hot Updater signs in with belongs to that project, which must enable the API (see ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}).`,
-          { cause: error },
-        );
+        throw clientApiDisabled(error);
       }
       if (
         (!disabled && !(notFound && isNotFound(error))) ||
@@ -538,6 +553,7 @@ const grantPlayAccess = async ({
       email,
     });
   } catch (error) {
+    if (isDenied(error)) throw notPlayAdmin(developerId, error);
     if (!isConflict(error)) throw error;
   }
   try {
@@ -548,6 +564,7 @@ const grantPlayAccess = async ({
     return;
   } catch (error) {
     if (isNotFound(error)) throw appNotFound(packageName, developerId, error);
+    if (isDenied(error)) throw notPlayAdmin(developerId, error);
     if (!isConflict(error)) throw error;
   }
   const granted = await findGrant({ google, developer, email, packageName });
