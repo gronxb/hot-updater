@@ -24,7 +24,7 @@ bundles every installed app accepts. Pick the signer by who deploys:
 - Your own signing service: use [Remote Signing](/docs/guides/signing/remote),
   whose service keeps the key and its access controls.
 - Development and small teams: use [Local PEM](/docs/guides/signing/local),
-  with the key read from the config's [`secrets` adapter](/docs/guides/secrets)
+  with the key read from the config's [`secrets` adapter](/docs/concepts/secrets)
   as `secret:<name>`, or from a file. The key is exportable: anyone who can
   read the secret or the file can sign.
 

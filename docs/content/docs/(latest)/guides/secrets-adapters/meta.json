@@ -1,6 +1,12 @@
 {
   "title": "Secrets Adapters",
-  "description": "Read and store the CLI's secrets in a secrets store.",
+  "description": "Read and store the CLI's secrets in the environment or a secrets store.",
   "icon": "LockKeyhole",
-  "pages": ["aws-secrets-manager", "github-actions", "google-secret-manager", "infisical"]
+  "pages": [
+    "env",
+    "github-actions",
+    "aws-secrets-manager",
+    "google-secret-manager",
+    "infisical"
+  ]
 }

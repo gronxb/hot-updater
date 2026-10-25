@@ -168,7 +168,7 @@ const fakeSecrets = (values: Record<string, string>) => {
   const secrets: SecretsAdapter = {
     name: "fake",
     get,
-    describe: (name) => `fake://vault/${name}`,
+    describe: (name) => `fake://store/${name}`,
   };
   return { get, secrets };
 };
@@ -261,7 +261,7 @@ describe("local signing with privateKey from a secret", () => {
     );
 
     await expect(signing.getPublicKey({ cwd: "/project" })).rejects.toThrow(
-      "signing.privateKey reads the bundle signing key release-signing-key, which is not in the fake secrets adapter (fake://vault/release-signing-key). Set it to the RSA private key in PEM, or generate a key pair with `npx hot-updater keys generate --secret release-signing-key`.",
+      "signing.privateKey reads the bundle signing key release-signing-key, which is not in the fake secrets adapter (fake://store/release-signing-key). Set it to the RSA private key in PEM, or generate a key pair with `npx hot-updater keys generate --secret release-signing-key`.",
     );
   });
 

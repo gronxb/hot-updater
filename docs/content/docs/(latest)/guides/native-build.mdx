@@ -101,8 +101,9 @@ file's PEM; `{"keystore","storePassword","keyAlias","keyPassword"}` for a
 keystore, the keystore file in base64; and a Play service account's own JSON
 key file. With the default `env()`, set the JSON in an environment variable:
 `HOT_UPDATER_ASC_API_KEY` for `secret:asc-api-key`, and `HOT_UPDATER_` before
-any other name, upper-cased with `_` for `-` and `.`.
-[Secrets in the CLI](/docs/guides/secrets) covers storing them.
+any other name, upper-cased with `_` for every character but letters and
+digits.
+[Secrets](/docs/concepts/secrets) covers storing them.
 
 These environment variables override the adapter for one credential: when any
 of a credential's variables is set, the build reads that credential from them
@@ -197,7 +198,7 @@ read it:
   directory git ignores. It prints the file's path and the variables to store
   it in, never the key: `HOT_UPDATER_ASC_API_KEY` or
   `HOT_UPDATER_PLAY_SERVICE_ACCOUNT` (the name's variable, as
-  [`env()`](/docs/guides/secrets) reads it) set to the file's contents, in the
+  [`env()`](/docs/guides/secrets-adapters/env) reads it) set to the file's contents, in the
   environment or `.env.hotupdater`, or the key's own variables from
   [Provide signing credentials](#provide-signing-credentials). The build that
   signed in continues with the key from the file, so its upload goes through.
