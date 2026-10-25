@@ -19,14 +19,25 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 
 vi.mock("execa", async (importOriginal) => ({
   ...(await importOriginal<typeof import("execa")>()),
-  execa: vi.fn(async (file: string, args: readonly string[]) => {
-    if ([file, ...args].join(" ") !== "gh auth token --hostname github.com") {
-      throw new Error("unexpected command");
-    }
-    return gh.token
-      ? { exitCode: 0, stdout: `${gh.token}\n` }
-      : { exitCode: 4, stdout: "" };
-  }),
+  execa: vi.fn(
+    async (
+      file: string,
+      args: readonly string[],
+      options: { env?: Record<string, string | undefined> } = {},
+    ) => {
+      if ([file, ...args].join(" ") !== "gh auth token --hostname github.com") {
+        throw new Error("unexpected command");
+      }
+      // gh prints GH_TOKEN or GITHUB_TOKEN, when its environment has one,
+      // instead of its stored login.
+      const env = options.env ?? process.env;
+      const fromEnv = env["GH_TOKEN"] || env["GITHUB_TOKEN"];
+      const token = fromEnv || gh.token;
+      return token
+        ? { exitCode: 0, stdout: `${token}\n` }
+        : { exitCode: 4, stdout: "" };
+    },
+  ),
 }));
 
 import {

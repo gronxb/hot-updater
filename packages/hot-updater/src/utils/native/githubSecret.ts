@@ -72,7 +72,12 @@ export const findGitHubToken = async (
     const token = getHotUpdaterEnvValue(fileEnv, variable);
     if (token && !isInstallationToken(token)) return token;
   }
+  // gh prefers these variables to its stored login: without them, it
+  // returns the login instead of the installation token skipped above.
+  const { GH_TOKEN: _, GITHUB_TOKEN: __, ...ghEnv } = process.env;
   const gh = await execa("gh", ["auth", "token", "--hostname", "github.com"], {
+    env: ghEnv,
+    extendEnv: false,
     reject: false,
     timeout: 10_000,
   }).catch(() => undefined);
