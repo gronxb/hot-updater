@@ -1,6 +1,6 @@
 import { spawnSync } from "child_process";
 import crypto from "crypto";
-import fs from "fs";
+import fs, { readFileSync, rmSync } from "fs";
 import os from "os";
 import path from "path";
 
@@ -62,6 +62,90 @@ export interface SigningKeychain {
 /** The keychain whose state the process restores if it exits first. */
 let live: { restore: () => void } | undefined;
 
+/**
+ * Where builds under one macOS user take turns: the default keychain and the
+ * search list are the user's, not a process's, so two builds that overlap,
+ * such as two self-hosted runner instances, would each restore the other's
+ * keychain. It is in the user's caches, whatever TMPDIR a runner sets.
+ */
+const defaultLockPath = () =>
+  path.join(
+    os.homedir(),
+    "Library",
+    "Caches",
+    "hot-updater",
+    "signing-keychain.lock",
+  );
+
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+const readHolder = async (file: string) =>
+  Number((await fs.promises.readFile(file, "utf-8").catch(() => "")).trim());
+
+/**
+ * Takes the user's signing keychain lock, holding the process's ID, and
+ * waits while a running build holds it. A lock whose build is gone, such as
+ * one killed outright, is taken over: it is moved aside first, so of two
+ * builds that find it only one removes it, and a lock another build took
+ * meanwhile is put back.
+ */
+const acquireLock = async (lockPath: string, pollMs: number) => {
+  await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
+  let announced = false;
+  for (;;) {
+    try {
+      await fs.promises.writeFile(lockPath, String(process.pid), {
+        flag: "wx",
+      });
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const holder = await readHolder(lockPath);
+    if (!Number.isInteger(holder) || holder <= 0 || !isAlive(holder)) {
+      const aside = `${lockPath}.${process.pid}.stale`;
+      if (
+        await fs.promises.rename(lockPath, aside).then(
+          () => true,
+          () => false,
+        )
+      ) {
+        const moved = await readHolder(aside);
+        if (moved !== holder && Number.isInteger(moved) && isAlive(moved)) {
+          await fs.promises.link(aside, lockPath).catch(() => undefined);
+        }
+        await fs.promises.rm(aside, { force: true });
+      }
+      continue;
+    }
+    if (!announced) {
+      p.log.info(
+        `Waiting for another build (process ${holder}) that signs in a keychain of its own under this macOS user.`,
+      );
+      announced = true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+};
+
+/** Removes the lock, if this process still holds it. */
+const releaseLockSync = (lockPath: string) => {
+  try {
+    if (Number(readFileSync(lockPath, "utf-8").trim()) === process.pid) {
+      rmSync(lockPath, { force: true });
+    }
+  } catch {
+    // Already gone.
+  }
+};
+
 const TERMINATION_SIGNALS = ["SIGHUP", "SIGINT", "SIGTERM"] as const;
 
 // An `exit` listener must be synchronous, and Node exits on a termination
@@ -87,20 +171,44 @@ const onSignal = (signal: NodeJS.Signals) => {
 export const createSigningKeychain = async ({
   security = runSecurity,
   directory = os.tmpdir(),
+  lockPath = defaultLockPath(),
+  pollMs = 2_000,
 }: {
   security?: RunSecurity;
   directory?: string;
+  /** The per-user lock builds take turns with. */
+  lockPath?: string;
+  /** How often a build waiting for the lock checks it. */
+  pollMs?: number;
 } = {}): Promise<SigningKeychain> => {
   if (live) {
     throw new Error("A signing keychain is already in use by this process.");
   }
-  // A user without a default keychain gets none back afterwards.
-  const [originalDefault] = parseKeychains(
-    await security(["default-keychain", "-d", "user"]).catch(() => ""),
-  );
-  const originalSearchList = parseKeychains(
-    await security(["list-keychains", "-d", "user"]),
-  );
+  // Held from before the snapshot until the keychains are restored.
+  live = { restore: () => releaseLockSync(lockPath) };
+  try {
+    await acquireLock(lockPath, pollMs);
+  } catch (error) {
+    live = undefined;
+    throw error;
+  }
+  process.on("exit", restoreLive);
+  for (const signal of TERMINATION_SIGNALS) process.on(signal, onSignal);
+
+  let originalDefault: string | undefined;
+  let originalSearchList: string[];
+  try {
+    // A user without a default keychain gets none back afterwards.
+    [originalDefault] = parseKeychains(
+      await security(["default-keychain", "-d", "user"]).catch(() => ""),
+    );
+    originalSearchList = parseKeychains(
+      await security(["list-keychains", "-d", "user"]),
+    );
+  } catch (error) {
+    restoreLive();
+    throw error;
+  }
   const keychainPath = path.join(
     directory,
     `hot-updater-${crypto.randomBytes(6).toString("hex")}.keychain-db`,
@@ -118,10 +226,9 @@ export const createSigningKeychain = async ({
   live = {
     restore: () => {
       for (const args of restoreArgs) spawnSync("security", args);
+      releaseLockSync(lockPath);
     },
   };
-  process.on("exit", restoreLive);
-  for (const signal of TERMINATION_SIGNALS) process.on(signal, onSignal);
 
   let disposal: Promise<void> | undefined;
   const dispose = () => {
@@ -134,6 +241,7 @@ export const createSigningKeychain = async ({
           );
         });
       }
+      releaseLockSync(lockPath);
       live = undefined;
       process.off("exit", restoreLive);
       for (const signal of TERMINATION_SIGNALS) process.off(signal, onSignal);
@@ -296,16 +404,18 @@ export const withSigningKeychain = async <T>({
   apiKey,
   run,
   security,
+  lockPath,
   fetch,
 }: {
   enabled: boolean;
   apiKey: Credentials["asc-api-key"];
   run: () => Promise<T>;
   security?: RunSecurity;
+  lockPath?: string;
   fetch?: typeof globalThis.fetch;
 }): Promise<T> => {
   if (!enabled) return run();
-  const keychain = await createSigningKeychain({ security });
+  const keychain = await createSigningKeychain({ security, lockPath });
   p.log.info(
     "Signing in a keychain of this build's own, deleted when it ends (CI is set).",
   );

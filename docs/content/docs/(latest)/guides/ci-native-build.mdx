@@ -187,8 +187,11 @@ npx --no-install hot-updater build:ios --scheme release --register --upload test
 
 A self-hosted macOS runner that keeps a signing identity in its login keychain
 still uses it: the build's keychain comes first in the search list, and Xcode
-creates a certificate only when it finds no identity. Run one iOS build at a
-time per macOS user, since the default keychain is per user.
+creates a certificate only when it finds no identity. The default keychain
+and the search list belong to the macOS user, so iOS builds under one user,
+such as two runner instances, take turns signing: a build waits while another
+holds `~/Library/Caches/hot-updater/signing-keychain.lock`, and takes over a
+lock whose build is gone.
 
 ## When a credential is missing
 

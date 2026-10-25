@@ -70,6 +70,7 @@ const fakeSecurity = ({
 };
 
 let directory: string;
+const lock = () => path.join(directory, "locks", "signing-keychain.lock");
 let apiKey: { keyPath: string; keyId: string; issuerId: string };
 
 beforeEach(async () => {
@@ -95,7 +96,11 @@ describe("createSigningKeychain", () => {
     const { security, calls } = fakeSecurity();
     const exitListeners = process.listenerCount("exit");
 
-    const keychain = await createSigningKeychain({ security, directory });
+    const keychain = await createSigningKeychain({
+      security,
+      directory,
+      lockPath: lock(),
+    });
 
     const keychainPath = keychain.path;
     expect(path.dirname(keychainPath)).toBe(directory);
@@ -135,7 +140,7 @@ describe("createSigningKeychain", () => {
     });
 
     await expect(
-      createSigningKeychain({ security, directory }),
+      createSigningKeychain({ security, directory, lockPath: lock() }),
     ).rejects.toThrow("security unlock-keychain failed");
 
     expect(calls.slice(-3)).toEqual([
@@ -146,10 +151,12 @@ describe("createSigningKeychain", () => {
         expect.stringMatching(/hot-updater-.*\.keychain-db$/),
       ],
     ]);
+    await expect(fs.stat(lock())).rejects.toThrow();
     // Another build in the same process can create one again.
     const keychain = await createSigningKeychain({
       security: fakeSecurity().security,
       directory,
+      lockPath: lock(),
     });
     await keychain.dispose();
   });
@@ -159,7 +166,11 @@ describe("createSigningKeychain", () => {
       fail: (args) => args[0] === "default-keychain" && args.length === 3,
     });
 
-    const keychain = await createSigningKeychain({ security, directory });
+    const keychain = await createSigningKeychain({
+      security,
+      directory,
+      lockPath: lock(),
+    });
     calls.length = 0;
     await keychain.dispose();
 
@@ -169,11 +180,82 @@ describe("createSigningKeychain", () => {
     ]);
   });
 
+  it("holds the user's lock from before the snapshot until the keychains are restored", async () => {
+    const lockPath = lock();
+    const { security, calls } = fakeSecurity();
+    let heldAtSnapshot = "";
+    security.mockImplementationOnce(async (args) => {
+      calls.push([...args]);
+      heldAtSnapshot = await fs.readFile(lockPath, "utf-8");
+      return `    "${LOGIN}"`;
+    });
+
+    const keychain = await createSigningKeychain({
+      security,
+      directory,
+      lockPath,
+    });
+    expect(heldAtSnapshot).toBe(String(process.pid));
+
+    await keychain.dispose();
+    await expect(fs.stat(lockPath)).rejects.toThrow();
+  });
+
+  it("waits while another running build holds the lock, then takes it", async () => {
+    const lockPath = lock();
+    await fs.mkdir(path.dirname(lockPath), { recursive: true });
+    // The parent process: alive for the whole test.
+    await fs.writeFile(lockPath, String(process.ppid));
+    const { security, calls } = fakeSecurity();
+
+    const creating = createSigningKeychain({
+      security,
+      directory,
+      lockPath,
+      pollMs: 10,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    // Nothing of the user's keychain state is read while it waits.
+    expect(calls).toEqual([]);
+    expect(log.info).toHaveBeenCalledWith(
+      `Waiting for another build (process ${process.ppid}) that signs in a keychain of its own under this macOS user.`,
+    );
+
+    await fs.rm(lockPath);
+    const keychain = await creating;
+    expect(calls[0]).toEqual(["default-keychain", "-d", "user"]);
+    await keychain.dispose();
+  });
+
+  it("takes over a lock whose build is gone", async () => {
+    const lockPath = lock();
+    await fs.mkdir(path.dirname(lockPath), { recursive: true });
+    // No process has this ID: pids stop well below it.
+    await fs.writeFile(lockPath, "2147483646");
+
+    const keychain = await createSigningKeychain({
+      security: fakeSecurity().security,
+      directory,
+      lockPath,
+      pollMs: 10,
+    });
+
+    await expect(fs.readFile(lockPath, "utf-8")).resolves.toBe(
+      String(process.pid),
+    );
+    await keychain.dispose();
+    await expect(fs.readdir(path.dirname(lockPath))).resolves.toEqual([]);
+  });
+
   it("lists the certificates Xcode created in it by serial number", async () => {
     const { security } = fakeSecurity({
       certificates: `${XCODE_CERTIFICATE}\n`,
     });
-    const keychain = await createSigningKeychain({ security, directory });
+    const keychain = await createSigningKeychain({
+      security,
+      directory,
+      lockPath: lock(),
+    });
 
     await expect(keychain.certificates()).resolves.toEqual([
       {
@@ -300,7 +382,13 @@ describe("withSigningKeychain", () => {
     const run = vi.fn(async () => "ipa");
 
     await expect(
-      withSigningKeychain({ enabled: false, apiKey, run, security }),
+      withSigningKeychain({
+        enabled: false,
+        apiKey,
+        run,
+        security,
+        lockPath: lock(),
+      }),
     ).resolves.toBe("ipa");
     expect(calls).toEqual([]);
   });
@@ -317,7 +405,14 @@ describe("withSigningKeychain", () => {
     });
 
     await expect(
-      withSigningKeychain({ enabled: true, apiKey, run, security, fetch }),
+      withSigningKeychain({
+        enabled: true,
+        apiKey,
+        run,
+        security,
+        lockPath: lock(),
+        fetch,
+      }),
     ).rejects.toThrow("Archive failed");
 
     const keychainPath = calls.find(
