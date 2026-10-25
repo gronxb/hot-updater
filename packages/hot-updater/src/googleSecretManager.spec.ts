@@ -476,6 +476,22 @@ describe("googleSecretManager set", () => {
     expect(fake.enabled(key)).toEqual([2]);
   });
 
+  it("reads again while latest still names a disabled version", async () => {
+    fake.createSecret(key);
+    fake.addUserVersion(key, "revoked").state = "DISABLED";
+    fake.state.latestLag = 1;
+    const secrets = googleSecretManager({ project: "demo-project" });
+
+    await secrets.set?.("asc-api-key", "two", context);
+
+    expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
+      "2",
+    );
+    await expect(secrets.get(["asc-api-key"], context)).resolves.toEqual({
+      "asc-api-key": "two",
+    });
+  });
+
   it("keeps every version when latest never resolves to the new one", async () => {
     vi.useFakeTimers();
     try {

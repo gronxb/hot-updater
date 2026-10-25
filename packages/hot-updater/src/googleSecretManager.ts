@@ -232,7 +232,9 @@ export const googleSecretManager = ({
 
   /**
    * Whether `latest` resolves to `version`, or a newer one another writer
-   * added, within about 30 seconds.
+   * added, within about 30 seconds. While `latest` still names an older
+   * version, which may be missing or disabled, it reads again; it never
+   * throws, so the version `set` stored is always listed.
    */
   const waitForLatest = async (
     token: string,
@@ -241,8 +243,27 @@ export const googleSecretManager = ({
   ) => {
     for (const ms of [0, ...LATEST_RETRY_DELAYS_MS]) {
       if (ms > 0) await delay(ms);
-      const latest = await accessLatest(token, secret);
-      if (latest && Number(latest.version) >= Number(version)) return true;
+      let response: GoogleResponse;
+      try {
+        response = await request(
+          token,
+          "GET",
+          `${secret}/versions/latest:access`,
+        );
+      } catch {
+        return false;
+      }
+      if (response.ok) {
+        const latest = versionOf(
+          isRecord(response.body) ? response.body.name : undefined,
+        );
+        if (Number(latest) >= Number(version)) return true;
+      } else if (
+        response.status !== 404 &&
+        response.error.status !== "FAILED_PRECONDITION"
+      ) {
+        return false;
+      }
     }
     return false;
   };
