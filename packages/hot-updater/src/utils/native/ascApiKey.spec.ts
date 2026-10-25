@@ -230,16 +230,30 @@ describe("ensureAscApiKey", () => {
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-asc (asc-api-key) is not in the vault at https://console.example.com, or the vault token's scope does not reach it, and Hot Updater signs in to your Apple Account only at a terminal, never without a terminal. Run `npx hot-updater secrets put widget-asc --kind asc-api-key` once on a machine where you can sign in, and give this build a vault token that reads widget-asc, or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
+      "widget-asc (asc-api-key) is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put widget-asc --kind asc-api-key`, and builds, CI's included, read it with their vault token. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
     );
     expect(ascApiKeySetupCommand("widget-asc")).toBe(
       "npx hot-updater secrets put widget-asc --kind asc-api-key",
     );
     expect(process.exitCode).toBe(1);
-    // Nothing asked of the vault beyond the list, and no Apple prompt.
-    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    // The vault is asked only whether the key is missing or out of scope,
+    // and nothing is written; no Apple prompt.
+    expect(requests).toEqual([
+      { method: "GET", path: "/secrets" },
+      { method: "POST", path: "/resolve", body: { names: ["widget-asc"] } },
+    ]);
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("words a key out of the token's scope as a build would, without a terminal", async () => {
+    fakeConsole({ actions: ["write"] });
+    await expect(
+      withTTY(false, () => ensure({ name: "asc-api-key" })),
+    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
+    expect(log.error).toHaveBeenCalledWith(
+      "The Console at https://console.example.com refused the request: forbidden When asc-api-key is stored, give the build a vault token whose scope allows read on it, such as one from `npx hot-updater secrets token create --name ci-native --secrets asc-api-key,<the build's other secrets> --actions read`; when it is not, store it once with `npx hot-updater secrets put asc-api-key --kind asc-api-key`. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
+    );
   });
 
   it("never signs in in CI, even on a terminal the runner allocates", async () => {
@@ -251,7 +265,10 @@ describe("ensureAscApiKey", () => {
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining("never in CI (CI is set)"),
     );
-    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    expect(requests).toEqual([
+      { method: "GET", path: "/secrets" },
+      { method: "POST", path: "/resolve", body: { names: ["asc-api-key"] } },
+    ]);
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();
   });

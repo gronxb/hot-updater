@@ -7,8 +7,10 @@ import {
   resolveVaultConnection,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
+  describeVaultCredentialUnavailable,
   vaultCredentialPutCommand,
   VaultRequestError,
+  VaultSecretNotFoundError,
   type VaultSecretMetadata,
 } from "@hot-updater/cli-tools";
 
@@ -115,6 +117,31 @@ const assertWritable = async (
 };
 
 /**
+ * Why the vault can't give a build `name`, worded as the credential source
+ * words it when a build resolves it: the vault tells a name it has no
+ * secret for (store it once) from one the token's scope does not reach,
+ * which a token scoped by kind sees for a missing secret too.
+ */
+const describeUnavailable = async (
+  client: VaultClient,
+  name: string,
+  kind: IssuedCredentialKind,
+): Promise<string> => {
+  let error: unknown;
+  try {
+    const { secrets } = await client.resolve([name]);
+    if (secrets.some((secret) => secret.name === name)) {
+      return `${name} is in the vault at ${client.url} now: run this again.`;
+    }
+    error = new VaultSecretNotFoundError(client.url, name);
+  } catch (caught) {
+    error = caught;
+  }
+  const described = describeVaultCredentialUnavailable(kind, name, error);
+  return described instanceof Error ? described.message : String(described);
+};
+
+/**
  * Everything checked before a sign-in, in this order, so nothing fails
  * after the developer signed in but storage:
  *
@@ -171,13 +198,11 @@ export const prepareIssuedCredential = async (
   }
 
   if (
-    !canSignIn({
+    !(await canSignIn({
       account: policy.account,
       kind: policy.kind,
-      name,
-      vaultUrl: client.url,
-      setupCommand: credentialSetupCommand(name, policy.kind),
-    })
+      describeUnavailable: () => describeUnavailable(client, name, policy.kind),
+    }))
   ) {
     throw new CredentialSetupRefusedError(
       `${name} is not in the vault, and there is no terminal to sign in with ${policy.signIn}.`,

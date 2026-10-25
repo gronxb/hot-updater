@@ -493,7 +493,11 @@ describe("hot-updater secrets put asc-api-key without a key", () => {
   });
 
   it("refuses to sign in without a terminal, naming the command to run in one", async () => {
-    const requests = mockConsole(() => ({ secrets: [] }));
+    const requests = mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [] }
+        : { secrets: [], errors: [{ name: "widget-asc", code: "not_found" }] },
+    );
 
     await withTTY(false, () =>
       handleSecretsPut("widget-asc", { kind: "asc-api-key" }),
@@ -502,10 +506,11 @@ describe("hot-updater secrets put asc-api-key without a key", () => {
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Run `npx hot-updater secrets put widget-asc --kind asc-api-key` once on a machine where you can sign in",
+        "Store it once from a machine that reaches the Console, with `npx hot-updater secrets put widget-asc --kind asc-api-key`",
       ),
     );
-    expect(requests).toHaveLength(1);
+    // The list, and the resolve that tells a missing key from one out of scope.
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
   });
 
   it("still takes a key's files when any is passed", async () => {

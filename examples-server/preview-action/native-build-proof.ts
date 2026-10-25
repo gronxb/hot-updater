@@ -83,9 +83,19 @@ const consoleUrl = () => env("PROOF_CONSOLE_URL");
 const stages: Record<string, () => Promise<void>> = {
   "upload-missing": async () => {
     const log = readLog();
+    // The vault credential source's words for a missing credential, as a
+    // build resolving it would print them, and CI never signing in.
     expectIncludes(
       log,
-      `play-service-account is not in the vault at ${consoleUrl()}, or the vault token's scope does not reach it, and Hot Updater signs in to your Google Account only at a terminal, never in CI (CI is set). Run \`npx hot-updater secrets put play-service-account --kind play-service-account\` once on a machine where you can sign in, and give this build a vault token that reads play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.`,
+      `play-service-account is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put play-service-account --kind play-service-account\``,
+    );
+    expectIncludes(
+      log,
+      "Hot Updater signs in to your Google Account to issue it only at a terminal, never in CI (CI is set).",
+    );
+    expectIncludes(
+      log,
+      "Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
     );
     expectNothingBuilt(log);
     const { count } = await nativeBuildCount();
@@ -117,16 +127,21 @@ const stages: Record<string, () => Promise<void>> = {
   },
   // A missing App Store Connect API key is one Hot Updater issues after an
   // Apple Account sign-in, which CI never starts: the build refuses before
-  // anything runs, naming the command that signs in once.
+  // anything runs, in the words the vault credential source uses for a
+  // missing credential, with the command that signs in once.
   "ios-missing": async () => {
     const log = readLog();
     expectIncludes(
       log,
-      `asc-api-key is not in the vault at ${consoleUrl()}, or the vault token's scope does not reach it, and Hot Updater signs in to your Apple Account only at a terminal, never in CI (CI is set). Run \`npx hot-updater secrets put asc-api-key --kind asc-api-key\` once on a machine where you can sign in`,
+      `asc-api-key is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put asc-api-key --kind asc-api-key\``,
     );
     expectIncludes(
       log,
-      "or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
+      "Hot Updater signs in to your Apple Account to issue it only at a terminal, never in CI (CI is set).",
+    );
+    expectIncludes(
+      log,
+      "Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
     );
     expectNothingBuilt(log);
   },

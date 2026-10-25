@@ -132,6 +132,13 @@ const describeFields = (fields: readonly EnvField[]) => {
   return `${described.slice(0, -1).join(", ")}, and ${described.at(-1)}`;
 };
 
+/**
+ * The sentence every "credential unavailable" message ends with: the
+ * environment variables that provide `kind` without the vault.
+ */
+export const credentialOverrideHint = (kind: CredentialKind): string =>
+  `Set ${describeFields(CREDENTIAL_ENV_NAMES[kind])} to provide ${kind} without the vault.`;
+
 export class CredentialUnavailableError extends Error {
   readonly kind: CredentialKind;
   /** The environment variables that can provide this credential. */
@@ -364,7 +371,6 @@ export const createCredentialResolver = ({
       return credential;
     }
 
-    const replacement = describeFields(fields);
     let credential: Credentials[TKind];
     try {
       credential = readSourcedCredential(
@@ -375,7 +381,7 @@ export const createCredentialResolver = ({
       const reason = error instanceof Error ? error.message : String(error);
       throw new CredentialUnavailableError(
         kind,
-        `${reason} Set ${replacement} to provide ${kind} without the vault.`,
+        `${reason} ${credentialOverrideHint(kind)}`,
         { cause: error },
       );
     }

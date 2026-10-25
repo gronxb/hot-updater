@@ -160,7 +160,7 @@ const toCredential = async (
 };
 
 /** The build credentials the vault holds for the CLI. */
-type BuildCredentialKind =
+export type BuildCredentialKind =
   | "asc-api-key"
   | "android-keystore"
   | "play-service-account";
@@ -188,10 +188,15 @@ export const vaultCredentialPutCommand = (
 };
 
 /**
- * What to do when the vault can't give a build `name`: store it once, or,
- * when the token's scope does not reach it, issue a token that may read it.
+ * What to do when the vault can't give a build `name`, the one wording for
+ * it: the credential source says it when a build resolves `name`, and the
+ * sign-in guard when a run can't sign in to issue it. `error` is a
+ * `VaultSecretNotFoundError` when the vault has no `name` (store it once),
+ * or the Console's 403 when the token's scope does not reach it (issue a
+ * token that may read it, or store it when it is not stored). Any other
+ * error is returned as it is.
  */
-const describeUnavailable = (
+export const describeVaultCredentialUnavailable = (
   kind: BuildCredentialKind,
   name: string,
   error: unknown,
@@ -244,7 +249,7 @@ export const createVaultCredentialSource = ({
       }),
     );
     const secret = await load(name).catch((error: unknown) => {
-      throw describeUnavailable(kind, name, error);
+      throw describeVaultCredentialUnavailable(kind, name, error);
     });
     if (secret.kind !== kind) {
       throw new Error(
