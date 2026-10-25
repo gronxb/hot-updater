@@ -168,6 +168,18 @@ export const createLocalSigningAdapter = (
   };
 };
 
+/**
+ * The `secrets` adapter of the config each normalized `privateKey` config
+ * came from, so a config function's per-platform configs each read their
+ * own store, whichever config loaded last.
+ */
+const signingSecrets = new WeakMap<object, SecretsAdapter>();
+
+/** The `secrets` adapter `normalizeSigningConfig` bound `signing` to. */
+export const getSigningSecrets = (
+  signing: object,
+): SecretsAdapter | undefined => signingSecrets.get(signing);
+
 const invalidSigningConfig = () =>
   new Error(
     "Bundle signing must be a local key config or signing adapter. Omit signing to disable it.",
@@ -175,6 +187,7 @@ const invalidSigningConfig = () =>
 
 export const normalizeSigningConfig = (
   signing: SigningConfig | undefined,
+  { secrets }: { readonly secrets?: SecretsAdapter } = {},
 ): BundleSigningAdapter | EnabledLocalSigningConfig | undefined => {
   if (signing === undefined) return undefined;
   if (typeof signing !== "object" || signing === null) {
@@ -222,10 +235,12 @@ export const normalizeSigningConfig = (
       }
       // Checks the reference only: loading a config reads no secret.
       parseSecretReference(privateKey, "signing.privateKey");
-      return {
+      const normalized = {
         enabled: true,
         privateKey: privateKey as `secret:${string}`,
-      };
+      } as const;
+      if (secrets) signingSecrets.set(normalized, secrets);
+      return normalized;
     }
     if (typeof privateKeyPath !== "string" || !privateKeyPath.trim()) {
       throw new Error(

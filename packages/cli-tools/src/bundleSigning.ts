@@ -10,6 +10,7 @@ import type {
 import { getCwd } from "./cwd.js";
 import {
   createLocalSigningAdapter,
+  getSigningSecrets,
   LocalSigningKeyError,
   normalizeSigningConfig,
 } from "./localBundleSigning.js";
@@ -106,7 +107,11 @@ const getSigningProvider = (
   const key = signing as object;
   const cached = secretSigners.get(key);
   if (cached) return cached;
-  const local = createLocalSigningAdapter(normalized);
+  // The config's own adapter when loadConfig resolved `signing`, else the
+  // configured one.
+  const local = createLocalSigningAdapter(normalized, {
+    secrets: getSigningSecrets(key),
+  });
   secretSigners.set(key, local);
   return local;
 };

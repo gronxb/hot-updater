@@ -15,6 +15,7 @@ import {
   prepareBundleSigning,
   readBundleSigningPublicKeyFile,
 } from "./bundleSigning";
+import { normalizeSigningConfig } from "./localBundleSigning";
 import { envSecrets, setConfiguredSecrets } from "./secrets";
 
 const tempDirs: string[] = [];
@@ -316,6 +317,35 @@ describe("local signing with privateKey from the config's secrets", () => {
       ),
     ).toBe(true);
     expect(get).toHaveBeenCalledOnce();
+  });
+
+  it("reads each config's key from that config's secrets, whichever loaded last", async () => {
+    const ios = createKeyPair();
+    const android = createKeyPair();
+    const store = (name: string, privateKey: string): SecretsAdapter => ({
+      name,
+      get: async (names) =>
+        Object.fromEntries(names.map((entry) => [entry, privateKey])),
+    });
+    const raw = {
+      enabled: true,
+      privateKey: "secret:bundle-signing-key",
+    } as const;
+    const iosSigning = normalizeSigningConfig(raw, {
+      secrets: store("ios-store", ios.privateKey),
+    });
+    const androidSigning = normalizeSigningConfig(raw, {
+      secrets: store("android-store", android.privateKey),
+    });
+    // The global adapter is the last config's, as loadConfig leaves it.
+    configure({});
+
+    await expect(
+      getBundleSigningPublicKey(iosSigning, { cwd: "/project" }),
+    ).resolves.toBe(ios.publicKey);
+    await expect(
+      getBundleSigningPublicKey(androidSigning, { cwd: "/project" }),
+    ).resolves.toBe(android.publicKey);
   });
 
   it("refuses a deploy whose secret is missing, naming it", async () => {
