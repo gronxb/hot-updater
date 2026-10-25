@@ -39,10 +39,12 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
       - name: Setup pnpm
         uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      # CocoaPods 1.15.2 on Ruby 3.2 fails this project's pod install with
+      # "pathname contains null byte" (CocoaPods/CocoaPods#12798).
       - name: Setup Ruby
         uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
         with:
-          ruby-version: "3.2"
+          ruby-version: "3.3"
       - name: Setup Node.js
         uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
         with:
