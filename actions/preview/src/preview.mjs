@@ -5,7 +5,10 @@ import {
   renderPreviewComment,
   consoleLink,
 } from "./comment.mjs";
+import { parseJsonOutput } from "../../shared/cli.mjs";
 import { findComment, updateComment, upsertComment } from "./github.mjs";
+
+export { parseJsonOutput };
 
 /**
  * @typedef {import("./comment.mjs").Platform} Platform
@@ -131,26 +134,6 @@ export const parseInputs = (env, event) => {
     comment: flag("COMMENT", true),
     mode: resolvedMode,
   };
-};
-
-/**
- * The JSON a `--json` command prints last: its whole output, or what
- * follows the lines a project's config or a build printed.
- *
- * @param {string} stdout
- * @returns {unknown}
- */
-export const parseJsonOutput = (stdout) => {
-  const lines = stdout.trimEnd().split("\n");
-  for (let start = lines.length - 1; start >= 0; start--) {
-    if (!/^[[{]/.test(lines[start] ?? "")) continue;
-    try {
-      return JSON.parse(lines.slice(start).join("\n"));
-    } catch {
-      // Inside the JSON, or a line of other output that looks like it.
-    }
-  }
-  throw new Error(`Expected JSON output, got:\n${stdout}`);
 };
 
 /**

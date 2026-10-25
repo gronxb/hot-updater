@@ -934,3 +934,13 @@ describe("hot-updater secrets env", () => {
     expect(process.exitCode).toBe(7);
   });
 });
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});

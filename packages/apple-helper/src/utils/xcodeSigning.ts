@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   type CredentialResolver,
+  type Credentials,
   createCredentialResolver,
   parseVaultReference,
 } from "@hot-updater/cli-tools";
@@ -10,38 +11,54 @@ import {
 import type { EnrichedNativeBuildIosScheme } from "./enrichNativeBuildIosScheme";
 
 /**
- * The xcodebuild arguments that sign with automatic signing, authenticated by
- * the scheme's App Store Connect API key. The key is resolved only here, for
- * a device build of a scheme with `signing`. Without `credentials`, it
- * resolves from the environment or the Console's vault, and the temporary
- * files are deleted when the process exits.
+ * How a device build signs with automatic signing, authenticated by the
+ * scheme's App Store Connect API key: the xcodebuild arguments, and the key.
+ * The key is resolved only here, for a device build of a scheme with
+ * `signing`. Without `credentials`, it resolves from the environment or the
+ * Console's vault, and the temporary files are deleted when the process
+ * exits.
  */
-export const resolveXcodeAuthenticationArgs = async ({
+export const resolveXcodeSigning = async ({
   schemeConfig,
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   credentials?: Pick<CredentialResolver, "resolve">;
-}): Promise<string[] | undefined> => {
+}): Promise<
+  | {
+      authenticationArgs: string[];
+      apiKey: Credentials["asc-api-key"];
+    }
+  | undefined
+> => {
   const reference = schemeConfig.signing?.ascApiKey;
   if (!reference) {
     return undefined;
   }
 
-  const key = await (credentials ?? createCredentialResolver()).resolve({
+  const apiKey = await (credentials ?? createCredentialResolver()).resolve({
     kind: "asc-api-key",
     name: parseVaultReference(reference, "signing.ascApiKey"),
   });
-  return [
-    "-allowProvisioningUpdates",
-    "-authenticationKeyPath",
-    key.keyPath,
-    "-authenticationKeyID",
-    key.keyId,
-    "-authenticationKeyIssuerID",
-    key.issuerId,
-  ];
+  return {
+    authenticationArgs: [
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath",
+      apiKey.keyPath,
+      "-authenticationKeyID",
+      apiKey.keyId,
+      "-authenticationKeyIssuerID",
+      apiKey.issuerId,
+    ],
+    apiKey,
+  };
 };
+
+/** The xcodebuild arguments of `resolveXcodeSigning`. */
+export const resolveXcodeAuthenticationArgs = async (
+  ...args: Parameters<typeof resolveXcodeSigning>
+): Promise<string[] | undefined> =>
+  (await resolveXcodeSigning(...args))?.authenticationArgs;
 
 const APP_STORE_CONNECT_EXPORT_OPTIONS = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

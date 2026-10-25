@@ -14,10 +14,12 @@ import {
 } from "@hot-updater/apple-helper";
 import {
   createMinBundleId,
+  type CredentialResolver,
   type Credentials,
   getCwd,
   CredentialUnavailableError,
   p,
+  parseVaultReference,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
@@ -27,7 +29,10 @@ import {
   createNativeBuild,
   type NativeBuildResult,
 } from "@/utils/native/createNativeBuild";
-import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
+import {
+  type NativeBuildSchemeOptions,
+  prepareNativeBuild,
+} from "@/utils/native/prepareNativeBuild";
 import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
@@ -71,26 +76,33 @@ const buildNativeInternal = async ({
         platform,
         operation: "build",
         credentials: register,
-        // A scheme the store would refuse, or a missing upload credential,
-        // fails before the prebuild and the build. The scheme's signing key
-        // is the same item, resolved once, and a service account stays in
-        // memory.
+        // A scheme the store would refuse, or a missing signing or upload
+        // credential, fails before the prebuild and the build, so a CI run
+        // without one stops at once. The resolver keeps each credential for
+        // the build, which resolves the signing ones again, an upload key
+        // that signs too is one item, and a service account stays in
+        // memory. Credentials asked for together share one vault request.
         beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
-          if (upload === "testflight") {
-            const request = await reportUploadFailure(async () =>
-              resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
-            );
-            ascApiKey = await credentials.resolve(request);
-          }
-          if (upload === "play-internal") {
-            const request = await reportUploadFailure(async () =>
-              resolvePlayUploadServiceAccount({
-                scheme,
-                androidScheme: androidScheme!,
-              }),
-            );
-            serviceAccount = await credentials.resolve(request);
-          }
+          const uploadKey =
+            upload === "testflight"
+              ? await reportUploadFailure(async () =>
+                  resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
+                )
+              : undefined;
+          const uploadServiceAccount =
+            upload === "play-internal"
+              ? await reportUploadFailure(async () =>
+                  resolvePlayUploadServiceAccount({
+                    scheme,
+                    androidScheme: androidScheme!,
+                  }),
+                )
+              : undefined;
+          [, ascApiKey, serviceAccount] = await Promise.all([
+            resolveSigningCredentials(credentials, { iosScheme, androidScheme }),
+            uploadKey && credentials.resolve(uploadKey),
+            uploadServiceAccount && credentials.resolve(uploadServiceAccount),
+          ]);
         },
       });
       if (!preparedConfig) {
@@ -234,6 +246,38 @@ const summarizeNativeBuild = (result: NativeBuildResult): string => {
         `    ${ui.muted(`${label}:`.padEnd(labelWidth))} ${value}`,
     )
     .join("\n");
+};
+
+/**
+ * Resolves the credentials the build signs with: an iOS device build's
+ * `signing.ascApiKey`, and a release variant's `signing.keystore`, as
+ * `buildIos` and `buildAndroid` resolve them.
+ */
+const resolveSigningCredentials = async (
+  credentials: CredentialResolver,
+  {
+    iosScheme,
+    androidScheme,
+  }: Pick<NativeBuildSchemeOptions, "iosScheme" | "androidScheme">,
+): Promise<void> => {
+  const ascApiKey = iosScheme?.simulator
+    ? undefined
+    : iosScheme?.signing?.ascApiKey;
+  const keystore = /debug$/i.test(androidScheme?.variant ?? "Release")
+    ? undefined
+    : androidScheme?.signing?.keystore;
+  await Promise.all([
+    ascApiKey &&
+      credentials.resolve({
+        kind: "asc-api-key",
+        name: parseVaultReference(ascApiKey, "signing.ascApiKey"),
+      }),
+    keystore &&
+      credentials.resolve({
+        kind: "android-keystore",
+        name: parseVaultReference(keystore, "signing.keystore"),
+      }),
+  ]);
 };
 
 /**

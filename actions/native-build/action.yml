@@ -1,0 +1,68 @@
+name: hot-updater native build
+description: >-
+  Builds a native app with hot-updater build:ios or build:android, signed
+  with the credentials the Console's vault keeps, registers the build, and
+  uploads it to TestFlight or Google Play's internal track. It never signs in
+  to an Apple or Google account: it reads what one sign-in stored.
+author: gronxb
+
+inputs:
+  console-url:
+    description: >-
+      The Console's URL, which serves the vault. Leave it and vault-token
+      empty to read every credential from the job's HOT_UPDATER_*
+      environment variables instead.
+  vault-token:
+    description: >-
+      A vault token that may read the build's credentials, such as
+      deploy-credentials for register, the signing keystore or App Store
+      Connect API key, and the store upload credential.
+  platform:
+    description: ios (on a macOS runner) or android.
+    required: true
+  scheme:
+    description: The nativeBuild.<platform> scheme in hot-updater.config.ts.
+    required: true
+  upload:
+    description: >-
+      Where to upload the build: testflight for ios, play-internal for
+      android, or empty to only build.
+  register:
+    description: Whether to register the build with the server's native build registry.
+    default: "true"
+  working-directory:
+    description: The app's directory, which has hot-updater.config.ts.
+    default: .
+  cli:
+    description: The command that runs the project's hot-updater CLI.
+    default: npx --no-install hot-updater
+
+outputs:
+  artifact-path:
+    description: The built .ipa, .aab, .apk, .app, or .xcarchive.
+    value: ${{ steps.run.outputs.artifact-path }}
+  build:
+    description: >-
+      JSON of the build: platform, scheme, artifactPath, artifactKind,
+      minBundleId, channel, and fingerprintHash or appVersion, as its
+      artifact embeds them.
+    value: ${{ steps.run.outputs.build }}
+  native-build:
+    description: JSON of the registered native build, or null without register.
+    value: ${{ steps.run.outputs.native-build }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/main.mjs"
+      env:
+        INPUT_CONSOLE_URL: ${{ inputs.console-url }}
+        INPUT_VAULT_TOKEN: ${{ inputs.vault-token }}
+        INPUT_PLATFORM: ${{ inputs.platform }}
+        INPUT_SCHEME: ${{ inputs.scheme }}
+        INPUT_UPLOAD: ${{ inputs.upload }}
+        INPUT_REGISTER: ${{ inputs.register }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_CLI: ${{ inputs.cli }}

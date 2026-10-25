@@ -267,3 +267,13 @@ describe("prepareNativeBuild", () => {
     expect(resolveNativeAppVersion).not.toHaveBeenCalled();
   });
 });
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
