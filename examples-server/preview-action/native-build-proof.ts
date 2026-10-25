@@ -115,15 +115,18 @@ const stages: Record<string, () => Promise<void>> = {
     );
     expectNothingBuilt(log);
   },
+  // A missing App Store Connect API key is one Hot Updater issues after an
+  // Apple Account sign-in, which CI never starts: the build refuses before
+  // anything runs, naming the command that signs in once.
   "ios-missing": async () => {
     const log = readLog();
     expectIncludes(
       log,
-      `asc-api-key is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 <AuthKey.p8> --key-id <key-id> --issuer-id <issuer-id>\``,
+      `asc-api-key is not in the vault at ${consoleUrl()}, or the vault token's scope does not reach it, and Hot Updater signs in to your Apple Account only at a terminal, never in CI (CI is set). Run \`npx hot-updater secrets put asc-api-key --kind asc-api-key\` once on a machine where you can sign in`,
     );
     expectIncludes(
       log,
-      "Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
+      "or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
     );
     expectNothingBuilt(log);
   },
