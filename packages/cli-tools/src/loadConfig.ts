@@ -15,7 +15,12 @@ import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
-import { envSecrets, setConfiguredSecrets } from "./secrets.js";
+import {
+  envSecrets,
+  type SecretsScope,
+  setConfiguredSecrets,
+  withSecretsScope,
+} from "./secrets.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -172,24 +177,41 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
-/** Each load runs the config file again, which creates its adapters again. */
-const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
-  const { config } = await loadUnconfig<ConfigFileExport>(
-    getConfigLoaderOptions(),
-  );
-  return config;
+/** A loaded config file: its export, and the scope of the `secretEnv` its top level creates. */
+type LoadedConfigFile = {
+  readonly source: ConfigFileExport | undefined;
+  readonly scope: SecretsScope;
 };
 
+/** Each load runs the config file again, which creates its adapters again. */
+const loadConfigFile = async (): Promise<LoadedConfigFile> => {
+  const scope: SecretsScope = {};
+  const { config } = await withSecretsScope(scope, () =>
+    loadUnconfig<ConfigFileExport>(getConfigLoaderOptions()),
+  );
+  return { source: config, scope };
+};
+
+/**
+ * The config `options` select, resolved: a config function runs in a scope
+ * of its own, so the `secretEnv` it creates reads this config's `secrets`,
+ * and the file's top-level `secretEnv` reads the first config's.
+ */
 const configFor = async (
-  source: ConfigFileExport | undefined,
+  { source, scope: fileScope }: LoadedConfigFile,
   options: HotUpdaterConfigOptions,
-): Promise<ConfigInput | undefined> =>
-  typeof source === "function" ? await source(options) : source;
+): Promise<ConfigResponse> => {
+  if (typeof source !== "function") {
+    return resolveConfig(source, [fileScope]);
+  }
+  const scope: SecretsScope = {};
+  const config = await withSecretsScope(scope, () => source(options));
+  return resolveConfig(config, [scope, fileScope]);
+};
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-): Promise<ConfigResponse> =>
-  resolveConfig(await configFor(await loadConfigFile(), options));
+): Promise<ConfigResponse> => configFor(await loadConfigFile(), options);
 
 /**
  * hot-updater.config for each of `platforms`, with the file loaded once. A
@@ -203,25 +225,30 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
 ): Promise<
   { readonly platform: TPlatform; readonly config: ConfigResponse }[]
 > => {
-  const source = await loadConfigFile();
+  const file = await loadConfigFile();
   const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
   for (const platform of platforms) {
     configs.push({
       platform,
-      config: resolveConfig(await configFor(source, { channel, platform })),
+      config: await configFor(file, { channel, platform }),
     });
   }
   return configs;
 };
 
 /**
- * The config with its defaults. Its `secrets` adapter becomes the one
- * `secret:` references and `secretEnv` read from in this process.
+ * The config with its defaults. Its `secrets` adapter fills `scopes` not yet
+ * filled, which the `secretEnv` its evaluation created read, and becomes the
+ * default of credential resolvers.
  */
-const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
+const resolveConfig = (
+  config: ConfigInput | undefined,
+  scopes: readonly SecretsScope[],
+): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const signing = normalizeSigningConfig(mergedConfig.signing);
   const secrets = mergedConfig.secrets ?? envSecrets();
+  for (const scope of scopes) scope.secrets ??= secrets;
   setConfiguredSecrets(secrets);
   return {
     ...mergedConfig,

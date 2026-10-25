@@ -78,13 +78,46 @@ export const envSecrets = (): SecretsAdapter => ({
 });
 
 const CONFIGURED_SECRETS = Symbol.for("@hot-updater/cli-tools/secrets");
-
-type SecretsSlot = { [CONFIGURED_SECRETS]?: SecretsAdapter };
+const LOADING_SCOPE = Symbol.for("@hot-updater/cli-tools/secrets-scope");
 
 /**
- * Makes `secrets` the adapter `secret:` references and `secretEnv` read
- * from, as `loadConfig` does with the config's. It is kept on `globalThis`:
- * the config file loads Hot Updater's modules again, as its own copies.
+ * The `secrets` adapter of one config load, filled once the config it
+ * evaluates resolves: each `secretEnv` the evaluation creates reads from it.
+ */
+export interface SecretsScope {
+  secrets?: SecretsAdapter;
+}
+
+type SecretsSlot = {
+  [CONFIGURED_SECRETS]?: SecretsAdapter;
+  [LOADING_SCOPE]?: SecretsScope;
+};
+
+/**
+ * Evaluates a config, the file or a config function, with `scope` as the
+ * scope of every `secretEnv` it creates, so each reads the `secrets` of the
+ * config that created it, whatever config loads after. It is kept on
+ * `globalThis`: the config file loads its own copy of Hot Updater's modules.
+ */
+export const withSecretsScope = async <T>(
+  scope: SecretsScope,
+  evaluate: () => Promise<T> | T,
+): Promise<T> => {
+  const slot = globalThis as SecretsSlot;
+  const previous = slot[LOADING_SCOPE];
+  slot[LOADING_SCOPE] = scope;
+  try {
+    return await evaluate();
+  } finally {
+    slot[LOADING_SCOPE] = previous;
+  }
+};
+
+/**
+ * Makes `secrets` the adapter a credential resolver reads from by default,
+ * and a `secretEnv` created outside any config load, as `loadConfig` does
+ * with the config's. It is kept on `globalThis`: the config file loads Hot
+ * Updater's modules again, as its own copies.
  */
 export const setConfiguredSecrets = (secrets: SecretsAdapter): void => {
   (globalThis as SecretsSlot)[CONFIGURED_SECRETS] = secrets;
@@ -104,8 +137,8 @@ const list = (names: readonly string[]) =>
     : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 
 /**
- * Environment variables from the config's `secrets` adapter, as a function
- * a config calls when an adapter needs them, so loading
+ * Environment variables from the `secrets` adapter of the config that
+ * creates it, as a function a config calls when an adapter needs them, so loading
  * `hot-updater.config.ts` reads no secret. Each name set in the environment
  * or `.env.hotupdater` wins; the others are read from the adapter in one
  * call. The values go only to the caller: they are never set in
@@ -142,6 +175,7 @@ export const secretEnv = <const TName extends string>(
       `secretEnv refuses ${list(reserved)}: ${reserved.length === 1 ? "it changes" : "they change"} how a process loads code or which credentials Hot Updater uses.`,
     );
   }
+  const scope = (globalThis as SecretsSlot)[LOADING_SCOPE];
   return async () => {
     const cwd = getCwd();
     const fileEnv = await readLoadedHotUpdaterEnv(cwd);
@@ -154,7 +188,7 @@ export const secretEnv = <const TName extends string>(
       else variables[name] = value;
     }
     if (fromStore.length > 0) {
-      const secrets = getConfiguredSecrets();
+      const secrets = scope?.secrets ?? getConfiguredSecrets();
       const read = await secrets.get(fromStore, { cwd });
       const missing = fromStore.filter((name) => {
         const value = Object.hasOwn(read, name) ? read[name] : undefined;

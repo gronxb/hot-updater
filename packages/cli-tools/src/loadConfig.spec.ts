@@ -194,6 +194,68 @@ describe("loadConfig", () => {
         cwd: expect.any(String),
       });
       expect(process.env).toEqual(before);
+      // The CLI's own masker hides what the config's copy resolved.
+      const { maskSecretValues } = await import("./secretMasking");
+      expect(maskSecretValues("token store:HU_SPEC_DEPLOY_TOKEN")).toBe(
+        "token ********",
+      );
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { envSecrets, setConfiguredSecrets } = await import("./secrets");
+      setConfiguredSecrets(envSecrets());
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("binds each secretEnv to the secrets of the config that created it, whatever config loads after", async () => {
+    // Given: a config function whose secrets adapter depends on the platform
+    const storeOf = (name: string) => ({
+      name,
+      get: vi.fn(async (names: readonly string[]) =>
+        Object.fromEntries(names.map((key) => [key, `${name}:${key}`])),
+      ),
+    });
+    const stores = {
+      ios: storeOf("ios-store"),
+      android: storeOf("android-store"),
+      none: storeOf("none-store"),
+    };
+    vi.stubEnv("HU_SPEC_SCOPED_TOKEN", undefined);
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", stores);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        "export default (options) => ({",
+        "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__[options?.platform ?? 'none'],",
+        '  storage: { name: "s3Storage", protocol: "s3", credentials: secretEnv(["HU_SPEC_SCOPED_TOKEN"]) },',
+        "});",
+        "",
+      ].join("\n"),
+    );
+    type Credentials = { credentials: () => Promise<Record<string, string>> };
+
+    try {
+      const { loadConfig, loadPlatformConfigs } = await import("./loadConfig");
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+      // As the fingerprint loads it, after the platform configs.
+      await loadConfig(null);
+
+      // Then
+      await expect(
+        (ios!.config.storage as unknown as Credentials).credentials(),
+      ).resolves.toEqual({
+        HU_SPEC_SCOPED_TOKEN: "ios-store:HU_SPEC_SCOPED_TOKEN",
+      });
+      await expect(
+        (android!.config.storage as unknown as Credentials).credentials(),
+      ).resolves.toEqual({
+        HU_SPEC_SCOPED_TOKEN: "android-store:HU_SPEC_SCOPED_TOKEN",
+      });
+      expect(stores.none.get).not.toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
       const { envSecrets, setConfiguredSecrets } = await import("./secrets");

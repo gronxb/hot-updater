@@ -21,10 +21,31 @@ const SHORT_SECRET_AFTER = `(?=$|[${TOKEN_SEPARATOR}]|[.:!?](?:$|[${TOKEN_SEPARA
 
 const PEM_ARMOR_LINE = /^-----(BEGIN|END) [A-Z0-9 ]+-----$/;
 
-const secretValues = new Set<string>();
-const shortSecretValues = new Set<string>();
-let secretValuesLongestFirst: readonly string[] = [];
-let shortSecretPattern: RegExp | undefined;
+interface MaskingRegistry {
+  readonly secretValues: Set<string>;
+  readonly shortSecretValues: Set<string>;
+  secretValuesLongestFirst: readonly string[];
+  shortSecretPattern: RegExp | undefined;
+}
+
+const MASKING_REGISTRY = Symbol.for("@hot-updater/cli-tools/secret-masking");
+
+/**
+ * The values to mask, kept on `globalThis`: the config file loads its own
+ * copy of Hot Updater's modules, and a value it resolves, such as through
+ * `secretEnv`, must be masked by the CLI's log sinks too.
+ */
+const registry: MaskingRegistry = ((
+  globalThis as {
+    [MASKING_REGISTRY]?: MaskingRegistry;
+  }
+)[MASKING_REGISTRY] ??= {
+  secretValues: new Set(),
+  shortSecretValues: new Set(),
+  secretValuesLongestFirst: [],
+  shortSecretPattern: undefined,
+});
+const { secretValues, shortSecretValues } = registry;
 
 const longestFirst = (values: Iterable<string>) =>
   [...values].sort((left, right) => right.length - left.length);
@@ -54,8 +75,8 @@ export const registerSecretValue = (value: string) => {
       secretValues.add(trimmed);
     }
   }
-  secretValuesLongestFirst = longestFirst(secretValues);
-  shortSecretPattern =
+  registry.secretValuesLongestFirst = longestFirst(secretValues);
+  registry.shortSecretPattern =
     shortSecretValues.size > 0
       ? new RegExp(
           `${SHORT_SECRET_BEFORE}(?:${longestFirst(shortSecretValues)
@@ -69,11 +90,12 @@ export const registerSecretValue = (value: string) => {
 /** Replaces every registered credential value in `text` with a mask. */
 export const maskSecretValues = (text: string): string => {
   let masked = text;
-  for (const value of secretValuesLongestFirst) {
+  for (const value of registry.secretValuesLongestFirst) {
     if (masked.includes(value)) {
       masked = masked.split(value).join(SECRET_MASK);
     }
   }
+  const { shortSecretPattern } = registry;
   return shortSecretPattern
     ? masked.replace(shortSecretPattern, SECRET_MASK)
     : masked;
