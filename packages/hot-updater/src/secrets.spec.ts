@@ -11,6 +11,7 @@ describe("secrets exports", () => {
     expect(Object.keys(secretsApi).sort()).toEqual([
       "awsSecretsManager",
       "env",
+      "githubActions",
       "googleSecretManager",
     ]);
   });

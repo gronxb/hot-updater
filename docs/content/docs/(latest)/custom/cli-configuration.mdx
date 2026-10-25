@@ -135,6 +135,13 @@ build credentials a [`secret:<name>`](/docs/guides/native-build#provide-signing-
 reference names, and the deploy credentials `secretEnv` names. It defaults to
 `env()` from `hot-updater/secrets`, which reads each name from an environment
 variable, in the environment or `.env.hotupdater`, and stores nothing.
+From the same module,
+[`awsSecretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager) and
+[`googleSecretManager()`](/docs/guides/secrets-adapters/google-secret-manager)
+read and store in AWS Secrets Manager and Google Cloud Secret Manager, and
+[`githubActions()`](/docs/guides/secrets-adapters/github-actions) stores in a
+repository's GitHub Actions secrets, which a workflow reads as environment
+variables.
 
 `secretEnv([...names])` from `hot-updater` returns a function an adapter calls
 when it needs its credentials, so loading the config reads no secret. A name

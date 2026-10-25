@@ -4,6 +4,7 @@ export {
   type AwsSecretsManagerCredentials,
   type AwsSecretsManagerOptions,
 } from "./awsSecretsManager";
+export { githubActions, type GitHubActionsOptions } from "./githubActions";
 export {
   googleSecretManager,
   type GoogleSecretManagerOptions,
