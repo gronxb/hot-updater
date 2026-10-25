@@ -166,8 +166,38 @@ describe("createStandaloneCoreApi", () => {
       ),
     ).rejects.toThrow(upgrade);
     await expect(core.getNativeBuild("build-1")).rejects.toThrow(upgrade);
+    await expect(core.deleteNativeBuild("build-1")).rejects.toThrow(
+      `The server at ${BASE_URL} has no native build deletion route`,
+    );
     // Such a server holds no native builds, so doctor's scan finds none.
     await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
+  });
+
+  it("deletes a native build by ID, and answers an unknown ID as not_found", async () => {
+    const deleted: string[] = [];
+    server.use(
+      version(2),
+      http.delete(`${BASE_URL}/native-builds/:id`, ({ params }) => {
+        deleted.push(String(params.id));
+        return HttpResponse.json({
+          data:
+            params.id === "build-1"
+              ? { deleted: true, nativeBuild: { id: "build-1" } }
+              : { deleted: false, reason: "not_found" },
+        });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.deleteNativeBuild("build-1")).resolves.toEqual({
+      deleted: true,
+      nativeBuild: { id: "build-1" },
+    });
+    await expect(core.deleteNativeBuild("build/2")).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+    expect(deleted).toEqual(["build-1", "build/2"]);
   });
 
   it("reads a native build by ID, and an unknown ID as null", async () => {

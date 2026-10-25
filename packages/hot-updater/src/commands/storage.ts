@@ -23,6 +23,7 @@ import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
+import { formatBytes } from "../utils/formatBytes";
 
 const BUNDLE_PAGE_SIZE = 100;
 const MANIFEST_READ_CONCURRENCY = 4;
@@ -70,22 +71,6 @@ export function parseStoragePruneProtection(value: string): number {
           : 7 * 24 * 60 * 60 * 1000;
 
   return amount * multiplier;
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) {
-    return `${value} B`;
-  }
-
-  const units = ["KB", "MB", "GB", "TB"];
-  let size = value / 1024;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
 }
 
 function formatDuration(value: number): string {

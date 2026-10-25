@@ -1,13 +1,15 @@
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
-import type {
-  NativeBuildArtifactKind,
-  NativeBuildRow,
-  NativeBuildScope,
-  Platform,
+import {
+  assertStorageOperations,
+  type NativeBuildArtifactKind,
+  type NativeBuildRow,
+  type NativeBuildScope,
+  type Platform,
 } from "@hot-updater/plugin-core";
 
 import { ui } from "../utils/cli-ui";
 import { generateFingerprint } from "../utils/fingerprint";
+import { formatBytes } from "../utils/formatBytes";
 import { loadServer } from "../utils/loadServer";
 import { nativeBuildAppVersionScope } from "../utils/native/appVersionScope";
 import { printBanner } from "../utils/printBanner";
@@ -17,7 +19,7 @@ import {
   isAmbiguousAppVersion,
 } from "../utils/version/appVersionCandidates";
 import { resolveNativeAppVersion } from "../utils/version/getNativeAppVersion";
-import { safeDispose } from "./release";
+import { confirmMutation, safeDispose } from "./release";
 
 export interface NativeBuildFindOptions {
   readonly platform: Platform;
@@ -131,11 +133,22 @@ const schemeArtifactKind = (
       ? "app"
       : "ipa";
 
+/**
+ * What a build of the project would embed, read without writing the native
+ * projects: a lookup must not rewrite them, as the build adapter's prebuild
+ * (such as `expo prebuild`) would. The adapter reports what its prebuild
+ * would write; anything else is read from the native projects as they are.
+ */
 const resolveScope = async (
   config: Awaited<ReturnType<typeof loadConfig>>,
-  { platform, channel, scheme }: NativeBuildFindOptions,
+  { platform, channel, scheme, json }: NativeBuildFindOptions,
 ): Promise<NativeBuildScope> => {
-  const buildChannel = channel ?? (await getChannel(platform)).value;
+  const buildAdapter = await config.build({ cwd: getCwd() });
+  const prebuildValues =
+    (await buildAdapter.nativeBuild?.getNativeProjectValues?.({ platform })) ??
+    {};
+  const buildChannel =
+    channel ?? prebuildValues.channel ?? (await getChannel(platform)).value;
   if (config.updateStrategy === "fingerprint") {
     // From the config's fingerprint inputs, as a build writes fingerprint.json
     // and deploy targets, whatever the committed fingerprint.json records.
@@ -147,14 +160,26 @@ const resolveScope = async (
       appVersion: null,
     };
   }
-  // The adapter's prebuild writes the native projects, such as Expo's
-  // `expo prebuild`, before anything reads their version, as a build does.
-  const buildAdapter = await config.build({ cwd: getCwd() });
-  await buildAdapter.nativeBuild?.prebuild?.({ platform });
-  const resolved = await resolveNativeAppVersion(
+  const versionScope =
+    scheme === undefined ? {} : nativeBuildAppVersionScope(config, scheme);
+  // The version the prebuild would write stands for the one it overwrites,
+  // so a scheme's own version in the native project, such as a product
+  // flavor's, still wins, as in the build.
+  let resolved = await resolveNativeAppVersion(
     platform,
-    scheme === undefined ? {} : nativeBuildAppVersionScope(config, scheme),
+    versionScope,
+    prebuildValues.appVersion,
   );
+  const prebuild = buildAdapter.nativeBuild?.prebuild;
+  if (!resolved.version && resolved.candidates.length === 0 && prebuild) {
+    // No native project declares a version, and the adapter can't say what
+    // its prebuild would write: generating the project is the only way left.
+    const warning = `No ${platform} native project to read the app version from: running the ${buildAdapter.name} build adapter's prebuild, which writes it.`;
+    if (json) console.error(warning);
+    else p.log.warn(warning);
+    await prebuild({ platform });
+    resolved = await resolveNativeAppVersion(platform, versionScope);
+  }
   if (!resolved.version) {
     throw new Error(
       isAmbiguousAppVersion(resolved)
@@ -168,4 +193,120 @@ const resolveScope = async (
     fingerprintHash: null,
     appVersion: resolved.version,
   };
+};
+
+/**
+ * Deletes a registered native build: its row and its built-in bundle's in
+ * the database, then its artifact in storage, which no `storage prune`
+ * reclaims. The row goes first, so no row is left naming a deleted
+ * artifact; an artifact whose delete fails stays, and the command prints
+ * where. A build that is not registered deletes nothing and succeeds, so
+ * the cleanup can run again.
+ */
+export const handleNativeBuildDelete = async (
+  id: string,
+  options: { readonly json?: boolean; readonly yes?: boolean },
+) => {
+  if (!options.json) printBanner();
+  const notFound = () => {
+    if (options.json) {
+      console.log(JSON.stringify({ id, deleted: false, reason: "not_found" }));
+    } else {
+      p.log.info(ui.line(["No native build", ui.id(id), "to delete."]));
+    }
+  };
+  try {
+    const server = await loadServer(
+      await loadConfig(null, { credentials: true }),
+    );
+    try {
+      // Checked before anything is deleted, so no artifact is left behind.
+      assertStorageOperations(server.storage, ["delete"]);
+      const core = server.core;
+      const build = await core.getNativeBuild(id);
+      if (build === null) return notFound();
+      const channel =
+        (await core.listChannels()).find(({ id }) => id === build.channel_id)
+          ?.name ?? build.channel_id;
+
+      if (!options.json) {
+        p.log.message(
+          ui.block("Native build", [
+            ui.kv("ID", ui.id(build.id)),
+            ui.kv("Platform", ui.platform(build.platform)),
+            ui.kv("Channel", ui.channel(channel)),
+            build.fingerprint_hash === null
+              ? ui.kv("App version", ui.version(build.app_version))
+              : ui.kv("Fingerprint", ui.id(build.fingerprint_hash)),
+            ui.kv("Kind", build.artifact_kind),
+            ui.kv("Size", formatBytes(build.byte_size)),
+            ui.kv("Artifact", ui.path(build.artifact_storage_uri)),
+          ]),
+        );
+      }
+      await confirmMutation(
+        "Delete this native build and its artifact? Installed apps keep working, and download full bundles instead of patches from its built-in bundle.",
+        options.yes,
+      );
+
+      const result = await core.deleteNativeBuild(id);
+      if (!result.deleted) return notFound();
+
+      let artifactError: unknown;
+      try {
+        await server.storage.delete({
+          storageUri: result.nativeBuild.artifact_storage_uri,
+        });
+      } catch (error) {
+        artifactError = error;
+      }
+      const artifactDeleted = artifactError === undefined;
+
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              id,
+              deleted: true,
+              nativeBuild: result.nativeBuild,
+              artifactDeleted,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(
+          ui.block("Native build deleted", [
+            ui.kv("ID", ui.id(id)),
+            ui.kv("Platform", ui.platform(build.platform)),
+            ui.kv("Channel", ui.channel(channel)),
+          ]),
+        );
+      }
+      if (!artifactDeleted) {
+        // Under --json, stdout stays one JSON document: it says the artifact
+        // stays, and stderr says where and why.
+        const reason =
+          artifactError instanceof Error
+            ? artifactError.message
+            : String(artifactError);
+        const message = `The native build is deleted, but its artifact stays at ${result.nativeBuild.artifact_storage_uri}: ${reason}. Delete that object from storage.`;
+        if (options.json) console.error(message);
+        else p.log.error(message);
+        process.exitCode = 1;
+        return;
+      }
+      if (!options.json) {
+        p.log.info(
+          "The built-in bundle's files stay until `hot-updater storage prune` deletes them.",
+        );
+      }
+    } finally {
+      await safeDispose(server);
+    }
+  } catch (error) {
+    p.log.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 };

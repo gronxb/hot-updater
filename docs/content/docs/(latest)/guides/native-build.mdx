@@ -190,7 +190,8 @@ newest build of that scope.
 The built-in bundle is not an OTA update. No Release publishes it, so no
 device downloads it, and no update check changes. The bundle totals leave it
 out, a release of it and its deletion are refused, `hot-updater doctor --fix`
-keeps it, and `storage prune` keeps its files and the artifact.
+keeps it, and `storage prune` keeps its files and the artifact. It is deleted
+with its build; see [Delete a build](#delete-a-build).
 
 `hot-updater deploy` uses it as a Hermes patch base: it adds the built-in
 bundle of the newest registered build of the deploy's channel, platform, and
@@ -210,6 +211,61 @@ Every official storage adapter streams the artifact to storage except
 `standaloneStorage`, which reads it into memory to post it to your server. A
 Supabase project's Storage upload file size limit, 50 MB on the Free plan,
 caps the artifact size.
+
+## Find a build
+
+`hot-updater native-build find` prints the newest registered build that a
+build of the project would match, as a
+[pull request preview](/docs/guides/pull-request-previews) does before it
+builds:
+
+```package-install
+npx hot-updater native-build find -p ios -s release
+```
+
+It reads the native projects and writes nothing to them. With the Expo build
+adapter it reads the app version and channel `expo prebuild` would write from
+the Expo config, with the project's own config plugins, and doesn't run
+prebuild; `ios/` and `android/` stay as they are. A product flavor's own
+`versionName` in `android/` still overrides the Expo version, as it does in
+the build. Other adapters read
+`ios/` and `android/` as they are. Only when no native project declares an
+app version, and the build adapter can't tell, does it run the adapter's
+prebuild, and it says so first.
+
+`-c, --channel` names the channel the build embeds, instead of the native
+project's default channel, and `--json` prints the scope and the build, or
+`null`.
+
+## Delete a build
+
+Delete a registered build you no longer need, such as a finished QA build:
+
+```package-install
+npx hot-updater native-build delete <build id>
+```
+
+The command shows the build and asks before it deletes it. It then deletes
+the build and its built-in bundle from the database, then the artifact from
+storage. Bundles deployed with a `.bsdiff` patch from the built-in bundle lose
+that patch, so a device with that build installed downloads the complete
+bundle; installed apps keep working. The built-in bundle's files stay until
+[`hot-updater storage prune`](/docs/guides/storage-cleanup) deletes them.
+
+The database goes first, so no registered build names a deleted artifact.
+When the artifact's deletion fails, the command prints its storage URI and
+exits with status 1; delete that object from storage. A build that isn't
+registered deletes nothing, and the command succeeds, so a cleanup job can
+run again. A channel a native build embeds as its default channel can be
+deleted once its builds are.
+
+Add `-y, --yes` to skip the confirmation; without a terminal, the command
+refuses to ask and exits with status 1. Add `--json` to print the result,
+with `artifactDeleted`.
+
+A self-hosted server reached through `standaloneRepository` needs this
+release's `@hot-updater/server`; an older one answers `404`, and the CLI asks
+you to upgrade it.
 
 ## Upload to TestFlight
 
@@ -328,3 +384,7 @@ device build signs with the scheme's `signing.ascApiKey` when it sets one.
 | `--upload play-internal`  | `build:android` | Upload the `.aab` to Google Play's internal testing track    |
 | `-d, --device [device]`   | `run:*`         | The device name or ID to run on                              |
 | `--port <port>`           | `run:android`   | The Metro port the device reaches with `adb reverse`         |
+
+The commands of the registry, `native-build find` and `native-build delete`,
+are described in [Find a build](#find-a-build) and
+[Delete a build](#delete-a-build).

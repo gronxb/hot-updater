@@ -289,6 +289,83 @@ describe("the native build registry", () => {
     });
   });
 
+  it("deletes a build with its built-in bundle and the patches from it, leaving the totals", async () => {
+    const core = setup();
+    const bundle = createBundleFixture("1");
+    await core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "beta",
+          enabled: true,
+          fingerprintHash: "fingerprint-a",
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: null,
+        },
+      },
+    ]);
+    const build = await core.registerNativeBuild(
+      registration(1, { channel: "beta" }),
+    );
+    const kept = await core.registerNativeBuild(registration(2));
+    await core.updateBundle(bundle.id, {
+      patches: [
+        {
+          baseBundleId: minBundleId(1),
+          baseFileHash: "base-hash",
+          byteSize: 42,
+          patchFileHash: "patch-hash",
+          patchStorageUri: `storage://patches/${bundle.id}.patch`,
+        },
+      ],
+    });
+
+    await expect(core.deleteNativeBuild(build.id)).resolves.toEqual({
+      deleted: true,
+      nativeBuild: build,
+    });
+
+    await expect(core.getNativeBuild(build.id)).resolves.toBeNull();
+    await expect(core.getBundle(minBundleId(1))).resolves.toBeNull();
+    await expect(
+      core.listPatchesFromBase(minBundleId(1), { limit: 10 }),
+    ).resolves.toEqual([]);
+    await expect(core.getBundle(bundle.id)).resolves.toMatchObject({
+      patches: [],
+    });
+    await expect(core.countBundles()).resolves.toBe(1);
+    await expect(core.countBundles("ios")).resolves.toBe(1);
+    await expect(core.getNativeBuild(kept.id)).resolves.toEqual(kept);
+    // Its channel keeps its release, and no build keeps it any more.
+    const beta = await core.findChannelByName("beta");
+    await expect(core.deleteChannel(beta!.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_empty",
+    });
+    await core.registerNativeBuild(registration(3, { channel: "qa" }));
+    const qa = await core.findChannelByName("qa");
+    await core.deleteNativeBuild(buildId(3));
+    await expect(core.deleteChannel(qa!.id)).resolves.toEqual({
+      deleted: true,
+    });
+  });
+
+  it("answers not_found for a build that is not registered", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.deleteNativeBuild(buildId(1));
+
+    await expect(core.deleteNativeBuild(buildId(1))).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+    await expect(core.deleteNativeBuild(buildId(9))).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+  });
+
   it("ensures the channel again when it is deleted between ensuring it and the registration", async () => {
     const memory = createMemoryAdapter();
     const direct = createInProcessCoreApi(memory);

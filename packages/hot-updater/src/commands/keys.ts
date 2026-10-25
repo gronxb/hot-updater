@@ -17,6 +17,7 @@ import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
 import { warnIfExpoCNG } from "../utils/expoDetection";
 import { appendToProjectRootGitignore } from "../utils/git";
+import { canPrompt } from "../utils/prompt";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
@@ -523,11 +524,20 @@ export const keysExportPublic = async (
 
     // Confirmation prompt (unless --yes)
     if (!options.yes) {
+      const message =
+        trustAnchorChanges.length > 0
+          ? "Replace the existing public key?"
+          : "Write public key?";
+      if (
+        !canPrompt(
+          message,
+          "Re-run with -y to write it, or with -p to only print it,",
+        )
+      ) {
+        process.exit(1);
+      }
       const shouldContinue = await p.confirm({
-        message:
-          trustAnchorChanges.length > 0
-            ? "Replace the existing public key?"
-            : "Write public key?",
+        message,
         initialValue: trustAnchorChanges.length === 0,
       });
 
@@ -748,8 +758,10 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
 
   // Confirmation prompt (unless --yes)
   if (!options.yes) {
+    const message = "Remove public keys from these files?";
+    if (!canPrompt(message)) return;
     const shouldContinue = await p.confirm({
-      message: "Remove public keys from these files?",
+      message,
       initialValue: false,
     });
 

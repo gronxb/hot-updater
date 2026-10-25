@@ -36,6 +36,7 @@ import {
 } from "@/utils/version/appVersionCandidates";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { canPrompt } from "../prompt";
 import { nativeBuildAppVersionScope } from "./appVersionScope";
 import type { NativeBuildTarget } from "./createNativeBuild";
 
@@ -105,10 +106,20 @@ export async function prepareNativeBuild(
     return null;
   }
 
+  const schemeMessage = "Which scheme do you use to build?";
+  if (
+    options.scheme === undefined &&
+    !canPrompt(
+      schemeMessage,
+      `Re-run with --scheme <${availableSchemes.join(" | ")}>`,
+    )
+  ) {
+    return null;
+  }
   const scheme =
     options.scheme ??
     (await p.select({
-      message: "Which scheme do you use to build?",
+      message: schemeMessage,
       options: availableSchemes.map((s) => ({ label: s, value: s })),
     }));
 

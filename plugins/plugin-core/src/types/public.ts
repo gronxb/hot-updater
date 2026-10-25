@@ -3,7 +3,11 @@ export type {
   ReleaseCatalogRowUpdate,
   ReleaseRowUpdate,
 } from "./databaseOperations";
-export type { ChannelDeleteResult, ChannelInsertResult } from "./models";
+export type {
+  ChannelDeleteResult,
+  ChannelInsertResult,
+  NativeBuildDeleteResult,
+} from "./models";
 export {
   isRemoteDatabase,
   type AggregateBatching,

@@ -84,7 +84,14 @@ vi.mock("../utils/signing", () => ({
   saveKeyPair: vi.fn(),
 }));
 
-import { keysExportPublic } from "./keys";
+import { keysExportPublic, keysRemove } from "./keys";
+
+const setStdinTTY = (isTTY: boolean | undefined) =>
+  Object.defineProperty(process.stdin, "isTTY", {
+    configurable: true,
+    value: isTTY,
+  });
+const stdinIsTTY = process.stdin.isTTY;
 
 const tempProjects: string[] = [];
 
@@ -121,6 +128,7 @@ const configureProject = async (cwd: string, publicKey: string) => {
 describe("keysExportPublic", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setStdinTTY(true);
     mocks.isCancel.mockReturnValue(false);
     mocks.androidExists.mockResolvedValue(true);
     mocks.iosExists.mockResolvedValue(false);
@@ -132,6 +140,7 @@ describe("keysExportPublic", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    setStdinTTY(stdinIsTTY);
     await Promise.all(
       tempProjects
         .splice(0)
@@ -184,6 +193,26 @@ describe("keysExportPublic", () => {
       message: "Write public key?",
       initialValue: true,
     });
+  });
+
+  it("refuses to ask without a terminal, naming -y and -p, instead of waiting", async () => {
+    setStdinTTY(undefined);
+    const { publicKey } = createKeyPair();
+    const cwd = await createProject();
+    await configureProject(cwd, publicKey);
+    mocks.androidGet.mockResolvedValue({ value: null, paths: [] });
+    vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process exit");
+    });
+
+    await expect(keysExportPublic()).rejects.toThrow("process exit");
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.androidSet).not.toHaveBeenCalled();
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "Write public key? Re-run with -y to write it, or with -p to only print it, in a non-interactive shell.",
+    );
   });
 
   it("treats --yes as an explicit trust-anchor replacement", async () => {
@@ -239,5 +268,42 @@ describe("keysExportPublic", () => {
     ).resolves.toBe(publicKey);
     expect(mocks.androidGet).not.toHaveBeenCalled();
     expect(mocks.androidSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("keysRemove", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setStdinTTY(stdinIsTTY);
+    process.exitCode = undefined;
+  });
+
+  it("refuses to ask without a terminal instead of waiting", async () => {
+    vi.clearAllMocks();
+    setStdinTTY(undefined);
+    mocks.getCwd.mockReturnValue(os.tmpdir());
+    mocks.loadConfig.mockResolvedValue({
+      platform: {
+        android: {
+          androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+        },
+        ios: { infoPlistPaths: [] },
+      },
+    });
+    mocks.androidExists.mockResolvedValue(true);
+    mocks.iosExists.mockResolvedValue(false);
+    mocks.androidGet.mockResolvedValue({
+      value: "key",
+      paths: ["android/app/src/main/AndroidManifest.xml"],
+    });
+
+    await keysRemove();
+
+    expect(process.exitCode).toBe(1);
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.androidSet).not.toHaveBeenCalled();
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "Remove public keys from these files? Re-run with -y in a non-interactive shell.",
+    );
   });
 });

@@ -83,6 +83,22 @@ export interface BuildAdapter {
     } | null>;
     /** Resolves native configuration files that must affect the fingerprint. */
     getFingerprintExtraSources?: () => Promise<readonly string[]>;
+    /**
+     * What `prebuild` would write into a platform's native project, read
+     * without writing it, for commands that only look the project up, such
+     * as `native-build find`. A value it leaves out is read from the native
+     * project as it is.
+     */
+    getNativeProjectValues?: (args: { platform: Platform }) => Promise<{
+      /**
+       * The app version the prebuild writes as the app's own: Android's
+       * `defaultConfig` `versionName`, which a product flavor's still
+       * overrides, and the iOS app's Info.plist.
+       */
+      readonly appVersion?: string;
+      /** The channel the native build would embed. */
+      readonly channel?: string;
+    }>;
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;
   };

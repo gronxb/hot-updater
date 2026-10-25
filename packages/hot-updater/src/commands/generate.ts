@@ -14,6 +14,7 @@ import {
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import { canPrompt } from "../utils/prompt";
 import { generatePrismaSchema } from "./generate-prisma-schema";
 import { generateStandaloneSQL } from "./generate-standalone-sql";
 import {
@@ -229,6 +230,9 @@ async function generateWithMigrator(
 
   // Confirm before writing SQL file
   if (!skipConfirm) {
+    if (!canPrompt(`Generate migration file: ${filename}?`)) {
+      requestGenerateExit(1);
+    }
     const shouldContinue = await p.confirm({
       message: `Generate migration file: ${filename}?`,
       initialValue: true,
@@ -302,6 +306,9 @@ async function generateWithSchemaGenerator(
 
   // Confirm before writing schema file
   if (!skipConfirm) {
+    if (!canPrompt(`Generate schema file: ${filename}?`)) {
+      requestGenerateExit(1);
+    }
     const shouldContinue = await p.confirm({
       message: `Generate schema file: ${filename}?`,
       initialValue: true,

@@ -10,6 +10,7 @@ import { loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
+import { canPrompt } from "../utils/prompt";
 
 const DEFAULT_LIMIT = 20;
 
@@ -158,10 +159,7 @@ export const confirmMutation = async (
   yes: boolean | undefined,
 ): Promise<void> => {
   if (yes) return;
-  if (!process.stdin.isTTY) {
-    p.log.error(`${message} Re-run with -y in a non-interactive shell.`);
-    process.exit(1);
-  }
+  if (!canPrompt(message)) process.exit(1);
   const confirmed = await p.confirm({ initialValue: false, message });
   if (p.isCancel(confirmed) || !confirmed) process.exit(2);
 };

@@ -576,6 +576,14 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return page(await core.listNativeBuilds(input), input, ({ id }) => id);
   }),
 
+  // An unknown ID answers 200 with the not_found result, so a 404 means a
+  // server without the route.
+  deleteNativeBuild: onCore(async (core, _request, params) =>
+    json({
+      data: await core.deleteNativeBuild(requireRouteParam(params, "id")),
+    }),
+  ),
+
   deleteBundles: onCore(async (core, request) => {
     const { ids } = await body(request);
     if (
@@ -649,4 +657,9 @@ export const ADMIN_ROUTES: readonly {
   { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
   { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
   { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
+  {
+    method: "DELETE",
+    path: "/native-builds/:id",
+    handler: "deleteNativeBuild",
+  },
 ];

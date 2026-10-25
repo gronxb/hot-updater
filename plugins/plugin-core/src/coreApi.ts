@@ -16,6 +16,7 @@ import type {
   ChannelRow,
   DatabaseBundleMetadata,
   NativeBuildArtifactKind,
+  NativeBuildDeleteResult,
   NativeBuildRow,
   Platform,
   ReleaseCatalogRow,
@@ -224,4 +225,10 @@ export interface HotUpdaterCoreApi {
   registerNativeBuild(
     registration: NativeBuildRegistration,
   ): Promise<NativeBuildRow>;
+  /**
+   * Deletes a native build and its built-in bundle's row in one transaction,
+   * with the patches from that bundle: an installed build then downloads
+   * full bundles. Its artifact stays in storage for the caller to delete.
+   */
+  deleteNativeBuild(id: string): Promise<NativeBuildDeleteResult>;
 }

@@ -257,6 +257,35 @@ describe("admin API protocol 2 routes", () => {
     expect(registerNativeBuild).toHaveBeenCalledTimes(1);
   });
 
+  it("deletes a native build, answering an unknown ID with 200 so a 404 means no route", async () => {
+    const deleteNativeBuild = vi.fn(async (id: string) =>
+      id === "build-1"
+        ? { deleted: true, nativeBuild: { id } }
+        : { deleted: false, reason: "not_found" },
+    );
+    const api = apiWith({ deleteNativeBuild } as unknown as Partial<CoreApi>);
+
+    const deleted = await routes.deleteNativeBuild!(
+      { id: "build-1" },
+      new Request(`${BASE}/native-builds/build-1`, { method: "DELETE" }),
+      api,
+    );
+    const missing = await routes.deleteNativeBuild!(
+      { id: "build-2" },
+      new Request(`${BASE}/native-builds/build-2`, { method: "DELETE" }),
+      api,
+    );
+
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toEqual({
+      data: { deleted: true, nativeBuild: { id: "build-1" } },
+    });
+    expect(missing.status).toBe(200);
+    await expect(missing.json()).resolves.toEqual({
+      data: { deleted: false, reason: "not_found" },
+    });
+  });
+
   it("refuses an app version whose scope key overflows, as a bad request", async () => {
     await expect(
       routes.findNativeBuild!(

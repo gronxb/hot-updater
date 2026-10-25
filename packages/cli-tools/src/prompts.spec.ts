@@ -93,4 +93,41 @@ describe("prompts", () => {
     expect(captured.read()).not.toContain(CURSOR_HIDE);
     expect(captured.read()).not.toContain(CURSOR_SHOW);
   });
+
+  it.each(["confirm", "select", "text", "password", "multiselect"] as const)(
+    "refuses %s without a terminal instead of waiting on stdin",
+    async (prompt) => {
+      const input = new PassThrough();
+      const captured = captureOutput();
+
+      await expect(
+        (p[prompt] as (options: object) => Promise<unknown>)({
+          message: "Continue?",
+          options: [{ value: "a" }],
+          input,
+          output: captured.output,
+        }),
+      ).rejects.toThrow(
+        "Continue? There is no terminal to answer in: pass the command's options instead (see --help).",
+      );
+      expect(captured.read()).toBe("");
+    },
+  );
+
+  it("asks on a terminal", async () => {
+    const input = Object.assign(new PassThrough(), {
+      isTTY: true,
+      setRawMode: () => {},
+    });
+    const captured = captureOutput();
+
+    const answer = p.confirm({
+      message: "Continue?",
+      input,
+      output: captured.output,
+    });
+    input.write("y");
+
+    await expect(answer).resolves.toBe(true);
+  });
 });

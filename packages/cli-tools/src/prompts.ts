@@ -135,11 +135,46 @@ const tasks: typeof clack.tasks = async (taskList, options) => {
 };
 
 /**
- * `@clack/prompts` with CI-safe spinners, and with every message a
- * registered credential value appears in masked (`registerSecretValue`).
+ * The prompt, refusing to ask without a terminal: a prompt on a closed or
+ * piped stdin would end as a cancel or wait forever. A command that can
+ * skip a prompt says which option does before it asks.
+ */
+const requireTerminal = <Options extends { input?: unknown }, Result>(
+  prompt: (options: Options) => Promise<Result>,
+) => {
+  return (options: Options): Promise<Result> => {
+    const input = options.input ?? process.stdin;
+    if (!(input as { isTTY?: boolean }).isTTY) {
+      const message = (options as { message?: unknown }).message;
+      return Promise.reject(
+        new Error(
+          `${typeof message === "string" ? `${message} ` : ""}There is no terminal to answer in: pass the command's options instead (see --help).`,
+        ),
+      );
+    }
+    return prompt(options);
+  };
+};
+
+/**
+ * `@clack/prompts` with CI-safe spinners, with every message a registered
+ * credential value appears in masked (`registerSecretValue`), and with
+ * prompts that refuse to ask without a terminal.
  */
 export const p: typeof clack = {
   ...clack,
+  autocomplete: requireTerminal(clack.autocomplete),
+  autocompleteMultiselect: requireTerminal(clack.autocompleteMultiselect),
+  confirm: requireTerminal(clack.confirm),
+  date: requireTerminal(clack.date),
+  groupMultiselect: requireTerminal(clack.groupMultiselect),
+  multiline: requireTerminal(clack.multiline),
+  multiselect: requireTerminal(clack.multiselect),
+  password: requireTerminal(clack.password),
+  path: requireTerminal(clack.path),
+  select: requireTerminal(clack.select),
+  selectKey: requireTerminal(clack.selectKey),
+  text: requireTerminal(clack.text),
   log,
   cancel: (message, options) => clack.cancel(maskMessage(message), options),
   intro: (title, options) => clack.intro(maskMessage(title), options),

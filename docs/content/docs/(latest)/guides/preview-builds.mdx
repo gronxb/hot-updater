@@ -51,7 +51,8 @@ for the schemes and what registering uploads.
 
 Every pull request reuses this build while its native code doesn't change.
 Keep pull request channels for bundles only: a channel a native build embeds
-as its default channel can't be deleted.
+as its default channel can't be deleted while the build is registered. To
+retire a build, see [Delete a build](/docs/guides/native-build#delete-a-build).
 
 ## Open channel links in the app
 
@@ -167,7 +168,9 @@ them.
 A missing channel deletes nothing, and the command succeeds, so a cleanup job
 can run again. When a native build embeds the channel as its default channel,
 the command deletes the bundles, keeps the channel and its native builds, and
-exits with status 1.
+exits with status 1. Delete those builds with
+[`hot-updater native-build delete`](/docs/guides/native-build#delete-a-build),
+then the channel.
 
 Add `--json` to print the result, with the IDs of the deleted bundles.
 

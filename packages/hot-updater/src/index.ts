@@ -79,7 +79,10 @@ import {
 } from "./commands/insights";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
-import { handleNativeBuildFind } from "./commands/nativeBuild";
+import {
+  handleNativeBuildDelete,
+  handleNativeBuildFind,
+} from "./commands/nativeBuild";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,
@@ -291,7 +294,7 @@ channelCommand
 
 const nativeBuildCommand = program
   .command("native-build")
-  .description("Query the native build registry");
+  .description("Query and manage the native build registry");
 
 nativeBuildCommand
   .command("find")
@@ -313,6 +316,16 @@ nativeBuildCommand
   )
   .option("--json", "output the scope and the build, or null, as JSON")
   .action(handleNativeBuildFind);
+
+nativeBuildCommand
+  .command("delete")
+  .description(
+    "Delete a registered native build and its stored artifact, such as a finished QA build's",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option("--json", "output the result as JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleNativeBuildDelete);
 
 const SERVER_PATH_HELP =
   "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";
