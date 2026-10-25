@@ -46,12 +46,13 @@ const LOGIN = "/Users/runner/Library/Keychains/login.keychain-db";
 const SYSTEM = "/Library/Keychains/System.keychain";
 
 /** A fake `security`, recording each call, that prints what macOS would. */
-const fakeSecurity = (
-  {
-    certificates = "",
-    fail,
-  }: { certificates?: string; fail?: (args: readonly string[]) => boolean } = {},
-) => {
+const fakeSecurity = ({
+  certificates = "",
+  fail,
+}: {
+  certificates?: string;
+  fail?: (args: readonly string[]) => boolean;
+} = {}) => {
   const calls: string[][] = [];
   const security = vi.fn(async (args: readonly string[]) => {
     calls.push([...args]);
@@ -140,7 +141,10 @@ describe("createSigningKeychain", () => {
     expect(calls.slice(-3)).toEqual([
       ["default-keychain", "-d", "user", "-s", LOGIN],
       ["list-keychains", "-d", "user", "-s", LOGIN, SYSTEM],
-      ["delete-keychain", expect.stringMatching(/hot-updater-.*\.keychain-db$/)],
+      [
+        "delete-keychain",
+        expect.stringMatching(/hot-updater-.*\.keychain-db$/),
+      ],
     ]);
     // Another build in the same process can create one again.
     const keychain = await createSigningKeychain({
@@ -175,7 +179,7 @@ const mockAppStoreConnect = (
   respond: (request: Request) => Response | undefined = () => undefined,
 ) => {
   const requests: Request[] = [];
-  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const request = new Request(input, init);
     requests.push(request);
     const answer = respond(request);
@@ -215,7 +219,9 @@ describe("revokeKeychainCertificates", () => {
       ],
       failed: [],
     });
-    expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+    expect(
+      requests.map((request) => `${request.method} ${request.url}`),
+    ).toEqual([
       "GET https://api.appstoreconnect.apple.com/v1/certificates?fields%5Bcertificates%5D=serialNumber&limit=200",
       "GET https://api.appstoreconnect.apple.com/v1/certificates?cursor=2",
       "DELETE https://api.appstoreconnect.apple.com/v1/certificates/CERT1",

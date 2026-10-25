@@ -99,7 +99,10 @@ const buildNativeInternal = async ({
                 )
               : undefined;
           [, ascApiKey, serviceAccount] = await Promise.all([
-            resolveSigningCredentials(credentials, { iosScheme, androidScheme }),
+            resolveSigningCredentials(credentials, {
+              iosScheme,
+              androidScheme,
+            }),
             uploadKey && credentials.resolve(uploadKey),
             uploadServiceAccount && credentials.resolve(uploadServiceAccount),
           ]);

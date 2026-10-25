@@ -1,11 +1,11 @@
 // @ts-check
 
+import { parseJsonOutput } from "../../shared/cli.mjs";
 import {
   renderClosedComment,
   renderPreviewComment,
   consoleLink,
 } from "./comment.mjs";
-import { parseJsonOutput } from "../../shared/cli.mjs";
 import { findComment, updateComment, upsertComment } from "./github.mjs";
 
 export { parseJsonOutput };

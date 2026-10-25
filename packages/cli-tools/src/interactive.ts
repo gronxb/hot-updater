@@ -7,7 +7,9 @@ export const isCI = (
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): boolean => {
   const value = env["CI"]?.trim().toLowerCase();
-  return value !== undefined && value !== "" && value !== "0" && value !== "false";
+  return (
+    value !== undefined && value !== "" && value !== "0" && value !== "false"
+  );
 };
 
 /**

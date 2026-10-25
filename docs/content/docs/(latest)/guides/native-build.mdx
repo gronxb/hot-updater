@@ -112,7 +112,11 @@ and never asks the console for it.
 
 The CLI writes a keystore or key given as contents to a temporary file that
 only your user can read, and deletes it when the build ends. It masks passwords
-in its output.
+in its output. A build resolves the credentials it signs and uploads with
+before the build adapter's prebuild, so a missing one fails before anything is
+built; the error names the vault's URL, the command that stores the credential
+once, and these variables. [Build and upload from CI](/docs/guides/ci-native-build)
+runs builds that read them in CI, which never signs in.
 
 The Android build passes the keystore to Gradle as the signing properties
 Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
@@ -120,6 +124,11 @@ whatever the variant's `signingConfig` says. The iOS build signs with automatic
 signing: `xcodebuild` uses the App Store Connect API key to create or update
 certificates and provisioning profiles. The Xcode project needs its
 development team (`DEVELOPMENT_TEAM`), in the project or in `extraParams`.
+In CI (`CI` is set), the archive and the export sign in a keychain of the
+build's own, and the CLI revokes the development certificates Xcode created
+in it before deleting it, as
+[What a CI build does](/docs/guides/ci-native-build#what-a-ci-build-does)
+describes.
 
 ## Build
 
@@ -286,6 +295,8 @@ CLI resolves the key before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing key fails before either runs, and
 deletes the key's temporary file when the upload ends.
 Certificates and provisioning profiles stay with the build's signing.
+[Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
+with the key stored in the vault.
 
 Before the prebuild, the CLI also refuses a scheme whose build App Store
 Connect would not take: a simulator scheme, a configuration whose name ends in
@@ -354,6 +365,8 @@ only draft releases, so the internal release is a draft that you roll out in
 Play Console. When the app's state requires it, the CLI commits without
 sending the changes for review, and you send them for review in Play Console.
 When an upload fails, the build stays at its output path.
+[Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
+with the service account stored in the vault.
 
 ## Run on a device
 

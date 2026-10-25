@@ -25,8 +25,8 @@ vi.mock("./utils/readBuiltApp", () => ({
   })),
 }));
 vi.mock("./utils/ciSigningKeychain", () => ({
-  withSigningKeychain: vi.fn(
-    async ({ run }: { run: () => Promise<unknown> }) => run(),
+  withSigningKeychain: vi.fn(async ({ run }: { run: () => Promise<unknown> }) =>
+    run(),
   ),
 }));
 vi.mock("./utils/assertXcodebuildExist", () => ({

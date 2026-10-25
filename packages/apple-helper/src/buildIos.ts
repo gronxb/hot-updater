@@ -47,9 +47,9 @@ export const buildIos = async ({
   const iosProjectRoot = path.join(getCwd(), "ios");
 
   const buildDirectory = await createRandomTmpDir();
-  const archiveDir = path.join(buildDirectory, "archive");
-  const exportDir = path.join(buildDirectory, "export");
-  await fs.promises.mkdir(archiveDir, { recursive: true });
+  await fs.promises.mkdir(path.join(buildDirectory, "archive"), {
+    recursive: true,
+  });
 
   if (schemeConfig.simulator) {
     if (schemeConfig.destination.length) {
@@ -194,9 +194,7 @@ const archiveAndExport = async ({
   return {
     buildDirectory: buildDirectory,
     buildArtifactPath: path.join(exportDir, ipaFile),
-    builtApp: archivedAppPath
-      ? await readBuiltApp(archivedAppPath)
-      : undefined,
+    builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
   };
 };
 

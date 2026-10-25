@@ -49,7 +49,9 @@ const expectIncludes = (log: string, expected: string) => {
 
 const expectExcludes = (log: string, unexpected: string, why: string) => {
   if (log.includes(unexpected)) {
-    throw new Error(`The output has "${unexpected}": ${why}\n\nOutput:\n${log}`);
+    throw new Error(
+      `The output has "${unexpected}": ${why}\n\nOutput:\n${log}`,
+    );
   }
 };
 

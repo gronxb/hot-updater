@@ -83,10 +83,7 @@ describe("parseInputs", () => {
       { INPUT_VAULT_TOKEN: "" },
       "console-url is set but vault-token is empty: set both to read credentials from the vault, or neither to read them from the job's HOT_UPDATER_* environment variables. A workflow run from a fork gets no secrets.",
     ],
-    [
-      { INPUT_CONSOLE_URL: "" },
-      "vault-token is set but console-url is empty",
-    ],
+    [{ INPUT_CONSOLE_URL: "" }, "vault-token is set but console-url is empty"],
     [
       { INPUT_CONSOLE_URL: "console.example.com" },
       "console-url must be the Console's http(s) URL.",
@@ -117,9 +114,7 @@ describe("parseInputs", () => {
 
 describe("cliEnv", () => {
   it("gives the CLI the vault connection, and CI so it never signs in", () => {
-    expect(
-      cliEnv({ PATH: "/bin" }, parseInputs(env())),
-    ).toEqual({
+    expect(cliEnv({ PATH: "/bin" }, parseInputs(env()))).toEqual({
       PATH: "/bin",
       CI: "true",
       HOT_UPDATER_CONSOLE_URL: "https://console.example.com",
@@ -161,7 +156,9 @@ describe("runAction", () => {
       "native-build": JSON.stringify({ id: "nb-1" }),
     });
     expect(summaries[0]).toContain("| Registered | `nb-1` |");
-    expect(summaries[0]).toContain("| Uploaded to | Google Play internal testing |");
+    expect(summaries[0]).toContain(
+      "| Uploaded to | Google Play internal testing |",
+    );
   });
 
   it("only builds without upload and register", () => {
