@@ -81,8 +81,8 @@ const renderLayout = (queryClient = new QueryClient()) =>
 /** What the schema fence found, as the console's status read returns it. */
 const status = {
   message: "The database needs migrations.",
-  settings: [{ key: "schema.vault", expected: "1", found: null }],
-  plugins: ["vault"],
+  settings: [{ key: "schema.remoteConfig", expected: "1", found: null }],
+  plugins: ["remoteConfig"],
   migratable: true,
 };
 
@@ -144,7 +144,7 @@ describe("RootLayout", () => {
     expect(screen.getByText("npx hot-updater doctor --fix")).toBeInstanceOf(
       HTMLElement,
     );
-    expect(screen.getByText("schema.vault")).toBeInstanceOf(HTMLElement);
+    expect(screen.getByText("schema.remoteConfig")).toBeInstanceOf(HTMLElement);
 
     // When the database is migrated and the user checks again
     migrated = true;
@@ -223,7 +223,6 @@ describe("root loader", () => {
       insightsAnalytics: false,
       apiKeys: false,
       remoteConfig: false,
-      vault: false,
     },
     remote: true,
   };

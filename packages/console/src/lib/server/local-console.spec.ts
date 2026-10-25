@@ -25,7 +25,7 @@ const request = (
 
 describe("guardLocalConsoleRequest", () => {
   it("refuses every page and server function without the run's session", async () => {
-    for (const path of ["/", "/vault", "/_serverFn/issueVaultTokenRpc"]) {
+    for (const path of ["/", "/api-keys", "/_serverFn/createApiKeyRpc"]) {
       const refusal = guardLocalConsoleRequest(
         request(`http://localhost:1422${path}`),
         OPTIONS,
@@ -46,13 +46,13 @@ describe("guardLocalConsoleRequest", () => {
   it("trades the link's session for an HttpOnly, SameSite=Strict cookie, and drops it from the address", () => {
     const answer = guardLocalConsoleRequest(
       request(
-        `http://localhost:1422/vault?tab=tokens&${LOCAL_CONSOLE_SESSION_PARAM}=${SESSION}`,
+        `http://localhost:1422/insights?range=7d&${LOCAL_CONSOLE_SESSION_PARAM}=${SESSION}`,
       ),
       OPTIONS,
     );
 
     expect(answer?.status).toBe(303);
-    expect(answer?.headers.get("location")).toBe("/vault?tab=tokens");
+    expect(answer?.headers.get("location")).toBe("/insights?range=7d");
     expect(answer?.headers.get("set-cookie")).toBe(
       `${COOKIE}; Path=/; HttpOnly; SameSite=Strict`,
     );
@@ -61,7 +61,9 @@ describe("guardLocalConsoleRequest", () => {
   it("lets the session's cookie through, and nothing like it", () => {
     expect(
       guardLocalConsoleRequest(
-        request("http://localhost:1422/vault", { headers: { cookie: COOKIE } }),
+        request("http://localhost:1422/api-keys", {
+          headers: { cookie: COOKIE },
+        }),
         OPTIONS,
       ),
     ).toBeUndefined();
@@ -72,7 +74,7 @@ describe("guardLocalConsoleRequest", () => {
     ]) {
       expect(
         guardLocalConsoleRequest(
-          request("http://localhost:1422/vault", { headers: { cookie } }),
+          request("http://localhost:1422/api-keys", { headers: { cookie } }),
           OPTIONS,
         )?.status,
         cookie,
@@ -134,7 +136,7 @@ describe("guardLocalConsoleRequest", () => {
     }
     expect(
       guardLocalConsoleRequest(
-        request("http://localhost/_serverFn/rewrapVaultRpc", {
+        request("http://localhost/_serverFn/revokeApiKeyRpc", {
           host: "localhost",
           method: "POST",
           headers: { origin: "http://localhost", cookie },
@@ -160,7 +162,7 @@ describe("guardLocalConsoleRequest", () => {
     ];
     for (const headers of crossOrigin) {
       const refusal = guardLocalConsoleRequest(
-        request("http://localhost:1422/_serverFn/rewrapVaultRpc", {
+        request("http://localhost:1422/_serverFn/revokeApiKeyRpc", {
           method: "POST",
           headers: { ...headers, cookie: COOKIE },
         }),
@@ -170,7 +172,7 @@ describe("guardLocalConsoleRequest", () => {
     }
     expect(
       guardLocalConsoleRequest(
-        request("http://localhost:1422/_serverFn/rewrapVaultRpc", {
+        request("http://localhost:1422/_serverFn/revokeApiKeyRpc", {
           method: "POST",
           headers: {
             origin: "http://localhost:1422",
@@ -183,27 +185,20 @@ describe("guardLocalConsoleRequest", () => {
     ).toBeUndefined();
   });
 
-  it("lets the /_hot-updater/ routes through without the session, as they check the vault token, but not from another host", () => {
-    for (const path of [
-      "/_hot-updater/vault/v1/secrets",
-      "/_hot-updater/signing",
-    ]) {
-      expect(
-        guardLocalConsoleRequest(
-          request(`http://127.0.0.1:1422${path}`, { host: "127.0.0.1:1422" }),
-          { ...OPTIONS, session: undefined },
-        ),
-        path,
-      ).toBeUndefined();
-      expect(
-        guardLocalConsoleRequest(
-          request(`http://127.0.0.1:1422${path}`, {
-            host: "evil.example:1422",
-          }),
-          OPTIONS,
-        )?.status,
-      ).toBe(403);
-    }
+  it("asks for the session on the /_hot-updater/ routes too", () => {
+    const path = "/_hot-updater/preview/channel-qr?channel=pr-1";
+    expect(
+      guardLocalConsoleRequest(request(`http://localhost:1422${path}`), OPTIONS)
+        ?.status,
+    ).toBe(401);
+    expect(
+      guardLocalConsoleRequest(
+        request(`http://localhost:1422${path}`, {
+          headers: { cookie: COOKIE },
+        }),
+        OPTIONS,
+      ),
+    ).toBeUndefined();
   });
 
   it("leaves the Host to Vite's dev server, which checks it itself", () => {

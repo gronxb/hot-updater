@@ -22,27 +22,28 @@ every pull request:
    comment on every push, and never another author's.
 4. When the pull request closes, it deletes the channel and its bundles.
 
-The workflow needs two secrets: the Console's URL and a vault token. The
-deploy credentials, the release keystore, and bundle signing all come from
-the [Console's vault](/docs/guides/vault).
+The CLI reads the deploy credentials and the release keystore through the
+config's [`secrets` adapter](/docs/guides/secrets), the job's environment by
+default, and signs bundles with the config's
+[`signing` adapter](/docs/guides/bundle-signing). The workflow passes the
+Console's URL for the comment's links.
 
 ## Prepare the project
 
-- Deploy the Console with [`vault()`](/docs/guides/vault),
-  and set `console.channelLinkPrefix` in its configuration, as
+- Deploy the Console and set `console.channelLinkPrefix` in its
+  configuration, as
   [Show channel links in the Console](/docs/guides/preview-builds#show-channel-links-in-the-console)
   describes. The pull request comment shows the QR code the Console serves
   for the channel at `/_hot-updater/preview/channel-qr?channel=<channel>`,
   which takes no sign-in, so GitHub can show it. It holds only the link.
 - Make the app [open channel links](/docs/guides/preview-builds#open-channel-links-in-the-app),
   with your preview channel, such as `preview`, in `defaultChannels`.
-- Store the deploy credentials in the vault, with
-  [`secrets import`](/docs/guides/secrets#deploy-credentials-with-secretenv)
-  or `secrets put`, and sign bundles with the vault's key through
-  [`remoteSigning`](/docs/guides/signing/remote#sign-with-the-console-vault).
+- Read the deploy credentials with
+  [`secretEnv`](/docs/guides/secrets#deploy-credentials-with-secretenv), and
+  add their values to the repository's secrets.
 - Add a [native build scheme](/docs/guides/native-build#configure-schemes)
   for each previewed platform: a Release APK for Android, signed with a
-  `vault:` keystore, and a scheme with `simulator: true` for iOS, which builds
+  `secret:` keystore, and a scheme with `simulator: true` for iOS, which builds
   a Simulator `.app` that needs no signing.
 - The registry tells native builds apart by platform, channel, and
   fingerprint or app version, not by scheme. A project that previews several
@@ -51,7 +52,6 @@ the [Console's vault](/docs/guides/vault).
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
-import { remoteSigning } from "hot-updater/signing";
 
 export default defineConfig({
   nativeBuild: {
@@ -59,7 +59,7 @@ export default defineConfig({
       previewApk: {
         packageName: "com.example.app",
         aab: false,
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
     },
     ios: {
@@ -71,24 +71,20 @@ export default defineConfig({
       },
     },
   },
-  signing: remoteSigning({ endpoint: "https://console.example.com" }),
-  // ...build, storage, database, plugins with vault()
+  signing: {
+    enabled: true,
+    privateKeyPath: process.env.HOT_UPDATER_SIGNING_KEY_PATH ?? "keys/private-key.pem",
+  },
+  // ...build, storage, database, plugins
 });
 ```
 
-## Issue the vault token
-
-Issue one token that reads the deploy credentials and the keystore, and
-signs with the bundle signing key:
-
-```package-install
-npx hot-updater secrets token create --name pr-preview --secrets deploy-credentials,release-keystore,bundle-signing-key --actions read,sign
-```
-
-Save the Console's URL as the repository secret `HOT_UPDATER_CONSOLE_URL`,
-and the token as `HOT_UPDATER_VAULT_TOKEN`. The action gives the CLI the
-token as `HOT_UPDATER_VAULT_TOKEN` and as `remoteSigning`'s
-`HOT_UPDATER_SIGNING_TOKEN`.
+With `env()`, `secret:release-keystore` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
+the keystore's JSON value, as
+[Sign native builds with secrets](/docs/guides/secrets#sign-native-builds-with-secrets)
+describes. To keep the bundle signing key in a key management service
+instead of a file, use the [AWS KMS](/docs/guides/signing/aws-kms) or
+[Google Cloud KMS](/docs/guides/signing/google-cloud-kms) signing adapter.
 
 ## Add the workflow
 
@@ -121,11 +117,20 @@ jobs:
           distribution: temurin
           java-version: 17
       - run: npm ci
+      - name: Write the bundle signing key
+        env:
+          SIGNING_KEY: ${{ secrets.HOT_UPDATER_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/signing-key.pem"
+          echo "HOT_UPDATER_SIGNING_KEY_PATH=$RUNNER_TEMP/signing-key.pem" >> "$GITHUB_ENV"
       # The tag of the hot-updater release your project installs.
       - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          # ...and the deploy variables your config reads with secretEnv
         with:
-          console-url: ${{ secrets.HOT_UPDATER_CONSOLE_URL }}
-          vault-token: ${{ secrets.HOT_UPDATER_VAULT_TOKEN }}
+          console-url: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
           android-scheme: previewApk
 ```
 
@@ -140,9 +145,10 @@ job previews them in order and writes one comment:
     steps:
       # ...the steps above
       - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
         with:
-          console-url: ${{ secrets.HOT_UPDATER_CONSOLE_URL }}
-          vault-token: ${{ secrets.HOT_UPDATER_VAULT_TOKEN }}
+          console-url: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
           platforms: android,ios
           android-scheme: previewApk
           ios-scheme: previewSimulator
@@ -209,8 +215,7 @@ it out.
 
 | Input               | Default                        | Description                                                                                                    |
 | ------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `console-url`       |                                | The Console's URL                                                                                              |
-| `vault-token`       |                                | A vault token that reads the deploy credentials and the keystore, and signs bundles. Empty skips the action    |
+| `console-url`       |                                | The Console's URL, which the comment's install links and channel QR code point at                              |
 | `platforms`         | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
 | `android-scheme`    |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                             |
 | `ios-scheme`        |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
@@ -232,7 +237,7 @@ ID.
 GitHub gives a pull request from a fork no secrets and a read-only token, so
 the action does nothing for it, and the closed pull request needs no
 cleanup. Don't run the action on `pull_request_target`: it would build the
-fork's code with your vault token.
+fork's code with your secrets.
 
 ## Expo
 
