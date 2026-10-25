@@ -8,8 +8,7 @@ import {
   loadConfig,
   loadVaultDeployCredentials,
   p,
-  readLoadedHotUpdaterEnv,
-  readVaultConnection,
+  resolveVaultConnection,
   VAULT_CONNECTION_ENV_NAMES,
 } from "@hot-updater/cli-tools";
 import { execa } from "execa";
@@ -126,7 +125,7 @@ const isThisConsole = (url: string, port: number) => {
  */
 export const loadConsoleCredentials = async (port: number) => {
   const cwd = getCwd();
-  const read = readVaultConnection(await readLoadedHotUpdaterEnv(cwd));
+  const read = await resolveVaultConnection({ cwd });
   if (read.ok && isThisConsole(read.connection.url, port)) {
     p.log.warn(
       `${VAULT_CONNECTION_ENV_NAMES.url} is this console (${read.connection.url}), which cannot serve the credentials it starts with: keep its database and storage credentials in the environment or .env.hotupdater.`,

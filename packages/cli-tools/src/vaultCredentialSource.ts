@@ -7,7 +7,7 @@ import type { CredentialSource, SourcedCredential } from "./credentialResolver";
 import { registerSecretValue } from "./secretMasking";
 import {
   createVaultClient,
-  readVaultConnection,
+  resolveVaultConnection,
   type ResolvedVaultSecret,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
@@ -160,23 +160,24 @@ export const createVaultCredentialSource = ({
   readonly fetch?: typeof globalThis.fetch;
 } = {}): CredentialSource => {
   let load: ReturnType<typeof createVaultSecretLoader> | undefined;
+  // One read for the items a build asks for together, so they still share
+  // one resolve request.
+  let connecting: ReturnType<typeof resolveVaultConnection> | undefined;
 
   return async ({ kind, name }, { files }) => {
-    if (load === undefined) {
-      const read = readVaultConnection(env);
-      if (!read.ok) {
-        const item = name === kind ? kind : `${kind} ${name}`;
-        throw new Error(
-          `${item} resolves from the Console's vault, and ${read.missing.join(" and ")} ${read.missing.length === 1 ? "is" : "are"} not set. Set ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} to reach the vault.`,
-        );
-      }
-      load = createVaultSecretLoader(
-        createVaultClient({
-          ...read.connection,
-          ...(fetch === undefined ? {} : { fetch }),
-        }),
+    const read = await (connecting ??= resolveVaultConnection({ env }));
+    if (!read.ok) {
+      const item = name === kind ? kind : `${kind} ${name}`;
+      throw new Error(
+        `${item} resolves from the Console's vault, and ${read.missing.join(" and ")} ${read.missing.length === 1 ? "is" : "are"} not set in the environment or .env.hotupdater. Set ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} to reach the vault.`,
       );
     }
+    load ??= createVaultSecretLoader(
+      createVaultClient({
+        ...read.connection,
+        ...(fetch === undefined ? {} : { fetch }),
+      }),
+    );
     const secret = await load(name);
     if (secret.kind !== kind) {
       throw new Error(

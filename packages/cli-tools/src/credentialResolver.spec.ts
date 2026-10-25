@@ -31,6 +31,9 @@ beforeEach(async () => {
   directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-credential-resolver-"),
   );
+  // The project the vault connection's .env.hotupdater is read from.
+  await fs.writeFile(path.join(directory, "package.json"), "{}");
+  vi.spyOn(process, "cwd").mockReturnValue(directory);
 });
 
 afterEach(async () => {
@@ -130,7 +133,7 @@ describe("createCredentialResolver", () => {
 
     expect(error).toBeInstanceOf(CredentialUnavailableError);
     expect((error as Error).message).toBe(
-      "asc-api-key resolves from the Console's vault, and HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN are not set. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
+      "asc-api-key resolves from the Console's vault, and HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN are not set in the environment or .env.hotupdater. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault. Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
     );
     expect(fetch).not.toHaveBeenCalled();
     expect((error as CredentialUnavailableError).envNames).toEqual([

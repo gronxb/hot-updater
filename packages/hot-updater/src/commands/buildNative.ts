@@ -18,6 +18,7 @@ import {
   getCwd,
   CredentialUnavailableError,
   p,
+  parseVaultReference,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
@@ -33,6 +34,10 @@ import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
+import {
+  AscApiKeyRefusedError,
+  ensureAscApiKey,
+} from "../utils/native/ascApiKey";
 
 /**
  * `build:android` and `build:ios`: `register` also registers the build,
@@ -76,11 +81,40 @@ const buildNativeInternal = async ({
         // is the same item, resolved once, and a service account stays in
         // memory.
         beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
-          if (upload === "testflight") {
-            const request = await reportUploadFailure(async () =>
-              resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
-            );
-            ascApiKey = await credentials.resolve(request);
+          const uploadKey =
+            upload === "testflight"
+              ? await reportUploadFailure(async () =>
+                  resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
+                )
+              : undefined;
+          // The key the upload or the device build's signing resolves: a
+          // developer without one signs in with their Apple Account here,
+          // before anything is built.
+          const ascApiKeyName =
+            uploadKey?.name ??
+            (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
+              ? parseVaultReference(
+                  iosScheme.signing.ascApiKey,
+                  "signing.ascApiKey",
+                )
+              : undefined);
+          if (ascApiKeyName) {
+            try {
+              await ensureAscApiKey({
+                name: ascApiKeyName,
+                bundleIdentifier: iosScheme!.bundleIdentifier,
+                read: true,
+              });
+            } catch (e) {
+              if (e instanceof AscApiKeyRefusedError) throw e;
+              throw new NativeBuildFailure(
+                e instanceof Error ? e.message : String(e),
+                { cause: e },
+              );
+            }
+          }
+          if (uploadKey) {
+            ascApiKey = await credentials.resolve(uploadKey);
           }
           if (upload === "play-internal") {
             const request = await reportUploadFailure(async () =>
@@ -263,7 +297,9 @@ const reportUploadFailure = async <T>(
 };
 
 const catchError = (e: unknown): never => {
-  if (e instanceof ExecaError) {
+  if (e instanceof AscApiKeyRefusedError) {
+    // canPrompt reported why, with the command to run.
+  } else if (e instanceof ExecaError) {
     console.error(e);
   } else if (
     e instanceof CredentialUnavailableError ||

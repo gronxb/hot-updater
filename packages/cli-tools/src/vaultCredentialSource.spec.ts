@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CredentialUnavailableError,
@@ -68,9 +70,19 @@ const mockConsole = (
   return { fetch, requests };
 };
 
-afterEach(() => {
+/** The project the CLI runs in, whose .env.hotupdater a spec may write. */
+let project: string;
+
+beforeEach(async () => {
+  project = await fs.mkdtemp(path.join(os.tmpdir(), "vault-source-"));
+  await fs.writeFile(path.join(project, "package.json"), "{}");
+  vi.spyOn(process, "cwd").mockReturnValue(project);
+});
+
+afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  await fs.rm(project, { recursive: true, force: true });
 });
 
 describe("the vault as the credential resolver's default source", () => {
@@ -114,6 +126,44 @@ describe("the vault as the credential resolver's default source", () => {
     await expect(fs.access(asc.keyPath)).rejects.toThrow();
   });
 
+  // The vault guide keeps the connection in the project's .env.hotupdater,
+  // which a build reads without sourcing it first.
+  it("reaches the vault with the connection only in .env.hotupdater", async () => {
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    await fs.writeFile(
+      path.join(project, ".env.hotupdater"),
+      `HOT_UPDATER_CONSOLE_URL=https://console.example.com\nHOT_UPDATER_VAULT_TOKEN="${TOKEN}" # vault guide\n`,
+    );
+    const { requests } = mockConsole();
+    const resolver = createCredentialResolver();
+
+    await expect(
+      resolver.resolve({ kind: "asc-api-key" }),
+    ).resolves.toMatchObject({ keyId: "ABC123", issuerId: "issuer-1" });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.headers.get("authorization")).toBe(`Bearer ${TOKEN}`);
+    await resolver.dispose();
+  });
+
+  it("prefers the environment's connection to .env.hotupdater's", async () => {
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", "https://env.example.com");
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", TOKEN);
+    await fs.writeFile(
+      path.join(project, ".env.hotupdater"),
+      "HOT_UPDATER_CONSOLE_URL=https://file.example.com\nHOT_UPDATER_VAULT_TOKEN=hu_vault_file\n",
+    );
+    const { requests } = mockConsole();
+    const resolver = createCredentialResolver();
+
+    await resolver.resolve({ kind: "asc-api-key" });
+    expect(requests[0]!.url).toBe(
+      "https://env.example.com/_hot-updater/vault/v1/resolve",
+    );
+    expect(requests[0]!.headers.get("authorization")).toBe(`Bearer ${TOKEN}`);
+    await resolver.dispose();
+  });
+
   it("uses an environment override and never calls the Console", async () => {
     const { fetch } = mockConsole();
     vi.stubEnv("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON", '{"type":"x"}');
@@ -151,7 +201,7 @@ describe("the vault as the credential resolver's default source", () => {
     await expect(
       resolver.resolve({ kind: "android-keystore", name: "release-keystore" }),
     ).rejects.toThrow(
-      "android-keystore release-keystore resolves from the Console's vault, and HOT_UPDATER_VAULT_TOKEN is not set. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore without the vault.",
+      "android-keystore release-keystore resolves from the Console's vault, and HOT_UPDATER_VAULT_TOKEN is not set in the environment or .env.hotupdater. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore without the vault.",
     );
     expect(fetch).not.toHaveBeenCalled();
   });

@@ -2,6 +2,8 @@ import type { EnrichedNativeBuildIosScheme } from "@hot-updater/apple-helper";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const events: string[] = [];
+/** The scheme the config sets, as beforePrebuild receives it. */
+let iosScheme: Record<string, unknown> = { configuration: "Release" };
 
 const ascApiKey = {
   keyPath: "/tmp/AuthKey_ABC.p8",
@@ -30,6 +32,13 @@ vi.mock("@hot-updater/apple-helper", () => ({
   }),
 }));
 vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
+vi.mock("../utils/native/ascApiKey", () => ({
+  AscApiKeyRefusedError: class AscApiKeyRefusedError extends Error {},
+  ensureAscApiKey: vi.fn(async ({ name }: { name: string }) => {
+    events.push(`ensure ${name}`);
+    return { status: "stored", version: 1 };
+  }),
+}));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: { log: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
@@ -55,10 +64,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
       configuration: "Release",
       signing: { ascApiKey: "vault:asc-api-key" },
     } as unknown as EnrichedNativeBuildIosScheme;
-    await options.beforePrebuild?.({
-      scheme: "release",
-      iosScheme: { configuration: "Release" },
-    });
+    await options.beforePrebuild?.({ scheme: "release", iosScheme });
     events.push("prebuild");
     return {
       buildAdapter: { name: "bare" },
@@ -99,11 +105,16 @@ import { p } from "@hot-updater/cli-tools";
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 
+import {
+  AscApiKeyRefusedError,
+  ensureAscApiKey,
+} from "../utils/native/ascApiKey";
 import { buildIosNative } from "./buildNative";
 
 beforeEach(() => {
   vi.clearAllMocks();
   events.length = 0;
+  iosScheme = { configuration: "Release", bundleIdentifier: "com.example.app" };
 });
 
 const mockExit = () =>
@@ -123,6 +134,7 @@ describe("build:ios --upload testflight", () => {
 
     expect(events).toEqual([
       "check scheme",
+      "ensure asc-api-key",
       "resolve asc-api-key",
       "prebuild",
       "check export options",
@@ -200,5 +212,100 @@ describe("build:ios --upload testflight", () => {
     // The resolver deletes its temporary files before the process exits.
     expect(events.slice(-2)).toEqual(["dispose", "exit"]);
     exit.mockRestore();
+  });
+});
+
+describe("build:ios without an App Store Connect API key", () => {
+  it("issues the key before the prebuild, named after the app", async () => {
+    await buildIosNative({
+      interactive: false,
+      scheme: "release",
+      upload: "testflight",
+    });
+    expect(ensureAscApiKey).toHaveBeenCalledWith({
+      name: "asc-api-key",
+      bundleIdentifier: "com.example.app",
+      read: true,
+    });
+    expect(events.indexOf("ensure asc-api-key")).toBeLessThan(
+      events.indexOf("prebuild"),
+    );
+  });
+
+  it("builds nothing when there is no terminal to sign in in, and logs nothing more", async () => {
+    vi.mocked(ensureAscApiKey).mockImplementationOnce(async () => {
+      throw new AscApiKeyRefusedError("no terminal");
+    });
+    const exit = mockExit();
+
+    await expect(
+      buildIosNative({
+        interactive: false,
+        scheme: "release",
+        upload: "testflight",
+      }),
+    ).rejects.toThrow("exit");
+
+    expect(exit).toHaveBeenCalledWith(1);
+    // canPrompt already logged the refusal with the command to run.
+    expect(p.log.error).not.toHaveBeenCalled();
+    expect(events).not.toContain("prebuild");
+    expect(events).not.toContain("resolve asc-api-key");
+    exit.mockRestore();
+  });
+
+  it("reports a key that could not be issued, before the prebuild", async () => {
+    vi.mocked(ensureAscApiKey).mockRejectedValueOnce(
+      new Error("The vault token cannot store asc-api-key."),
+    );
+    const exit = mockExit();
+    await expect(
+      buildIosNative({
+        interactive: false,
+        scheme: "release",
+        upload: "testflight",
+      }),
+    ).rejects.toThrow("exit");
+    expect(p.log.error).toHaveBeenCalledWith(
+      "The vault token cannot store asc-api-key.",
+    );
+    expect(events).not.toContain("prebuild");
+    exit.mockRestore();
+  });
+
+  it("issues the key a device build signs with, by the name signing.ascApiKey sets", async () => {
+    iosScheme = {
+      configuration: "Release",
+      bundleIdentifier: "com.example.widget",
+      signing: { ascApiKey: "vault:widget-asc" },
+    };
+    await buildIosNative({ interactive: false, scheme: "release" });
+    expect(ensureAscApiKey).toHaveBeenCalledWith({
+      name: "widget-asc",
+      bundleIdentifier: "com.example.widget",
+      read: true,
+    });
+    // The signing key resolves while it builds, as before.
+    expect(events).toEqual([
+      "ensure widget-asc",
+      "prebuild",
+      "build",
+      "dispose",
+    ]);
+  });
+
+  it.each([
+    [
+      "a simulator build",
+      { simulator: true, signing: { ascApiKey: "vault:asc-api-key" } },
+    ],
+    [
+      "a scheme that signs with exportOptionsPlist",
+      { exportOptionsPlist: "export.plist" },
+    ],
+  ])("needs no key for %s", async (_, scheme) => {
+    iosScheme = { configuration: "Release", ...scheme };
+    await buildIosNative({ interactive: false, scheme: "release" });
+    expect(ensureAscApiKey).not.toHaveBeenCalled();
   });
 });

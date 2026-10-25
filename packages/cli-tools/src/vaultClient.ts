@@ -1,6 +1,10 @@
 import type { VaultSecret, VaultSecretKind } from "@hot-updater/server/plugins";
 
-import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
+import { getCwd } from "./cwd";
+import {
+  getHotUpdaterEnvValue,
+  readLoadedHotUpdaterEnv,
+} from "./hotUpdaterEnv";
 import { registerSecretValue } from "./secretMasking";
 
 /**
@@ -113,6 +117,21 @@ export const readVaultConnection = (
   }
   return { ok: true, connection: { url, token } };
 };
+
+/**
+ * The vault connection every CLI command reaches the Console with, read
+ * the same way everywhere: each variable from `process.env` when it is set
+ * there, else from `env`, else from `cwd`'s `.env.hotupdater`, where the
+ * vault guide keeps it. A command never needs the file sourced first.
+ */
+export const resolveVaultConnection = async ({
+  cwd = getCwd(),
+  env = {},
+}: {
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+} = {}): Promise<ReturnType<typeof readVaultConnection>> =>
+  readVaultConnection({ ...(await readLoadedHotUpdaterEnv(cwd)), ...env });
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 

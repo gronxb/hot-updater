@@ -413,7 +413,10 @@ secretsCommand
       .choices(VAULT_SECRET_KINDS)
       .makeOptionMandatory(),
   )
-  .option("--p8 <file>", "asc-api-key: the .p8 key file")
+  .option(
+    "--p8 <file>",
+    "asc-api-key: the .p8 key file; without --p8, --key-id, and --issuer-id, sign in with your Apple Account and Hot Updater issues the key",
+  )
   .option("--key-id <id>", "asc-api-key: the key ID")
   .option("--issuer-id <id>", "asc-api-key: the issuer ID")
   .option(

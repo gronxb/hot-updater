@@ -1,9 +1,8 @@
 import {
   createVaultClient,
-  getCwd,
   getHotUpdaterEnvValue,
-  readLoadedHotUpdaterEnv,
   readVaultConnection,
+  resolveVaultConnection,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
@@ -17,9 +16,12 @@ export const connectVault = async (
   wanted: string,
   env?: Readonly<Record<string, string>>,
 ): Promise<VaultClient> => {
-  const read = readVaultConnection(
-    env ?? (await readLoadedHotUpdaterEnv(getCwd())),
-  );
+  // `env` is an env file the command reads itself, such as the one
+  // secrets import moves; otherwise the connection every command shares.
+  const read =
+    env === undefined
+      ? await resolveVaultConnection()
+      : readVaultConnection(env);
   if (!read.ok) {
     throw new Error(
       `${wanted} from the Console's vault, and ${read.missing.join(" and ")} ${read.missing.length === 1 ? "is" : "are"} not set. Set ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} to reach the vault.`,

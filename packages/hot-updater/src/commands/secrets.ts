@@ -8,8 +8,7 @@ import {
   makeEnv,
   p,
   parseLoadedEnv,
-  readLoadedHotUpdaterEnv,
-  readVaultConnection,
+  resolveVaultConnection,
   registerSecretValue,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
@@ -28,6 +27,10 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
+import {
+  AscApiKeyRefusedError,
+  ensureAscApiKey,
+} from "../utils/native/ascApiKey";
 import { connectVault } from "../vaultEnv";
 import {
   confirmAction,
@@ -306,6 +309,37 @@ export const handleSecretsPut = async (
   options: SecretsPutOptions,
 ): Promise<void> => {
   printBanner();
+  if (
+    options.kind === "asc-api-key" &&
+    options.p8 === undefined &&
+    options.keyId === undefined &&
+    options.issuerId === undefined
+  ) {
+    // No key to store: sign in with an Apple Account, and Hot Updater
+    // issues one.
+    await reportFailure(async () => {
+      try {
+        const result = await ensureAscApiKey({
+          name,
+          // The vault is what this stores in, whatever the environment sets.
+          environment: false,
+        });
+        if (result.status === "stored") {
+          p.log.message(
+            ui.block("App Store Connect API key already stored", [
+              ui.kv("Name", name),
+              ui.kv("Version", ui.version(`v${result.version}`)),
+            ]),
+          );
+        }
+      } catch (error) {
+        // canPrompt reported it.
+        if (error instanceof AscApiKeyRefusedError) return;
+        throw error;
+      }
+    });
+    return;
+  }
   await withConsoleVault(
     `hot-updater secrets put stores ${name}`,
     async (client) => {
@@ -548,7 +582,7 @@ export const handleSecretsImport = async (
     );
     // Config loads find the connection only in the environment or the
     // project's .env.hotupdater, before the config runs.
-    if (!readVaultConnection(await readLoadedHotUpdaterEnv(getCwd())).ok) {
+    if (!(await resolveVaultConnection()).ok) {
       p.log.warn(
         `Commands that use the config's database, storage, or signing read ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.`,
       );
