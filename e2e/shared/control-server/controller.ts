@@ -80,7 +80,12 @@ import {
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
-import { withForeignSigning } from "./foreign-signing.ts";
+import {
+  PROJECT_SIGNING_KEY_VARIABLE,
+  refusedForMissingSigningSecret,
+  withForeignSigning,
+  withSecretSigning,
+} from "./foreign-signing.ts";
 import {
   assertDependenciesInCheckout,
   NATIVE_BUILD_CHANNEL_PREFIX,
@@ -221,9 +226,11 @@ type DeployBundleRequest = {
   safeBundleIds: string[];
   /**
    * `foreign`: the deploy signs its bundle with a key generated for it, not
-   * the one whose public key the app embeds.
+   * the one whose public key the app embeds. `secret`: the deploy reads the
+   * project's key through `env()` as `secret:bundle-signing-key`, with the
+   * key file moved away.
    */
-  signingKey?: "foreign";
+  signingKey?: "foreign" | "secret";
   strategy?: "appVersion" | "fingerprint";
   targetAppVersion: string;
   targetCohorts?: string[];
@@ -6473,18 +6480,27 @@ async function deployFixtureBundle(
       // shard's builds, reads them.
       return withDeployProcessLock(signal, async () => {
         const deployStartedAt = Date.now();
-        const deploy = () =>
+        const deploy = (
+          options: {
+            allowFailure?: boolean;
+            env?: NodeJS.ProcessEnv;
+            logPath?: string;
+          } = {},
+        ) =>
           runLoggedCommand("node", args, {
+            allowFailure: options.allowFailure,
             cwd: fixtureSession.exampleDir,
-            env: getHotUpdaterControlEnv(),
-            logPath: deployLogPath,
+            env: { ...getHotUpdaterControlEnv(), ...options.env },
+            logPath: options.logPath ?? deployLogPath,
             signal,
             onInterrupted: context?.markQuiescenceUncertain,
           });
         const output =
           request.signingKey === "foreign"
-            ? await withForeignSigningKey(deploy)
-            : await deploy();
+            ? await withForeignSigningKey(() => deploy())
+            : request.signingKey === "secret"
+              ? await withSecretSigningKey(deploy, deployLogPath)
+              : await deploy();
         deployDurationMs = Date.now() - deployStartedAt;
         return output;
       });
@@ -6534,11 +6550,11 @@ async function deployFixtureBundle(
   // A refused foreign-key bundle proves the app checks the key only when
   // the bundle carries a signature at all.
   if (
-    request.signingKey === "foreign" &&
+    request.signingKey !== undefined &&
     !bundle.manifestFileHash?.startsWith("sig:")
   ) {
     throw new Error(
-      `The foreign-key deploy's bundle ${bundleId} carries no signature: its manifest hash is ${bundle.manifestFileHash}.`,
+      `The ${request.signingKey}-key deploy's bundle ${bundleId} carries no signature: its manifest hash is ${bundle.manifestFileHash}.`,
     );
   }
   if (shouldWaitForUpdateCheckVisibility(request)) {
@@ -7883,6 +7899,75 @@ async function withForeignSigningKey(deploy: () => Promise<string>) {
   } finally {
     await fsPromises.writeFile(fixtureSession.configSourceFile, configSource);
     await fsPromises.rm(keyDir, { force: true, recursive: true });
+  }
+}
+
+/**
+ * Runs a deploy that reads the project's private key through `env()` as
+ * `secret:bundle-signing-key`, with the key file moved away so no path can
+ * supply it. A deploy without the variable must first be refused for it,
+ * and the deploy with it must sign with the key the app embeds, which the
+ * CLI checks against the native files and the app checks on install. The
+ * config and the key file are restored when the deploy ends.
+ */
+async function withSecretSigningKey(
+  deploy: (options?: {
+    allowFailure?: boolean;
+    env?: NodeJS.ProcessEnv;
+    logPath?: string;
+  }) => Promise<string>,
+  deployLogPath: string,
+) {
+  const privateKeyPath = path.join(
+    fixtureSession.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+  const privateKey = await fsPromises.readFile(privateKeyPath, "utf8");
+  const privateKeyAside = `${privateKeyPath}.e2e-secret`;
+  const configSource = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
+  // Each input is restored only once changed, and even when another fails
+  // to restore, so no later deploy of this checkout runs without its key.
+  const restores: Array<() => Promise<void>> = [];
+  try {
+    restores.push(() =>
+      fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
+    );
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withSecretSigning(configSource),
+    );
+    await fsPromises.rename(privateKeyPath, privateKeyAside);
+    restores.push(() => fsPromises.rename(privateKeyAside, privateKeyPath));
+
+    const refusedLogPath = deployLogPath.replace(/\.log$/u, "-no-secret.log");
+    const refused = await deploy({
+      allowFailure: true,
+      env: { [PROJECT_SIGNING_KEY_VARIABLE]: "" },
+      logPath: refusedLogPath,
+    });
+    if (
+      !refusedForMissingSigningSecret(refused) ||
+      extractDeployReleaseId(refused)
+    ) {
+      throw new Error(
+        `A deploy without ${PROJECT_SIGNING_KEY_VARIABLE} was not refused for the missing signing secret. See ${refusedLogPath}`,
+      );
+    }
+
+    return await deploy({
+      env: { [PROJECT_SIGNING_KEY_VARIABLE]: privateKey },
+    });
+  } finally {
+    const restored = await Promise.allSettled(
+      restores.map((restore) => restore()),
+    );
+    const failed = restored.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
   }
 }
 

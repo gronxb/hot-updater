@@ -448,8 +448,15 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.targetAppVersion) {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
-  if (payload.signingKey !== undefined && payload.signingKey !== "foreign") {
-    return c.json({ error: "signingKey must be foreign when set" }, 400);
+  if (
+    payload.signingKey !== undefined &&
+    payload.signingKey !== "foreign" &&
+    payload.signingKey !== "secret"
+  ) {
+    return c.json(
+      { error: "signingKey must be foreign or secret when set" },
+      400,
+    );
   }
   if (
     payload.patchMaxBaseBundles !== undefined &&
