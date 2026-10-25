@@ -89,6 +89,18 @@ describe("getDefaultTargetAppVersion", () => {
     expect(mockXcodeProjectOpen).toHaveBeenCalledWith(xcodeprojPath);
   });
 
+  it("falls back to xcodeproj when Info.plist holds an unresolved ${MARKETING_VERSION}", async () => {
+    mockFileExist([plistPath]);
+    mockFsReadFile.mockResolvedValue(Buffer.from("mock plist"));
+    mockPlistParse.mockReturnValue({
+      CFBundleShortVersionString: "${MARKETING_VERSION}",
+    });
+    mockMarketingVersion("2.15.0");
+
+    expect((await getDefaultTargetAppVersion("ios")).version).toBe("2.15.0");
+    expect(mockXcodeProjectOpen).toHaveBeenCalledWith(xcodeprojPath);
+  });
+
   it("appends .x to a two-segment version read from xcodeproj", async () => {
     mockFileExist([plistPath]);
     mockFsReadFile.mockResolvedValue(Buffer.from("mock plist"));

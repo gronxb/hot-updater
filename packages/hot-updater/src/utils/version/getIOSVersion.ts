@@ -31,8 +31,12 @@ const isFileExist = async (path: string): Promise<boolean> => {
   }
 };
 
+// Xcode substitutes both $(NAME) and ${NAME}.
 const isResolved = (value: unknown): value is string =>
-  typeof value === "string" && value.length > 0 && !value.includes("$(");
+  typeof value === "string" &&
+  value.length > 0 &&
+  !value.includes("$(") &&
+  !value.includes("${");
 
 const readInfoPlistVersion = async (
   plistPath: string,
