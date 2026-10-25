@@ -1,3 +1,8 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, text, select, open } = vi.hoisted(() => ({
@@ -19,6 +24,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: { log, text, select, isCancel: vi.fn(() => false) },
 }));
 vi.mock("open", () => ({ default: open }));
+// The GitHub Actions offer has its own specs: here it finds nothing to offer.
+vi.mock("./githubSecret", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./githubSecret")>()),
+  offerGitHubSecret: vi.fn(async () => "unavailable"),
+}));
 
 import type {
   IssuedPlayServiceAccount,
@@ -135,11 +145,15 @@ const issue = vi.fn(
   },
 );
 
-const ensure = (options: Parameters<typeof ensurePlayServiceAccount>[0]) =>
-  ensurePlayServiceAccount({ issue, ...options });
+let cacheDir: string;
 
-beforeEach(() => {
+/** ensurePlayServiceAccount with the stand-in sign-in, and a cacheDir of its own. */
+const ensure = (options: Parameters<typeof ensurePlayServiceAccount>[0]) =>
+  ensurePlayServiceAccount({ issue, cacheDir, ...options });
+
+beforeEach(async () => {
   vi.clearAllMocks();
+  cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-play-"));
   // The terminal these specs simulate takes a sign-in only outside CI, and
   // CI runners set CI.
   vi.stubEnv("CI", "");
@@ -157,7 +171,8 @@ beforeEach(() => {
   select.mockResolvedValue("my-app");
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await fs.rm(cacheDir, { recursive: true, force: true });
   setConfiguredSecrets(envSecrets());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
@@ -207,7 +222,7 @@ describe("ensurePlayServiceAccount", () => {
     vi.stubEnv("CI", "true");
 
     await expect(
-      withTTY(true, () => ensure({ name: "play-service-account", read: true })),
+      withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining("never in CI (CI is set)"),
@@ -218,13 +233,62 @@ describe("ensurePlayServiceAccount", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("refuses a read-only adapter before the sign-in", async () => {
-    fakeStore({ writable: false });
+  it("writes the key a read-only adapter can't store to a 0600 file, says where to store it, and keeps it", async () => {
+    setConfiguredSecrets(envSecrets());
+    const cacheDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-play-"),
+    );
+    try {
+      const result = await withTTY(true, () =>
+        ensure({ name: "play-service-account", cacheDir }),
+      );
+      const file = path.join(cacheDir, "issued", "play-service-account.json");
+      expect(result).toMatchObject({ status: "saved", email: EMAIL, file });
+      await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
+      expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
 
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).rejects.toThrow("the spec-store secrets adapter is read-only");
-    expect(issue).not.toHaveBeenCalled();
+      const guidance = stripVTControlCharacters(
+        String(log.warn.mock.calls[0]![0]),
+      );
+      expect(guidance).toContain("Play service account saved to a file");
+      expect(guidance).toContain(EMAIL);
+      expect(guidance).toContain(
+        `Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT to the contents of ${file}, as one value`,
+      );
+      expect(guidance).toContain("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON");
+      const printed = [...Object.values(log), text, select]
+        .flatMap((fn) => fn.mock.calls.flat())
+        .map(String)
+        .join("\n");
+      expect(printed).not.toContain("MIIB");
+      expect(issued.revoke).not.toHaveBeenCalled();
+      expect(issued.dispose).toHaveBeenCalledTimes(1);
+
+      const { secrets } = result as Extract<typeof result, { status: "saved" }>;
+      await expect(
+        secrets.get(["play-service-account"], { cwd: cacheDir }),
+      ).resolves.toEqual({ "play-service-account": KEY_FILE });
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("never signs in in CI with a read-only adapter, writing no file", async () => {
+    vi.stubEnv("CI", "true");
+    setConfiguredSecrets(envSecrets());
+    const cacheDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-play-"),
+    );
+    try {
+      await expect(
+        withTTY(true, () => ensure({ name: "play-service-account", cacheDir })),
+      ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
+      expect(issue).not.toHaveBeenCalled();
+      await expect(fs.readdir(cacheDir)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true });
+    }
   });
 
   it("checks in order, signs in, stores the key's own JSON, and reads it back", async () => {
@@ -235,7 +299,6 @@ describe("ensurePlayServiceAccount", () => {
         ensure({
           name: "play-service-account",
           packageName: "com.example.app",
-          read: true,
         }),
       ),
     ).resolves.toEqual({ status: "issued", email: EMAIL });
@@ -340,14 +403,19 @@ describe("ensurePlayServiceAccount", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a key a write-only adapter stored, and says the build can't read it yet", async () => {
+  it("keeps a copy of a key a write-only adapter stored, which this run reads", async () => {
     fakeStore({ readBack: async () => undefined });
 
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account", read: true })),
-    ).rejects.toThrow(
-      "play-service-account is stored, but the spec-store secrets adapter does not read it back, which the build uploads with.",
+    const result = await withTTY(true, () =>
+      ensure({ name: "play-service-account" }),
     );
+    expect(result).toMatchObject({ status: "issued", email: EMAIL });
+    const file = path.join(cacheDir, "issued", "play-service-account.json");
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
+    const { secrets } = result as { secrets: SecretsAdapter };
+    await expect(
+      secrets.get(["play-service-account"], { cwd: cacheDir }),
+    ).resolves.toEqual({ "play-service-account": KEY_FILE });
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 });

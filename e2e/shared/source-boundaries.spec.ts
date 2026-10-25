@@ -46,6 +46,7 @@ const expectedScenarioModuleFiles = [
   "failed-download-same-generation-retry.ts",
   "fingerprint-initial-install.ts",
   "force-update-auto-reload.ts",
+  "foreign-signing-key-refused.ts",
   "headless-launch-keeps-staged-bundle.ts",
   "interrupted-launch-retries-bundle.ts",
   "launch-status-after-session-install.ts",
@@ -72,7 +73,6 @@ const expectedScenarioModuleFiles = [
   "targeted-cohort-switchback.ts",
   "ten-crash-history-safe-bundle.ts",
   "types.ts",
-  "vault-signed-ota.ts",
 ] as const;
 
 function trackedE2eFiles(): readonly string[] {

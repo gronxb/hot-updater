@@ -22,6 +22,7 @@
     "storage-adapters",
     "database-adapters",
     "guides/signing",
+    "guides/secrets-adapters",
     "integration-plugins",
     "adapters",
     "plugins",

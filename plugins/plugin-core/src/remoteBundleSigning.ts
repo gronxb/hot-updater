@@ -359,7 +359,7 @@ const remoteRequest = async (
 
 /**
  * A refusal's status, with the `{ error }` or `{ error: { code, message } }`
- * a signing server answers it with, such as the Console's scope refusals.
+ * a signing server answers it with, such as a scope refusal.
  * The token is masked and the message shortened to one line.
  */
 const describeRefusal = async (response: Response, token: string) => {

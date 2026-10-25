@@ -37,7 +37,6 @@ import {
   handleRollbackRemoteConfig,
   handleRuntimeConfig,
   handleSeedCrashHistory,
-  handleStopVaultConsole,
   handleTerminateApp,
   handleVerifyConsoleInsights,
   handleWaitForCrashRecovery,
@@ -58,7 +57,6 @@ import {
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
   startSetNativeCheckJob,
-  startStartVaultConsoleJob,
   startWaitForArchiveResumeJob,
   startWaitForMetadataJob,
   startWaitForNativeCheckJob,
@@ -165,14 +163,6 @@ app.post("/e2e/verify-console-insights", async (c) => {
       sinceMs: payload.sinceMs,
     }),
   );
-});
-
-app.post("/e2e/jobs/start-vault-console", (c) => {
-  return c.json({ jobId: startStartVaultConsoleJob() });
-});
-
-app.post("/e2e/stop-vault-console", async (c) => {
-  return c.json(await handleStopVaultConsole());
 });
 
 app.post("/e2e/jobs/acquire-remote-config-lock", (c) => {
@@ -399,7 +389,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       | "multiAssetReplacement"
       | "sizeAwareLargeDiff";
     channel?: string;
-    credentials?: unknown;
+    signingKey?: unknown;
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -458,8 +448,15 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.targetAppVersion) {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
-  if (payload.credentials !== undefined && payload.credentials !== "vault") {
-    return c.json({ error: "credentials must be vault when set" }, 400);
+  if (
+    payload.signingKey !== undefined &&
+    payload.signingKey !== "foreign" &&
+    payload.signingKey !== "secret"
+  ) {
+    return c.json(
+      { error: "signingKey must be foreign or secret when set" },
+      400,
+    );
   }
   if (
     payload.patchMaxBaseBundles !== undefined &&
@@ -477,7 +474,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
-      credentials: payload.credentials,
+      signingKey: payload.signingKey,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,

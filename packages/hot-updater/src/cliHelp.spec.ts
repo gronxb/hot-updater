@@ -186,6 +186,7 @@ describe("CLI commands", () => {
     expect(put).toContain('choices: "asc-api-key", "android-keystore"');
     expect(put).toContain("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD");
     expect(help("keys", "generate")).not.toContain("--vault");
+    expect(help("keys", "generate")).toContain("--secret [name]");
 
     const missing = run("secrets", "put", "release-keystore");
     expect(missing.status).toBe(1);

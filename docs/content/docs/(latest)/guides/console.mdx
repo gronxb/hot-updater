@@ -98,8 +98,7 @@ prints carries, as an HttpOnly, `SameSite=Strict` cookie once opened. Every
 page and server function needs that session, and the console refuses a
 request whose `Host` is not `localhost`, `127.0.0.1`, or `[::1]` on its port,
 so a site that points its name at your machine reaches nothing, and changes
-sent from another origin. Only the `/_hot-updater/` routes, which check a
-vault token on each request, answer without the session. With a direct database adapter, it does not call the Hot
+sent from another origin. With a direct database adapter, it does not call the Hot
 Updater HTTP handlers at all.
 
 When the configured database is `standaloneRepository`, point its `baseUrl` at

@@ -19,7 +19,6 @@ const OFFICIAL_IDS: ReadonlySet<string> = new Set([
   "insights",
   "apiKeys",
   "remoteConfig",
-  "vault",
 ]);
 
 /** Whether one of Hot Updater's own factories made `plugin`. */

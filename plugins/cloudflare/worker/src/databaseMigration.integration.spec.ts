@@ -9,7 +9,6 @@ import {
   createInsightsModel,
   insights,
   remoteConfig,
-  vault,
 } from "@hot-updater/server/plugins";
 import {
   createBundleEventRowFixture,
@@ -31,16 +30,11 @@ declare module "vitest" {
   }
 }
 
-/**
- * Every data table of the managed migrations: each model's table and the
- * index tables of its multi-valued indexes, for the Worker's plugins and the
- * vault, which only the CLI and Console run.
- */
+/** Every data table of the managed server's migration: each model's table and the index tables of its multi-valued indexes. */
 const dataTables = toolingTargetOf([
   insights(),
   apiKeys(),
   remoteConfig(),
-  vault(),
 ]).schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
@@ -117,14 +111,6 @@ it("runs the migrations a database initialized by an earlier release has not run
       plugins: [insights(), apiKeys(), remoteConfig()],
     }).core.listChannels(),
   ).resolves.toEqual([]);
-  // So does the CLI's and the Console's, whose plugins add vault().
-  await expect(
-    createHotUpdater({
-      database: d1Database(env.DB),
-      storage: createReleaseCatalogTestStorage(),
-      plugins: [insights(), apiKeys(), remoteConfig(), vault()],
-    }).api.vault.list(),
-  ).resolves.toEqual([]);
 });
 
 it("creates every table, the batch guard, the migration records, and the settings the fence checks", async () => {
@@ -150,60 +136,7 @@ it("creates every table, the batch guard, the migration records, and the setting
     "schema.engine",
     "schema.insights",
     "schema.remoteConfig",
-    "schema.vault",
   ]);
-});
-
-it("seals and reveals a vault secret on the Workers runtime from the initialized D1 schema", async () => {
-  const api = createHotUpdater({
-    database: d1Database(env.DB),
-    storage: createReleaseCatalogTestStorage(),
-    plugins: [
-      vault({
-        masterKey: btoa(String.fromCharCode(...new Uint8Array(32).fill(7))),
-      }),
-    ],
-    clientAccess: "public",
-  }).api.vault;
-  const secret = await api.put({
-    name: "deploy",
-    kind: "deploy-credentials",
-    value: { HOT_UPDATER_S3_SECRET: "secret" },
-  });
-  await expect(api.reveal({ id: secret.id, actor: "test" })).resolves.toEqual({
-    HOT_UPDATER_S3_SECRET: "secret",
-  });
-  await expect(api.list()).resolves.toEqual([secret]);
-});
-
-it("rotates the vault's master key on the Workers runtime: rewraps, then opens with the new key alone", async () => {
-  const keyOf = (byte: number) =>
-    btoa(String.fromCharCode(...new Uint8Array(32).fill(byte)));
-  const open = (options: Parameters<typeof vault>[0]) =>
-    createHotUpdater({
-      database: d1Database(env.DB),
-      storage: createReleaseCatalogTestStorage(),
-      plugins: [vault(options)],
-      clientAccess: "public",
-    }).api.vault;
-  const before = open({ masterKey: keyOf(7) });
-  const secret = await before.put({
-    name: "rotated",
-    kind: "generic",
-    value: { A: "1" },
-  });
-
-  const rotating = open({ masterKeys: `next:${keyOf(8)},default:${keyOf(7)}` });
-  let result = await rotating.rewrap({ batch: 1 });
-  while (result.remaining > 0) result = await rotating.rewrap({ batch: 1 });
-
-  const after = open({ masterKeys: `next:${keyOf(8)}` });
-  await expect(after.status()).resolves.toEqual({ locked: false });
-  await expect(after.reveal({ id: secret.id, actor: "test" })).resolves.toEqual(
-    { A: "1" },
-  );
-  await expect(after.keys()).resolves.toMatchObject({ remaining: 0 });
-  await expect(before.status()).resolves.toMatchObject({ locked: true });
 });
 
 it("publishes a Remote Config template and serves it from the initialized D1 schema", async () => {

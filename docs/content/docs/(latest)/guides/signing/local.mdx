@@ -9,29 +9,74 @@ icon: Shield
 [Review the signing rollout](/docs/guides/bundle-signing#choose-and-roll-out-a-signer)
 before adding a signer to an existing Hot Updater project.
 
-Use the built-in local config when you accept responsibility for an exportable
-private key. Enable signing and provide the private key path:
+Local signing fits development and small teams. Its private key can be
+exported: anyone who can read it, a developer, a CI job, or anyone with read
+access to the secret that holds it, can sign bundles every installed app
+accepts. When several people or pipelines deploy, keep the key in
+[AWS KMS](/docs/guides/signing/aws-kms) or
+[Google Cloud KMS](/docs/guides/signing/google-cloud-kms) instead, where it
+never leaves the KMS.
+
+Read the private key through the config's
+[`secrets` adapter](/docs/guides/secrets) with `privateKey`:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  // [!code ++:5]
+  // [!code ++:4]
   signing: {
     enabled: true,
-    privateKeyPath:
-      process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ??
-      "./keys/private-key.pem",
+    privateKey: "secret:bundle-signing-key",
   },
   // ...other config
 });
 ```
 
-Omit `signing` or set `signing: { enabled: false }` to disable signing. A local
-config must set `enabled: true`; other shapes are rejected. Local signing
-derives its public identity only from `privateKeyPath`.
+With the default `env()` adapter, `secret:bundle-signing-key` is the
+`HOT_UPDATER_BUNDLE_SIGNING_KEY` environment variable, in the environment or
+`.env.hotupdater`, holding the RSA private key in PEM. A `.env.hotupdater`
+value is one line: put the PEM in double quotes with `\n` for its line
+breaks. The CLI reads the secret once per run, when it first derives the
+public key or signs, masks it in its output, and keeps it in memory only: it
+is never written to disk. A deploy whose secret is missing fails and names
+where it looked.
 
-Generate the key pair, then back up and protect the exportable private key:
+To keep the key in a file instead, set `privateKeyPath`:
+
+```ts title="hot-updater.config.ts"
+signing: {
+  enabled: true,
+  privateKeyPath: "./keys/private-key.pem",
+},
+```
+
+A local config sets `enabled: true` and exactly one of `privateKey` and
+`privateKeyPath`; other shapes are rejected. Omit `signing` or set
+`signing: { enabled: false }` to disable signing. Local signing derives its
+public identity only from the private key.
+
+## Generate the Key Pair
+
+Generate the key pair and store its private key as the secret:
+
+```bash
+npx hot-updater keys generate --secret
+```
+
+`--secret <name>` names the secret, `bundle-signing-key` by default. When the
+config's `secrets` adapter stores values, the command stores the private key
+there and writes only `keys/public-key.pem`. When the adapter is read-only,
+such as `env()`, it writes `keys/private-key.pem` with owner-only permissions
+and prints the variable to store it as, such as a CI secret; delete the file
+once it is stored. The command never replaces a secret it reads a value
+from, since installed apps reject bundles signed with a new key: follow
+[Key Rotation](/docs/guides/bundle-signing#key-rotation) instead. A
+write-only store, such as
+[GitHub Actions secrets](/docs/guides/secrets-adapters/github-actions) outside
+a workflow, returns no value, so check that the name is unused there first.
+
+Without `--secret`, the command writes both files for `privateKeyPath`:
 
 ```bash
 npx hot-updater keys generate --output ./keys --key-size 4096
@@ -42,10 +87,6 @@ The command creates `private-key.pem` with owner-only permissions and
 output directory for an intentional rotation. Keep the private file out of
 Git, EAS build inputs, artifacts, caches, and logs. Commit the public file and
 reference it from the Expo app plugin when using Expo.
-
-To keep the private key off every machine, `keys generate --vault` stores it
-in your Console's vault instead of writing it, and the Console signs with it:
-see [Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault).
 
 ## Keep the Public Key with the Project
 
@@ -86,19 +127,14 @@ before changing the signer used for installed apps.
 
 ## Deploy from CI
 
-For CI, use a protected secret manager and write the private file
-only outside the workspace for the duration of the trusted signing job. A PEM
-retrieved from a secret manager is still available to that process and is less
-isolated than a KMS or HSM-backed remote signer.
+With `privateKey: "secret:bundle-signing-key"` and `env()`, give the deploy
+job the key as `HOT_UPDATER_BUNDLE_SIGNING_KEY`. No key file is written.
 
-If local PEM custody is required in GitHub Actions, store it as a secret in a
-protected GitHub Environment with required reviewers. Write the secret beneath
-`runner.temp`, keep the checked-in public key path explicit, and remove the
-temporary file even when deployment fails. Avoid a broadly available
-repository or organization secret for production signing authority.
-
-The config above reads `HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH` so this job can
-use its temporary private-key file.
+If local PEM custody is required in GitHub Actions, store the key as a secret
+in a protected GitHub Environment with required reviewers. Avoid a broadly
+available repository or organization secret for production signing
+authority: a key read from any secret store is still exportable, and is less
+isolated than a KMS or HSM-backed signer.
 
 ```yaml title=".github/workflows/deploy.yml"
 on:
@@ -111,9 +147,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Set the temporary signing-key path
-        run: echo "HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH=$RUNNER_TEMP/hot-updater-signing/private-key.pem" >> "$GITHUB_ENV"
-
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -121,20 +154,13 @@ jobs:
 
       - run: npm ci
 
-      - name: Materialize the signing key
-        env:
-          HOT_UPDATER_SIGNING_PRIVATE_KEY: ${{ secrets.HOT_UPDATER_SIGNING_PRIVATE_KEY }}
-        run: |
-          install -m 700 -d "$(dirname "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH")"
-          printf '%s' "$HOT_UPDATER_SIGNING_PRIVATE_KEY" > "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
-          chmod 600 "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
-
       - run: npx --no-install hot-updater deploy -p ios
-
-      - name: Remove the signing key
-        if: always()
-        run: rm -f "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+        env:
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
 ```
+
+With another `secrets` adapter, the job authenticates to that store as its
+guide shows, and the CLI reads `bundle-signing-key` from it.
 
 Prefer GitHub OIDC with a KMS signer when available because the workflow then
 receives short-lived signing authorization instead of exportable key material.

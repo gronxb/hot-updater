@@ -77,8 +77,7 @@ stays subordinate to exact values and actions.
 ## 4. Capability and Data States
 
 - Navigation shows only installed features: Bundles always, Insights when the
-  server runs `insights()`, API keys when it runs `apiKeys()`, and Vault
-  when the console's config lists `vault()` over the database. A
+  server runs `insights()`, and API keys when it runs `apiKeys()`. A
   self-hosted server's admin API serves events but no overview, so there
   Insights opens on All events and hides Overview. Installation history
   remains a drill-down route under the Insights Events view.

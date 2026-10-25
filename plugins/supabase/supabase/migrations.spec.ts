@@ -15,7 +15,6 @@ import {
   createInsightsModel,
   insights,
   remoteConfig,
-  vault,
 } from "@hot-updater/server/plugins";
 import {
   setupDatabaseTestSuite,
@@ -42,15 +41,10 @@ const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
 /**
  * The managed database's schema: core's tables, and those of the plugins the
  * managed Edge Function runs (Insights, API keys, and Remote Config). An
- * official plugin that only the CLI and console run, such as the vault, joins
- * this list, not the function's.
+ * official plugin that only the CLI and console run joins this list, not the
+ * function's.
  */
-const managed = toolingTargetOf([
-  insights(),
-  apiKeys(),
-  remoteConfig(),
-  vault(),
-]);
+const managed = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
 
 /**
  * The migrations a release shipped, by their SHA-256: installed databases ran
@@ -234,7 +228,6 @@ describe("Supabase schema", () => {
       "schema.engine",
       "schema.insights",
       "schema.remoteConfig",
-      "schema.vault",
     ]);
     await db.close();
   });
@@ -284,55 +277,6 @@ describe("Supabase schema", () => {
       ]),
     ).resolves.toMatchObject({ rows: [{ r: [{ rows: [], changes: 0 }] }] });
     await db.close();
-  });
-
-  it("lets the vault, which the Edge Function does not run, store and reveal secrets through the apply RPC", async () => {
-    const hotUpdater = createHotUpdater({
-      database: supabaseDatabase({
-        supabaseUrl: "https://project.supabase.co",
-        supabaseServiceRoleKey: "service-role-key",
-      }),
-      storage: createReleaseCatalogTestStorage(),
-      plugins: [
-        insights(),
-        apiKeys(),
-        remoteConfig(),
-        vault({
-          masterKey: btoa(String.fromCharCode(...new Uint8Array(32).fill(7))),
-        }),
-      ],
-    });
-    const db = await createDatabase();
-    state.db = db;
-    try {
-      const secret = await hotUpdater.api.vault.put({
-        name: "play",
-        kind: "play-service-account",
-        value: { client_email: "ci@example.iam.gserviceaccount.com" },
-        metadata: { project: "example" },
-      });
-      await hotUpdater.api.vault.put({
-        name: "play",
-        kind: "play-service-account",
-        value: { client_email: "release@example.iam.gserviceaccount.com" },
-      });
-
-      await expect(hotUpdater.api.vault.list()).resolves.toMatchObject([
-        { id: secret.id, version: 2, metadata: { project: "example" } },
-      ]);
-      await expect(
-        hotUpdater.api.vault.reveal({ id: secret.id, actor: "test" }),
-      ).resolves.toEqual({
-        client_email: "release@example.iam.gserviceaccount.com",
-      });
-      await hotUpdater.api.vault.remove({ id: secret.id });
-      await expect(
-        db.query("SELECT 1 FROM public.hot_updater_v1_vault_secret_versions"),
-      ).resolves.toMatchObject({ rows: [] });
-    } finally {
-      state.db = undefined;
-      await db.close();
-    }
   });
 
   it("generates a migration that adds a server's plugin tables to the apply RPC", async () => {

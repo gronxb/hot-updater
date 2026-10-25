@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "child_process";
-import { createHash, randomUUID } from "crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import os from "os";
@@ -35,11 +35,7 @@ import {
   PAX_LONG_ASSET_RELATIVE_PATH,
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
-import {
-  importPublished,
-  publishedBin,
-  publishedConsoleServer,
-} from "../published.ts";
+import { importPublished, publishedBin } from "../published.ts";
 import { currentE2eTarget, nativeAppPath } from "../targets.ts";
 import {
   advanceAndroidRestartWait,
@@ -85,6 +81,12 @@ import {
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
 import {
+  PROJECT_SIGNING_KEY_VARIABLE,
+  refusedForMissingSigningSecret,
+  withForeignSigning,
+  withSecretSigning,
+} from "./foreign-signing.ts";
+import {
   assertDependenciesInCheckout,
   NATIVE_BUILD_CHANNEL_PREFIX,
   registerInstalledNativeBuild,
@@ -107,12 +109,6 @@ import {
   shouldProbeUpdateCheckVisibility,
   validateArtifactInfoVisibility,
 } from "./update-check-visibility.ts";
-import {
-  startVaultConsole,
-  vaultDeployEnv,
-  withConsoleSigning,
-  type VaultConsole,
-} from "./vault-console.ts";
 
 // Hot Updater's packages through the entries they publish, as the example
 // app installs them.
@@ -217,11 +213,6 @@ type SessionState = {
 type DeployBundleRequest = {
   bundleProfile?: BundleProfile;
   channel: string;
-  /**
-   * `vault`: the deploy holds only the vault console's URL and a vault
-   * token, and the console signs its bundle.
-   */
-  credentials?: "vault";
   disabled?: boolean;
   diffBaseBundleId?: string;
   forceUpdate?: boolean;
@@ -233,6 +224,13 @@ type DeployBundleRequest = {
   patchMaxBaseBundles?: number;
   rollout?: number;
   safeBundleIds: string[];
+  /**
+   * `foreign`: the deploy signs its bundle with a key generated for it, not
+   * the one whose public key the app embeds. `secret`: the deploy reads the
+   * project's key through `env()` as `secret:bundle-signing-key`, with the
+   * key file moved away.
+   */
+  signingKey?: "foreign" | "secret";
   strategy?: "appVersion" | "fingerprint";
   targetAppVersion: string;
   targetCohorts?: string[];
@@ -786,8 +784,6 @@ async function runLoggedCommand(
     allowFailure?: boolean;
     cwd?: string;
     env?: NodeJS.ProcessEnv;
-    /** Whether the command inherits the controller's environment; true unless false. */
-    inheritEnv?: boolean;
     logPath: string;
     signal?: AbortSignal;
     onInterrupted?: () => void;
@@ -801,10 +797,7 @@ async function runLoggedCommand(
   const child = spawn(command, args, {
     cwd: options.cwd,
     detached: true,
-    env:
-      options.inheritEnv === false
-        ? options.env
-        : { ...process.env, ...options.env },
+    env: { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let childExited = false;
@@ -6487,19 +6480,27 @@ async function deployFixtureBundle(
       // shard's builds, reads them.
       return withDeployProcessLock(signal, async () => {
         const deployStartedAt = Date.now();
-        const deploy = (env: NodeJS.ProcessEnv, inheritEnv: boolean) =>
+        const deploy = (
+          options: {
+            allowFailure?: boolean;
+            env?: NodeJS.ProcessEnv;
+            logPath?: string;
+          } = {},
+        ) =>
           runLoggedCommand("node", args, {
+            allowFailure: options.allowFailure,
             cwd: fixtureSession.exampleDir,
-            env,
-            inheritEnv,
-            logPath: deployLogPath,
+            env: { ...getHotUpdaterControlEnv(), ...options.env },
+            logPath: options.logPath ?? deployLogPath,
             signal,
             onInterrupted: context?.markQuiescenceUncertain,
           });
         const output =
-          request.credentials === "vault"
-            ? await withVaultDeployInputs(deploy)
-            : await deploy(getHotUpdaterControlEnv(), true);
+          request.signingKey === "foreign"
+            ? await withForeignSigningKey(() => deploy())
+            : request.signingKey === "secret"
+              ? await withSecretSigningKey(deploy, deployLogPath)
+              : await deploy();
         deployDurationMs = Date.now() - deployStartedAt;
         return output;
       });
@@ -6546,12 +6547,14 @@ async function deployFixtureBundle(
     };
   }
   let bundle = await fetchProviderBundleById(bundleId);
+  // A refused foreign-key bundle proves the app checks the key only when
+  // the bundle carries a signature at all.
   if (
-    request.credentials === "vault" &&
+    request.signingKey !== undefined &&
     !bundle.manifestFileHash?.startsWith("sig:")
   ) {
     throw new Error(
-      `The vault deploy's bundle ${bundleId} carries no signature: its manifest hash is ${bundle.manifestFileHash}.`,
+      `The ${request.signingKey}-key deploy's bundle ${bundleId} carries no signature: its manifest hash is ${bundle.manifestFileHash}.`,
     );
   }
   if (shouldWaitForUpdateCheckVisibility(request)) {
@@ -7865,121 +7868,68 @@ async function writeSummary({
   return {};
 }
 
-/** The console the vault scenario starts, and stops when it ends. */
-let vaultConsole: VaultConsole | null = null;
-
-const VAULT_CONSOLE_PROJECT_DIR = path.join(
-  REPO_DIR,
-  "examples-server/hono-kysely-pglite/vault-console",
-);
-
 /**
- * Starts a console with `vault()` and a master key, and stores the
- * checkout's `.env.hotupdater` variables and bundle signing key in its
- * vault. A deploy with `credentials: "vault"` then holds only the console's
- * URL and a vault token.
+ * Runs a deploy whose bundle is signed with a key generated for it, which
+ * the app's embedded public key does not match: the config signs with that
+ * key and reads no native public key (see `withForeignSigning`). The
+ * checkout's own key is untouched, and the config is restored when the
+ * deploy ends.
  */
-async function startVaultConsoleFixture(signal?: AbortSignal) {
-  await stopVaultConsoleFixture();
-  const workDir = path.join(
-    fixtureSession.resultsDir,
-    `vault-console-${randomUUID()}`,
+async function withForeignSigningKey(deploy: () => Promise<string>) {
+  const keyDir = await fsPromises.mkdtemp(
+    path.join(fixtureSession.resultsDir, "foreign-signing-key-"),
   );
-  // The signing key and the env file are this checkout's inputs, which
-  // deploys rewrite while they hold the lock.
-  const { envFileSource, privateKeyPath } = await withCheckoutInputsLock(
-    "vault console",
-    signal,
-    async () => {
-      const keyPath = path.join(
-        workDir,
-        path.basename(SIGNING_PRIVATE_KEY_RELATIVE_PATH),
-      );
-      await fsPromises.mkdir(workDir, { recursive: true });
-      await fsPromises.copyFile(
-        path.join(fixtureSession.exampleDir, SIGNING_PRIVATE_KEY_RELATIVE_PATH),
-        keyPath,
-      );
-      return {
-        envFileSource: await fsPromises.readFile(
-          fixtureSession.envSourceFile,
-          "utf8",
-        ),
-        privateKeyPath: keyPath,
-      };
-    },
-  );
-  let started: VaultConsole;
-  try {
-    started = await startVaultConsole({
-      cliPath: HOT_UPDATER_CLI_PATH,
-      consoleServerPath: publishedConsoleServer(),
-      envFileSource,
-      privateKeyPath,
-      projectDir: VAULT_CONSOLE_PROJECT_DIR,
-      workDir,
-      run: (args, options) =>
-        runLoggedCommand("node", args, {
-          cwd: options.cwd,
-          env: options.env,
-          logPath: path.join(workDir, `${options.logName}.log`),
-          signal,
-        }),
-    });
-  } finally {
-    // The vault holds the key now; the console signs with it.
-    await fsPromises.rm(privateKeyPath, { force: true });
-  }
-  vaultConsole = started;
-  logE2eFixture("vault console started", {
-    url: started.url,
-    workDir: path.relative(REPO_DIR, workDir),
+  const privateKeyPath = path.join(keyDir, "private-key.pem");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
   });
-  return { consoleUrl: started.url };
-}
-
-async function stopVaultConsoleFixture() {
-  const started = vaultConsole;
-  vaultConsole = null;
-  if (started) {
-    await started.stop();
-    logE2eFixture("vault console stopped", { url: started.url });
-  }
-  return {};
-}
-
-/**
- * Runs a deploy whose credentials and signature come from the vault alone:
- * the config signs with `remoteSigning` at the console, `.env.hotupdater` is
- * what `secrets import` left, the local private key is away, and the
- * environment holds none of the env file's variables. Restores all three
- * when the deploy ends.
- */
-async function withVaultDeployInputs(
-  deploy: (env: NodeJS.ProcessEnv, inheritEnv: boolean) => Promise<string>,
-) {
-  const vault = vaultConsole;
-  if (!vault) {
-    throw new Error(
-      "A deploy with the vault's credentials needs /e2e/jobs/start-vault-console first.",
-    );
-  }
+  await fsPromises.writeFile(privateKeyPath, privateKey, { mode: 0o600 });
   const configSource = await fsPromises.readFile(
     fixtureSession.configSourceFile,
     "utf8",
   );
-  const envSource = await fsPromises.readFile(
-    fixtureSession.envSourceFile,
-    "utf8",
-  );
+  try {
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withForeignSigning(configSource, privateKeyPath),
+    );
+    return await deploy();
+  } finally {
+    await fsPromises.writeFile(fixtureSession.configSourceFile, configSource);
+    await fsPromises.rm(keyDir, { force: true, recursive: true });
+  }
+}
+
+/**
+ * Runs a deploy that reads the project's private key through `env()` as
+ * `secret:bundle-signing-key`, with the key file moved away so no path can
+ * supply it. A deploy without the variable must first be refused for it,
+ * and the deploy with it must sign with the key the app embeds, which the
+ * CLI checks against the native files and the app checks on install. The
+ * config and the key file are restored when the deploy ends.
+ */
+async function withSecretSigningKey(
+  deploy: (options?: {
+    allowFailure?: boolean;
+    env?: NodeJS.ProcessEnv;
+    logPath?: string;
+  }) => Promise<string>,
+  deployLogPath: string,
+) {
   const privateKeyPath = path.join(
     fixtureSession.exampleDir,
     SIGNING_PRIVATE_KEY_RELATIVE_PATH,
   );
-  const privateKeyAside = `${privateKeyPath}.e2e-vault`;
+  const privateKey = await fsPromises.readFile(privateKeyPath, "utf8");
+  const privateKeyAside = `${privateKeyPath}.e2e-secret`;
+  const configSource = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
   // Each input is restored only once changed, and even when another fails
-  // to restore, so no later deploy of this checkout runs on the vault's
-  // inputs.
+  // to restore, so no later deploy of this checkout runs without its key.
   const restores: Array<() => Promise<void>> = [];
   try {
     restores.push(() =>
@@ -7987,21 +7937,29 @@ async function withVaultDeployInputs(
     );
     await fsPromises.writeFile(
       fixtureSession.configSourceFile,
-      withConsoleSigning(configSource, vault.url),
+      withSecretSigning(configSource),
     );
-    restores.push(() =>
-      fsPromises.writeFile(fixtureSession.envSourceFile, envSource),
-    );
-    await fsPromises.writeFile(fixtureSession.envSourceFile, vault.importedEnv);
     await fsPromises.rename(privateKeyPath, privateKeyAside);
     restores.push(() => fsPromises.rename(privateKeyAside, privateKeyPath));
-    return await deploy(
-      {
-        ...vaultDeployEnv(process.env, envSource, vault),
-        ...getHotUpdaterControlEnv(),
-      },
-      false,
-    );
+
+    const refusedLogPath = deployLogPath.replace(/\.log$/u, "-no-secret.log");
+    const refused = await deploy({
+      allowFailure: true,
+      env: { [PROJECT_SIGNING_KEY_VARIABLE]: "" },
+      logPath: refusedLogPath,
+    });
+    if (
+      !refusedForMissingSigningSecret(refused) ||
+      extractDeployReleaseId(refused)
+    ) {
+      throw new Error(
+        `A deploy without ${PROJECT_SIGNING_KEY_VARIABLE} was not refused for the missing signing secret. See ${refusedLogPath}`,
+      );
+    }
+
+    return await deploy({
+      env: { [PROJECT_SIGNING_KEY_VARIABLE]: privateKey },
+    });
   } finally {
     const restored = await Promise.allSettled(
       restores.map((restore) => restore()),
@@ -8015,7 +7973,6 @@ async function withVaultDeployInputs(
 
 async function cleanup() {
   remoteAssetProxyTargets.clear();
-  await stopVaultConsoleFixture();
   if (!fixtureSession.appBackupPath) {
     return {};
   }
@@ -8085,14 +8042,6 @@ export function startBootstrapJob(input: { deviceId?: string } = {}) {
 
 export function startDeployBundleJob(request: DeployBundleRequest) {
   return createJob((context) => deployFixtureBundle(request, context));
-}
-
-export function startStartVaultConsoleJob() {
-  return createJob((context) => startVaultConsoleFixture(context.signal));
-}
-
-export async function handleStopVaultConsole() {
-  return stopVaultConsoleFixture();
 }
 
 export function startPatchReleaseJob(request: PatchReleaseRequest) {

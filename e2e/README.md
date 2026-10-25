@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 38 OTA, Remote Config, Console Insights, and vault scenarios locally and in the E2E bot
+Run the same 38 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -63,29 +63,25 @@ runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
 
-## Vault deploy
+## Bundle signing
 
-`vault-signed-ota` deploys as CI does with the
-[console's vault](<../docs/content/docs/(latest)/guides/vault.mdx>). The
-control server starts a console from
-[`examples-server/hono-kysely-pglite/vault-console`](../examples-server/hono-kysely-pglite/vault-console)
-with `vault()` and a random master key, over a PGlite database of its own
-under the run's results. Before the console starts, `hot-updater db migrate`
-creates the vault's tables and `hot-updater secrets token create` issues a
-write token and a token that reads `deploy-credentials` and signs with
-`bundle-signing-key`. Through the console, `secrets put` stores the example's
-signing key and `secrets import` moves a copy of `.env.hotupdater` into the
-vault.
-
-The deploy then holds only `HOT_UPDATER_CONSOLE_URL` and that token, also as
-`HOT_UPDATER_SIGNING_TOKEN`. While it runs, the config signs with
-`remoteSigning` at the console, `.env.hotupdater` is what `secrets import`
-left, the local private key is moved away, and the environment holds none of
-the env file's variables. The deploy fails unless its bundle carries a
-signature, and the device applies it only after it verifies that signature
-with its embedded public key. The console needs no profile of its own, so the
-scenario runs in every profile and in the bot unchanged. Its logs, under the
-results directory, include the tokens it issued.
+Every deploy signs its bundle with the example's `keys/private-key.pem`, and
+the app verifies each signature with the public key it embeds.
+`foreign-signing-key-refused` checks that verification on the device. Its
+first deploy signs with an RSA key generated for that deploy: the config
+points `signing` at the new key and lists no Info.plist or
+AndroidManifest.xml, so the CLI has no native public key to compare it with.
+The app must refuse that update with a signature verification error and keep
+running its built-in bundle. The same bundle deployed again with the
+example's own key then installs, so only the key differs between the refused
+update and the installed one. That second deploy reads the key as
+`secret:bundle-signing-key` through `env()`, from
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, with `keys/private-key.pem` moved away: the
+control server first runs it without the variable and fails unless the CLI
+refuses it for the missing secret, and the installed update proves the key
+read from the secret is the one the app embeds. The control server fails
+either deploy unless its bundle carries a signature, and restores the config
+and the key file when the deploy ends.
 
 ## Targets
 

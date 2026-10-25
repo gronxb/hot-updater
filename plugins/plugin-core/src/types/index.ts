@@ -476,16 +476,34 @@ export interface SecretsAdapter {
   readonly describe?: (name: string) => string;
 }
 
-/** Built-in local PEM signing. */
+/**
+ * Built-in local PEM signing, with the RSA private key from a file or from
+ * the config's `secrets` adapter.
+ */
 export type LocalSigningConfig =
   | {
       readonly enabled: true;
       /** Path to an RSA private key in PEM format. */
       readonly privateKeyPath: string;
+      readonly privateKey?: never;
+    }
+  | {
+      readonly enabled: true;
+      /**
+       * `secret:<name>`, the RSA private key in PEM format that the config's
+       * `secrets` adapter holds as `<name>`. The CLI reads it once per run,
+       * when it first signs or derives the public key, and keeps it in
+       * memory only.
+       *
+       * @example { enabled: true, privateKey: "secret:bundle-signing-key" }
+       */
+      readonly privateKey: `secret:${string}`;
+      readonly privateKeyPath?: never;
     }
   | {
       readonly enabled: false;
       readonly privateKeyPath?: string;
+      readonly privateKey?: `secret:${string}`;
     };
 
 /** Local config or signing adapter. Signing is disabled when omitted. */
@@ -615,7 +633,7 @@ export type ConfigInput = {
    * ```ts
    * signing: {
    *   enabled: true,
-   *   privateKeyPath: './keys/private-key.pem',
+   *   privateKey: "secret:bundle-signing-key",
    * }
    * ```
    */

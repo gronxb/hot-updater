@@ -1,8 +1,7 @@
 /**
  * The variable `hot-updater console` passes the console it starts its
  * per-run session secret in. Without it, the local console serves no page
- * and no server function, only the `/_hot-updater/` routes, which
- * authenticate each request themselves.
+ * and no server function.
  */
 export const LOCAL_CONSOLE_SESSION_ENV = "HOT_UPDATER_CONSOLE_SESSION";
 
@@ -12,9 +11,6 @@ export const LOCAL_CONSOLE_SESSION_PARAM = "hot-updater-session";
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-
-/** Routes that authenticate each request themselves, by vault token. */
-const SELF_AUTHENTICATED_PREFIX = "/_hot-updater/";
 
 export interface LocalConsoleGuardOptions {
   /** The run's session secret; without one, every page is refused. */
@@ -108,7 +104,6 @@ const refuse = (status: 401 | 403, message: string) =>
  * - a `Host` that is not this machine on the console's port is refused, so
  *   a site that rebinds its name to 127.0.0.1 reaches nothing;
  * - a request that changes something from another origin is refused;
- * - the `/_hot-updater/` routes pass, as they authenticate by vault token;
  * - the link `hot-updater console` prints carries the run's session secret,
  *   which becomes an HttpOnly, SameSite=Strict cookie, and every other page
  *   and server function needs that cookie, so another user of the machine
@@ -143,8 +138,6 @@ export const guardLocalConsoleRequest = (
   }
 
   const url = new URL(request.url);
-  if (url.pathname.startsWith(SELF_AUTHENTICATED_PREFIX)) return undefined;
-
   const name = cookieName(port);
   const given = url.searchParams.get(LOCAL_CONSOLE_SESSION_PARAM);
   if (session && given !== null && sameSecret(given, session)) {

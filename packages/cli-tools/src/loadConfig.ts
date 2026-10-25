@@ -246,8 +246,8 @@ const resolveConfig = (
   scopes: readonly SecretsScope[],
 ): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
-  const signing = normalizeSigningConfig(mergedConfig.signing);
   const secrets = mergedConfig.secrets ?? envSecrets();
+  const signing = normalizeSigningConfig(mergedConfig.signing, { secrets });
   for (const scope of scopes) scope.secrets ??= secrets;
   setConfiguredSecrets(secrets);
   return {

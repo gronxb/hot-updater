@@ -15,16 +15,11 @@ import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as PreviewRouteImport } from './routes/preview'
 import { Route as RemoteConfigRouteImport } from './routes/remote-config'
-import { Route as VaultRouteImport } from './routes/vault'
-import { Route as HotUpdaterSigningRouteImport } from './routes/[_]hot-updater/signing'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as HotUpdaterPreviewChannelQrRouteImport } from './routes/[_]hot-updater/preview/channel-qr'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
-import { Route as HotUpdaterVaultV1ResolveRouteImport } from './routes/[_]hot-updater/vault/v1/resolve'
-import { Route as HotUpdaterVaultV1SecretsRouteImport } from './routes/[_]hot-updater/vault/v1/secrets'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
 import { Route as ApiNativeBuildsBuildIdDownloadRouteImport } from './routes/api/native-builds/$buildId/download'
-import { Route as HotUpdaterVaultV1SecretsNameRouteImport } from './routes/[_]hot-updater/vault/v1/secrets.$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -56,16 +51,6 @@ const RemoteConfigRoute = RemoteConfigRouteImport.update({
   path: '/remote-config',
   getParentRoute: () => rootRouteImport,
 } as any)
-const VaultRoute = VaultRouteImport.update({
-  id: '/vault',
-  path: '/vault',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HotUpdaterSigningRoute = HotUpdaterSigningRouteImport.update({
-  id: '/_hot-updater/signing',
-  path: '/_hot-updater/signing',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
   id: '/insights_/distribution',
   path: '/insights/distribution',
@@ -82,18 +67,6 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HotUpdaterVaultV1ResolveRoute =
-  HotUpdaterVaultV1ResolveRouteImport.update({
-    id: '/_hot-updater/vault/v1/resolve',
-    path: '/_hot-updater/vault/v1/resolve',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const HotUpdaterVaultV1SecretsRoute =
-  HotUpdaterVaultV1SecretsRouteImport.update({
-    id: '/_hot-updater/vault/v1/secrets',
-    path: '/_hot-updater/vault/v1/secrets',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiBundlesBundleIdDownloadRoute =
   ApiBundlesBundleIdDownloadRouteImport.update({
     id: '/api/bundles/$bundleId/download',
@@ -106,12 +79,6 @@ const ApiNativeBuildsBuildIdDownloadRoute =
     path: '/api/native-builds/$buildId/download',
     getParentRoute: () => rootRouteImport,
   } as any)
-const HotUpdaterVaultV1SecretsNameRoute =
-  HotUpdaterVaultV1SecretsNameRouteImport.update({
-    id: '/$name',
-    path: '/$name',
-    getParentRoute: () => HotUpdaterVaultV1SecretsRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -120,16 +87,11 @@ export interface FileRoutesByFullPath {
   '/installations': typeof InstallationsRoute
   '/preview': typeof PreviewRoute
   '/remote-config': typeof RemoteConfigRoute
-  '/vault': typeof VaultRoute
-  '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
-  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -138,16 +100,11 @@ export interface FileRoutesByTo {
   '/installations': typeof InstallationsRoute
   '/preview': typeof PreviewRoute
   '/remote-config': typeof RemoteConfigRoute
-  '/vault': typeof VaultRoute
-  '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
-  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -157,16 +114,11 @@ export interface FileRoutesById {
   '/installations': typeof InstallationsRoute
   '/preview': typeof PreviewRoute
   '/remote-config': typeof RemoteConfigRoute
-  '/vault': typeof VaultRoute
-  '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights_/distribution': typeof InsightsDistributionRoute
   '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
-  '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
-  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -177,16 +129,11 @@ export interface FileRouteTypes {
     | '/installations'
     | '/preview'
     | '/remote-config'
-    | '/vault'
-    | '/_hot-updater/signing'
     | '/insights/distribution'
     | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
-    | '/_hot-updater/vault/v1/resolve'
-    | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
-    | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -195,16 +142,11 @@ export interface FileRouteTypes {
     | '/installations'
     | '/preview'
     | '/remote-config'
-    | '/vault'
-    | '/_hot-updater/signing'
     | '/insights/distribution'
     | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
-    | '/_hot-updater/vault/v1/resolve'
-    | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
-    | '/_hot-updater/vault/v1/secrets/$name'
   id:
     | '__root__'
     | '/'
@@ -213,16 +155,11 @@ export interface FileRouteTypes {
     | '/installations'
     | '/preview'
     | '/remote-config'
-    | '/vault'
-    | '/_hot-updater/signing'
     | '/insights_/distribution'
     | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
-    | '/_hot-updater/vault/v1/resolve'
-    | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
-    | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -232,13 +169,9 @@ export interface RootRouteChildren {
   InstallationsRoute: typeof InstallationsRoute
   PreviewRoute: typeof PreviewRoute
   RemoteConfigRoute: typeof RemoteConfigRoute
-  VaultRoute: typeof VaultRoute
-  HotUpdaterSigningRoute: typeof HotUpdaterSigningRoute
   InsightsDistributionRoute: typeof InsightsDistributionRoute
   HotUpdaterPreviewChannelQrRoute: typeof HotUpdaterPreviewChannelQrRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  HotUpdaterVaultV1ResolveRoute: typeof HotUpdaterVaultV1ResolveRoute
-  HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRouteWithChildren
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
   ApiNativeBuildsBuildIdDownloadRoute: typeof ApiNativeBuildsBuildIdDownloadRoute
 }
@@ -287,20 +220,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RemoteConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/vault': {
-      id: '/vault'
-      path: '/vault'
-      fullPath: '/vault'
-      preLoaderRoute: typeof VaultRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_hot-updater/signing': {
-      id: '/_hot-updater/signing'
-      path: '/_hot-updater/signing'
-      fullPath: '/_hot-updater/signing'
-      preLoaderRoute: typeof HotUpdaterSigningRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/insights_/distribution': {
       id: '/insights_/distribution'
       path: '/insights/distribution'
@@ -322,20 +241,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_hot-updater/vault/v1/resolve': {
-      id: '/_hot-updater/vault/v1/resolve'
-      path: '/_hot-updater/vault/v1/resolve'
-      fullPath: '/_hot-updater/vault/v1/resolve'
-      preLoaderRoute: typeof HotUpdaterVaultV1ResolveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_hot-updater/vault/v1/secrets': {
-      id: '/_hot-updater/vault/v1/secrets'
-      path: '/_hot-updater/vault/v1/secrets'
-      fullPath: '/_hot-updater/vault/v1/secrets'
-      preLoaderRoute: typeof HotUpdaterVaultV1SecretsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/bundles/$bundleId/download': {
       id: '/api/bundles/$bundleId/download'
       path: '/api/bundles/$bundleId/download'
@@ -350,29 +255,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNativeBuildsBuildIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_hot-updater/vault/v1/secrets/$name': {
-      id: '/_hot-updater/vault/v1/secrets/$name'
-      path: '/$name'
-      fullPath: '/_hot-updater/vault/v1/secrets/$name'
-      preLoaderRoute: typeof HotUpdaterVaultV1SecretsNameRouteImport
-      parentRoute: typeof HotUpdaterVaultV1SecretsRoute
-    }
   }
 }
-
-interface HotUpdaterVaultV1SecretsRouteChildren {
-  HotUpdaterVaultV1SecretsNameRoute: typeof HotUpdaterVaultV1SecretsNameRoute
-}
-
-const HotUpdaterVaultV1SecretsRouteChildren: HotUpdaterVaultV1SecretsRouteChildren =
-  {
-    HotUpdaterVaultV1SecretsNameRoute: HotUpdaterVaultV1SecretsNameRoute,
-  }
-
-const HotUpdaterVaultV1SecretsRouteWithChildren =
-  HotUpdaterVaultV1SecretsRoute._addFileChildren(
-    HotUpdaterVaultV1SecretsRouteChildren,
-  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -381,13 +265,9 @@ const rootRouteChildren: RootRouteChildren = {
   InstallationsRoute: InstallationsRoute,
   PreviewRoute: PreviewRoute,
   RemoteConfigRoute: RemoteConfigRoute,
-  VaultRoute: VaultRoute,
-  HotUpdaterSigningRoute: HotUpdaterSigningRoute,
   InsightsDistributionRoute: InsightsDistributionRoute,
   HotUpdaterPreviewChannelQrRoute: HotUpdaterPreviewChannelQrRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
-  HotUpdaterVaultV1ResolveRoute: HotUpdaterVaultV1ResolveRoute,
-  HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRouteWithChildren,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
   ApiNativeBuildsBuildIdDownloadRoute: ApiNativeBuildsBuildIdDownloadRoute,
 }

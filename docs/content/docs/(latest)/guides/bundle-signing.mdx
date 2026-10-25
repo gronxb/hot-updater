@@ -14,36 +14,55 @@ Signing authenticates artifact content. It does not authorize release
 targeting, prevent rollback to an older correctly signed artifact, or replace
 review and access controls around publishing.
 
-The private key is the deployment authority. Local PEM signing is the standard
-baseline when the deploy environment protects that key. When your threat model
-requires stronger custody, prefer a remote signing service where the private
-key is non-exportable and the deploy process submits only a message to sign.
+The private key is the deployment authority: whoever can use it can publish
+bundles every installed app accepts. Pick the signer by who deploys:
 
-| Signer                                                                   | Use case            | Custody                                                 |
-| ------------------------------------------------------------------------ | ------------------- | ------------------------------------------------------- |
-| [Local PEM](/docs/guides/signing/local)                                  | Standard baseline   | Exportable key managed by your deploy environment       |
-| [AWS KMS](/docs/guides/signing/aws-kms)                                  | Hardened production | Non-exportable AWS KMS key                              |
-| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms)                | Hardened production | Non-exportable Google Cloud KMS key                     |
-| [Remote endpoint](/docs/guides/signing/remote)                           | Service-dependent   | Defined by the compatible signing service               |
-| [Console vault](/docs/guides/signing/remote#sign-with-the-console-vault) | Self-hosted Console | Key sealed in your database, opened only by the Console |
+- Teams: keep the key in [AWS KMS](/docs/guides/signing/aws-kms) or
+  [Google Cloud KMS](/docs/guides/signing/google-cloud-kms). The key cannot
+  be exported; deploys send only the message to sign, with short-lived
+  credentials such as GitHub Actions OIDC, and the KMS logs every use.
+- Your own signing service: use [Remote Signing](/docs/guides/signing/remote),
+  whose service keeps the key and its access controls.
+- Development and small teams: use [Local PEM](/docs/guides/signing/local),
+  with the key read from the config's [`secrets` adapter](/docs/guides/secrets)
+  as `secret:<name>`, or from a file. The key is exportable: anyone who can
+  read the secret or the file can sign.
 
-Local PEM signing is the normal industry baseline used by systems such as Expo
-and CodePush when the deploy environment protects the private key. KMS signing
-is a hardened option when non-exportable custody and workload identity justify
-the additional provider setup. GitHub Actions is an identity source rather
-than a signing service; use its OIDC token with a compatible KMS signer.
+| Signer                                                    | Use case                      | Custody                                         |
+| --------------------------------------------------------- | ----------------------------- | ----------------------------------------------- |
+| [AWS KMS](/docs/guides/signing/aws-kms)                   | Teams, production             | Non-exportable AWS KMS key                      |
+| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms) | Teams, production             | Non-exportable Google Cloud KMS key             |
+| [Remote endpoint](/docs/guides/signing/remote)            | Your own signing service      | Defined by the compatible signing service       |
+| [Local PEM](/docs/guides/signing/local)                   | Development and small teams   | Exportable key in a secrets store or a file     |
+
+GitHub Actions is an identity source rather than a signing service; use its
+OIDC token with a compatible KMS signer.
+
+## Signing and Secrets
+
+`signing` and `secrets` are separate slots of `hot-updater.config.ts`. A
+`secrets` adapter returns values, such as a deploy token or a native build
+credential, to the CLI. A `signing` adapter signs a 32-byte digest, and the
+KMS and remote signers do it with a key that never leaves the signer. Keep a
+team's bundle signing key in a KMS, not in a secrets store: AWS Secrets
+Manager and AWS KMS, or Google Secret Manager and Google Cloud KMS, are
+different services for this reason.
+
+Only local PEM signing reads a key from `secrets`, when its config sets
+`privateKey: "secret:<name>"`. The CLI then holds the key in memory for the
+run, so it is as safe as the store and every machine that reads it.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
 
 ## Choose and Roll Out a Signer
 
-Signing is independent of storage and database selection. Start with the
-[built-in local config](/docs/guides/signing/local) when exportable-key custody fits
-your threat model. Cloudflare and Supabase users can also call AWS KMS or
-Google Cloud KMS directly from the protected deploy job; no Worker or Edge
-Function proxy is required. Use `remoteSigning` when you intentionally operate
-a compatible signing service with its own access controls.
+Signing is independent of storage and database selection. Cloudflare and
+Supabase users call AWS KMS or Google Cloud KMS directly from the protected
+deploy job; no Worker or Edge Function proxy is required. Use `remoteSigning`
+when you intentionally operate a compatible signing service with its own
+access controls, and the [built-in local config](/docs/guides/signing/local)
+when exportable-key custody fits your threat model.
 
 `hot-updater init` does not create or enable a signing key. Signing remains an
 explicit opt-in:
@@ -73,11 +92,6 @@ configuration. It cannot inspect already installed binaries. A successful
 deploy check does not replace releasing the native app with the matching public
 key before targeting it with signed updates.
 
-## Local Private Key
-
-Use [Local PEM Signing](/docs/guides/signing/local) to generate a key pair,
-configure local signing, and deploy from a protected CI job.
-
 ## Hardened: AWS KMS
 
 <a id="1-create-the-signing-key" />
@@ -98,6 +112,11 @@ and pin a key version, configure credentials, and export its public key.
 
 Use [Remote Signing](/docs/guides/signing/remote) for the RSA-SHA256 message
 contract, a compatible service implementation, and signing request behavior.
+
+## Local Private Key
+
+Use [Local PEM Signing](/docs/guides/signing/local) to generate a key pair,
+read it from a secret or a file, and deploy from a protected CI job.
 
 ## Expo and EAS Build
 
@@ -238,15 +257,11 @@ it with unsigned bundles.
 
 ## Console
 
-Configure signing through the Hot Updater CLI or your signing provider. A
-Console does not inspect signing configuration. A Console running
-[`vault()`](/docs/guides/console-deployment/vault) can hold a bundle signing
-key and sign with it at `/_hot-updater/signing`, which `remoteSigning`
-reaches with a vault token: see
-[Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault).
-Otherwise a Console needs no signing credentials or permission to sign. The
-deploy command verifies provider and signature health inside the trusted
-signing environment.
+Configure signing and manage keys through the Hot Updater CLI or your signing
+provider. Local and hosted Consoles do not inspect signing configuration or
+manage signing keys. A hosted Console does not need signing credentials or
+permission to sign. The deploy command verifies provider and signature health
+inside the trusted signing environment.
 
 ## Configuration States
 

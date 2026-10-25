@@ -116,30 +116,6 @@ CREATE TABLE IF NOT EXISTS "remote_config_active" ("id" TEXT NOT NULL, "version"
 
 CREATE TABLE IF NOT EXISTS "remote_config_versions" ("version" INTEGER NOT NULL, "template" TEXT NOT NULL, "description" TEXT, "update_type" TEXT NOT NULL, "rollback_source" INTEGER, "created_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("version"));
 
-CREATE TABLE IF NOT EXISTS "vault_secrets" ("id" TEXT NOT NULL, "name" TEXT NOT NULL, "kind" TEXT NOT NULL, "current_version" INTEGER NOT NULL, "metadata" TEXT NOT NULL, "created_at_ms" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "deleted_at_ms" INTEGER, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
-
-CREATE INDEX IF NOT EXISTS "vault_secrets_byName" ON "vault_secrets" ("name", "id");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "vault_secrets_name" ON "vault_secrets" ("name");
-
-CREATE TABLE IF NOT EXISTS "vault_secret_versions" ("secret_id" TEXT NOT NULL, "version" INTEGER NOT NULL, "kid" TEXT NOT NULL, "wrapped_dek" TEXT NOT NULL, "iv" TEXT NOT NULL, "ciphertext" TEXT NOT NULL, "created_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("secret_id", "version"));
-
-CREATE INDEX IF NOT EXISTS "vault_secret_versions_byKid" ON "vault_secret_versions" ("kid", "secret_id", "version");
-
-CREATE TABLE IF NOT EXISTS "vault_tokens" ("id" TEXT NOT NULL, "hash" TEXT NOT NULL, "name" TEXT NOT NULL, "prefix" TEXT NOT NULL, "scope" TEXT NOT NULL, "expires_at_ms" INTEGER, "created_at_ms" INTEGER NOT NULL, "revoked_at_ms" INTEGER, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
-
-CREATE INDEX IF NOT EXISTS "vault_tokens_byCreated" ON "vault_tokens" ("created_at_ms", "id");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "vault_tokens_hash" ON "vault_tokens" ("hash");
-
-CREATE TABLE IF NOT EXISTS "vault_audit" ("id" TEXT NOT NULL, "at_ms" INTEGER NOT NULL, "actor" TEXT NOT NULL, "action" TEXT NOT NULL, "secret_id" TEXT, "outcome" TEXT NOT NULL, "context" TEXT NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
-
-CREATE INDEX IF NOT EXISTS "vault_audit_byTime" ON "vault_audit" ("at_ms", "id");
-
-CREATE INDEX IF NOT EXISTS "vault_audit_bySecret" ON "vault_audit" ("secret_id", "at_ms", "id");
-
-CREATE INDEX IF NOT EXISTS "vault_audit_byActor" ON "vault_audit" ("actor", "at_ms", "id");
-
 CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
@@ -151,5 +127,3 @@ INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schem
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.remoteConfig', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
-
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.vault', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

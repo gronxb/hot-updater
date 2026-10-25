@@ -10,10 +10,10 @@ Hot Updater talks to bundlers, cloud services, and databases through two kinds
 of objects:
 
 - An **adapter** fills one slot of a configuration: the `build`, `storage`,
-  `database`, or `signing` of `hot-updater.config.ts`, and the `database` and
-  `storage` of the server's `createHotUpdater`. A configuration has one adapter
-  per slot; the server's `storage` takes a list so it can read Bundles that
-  different adapters stored.
+  `database`, `secrets`, or `signing` of `hot-updater.config.ts`, and the
+  `database` and `storage` of the server's `createHotUpdater`. A configuration
+  has one adapter per slot; the server's `storage` takes a list so it can read
+  Bundles that different adapters stored.
 - A **plugin** is one entry of a list: the `plugins` of `createHotUpdater`, of
   `hot-updater.config.ts`, or of the app's `HotUpdater.init`, or an integration
   that wraps a build adapter. A configuration can have any number.
@@ -42,20 +42,18 @@ the app. Its prebuilt server runs the same server plugins.
 Keep the config's list the same as the server's, and a deployed Console's
 `console.config.ts`, which mirrors the server too. When the server adds or
 drops a plugin, change each list with it, or import one list from a module
-every project can reach. The one exception is `vault()`: it goes in
-`hot-updater.config.ts` and `console.config.ts`, never in the server, as
-[Set up the vault](/docs/guides/vault#add-vault-to-the-console-and-the-cli)
-explains.
+every project can reach.
 
-| Kind                                       | What it does                                                                               | Runs in                                                                                                                                                                                      | Official                                                                                                                                                                           | Write one                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [Build adapter](#build-adapter)            | Bundles the app's JavaScript for `hot-updater deploy`                                      | CLI                                                                                                                                                                                          | [Bare](/docs/build-adapters/bare), [Expo](/docs/build-adapters/expo), [Rock](/docs/build-adapters/rock)                                                                            | `BuildAdapter` from `@hot-updater/plugin-core`                       |
-| [Storage adapter](#storage-adapter)        | Stores bundle artifacts and resolves their download URLs                                   | CLI, Console, server                                                                                                                                                                         | Supabase, Cloudflare R2, AWS S3, Firebase, Vercel Blob, Azure Blob Storage, Standalone                                                                                             | [Create a storage adapter](/docs/storage-adapters/custom-storage)    |
-| [Database adapter](#database-adapter)      | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables           | CLI, Console, server                                                                                                                                                                         | Supabase, Cloudflare D1, DynamoDB, Firestore, PostgreSQL, Cosmos DB, Kysely, Drizzle, Prisma, MongoDB                                                                              | [Create a database adapter](/docs/database-adapters/custom-database) |
-| [Signing adapter](#signing-adapter)        | Signs artifact hashes during deploy                                                        | CLI                                                                                                                                                                                          | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote) | `BundleSigningAdapter` from `@hot-updater/plugin-core`               |
-| [Server plugin](#server-plugins)           | Adds tables, APIs, routes, and client authentication to the update server                  | Server, and the CLI and Console over a direct database; [its tables](/docs/custom/server-plugins#create-the-plugins-tables) come from managed init or `hot-updater db` in the server project | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication), [`remoteConfig()`](/docs/guides/remote-config)                                          | [Create a server plugin](/docs/custom/server-plugins)                |
-| [Client plugin](#client-plugins)           | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app                                                                                                                                                                             | [Insights](/docs/react-native-api/insights), [Remote Config](/docs/react-native-api/remote-config)                                                                                 | [Create a client plugin](/docs/react-native-api/client-plugins)      |
-| [Integration plugin](#integration-plugins) | Uploads source maps for the bundles a build adapter makes                                  | CLI                                                                                                                                                                                          | [Sentry](/docs/integration-plugins/sentry), [Datadog](/docs/integration-plugins/datadog), [BugSnag](/docs/integration-plugins/bugsnag)                                             | A function that wraps a build adapter                                |
+| Kind                                       | What it does                                                                               | Runs in                                                                                                                                                                                      | Official                                                                                                                                                                                                                                | Write one                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Build adapter](#build-adapter)            | Bundles the app's JavaScript for `hot-updater deploy`                                      | CLI                                                                                                                                                                                          | [Bare](/docs/build-adapters/bare), [Expo](/docs/build-adapters/expo), [Rock](/docs/build-adapters/rock)                                                                                                                                 | `BuildAdapter` from `@hot-updater/plugin-core`                       |
+| [Storage adapter](#storage-adapter)        | Stores bundle artifacts and resolves their download URLs                                   | CLI, Console, server                                                                                                                                                                         | Supabase, Cloudflare R2, AWS S3, Firebase, Vercel Blob, Azure Blob Storage, Standalone                                                                                                                                                  | [Create a storage adapter](/docs/storage-adapters/custom-storage)    |
+| [Database adapter](#database-adapter)      | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables           | CLI, Console, server                                                                                                                                                                         | Supabase, Cloudflare D1, DynamoDB, Firestore, PostgreSQL, Cosmos DB, Kysely, Drizzle, Prisma, MongoDB                                                                                                                                   | [Create a database adapter](/docs/database-adapters/custom-database) |
+| [Signing adapter](#signing-adapter)        | Signs artifact hashes during deploy                                                        | CLI                                                                                                                                                                                          | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote)                                                      | `BundleSigningAdapter` from `@hot-updater/plugin-core`               |
+| [Secrets adapter](#secrets-adapter)        | Reads the secrets a config names and stores issued keys                                    | CLI                                                                                                                                                                                          | [`env()`](/docs/guides/secrets), [AWS Secrets Manager](/docs/guides/secrets-adapters/aws-secrets-manager), [GitHub Actions secrets](/docs/guides/secrets-adapters/github-actions), [Google Secret Manager](/docs/guides/secrets-adapters/google-secret-manager), [Infisical](/docs/guides/secrets-adapters/infisical) | `SecretsAdapter` from `@hot-updater/plugin-core`                     |
+| [Server plugin](#server-plugins)           | Adds tables, APIs, routes, and client authentication to the update server                  | Server, and the CLI and Console over a direct database; [its tables](/docs/custom/server-plugins#create-the-plugins-tables) come from managed init or `hot-updater db` in the server project | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication), [`remoteConfig()`](/docs/guides/remote-config)                                                                                               | [Create a server plugin](/docs/custom/server-plugins)                |
+| [Client plugin](#client-plugins)           | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app                                                                                                                                                                             | [Insights](/docs/react-native-api/insights), [Remote Config](/docs/react-native-api/remote-config)                                                                                                                                      | [Create a client plugin](/docs/react-native-api/client-plugins)      |
+| [Integration plugin](#integration-plugins) | Uploads source maps for the bundles a build adapter makes                                  | CLI                                                                                                                                                                                          | [Sentry](/docs/integration-plugins/sentry), [Datadog](/docs/integration-plugins/datadog), [BugSnag](/docs/integration-plugins/bugsnag)                                                                                                  | A function that wraps a build adapter                                |
 
 The managed Cloudflare, Supabase, AWS, Firebase, Vercel, and Azure servers are prebuilt with
 their provider's storage and database adapters and the official server
@@ -81,6 +79,7 @@ it. Each guide builds one and tests it:
 | Server plugin    | `definePlugin` from `@hot-updater/plugin-core`                                                                                   | [Create a server plugin](/docs/custom/server-plugins)                                                    |
 | Client plugin    | `defineClientPlugin` from `@hot-updater/protocol`                                                                                | [Create a client plugin](/docs/react-native-api/client-plugins)                                          |
 | Signing adapter  | `BundleSigningAdapter` from `@hot-updater/plugin-core`: `getPublicKey` and `sign`                                                | [Remote Signing](/docs/guides/signing/remote) describes the service protocol                             |
+| Secrets adapter  | `SecretsAdapter` from `@hot-updater/plugin-core`: `get`, and optionally `set`                                                    | [Write a secrets adapter](/docs/guides/secrets#write-a-secrets-adapter)                                  |
 | Build adapter    | A function from `{ cwd }` to a `BuildAdapter` from `@hot-updater/plugin-core`                                                    | The [official build adapters](https://github.com/gronxb/hot-updater/tree/main/plugins) are the reference |
 
 Hot Updater's packages divide by where their code runs:
@@ -193,11 +192,12 @@ Signing is independent of the storage and database adapters. Omit `signing` or
 set local `enabled: false` for unsigned deployments; Hot Updater never falls
 back from an enabled signer to an unsigned deployment.
 
-- Built-in local signing: Use `enabled: true` and `privateKeyPath`. Signing
-  is never enabled automatically.
-- `hot-updater/signing`: Use a compatible signing endpoint with
-  `remoteSigning`, or hardened managed-key custody with `awsKmsSigning` and
-  `googleCloudKmsSigning`.
+- `hot-updater/signing`: Keep the key in a KMS with `awsKmsSigning` and
+  `googleCloudKmsSigning`, or use a compatible signing endpoint with
+  `remoteSigning`.
+- Built-in local signing: Use `enabled: true` with `privateKey:
+  "secret:<name>"`, read through the config's `secrets` adapter, or with
+  `privateKeyPath`. Signing is never enabled automatically.
 
 Expo projects configure the native trust anchor independently through the
 `@hot-updater/expo` app plugin's `publicKeyPath`. This keeps EAS builds outside
@@ -208,6 +208,22 @@ signer is used for deployment.
 
 See [Bundle Signing](/docs/guides/bundle-signing) for custody differences,
 provider setup, native trust-anchor rollout, and rotation guidance.
+
+## Secrets adapter
+
+The secrets adapter is where the CLI reads the secrets `hot-updater.config.ts`
+names: native build credentials as `secret:<name>`, and deploy credentials
+through `secretEnv([...])`. It stores keys that `secrets put` stores or a
+sign-in issues when the store can be written. `env()` from
+`hot-updater/secrets`, the default, reads environment variables and stores
+nothing; `awsSecretsManager()`, `googleSecretManager()`, and `infisical()`
+read and store secrets in AWS Secrets Manager, Google Cloud Secret Manager,
+and Infisical; `githubActions()` stores secrets in GitHub Actions secrets,
+which workflows read as environment variables.
+Secrets and signing are separate slots: a KMS signer keeps its key in the KMS.
+
+See [Secrets in the CLI](/docs/guides/secrets) for names, credential values,
+and the adapter contract.
 
 ## Integration plugins
 

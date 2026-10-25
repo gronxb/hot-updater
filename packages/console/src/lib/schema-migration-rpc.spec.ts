@@ -90,7 +90,7 @@ describe("schemaMigrationOf", () => {
         refusal({
           settings: [
             { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
-            { key: "schema.vault", expected: "1", found: null },
+            { key: "schema.remoteConfig", expected: "1", found: null },
           ],
         }),
       ),

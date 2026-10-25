@@ -7,7 +7,6 @@ import {
   type InsightsApi,
   type InsightsModel,
   type RemoteConfigApi,
-  type VaultApi,
 } from "@hot-updater/server/plugins";
 
 import {
@@ -58,9 +57,6 @@ export const consoleFeatureApis = {
   }),
   apiKeys: featureApi({
     local: (api: ApiKeyManagementAPI) => api,
-  }),
-  vault: featureApi({
-    local: (api: VaultApi) => api,
   }),
 } satisfies {
   readonly [F in ConsoleFeature]: ConsoleFeatureApi<never, unknown>;

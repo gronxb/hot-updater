@@ -576,14 +576,14 @@ setupReadBudgetTestSuite({
 });
 ```
 
-The suite runs core and the server's `insights()`, `apiKeys()`,
-`remoteConfig()`, and `vault()` on
+The suite runs core and the server's `insights()`, `apiKeys()`, and
+`remoteConfig()` on
 `createMeasuredDatabase(adapter, plugins, { now, storage })` from
 `@hot-updater/test-utils`: `createHotUpdater` over
 `meterReads({ name, adapter: verifyAdapter(adapter) })`, so every adapter call
 is checked and measured, without the schema fence. `now` is the plugins'
 clock. It loads `@hot-updater/server`, which your project installs for the
-tests. The suite seeds Bundles, Releases, Channels, an API key, a vault token,
+tests. The suite seeds Bundles, Releases, Channels, an API key,
 Insights events, and Remote Config versions,
 caps native pages at two rows, and checks each API's reads exactly, at the
 adapter and at the engine. For example, the update check is one point read of
@@ -592,7 +592,7 @@ one patch read.
 
 | `createAdapter` result | Meaning                                                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adapter`              | Your adapter over newly created, empty `tables`: core's, those of `insights()`, `apiKeys()`, `remoteConfig()`, and `vault()`, and `SETTINGS_TABLE`, where retention passes keep their lease                   |
+| `adapter`              | Your adapter over newly created, empty `tables`: core's, those of `insights()`, `apiKeys()`, and `remoteConfig()`, and `SETTINGS_TABLE`, where retention passes keep their lease                   |
 | `cleanup`              | Runs after the suite                                                                                                                                                                                          |
 | `examined`             | SQL backends: the rows the database examined. `postgresRowsExamined(query)` and `mysqlRowsExamined(query)` explain each read the wrapped executor runs, so a read that scans more rows than it returns fails. |
 | `indexCopies`          | `true` when index reads return row copies without `_v`, as `createKvAdapter` does; a transaction then reads the rows it guards again                                                                          |

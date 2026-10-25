@@ -68,7 +68,7 @@ describe("the console's request middleware", () => {
 
   it("refuses a form another site posts to a server function", async () => {
     const response = await answer(
-      new Request("https://console.example.com/_serverFn/rewrapVaultRpc", {
+      new Request("https://console.example.com/_serverFn/revokeApiKeyRpc", {
         method: "POST",
         headers: {
           origin: "https://evil.example",
@@ -85,7 +85,7 @@ describe("the console's request middleware", () => {
 
   it("refuses a server function call that says nothing of where it came from", async () => {
     const response = await answer(
-      new Request("https://console.example.com/_serverFn/rewrapVaultRpc", {
+      new Request("https://console.example.com/_serverFn/revokeApiKeyRpc", {
         method: "POST",
       }),
     );
@@ -96,7 +96,7 @@ describe("the console's request middleware", () => {
   it("lets the console's own pages call server functions", async () => {
     await expect(
       answer(
-        new Request("https://console.example.com/_serverFn/rewrapVaultRpc", {
+        new Request("https://console.example.com/_serverFn/revokeApiKeyRpc", {
           method: "POST",
           headers: { "sec-fetch-site": "same-origin" },
         }),
@@ -111,12 +111,12 @@ describe("the console's request middleware", () => {
     guard.current = () => refusal;
 
     await expect(
-      answer(new Request("http://localhost:1422/vault"), "router"),
+      answer(new Request("http://localhost:1422/api-keys"), "router"),
     ).resolves.toBe(refusal);
 
     guard.current = () => undefined;
     await expect(
-      answer(new Request("http://localhost:1422/vault"), "router"),
+      answer(new Request("http://localhost:1422/api-keys"), "router"),
     ).resolves.toBe("handled");
   });
 });

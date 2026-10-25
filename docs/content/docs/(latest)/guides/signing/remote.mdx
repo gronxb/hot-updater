@@ -52,62 +52,6 @@ export default defineConfig({
 });
 ```
 
-## Sign with the Console Vault
-
-A self-hosted Console running [`vault()`](/docs/guides/console-deployment/vault)
-serves this protocol at `/_hot-updater/signing` with a `bundle-signing-key`
-from its vault. The private key never leaves the Console: deploys send only
-the messages to sign, and the vault never resolves the key.
-
-1. Generate a key pair and store its private key in the vault. The command
-   writes only `keys/public-key.pem`, and needs `HOT_UPDATER_CONSOLE_URL` and
-   a `HOT_UPDATER_VAULT_TOKEN` whose scope allows `write` on the key:
-
-   ```package-install
-   npx hot-updater keys generate --vault
-   ```
-
-   `--vault <name>` names the secret, `bundle-signing-key` by default, and
-   never replaces a secret under that name. To store a key you already have,
-   use `hot-updater secrets put <name> --kind bundle-signing-key --private-key <file>`,
-   or **Add secret** on the Console's **Vault** page.
-
-2. Issue a vault token whose scope allows `sign` on the key, by its name:
-
-   ```package-install
-   npx hot-updater secrets token create --name ci-sign --secrets bundle-signing-key --actions sign
-   ```
-
-3. Point `remoteSigning` at the Console's URL, and give deploys the token as
-   `HOT_UPDATER_SIGNING_TOKEN`:
-
-   ```ts title="hot-updater.config.ts"
-   import { defineConfig } from "hot-updater";
-   import { remoteSigning } from "hot-updater/signing";
-
-   export default defineConfig({
-     // ...other config
-     signing: remoteSigning({
-       endpoint: "https://console.example.com",
-     }),
-   });
-   ```
-
-   ```bash
-   HOT_UPDATER_SIGNING_TOKEN=hu_vault_...
-   ```
-
-   The endpoint is the Console's URL: `remoteSigning` adds
-   `/_hot-updater/signing` itself. A token that also reads or writes
-   secrets works as both `HOT_UPDATER_VAULT_TOKEN` and the signing token.
-
-The Console signs with the one `bundle-signing-key` the token may sign with,
-and refuses a token whose scope allows `sign` on several: scope a sign token
-by name to pick a key, such as one per app. Each signature is written to the
-vault's audit log before it is sent.
-[The vault guide](/docs/guides/console-deployment/vault#sign-bundles) lists
-the route's errors.
-
 ## Implement the Signing Service
 
 A custom service can mount the matching Web API handler from the root

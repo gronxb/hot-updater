@@ -77,6 +77,7 @@
   },
   "devDependencies": {
     "@aws-sdk/client-kms": "3.1066.0",
+    "@aws-sdk/credential-providers": "3.1066.0",
     "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "^14.0.0",
     "@google-cloud/kms": "6.0.0",
@@ -89,27 +90,34 @@
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@hot-updater/vercel": "workspace:*",
+    "@noble/hashes": "2.2.0",
     "@types/connect": "^3.4.38",
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
+    "aws4fetch": "1.0.20",
     "commander": "^14.0.0",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
     "fast-xml-parser": "5.7.2",
+    "google-auth-library": "10.7.0",
     "is-port-reachable": "^4.0.0",
     "kysely": "catalog:db",
+    "libsodium-wrappers": "0.8.4",
     "open": "^10.1.0",
     "plist": "^3.1.0",
     "tsdown": "catalog:tools",
     "sql-formatter": "15.6.10",
+    "tweetnacl": "1.0.3",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "verkit": "catalog:"
   },
   "peerDependencies": {
     "@aws-sdk/client-kms": "^3.1066.0",
+    "@aws-sdk/credential-providers": "^3.1066.0",
     "@google-cloud/kms": "^6.0.0",
+    "google-auth-library": "^10.0.0 || ^11.0.0",
     "@hot-updater/aws": "workspace:^",
     "@hot-updater/azure": "workspace:^",
     "@hot-updater/cloudflare": "workspace:^",
@@ -121,7 +129,13 @@
     "@aws-sdk/client-kms": {
       "optional": true
     },
+    "@aws-sdk/credential-providers": {
+      "optional": true
+    },
     "@google-cloud/kms": {
+      "optional": true
+    },
+    "google-auth-library": {
       "optional": true
     },
     "@hot-updater/supabase": {
@@ -150,6 +164,7 @@
     "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "14.0.0",
     "@expo/plist": "0.0.18",
+    "@noble/hashes": "2.2.0",
     "@nodable/entities": "2.1.1",
     "@nodelib/fs.scandir": "2.1.5",
     "@nodelib/fs.stat": "2.0.5",
@@ -161,6 +176,7 @@
       "0.9.10"
     ],
     "anynum": "1.0.0",
+    "aws4fetch": "1.0.20",
     "base64-js": "1.5.1",
     "braces": "3.0.3",
     "bundle-name": "4.1.0",
@@ -220,6 +236,7 @@
     "strnum": "2.4.0",
     "supports-color": "7.2.0",
     "to-regex-range": "5.0.1",
+    "tweetnacl": "1.0.3",
     "unicorn-magic": "0.3.0",
     "verkit": "0.4.0",
     "which": "2.0.2",

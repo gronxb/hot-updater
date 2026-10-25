@@ -141,26 +141,6 @@ interface ReadBudgetApiKeys {
   }): Promise<{ readonly apiKey: string }>;
 }
 
-/** The `vault()` API the budgets call, typed here, so test-utils needs no peer on its package. */
-interface ReadBudgetVault {
-  put(input: {
-    readonly name: string;
-    readonly kind: string;
-    readonly value: unknown;
-  }): Promise<unknown>;
-  status(): Promise<{ readonly locked: boolean }>;
-  issueToken(input: {
-    readonly name: string;
-    readonly scope: {
-      readonly secrets: { readonly kinds: readonly string[] };
-      readonly actions: readonly string[];
-    };
-  }): Promise<{ readonly token: string }>;
-  verifyToken(input: {
-    readonly token: string;
-  }): Promise<{ readonly ok: boolean }>;
-}
-
 export interface ReadBudgetAdapterContext {
   /**
    * Core's tables, those of the plugins the suite measures, and the settings
@@ -314,7 +294,7 @@ const storage: MeasuredDatabaseStorage = {
 };
 
 /**
- * Core's bundles, releases, channels, a client API key, a vault secret and token, and 26 Insights
+ * Core's bundles, releases, channels, a client API key, and 26 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
  * days later, back on bundle-a and then on bundle-b; and the day of history
  * before T0, as a production database holds, so a read that scans beyond its
@@ -326,7 +306,6 @@ const seed = async (database: MeasuredDatabase) => {
     readonly insights: ReadBudgetInsights;
     readonly apiKeys: ReadBudgetApiKeys;
     readonly remoteConfig: ReadBudgetRemoteConfig;
-    readonly vault: ReadBudgetVault;
   };
   for (const name of ["staging", "beta", "canary", "nightly"]) {
     await core.ensureChannel(name);
@@ -373,11 +352,6 @@ const seed = async (database: MeasuredDatabase) => {
     });
   }
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
-  await api.vault.put({ name: "read-budgets", kind: "generic", value: {} });
-  const { token: vaultToken } = await api.vault.issueToken({
-    name: "Read budgets",
-    scope: { secrets: { kinds: ["bundle-signing-key"] }, actions: ["sign"] },
-  });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
   // Install 1 leaves bundle-b before it applies it again: an apply of the
   // bundle an installation already runs is a late report, which counts
@@ -419,10 +393,8 @@ const seed = async (database: MeasuredDatabase) => {
     core,
     insights: api.insights,
     remoteConfig: api.remoteConfig,
-    vault: api.vault,
     clientAuth: database.clientAuth,
     apiKey,
-    vaultToken,
     productionId,
     nightlyId: (await channel("nightly")).id,
     /** The auto-patch base key of a new production iOS 1.0.0 bundle. */
@@ -489,22 +461,6 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     adapter: reads(1, 1, 1, 1),
     engine: { calls: 2, rows: 2 },
     check: (catalog) => expect(catalog?.releases).toHaveLength(4),
-  }),
-  budget({
-    // The Console verifies a vault token on every vault request.
-    api: "vault token verification: 1 unique read by digest",
-    read: ({ vault, vaultToken }) => vault.verifyToken({ token: vaultToken }),
-    adapter: reads(0, 0, 1, 1),
-    engine: { calls: 1, rows: 1 },
-    check: (verified) => expect(verified).toMatchObject({ ok: true }),
-  }),
-  budget({
-    // The Console checks its master keys before it offers or stores a write.
-    api: "vault status: 1 point read of the master key checks",
-    read: ({ vault }) => vault.status(),
-    adapter: reads(1, 1, 0, 0),
-    engine: { calls: 1, rows: 1 },
-    check: (status) => expect(status).toEqual({ locked: false }),
   }),
   budget({
     // The fetch's first read on this server; later ones within five seconds
@@ -966,15 +922,9 @@ export const setupReadBudgetTestSuite = (
 
     beforeAll(async () => {
       // The server's built-in plugins, whose reads have budgets.
-      const { insights, apiKeys, remoteConfig, vault } =
+      const { insights, apiKeys, remoteConfig } =
         await import("@hot-updater/server/plugins");
-      const plugins = [
-        insights(),
-        apiKeys(),
-        remoteConfig(),
-        // A key of its own, so the budgets do not depend on the environment.
-        vault({ masterKey: btoa(String.fromCharCode(...new Uint8Array(32))) }),
-      ];
+      const plugins = [insights(), apiKeys(), remoteConfig()];
       created = await options.createAdapter({
         tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],
         nativePageSize: NATIVE_PAGE_SIZE,

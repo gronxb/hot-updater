@@ -22,13 +22,6 @@ export const consoleFeatures = {
   },
   /** API key management: `apiKeys()` mounts no admin routes to manage them. */
   apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
-  /** Secrets and vault tokens, read from the database and opened with the console's master key. */
-  vault: {
-    plugin: "vault",
-    label: "Vault",
-    remote: false,
-    guide: "/docs/guides/console-deployment/vault#turn-on-the-vault",
-  },
 } as const satisfies Readonly<
   Record<
     string,
@@ -37,8 +30,6 @@ export const consoleFeatures = {
       /** How navigation and the not-installed page name the feature. */
       readonly label: string;
       readonly remote: boolean;
-      /** The docs page the not-installed page links to, by path; the console setup guide without one. */
-      readonly guide?: string;
     }
   >
 >;

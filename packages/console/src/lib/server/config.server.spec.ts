@@ -89,7 +89,6 @@ describe("config.server", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: true,
-      vault: false,
       remoteConfig: false,
     });
     await expect(first.core.listChannels()).resolves.toEqual([]);
@@ -115,7 +114,6 @@ describe("config.server", () => {
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
-      vault: false,
       remoteConfig: false,
     });
     expect((await prepareConfig(request)).runtime).toBe(runtime);

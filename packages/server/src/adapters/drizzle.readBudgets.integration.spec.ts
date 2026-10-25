@@ -13,7 +13,6 @@ import { drizzle } from "drizzle-orm/pglite";
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";
 import { remoteConfig } from "../plugins/remote-config";
-import { vault } from "../plugins/vault";
 import { drizzleExecutor } from "./drizzleExecutor";
 
 /**
@@ -29,7 +28,6 @@ setupReadBudgetTestSuite({
       insights(),
       apiKeys(),
       remoteConfig(),
-      vault(),
     ]);
     await client.exec(
       generateEngineSql("postgresql", schema, settings).join(";\n"),

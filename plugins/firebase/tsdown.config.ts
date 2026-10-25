@@ -25,7 +25,6 @@ export default defineConfig([
         "@hot-updater/plugin-api-keys/server",
         "@hot-updater/plugin-insights/server",
         "@hot-updater/plugin-remote-config/server",
-        "@hot-updater/plugin-vault/server",
         "@hot-updater/server",
         "@hot-updater/server/plugins",
       ],
