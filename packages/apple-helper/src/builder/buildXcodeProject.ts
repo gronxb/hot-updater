@@ -55,11 +55,13 @@ export const buildXcodeProject = async ({
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
-  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
-
   if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
+
+  // After pod install, which writes the workspace of a freshly prebuilt
+  // project.
+  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   const derivedDataPath = await createRandomTmpDir();
 

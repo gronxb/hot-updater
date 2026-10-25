@@ -50,11 +50,13 @@ export const archiveXcodeProject = async ({
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
 }): Promise<{ archivePath: string }> => {
-  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
-
   if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
+
+  // After pod install, which writes the workspace of a freshly prebuilt
+  // project.
+  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   const tmpDir = await createRandomTmpDir();
 
