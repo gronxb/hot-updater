@@ -103,7 +103,6 @@ const buildNativeInternal = async ({
               await ensureAscApiKey({
                 name: ascApiKeyName,
                 bundleIdentifier: iosScheme!.bundleIdentifier,
-                read: true,
               });
             } catch (e) {
               if (e instanceof AscApiKeyRefusedError) throw e;

@@ -681,20 +681,15 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
       (await api.list()).some((secret) => secret.name === "widget-asc"),
     ).toBe(false);
 
-    // Read is asked the same way: a name the scope reaches but no secret has.
-    const missing = await resolve(load, writer, { names: ["widget-asc"] });
-    expect(missing.status).toBe(200);
-    await expect(missing.json()).resolves.toMatchObject({
-      secrets: [],
-      errors: [expect.objectContaining({ name: "widget-asc" })],
+    // A token scoped by kind may store a key that does not exist yet.
+    const byKind = await issue({
+      secrets: { kinds: ["asc-api-key"] },
+      actions: ["read", "write"],
     });
-    const writeOnly = await issue({
-      secrets: { names: ["widget-asc"] },
-      actions: ["write"],
-    });
+    expect((await put(load, byKind, "widget-asc", probe)).status).toBe(400);
     expect(
-      (await resolve(load, writeOnly, { names: ["widget-asc"] })).status,
-    ).toBe(403);
+      (await api.list()).some((secret) => secret.name === "widget-asc"),
+    ).toBe(false);
   });
 
   it("never reads a value back with write: a write-only token lists metadata and resolves nothing", async () => {

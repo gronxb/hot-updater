@@ -225,7 +225,6 @@ describe("build:ios without an App Store Connect API key", () => {
     expect(ensureAscApiKey).toHaveBeenCalledWith({
       name: "asc-api-key",
       bundleIdentifier: "com.example.app",
-      read: true,
     });
     expect(events.indexOf("ensure asc-api-key")).toBeLessThan(
       events.indexOf("prebuild"),
@@ -283,7 +282,6 @@ describe("build:ios without an App Store Connect API key", () => {
     expect(ensureAscApiKey).toHaveBeenCalledWith({
       name: "widget-asc",
       bundleIdentifier: "com.example.widget",
-      read: true,
     });
     // The signing key resolves while it builds, as before.
     expect(events).toEqual([

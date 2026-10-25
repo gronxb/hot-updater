@@ -185,7 +185,7 @@ describe("ensureAscApiKey", () => {
       ],
     });
     await expect(
-      withTTY(false, () => ensure({ name: "asc-api-key", read: true })),
+      withTTY(false, () => ensure({ name: "asc-api-key" })),
     ).resolves.toEqual({ status: "stored", version: 3 });
     expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
     expect(issue).not.toHaveBeenCalled();
@@ -213,9 +213,10 @@ describe("ensureAscApiKey", () => {
           },
         ],
       });
-      await expect(
-        ensure({ name: "asc-api-key", read: true }),
-      ).resolves.toEqual({ status: "stored", version: 2 });
+      await expect(ensure({ name: "asc-api-key" })).resolves.toEqual({
+        status: "stored",
+        version: 2,
+      });
       expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
     } finally {
       await fs.rm(project, { recursive: true, force: true });
@@ -225,7 +226,7 @@ describe("ensureAscApiKey", () => {
   it("refuses without a terminal, with the command that signs in once", async () => {
     const requests = fakeConsole();
     await expect(
-      withTTY(false, () => ensure({ name: "widget-asc", read: true })),
+      withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(AscApiKeyRefusedError);
     expect(log.error).toHaveBeenCalledWith(
       "widget-asc is not in the vault yet. Hot Updater issues it when you sign in with your Apple Account, which needs a terminal. Run `npx hot-updater secrets put widget-asc --kind asc-api-key` in a terminal once, and builds use the stored key, also in a non-interactive shell.",
@@ -243,18 +244,22 @@ describe("ensureAscApiKey", () => {
   it("refuses a token that cannot store the key before any Apple sign-in", async () => {
     fakeConsole({ actions: ["read"] });
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toThrow("The vault token cannot store asc-api-key");
     expect(text).not.toHaveBeenCalled();
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("refuses a build whose token could store the key but not read it back", async () => {
-    fakeConsole({ actions: ["write"] });
-    await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", read: true })),
-    ).rejects.toThrow("The vault token cannot read asc-api-key");
-    expect(issue).not.toHaveBeenCalled();
+  it("asks only whether the token may store the key, which a kind-scoped token may before it exists", async () => {
+    const requests = fakeConsole({ actions: ["write"] });
+    await withTTY(true, () => ensure({ name: "asc-api-key" }));
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "GET /secrets",
+      "PUT /secrets/asc-api-key",
+      "PUT /secrets/asc-api-key",
+      "GET /secrets",
+    ]);
+    expect(issue).toHaveBeenCalledTimes(1);
   });
 
   it("says the vault is where the key goes when it is not connected", async () => {
@@ -287,20 +292,18 @@ describe("ensureAscApiKey", () => {
         ensure({
           name: "asc-api-key",
           bundleIdentifier: "com.example.app",
-          read: true,
         }),
       ),
     ).resolves.toEqual({ status: "issued", keyId: "KEY1234567", version: 1 });
 
     expect(requests).toEqual([
       { method: "GET", path: "/secrets" },
-      // The write and read probes, before asc runs.
+      // The write probe, before the sign-in.
       {
         method: "PUT",
         path: "/secrets/asc-api-key",
         body: { kind: "asc-api-key", value: {}, expectedVersion: 0 },
       },
-      { method: "POST", path: "/resolve", body: { names: ["asc-api-key"] } },
       {
         method: "PUT",
         path: "/secrets/asc-api-key",

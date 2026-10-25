@@ -145,7 +145,8 @@ A build that finds no key there stops with that command.
 
 Before it asks for your Apple Account, the CLI checks everything that could
 fail afterwards: a `HOT_UPDATER_ASC_KEY*` override or a stored key is used as
-it is, and the vault token must allow `read` and `write` on the key's name.
+it is, and the vault token must allow `write` on the key's name, by name or
+by kind. The build reads the stored key with the token's `read`.
 When the vault refuses the issued key, the CLI revokes it again, so no key is
 left that nothing holds.
 

@@ -113,21 +113,6 @@ const assertWritable = async (client: VaultClient, name: string) => {
   );
 };
 
-/** Whether the vault token may read `name`, which the build resolves after it is stored. */
-const assertReadable = async (client: VaultClient, name: string) => {
-  try {
-    await client.resolve([name]);
-  } catch (error) {
-    if (error instanceof VaultRequestError && error.status === 403) {
-      throw new Error(
-        `The vault token cannot read ${name}, which the build signs and uploads with. Use a vault token whose scope allows read and write on ${name}.`,
-        { cause: error },
-      );
-    }
-    throw error;
-  }
-};
-
 const today = () => new Date().toISOString().slice(0, 10);
 
 /**
@@ -140,7 +125,7 @@ const today = () => new Date().toISOString().slice(0, 10);
  * 2. a vault secret named `name` of kind asc-api-key is used as it is, so
  *    CI builds with the stored key and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once;
- * 4. the vault token must store (and, for a build, read) `name`.
+ * 4. the vault token must be allowed to store `name`.
  *
  * Only then does the developer sign in with their Apple Account, through
  * `issue`, and the issued key is stored, read back, and revoked with the
@@ -151,7 +136,6 @@ export const ensureAscApiKey = async ({
   name,
   bundleIdentifier,
   env = {},
-  read = false,
   environment = true,
   issue = issueAscApiKey,
 }: {
@@ -161,8 +145,6 @@ export const ensureAscApiKey = async ({
   bundleIdentifier?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
-  /** The caller resolves the key after this, so the token must read it too. */
-  read?: boolean;
   /** An environment override of asc-api-key counts as the key. */
   environment?: boolean;
   /** How the key is issued after the Apple Account signs in. */
@@ -205,7 +187,9 @@ export const ensureAscApiKey = async ({
   }
 
   await assertWritable(client, name);
-  if (read) await assertReadable(client, name);
+  // Read is not asked here: a token scoped by kind may read a secret only
+  // once it exists. A token that cannot read the stored key fails the
+  // build's resolve after it, and the key stays stored for the next run.
 
   const appleId = await p.text({
     message: "Apple Account (email) to sign in to App Store Connect with",
