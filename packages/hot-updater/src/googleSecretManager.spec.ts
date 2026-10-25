@@ -28,7 +28,17 @@ interface FakeVersion {
 interface FakeSecret {
   versions: FakeVersion[];
   annotations: Record<string, string>;
+  etag: number;
+  /** Reads of `latest` that still resolve to the version before the newest. */
+  staleReads: number;
 }
+
+const emptySecret = (): FakeSecret => ({
+  versions: [],
+  annotations: {},
+  etag: 1,
+  staleReads: 0,
+});
 
 const googleError = (code: number, status: string, message: string) =>
   Response.json({ error: { code, status, message } }, { status: code });
@@ -42,12 +52,17 @@ const createFakeSecretManager = () => {
   const state = {
     permissions: [
       "secretmanager.versions.add",
+      "secretmanager.versions.access",
       "secretmanager.versions.destroy",
       "secretmanager.secrets.update",
     ],
     failDestroy: new Set<number>(),
     failPatch: false,
     raceCreate: false,
+    /** How many reads of `latest` lag behind each new version. */
+    latestLag: 0,
+    /** Runs once before the next PATCH, as another writer would. */
+    beforePatch: undefined as (() => void) | undefined,
   };
   const requests: { method: string; url: string; init: RequestInit }[] = [];
 
@@ -58,6 +73,7 @@ const createFakeSecretManager = () => {
       data,
     };
     secret.versions.push(version);
+    secret.staleReads = state.latestLag;
     return version;
   };
 
@@ -86,20 +102,27 @@ const createFakeSecretManager = () => {
         const newId = path.searchParams.get("secretId") as string;
         expect(body).toEqual({ replication: { automatic: {} } });
         if (state.raceCreate) {
-          secrets.set(`${project}/${newId}`, { versions: [], annotations: {} });
+          secrets.set(`${project}/${newId}`, emptySecret());
           return googleError(409, "ALREADY_EXISTS", "Secret already exists.");
         }
         if (secrets.has(`${project}/${newId}`)) {
           return googleError(409, "ALREADY_EXISTS", "Secret already exists.");
         }
-        secrets.set(`${project}/${newId}`, { versions: [], annotations: {} });
-        return Response.json({ name: `projects/${project}/secrets/${newId}` });
+        secrets.set(`${project}/${newId}`, emptySecret());
+        return Response.json({
+          name: `projects/${project}/secrets/${newId}`,
+          etag: '"1"',
+        });
       }
       if (!secret) {
         return googleError(404, "NOT_FOUND", `Secret [${key}] not found.`);
       }
       if (version === "latest" && verb === "access") {
-        const latest = secret.versions.at(-1);
+        let latest = secret.versions.at(-1);
+        if (secret.staleReads > 0) {
+          secret.staleReads -= 1;
+          latest = secret.versions.at(-2);
+        }
         if (!latest) return googleError(404, "NOT_FOUND", "No versions.");
         if (latest.state !== "ENABLED") {
           return googleError(400, "FAILED_PRECONDITION", "Not enabled.");
@@ -146,6 +169,7 @@ const createFakeSecretManager = () => {
       if (method === "GET") {
         return Response.json({
           name: `projects/${project}/secrets/${id}`,
+          etag: `"${secret.etag}"`,
           annotations: secret.annotations,
         });
       }
@@ -154,6 +178,14 @@ const createFakeSecretManager = () => {
         if (state.failPatch) {
           return googleError(403, "PERMISSION_DENIED", "Denied.");
         }
+        const concurrent = state.beforePatch;
+        state.beforePatch = undefined;
+        concurrent?.();
+        expect(body.etag).toMatch(/^"\d+"$/u);
+        if (body.etag !== `"${secret.etag}"`) {
+          return googleError(400, "FAILED_PRECONDITION", "Etag mismatch.");
+        }
+        secret.etag += 1;
         secret.annotations = body.annotations;
         return Response.json({ annotations: secret.annotations });
       }
@@ -169,8 +201,7 @@ const createFakeSecretManager = () => {
     /** A version added outside the adapter, such as in the Cloud Console. */
     addUserVersion: (key: string, value: string) =>
       addVersion(secrets.get(key) as FakeSecret, Buffer.from(value)),
-    createSecret: (key: string) =>
-      secrets.set(key, { versions: [], annotations: {} }),
+    createSecret: (key: string) => secrets.set(key, emptySecret()),
     enabled: (key: string) =>
       secrets
         .get(key)
@@ -410,7 +441,7 @@ describe("googleSecretManager set", () => {
         context,
       ),
     ).rejects.toThrow(
-      "lacks secretmanager.versions.destroy, secretmanager.secrets.update on it: grant roles/secretmanager.editor",
+      "lacks secretmanager.versions.access, secretmanager.versions.destroy, secretmanager.secrets.update on it: grant roles/secretmanager.editor and roles/secretmanager.secretAccessor",
     );
     expect(fake.enabled(key)).toEqual([]);
     expect(fake.requests.some(({ url }) => url.endsWith(":addVersion"))).toBe(
@@ -429,5 +460,71 @@ describe("googleSecretManager set", () => {
     await expect(secrets.get(["asc-api-key"], context)).resolves.toEqual({
       "asc-api-key": "two",
     });
+  });
+  it("waits for latest to resolve to the new version before it destroys the old one", async () => {
+    const secrets = googleSecretManager({ project: "demo-project" });
+    await secrets.set?.("asc-api-key", "one", context);
+    fake.state.latestLag = 2;
+
+    await secrets.set?.("asc-api-key", "two", context);
+
+    const latestReads = fake.requests.filter(({ url }) =>
+      url.endsWith("/versions/latest:access"),
+    );
+    // One read for the first set, three for the second: two stale.
+    expect(latestReads).toHaveLength(4);
+    expect(fake.enabled(key)).toEqual([2]);
+  });
+
+  it("keeps every version when latest never resolves to the new one", async () => {
+    vi.useFakeTimers();
+    try {
+      const secrets = googleSecretManager({ project: "demo-project" });
+      const first = secrets.set?.("asc-api-key", "one", context);
+      await vi.runAllTimersAsync();
+      await first;
+      fake.state.latestLag = 1000;
+
+      const second = secrets.set?.("asc-api-key", "two", context).then(
+        () => undefined,
+        (error: unknown) => error as Error,
+      );
+      await vi.runAllTimersAsync();
+
+      expect((await second)?.message).toBe(
+        "googleSecretManager stored projects/demo-project/secrets/asc-api-key as version 2, and its latest alias does not resolve to that version yet, so it kept the versions it added before; the next set destroys them.",
+      );
+      expect(fake.enabled(key)).toEqual([1, 2]);
+      expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
+        "2,1",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the versions a concurrent set listed", async () => {
+    const secrets = googleSecretManager({ project: "demo-project" });
+    await secrets.set?.("asc-api-key", "one", context);
+    // Another run adds version 3 and lists it while this run adds version 2.
+    fake.state.beforePatch = () => {
+      const secret = fake.secrets.get(key)!;
+      fake.addUserVersion(key, "three");
+      secret.annotations = {
+        ...secret.annotations,
+        "hot-updater-versions": "3",
+        team: "mobile",
+      };
+      secret.etag += 1;
+    };
+
+    await secrets.set?.("asc-api-key", "two", context);
+    expect(fake.secrets.get(key)?.annotations).toEqual({
+      "hot-updater-versions": "2,3",
+      team: "mobile",
+    });
+
+    await secrets.set?.("asc-api-key", "four", context);
+    expect(fake.enabled(key)).toEqual([4]);
   });
 });
