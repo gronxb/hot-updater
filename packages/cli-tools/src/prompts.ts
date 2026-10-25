@@ -1,5 +1,6 @@
 import * as clack from "@clack/prompts";
 
+import { nonInteractiveReason } from "./interactive";
 import { maskSecretValues } from "./secretMasking";
 
 type SpinnerOptions = NonNullable<Parameters<typeof clack.spinner>[0]>;
@@ -135,20 +136,23 @@ const tasks: typeof clack.tasks = async (taskList, options) => {
 };
 
 /**
- * The prompt, refusing to ask without a terminal: a prompt on a closed or
- * piped stdin would end as a cancel or wait forever. A command that can
- * skip a prompt says which option does before it asks.
+ * The prompt, refusing to ask in CI or without a terminal: a prompt on a
+ * closed or piped stdin would end as a cancel or wait forever, and one in CI
+ * waits on a terminal nobody answers in. A command that can skip a prompt
+ * says which option does before it asks.
  */
 const requireTerminal = <Options extends { input?: unknown }, Result>(
   prompt: (options: Options) => Promise<Result>,
 ) => {
   return (options: Options): Promise<Result> => {
-    const input = options.input ?? process.stdin;
-    if (!(input as { isTTY?: boolean }).isTTY) {
+    const reason = nonInteractiveReason({
+      input: (options.input ?? process.stdin) as { isTTY?: boolean },
+    });
+    if (reason !== undefined) {
       const message = (options as { message?: unknown }).message;
       return Promise.reject(
         new Error(
-          `${typeof message === "string" ? `${message} ` : ""}There is no terminal to answer in: pass the command's options instead (see --help).`,
+          `${typeof message === "string" ? `${message} ` : ""}The CLI asks nothing ${reason}: pass the command's options instead (see --help).`,
         ),
       );
     }

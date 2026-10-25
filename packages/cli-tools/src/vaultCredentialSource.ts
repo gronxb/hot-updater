@@ -11,7 +11,21 @@ import {
   type ResolvedVaultSecret,
   VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
+  VaultRequestError,
 } from "./vaultClient";
+
+/** A secret the vault does not have, under a name the token may read. */
+export class VaultSecretNotFoundError extends Error {
+  readonly secretName: string;
+  readonly url: string;
+
+  constructor(url: string, name: string) {
+    super(`The vault at ${url} has no secret ${name}.`);
+    this.name = "VaultSecretNotFoundError";
+    this.secretName = name;
+    this.url = url;
+  }
+}
 
 /**
  * Loads vault secrets by name, sending the names asked for in one turn of
@@ -36,9 +50,7 @@ export const createVaultSecretLoader = (
         for (const waiter of waiters) {
           if (secret) waiter.resolve(secret);
           else {
-            waiter.reject(
-              new Error(`The vault at ${client.url} has no secret ${name}.`),
-            );
+            waiter.reject(new VaultSecretNotFoundError(client.url, name));
           }
         }
       }
@@ -147,6 +159,59 @@ const toCredential = async (
   }
 };
 
+/** The build credentials the vault holds for the CLI. */
+type BuildCredentialKind =
+  | "asc-api-key"
+  | "android-keystore"
+  | "play-service-account";
+
+/**
+ * The command that stores a build credential of `kind` as the vault's
+ * `name`, from the files a developer has or with a sign-in Hot Updater
+ * issues the credential after: run once on a machine that reaches the
+ * Console, so CI only reads it.
+ */
+export const vaultCredentialPutCommand = (
+  kind: BuildCredentialKind,
+  name: string = kind,
+): string => {
+  const put = `npx hot-updater secrets put ${name} --kind ${kind}`;
+  switch (kind) {
+    case "asc-api-key":
+      return `${put} --p8 <AuthKey.p8> --key-id <key-id> --issuer-id <issuer-id>`;
+    case "android-keystore":
+      return `${put} --keystore <release.jks> --key-alias <alias>`;
+    case "play-service-account":
+      // Signs in with Google, and Hot Updater issues the key.
+      return put;
+  }
+};
+
+/**
+ * What to do when the vault can't give a build `name`: store it once, or,
+ * when the token's scope does not reach it, issue a token that may read it.
+ */
+const describeUnavailable = (
+  kind: BuildCredentialKind,
+  name: string,
+  error: unknown,
+): unknown => {
+  const item = name === kind ? kind : `${name} (${kind})`;
+  if (error instanceof VaultSecretNotFoundError) {
+    return new Error(
+      `${item} is not in the vault at ${error.url}. Store it once from a machine that reaches the Console, with \`${vaultCredentialPutCommand(kind, name)}\`, and builds, CI's included, read it with their vault token.`,
+      { cause: error },
+    );
+  }
+  if (error instanceof VaultRequestError && error.status === 403) {
+    return new Error(
+      `${error.message} When ${item} is stored, give the build a vault token whose scope allows read on it, such as one from \`npx hot-updater secrets token create --name ci-native --secrets ${name},<the build's other secrets> --actions read\`; when it is not, store it once with \`${vaultCredentialPutCommand(kind, name)}\`.`,
+      { cause: error },
+    );
+  }
+  return error;
+};
+
 /**
  * The Console's vault as a credential source, connected by
  * `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, read on the first
@@ -177,7 +242,9 @@ export const createVaultCredentialSource = ({
         }),
       );
     }
-    const secret = await load(name);
+    const secret = await load(name).catch((error: unknown) => {
+      throw describeUnavailable(kind, name, error);
+    });
     if (secret.kind !== kind) {
       throw new Error(
         `The vault's ${name} is ${aKind(secret.kind)}, not ${aKind(kind)}.`,

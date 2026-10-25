@@ -173,6 +173,9 @@ const ensure = (options: Parameters<typeof ensurePlayServiceAccount>[0]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The terminal these specs simulate takes a sign-in only outside CI, and
+  // CI runners set CI.
+  vi.stubEnv("CI", "");
   vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);
   vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", TOKEN);
   for (const name of [
@@ -269,6 +272,21 @@ describe("ensurePlayServiceAccount", () => {
       expect.stringContaining(
         playServiceAccountSetupCommand("play-service-account"),
       ),
+    );
+    expect(process.exitCode).toBe(1);
+    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("never signs in in CI, even on a terminal, naming the vault and the overrides", async () => {
+    const requests = fakeConsole();
+    vi.stubEnv("CI", "true");
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).rejects.toBeInstanceOf(PlayServiceAccountRefusedError);
+    expect(log.error).toHaveBeenCalledWith(
+      `play-service-account is not in the vault at ${CONSOLE_URL}, or the vault token's scope does not reach it, and Hot Updater signs in to your Google Account only at a terminal, never in CI (CI is set). Run \`${playServiceAccountSetupCommand("play-service-account")}\` once on a machine where you can sign in, and give this build a vault token that reads play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.`,
     );
     expect(process.exitCode).toBe(1);
     expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);

@@ -21,7 +21,7 @@ import {
 import open from "open";
 
 import { ui } from "../cli-ui";
-import { canPrompt } from "../prompt";
+import { canSignIn } from "../prompt";
 
 /** The command that signs in once, in a terminal, and stores the key. */
 export const playServiceAccountSetupCommand = (name: string) =>
@@ -29,7 +29,7 @@ export const playServiceAccountSetupCommand = (name: string) =>
 
 /**
  * Why there is no Play service account to upload with, already reported by
- * `canPrompt`, which set the exit code.
+ * `canSignIn`, which set the exit code.
  */
 export class PlayServiceAccountRefusedError extends Error {
   constructor(message: string) {
@@ -311,10 +311,13 @@ export const ensurePlayServiceAccount = async ({
   }
 
   if (
-    !canPrompt(
-      `${name} is not in the vault yet. Hot Updater issues it when you sign in with Google, which needs a terminal.`,
-      `Run \`${playServiceAccountSetupCommand(name)}\` in a terminal once, and builds use the stored key, also`,
-    )
+    !canSignIn({
+      account: "Google Account",
+      kind: "play-service-account",
+      name,
+      vaultUrl: client.url,
+      setupCommand: playServiceAccountSetupCommand(name),
+    })
   ) {
     throw new PlayServiceAccountRefusedError(
       `${name} is not in the vault, and there is no terminal to sign in with Google.`,

@@ -47,7 +47,10 @@ const mockPlugins = vi.hoisted(() => ({
 }));
 
 // The definition tooling `db generate` runs, from cli-tools.
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  nonInteractiveReason: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).nonInteractiveReason,
   createMigrator: mockServer.createMigrator,
   generateSchema: mockServer.generateSchema,
   generatesSchema: mockServer.generatesSchema,
@@ -353,4 +356,14 @@ describe("generate command", () => {
     expect(exitSpy).toHaveBeenCalledWith(0);
     expect(events).toEqual(["dispose", "exit:0"]);
   });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

@@ -1,10 +1,8 @@
 // @ts-check
 
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 
+import { createCli, log, setOutput } from "../../shared/cli.mjs";
 import { runAction } from "./preview.mjs";
 
 /**
@@ -15,41 +13,6 @@ import { runAction } from "./preview.mjs";
  * `HOT_UPDATER_SIGNING_TOKEN`, which `remoteSigning` sends to the Console.
  */
 const env = process.env;
-
-/** @param {string} message */
-const escapeCommand = (message) =>
-  message
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-
-const log = {
-  /** @param {string} message */
-  info: (message) => console.log(message),
-  /** @param {string} message */
-  notice: (message) => console.log(`::notice::${escapeCommand(message)}`),
-  /**
-   * @template T
-   * @param {string} name
-   * @param {() => Promise<T>} run
-   */
-  group: async (name, run) => {
-    console.log(`::group::${escapeCommand(name)}`);
-    try {
-      return await run();
-    } finally {
-      console.log("::endgroup::");
-    }
-  },
-};
-
-/** @param {string} name @param {string} value */
-const setOutput = (name, value) => {
-  const file = env["GITHUB_OUTPUT"];
-  if (!file) return;
-  const delimiter = `hot-updater-${randomUUID()}`;
-  appendFileSync(file, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
-};
 
 const readEvent = () => {
   const eventPath = env["GITHUB_EVENT_PATH"];
@@ -72,51 +35,14 @@ const readEvent = () => {
 
 const token = env["INPUT_VAULT_TOKEN"]?.trim() ?? "";
 if (token) console.log(`::add-mask::${token}`);
-const cliEnv = {
-  ...env,
-  HOT_UPDATER_CONSOLE_URL: env["INPUT_CONSOLE_URL"]?.trim() ?? "",
-  HOT_UPDATER_VAULT_TOKEN: token,
-  HOT_UPDATER_SIGNING_TOKEN: env["HOT_UPDATER_SIGNING_TOKEN"] || token,
-};
-const cwd = path.resolve(
-  env["GITHUB_WORKSPACE"] ?? process.cwd(),
-  env["INPUT_WORKING_DIRECTORY"]?.trim() || ".",
-);
-const [command = "npx", ...prefix] = (
-  env["INPUT_CLI"]?.trim() || "npx --no-install hot-updater"
-).split(/\s+/);
-
-/**
- * @param {string[]} args
- * @param {{ capture?: boolean }} [options]
- * @returns {Promise<{ code: number, stdout: string }>}
- */
-const cli = (args, { capture = false } = {}) =>
-  new Promise((resolve, reject) => {
-    console.log(`$ hot-updater ${args.join(" ")}`);
-    const child = spawn(command, [...prefix, ...args], {
-      cwd,
-      env: cliEnv,
-      stdio: ["ignore", capture ? "pipe" : "inherit", "inherit"],
-    });
-    let stdout = "";
-    child.stdout?.setEncoding("utf8");
-    // Captured output goes to the log too, such as a build's.
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk;
-      process.stdout.write(chunk);
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (capture) {
-        resolve({ code: code ?? 1, stdout });
-      } else if (code === 0) {
-        resolve({ code, stdout });
-      } else {
-        reject(new Error(`hot-updater ${args.join(" ")} exited with ${code}.`));
-      }
-    });
-  });
+const cli = createCli({
+  env: {
+    ...env,
+    HOT_UPDATER_CONSOLE_URL: env["INPUT_CONSOLE_URL"]?.trim() ?? "",
+    HOT_UPDATER_VAULT_TOKEN: token,
+    HOT_UPDATER_SIGNING_TOKEN: env["HOT_UPDATER_SIGNING_TOKEN"] || token,
+  },
+});
 
 const githubToken = env["INPUT_GITHUB_TOKEN"]?.trim();
 const repository = env["GITHUB_REPOSITORY"];
@@ -142,8 +68,6 @@ try {
     readEvent(),
   );
 } catch (error) {
-  console.log(
-    `::error::${escapeCommand(error instanceof Error ? error.message : String(error))}`,
-  );
+  log.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 }

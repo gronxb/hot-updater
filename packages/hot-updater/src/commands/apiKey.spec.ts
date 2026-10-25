@@ -377,3 +377,13 @@ describe("hot-updater api-key over a server definition", () => {
     expect(loadHotUpdater).not.toHaveBeenCalled();
   });
 });
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});

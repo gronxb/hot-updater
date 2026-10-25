@@ -1,0 +1,285 @@
+---
+title: "Build and Upload from CI"
+description: "Build, register, and upload native apps to TestFlight and Google Play from CI with credentials stored once in the Console's vault, without signing in."
+icon: Workflow
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+A CI job builds the native apps with the same commands you run on your
+machine, `build:ios` and `build:android`, with `--register` and
+`--upload`. It never signs in to an Apple or Google account. You store each
+credential once, from a machine that reaches the Console, and every CI job
+reads it from the [Console's vault](/docs/guides/vault) with two secrets: the
+Console's URL and a vault token.
+
+| What the job needs        | Where it comes from                                                              |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| Android release keystore  | The vault secret `signing.keystore` names, such as `vault:release-keystore`     |
+| App Store Connect API key | The vault secret `signing.ascApiKey` names, or `asc-api-key`, for signing and TestFlight |
+| Play service account      | The vault secret `play-service-account`, for Google Play                         |
+| Deploy credentials        | The vault's `deploy-credentials`, for `--register`                               |
+
+The CLI treats a run as CI when the `CI` environment variable is set, as
+GitHub Actions, GitLab CI, CircleCI, Buildkite, Bitrise, and Codemagic set it,
+or when it has no terminal. There it asks nothing and never starts a sign-in,
+even on a terminal a runner allocates. It resolves every credential the build
+signs and uploads with before the build adapter's prebuild, so a job without
+one fails in seconds, with an error that names the missing credential, the
+vault's URL, the command that stores it once, and the environment variables
+that provide it without the vault.
+
+## Store the credentials once
+
+Run these on your machine, with `HOT_UPDATER_CONSOLE_URL` and a vault token
+that may write the secrets, as [Secrets in the CLI](/docs/guides/secrets)
+describes:
+
+```package-install
+npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 AuthKey_ABC123DEF4.p8 --key-id ABC123DEF4 --issuer-id 00000000-0000-0000-0000-000000000000
+npx hot-updater secrets put release-keystore --kind android-keystore --keystore release.jks --key-alias release
+npx hot-updater secrets put play-service-account --kind play-service-account
+```
+
+Without a key file, `secrets put play-service-account` signs you in with
+Google once and Hot Updater issues the service account's key, as
+[Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
+describes; `--service-account <key.json>` stores a key you already have. A
+build that finds no service account in the vault also offers that sign-in, on
+your machine only: in CI it never signs in.
+
+`secrets put` reads the keystore's passwords from
+`HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD` and `HOT_UPDATER_ANDROID_KEY_PASSWORD`,
+or asks for them. Store the deploy credentials `--register` uses with
+[`secrets import`](/docs/guides/secrets#move-envhotupdater-into-the-vault).
+
+The App Store Connect API key is a team key with the Admin role: CI signs
+with Xcode's cloud-managed distribution certificate, which only an Admin key
+may use, and uploads with the same key.
+
+## Issue the CI token
+
+Issue a token that reads exactly the secrets the build uses, named as the
+config names them:
+
+```package-install
+npx hot-updater secrets token create --name ci-native --secrets deploy-credentials,asc-api-key,release-keystore,play-service-account --actions read --expires-in-days 365
+```
+
+A native build only reads: it needs no `sign` or `write`. Leave out
+`deploy-credentials` when the job does not pass `--register`, and add `sign`
+only for a job that also deploys OTA updates with
+[`remoteSigning`](/docs/guides/signing/remote#sign-with-the-console-vault).
+A token scoped by name gets a "not in the vault" error for a secret that is
+not stored yet; one scoped by kind cannot tell a missing secret from one it
+may not read.
+
+In the repository's **Settings → Secrets and variables → Actions**, add
+`HOT_UPDATER_CONSOLE_URL` as a variable and the token as the secret
+`HOT_UPDATER_NATIVE_VAULT_TOKEN`, beside the OTA deploy's token that
+[the vault guide](/docs/guides/vault#issue-a-token-for-each-ci-job) issues.
+To require a reviewer before a job reads it, add
+both to a protected
+[environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+instead.
+
+## Add the workflow
+
+The `native-build` action runs `build:<platform> --scheme <scheme> --register
+--upload <store> --json` with the two values, sets the build as its outputs,
+and writes a summary of the job. This workflow builds both apps when you push
+a version tag or run it by hand:
+
+```yaml title=".github/workflows/native-release.yml"
+name: Native release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+      - run: npm ci
+      # The tag of the hot-updater release your project installs.
+      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+        with:
+          console-url: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
+          vault-token: ${{ secrets.HOT_UPDATER_NATIVE_VAULT_TOKEN }}
+          platform: ios
+          scheme: release
+          upload: testflight
+
+  android:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: npm ci
+      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+        with:
+          console-url: ${{ vars.HOT_UPDATER_CONSOLE_URL }}
+          vault-token: ${{ secrets.HOT_UPDATER_NATIVE_VAULT_TOKEN }}
+          platform: android
+          scheme: release
+          upload: play-internal
+```
+
+The stores take each build number once: raise `CFBundleVersion` and
+`versionCode` for every build you upload, such as from the tag or
+`github.run_number` in a step before the build.
+
+Without the action, the same job runs the command with the two values as
+`HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN` in its environment:
+
+```bash
+npx --no-install hot-updater build:ios --scheme release --register --upload testflight
+```
+
+## What a CI build does
+
+1. It loads the config, with the vault's `deploy-credentials` for
+   `--register`.
+2. Before the prebuild, it resolves every credential the build signs and
+   uploads with in one request to the Console, and checks that the stores
+   would take the scheme's build. A missing or unreadable credential stops it
+   here.
+3. It writes the keystore and the `.p8` key as temporary files only the
+   runner's user can read, keeps the service account in memory, and masks
+   every value and the token in the log.
+4. An iOS build that signs with the App Store Connect API key archives and
+   exports in a keychain of its own: the CLI creates and unlocks it, makes it
+   the default keychain ahead of the runner's, and restores the runner's
+   keychains when the build ends. On a runner that starts empty, Xcode creates
+   an Apple Development certificate for each build and keeps its private key
+   in that keychain, so the CLI revokes the certificates it finds there
+   through the App Store Connect API, then deletes the keychain with their
+   keys. The export signs with the cloud-managed distribution certificate,
+   which never leaves Apple. A scheme whose `exportOptionsPlist` exports for
+   another method, such as `development`, may be signed with the certificate
+   Xcode creates, so it builds in the runner's own keychains and keeps it.
+5. It builds, registers the build, uploads it, and deletes the temporary files
+   and the keychain.
+
+A self-hosted macOS runner that keeps a signing identity in its login keychain
+still uses it: the build's keychain comes first in the search list, and Xcode
+creates a certificate only when it finds no identity. The default keychain
+and the search list belong to the macOS user, so iOS builds under one user,
+such as two runner instances, take turns signing: a build waits while another
+holds the kernel lock on `~/Library/Caches/hot-updater/signing-keychain.lock`,
+which a build that ends in any way releases. A cancelled build still revokes
+its certificates and restores the keychains before it stops.
+
+## When a credential is missing
+
+A job whose vault lacks the Play service account stops before the build,
+without signing in to Google:
+
+```text
+play-service-account is not in the vault at https://console.example.com, or
+the vault token's scope does not reach it, and Hot Updater signs in to your
+Google Account only at a terminal, never in CI (CI is set). Run `npx
+hot-updater secrets put play-service-account --kind play-service-account` once
+on a machine where you can sign in, and give this build a vault token that
+reads play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or
+HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.
+```
+
+A missing keystore or App Store Connect API key fails the same way, with the
+`secrets put` command that stores it. A token whose scope does not reach a
+secret the build signs with gets the Console's refusal, with the
+`secrets token create` command that issues one that does. When the
+Console is unreachable or refuses the token, the error names the Console's URL.
+
+## Without the vault
+
+Each credential's environment variables override the vault for that
+credential, so a job can provide any of them from its own secrets instead.
+The [native build guide](/docs/guides/native-build#provide-signing-credentials)
+lists them. A `.p8` key or service account stored as a multi-line secret works
+as it is, and `HOT_UPDATER_ASC_KEY` also takes a key whose line breaks are
+written as `\n`. Leave `console-url` and `vault-token` empty, and the action
+runs the CLI with the job's `HOT_UPDATER_*` variables only:
+
+```yaml
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  env:
+    HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+    HOT_UPDATER_ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    HOT_UPDATER_ANDROID_KEY_ALIAS: release
+    HOT_UPDATER_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+  with:
+    platform: android
+    scheme: release
+    register: false
+    upload: play-internal
+```
+
+<Callout type="info">
+  `--register` writes to the server's database, so a job that registers
+  without the vault also sets the deploy variables your config reads.
+</Callout>
+
+## Inputs
+
+| Input               | Default                        | Description                                                                                                  |
+| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `console-url`       |                                | The Console's URL. Empty, with `vault-token` empty too, reads every credential from the job's environment    |
+| `vault-token`       |                                | A vault token that reads the build's secrets                                                                 |
+| `platform`          |                                | `ios`, on a macOS runner, or `android`. Required                                                             |
+| `scheme`            |                                | The `nativeBuild.<platform>` scheme. Required                                                                |
+| `upload`            |                                | `testflight` for iOS, `play-internal` for Android, or empty to only build                                    |
+| `register`          | `true`                         | Whether to register the build                                                                                |
+| `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                                                            |
+| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                      |
+
+The action refuses `ios` on a runner that is not macOS, an `upload` of the
+other platform's store, and one connection input without the other, as a
+workflow run from a fork has no secrets. It sets `CI` for the CLI, so a
+self-hosted runner that sets no `CI` never starts a sign-in either.
+
+| Output          | Description                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `artifact-path` | The built `.ipa`, `.aab`, `.apk`, simulator `.app`, or `.xcarchive`                                                 |
+| `build`         | JSON of the build: platform, scheme, artifact path and kind, min bundle ID, channel, and fingerprint or app version |
+| `native-build`  | JSON of the registered native build, or `null` without `register`                                                   |
+
+Upload the artifact with `actions/upload-artifact` to keep it with the run:
+
+```yaml
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  id: build
+  with:
+    # ...
+- uses: actions/upload-artifact@v4
+  with:
+    name: android-release
+    path: ${{ steps.build.outputs.artifact-path }}
+```

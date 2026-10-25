@@ -97,6 +97,7 @@ describe("prompts", () => {
   it.each(["confirm", "select", "text", "password", "multiselect"] as const)(
     "refuses %s without a terminal instead of waiting on stdin",
     async (prompt) => {
+      vi.stubEnv("CI", "");
       const input = new PassThrough();
       const captured = captureOutput();
 
@@ -108,13 +109,30 @@ describe("prompts", () => {
           output: captured.output,
         }),
       ).rejects.toThrow(
-        "Continue? There is no terminal to answer in: pass the command's options instead (see --help).",
+        "Continue? The CLI asks nothing without a terminal: pass the command's options instead (see --help).",
       );
       expect(captured.read()).toBe("");
     },
   );
 
+  it("refuses on a terminal in CI, where nobody answers", async () => {
+    vi.stubEnv("CI", "true");
+    const input = Object.assign(new PassThrough(), {
+      isTTY: true,
+      setRawMode: () => {},
+    });
+    const captured = captureOutput();
+
+    await expect(
+      p.confirm({ message: "Continue?", input, output: captured.output }),
+    ).rejects.toThrow(
+      "Continue? The CLI asks nothing in CI (CI is set): pass the command's options instead (see --help).",
+    );
+    expect(captured.read()).toBe("");
+  });
+
   it("asks on a terminal", async () => {
+    vi.stubEnv("CI", "");
     const input = Object.assign(new PassThrough(), {
       isTTY: true,
       setRawMode: () => {},

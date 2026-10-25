@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, nonInteractiveReason, p } from "@hot-updater/cli-tools";
 import type { ReleaseRow } from "@hot-updater/plugin-core";
 
 import { type LoadedServer, loadServer } from "@/utils/loadServer";
@@ -76,7 +76,7 @@ export const handlePromote = async (
       source.channel_id;
     p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
-      if (!process.stdin.isTTY) {
+      if (nonInteractiveReason() !== undefined) {
         p.log.error(
           "Cannot prompt in a non-interactive shell. Re-run with -y.",
         );

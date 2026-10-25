@@ -67,7 +67,7 @@ describe("hot-updater secrets put --kind play-service-account without a key file
     expect(message).toContain("v2");
   });
 
-  it("leaves a refusal canPrompt reported as it is", async () => {
+  it("leaves a refusal canSignIn reported as it is", async () => {
     ensurePlayServiceAccount.mockRejectedValueOnce(
       new PlayServiceAccountRefusedError("no terminal"),
     );
