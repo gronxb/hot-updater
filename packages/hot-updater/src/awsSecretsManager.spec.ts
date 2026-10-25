@@ -442,14 +442,30 @@ describe("awsSecretsManager", () => {
     );
   });
 
-  it("says to sign in again when the default chain fails", async () => {
-    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+  it("refuses half an environment key pair instead of trying a profile", async () => {
     vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
-    mocks.chain.mockRejectedValue(new Error("The SSO session has expired"));
 
     await expect(
       awsSecretsManager({ endpoint, region: REGION }).get(["a"], context),
-    ).rejects.toThrow(/SSO session has expired.*aws sso login/u);
+    ).rejects.toThrow(
+      "awsSecretsManager found AWS_ACCESS_KEY_ID without AWS_SECRET_ACCESS_KEY",
+    );
+    expect(mocks.chain).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
+  });
+
+  it("says to sign in again when the default chain fails", async () => {
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+    mocks.chain.mockRejectedValue(
+      new Error("The SSO session has expired. Run aws sso login."),
+    );
+
+    await expect(
+      awsSecretsManager({ endpoint, region: REGION }).get(["a"], context),
+    ).rejects.toThrow(
+      "The SSO session has expired. Run aws sso login. Sign in again, such as with aws sso login.",
+    );
     expect(requests).toHaveLength(0);
   });
 

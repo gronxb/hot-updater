@@ -229,6 +229,12 @@ export const awsSecretsManager = ({
         sessionToken: process.env["AWS_SESSION_TOKEN"] || undefined,
       });
     }
+    // Half a pair is a CI variable gone missing, not a reason to try a profile.
+    if (accessKeyId || secretAccessKey) {
+      throw new Error(
+        `awsSecretsManager found ${accessKeyId ? "AWS_ACCESS_KEY_ID" : "AWS_SECRET_ACCESS_KEY"} without ${accessKeyId ? "AWS_SECRET_ACCESS_KEY" : "AWS_ACCESS_KEY_ID"} in the environment: set both, or neither to use a profile.`,
+      );
+    }
     chain ??= loadCredentialProviders()
       .then((providers) => providers.fromNodeProviderChain())
       .catch((error) => {
@@ -241,7 +247,7 @@ export const awsSecretsManager = ({
       resolved = await provider();
     } catch (error) {
       throw new Error(
-        `awsSecretsManager could not load AWS credentials from the environment, a profile, or AWS SSO: ${error instanceof Error ? error.message : String(error)}. Sign in again, such as with aws sso login.`,
+        `awsSecretsManager could not load AWS credentials from the environment, a profile, or AWS SSO: ${(error instanceof Error ? error.message : String(error)).replace(/\.+$/u, "")}. Sign in again, such as with aws sso login.`,
       );
     }
     return checkCredentials(resolved);
