@@ -10,7 +10,7 @@ import {
   describeSecret,
   getHotUpdaterEnvValue,
   p,
-  registerSecretValue,
+  registerCredentialValue,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import open from "open";
@@ -90,7 +90,7 @@ const storeIssued = async (
   issued: IssuedPlayServiceAccount,
 ): Promise<{ readonly readable: boolean }> => {
   // Masked before it is sent, so no failure can print it.
-  registerSecretValue(issued.json);
+  registerCredentialValue(issued.json);
   try {
     return await storeIssuedCredential({ secrets, name, value: issued.json });
   } catch (error) {

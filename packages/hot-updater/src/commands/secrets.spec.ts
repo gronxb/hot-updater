@@ -98,7 +98,7 @@ afterEach(async () => {
 });
 
 describe("hot-updater secrets put", () => {
-  it("stores an App Store Connect key's files as one JSON value through the adapter, masked", async () => {
+  it("stores an App Store Connect key's files as one JSON value through the adapter, its key masked", async () => {
     // Given
     const { store, held } = writableStore();
     const p8 = path.join(directory, "AuthKey_PUTKEY1.p8");
@@ -125,8 +125,12 @@ describe("hot-updater secrets put", () => {
       issuerId: "put-issuer",
       p8: P8,
     });
-    expect(maskSecretValues(`${value} PUTKEY1 put-issuer ${P8}`)).not.toMatch(
-      /PUTKEY1|put-issuer|putSpecKeyLine01/u,
+    // The key and the whole value are masked; its IDs stay readable.
+    const masked = maskSecretValues(`${value}\n${P8}`);
+    expect(masked).not.toContain("putSpecKeyLine01");
+    expect(masked).not.toContain(value);
+    expect(maskSecretValues("key PUTKEY1 of put-issuer")).toBe(
+      "key PUTKEY1 of put-issuer",
     );
     const [stored] = messages();
     expect(stored).toContain("Secret stored");

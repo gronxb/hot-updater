@@ -10,7 +10,7 @@ import {
   loadConfig,
   nonInteractiveReason,
   p,
-  registerSecretValue,
+  registerCredentialValue,
 } from "@hot-updater/cli-tools";
 
 import { printBanner } from "@/utils/printBanner";
@@ -162,15 +162,6 @@ const readSecretValue = async (options: SecretsPutOptions): Promise<string> => {
   }
 };
 
-/** Masks a value about to be stored, and each of its JSON fields. */
-const registerValue = (value: string) => {
-  registerSecretValue(value);
-  const parsed: unknown = JSON.parse(value);
-  for (const entry of Object.values(parsed as Record<string, unknown>)) {
-    if (typeof entry === "string") registerSecretValue(entry);
-  }
-};
-
 /** Whether `secrets put` was given any part of a value to store. */
 const hasValueFlags = (options: SecretsPutOptions) =>
   Object.values(KIND_FLAGS)
@@ -238,7 +229,7 @@ export const handleSecretsPut = async (
     }
     const value = await readSecretValue(options);
     // Masked before it is sent, so no failure can print it.
-    registerValue(value);
+    registerCredentialValue(value);
     await secrets.set(name, value, { cwd: getCwd() });
     p.log.message(
       ui.block("Secret stored", [

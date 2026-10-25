@@ -578,12 +578,12 @@ describe("credential masking", () => {
     expect(masked).toContain("alias release-alias, key MASKKEYID");
   });
 
-  it("masks every field of a JSON credential the adapter holds", async () => {
+  it("masks every secret field of a JSON credential the adapter holds, and leaves its identifiers readable", async () => {
     // Given: a keystore and a service account as one JSON value each
     const keystore = {
       keystore: Buffer.from("json-masked-keystore").toString("base64"),
       storePassword: "json-mask-store",
-      keyAlias: "json-mask-alias",
+      keyAlias: "release",
       keyPassword: "json-mask-key",
     };
     const serviceAccount = {
@@ -606,22 +606,34 @@ describe("credential masking", () => {
       { secrets },
     );
 
-    // Then: no field prints, but a service account's type and endpoints
+    // Then: no secret field prints, nor the whole value
     const masked = maskSecretValues(
       [
-        ...Object.values(keystore),
-        ...Object.values(serviceAccount),
+        keystore.keystore,
+        keystore.storePassword,
+        keystore.keyPassword,
+        serviceAccount.private_key,
         JSON.stringify(keystore),
       ].join("\n"),
     );
     for (const value of [
-      ...Object.values(keystore),
-      serviceAccount.client_email,
+      keystore.keystore,
+      keystore.storePassword,
+      keystore.keyPassword,
       serviceAccount.private_key,
+      JSON.stringify(keystore),
     ]) {
       expect(masked).not.toContain(value);
     }
-    expect(masked).toContain("https://oauth2.googleapis.com/token");
+    // The alias, the service account's email, and its endpoints stay
+    // readable: an alias such as release would mask every scheme name.
+    expect(
+      maskSecretValues(
+        `Built the release scheme with ${serviceAccount.client_email} at https://oauth2.googleapis.com/token`,
+      ),
+    ).toBe(
+      `Built the release scheme with ${serviceAccount.client_email} at https://oauth2.googleapis.com/token`,
+    );
   });
 });
 

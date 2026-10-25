@@ -4,7 +4,11 @@ import {
   type IssuedAscApiKey,
   issueAscApiKey,
 } from "@hot-updater/apple-helper";
-import { describeSecret, p, registerSecretValue } from "@hot-updater/cli-tools";
+import {
+  describeSecret,
+  p,
+  registerCredentialValue,
+} from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { ui } from "../cli-ui";
@@ -101,8 +105,7 @@ const storeIssued = async (
     p8: key.p8,
   });
   // Masked before it is sent, so no failure can print it.
-  registerSecretValue(value);
-  registerSecretValue(key.p8);
+  registerCredentialValue(value);
   try {
     return await storeIssuedCredential({ secrets, name, value });
   } catch (error) {

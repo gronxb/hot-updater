@@ -243,28 +243,48 @@ const fromEnv: {
 };
 
 /** Fields of a service account that are no secret: its type and Google's endpoints. */
-const isPublicServiceAccountField = (field: string) =>
-  field === "type" ||
-  field === "universe_domain" ||
+/**
+ * Fields of a JSON credential that identify it rather than grant access:
+ * its IDs, key alias, and a service account's email, project, type, and
+ * Google's endpoints. They stay readable, as messages name them, and a
+ * short one, such as the alias `release`, would mask every word it is in.
+ */
+const isIdentifierField = (field: string) =>
+  [
+    "keyId",
+    "issuerId",
+    "keyAlias",
+    "type",
+    "project_id",
+    "client_email",
+    "client_id",
+    "universe_domain",
+  ].includes(field) ||
   field.endsWith("_uri") ||
   field.endsWith("_url");
 
-/**
- * Masks a JSON credential: the value, and each string field, which a log
- * may print alone, such as a password. A service account's type and
- * endpoints stay readable.
- */
 const registerJsonSecrets = (
   value: string,
   fields: Readonly<Record<string, unknown>>,
-  isPublic: (field: string) => boolean = () => false,
 ) => {
   registerSecretValue(value);
   for (const [field, entry] of Object.entries(fields)) {
-    if (typeof entry === "string" && !isPublic(field)) {
+    if (typeof entry === "string" && !isIdentifierField(field)) {
       registerSecretValue(entry);
     }
   }
+};
+
+/**
+ * Masks a credential's JSON value in the CLI's output: the whole value, and
+ * each field but those that identify it, such as `keyId` and `keyAlias`,
+ * so a password or a key a log prints alone stays masked. A value that is
+ * no JSON object is masked whole.
+ */
+export const registerCredentialValue = (value: string): void => {
+  const parsed = parseObject(value);
+  if (parsed) registerJsonSecrets(value, parsed);
+  else registerSecretValue(value);
 };
 
 const parseObject = (value: string): Record<string, unknown> | undefined => {
@@ -378,7 +398,7 @@ const fromSecretValue: {
         `${item} is not a service account JSON object.`,
       );
     }
-    registerJsonSecrets(value, parsed, isPublicServiceAccountField);
+    registerJsonSecrets(value, parsed);
     return { json: value };
   },
 };
