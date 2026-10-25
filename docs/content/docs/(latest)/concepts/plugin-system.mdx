@@ -10,10 +10,10 @@ Hot Updater talks to bundlers, cloud services, and databases through two kinds
 of objects:
 
 - An **adapter** fills one slot of a configuration: the `build`, `storage`,
-  `database`, `secrets`, or `signing` of `hot-updater.config.ts`, and the `database` and
-  `storage` of the server's `createHotUpdater`. A configuration has one adapter
-  per slot; the server's `storage` takes a list so it can read Bundles that
-  different adapters stored.
+  `database`, `secrets`, or `signing` of `hot-updater.config.ts`, and the
+  `database` and `storage` of the server's `createHotUpdater`. A configuration
+  has one adapter per slot; the server's `storage` takes a list so it can read
+  Bundles that different adapters stored.
 - A **plugin** is one entry of a list: the `plugins` of `createHotUpdater`, of
   `hot-updater.config.ts`, or of the app's `HotUpdater.init`, or an integration
   that wraps a build adapter. A configuration can have any number.
