@@ -39,6 +39,92 @@ export const log = {
   },
 };
 
+/** Credential variables whose value is a secret as a whole. */
+const CREDENTIAL_VARIABLES = new Set([
+  "HOT_UPDATER_ASC_KEY",
+  "HOT_UPDATER_ANDROID_KEYSTORE_BASE64",
+  "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
+  "HOT_UPDATER_ANDROID_KEY_PASSWORD",
+  "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
+]);
+
+/**
+ * Fields of a JSON credential that identify it rather than grant access, as
+ * the CLI leaves them readable: a short alias such as `release` would mask
+ * every word it is in.
+ */
+const IDENTIFIER_FIELDS = new Set([
+  "keyId",
+  "issuerId",
+  "keyAlias",
+  "type",
+  "project_id",
+  "client_email",
+  "client_id",
+  "universe_domain",
+]);
+
+/** @param {string} value @returns {Record<string, unknown> | undefined} */
+const jsonObject = (value) => {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * The values to mask in the job's log among the credentials the job's
+ * environment gives the CLI: the `HOT_UPDATER_*` credential variables, and
+ * each `HOT_UPDATER_*` variable that holds a JSON credential, as `env()`
+ * reads one per secret, whole and field by field but its identifiers. A
+ * multi-line value is masked line by line, as GitHub masks one line.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @returns {string[]}
+ */
+export const credentialMasks = (env) => {
+  /** @type {Set<string>} */
+  const masks = new Set();
+  /** @param {string} value */
+  const add = (value) => {
+    for (const line of value.split(/\r?\n/)) {
+      // A PEM's armor lines are the same in every key.
+      if (line.trim() && !/^-----(BEGIN|END) [A-Z0-9 ]+-----$/.test(line.trim())) {
+        masks.add(line.trim());
+      }
+    }
+  };
+  for (const [name, value] of Object.entries(env)) {
+    if (!name.startsWith("HOT_UPDATER_") || !value?.trim()) continue;
+    const fields = jsonObject(value);
+    if (CREDENTIAL_VARIABLES.has(name)) add(value);
+    if (fields) {
+      add(value);
+      for (const [field, entry] of Object.entries(fields)) {
+        if (typeof entry === "string" && !IDENTIFIER_FIELDS.has(field)) {
+          add(entry);
+        }
+      }
+    }
+  }
+  return [...masks];
+};
+
+/**
+ * Tells GitHub to mask the credentials `env` gives the CLI.
+ *
+ * @param {Record<string, string | undefined>} env
+ */
+export const maskCredentials = (env) => {
+  for (const value of credentialMasks(env)) {
+    console.log(`::add-mask::${value}`);
+  }
+};
+
 /**
  * Appends `value` to the file GitHub reads a step's `name` output from.
  *
