@@ -29,6 +29,8 @@ const RESERVED_PREFIXES = [
   "NPM_CONFIG_",
   // The OAuth client the Google sign-in issues a Play key with.
   "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_",
+  // What infisical() signs in to Infisical with, such as INFISICAL_TOKEN.
+  "INFISICAL_",
 ] as const;
 
 /**

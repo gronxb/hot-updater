@@ -13,6 +13,7 @@ describe("secrets exports", () => {
       "env",
       "githubActions",
       "googleSecretManager",
+      "infisical",
     ]);
   });
 

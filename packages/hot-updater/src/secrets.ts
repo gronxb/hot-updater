@@ -9,4 +9,9 @@ export {
   googleSecretManager,
   type GoogleSecretManagerOptions,
 } from "./googleSecretManager";
+export {
+  infisical,
+  type InfisicalAuth,
+  type InfisicalSecretsOptions,
+} from "./infisicalSecrets";
 export type { SecretsAdapter, SecretsContext } from "@hot-updater/plugin-core";
