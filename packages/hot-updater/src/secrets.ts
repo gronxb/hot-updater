@@ -1,4 +1,5 @@
 export { envSecrets as env } from "@hot-updater/cli-tools";
+export type { SecretsAdapter, SecretsContext } from "@hot-updater/plugin-core";
 export {
   awsSecretsManager,
   type AwsSecretsManagerCredentials,
@@ -14,4 +15,3 @@ export {
   type InfisicalAuth,
   type InfisicalSecretsOptions,
 } from "./infisicalSecrets";
-export type { SecretsAdapter, SecretsContext } from "@hot-updater/plugin-core";
