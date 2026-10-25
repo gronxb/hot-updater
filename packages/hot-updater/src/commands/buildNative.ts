@@ -15,6 +15,7 @@ import {
 import {
   createMinBundleId,
   type CredentialResolver,
+  describeSecret,
   type Credentials,
   getConfiguredSecrets,
   getCwd,
@@ -162,14 +163,25 @@ const buildNativeInternal = async ({
               try {
                 const packageName =
                   androidScheme!.applicationId ?? androidScheme!.packageName;
+                const name =
+                  uploadServiceAccount.name ?? uploadServiceAccount.kind;
                 const ensured = await ensurePlayServiceAccount({
-                  name: uploadServiceAccount.name ?? uploadServiceAccount.kind,
+                  name,
                   secrets,
                   cacheDir,
                   ...(packageName ? { packageName } : {}),
                 });
-                if (ensured.status === "issued")
+                if (ensured.status === "issued") {
                   serviceAccountIssued = "stored";
+                  // A key the adapter does not read back here is in its
+                  // copy: this build uploads with it from there.
+                  if (ensured.secrets) {
+                    secrets = ensured.secrets;
+                    serviceAccountIssued = {
+                      file: describeSecret(ensured.secrets, name),
+                    };
+                  }
+                }
                 if (ensured.status === "saved") {
                   serviceAccountIssued = { file: ensured.file };
                   secrets = ensured.secrets;

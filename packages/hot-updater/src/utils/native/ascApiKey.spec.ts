@@ -666,18 +666,24 @@ describe("ensureAscApiKey", () => {
     expect(guidance).toContain(
       "The spec-store secrets adapter stored asc-api-key (spec://asc-api-key), and does not read it back here",
     );
+    // Builds read the per-field variables before any adapter; the whole
+    // value would go through env(), which is not the config's adapter.
     expect(guidance).toContain(
-      `Set HOT_UPDATER_ASC_API_KEY to the contents of ${file}`,
+      "Set HOT_UPDATER_ASC_KEY to its p8, HOT_UPDATER_ASC_KEY_ID to its keyId, HOT_UPDATER_ASC_ISSUER_ID to its issuerId (the file's fields) in the environment or .env.hotupdater",
     );
+    expect(guidance).not.toContain("HOT_UPDATER_ASC_API_KEY");
     expect(printed()).not.toContain("MIGHAgEA");
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
 
     // The next sign-in for it stops at the copy, issuing no other key.
     vi.clearAllMocks();
-    await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).rejects.toThrow("which builds here do not read yet.");
+    const refusal = await withTTY(true, () =>
+      ensure({ name: "asc-api-key" }),
+    ).catch((error: unknown) => String(error));
+    expect(refusal).toContain("which builds here do not read yet.");
+    expect(refusal).toContain("HOT_UPDATER_ASC_KEY_ID to its keyId");
+    expect(refusal).not.toContain("HOT_UPDATER_ASC_API_KEY");
     expect(issue).not.toHaveBeenCalled();
   });
 

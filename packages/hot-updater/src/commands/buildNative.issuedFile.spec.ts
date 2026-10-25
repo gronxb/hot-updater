@@ -259,6 +259,22 @@ describe("a first build whose secrets adapter is env()", () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 
+  it("uploads to Google Play with the service account a write-only adapter stored, from its copy", async () => {
+    scheme.platform = "android";
+    scheme.writeOnly = true;
+    await withTTY(() =>
+      buildAndroidNative({
+        interactive: false,
+        scheme: "release",
+        upload: "play-internal",
+      }),
+    );
+
+    expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
+    expect(printed()).not.toContain("MIIBfirstBuild");
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
   it("uploads to Google Play with the service account the sign-in issued, from its file", async () => {
     scheme.platform = "android";
     await withTTY(() =>

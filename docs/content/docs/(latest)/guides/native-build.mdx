@@ -187,7 +187,10 @@ read it:
   included. A store that does not read it back on your machine, such as
   [`githubActions()`](/docs/guides/secrets-adapters/github-actions) outside a
   workflow, keeps the key for CI, and the CLI also writes a copy to the file
-  below, with the variables that let builds on your machine read it.
+  below. Builds on your machine read it from the key's own variables
+  (`HOT_UPDATER_ASC_KEY`, `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`,
+  or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`), which the CLI reads before any
+  adapter.
 - When the adapter is read-only, such as the default `env()`, the CLI writes
   the key to `<cacheDir>/issued/<name>.json` (`node_modules/.hot-updater` unless
   `cacheDir` sets another directory), a file only your user can read in a

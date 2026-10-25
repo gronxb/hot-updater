@@ -152,7 +152,7 @@ const refuseEarlierFile = async (
             ...localGuidance(policy.kind, name, secrets, file),
             ciGuidance(name, secrets),
           ]
-        : localGuidance(policy.kind, name, envSecrets(), file)),
+        : [fieldGuidance(policy.kind)]),
       "Or delete the file, and run this again to sign in and issue another.",
     ].join("\n"),
   );
@@ -317,6 +317,14 @@ const localGuidance = (
     `Or set ${FIELD_VARIABLES[kind].join(", ")} (the file's fields).`,
   ];
 };
+
+/**
+ * The per-field variables, which builds read before any secrets adapter:
+ * the only ones that work whatever adapter the config sets, as the whole
+ * value's variable is read through `env()`.
+ */
+const fieldGuidance = (kind: IssuedCredentialKind) =>
+  `Set ${FIELD_VARIABLES[kind].join(", ")} (the file's fields) in the environment or .env.hotupdater, which builds read before any secrets adapter.`;
 
 /** Where CI reads the key from: a secret the job maps to `env()`'s variable. */
 const ciGuidance = (name: string, secrets: SecretsAdapter) => {
@@ -532,7 +540,7 @@ export const keepIssuedCopy = async ({
       ui.kv("File", file),
       ...[
         `${stored}. Hot Updater wrote a copy to this file, which only you can read, and this build uses it. Builds that read the adapter where it holds the key, such as CI's, need nothing more.`,
-        ...localGuidance(policy.kind, name, envSecrets(), file),
+        fieldGuidance(policy.kind),
         "Then delete the file.",
       ].map((line) => `    ${line}`),
     ]),
