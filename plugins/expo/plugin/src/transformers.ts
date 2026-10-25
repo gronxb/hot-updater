@@ -147,6 +147,43 @@ function transformAndroidReactHost(contents: string): string {
 }
 
 /**
+ * Removes every `override fun getJSBundleFile(): String?` block, matching its
+ * closing brace by depth so a body with nested blocks (`if`, `else`, `try`)
+ * is removed whole.
+ */
+function removeKotlinGetJSBundleFile(source: string): string {
+  const methodStart = /^\s*override fun getJSBundleFile\(\): String\?\s*\{/gm;
+  let result = "";
+  let cursor = 0;
+
+  for (const match of source.matchAll(methodStart)) {
+    if (match.index < cursor) {
+      continue;
+    }
+
+    let depth = 1;
+    let end = match.index + match[0].length;
+    while (end < source.length && depth > 0) {
+      if (source[end] === "{") {
+        depth += 1;
+      } else if (source[end] === "}") {
+        depth -= 1;
+      }
+      end += 1;
+    }
+    if (depth !== 0) {
+      // Unbalanced input: leave it for the author instead of cutting it.
+      continue;
+    }
+
+    result += source.slice(cursor, match.index);
+    cursor = end;
+  }
+
+  return result + source.slice(cursor);
+}
+
+/**
  * Android: DefaultReactNativeHost pattern (RN 0.81 / Expo 54).
  * Adds getJSBundleFile() override to the host.
  */
@@ -155,8 +192,6 @@ function transformAndroidDefaultHost(contents: string): string {
   const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
   const kotlinReactNativeHostAnchor = "object : DefaultReactNativeHost(this) {";
   const kotlinMethodCheck = "HotUpdater.getJSBundleFile(applicationContext)";
-  const kotlinExistingMethodRegex =
-    /^\s*override fun getJSBundleFile\(\): String\?\s*\{[\s\S]*?^\s*\}/gm;
   const kotlinHermesAnchor =
     "override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED";
   const kotlinNewArchAnchor =
@@ -173,7 +208,7 @@ function transformAndroidDefaultHost(contents: string): string {
   // 2. Add/Replace getJSBundleFile method if needed
   if (!result.includes(kotlinMethodCheck)) {
     // Remove potentially existing (different) override first
-    result = result.replace(kotlinExistingMethodRegex, "");
+    result = removeKotlinGetJSBundleFile(result);
 
     const lines = result.split("\n");
 
