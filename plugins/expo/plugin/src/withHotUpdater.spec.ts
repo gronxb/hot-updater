@@ -188,7 +188,7 @@ describe("withHotUpdater - Test Cases", () => {
       await expect(
         access(path.join(dir, "fingerprint.json")),
       ).rejects.toThrow();
-      // Prebuild loads the config without vault credentials: no Console.
+      // Prebuild loads the config without credentials.
       expect(vi.mocked(cliTools.loadConfig).mock.calls).toEqual([[null]]);
     });
 

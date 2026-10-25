@@ -11,7 +11,6 @@ import {
   remoteConfig,
   type RemoteConfigApi,
   type RemoteConfigTemplate,
-  vault,
 } from "@hot-updater/server/plugins";
 
 type DemoReleaseFields = Pick<
@@ -665,7 +664,7 @@ export const database = mockDatabase({ latency: { min: 150, max: 320 } });
 /** The demo's storage; the seed uploads no bundle files to it. */
 export const storage = mockStorage({});
 /** The plugins whose features the console shows; the seed writes through them too. */
-export const plugins = [insights(), apiKeys(), remoteConfig(), vault()];
+export const plugins = [insights(), apiKeys(), remoteConfig()];
 // Seeding writes through core and the plugins, assembled as the console
 // assembles them, over the same data without the delay the console sees.
 const seeding = assembleServer({

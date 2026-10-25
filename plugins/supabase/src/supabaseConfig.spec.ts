@@ -6,8 +6,8 @@ import { supabaseExecutor } from "./supabaseExecutor";
 import { supabaseStorage } from "./supabaseStorage";
 
 describe("Supabase adapters without credentials", () => {
-  // A config loads before the vault's credentials are set, as a fingerprint
-  // or native build loads it; the first request asks for the key.
+  // A config loads without its credentials, as a fingerprint or native build
+  // loads it; the first request asks for the key.
   const unset = {
     supabaseUrl: undefined as never,
     supabaseServiceRoleKey: undefined as never,

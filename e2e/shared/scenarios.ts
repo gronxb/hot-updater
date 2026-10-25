@@ -18,6 +18,7 @@ import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disable
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
+import { foreignSigningKeyRefusedScenario } from "./scenarios/foreign-signing-key-refused.ts";
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
 import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
 import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
@@ -44,7 +45,6 @@ import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-coho
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
 import { tenCrashHistorySafeBundleScenario } from "./scenarios/ten-crash-history-safe-bundle.ts";
 import type { ScenarioDefinition } from "./scenarios/types.ts";
-import { vaultSignedOtaScenario } from "./scenarios/vault-signed-ota.ts";
 
 export type {
   ScenarioDefinition,
@@ -89,7 +89,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   runtimeChannelCrashRestoreScenario,
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
-  vaultSignedOtaScenario,
+  foreignSigningKeyRefusedScenario,
   brownfieldNativeRequiredUpdateScenario,
   brownfieldNativeMinorUpdateScenario,
   brownfieldInstancesUpdateIndependentlyScenario,

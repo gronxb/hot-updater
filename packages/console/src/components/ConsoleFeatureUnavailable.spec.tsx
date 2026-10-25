@@ -77,18 +77,6 @@ describe("ConsoleFeatureUnavailable", () => {
     },
   );
 
-  it("links the Vault's own guide, which says why a self-hosted server's console serves no vault", () => {
-    mocks.remote = true;
-    render(<ConsoleFeatureUnavailable data={{ feature: "vault" }} />);
-
-    expect(screen.getByText("Needs the server's database")).toBeDefined();
-    expect(
-      screen.getByRole("link", { name: /vault guide/i }).getAttribute("href"),
-    ).toBe(
-      "https://hot-updater.dev/docs/guides/console-deployment/vault#turn-on-the-vault",
-    );
-  });
-
   it("is the plain not-found page for any other not-found", () => {
     render(<ConsoleFeatureUnavailable data={{ feature: "billing" }} />);
 

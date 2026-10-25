@@ -257,15 +257,11 @@ it with unsigned bundles.
 
 ## Console
 
-Configure signing through the Hot Updater CLI or your signing provider. A
-Console does not inspect signing configuration. A Console running
-[`vault()`](/docs/guides/console-deployment/vault) can hold a bundle signing
-key and sign with it at `/_hot-updater/signing`, which `remoteSigning`
-reaches with a vault token: see
-[Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault).
-Otherwise a Console needs no signing credentials or permission to sign. The
-deploy command verifies provider and signature health inside the trusted
-signing environment.
+Configure signing and manage keys through the Hot Updater CLI or your signing
+provider. Local and hosted Consoles do not inspect signing configuration or
+manage signing keys. A hosted Console does not need signing credentials or
+permission to sign. The deploy command verifies provider and signature health
+inside the trusted signing environment.
 
 ## Configuration States
 

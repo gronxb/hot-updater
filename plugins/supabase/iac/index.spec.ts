@@ -1105,8 +1105,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "./_hot-updater/hot-updater-plugin-api-keys/dist/server/index.mjs",
         "@hot-updater/plugin-remote-config/server":
           "./_hot-updater/hot-updater-plugin-remote-config/dist/server/index.mjs",
-        "@hot-updater/plugin-vault/server":
-          "./_hot-updater/hot-updater-plugin-vault/dist/server/index.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {

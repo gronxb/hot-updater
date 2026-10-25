@@ -371,13 +371,6 @@ describe("createHotUpdater with plugins", () => {
       ],
       [
         {
-          plugins: [{ ...valid, id: "vault" }],
-          clientAccess: "public",
-        },
-        `plugins[0] takes the id "vault", which is reserved for Hot Updater's vault() plugin; give this plugin another id.`,
-      ],
-      [
-        {
           plugins: [{ ...valid, cli: { hooks: [] } }],
           clientAccess: "public",
         },
