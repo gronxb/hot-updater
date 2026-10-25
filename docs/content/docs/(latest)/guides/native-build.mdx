@@ -131,9 +131,10 @@ asked: Hot Updater asks for its email, and asc, the open-source
 [App Store Connect CLI](https://github.com/rorkai/App-Store-Connect-CLI)
 (MIT), asks for its password and two-factor code in its own prompts. Hot
 Updater then creates a team API key with the Admin role in that team, named
-`hot-updater <bundle ID> <date>`, stores it through the `secrets` adapter
-under the name the build resolves, and continues the build. It keeps only the issued key:
-neither the password nor the Apple session is saved.
+`hot-updater <bundle ID> <date>`, stores it under the name the build resolves
+([where an issued key goes](#where-an-issued-key-goes)), and continues the
+build. It keeps only the issued key: neither the password nor the Apple
+session is saved.
 
 The Admin role lets `xcodebuild` create cloud-managed distribution
 certificates and provisioning profiles, so the Mac needs no signing identity
@@ -151,11 +152,11 @@ without a terminal use the stored key and never sign in. A build that finds no
 key there stops with that command.
 
 Before it asks for your Apple Account, the CLI checks everything that could
-fail afterwards: a `HOT_UPDATER_ASC_KEY*` override or a stored key is used as
-it is, and the `secrets` adapter must store values. The default `env()` stores
-nothing, so with it, set the key's variables instead. When the adapter surely
-did not store the issued key, the CLI revokes it again, so no key is left that
-nothing holds.
+fail afterwards, in this order: a `HOT_UPDATER_ASC_KEY*` override or a key the
+`secrets` adapter holds is used as it is; CI and runs without a terminal stop
+with the command above; and the key needs somewhere to go, the adapter when it
+stores values, or else its file under `cacheDir`. When the issued key surely
+went nowhere, the CLI revokes it again, so no key is left that nothing holds.
 
 The CLI uses the `asc` on your `PATH` when it is version 5.16.1 or later, and
 otherwise downloads asc 5.16.1 from its GitHub release into
@@ -175,6 +176,50 @@ build's own, and the CLI revokes the development certificates Xcode created
 in it before deleting it, as
 [What a CI build does](/docs/guides/ci-native-build#what-a-ci-build-does)
 describes.
+
+### Where an issued key goes
+
+A key Hot Updater issues after an Apple or Google sign-in goes where builds
+read it:
+
+- When the `secrets` adapter stores values, the CLI stores the key through it
+  as one JSON value, reads it back, and builds read it from there, CI's
+  included. A store that does not read it back on your machine, such as
+  [`githubActions()`](/docs/guides/secrets-adapters/github-actions) outside a
+  workflow, keeps the key for CI, and the CLI also writes a copy to the file
+  below. Builds on your machine read it from the key's own variables
+  (`HOT_UPDATER_ASC_KEY`, `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`,
+  or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`), which the CLI reads before any
+  adapter.
+- When the adapter is read-only, such as the default `env()`, the CLI writes
+  the key to `<cacheDir>/issued/<name>.json` (`node_modules/.hot-updater` unless
+  `cacheDir` sets another directory), a file only your user can read in a
+  directory git ignores. It prints the file's path and the variables to store
+  it in, never the key: `HOT_UPDATER_ASC_API_KEY` or
+  `HOT_UPDATER_PLAY_SERVICE_ACCOUNT` (the name's variable, as
+  [`env()`](/docs/guides/secrets) reads it) set to the file's contents, in the
+  environment or `.env.hotupdater`, or the key's own variables from
+  [Provide signing credentials](#provide-signing-credentials). The build that
+  signed in continues with the key from the file, so its upload goes through.
+  Store the key, then delete the file: a later sign-in for the same name
+  refuses to replace it, since the key it holds is still valid.
+
+For CI, store the same value as a repository secret and map it into the job,
+as in [Build and upload from CI](/docs/guides/ci-native-build):
+
+```yaml
+env:
+  HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+```
+
+With `env()`, when the project's `origin` (or another remote) is on GitHub and
+you have a token (`GH_TOKEN` or `GITHUB_TOKEN`, or the GitHub CLI's
+`gh auth token`), the CLI offers once to store the key as that secret with
+[`githubActions()`](/docs/guides/secrets-adapters/github-actions). Declining
+leaves the file as it is, and a failed write says so and leaves it too.
+
+The CLI writes the file only after a sign-in, and never revokes a key it wrote
+there.
 
 ## Build
 
@@ -338,7 +383,9 @@ Team Keys), with the Admin, App Manager, or Developer role: the scheme's
 `HOT_UPDATER_ASC_KEY*` environment variables in
 [Provide signing credentials](#provide-signing-credentials) override it.
 Without one, [sign in with your Apple Account](#sign-in-with-your-apple-account)
-when asked, and the CLI issues and stores it before it builds. The
+when asked, and the CLI issues and stores it before it builds; with a read-only
+adapter, it writes the key to a file and the same build uploads with it from
+there ([where an issued key goes](#where-an-issued-key-goes)). The
 CLI resolves the key before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing key fails before either runs, and
 deletes the key's temporary file when the upload ends.
@@ -398,13 +445,12 @@ address), and lets you pick a Google Cloud project or create one. Then it:
    creates the service account `hot-updater-play` there.
 3. Adds the service account to Play Console as a user that may view the app
    and release it to testing tracks.
-4. Creates the service account's JSON key, stores it through the `secrets`
-   adapter as `play-service-account`, reads it back, and continues with the
-   build.
+4. Creates the service account's JSON key, stores it as
+   `play-service-account` ([where an issued key goes](#where-an-issued-key-goes)),
+   and continues with the build, which uploads with it.
 
-Google's own page asks for your password, and the CLI keeps only the stored
-key. The adapter must store values. When it surely did not store the key, the
-CLI deletes the key again; the service
+Google's own page asks for your password, and the CLI keeps only the issued
+key. When the key surely went nowhere, the CLI deletes the key again; the service
 account and its Play Console access stay, and the next run reuses them.
 Builds without a terminal, such as CI, use the stored key and never sign in:
 when it is missing, they fail with the command to run once in a terminal,

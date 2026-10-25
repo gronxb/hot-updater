@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsPut } from "./secrets";
 
-const { log, password, printBanner } = vi.hoisted(() => ({
+const { log, password, printBanner, text } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -23,6 +23,7 @@ const { log, password, printBanner } = vi.hoisted(() => ({
   },
   password: vi.fn(),
   printBanner: vi.fn(),
+  text: vi.fn(),
 }));
 
 // Only the config and the prompts are mocked.
@@ -33,11 +34,29 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     isCancel: vi.fn(() => false),
     log,
     password,
-    text: vi.fn(),
+    text,
   },
 }));
 
 vi.mock("@/utils/printBanner", () => ({ printBanner }));
+// The GitHub Actions offer has its own specs: here it finds nothing to offer.
+vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/native/githubSecret")>()),
+  offerGitHubSecret: vi.fn(async () => "unavailable"),
+}));
+vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/apple-helper")>()),
+  // The Apple Account sign-in, which issues the key.
+  issueAscApiKey: vi.fn(async (request: { name: string }) => ({
+    p8: P8,
+    keyId: "KEY1234567",
+    issuerId: "issuer-1",
+    name: request.name,
+    team: {},
+    revoke: vi.fn(async () => true),
+    dispose: vi.fn(async () => {}),
+  })),
+}));
 
 const P8 =
   "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49putSpecKeyLine01\n-----END PRIVATE KEY-----";
@@ -64,8 +83,8 @@ const writableStore = (values: Record<string, string> = {}) => {
   return { store, held };
 };
 
-const configure = (secrets: SecretsAdapter) => {
-  vi.mocked(loadConfig).mockResolvedValue({ secrets } as never);
+const configure = (secrets: SecretsAdapter, cacheDir?: string) => {
+  vi.mocked(loadConfig).mockResolvedValue({ secrets, cacheDir } as never);
 };
 
 const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
@@ -268,6 +287,31 @@ describe("hot-updater secrets put asc-api-key without a key", () => {
       ),
     );
     expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("signs in and writes the issued key to a 0600 file when the adapter is env(), which is read-only", async () => {
+    configure(envSecrets(), directory);
+    text.mockResolvedValue("dev@example.com");
+
+    await withTTY(true, () =>
+      handleSecretsPut("asc-api-key", { kind: "asc-api-key" }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    const file = path.join(directory, "issued", "asc-api-key.json");
+    expect(JSON.parse(await fs.readFile(file, "utf-8"))).toMatchObject({
+      keyId: "KEY1234567",
+      p8: P8,
+    });
+    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    const warned = stripVTControlCharacters(String(log.warn.mock.calls[0]![0]));
+    expect(warned).toContain(file);
+    expect(warned).toContain("HOT_UPDATER_ASC_API_KEY");
+    expect(
+      Object.values(log)
+        .flatMap((fn) => fn.mock.calls.flat())
+        .join("\n"),
+    ).not.toContain("putSpecKeyLine01");
   });
 
   it("never signs in in CI", async () => {
