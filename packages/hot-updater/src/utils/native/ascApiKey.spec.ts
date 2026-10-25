@@ -262,6 +262,7 @@ describe("ensureAscApiKey", () => {
 
   it("writes the key a read-only adapter can't store to a 0600 file, says where to store it, and keeps it", async () => {
     setConfiguredSecrets(envSecrets());
+    git.remote = undefined;
     const result = await withTTY(true, () =>
       ensure({ name: "asc-api-key", cacheDir, read: true }),
     );
@@ -283,7 +284,9 @@ describe("ensureAscApiKey", () => {
       fs.readFile(path.join(cacheDir, "issued", ".gitignore"), "utf-8"),
     ).resolves.toBe("*\n");
 
-    const guidance = stripVTControlCharacters(String(log.warn.mock.calls[0]![0]));
+    const guidance = stripVTControlCharacters(
+      String(log.warn.mock.calls[0]![0]),
+    );
     expect(guidance).toContain("App Store Connect API key saved to a file");
     expect(guidance).toContain(`File:`);
     expect(guidance).toContain(file);
@@ -300,7 +303,7 @@ describe("ensureAscApiKey", () => {
     // The key is in the file alone: nothing printed or asked holds it.
     expect(printed()).not.toContain("MIGHAgEA");
     expect(printed()).not.toContain("BEGIN PRIVATE KEY");
-    // No GitHub Actions adapter, no offer.
+    // No GitHub remote, no offer.
     expect(confirm).not.toHaveBeenCalled();
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
@@ -320,9 +323,17 @@ describe("ensureAscApiKey", () => {
 
   it("names where a read-only adapter other than env() reads the key", async () => {
     fakeStore({ writable: false });
-    await withTTY(true, () => ensure({ name: "widget-asc", cacheDir }));
+    const githubSecrets = vi.fn();
+    await withTTY(true, () =>
+      ensure({ name: "widget-asc", cacheDir, githubSecrets }),
+    );
+    // CI reads a GitHub Actions secret only through env(): no offer.
+    expect(confirm).not.toHaveBeenCalled();
+    expect(githubSecrets).not.toHaveBeenCalled();
     const file = path.join(cacheDir, "issued", "widget-asc.json");
-    const guidance = stripVTControlCharacters(String(log.warn.mock.calls[0]![0]));
+    const guidance = stripVTControlCharacters(
+      String(log.warn.mock.calls[0]![0]),
+    );
     expect(guidance).toContain(
       `Store the contents of ${file} as one value at spec://widget-asc, so builds read it.`,
     );

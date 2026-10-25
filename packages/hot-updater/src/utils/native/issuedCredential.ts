@@ -314,15 +314,14 @@ export const withIssuedFile = (
     }
     return values;
   },
-  describe: (other) =>
-    other === name ? file : describeSecret(secrets, other),
+  describe: (other) => (other === name ? file : describeSecret(secrets, other)),
 });
 
 /**
  * Writes an issued key's `value` to `file`, 0600 and never over another
  * file, and tells the developer how to store it, naming the file and the
- * variables, never the key, and that the file goes once it is stored; then
- * offers once to store it as a GitHub Actions secret. The value is masked
+ * variables, never the key, and that the file goes once it is stored; then,
+ * for `env()`, offers once to store it as a GitHub Actions secret. The value is masked
  * before anything can print it. A failed write throws: the key is nowhere,
  * and the caller revokes it.
  */
@@ -364,6 +363,9 @@ export const writeIssuedCredential = async ({
       ].map((line) => `    ${line}`),
     ]),
   );
+  // CI reads the GitHub Actions secret through env(), as the variable env()
+  // reads the name from: another adapter would not read it there.
+  if (!isEnvSecrets(secrets)) return;
   await offerGitHubSecret({
     name,
     value,

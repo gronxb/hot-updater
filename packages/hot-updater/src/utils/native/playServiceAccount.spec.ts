@@ -24,6 +24,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: { log, text, select, isCancel: vi.fn(() => false) },
 }));
 vi.mock("open", () => ({ default: open }));
+// The GitHub Actions offer has its own specs: here it finds nothing to offer.
+vi.mock("./githubSecret", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./githubSecret")>()),
+  offerGitHubSecret: vi.fn(async () => "unavailable"),
+}));
 
 import type {
   IssuedPlayServiceAccount,
@@ -225,7 +230,9 @@ describe("ensurePlayServiceAccount", () => {
 
   it("writes the key a read-only adapter can't store to a 0600 file, says where to store it, and keeps it", async () => {
     setConfiguredSecrets(envSecrets());
-    const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-play-"));
+    const cacheDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-play-"),
+    );
     try {
       const result = await withTTY(true, () =>
         ensure({ name: "play-service-account", cacheDir, read: true }),
@@ -253,10 +260,7 @@ describe("ensurePlayServiceAccount", () => {
       expect(issued.revoke).not.toHaveBeenCalled();
       expect(issued.dispose).toHaveBeenCalledTimes(1);
 
-      const { secrets } = result as Extract<
-        typeof result,
-        { status: "saved" }
-      >;
+      const { secrets } = result as Extract<typeof result, { status: "saved" }>;
       await expect(
         secrets.get(["play-service-account"], { cwd: cacheDir }),
       ).resolves.toEqual({ "play-service-account": KEY_FILE });
@@ -268,7 +272,9 @@ describe("ensurePlayServiceAccount", () => {
   it("never signs in in CI with a read-only adapter, writing no file", async () => {
     vi.stubEnv("CI", "true");
     setConfiguredSecrets(envSecrets());
-    const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-play-"));
+    const cacheDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-play-"),
+    );
     try {
       await expect(
         withTTY(true, () => ensure({ name: "play-service-account", cacheDir })),

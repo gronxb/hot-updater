@@ -125,9 +125,9 @@ describe("offerGitHubSecret", () => {
   it("asks nothing in CI", async () => {
     vi.stubEnv("CI", "true");
     const createSecrets = vi.fn();
-    await expect(
-      withTTY(true, () => offer({ createSecrets })),
-    ).resolves.toBe("unavailable");
+    await expect(withTTY(true, () => offer({ createSecrets }))).resolves.toBe(
+      "unavailable",
+    );
     expect(confirm).not.toHaveBeenCalled();
     expect(createSecrets).not.toHaveBeenCalled();
   });

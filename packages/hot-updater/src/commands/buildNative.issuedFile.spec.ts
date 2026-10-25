@@ -17,7 +17,8 @@ const P8 =
 const SERVICE_ACCOUNT = JSON.stringify({
   type: "service_account",
   client_email: "hot-updater-play@my-app.iam.gserviceaccount.com",
-  private_key: "-----BEGIN PRIVATE KEY-----\nMIIBfirstBuild\n-----END PRIVATE KEY-----",
+  private_key:
+    "-----BEGIN PRIVATE KEY-----\nMIIBfirstBuild\n-----END PRIVATE KEY-----",
 });
 
 const { log, uploads, scheme, cacheDir } = vi.hoisted(() => ({
@@ -79,10 +80,12 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
     kind: "play-service-account",
     name: "play-service-account",
   })),
-  uploadToPlay: vi.fn(async ({ serviceAccount }: { serviceAccount: unknown }) => {
-    uploads.push(serviceAccount);
-    return { versionCode: 42, status: "completed" };
-  }),
+  uploadToPlay: vi.fn(
+    async ({ serviceAccount }: { serviceAccount: unknown }) => {
+      uploads.push(serviceAccount);
+      return { versionCode: 42, status: "completed" };
+    },
+  ),
 }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -100,6 +103,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   },
 }));
 vi.mock("open", () => ({ default: vi.fn(async () => {}) }));
+// The GitHub Actions offer has its own specs: here it finds nothing to offer.
+vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/native/githubSecret")>()),
+  offerGitHubSecret: vi.fn(async () => "unavailable"),
+}));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", async () => {
@@ -177,7 +185,9 @@ const printed = () =>
 beforeEach(async () => {
   vi.clearAllMocks();
   uploads.length = 0;
-  cacheDir.path = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-build-"));
+  cacheDir.path = await fs.mkdtemp(
+    path.join(os.tmpdir(), "hot-updater-build-"),
+  );
   vi.stubEnv("CI", "");
   for (const name of [
     "HOT_UPDATER_ASC_KEY_PATH",
@@ -231,7 +241,11 @@ describe("a first build whose secrets adapter is env()", () => {
     );
 
     expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
-    const file = path.join(cacheDir.path, "issued", "play-service-account.json");
+    const file = path.join(
+      cacheDir.path,
+      "issued",
+      "play-service-account.json",
+    );
     await expect(fs.readFile(file, "utf-8")).resolves.toBe(SERVICE_ACCOUNT);
     expect(printed()).not.toContain("MIIBfirstBuild");
     expect(log.error).not.toHaveBeenCalled();

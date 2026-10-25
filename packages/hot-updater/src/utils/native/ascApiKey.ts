@@ -12,6 +12,7 @@ import {
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { ui } from "../cli-ui";
+import type { CreateGitHubSecrets } from "./githubSecret";
 import {
   assertReadableCredential,
   CredentialNotStoredError,
@@ -25,7 +26,6 @@ import {
   type WritableSecrets,
   writeIssuedCredential,
 } from "./issuedCredential";
-import type { CreateGitHubSecrets } from "./githubSecret";
 
 /** The command that signs in once, in a terminal, and stores the key. */
 export const ascApiKeySetupCommand = (name: string) =>

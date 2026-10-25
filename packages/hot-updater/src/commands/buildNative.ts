@@ -165,7 +165,8 @@ const buildNativeInternal = async ({
                   ...(packageName ? { packageName } : {}),
                   read: true,
                 });
-                if (ensured.status === "issued") serviceAccountIssued = "stored";
+                if (ensured.status === "issued")
+                  serviceAccountIssued = "stored";
                 if (ensured.status === "saved") {
                   serviceAccountIssued = { file: ensured.file };
                   secrets = ensured.secrets;

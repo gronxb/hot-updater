@@ -39,6 +39,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 
 vi.mock("@/utils/printBanner", () => ({ printBanner }));
+// The GitHub Actions offer has its own specs: here it finds nothing to offer.
+vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/native/githubSecret")>()),
+  offerGitHubSecret: vi.fn(async () => "unavailable"),
+}));
 vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/apple-helper")>()),
   // The Apple Account sign-in, which issues the key.
