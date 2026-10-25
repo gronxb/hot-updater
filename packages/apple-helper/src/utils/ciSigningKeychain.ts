@@ -94,8 +94,9 @@ export const createSigningKeychain = async ({
   if (live) {
     throw new Error("A signing keychain is already in use by this process.");
   }
+  // A user without a default keychain gets none back afterwards.
   const [originalDefault] = parseKeychains(
-    await security(["default-keychain", "-d", "user"]),
+    await security(["default-keychain", "-d", "user"]).catch(() => ""),
   );
   const originalSearchList = parseKeychains(
     await security(["list-keychains", "-d", "user"]),

@@ -95,7 +95,7 @@ jobs:
           test "${{ steps.ios-on-linux.outcome }}" = failure
           test ! -e "$PROOF_LOG"
 
-      - name: Upload without the Play service account
+      - name: Upload without the Play service account, never signing in to Google
         id: upload-missing
         continue-on-error: true
         uses: ./actions/native-build
@@ -145,7 +145,6 @@ jobs:
           vault-token: ${{ steps.seed.outputs.PROOF_NARROW_TOKEN }}
           platform: android
           scheme: release
-          upload: play-internal
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check that it named the token to issue

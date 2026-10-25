@@ -167,8 +167,9 @@ type BuildCredentialKind =
 
 /**
  * The command that stores a build credential of `kind` as the vault's
- * `name`, from the files a developer has: run once on a machine that
- * reaches the Console, so CI only reads it.
+ * `name`, from the files a developer has or with a sign-in Hot Updater
+ * issues the credential after: run once on a machine that reaches the
+ * Console, so CI only reads it.
  */
 export const vaultCredentialPutCommand = (
   kind: BuildCredentialKind,
@@ -181,7 +182,8 @@ export const vaultCredentialPutCommand = (
     case "android-keystore":
       return `${put} --keystore <release.jks> --key-alias <alias>`;
     case "play-service-account":
-      return `${put} --service-account <key.json>`;
+      // Signs in with Google, and Hot Updater issues the key.
+      return put;
   }
 };
 

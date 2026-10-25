@@ -154,6 +154,21 @@ describe("createSigningKeychain", () => {
     await keychain.dispose();
   });
 
+  it("restores only the search list for a user without a default keychain", async () => {
+    const { security, calls } = fakeSecurity({
+      fail: (args) => args[0] === "default-keychain" && args.length === 3,
+    });
+
+    const keychain = await createSigningKeychain({ security, directory });
+    calls.length = 0;
+    await keychain.dispose();
+
+    expect(calls).toEqual([
+      ["list-keychains", "-d", "user", "-s", LOGIN, SYSTEM],
+      ["delete-keychain", keychain.path],
+    ]);
+  });
+
   it("lists the certificates Xcode created in it by serial number", async () => {
     const { security } = fakeSecurity({
       certificates: `${XCODE_CERTIFICATE}\n`,
@@ -179,27 +194,29 @@ const mockAppStoreConnect = (
   respond: (request: Request) => Response | undefined = () => undefined,
 ) => {
   const requests: Request[] = [];
-  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const request = new Request(input, init);
-    requests.push(request);
-    const answer = respond(request);
-    if (answer) return answer;
-    const url = new URL(request.url);
-    if (request.method === "GET" && !url.searchParams.has("cursor")) {
-      return Response.json({
-        data: [{ id: "OTHER", attributes: { serialNumber: "77" } }],
-        links: {
-          next: "https://api.appstoreconnect.apple.com/v1/certificates?cursor=2",
-        },
-      });
-    }
-    if (request.method === "GET") {
-      return Response.json({
-        data: [{ id: "CERT1", attributes: { serialNumber: "0A1B2C3D4E5F" } }],
-      });
-    }
-    return new Response(null, { status: 204 });
-  });
+  const fetch = vi.fn(
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      const answer = respond(request);
+      if (answer) return answer;
+      const url = new URL(request.url);
+      if (request.method === "GET" && !url.searchParams.has("cursor")) {
+        return Response.json({
+          data: [{ id: "OTHER", attributes: { serialNumber: "77" } }],
+          links: {
+            next: "https://api.appstoreconnect.apple.com/v1/certificates?cursor=2",
+          },
+        });
+      }
+      if (request.method === "GET") {
+        return Response.json({
+          data: [{ id: "CERT1", attributes: { serialNumber: "0A1B2C3D4E5F" } }],
+        });
+      }
+      return new Response(null, { status: 204 });
+    },
+  );
   return { fetch: fetch as unknown as typeof globalThis.fetch, requests };
 };
 

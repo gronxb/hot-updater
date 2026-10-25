@@ -191,6 +191,7 @@ your shell or `.env.hotupdater`, then store each credential:
 | A new bundle signing key                                          | [`npx hot-updater keys generate --vault`](/docs/guides/signing/remote#sign-with-the-console-vault), which writes only `keys/public-key.pem`. Embed it, and release the native app before its first signed OTA update |
 | The bundle signing key your app already embeds                    | `npx hot-updater secrets put bundle-signing-key --kind bundle-signing-key --private-key keys/private-key.pem`                                                                                                        |
 | App Store Connect API key, Android keystore, Play service account | [`npx hot-updater secrets put <name> --kind <kind>`](/docs/guides/secrets#store-a-secret), such as `secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey_ABC123.p8 --key-id ABC123 --issuer-id <id>`, with the kind's options |
+| A new Play service account                                        | `npx hot-updater secrets put play-service-account --kind play-service-account`: sign in with Google when asked, and the CLI creates the service account, gives it release access in Play Console, and stores its key ([Upload to Google Play](/docs/guides/native-build#upload-to-google-play)) |
 
 Revoke the setup token when you are done, and give each machine and CI job
 a token of its own, as the next steps do.

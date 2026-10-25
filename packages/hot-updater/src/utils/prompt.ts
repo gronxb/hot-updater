@@ -61,7 +61,7 @@ export const canSignIn = ({
   if (reason === undefined) return true;
   const item = name === kind ? kind : `${name} (${kind})`;
   p.log.error(
-    `${item} is not in the vault at ${vaultUrl}, and Hot Updater signs in to your ${account} only at a terminal, never ${reason}. Run \`${setupCommand}\` once on a machine where you can sign in, and builds here read the stored ${kind}, or set ${describeEnvNames(kind)} to provide it without the vault.`,
+    `${item} is not in the vault at ${vaultUrl}, or the vault token's scope does not reach it, and Hot Updater signs in to your ${account} only at a terminal, never ${reason}. Run \`${setupCommand}\` once on a machine where you can sign in, and give this build a vault token that reads ${name}, or set ${describeEnvNames(kind)} to provide it without the vault.`,
   );
   process.exitCode = 1;
   return false;

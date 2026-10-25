@@ -6,13 +6,13 @@
  *   node native-build-proof.ts <stage>
  *
  * Stages:
- * - upload-missing: the vault lacks play-service-account; the run fails
- *   before the build, naming it, the command that stores it once, and the
- *   environment variables that replace it.
+ * - upload-missing: the vault lacks play-service-account; the run never
+ *   signs in to Google, and fails before the build, naming it, the command
+ *   that signs in once, and the environment variables that replace it.
  * - keystore-missing: the scheme's keystore is missing, without an upload;
  *   the signing credential fails before the build too.
- * - scope: the token reads only deploy-credentials; the run names the
- *   token to issue.
+ * - scope: the token reads only deploy-credentials, and the build signs
+ *   with the vault's keystore; the run names the token to issue.
  * - ios-missing: build:ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
  * - built: with every credential stored, the run builds, registers, and
@@ -85,7 +85,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      `play-service-account is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>\`, and builds, CI's included, read it with their vault token. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.`,
+      `play-service-account is not in the vault at ${consoleUrl()}, or the vault token's scope does not reach it, and Hot Updater signs in to your Google Account only at a terminal, never in CI (CI is set). Run \`npx hot-updater secrets put play-service-account --kind play-service-account\` once on a machine where you can sign in, and give this build a vault token that reads play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.`,
     );
     expectNothingBuilt(log);
     const { count } = await nativeBuildCount();

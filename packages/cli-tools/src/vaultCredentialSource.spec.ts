@@ -195,7 +195,7 @@ describe("the vault as the credential resolver's default source", () => {
     await expect(
       resolver.resolve({ kind: "play-service-account" }),
     ).rejects.toThrow(
-      "play-service-account is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`, and builds, CI's included, read it with their vault token. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
+      "play-service-account is not in the vault at https://console.example.com. Store it once from a machine that reaches the Console, with `npx hot-updater secrets put play-service-account --kind play-service-account`, and builds, CI's included, read it with their vault token. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
     );
     await expect(
       resolver.resolve({ kind: "android-keystore", name: "widget-keystore" }),
@@ -222,7 +222,7 @@ describe("the vault as the credential resolver's default source", () => {
     await expect(
       resolver.resolve({ kind: "play-service-account" }),
     ).rejects.toThrow(
-      "The Console at https://console.example.com refused the request: The vault token's scope does not allow reading play-service-account. When play-service-account is stored, give the build a vault token whose scope allows read on it, such as one from `npx hot-updater secrets token create --name ci-native --secrets play-service-account,<the build's other secrets> --actions read`; when it is not, store it once with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
+      "The Console at https://console.example.com refused the request: The vault token's scope does not allow reading play-service-account. When play-service-account is stored, give the build a vault token whose scope allows read on it, such as one from `npx hot-updater secrets token create --name ci-native --secrets play-service-account,<the build's other secrets> --actions read`; when it is not, store it once with `npx hot-updater secrets put play-service-account --kind play-service-account`. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
     );
   });
 

@@ -29,6 +29,10 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
+import {
+  ensurePlayServiceAccount,
+  PlayServiceAccountRefusedError,
+} from "../utils/native/playServiceAccount";
 import { connectVault } from "../vaultEnv";
 import {
   confirmAction,
@@ -297,6 +301,16 @@ const variablesSetElsewhere = (
       : [],
   );
 
+/** Whether `secrets put` was given any part of a value to store. */
+const hasValueFlags = (options: SecretsPutOptions) =>
+  Object.values(KIND_FLAGS)
+    .flat()
+    .some((flag) =>
+      flag === "variables"
+        ? (options.variables?.length ?? 0) > 0
+        : options[flag] !== undefined,
+    );
+
 /**
  * `secrets put`: stores a secret's next version through the Console, which
  * seals it with its master key; the token's scope must allow `write` on it.
@@ -306,6 +320,31 @@ export const handleSecretsPut = async (
   options: SecretsPutOptions,
 ): Promise<void> => {
   printBanner();
+  if (options.kind === "play-service-account" && !hasValueFlags(options)) {
+    // No key file to store: sign in with Google, and Hot Updater issues one.
+    await reportFailure(async () => {
+      try {
+        const result = await ensurePlayServiceAccount({
+          name,
+          // The vault is what this stores in, whatever the environment sets.
+          environment: false,
+        });
+        if (result.status === "stored") {
+          p.log.message(
+            ui.block("Play service account already stored", [
+              ui.kv("Name", name),
+              ui.kv("Version", ui.version(`v${result.version}`)),
+            ]),
+          );
+        }
+      } catch (error) {
+        // canPrompt reported it.
+        if (error instanceof PlayServiceAccountRefusedError) return;
+        throw error;
+      }
+    });
+    return;
+  }
   await withConsoleVault(
     `hot-updater secrets put stores ${name}`,
     async (client) => {

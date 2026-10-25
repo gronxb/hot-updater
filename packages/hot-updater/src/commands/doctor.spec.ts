@@ -63,6 +63,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ).assembleServer,
   colors: (await importOriginal<typeof import("@hot-updater/cli-tools")>())
     .colors,
+  nonInteractiveReason: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).nonInteractiveReason,
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,

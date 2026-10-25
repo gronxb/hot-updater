@@ -40,8 +40,15 @@ describes:
 ```package-install
 npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 AuthKey_ABC123DEF4.p8 --key-id ABC123DEF4 --issuer-id 00000000-0000-0000-0000-000000000000
 npx hot-updater secrets put release-keystore --kind android-keystore --keystore release.jks --key-alias release
-npx hot-updater secrets put play-service-account --kind play-service-account --service-account play-service-account.json
+npx hot-updater secrets put play-service-account --kind play-service-account
 ```
+
+Without a key file, `secrets put play-service-account` signs you in with
+Google once and Hot Updater issues the service account's key, as
+[Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
+describes; `--service-account <key.json>` stores a key you already have. A
+build that finds no service account in the vault also offers that sign-in, on
+your machine only: in CI it never signs in.
 
 `secrets put` reads the keystore's passwords from
 `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD` and `HOT_UPDATER_ANDROID_KEY_PASSWORD`,
@@ -50,9 +57,7 @@ or asks for them. Store the deploy credentials `--register` uses with
 
 The App Store Connect API key is a team key with the Admin role: CI signs
 with Xcode's cloud-managed distribution certificate, which only an Admin key
-may use, and uploads with the same key. The
-[native build guide](/docs/guides/native-build#upload-to-google-play) covers
-setting up the Play service account.
+may use, and uploads with the same key.
 
 ## Issue the CI token
 
@@ -187,19 +192,23 @@ time per macOS user, since the default keychain is per user.
 
 ## When a credential is missing
 
-A job whose vault lacks the Play service account stops before the build:
+A job whose vault lacks the Play service account stops before the build,
+without signing in to Google:
 
 ```text
-play-service-account is not in the vault at https://console.example.com.
-Store it once from a machine that reaches the Console, with `npx hot-updater
-secrets put play-service-account --kind play-service-account --service-account
-<key.json>`, and builds, CI's included, read it with their vault token. Set
-HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON)
-to provide play-service-account without the vault.
+play-service-account is not in the vault at https://console.example.com, or
+the vault token's scope does not reach it, and Hot Updater signs in to your
+Google Account only at a terminal, never in CI (CI is set). Run `npx
+hot-updater secrets put play-service-account --kind play-service-account` once
+on a machine where you can sign in, and give this build a vault token that
+reads play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or
+HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.
 ```
 
-A token whose scope does not reach a secret gets the Console's refusal, with
-the `secrets token create` command that issues one that does. When the
+A missing keystore or App Store Connect API key fails the same way, with the
+`secrets put` command that stores it. A token whose scope does not reach a
+secret the build signs with gets the Console's refusal, with the
+`secrets token create` command that issues one that does. When the
 Console is unreachable or refuses the token, the error names the Console's URL.
 
 ## Without the vault

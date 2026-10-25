@@ -73,7 +73,7 @@ describe("canSignIn", () => {
 
     expect(canSignIn(SIGN_IN)).toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "asc-api-key is not in the vault at https://console.example.com, and Hot Updater signs in to your Apple Account only at a terminal, never in CI (CI is set). Run `npx hot-updater secrets put asc-api-key --kind asc-api-key` once on a machine where you can sign in, and builds here read the stored asc-api-key, or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
+      "asc-api-key is not in the vault at https://console.example.com, or the vault token's scope does not reach it, and Hot Updater signs in to your Apple Account only at a terminal, never in CI (CI is set). Run `npx hot-updater secrets put asc-api-key --kind asc-api-key` once on a machine where you can sign in, and give this build a vault token that reads asc-api-key, or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide it without the vault.",
     );
     expect(process.exitCode).toBe(1);
   });
@@ -93,7 +93,7 @@ describe("canSignIn", () => {
       }),
     ).toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-play (play-service-account) is not in the vault at https://console.example.com, and Hot Updater signs in to your Google Account only at a terminal, never without a terminal. Run `npx hot-updater secrets put widget-play --kind play-service-account` once on a machine where you can sign in, and builds here read the stored play-service-account, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.",
+      "widget-play (play-service-account) is not in the vault at https://console.example.com, or the vault token's scope does not reach it, and Hot Updater signs in to your Google Account only at a terminal, never without a terminal. Run `npx hot-updater secrets put widget-play --kind play-service-account` once on a machine where you can sign in, and give this build a vault token that reads widget-play, or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide it without the vault.",
     );
   });
 });

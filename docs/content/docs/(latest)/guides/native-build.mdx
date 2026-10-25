@@ -338,6 +338,32 @@ The CLI resolves it before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing one fails before either runs, and
 keeps it in memory: it writes the service account to no file.
 
+When the vault has no `play-service-account` yet, sign in with Google when
+asked. In a terminal, the CLI opens Google's sign-in page in your browser and
+prints its address, asks for the app's package name and your Play Console
+developer account ID (the number after `/developers/` in Play Console's
+address), and lets you pick a Google Cloud project or create one. Then it:
+
+1. Checks that the Google Account administers the developer account and that
+   Google Play has the app, before it changes anything.
+2. Enables the IAM and Google Play Android Developer APIs in the project, and
+   creates the service account `hot-updater-play` there.
+3. Adds the service account to Play Console as a user that may view the app
+   and release it to testing tracks.
+4. Creates the service account's JSON key, stores it in the vault as
+   `play-service-account`, reads it back, and continues with the build.
+
+Google's own page asks for your password, and the CLI keeps only the stored
+key. Your vault token needs `read` and `write` on `play-service-account`.
+When the vault refuses the key, the CLI deletes the key again; the service
+account and its Play Console access stay, and the next run reuses them.
+Builds without a terminal, such as CI, use the stored key and never sign in:
+when it is missing, they fail with the command to run once in a terminal,
+`npx hot-updater secrets put play-service-account --kind play-service-account`,
+which does the same sign-in without building. To sign in with a Google OAuth
+client of your own, of type Desktop app, set
+`HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID` and `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET`.
+
 Before the prebuild, the CLI also refuses a scheme whose build Google Play
 would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
 ends in `Debug`.
@@ -351,13 +377,15 @@ After the build, and after `--register` when you pass both, the CLI:
 3. Releases the bundle's version code to the `internal` track and commits the
    edit. When any step fails, it deletes the edit, so nothing is released.
 
-Set up the app once in Play Console:
+Create the app in Play Console and upload its first `.aab` there by hand:
+Google takes a new app's first `.aab` only in Play Console, and the API
+releases the builds after it.
 
-- Create the app and upload its first `.aab` there: the API releases the
-  builds after it.
-- Invite the service account's email under Users and permissions, with
-  permission to release to testing tracks, and enable the Google Play Android
-  Developer API in the service account's Google Cloud project.
+To use a service account of your own instead, invite its email under Users
+and permissions with permission to release to testing tracks, enable the
+Google Play Android Developer API in its Google Cloud project, and store its
+key with `secrets put play-service-account --kind play-service-account
+--service-account <file>`.
 
 Google Play takes each version code once: raise `versionCode` for every build
 you upload. On an app Play Console has not published yet, Google Play takes
