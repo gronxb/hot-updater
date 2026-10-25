@@ -61,7 +61,9 @@ describe("guardLocalConsoleRequest", () => {
   it("lets the session's cookie through, and nothing like it", () => {
     expect(
       guardLocalConsoleRequest(
-        request("http://localhost:1422/api-keys", { headers: { cookie: COOKIE } }),
+        request("http://localhost:1422/api-keys", {
+          headers: { cookie: COOKIE },
+        }),
         OPTIONS,
       ),
     ).toBeUndefined();
@@ -186,14 +188,14 @@ describe("guardLocalConsoleRequest", () => {
   it("asks for the session on the /_hot-updater/ routes too", () => {
     const path = "/_hot-updater/preview/channel-qr?channel=pr-1";
     expect(
-      guardLocalConsoleRequest(
-        request(`http://localhost:1422${path}`),
-        OPTIONS,
-      )?.status,
+      guardLocalConsoleRequest(request(`http://localhost:1422${path}`), OPTIONS)
+        ?.status,
     ).toBe(401);
     expect(
       guardLocalConsoleRequest(
-        request(`http://localhost:1422${path}`, { headers: { cookie: COOKIE } }),
+        request(`http://localhost:1422${path}`, {
+          headers: { cookie: COOKIE },
+        }),
         OPTIONS,
       ),
     ).toBeUndefined();
