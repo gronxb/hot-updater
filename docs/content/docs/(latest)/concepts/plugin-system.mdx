@@ -42,10 +42,7 @@ the app. Its prebuilt server runs the same server plugins.
 Keep the config's list the same as the server's, and a deployed Console's
 `console.config.ts`, which mirrors the server too. When the server adds or
 drops a plugin, change each list with it, or import one list from a module
-every project can reach. The one exception is `vault()`: it goes in
-`hot-updater.config.ts` and `console.config.ts`, never in the server, as
-[Set up the vault](/docs/guides/vault#add-vault-to-the-console-and-the-cli)
-explains.
+every project can reach.
 
 | Kind                                       | What it does                                                                               | Runs in                                                                                                                                                                                      | Official                                                                                                                                                                           | Write one                                                            |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |

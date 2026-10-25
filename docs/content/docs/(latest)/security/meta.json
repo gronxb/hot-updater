@@ -5,7 +5,7 @@
   "pages": [
     "../policy/security",
     "../guides/bundle-signing",
-    "../guides/vault",
+    "../concepts/secrets",
     "../guides/secrets",
     "../custom/api-key-authentication"
   ]

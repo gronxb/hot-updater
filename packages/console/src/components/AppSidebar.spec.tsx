@@ -19,14 +19,12 @@ const allOff: ConsoleFeatures = {
   insightsAnalytics: false,
   apiKeys: false,
   remoteConfig: false,
-  vault: false,
 };
 const allOn: ConsoleFeatures = {
   insights: true,
   insightsAnalytics: true,
   apiKeys: true,
   remoteConfig: true,
-  vault: true,
 };
 
 let pathname = "/";
@@ -137,11 +135,10 @@ describe("AppSidebar navigation", () => {
       ["Bundles", "Remote Config"],
       { ...allOff, remoteConfig: true },
     ],
-    ["vault()", ["Bundles", "Vault"], { ...allOff, vault: true }],
-    // Remote Config sits between Insights and API keys, and Vault comes last.
+    // Remote Config sits between Insights and API keys.
     [
       "every plugin",
-      ["Bundles", "Insights", "Remote Config", "API keys", "Vault"],
+      ["Bundles", "Insights", "Remote Config", "API keys"],
       allOn,
     ],
     ["the features still loading", ["Bundles"], undefined],
@@ -153,9 +150,7 @@ describe("AppSidebar navigation", () => {
       .getAllByRole("link")
       .map((link) => link.textContent?.trim() ?? "")
       .filter((label) =>
-        ["Bundles", "Insights", "Remote Config", "API keys", "Vault"].includes(
-          label,
-        ),
+        ["Bundles", "Insights", "Remote Config", "API keys"].includes(label),
       );
     expect(shown).toEqual(labels);
     expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();

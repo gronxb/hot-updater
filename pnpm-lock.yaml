@@ -2104,9 +2104,6 @@ importers:
       '@hot-updater/plugin-remote-config':
         specifier: workspace:*
         version: link:../../plugins/remote-config
-      '@hot-updater/plugin-vault':
-        specifier: workspace:*
-        version: link:../../plugins/vault
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -2839,18 +2836,6 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.1.0
-
-  plugins/vault:
-    devDependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../plugin-core
-      '@types/node':
-        specifier: 'catalog:'
-        version: 20.19.43
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
 
   plugins/vercel:
     dependencies:

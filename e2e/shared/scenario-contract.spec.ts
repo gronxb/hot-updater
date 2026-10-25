@@ -123,7 +123,7 @@ const defaultScenarioNames = [
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
-  "vault-signed-ota",
+  "foreign-signing-key-refused",
 ] as const;
 const standaloneDatabaseProfileSources = [
   "examples-server/elysia-drizzle-libsql/src/db.ts",

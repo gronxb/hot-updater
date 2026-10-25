@@ -2,11 +2,7 @@ import { existsSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  importPublished,
-  publishedBin,
-  publishedConsoleServer,
-} from "./published.ts";
+import { importPublished, publishedBin } from "./published.ts";
 
 describe("published entries", () => {
   it("runs the CLI the example app installs, through its bin", () => {
@@ -14,13 +10,6 @@ describe("published entries", () => {
 
     expect(cli).toMatch(/[\\/]dist[\\/]index\.mjs$/u);
     expect(existsSync(cli)).toBe(true);
-  });
-
-  it("starts the console server the CLI installs, as hot-updater console does", () => {
-    const server = publishedConsoleServer();
-
-    expect(server).toMatch(/[\\/]\.output[\\/]server[\\/]index\.mjs$/u);
-    expect(existsSync(server)).toBe(true);
   });
 
   it("refuses a command the package does not have", () => {
