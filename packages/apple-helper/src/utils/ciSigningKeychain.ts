@@ -99,39 +99,46 @@ const readHolder = async (file: string) =>
 const acquireLock = async (lockPath: string, pollMs: number) => {
   await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
   let announced = false;
-  for (;;) {
-    try {
-      await fs.promises.writeFile(lockPath, String(process.pid), {
-        flag: "wx",
-      });
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
-    const holder = await readHolder(lockPath);
-    if (!Number.isInteger(holder) || holder <= 0 || !isAlive(holder)) {
-      const aside = `${lockPath}.${process.pid}.stale`;
-      if (
-        await fs.promises.rename(lockPath, aside).then(
-          () => true,
-          () => false,
-        )
-      ) {
-        const moved = await readHolder(aside);
-        if (moved !== holder && Number.isInteger(moved) && isAlive(moved)) {
-          await fs.promises.link(aside, lockPath).catch(() => undefined);
-        }
-        await fs.promises.rm(aside, { force: true });
+  // The lock appears whole, holding its owner: the ID is written to a file
+  // of this process's own, which is then linked into place, and a link
+  // fails while any lock exists.
+  const claim = `${lockPath}.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
+  await fs.promises.writeFile(claim, String(process.pid));
+  try {
+    for (;;) {
+      try {
+        await fs.promises.link(claim, lockPath);
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }
-      continue;
+      const holder = await readHolder(lockPath);
+      if (!Number.isInteger(holder) || holder <= 0 || !isAlive(holder)) {
+        const aside = `${lockPath}.${process.pid}.stale`;
+        if (
+          await fs.promises.rename(lockPath, aside).then(
+            () => true,
+            () => false,
+          )
+        ) {
+          const moved = await readHolder(aside);
+          if (moved !== holder && Number.isInteger(moved) && isAlive(moved)) {
+            await fs.promises.link(aside, lockPath).catch(() => undefined);
+          }
+          await fs.promises.rm(aside, { force: true });
+        }
+        continue;
+      }
+      if (!announced) {
+        p.log.info(
+          `Waiting for another build (process ${holder}) that signs in a keychain of its own under this macOS user.`,
+        );
+        announced = true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
-    if (!announced) {
-      p.log.info(
-        `Waiting for another build (process ${holder}) that signs in a keychain of its own under this macOS user.`,
-      );
-      announced = true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  } finally {
+    await fs.promises.rm(claim, { force: true });
   }
 };
 
