@@ -112,7 +112,8 @@ describe("credentialMasks", () => {
     expect(
       credentialMasks({
         HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD: "store-pass",
-        HOT_UPDATER_ASC_KEY: "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----",
+        HOT_UPDATER_ASC_KEY:
+          "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----",
         HOT_UPDATER_RELEASE_KEYSTORE: JSON.stringify({
           keystore: "a2V5c3RvcmU=",
           storePassword: "json-pass",
@@ -180,8 +181,7 @@ describe("runAction", () => {
   it("fails with the CLI's exit code, whose output names what is missing", async () => {
     const { deps: d, outputs } = deps({
       code: 1,
-      stdout:
-        "play-service-account is not in the env secrets adapter.\n",
+      stdout: "play-service-account is not in the env secrets adapter.\n",
     });
 
     await expect(runAction(d, parseInputs(env()))).rejects.toThrow(

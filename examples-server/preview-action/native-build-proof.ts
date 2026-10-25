@@ -1,24 +1,29 @@
 /**
  * The native build action's CI proof: what each run must have printed, and
  * left in Postgres, read from the CLI's recorded output (PROOF_LOG, written
- * by scripts/record-cli.mjs) and from Postgres directly.
+ * by scripts/record-cli.mjs) and from Postgres directly. Every credential
+ * comes from the job's environment through the default env() secrets
+ * adapter.
  *
  *   node native-build-proof.ts <stage>
  *
  * Stages:
- * - upload-missing: the vault lacks play-service-account; the run never
- *   signs in to Google, and fails before the build, naming it, the command
- *   that signs in once, and the environment variables that replace it.
+ * - upload-missing: the environment lacks play-service-account; the run
+ *   never signs in to Google, and fails before the build, naming the
+ *   variable env() reads, the command that signs in once, and the
+ *   variables that replace it.
  * - keystore-missing: the scheme's keystore is missing, without an upload;
  *   the signing credential fails before the build too.
- * - scope: the token reads only deploy-credentials, and the build signs
- *   with the vault's keystore; the run names the token to issue.
+ * - keystore-malformed: the keystore's JSON value lacks a field; the run
+ *   names the field and the shape before the build.
  * - ios-missing: build:ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
- * - built: with every credential stored, the run builds, registers, and
- *   fails only at Google, which refuses the proof's made-up service account.
+ * - put-read-only: `secrets put` with env(), which stores nothing, names
+ *   the variable to set instead.
+ * - built: with every credential set, the run builds, registers, and fails
+ *   only at Google, which refuses the proof's made-up service account.
  *
- * Each reads PROOF_CONSOLE_URL and PROOF_LOG.
+ * Each reads PROOF_LOG.
  */
 import { readFileSync } from "node:fs";
 
@@ -78,16 +83,14 @@ const nativeBuildCount = async () => {
   }
 };
 
-const consoleUrl = () => env("PROOF_CONSOLE_URL");
-
 const stages: Record<string, () => Promise<void>> = {
   "upload-missing": async () => {
     const log = readLog();
-    // The vault credential source's words for a missing credential, as a
-    // build resolving it would print them, and CI never signing in.
+    // The words of a build that finds no key to issue, and CI never
+    // signing in.
     expectIncludes(
       log,
-      `play-service-account is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put play-service-account --kind play-service-account\``,
+      "play-service-account is not in the env secrets adapter (HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater secrets put play-service-account --kind play-service-account`",
     );
     expectIncludes(
       log,
@@ -95,7 +98,7 @@ const stages: Record<string, () => Promise<void>> = {
     );
     expectIncludes(
       log,
-      "Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.",
+      "Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.",
     );
     expectNothingBuilt(log);
     const { count } = await nativeBuildCount();
@@ -105,35 +108,35 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      `widget-keystore (android-keystore) is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>\``,
+      "widget-keystore (android-keystore) is not in the env secrets adapter (HOT_UPDATER_WIDGET_KEYSTORE in the environment or .env.hotupdater). Store it once with `npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.",
     );
     expectIncludes(
       log,
-      "Set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore without the vault.",
+      "Or set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore from the environment.",
     );
     expectNothingBuilt(log);
   },
-  scope: async () => {
+  "keystore-malformed": async () => {
     const log = readLog();
     expectIncludes(
       log,
-      `The Console at ${consoleUrl()} refused the request: The vault token's scope does not allow reading`,
+      'The env secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
     );
-    expectIncludes(
+    expectExcludes(
       log,
-      "give the build a vault token whose scope allows read on it, such as one from `npx hot-updater secrets token create --name ci-native --secrets",
+      "malformed-proof-pass",
+      "the keystore's password is printed.",
     );
     expectNothingBuilt(log);
   },
   // A missing App Store Connect API key is one Hot Updater issues after an
   // Apple Account sign-in, which CI never starts: the build refuses before
-  // anything runs, in the words the vault credential source uses for a
-  // missing credential, with the command that signs in once.
+  // anything runs, with the command that signs in once.
   "ios-missing": async () => {
     const log = readLog();
     expectIncludes(
       log,
-      `asc-api-key is not in the vault at ${consoleUrl()}. Store it once from a machine that reaches the Console, with \`npx hot-updater secrets put asc-api-key --kind asc-api-key\``,
+      "asc-api-key is not in the env secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater secrets put asc-api-key --kind asc-api-key`",
     );
     expectIncludes(
       log,
@@ -141,16 +144,28 @@ const stages: Record<string, () => Promise<void>> = {
     );
     expectIncludes(
       log,
-      "Set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key without the vault.",
+      "Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
     );
     expectNothingBuilt(log);
+  },
+  "put-read-only": async () => {
+    const log = readLog();
+    expectIncludes(
+      log,
+      "The env secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater to the play-service-account as one JSON value",
+    );
   },
   built: async () => {
     const log = readLog();
     expectExcludes(
       log,
-      "is not in the vault",
-      "every credential the build needs is stored.",
+      "is not in the env secrets adapter",
+      "every credential the build needs is set.",
+    );
+    expectExcludes(
+      log,
+      "native-proof-pass",
+      "the keystore's password is printed.",
     );
     expectIncludes(log, "Fingerprint(");
     // Google refuses the made-up service account after the build and the

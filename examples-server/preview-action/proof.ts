@@ -137,7 +137,7 @@ const checkRelease = (release: Release | undefined, build: NativeBuild) => {
     release.fingerprint_hash === build.fingerprint_hash,
     `release ${release.id} targets ${release.fingerprint_hash}, the native build ${build.id} has ${build.fingerprint_hash}`,
   );
-  // The Console signed it: a signed bundle's manifest hash is `sig:...`.
+  // The seed's key signed it: a signed bundle's manifest hash is `sig:...`.
   check(
     release.manifest_file_hash?.startsWith("sig:") === true,
     `release ${release.id}'s bundle is not signed: ${release.manifest_file_hash}`,
@@ -148,7 +148,7 @@ const checkComment = (
   comment: string,
   expected: { buildId: string; built: boolean; releaseId: string },
 ) => {
-  const consoleUrl = env("HOT_UPDATER_CONSOLE_URL").replace(/\/+$/, "");
+  const consoleUrl = env("PROOF_CONSOLE_URL").replace(/\/+$/, "");
   const link = `[Install](${consoleUrl}/preview?build=${expected.buildId}) · ${expected.built ? "built for this commit" : "reused"}`;
   check(
     comment.includes(link),

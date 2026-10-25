@@ -93,7 +93,10 @@ export const credentialMasks = (env) => {
   const add = (value) => {
     for (const line of value.split(/\r?\n/)) {
       // A PEM's armor lines are the same in every key.
-      if (line.trim() && !/^-----(BEGIN|END) [A-Z0-9 ]+-----$/.test(line.trim())) {
+      if (
+        line.trim() &&
+        !/^-----(BEGIN|END) [A-Z0-9 ]+-----$/.test(line.trim())
+      ) {
         masks.add(line.trim());
       }
     }

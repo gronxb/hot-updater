@@ -6,9 +6,10 @@ import { database, storage } from "./shared.ts";
 /**
  * examples/v0.85.0's config in the native build action's CI proof, which
  * copies a hot-updater.config.ts that re-exports it into the example: an
- * Android release scheme whose keystore the vault keeps, one whose keystore
- * it lacks, and an iOS release scheme that signs with the vault's App Store
- * Connect API key, on the proof's backend.
+ * Android release scheme whose keystore the job's environment holds, one
+ * whose keystore it lacks, and an iOS release scheme that signs with an App
+ * Store Connect API key, on the proof's backend. Every credential comes
+ * through the default `env()` secrets adapter.
  */
 export default defineConfig({
   nativeBuild: {
