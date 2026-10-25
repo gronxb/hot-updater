@@ -3812,14 +3812,21 @@ private struct LaunchCompletionRace {
             selectionContextHash: "context-2"
         ))
 
-        let writers = DispatchGroup()
-        DispatchQueue.global().async(group: writers) { first(service) }
+        // Own threads: parallel tests can hold every thread of the global queues.
+        let firstReturned = DispatchSemaphore(value: 0)
+        let otherReturned = DispatchSemaphore(value: 0)
+        Thread {
+            first(service)
+            firstReturned.signal()
+        }.start()
         #expect(paused.wait(timeout: .now() + 5) == .success)
-        DispatchQueue.global().async(group: writers) {
+        Thread {
             duringPause(service)
             otherWriterReturned.signal()
-        }
-        #expect(writers.wait(timeout: .now() + 10) == .success)
+            otherReturned.signal()
+        }.start()
+        #expect(firstReturned.wait(timeout: .now() + 10) == .success)
+        #expect(otherReturned.wait(timeout: .now() + 10) == .success)
         return service
     }
 }
