@@ -148,53 +148,100 @@ const oauthClientOverride = (
   return { clientId, ...(clientSecret ? { clientSecret } : {}) };
 };
 
+const errorText = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
+/**
+ * Whether the Console answered a write, and so stored nothing: an
+ * unanswered write or a server error may have stored it, but a locked vault
+ * (503) never does.
+ */
+const refusedWrite = (error: unknown) =>
+  error instanceof VaultRequestError &&
+  error.status !== undefined &&
+  (error.status < 500 || error.status === 503);
+
 /**
  * Stores `issued` as `name`, and reads it back: the vault must list it as
- * the service account just issued. On a failure the key is deleted again,
- * and the message says so, and what stays.
+ * the service account just issued. The key is deleted again only when the
+ * vault does not hold it; one the vault may hold is kept, since deleting it
+ * would leave the vault with a dead key, and the message says which.
  */
 const storeIssued = async (
   client: VaultClient,
   name: string,
   issued: IssuedPlayServiceAccount,
 ): Promise<number> => {
-  try {
-    const secret = await client.put({
-      name,
-      kind: "play-service-account",
-      value: {
-        serviceAccount: Buffer.from(issued.json, "utf-8").toString("base64"),
-      },
-      // Never replaces a key someone stored meanwhile.
-      expectedVersion: 0,
-    });
+  /** The vault's `name` when it is the key just issued, from a fresh list. */
+  const listIssued = async () => {
     const listed = (await client.list()).find(
       (candidate) => candidate.name === name,
     );
-    if (
-      listed?.kind !== "play-service-account" ||
-      listed.version !== secret.version ||
-      listed.metadata["clientEmail"] !== issued.email
-    ) {
-      throw new Error(
-        `The vault does not list ${name} as the key just stored.`,
-      );
-    }
-    return secret.version;
-  } catch (error) {
+    return listed?.kind === "play-service-account" &&
+      listed.metadata["clientEmail"] === issued.email
+      ? listed
+      : undefined;
+  };
+  const deleteKey = async (why: string, cause: unknown): Promise<never> => {
     const revoked = await issued.revoke();
     const keys = `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${issued.projectId}`;
     throw new Error(
       [
-        `The vault did not store ${name}: ${error instanceof Error ? error.message : String(error)}`,
+        `The vault did not store ${name}: ${why}`,
         revoked
           ? `The key ${issued.keyId} was deleted again.`
           : `Deleting the key ${issued.keyId} failed: delete it under the service account's keys at ${keys}.`,
         `The service account ${issued.email} and its Play Console access remain, and the next run reuses them.`,
       ].join("\n"),
-      { cause: error },
+      { cause },
+    );
+  };
+  const unconfirmed = (cause: unknown): never => {
+    throw new Error(
+      `Hot Updater could not confirm that the vault stored ${name}: ${errorText(cause)}\nThe key ${issued.keyId} is kept. Run \`npx hot-updater secrets list\`: when ${name} is listed, run the build again; when it is not, delete the key under the service account ${issued.email} in Google Cloud, then run this again.`,
+      { cause },
+    );
+  };
+
+  let version: number;
+  try {
+    version = (
+      await client.put({
+        name,
+        kind: "play-service-account",
+        value: {
+          serviceAccount: Buffer.from(issued.json, "utf-8").toString("base64"),
+        },
+        // Never replaces a key someone stored meanwhile.
+        expectedVersion: 0,
+      })
+    ).version;
+  } catch (error) {
+    if (refusedWrite(error)) return deleteKey(errorText(error), error);
+    // The write may have landed: the vault's list tells.
+    let held: Awaited<ReturnType<typeof listIssued>>;
+    try {
+      held = await listIssued();
+    } catch {
+      return unconfirmed(error);
+    }
+    if (held === undefined) return deleteKey(errorText(error), error);
+    return held.version;
+  }
+
+  let held: Awaited<ReturnType<typeof listIssued>>;
+  try {
+    held = await listIssued();
+  } catch (error) {
+    return unconfirmed(error);
+  }
+  if (held?.version !== version) {
+    return deleteKey(
+      "the vault does not list it as the key just stored.",
+      undefined,
     );
   }
+  return version;
 };
 
 /**

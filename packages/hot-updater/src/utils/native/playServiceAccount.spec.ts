@@ -448,8 +448,71 @@ describe("ensurePlayServiceAccount", () => {
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toThrow(
-      "The vault does not list play-service-account as the key just stored.",
+      "The vault did not store play-service-account: the vault does not list it as the key just stored.",
     );
+    expect(issued.revoke).toHaveBeenCalledTimes(1);
+  });
+
+  /** The fake Console, with the key's write and the lists after it failing as `fail` says. */
+  const failingStore = (fail: { put?: boolean; listAfterPut?: boolean }) => {
+    const requests = fakeConsole();
+    const answer = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    let stored = false;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === "PUT") {
+        const { value } = (await request.clone().json()) as { value: object };
+        if (Object.keys(value).length > 0) {
+          const response = await answer(input, init);
+          stored = true;
+          if (fail.put) throw new TypeError("fetch failed");
+          return response;
+        }
+      }
+      if (request.method === "GET" && stored && fail.listAfterPut) {
+        throw new TypeError("fetch failed");
+      }
+      return answer(input, init);
+    });
+    return requests;
+  };
+
+  it("keeps a key the vault stored though the write went unanswered", async () => {
+    failingStore({ put: true });
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).resolves.toEqual({ status: "issued", email: EMAIL, version: 1 });
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps the key, and says what to check, when the vault cannot say whether it stored it", async () => {
+    failingStore({ listAfterPut: true });
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).rejects.toThrow(
+      "Hot Updater could not confirm that the vault stored play-service-account",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
+    expect(issued.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes a key whose write went unanswered and that the vault does not list", async () => {
+    fakeConsole();
+    const answer = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === "PUT") {
+        const { value } = (await request.clone().json()) as { value: object };
+        if (Object.keys(value).length > 0) throw new TypeError("fetch failed");
+      }
+      return answer(input, init);
+    });
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).rejects.toThrow("The key abc123 was deleted again.");
     expect(issued.revoke).toHaveBeenCalledTimes(1);
   });
 });
