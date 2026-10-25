@@ -1,22 +1,13 @@
 name: hot-updater native build
 description: >-
   Builds a native app with hot-updater build:ios or build:android, signed
-  with the credentials the Console's vault keeps, registers the build, and
-  uploads it to TestFlight or Google Play's internal track. It never signs in
-  to an Apple or Google account: it reads what one sign-in stored.
+  with the credentials the config's secrets adapter reads, the job's
+  environment by default, registers the build, and uploads it to TestFlight
+  or Google Play's internal track. It never signs in to an Apple or Google
+  account: it reads what one sign-in stored.
 author: gronxb
 
 inputs:
-  console-url:
-    description: >-
-      The Console's URL, which serves the vault. Leave it and vault-token
-      empty to read every credential from the job's HOT_UPDATER_*
-      environment variables instead.
-  vault-token:
-    description: >-
-      A vault token that may read the build's credentials, such as
-      deploy-credentials for register, the signing keystore or App Store
-      Connect API key, and the store upload credential.
   platform:
     description: ios (on a macOS runner) or android.
     required: true
@@ -58,8 +49,6 @@ runs:
       shell: bash
       run: node "$GITHUB_ACTION_PATH/src/main.mjs"
       env:
-        INPUT_CONSOLE_URL: ${{ inputs.console-url }}
-        INPUT_VAULT_TOKEN: ${{ inputs.vault-token }}
         INPUT_PLATFORM: ${{ inputs.platform }}
         INPUT_SCHEME: ${{ inputs.scheme }}
         INPUT_UPLOAD: ${{ inputs.upload }}

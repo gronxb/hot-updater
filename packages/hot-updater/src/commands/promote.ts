@@ -58,9 +58,7 @@ export const handlePromote = async (
     process.exit(1);
   }
   const action = options.action ?? "copy";
-  const server = await loadServer(
-    await loadConfig(null, { credentials: true }),
-  );
+  const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
     const [source, channels] = await Promise.all([

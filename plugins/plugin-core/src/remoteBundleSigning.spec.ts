@@ -288,7 +288,7 @@ describe("remote bundle signing client", () => {
             {
               error: {
                 code: "forbidden",
-                message: `The vault token ${TOKEN} may sign with a, b:\nscope it to one key.`,
+                message: `The signing token ${TOKEN} may sign with a, b:\nscope it to one key.`,
               },
             },
             { status: 403 },
@@ -303,7 +303,7 @@ describe("remote bundle signing client", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).name).toBe("HotUpdaterRemoteSigningError");
     expect((error as Error).message).toBe(
-      `Failed to load the remote bundle signing public key. ${SIGNING_URL} answered 403 forbidden: The vault token ******** may sign with a, b: scope it to one key.`,
+      `Failed to load the remote bundle signing public key. ${SIGNING_URL} answered 403 forbidden: The signing token ******** may sign with a, b: scope it to one key.`,
     );
     expect((error as Error).message).not.toContain(TOKEN);
   });

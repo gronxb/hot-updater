@@ -52,9 +52,7 @@ export const handleChannelDelete = (
 ) =>
   withPublicBundleErrors(async () => {
     if (!options.json) printBanner();
-    const server = await loadServer(
-      await loadConfig(null, { credentials: true }),
-    );
+    const server = await loadServer(await loadConfig(null));
     try {
       const core = server.core;
       const row = await core.findChannelByName(channel);

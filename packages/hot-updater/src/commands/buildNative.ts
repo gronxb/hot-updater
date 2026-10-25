@@ -16,13 +16,18 @@ import {
   createMinBundleId,
   type CredentialResolver,
   type Credentials,
+  getConfiguredSecrets,
   getCwd,
   CredentialUnavailableError,
   p,
-  parseVaultReference,
+  parseSecretReference,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
+import type {
+  NativeBuildOptions,
+  Platform,
+  SecretsAdapter,
+} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
 import {
@@ -71,219 +76,237 @@ const buildNativeInternal = async ({
   try {
     // Signing and upload credentials are resolved only by a build that uses
     // them, and their temporary files are deleted once it finishes.
-    return await withCredentialResolver(async (credentials) => {
-      let ascApiKey: Credentials["asc-api-key"] | undefined;
-      let serviceAccount: Credentials["play-service-account"] | undefined;
-      let serviceAccountIssued = false;
-      const preparedConfig = await prepareNativeBuild({
-        ...options,
-        platform,
-        operation: "build",
-        credentials: register,
-        // A scheme the store would refuse, or a missing signing or upload
-        // credential, fails before the prebuild and the build, so a CI run
-        // without one stops at once. The resolver keeps each credential for
-        // the build, which resolves the signing ones again, an upload key
-        // that signs too is one item, and a service account stays in
-        // memory. Credentials asked for together share one vault request.
-        beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
-          const uploadKey =
-            upload === "testflight"
-              ? await reportUploadFailure(async () =>
-                  resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
-                )
-              : undefined;
-          const uploadServiceAccount =
-            upload === "play-internal"
-              ? await reportUploadFailure(async () =>
-                  resolvePlayUploadServiceAccount({
-                    scheme,
-                    androidScheme: androidScheme!,
-                  }),
-                )
-              : undefined;
-          // The key the upload or the device build's signing resolves: a
-          // developer without one signs in with their Apple Account here,
-          // before anything is built, and Hot Updater issues it.
-          const ascApiKeyName =
-            uploadKey?.name ??
-            (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
-              ? parseVaultReference(
-                  iosScheme.signing.ascApiKey,
-                  "signing.ascApiKey",
-                )
-              : undefined);
-          if (ascApiKeyName) {
-            try {
-              await ensureAscApiKey({
-                name: ascApiKeyName,
-                bundleIdentifier: iosScheme!.bundleIdentifier,
-                read: true,
-              });
-            } catch (e) {
-              if (e instanceof CredentialSetupRefusedError) throw e;
-              throw new NativeBuildFailure(
-                e instanceof Error ? e.message : String(e),
-                { cause: e },
-              );
+    // The prepared config's adapter, which the credentials resolve from
+    // whatever config loads after it, such as the fingerprint's.
+    let secrets: SecretsAdapter | undefined;
+    return await withCredentialResolver(
+      async (credentials) => {
+        let ascApiKey: Credentials["asc-api-key"] | undefined;
+        let serviceAccount: Credentials["play-service-account"] | undefined;
+        let serviceAccountIssued = false;
+        const preparedConfig = await prepareNativeBuild({
+          ...options,
+          platform,
+          operation: "build",
+          // A scheme the store would refuse, or a missing signing or upload
+          // credential, fails before the prebuild and the build, so a CI run
+          // without one stops at once. The resolver keeps each credential for
+          // the build, which resolves the signing ones again, an upload key
+          // that signs too is one item, and a service account stays in
+          // memory. Credentials asked for together share one secrets read.
+          beforePrebuild: async ({
+            scheme,
+            secrets: configured,
+            iosScheme,
+            androidScheme,
+          }) => {
+            secrets = configured;
+            const uploadKey =
+              upload === "testflight"
+                ? await reportUploadFailure(async () =>
+                    resolveTestFlightUploadKey({
+                      scheme,
+                      iosScheme: iosScheme!,
+                    }),
+                  )
+                : undefined;
+            const uploadServiceAccount =
+              upload === "play-internal"
+                ? await reportUploadFailure(async () =>
+                    resolvePlayUploadServiceAccount({
+                      scheme,
+                      androidScheme: androidScheme!,
+                    }),
+                  )
+                : undefined;
+            // The key the upload or the device build's signing resolves: a
+            // developer without one signs in with their Apple Account here,
+            // before anything is built, and Hot Updater issues it.
+            const ascApiKeyName =
+              uploadKey?.name ??
+              (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
+                ? parseSecretReference(
+                    iosScheme.signing.ascApiKey,
+                    "signing.ascApiKey",
+                  )
+                : undefined);
+            if (ascApiKeyName) {
+              try {
+                await ensureAscApiKey({
+                  name: ascApiKeyName,
+                  secrets: configured,
+                  bundleIdentifier: iosScheme!.bundleIdentifier,
+                  read: true,
+                });
+              } catch (e) {
+                if (e instanceof CredentialSetupRefusedError) throw e;
+                throw new NativeBuildFailure(
+                  e instanceof Error ? e.message : String(e),
+                  { cause: e },
+                );
+              }
             }
-          }
-          if (uploadServiceAccount) {
-            // A developer without one signs in with Google here, before
-            // anything is built, and Hot Updater issues it.
-            try {
-              const packageName =
-                androidScheme!.applicationId ?? androidScheme!.packageName;
-              const ensured = await ensurePlayServiceAccount({
-                name: uploadServiceAccount.name ?? uploadServiceAccount.kind,
-                ...(packageName ? { packageName } : {}),
-                read: true,
-              });
-              serviceAccountIssued = ensured.status === "issued";
-            } catch (e) {
-              if (e instanceof CredentialSetupRefusedError) throw e;
-              throw new NativeBuildFailure(
-                e instanceof Error ? e.message : String(e),
-                { cause: e },
-              );
+            if (uploadServiceAccount) {
+              // A developer without one signs in with Google here, before
+              // anything is built, and Hot Updater issues it.
+              try {
+                const packageName =
+                  androidScheme!.applicationId ?? androidScheme!.packageName;
+                const ensured = await ensurePlayServiceAccount({
+                  name: uploadServiceAccount.name ?? uploadServiceAccount.kind,
+                  secrets: configured,
+                  ...(packageName ? { packageName } : {}),
+                  read: true,
+                });
+                serviceAccountIssued = ensured.status === "issued";
+              } catch (e) {
+                if (e instanceof CredentialSetupRefusedError) throw e;
+                throw new NativeBuildFailure(
+                  e instanceof Error ? e.message : String(e),
+                  { cause: e },
+                );
+              }
             }
-          }
-          [, ascApiKey, serviceAccount] = await Promise.all([
-            resolveSigningCredentials(credentials, {
-              iosScheme,
-              androidScheme,
-            }),
-            uploadKey && credentials.resolve(uploadKey),
-            uploadServiceAccount && credentials.resolve(uploadServiceAccount),
-          ]);
-        },
-      });
-      if (!preparedConfig) {
-        throw new NativeBuildFailure("preparing native build failed");
-      }
-      const {
-        buildAdapter,
-        outputPath,
-        scheme,
-        target,
-        androidSchemeConfig,
-        iosSchemeConfig,
-      } = preparedConfig;
-      if (ascApiKey) {
-        // The prebuild may write the export options, which it reads.
-        await reportUploadFailure(() =>
-          assertTestFlightExportOptions(iosSchemeConfig!),
-        );
-      }
+            [, ascApiKey, serviceAccount] = await Promise.all([
+              resolveSigningCredentials(credentials, {
+                iosScheme,
+                androidScheme,
+              }),
+              uploadKey && credentials.resolve(uploadKey),
+              uploadServiceAccount && credentials.resolve(uploadServiceAccount),
+            ]);
+          },
+        });
+        if (!preparedConfig) {
+          throw new NativeBuildFailure("preparing native build failed");
+        }
+        const {
+          buildAdapter,
+          outputPath,
+          scheme,
+          target,
+          androidSchemeConfig,
+          iosSchemeConfig,
+        } = preparedConfig;
+        if (ascApiKey) {
+          // The prebuild may write the export options, which it reads.
+          await reportUploadFailure(() =>
+            assertTestFlightExportOptions(iosSchemeConfig!),
+          );
+        }
 
-      const minBundleId = createMinBundleId(platform);
+        const minBundleId = createMinBundleId(platform);
 
-      p.log.info(
-        ui.line([
-          "Building",
-          ui.platform(platformName),
-          ui.muted(buildAdapter.name),
-        ]),
-      );
-      const result = await createNativeBuild({
-        platform,
-        scheme,
-        minBundleId,
-        target,
-        // The native SDK of a Debug build reports the nil UUID as its
-        // MIN_BUNDLE_ID. Its debug flag follows the variant or configuration
-        // the app builds, which neither the artifact nor the app target's
-        // build settings expose, so the name decides, as for signing.
-        debug: /debug$/i.test(
-          platform === "android"
-            ? androidSchemeConfig!.variant
-            : iosSchemeConfig!.configuration,
-        ),
-        readChannel: async () => (await getChannel(platform)).value,
-        buildAdapter,
-        outputPath,
-        builder:
-          platform === "android"
-            ? () =>
-                buildAndroid({
-                  schemeConfig: androidSchemeConfig!,
-                  minBundleId,
-                  credentials,
-                })
-            : () =>
-                buildIos({
-                  schemeConfig: iosSchemeConfig!,
-                  minBundleId,
-                  credentials,
-                }),
-      });
-      p.log.success(
-        [
+        p.log.info(
           ui.line([
-            "Built",
+            "Building",
             ui.platform(platformName),
             ui.muted(buildAdapter.name),
           ]),
-          summarizeNativeBuild(result),
-        ].join("\n"),
-      );
-      const registered = register ? await registerNativeBuild(result) : null;
-      const apiKey = ascApiKey;
-      if (apiKey) {
-        const { state, testFlightUrl } = await reportUploadFailure(
-          () =>
-            uploadToTestFlight({
-              ipaPath: result.artifactPath,
-              apiKey,
-            }),
-          `The build stays at ${result.artifactPath}.`,
         );
-        if (state === "COMPLETE") {
+        const result = await createNativeBuild({
+          platform,
+          scheme,
+          minBundleId,
+          target,
+          // The native SDK of a Debug build reports the nil UUID as its
+          // MIN_BUNDLE_ID. Its debug flag follows the variant or configuration
+          // the app builds, which neither the artifact nor the app target's
+          // build settings expose, so the name decides, as for signing.
+          debug: /debug$/i.test(
+            platform === "android"
+              ? androidSchemeConfig!.variant
+              : iosSchemeConfig!.configuration,
+          ),
+          readChannel: async () => (await getChannel(platform)).value,
+          buildAdapter,
+          outputPath,
+          builder:
+            platform === "android"
+              ? () =>
+                  buildAndroid({
+                    schemeConfig: androidSchemeConfig!,
+                    minBundleId,
+                    credentials,
+                  })
+              : () =>
+                  buildIos({
+                    schemeConfig: iosSchemeConfig!,
+                    minBundleId,
+                    credentials,
+                  }),
+        });
+        p.log.success(
+          [
+            ui.line([
+              "Built",
+              ui.platform(platformName),
+              ui.muted(buildAdapter.name),
+            ]),
+            summarizeNativeBuild(result),
+          ].join("\n"),
+        );
+        const registered = register ? await registerNativeBuild(result) : null;
+        const apiKey = ascApiKey;
+        if (apiKey) {
+          const { state, testFlightUrl } = await reportUploadFailure(
+            () =>
+              uploadToTestFlight({
+                ipaPath: result.artifactPath,
+                apiKey,
+              }),
+            `The build stays at ${result.artifactPath}.`,
+          );
+          if (state === "COMPLETE") {
+            p.log.success(
+              ui.line([
+                "Uploaded to",
+                ui.platform("TestFlight"),
+                ui.path(testFlightUrl),
+              ]),
+            );
+          }
+        }
+        const playServiceAccount = serviceAccount;
+        if (playServiceAccount) {
+          const { versionCode, status } = await reportUploadFailure(
+            async () =>
+              uploadToPlay({
+                aabPath: result.artifactPath,
+                // The artifact's, with the suffixes flavors and build types add.
+                packageName:
+                  (await readBuiltPackageName({
+                    artifactPath: result.artifactPath,
+                    androidProjectPath: path.join(getCwd(), "android"),
+                  })) ?? androidSchemeConfig!.applicationId,
+                serviceAccount: playServiceAccount,
+              }),
+            [
+              serviceAccountIssued
+                ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
+                : undefined,
+              `The build stays at ${result.artifactPath}.`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          );
           p.log.success(
             ui.line([
-              "Uploaded to",
-              ui.platform("TestFlight"),
-              ui.path(testFlightUrl),
+              status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
+              ui.platform("Google Play internal testing"),
+              ui.muted(`version code ${versionCode}`),
             ]),
           );
         }
-      }
-      const playServiceAccount = serviceAccount;
-      if (playServiceAccount) {
-        const { versionCode, status } = await reportUploadFailure(
-          async () =>
-            uploadToPlay({
-              aabPath: result.artifactPath,
-              // The artifact's, with the suffixes flavors and build types add.
-              packageName:
-                (await readBuiltPackageName({
-                  artifactPath: result.artifactPath,
-                  androidProjectPath: path.join(getCwd(), "android"),
-                })) ?? androidSchemeConfig!.applicationId,
-              serviceAccount: playServiceAccount,
-            }),
-          [
-            serviceAccountIssued
-              ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
-              : undefined,
-            `The build stays at ${result.artifactPath}.`,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        );
-        p.log.success(
-          ui.line([
-            status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
-            ui.platform("Google Play internal testing"),
-            ui.muted(`version code ${versionCode}`),
-          ]),
-        );
-      }
-      if (json) {
-        console.log(JSON.stringify({ build: result, nativeBuild: registered }));
-      }
-      return result;
-    });
+        if (json) {
+          console.log(
+            JSON.stringify({ build: result, nativeBuild: registered }),
+          );
+        }
+        return result;
+      },
+      { secrets: () => secrets ?? getConfiguredSecrets() },
+    );
   } catch (e) {
     return catchError(e);
   }
@@ -330,12 +353,12 @@ const resolveSigningCredentials = async (
     ascApiKey &&
       credentials.resolve({
         kind: "asc-api-key",
-        name: parseVaultReference(ascApiKey, "signing.ascApiKey"),
+        name: parseSecretReference(ascApiKey, "signing.ascApiKey"),
       }),
     keystore &&
       credentials.resolve({
         kind: "android-keystore",
-        name: parseVaultReference(keystore, "signing.keystore"),
+        name: parseSecretReference(keystore, "signing.keystore"),
       }),
   ]);
 };

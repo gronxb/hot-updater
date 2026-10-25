@@ -53,12 +53,12 @@ export default defineConfig({
       release: {
         packageName: "com.example.app",
         // An .aab by default; aab: false builds an .apk.
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
       previewApk: {
         packageName: "com.example.app",
         aab: false,
-        signing: { keystore: "vault:release-keystore" },
+        signing: { keystore: "secret:release-keystore" },
       },
     },
     ios: {
@@ -66,7 +66,7 @@ export default defineConfig({
         bundleIdentifier: "com.example.app",
         scheme: "ExampleApp",
         installPods: true,
-        signing: { ascApiKey: "vault:asc-api-key" },
+        signing: { ascApiKey: "secret:asc-api-key" },
       },
       simulator: {
         bundleIdentifier: "com.example.app",
@@ -89,22 +89,24 @@ needs `signing.ascApiKey`, which exports for App Store Connect, or an
 
 ## Provide signing credentials
 
-`signing` names a secret in the
-[console's vault](/docs/guides/console-deployment/vault) as `vault:<name>`,
-which the CLI resolves while it builds. The build resolves it only when it
-signs: a Debug variant keeps the debug keystore, and a simulator build signs
-nothing. A scheme without `signing` keeps the project's own signing settings.
+`signing` names a secret as `secret:<name>`, which the CLI reads from the
+config's [`secrets` adapter](/docs/custom/cli-configuration#secrets) while it
+builds. The build resolves it only when it signs: a Debug variant keeps the
+debug keystore, and a simulator build signs nothing. A scheme without `signing`
+keeps the project's own signing settings.
 
-The CLI reaches the vault with `HOT_UPDATER_CONSOLE_URL` and
-`HOT_UPDATER_VAULT_TOKEN`, a token whose scope allows `read` on the secret,
-from the environment or the project's `.env.hotupdater`. A variable set in the
-environment wins.
-[Secrets in the CLI](/docs/guides/secrets) covers storing secrets and
-issuing tokens.
+The adapter holds each credential as one JSON value:
+`{"keyId","issuerId","p8"}` for an App Store Connect API key, with the `.p8`
+file's PEM; `{"keystore","storePassword","keyAlias","keyPassword"}` for a
+keystore, the keystore file in base64; and a Play service account's own JSON
+key file. With the default `env()`, set the JSON in an environment variable:
+`HOT_UPDATER_ASC_API_KEY` for `secret:asc-api-key`, and `HOT_UPDATER_` before
+any other name, upper-cased with `_` for `-` and `.`.
+[Secrets in the CLI](/docs/guides/secrets) covers storing them.
 
-These environment variables override the vault for one credential: when any
+These environment variables override the adapter for one credential: when any
 of a credential's variables is set, the build reads that credential from them
-and never asks the console for it.
+and never asks the adapter for it.
 
 | Credential                | Environment variables                                                                                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -116,8 +118,8 @@ The CLI writes a keystore or key given as contents to a temporary file that
 only your user can read, and deletes it when the build ends. It masks passwords
 in its output. A build resolves the credentials it signs and uploads with
 before the build adapter's prebuild, so a missing one fails before anything is
-built; the error names the vault's URL, the command that stores the credential
-once, and these variables. [Build and upload from CI](/docs/guides/ci-native-build)
+built; the error names where the adapter keeps it, the command that stores the
+credential once, and these variables. [Build and upload from CI](/docs/guides/ci-native-build)
 runs builds that read them in CI, which never signs in.
 
 ### Sign in with your Apple Account
@@ -129,8 +131,8 @@ asked: Hot Updater asks for its email, and asc, the open-source
 [App Store Connect CLI](https://github.com/rorkai/App-Store-Connect-CLI)
 (MIT), asks for its password and two-factor code in its own prompts. Hot
 Updater then creates a team API key with the Admin role in that team, named
-`hot-updater <bundle ID> <date>`, stores it in the vault under the name the
-build resolves, and continues the build. It keeps only the issued key:
+`hot-updater <bundle ID> <date>`, stores it through the `secrets` adapter
+under the name the build resolves, and continues the build. It keeps only the issued key:
 neither the password nor the Apple session is saved.
 
 The Admin role lets `xcodebuild` create cloud-managed distribution
@@ -150,10 +152,10 @@ key there stops with that command.
 
 Before it asks for your Apple Account, the CLI checks everything that could
 fail afterwards: a `HOT_UPDATER_ASC_KEY*` override or a stored key is used as
-it is, and the vault token must allow `write` on the key's name, by name or
-by kind. The build reads the stored key with the token's `read`.
-When the vault refuses the issued key, the CLI revokes it again, so no key is
-left that nothing holds.
+it is, and the `secrets` adapter must store values. The default `env()` stores
+nothing, so with it, set the key's variables instead. When the adapter surely
+did not store the issued key, the CLI revokes it again, so no key is left that
+nothing holds.
 
 The CLI uses the `asc` on your `PATH` when it is version 5.16.1 or later, and
 otherwise downloads asc 5.16.1 from its GitHub release into
@@ -332,7 +334,7 @@ npx hot-updater build:ios --scheme release --upload testflight
 The upload authenticates with an App Store Connect team API key, which has a
 key ID and an issuer ID (App Store Connect → Users and Access → Integrations →
 Team Keys), with the Admin, App Manager, or Developer role: the scheme's
-`signing.ascApiKey`, or else the vault's `asc-api-key` secret. The
+`signing.ascApiKey`, or else the `secrets` adapter's `asc-api-key`. The
 `HOT_UPDATER_ASC_KEY*` environment variables in
 [Provide signing credentials](#provide-signing-credentials) override it.
 Without one, [sign in with your Apple Account](#sign-in-with-your-apple-account)
@@ -342,7 +344,7 @@ CLI resolves the key before the build adapter's prebuild (such as
 deletes the key's temporary file when the upload ends.
 Certificates and provisioning profiles stay with the build's signing.
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
-with the key stored in the vault.
+with the stored key.
 
 Before the prebuild, the CLI also refuses a scheme whose build App Store
 Connect would not take: a simulator scheme, a configuration whose name ends in
@@ -376,7 +378,7 @@ it to the internal testing track:
 npx hot-updater build:android --scheme release --upload play-internal
 ```
 
-The upload authenticates with the vault's `play-service-account` secret, the
+The upload authenticates with the `secrets` adapter's `play-service-account`, the
 JSON key file of a Google Cloud service account.
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the file's contents) overrides it.
@@ -384,7 +386,7 @@ The CLI resolves it before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing one fails before either runs, and
 keeps it in memory: it writes the service account to no file.
 
-When the vault has no `play-service-account` yet, sign in with Google when
+When the adapter has no `play-service-account` yet, sign in with Google when
 asked. In a terminal, the CLI opens Google's sign-in page in your browser and
 prints its address, asks for the app's package name and your Play Console
 developer account ID (the number after `/developers/` in Play Console's
@@ -396,12 +398,13 @@ address), and lets you pick a Google Cloud project or create one. Then it:
    creates the service account `hot-updater-play` there.
 3. Adds the service account to Play Console as a user that may view the app
    and release it to testing tracks.
-4. Creates the service account's JSON key, stores it in the vault as
-   `play-service-account`, reads it back, and continues with the build.
+4. Creates the service account's JSON key, stores it through the `secrets`
+   adapter as `play-service-account`, reads it back, and continues with the
+   build.
 
 Google's own page asks for your password, and the CLI keeps only the stored
-key. Your vault token needs `read` and `write` on `play-service-account`.
-When the vault refuses the key, the CLI deletes the key again; the service
+key. The adapter must store values. When it surely did not store the key, the
+CLI deletes the key again; the service
 account and its Play Console access stay, and the next run reuses them.
 Builds without a terminal, such as CI, use the stored key and never sign in:
 when it is missing, they fail with the command to run once in a terminal,
@@ -440,7 +443,7 @@ Play Console. When the app's state requires it, the CLI commits without
 sending the changes for review, and you send them for review in Play Console.
 When an upload fails, the build stays at its output path.
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
-with the service account stored in the vault.
+with the stored service account.
 
 ## Run on a device
 

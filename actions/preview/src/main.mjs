@@ -2,15 +2,18 @@
 
 import { readFileSync } from "node:fs";
 
-import { createCli, log, setOutput } from "../../shared/cli.mjs";
+import {
+  createCli,
+  log,
+  maskCredentials,
+  setOutput,
+} from "../../shared/cli.mjs";
 import { runAction } from "./preview.mjs";
 
 /**
  * The composite step runs this with the inputs as `INPUT_*` variables. The
- * CLI gets the Console's address and the vault token as
- * `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, which load the
- * vault's deploy credentials, and the same token as
- * `HOT_UPDATER_SIGNING_TOKEN`, which `remoteSigning` sends to the Console.
+ * CLI reads its credentials through the config's `secrets` adapter,
+ * `env()` by default, which reads the job's environment.
  */
 const env = process.env;
 
@@ -25,24 +28,19 @@ const readEvent = () => {
       "Run the preview action on pull_request events: types opened, synchronize, reopened, and closed.",
     );
   }
+  const head = pullRequest.head?.repo?.full_name;
   return {
     action: String(payload.action),
+    // A fork's pull request gets no secrets; a deleted fork has no repo.
+    fromFork: head !== payload.repository?.full_name,
     number: Number(pullRequest.number),
     title: String(pullRequest.title ?? ""),
     headSha: String(pullRequest.head?.sha ?? env["GITHUB_SHA"] ?? ""),
   };
 };
 
-const token = env["INPUT_VAULT_TOKEN"]?.trim() ?? "";
-if (token) console.log(`::add-mask::${token}`);
-const cli = createCli({
-  env: {
-    ...env,
-    HOT_UPDATER_CONSOLE_URL: env["INPUT_CONSOLE_URL"]?.trim() ?? "",
-    HOT_UPDATER_VAULT_TOKEN: token,
-    HOT_UPDATER_SIGNING_TOKEN: env["HOT_UPDATER_SIGNING_TOKEN"] || token,
-  },
-});
+maskCredentials(env);
+const cli = createCli({ env });
 
 const githubToken = env["INPUT_GITHUB_TOKEN"]?.trim();
 const repository = env["GITHUB_REPOSITORY"];

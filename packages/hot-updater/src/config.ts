@@ -15,4 +15,4 @@ export {
   readLocalFingerprint,
 } from "./utils/fingerprint";
 
-export { vaultEnv } from "./vaultEnv";
+export { secretEnv } from "@hot-updater/cli-tools";

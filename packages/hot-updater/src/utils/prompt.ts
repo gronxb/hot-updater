@@ -23,13 +23,12 @@ export const canPrompt = (
 
 /**
  * Whether the command may sign in to `account` to issue the credential the
- * vault lacks. A sign-in needs someone at a terminal, so it never starts in
- * CI (`CI` is set), even on a terminal a runner allocates, or without a
- * terminal. There it logs what a build resolving the credential would say
- * (`describeUnavailable`: missing, so store it once, or out of the token's
- * scope), that the sign-in runs only at a terminal, and the environment
- * variables that provide the credential without the vault, sets exit code
- * 1, and returns false.
+ * config's `secrets` adapter lacks. A sign-in needs someone at a terminal,
+ * so it never starts in CI (`CI` is set), even on a terminal a runner
+ * allocates, or without a terminal. There it logs why the credential is
+ * unavailable (`describeUnavailable`, such as where to store it once), that
+ * the sign-in runs only at a terminal, and the environment variables that
+ * provide the credential instead, sets exit code 1, and returns false.
  */
 export const canSignIn = async ({
   account,
@@ -40,7 +39,7 @@ export const canSignIn = async ({
   account: string;
   /** The credential the sign-in issues. */
   kind: CredentialKind;
-  /** Why the vault can't give the credential, as its source words it; asked only here. */
+  /** Why the credential is unavailable; asked only here. */
   describeUnavailable: () => Promise<string>;
 }): Promise<boolean> => {
   const reason = nonInteractiveReason();

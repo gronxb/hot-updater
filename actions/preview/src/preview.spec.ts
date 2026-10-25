@@ -8,11 +8,11 @@ const event = {
   number: 12,
   title: "Fix the header",
   headSha: "0123456789abcdef",
+  fromFork: false,
 };
 
 const env = (overrides: Record<string, string> = {}) => ({
   INPUT_CONSOLE_URL: "https://console.example.com",
-  INPUT_VAULT_TOKEN: "hu_vault_token",
   INPUT_PLATFORMS: "android",
   INPUT_ANDROID_SCHEME: "releaseApk",
   INPUT_IOS_SCHEME: "simulator",
@@ -471,12 +471,12 @@ describe("runAction preview", () => {
     );
   });
 
-  it("skips everything without a vault token, as for a pull request from a fork", async () => {
+  it("skips everything for a pull request from a fork, which gets no secrets", async () => {
     const fake = fakeCli();
     const { deps: d } = deps(fake.cli);
 
     await expect(
-      runAction(d, env({ INPUT_VAULT_TOKEN: "" }), event),
+      runAction(d, env(), { ...event, fromFork: true }),
     ).resolves.toEqual({ skipped: true });
     expect(fake.cli).not.toHaveBeenCalled();
     expect(d.log.notice).toHaveBeenCalled();

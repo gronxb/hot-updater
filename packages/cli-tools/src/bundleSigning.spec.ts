@@ -189,13 +189,13 @@ describe("prepareBundleSigning", () => {
       name: "remoteSigning",
       getPublicKey: async () => {
         throw refusal(
-          "Failed to load the remote bundle signing public key. https://console.example.com/_hot-updater/signing answered 401 unauthorized: The vault token was revoked.",
+          "Failed to load the remote bundle signing public key. https://signer.example.com/sign answered 401 unauthorized: The signing token was revoked.",
         );
       },
       sign: async () => ({ signature: new Uint8Array([1]) }),
     } satisfies BundleSigningAdapter;
     await expect(prepareBundleSigning(refusing, { cwd: dir })).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key. Failed to load the remote bundle signing public key. https://console.example.com/_hot-updater/signing answered 401 unauthorized: The vault token was revoked.",
+      "Failed to resolve the bundle signing provider public key. Failed to load the remote bundle signing public key. https://signer.example.com/sign answered 401 unauthorized: The signing token was revoked.",
     );
 
     const signRefusing = {
@@ -203,13 +203,13 @@ describe("prepareBundleSigning", () => {
       getPublicKey: async () => ({ publicKey }),
       sign: async () => {
         throw refusal(
-          "Remote bundle signer failed to sign the message. https://console.example.com/_hot-updater/signing answered 503 vault_locked: The vault is locked.",
+          "Remote bundle signer failed to sign the message. https://signer.example.com/sign answered 503 unavailable: The signer is down.",
         );
       },
     } satisfies BundleSigningAdapter;
     const session = await prepareBundleSigning(signRefusing, { cwd: dir });
     await expect(session?.signFileHash("ff".repeat(32))).rejects.toThrow(
-      "Bundle signing provider failed to sign the file hash. Remote bundle signer failed to sign the message. https://console.example.com/_hot-updater/signing answered 503 vault_locked: The vault is locked.",
+      "Bundle signing provider failed to sign the file hash. Remote bundle signer failed to sign the message. https://signer.example.com/sign answered 503 unavailable: The signer is down.",
     );
 
     const leaking = {

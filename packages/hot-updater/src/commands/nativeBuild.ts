@@ -48,10 +48,10 @@ export const handleNativeBuildFind = async (
   if (!options.json) printBanner();
   try {
     // The scheme and the target as the native build loads them.
-    const config = await loadConfig(
-      { platform: options.platform, channel: "" },
-      { credentials: true },
-    );
+    const config = await loadConfig({
+      platform: options.platform,
+      channel: "",
+    });
     if (
       options.scheme !== undefined &&
       !(options.scheme in config.nativeBuild[options.platform])
@@ -67,9 +67,7 @@ export const handleNativeBuildFind = async (
         : schemeArtifactKind(config, options.platform, options.scheme);
 
     // The registry `build:* --register` writes to.
-    const server = await loadServer(
-      await loadConfig(null, { credentials: true }),
-    );
+    const server = await loadServer(await loadConfig(null));
     let nativeBuild: NativeBuildRow | null;
     try {
       nativeBuild = await server.core.findNativeBuild(scope);
@@ -216,9 +214,7 @@ export const handleNativeBuildDelete = async (
     }
   };
   try {
-    const server = await loadServer(
-      await loadConfig(null, { credentials: true }),
-    );
+    const server = await loadServer(await loadConfig(null));
     try {
       // Checked before anything is deleted, so no artifact is left behind.
       assertStorageOperations(server.storage, ["delete"]);

@@ -6,8 +6,6 @@ import { parseJsonOutput } from "../../shared/cli.mjs";
  * @typedef {"android" | "ios"} Platform
  *
  * @typedef {object} Inputs
- * @property {{ url: string, token: string } | null} vault The Console's
- *   vault, or null when the job's environment sets every credential.
  * @property {Platform} platform
  * @property {string} scheme
  * @property {"testflight" | "play-internal" | null} upload
@@ -39,19 +37,6 @@ const UPLOADS = /** @type {const} */ ({
 export const parseInputs = (env) => {
   /** @param {string} name */
   const input = (name) => env[`INPUT_${name}`]?.trim() ?? "";
-
-  const url = input("CONSOLE_URL");
-  const token = input("VAULT_TOKEN");
-  if ((url === "") !== (token === "")) {
-    throw new Error(
-      url === ""
-        ? "vault-token is set but console-url is empty: set both to read credentials from the vault, or neither to read them from the job's HOT_UPDATER_* environment variables."
-        : "console-url is set but vault-token is empty: set both to read credentials from the vault, or neither to read them from the job's HOT_UPDATER_* environment variables. A workflow run from a fork gets no secrets.",
-    );
-  }
-  if (url !== "" && !/^https?:\/\//.test(url)) {
-    throw new Error("console-url must be the Console's http(s) URL.");
-  }
 
   const platform = input("PLATFORM");
   if (platform !== "android" && platform !== "ios") {
@@ -93,7 +78,6 @@ export const parseInputs = (env) => {
   }
 
   return {
-    vault: url === "" ? null : { url, token },
     platform,
     scheme,
     upload: store === "" ? null : store,
@@ -102,23 +86,14 @@ export const parseInputs = (env) => {
 };
 
 /**
- * The CLI's environment: the vault connection, and `CI`, so the CLI never
- * asks anything or starts a sign-in, even on a runner that sets no `CI`.
+ * The CLI's environment: the job's, whose variables the `env()` secrets
+ * adapter reads, and `CI`, so the CLI never asks anything or starts a
+ * sign-in, even on a runner that sets no `CI`.
  *
  * @param {Record<string, string | undefined>} env
- * @param {Inputs} inputs
  * @returns {Record<string, string | undefined>}
  */
-export const cliEnv = (env, inputs) => ({
-  ...env,
-  CI: env["CI"] || "true",
-  ...(inputs.vault
-    ? {
-        HOT_UPDATER_CONSOLE_URL: inputs.vault.url,
-        HOT_UPDATER_VAULT_TOKEN: inputs.vault.token,
-      }
-    : {}),
-});
+export const cliEnv = (env) => ({ ...env, CI: env["CI"] || "true" });
 
 /**
  * The `build:*` arguments of `inputs`.
@@ -142,11 +117,6 @@ export const buildArgs = (inputs) => [
  * @returns {Promise<NativeBuildJson>}
  */
 export const runAction = async (deps, inputs) => {
-  if (!inputs.vault) {
-    deps.log.notice(
-      "No console-url and vault-token: the CLI reads every credential from the job's HOT_UPDATER_* environment variables.",
-    );
-  }
   const args = buildArgs(inputs);
   const { code, stdout } = await deps.cli(args, { capture: true });
   if (code !== 0) {

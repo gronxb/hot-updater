@@ -45,23 +45,27 @@ const runNativeInternal = async <
     const minBundleId = createMinBundleId(platform);
     // Signing credentials are resolved only by a build that signs with
     // them, and their temporary files are deleted once it finishes.
-    await withCredentialResolver(async (credentials) => {
-      if (platform === "android") {
-        await runAndroid({
-          schemeConfig: preparedConfig.androidSchemeConfig!,
-          runOption: options as AndroidNativeRunOptions,
-          minBundleId,
-          credentials,
-        });
-      } else {
-        await runIos({
-          schemeConfig: preparedConfig.iosSchemeConfig!,
-          runOption: options as IosNativeRunOptions,
-          minBundleId,
-          credentials,
-        });
-      }
-    });
+    await withCredentialResolver(
+      async (credentials) => {
+        if (platform === "android") {
+          await runAndroid({
+            schemeConfig: preparedConfig.androidSchemeConfig!,
+            runOption: options as AndroidNativeRunOptions,
+            minBundleId,
+            credentials,
+          });
+        } else {
+          await runIos({
+            schemeConfig: preparedConfig.iosSchemeConfig!,
+            runOption: options as IosNativeRunOptions,
+            minBundleId,
+            credentials,
+          });
+        }
+        // The run's own config's adapter, whatever config loads after it.
+      },
+      { secrets: preparedConfig.config.secrets },
+    );
     await preparedConfig.buildAdapter.nativeBuild?.postbuild?.({ platform });
 
     p.log.success(ui.line(["Ran", ui.platform(platformName)]));

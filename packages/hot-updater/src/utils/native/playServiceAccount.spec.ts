@@ -1,7 +1,3 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, text, select, open } = vi.hoisted(() => ({
@@ -28,6 +24,12 @@ import type {
   IssuedPlayServiceAccount,
   IssuePlayServiceAccountRequest,
 } from "@hot-updater/android-helper";
+import {
+  envSecrets,
+  maskSecretValues,
+  setConfiguredSecrets,
+} from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { CredentialSetupRefusedError } from "./issuedCredential";
 import {
@@ -35,8 +37,6 @@ import {
   playServiceAccountSetupCommand,
 } from "./playServiceAccount";
 
-const CONSOLE_URL = "https://console.example.com";
-const TOKEN = `hu_vault_${"T".repeat(43)}`;
 const EMAIL = "hot-updater-play@my-app.iam.gserviceaccount.com";
 const KEY_FILE = JSON.stringify({
   type: "service_account",
@@ -45,85 +45,52 @@ const KEY_FILE = JSON.stringify({
   private_key: "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----",
 });
 
-type Secret = {
-  name: string;
-  kind: string;
-  version: number;
-  metadata: Record<string, string>;
-};
-
 /**
- * A Console vault as its routes answer (packages/console vaultRoutes.ts):
- * the token's scope decides before the value does, and only a service
- * account key file is stored, listed with its client email.
+ * A secrets adapter, made the config's, that records each call: `set`
+ * stores unless `setError` is given, and `readBack` replaces what `get`
+ * returns after a write.
  */
-const fakeConsole = ({
-  secrets = [] as Secret[],
-  actions = ["read", "write"] as string[],
-  putStatus,
+const fakeStore = ({
+  values = {},
+  writable = true,
+  setError,
+  readBack,
 }: {
-  secrets?: Secret[];
-  actions?: string[];
-  /** The answer to a valid write, such as 503 for a locked vault. */
-  putStatus?: number;
+  values?: Record<string, string>;
+  writable?: boolean;
+  setError?: Error;
+  readBack?: () => Promise<string | undefined>;
 } = {}) => {
-  const requests: { method: string; path: string; body?: unknown }[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const request = new Request(input, init);
-    const path = new URL(request.url).pathname.replace(
-      "/_hot-updater/vault/v1",
-      "",
-    );
-    const body =
-      request.method === "GET" ? undefined : await request.clone().json();
-    requests.push({ method: request.method, path, body });
-    const refuse = (status: number, code: string) =>
-      Response.json({ error: { code, message: code } }, { status });
-    if (request.method === "GET" && path === "/secrets") {
-      return Response.json({ secrets });
-    }
-    if (request.method === "POST" && path === "/resolve") {
-      if (!actions.includes("read")) return refuse(403, "forbidden");
-      const names = (body as { names: string[] }).names;
-      // A token scoped by kind reads no name that no secret has.
-      if (names.some((name) => !secrets.some((s) => s.name === name))) {
-        return refuse(403, "forbidden");
-      }
-      return Response.json({
-        secrets: secrets
-          .filter((secret) => names.includes(secret.name))
-          .map(({ name, kind, version }) => ({
+  const held = new Map(Object.entries(values));
+  const calls: string[] = [];
+  let written = false;
+  const store: SecretsAdapter = {
+    name: "spec-store",
+    describe: (name) => `spec://${name}`,
+    get: async (names) => {
+      calls.push(`get ${names.join(",")}`);
+      return Object.fromEntries(
+        await Promise.all(
+          names.map(async (name) => [
             name,
-            kind,
-            version,
-            value: { serviceAccount: Buffer.from(KEY_FILE).toString("base64") },
-          })),
-        errors: [],
-      });
-    }
-    if (request.method === "PUT" && path.startsWith("/secrets/")) {
-      if (!actions.includes("write")) return refuse(403, "forbidden");
-      const { kind, value } = body as {
-        kind: string;
-        value: { serviceAccount?: string };
-      };
-      if (!value.serviceAccount) return refuse(400, "invalid_request");
-      if (putStatus) return refuse(putStatus, "vault_locked");
-      const { client_email } = JSON.parse(
-        Buffer.from(value.serviceAccount, "base64").toString("utf-8"),
-      ) as { client_email: string };
-      const secret = {
-        name: decodeURIComponent(path.slice("/secrets/".length)),
-        kind,
-        version: 1,
-        metadata: { clientEmail: client_email, projectId: "my-app" },
-      };
-      secrets.push(secret);
-      return Response.json({ secret }, { status: 201 });
-    }
-    return refuse(404, "not_found");
-  });
-  return requests;
+            written && readBack ? await readBack() : held.get(name),
+          ]),
+        ),
+      );
+    },
+    ...(writable
+      ? {
+          set: async (name: string, value: string) => {
+            calls.push(`set ${name}`);
+            written = true;
+            if (setError) throw setError;
+            held.set(name, value);
+          },
+        }
+      : {}),
+  };
+  setConfiguredSecrets(store);
+  return { store, held, calls };
 };
 
 const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
@@ -176,8 +143,6 @@ beforeEach(() => {
   // The terminal these specs simulate takes a sign-in only outside CI, and
   // CI runners set CI.
   vi.stubEnv("CI", "");
-  vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);
-  vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", TOKEN);
   for (const name of [
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
@@ -193,172 +158,77 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setConfiguredSecrets(envSecrets());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe("ensurePlayServiceAccount", () => {
-  it("uses an environment override as it is, without the vault", async () => {
+  it("uses an environment override as it is, without the secrets adapter", async () => {
     vi.stubEnv("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON", KEY_FILE);
-    const requests = fakeConsole();
+    const { calls } = fakeStore();
 
     await expect(ensure({ name: "play-service-account" })).resolves.toEqual({
       status: "environment",
     });
-    expect(requests).toEqual([]);
+    expect(calls).toEqual([]);
     expect(issue).not.toHaveBeenCalled();
   });
 
   it("uses a stored key without a terminal or a sign-in, as CI does", async () => {
-    const requests = fakeConsole({
-      secrets: [
-        {
-          name: "play-service-account",
-          kind: "play-service-account",
-          version: 3,
-          metadata: {},
-        },
-      ],
+    const { calls } = fakeStore({
+      values: { "play-service-account": KEY_FILE },
     });
 
     await expect(
       withTTY(false, () => ensure({ name: "play-service-account" })),
-    ).resolves.toEqual({ status: "stored", version: 3 });
-    expect(requests).toEqual([{ method: "GET", path: "/secrets" }]);
+    ).resolves.toEqual({ status: "stored" });
+    expect(calls).toEqual(["get play-service-account"]);
     expect(issue).not.toHaveBeenCalled();
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  it("finds a stored key with the connection only in .env.hotupdater", async () => {
-    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
-    const project = await fs.mkdtemp(path.join(os.tmpdir(), "play-key-"));
-    const cwd = vi.spyOn(process, "cwd").mockReturnValue(project);
-    try {
-      await fs.writeFile(path.join(project, "package.json"), "{}");
-      await fs.writeFile(
-        path.join(project, ".env.hotupdater"),
-        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}\nHOT_UPDATER_VAULT_TOKEN=${TOKEN}\n`,
-      );
-      fakeConsole({
-        secrets: [
-          {
-            name: "play-service-account",
-            kind: "play-service-account",
-            version: 2,
-            metadata: {},
-          },
-        ],
-      });
-
-      await expect(ensure({ name: "play-service-account" })).resolves.toEqual({
-        status: "stored",
-        version: 2,
-      });
-    } finally {
-      cwd.mockRestore();
-      await fs.rm(project, { recursive: true, force: true });
-    }
   });
 
   it("refuses without a terminal, with the command that signs in once, and no sign-in", async () => {
-    const requests = fakeConsole();
+    const { calls } = fakeStore();
 
     await expect(
-      withTTY(false, () => ensure({ name: "play-service-account" })),
+      withTTY(false, () => ensure({ name: "widget-play" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining(
-        playServiceAccountSetupCommand("play-service-account"),
-      ),
+      `widget-play (play-service-account) is not in the spec-store secrets adapter (spec://widget-play). Store it once from a terminal with \`${playServiceAccountSetupCommand("widget-play")}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.`,
     );
-    expect(process.exitCode).toBe(1);
-    // The vault is asked which it is: missing, or out of the token's scope.
-    expect(requests).toEqual([
-      { method: "GET", path: "/secrets" },
-      {
-        method: "POST",
-        path: "/resolve",
-        body: { names: ["play-service-account"] },
-      },
-    ]);
+    expect(calls).toEqual(["get widget-play"]);
     expect(issue).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 
-  it("never signs in in CI, even on a terminal, naming the vault and the overrides", async () => {
-    const requests = fakeConsole();
+  it("never signs in in CI, even on a terminal", async () => {
+    const { calls } = fakeStore();
     vi.stubEnv("CI", "true");
 
     await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
+      withTTY(true, () => ensure({ name: "play-service-account", read: true })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
-    // A token scoped by kind can't read a name no secret has: the vault
-    // credential source's out-of-scope wording, as a build would print it.
     expect(log.error).toHaveBeenCalledWith(
-      `The Console at ${CONSOLE_URL} refused the request: forbidden When play-service-account is stored, give the build a vault token whose scope allows read on it, such as one from \`npx hot-updater secrets token create --name ci-native --secrets play-service-account,<the build's other secrets> --actions read\`; when it is not, store it once with \`${playServiceAccountSetupCommand("play-service-account")}\`. Hot Updater signs in to your Google Account to issue it only at a terminal, never in CI (CI is set). Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account without the vault.`,
+      expect.stringContaining("never in CI (CI is set)"),
     );
     expect(process.exitCode).toBe(1);
-    expect(requests).toEqual([
-      { method: "GET", path: "/secrets" },
-      {
-        method: "POST",
-        path: "/resolve",
-        body: { names: ["play-service-account"] },
-      },
-    ]);
+    expect(calls).toEqual(["get play-service-account"]);
     expect(issue).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 
-  it("refuses a vault secret of another kind under the name", async () => {
-    fakeConsole({
-      secrets: [
-        {
-          name: "play-service-account",
-          kind: "generic",
-          version: 1,
-          metadata: {},
-        },
-      ],
-    });
+  it("refuses a read-only adapter before the sign-in", async () => {
+    fakeStore({ writable: false });
 
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).rejects.toThrow("is a generic, not a play-service-account");
+    ).rejects.toThrow("the spec-store secrets adapter is read-only");
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("refuses a token that cannot store the key before the sign-in", async () => {
-    fakeConsole({ actions: ["read"] });
-
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).rejects.toThrow("The vault token cannot store play-service-account");
-    expect(issue).not.toHaveBeenCalled();
-  });
-
-  it("keeps the stored key, and names the token, when a build's token cannot read it back", async () => {
-    fakeConsole({ actions: ["write"] });
-
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account", read: true })),
-    ).rejects.toThrow(
-      "play-service-account is stored (v1), but the vault token cannot read it",
-    );
-    expect(issued.revoke).not.toHaveBeenCalled();
-    expect(issued.dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it("names the missing vault connection, and the override that works without one", async () => {
-    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
-
-    await expect(ensure({ name: "play-service-account" })).rejects.toThrow(
-      /HOT_UPDATER_VAULT_TOKEN is not set.*HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON/su,
-    );
-  });
-
-  it("checks the vault in order, signs in, stores the key, and reads it back", async () => {
-    const requests = fakeConsole();
+  it("checks in order, signs in, stores the key's own JSON, and reads it back", async () => {
+    const { calls, held } = fakeStore();
 
     await expect(
       withTTY(true, () =>
@@ -368,28 +238,15 @@ describe("ensurePlayServiceAccount", () => {
           read: true,
         }),
       ),
-    ).resolves.toEqual({ status: "issued", email: EMAIL, version: 1 });
+    ).resolves.toEqual({ status: "issued", email: EMAIL });
 
-    // A token scoped by kind reads the name only once the secret exists,
-    // so the read back comes after the store.
-    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
-      "GET /secrets",
-      "PUT /secrets/play-service-account",
-      "PUT /secrets/play-service-account",
-      "GET /secrets",
-      "POST /resolve",
+    expect(calls).toEqual([
+      "get play-service-account",
+      "set play-service-account",
+      "get play-service-account",
     ]);
-    // The probe stores nothing, and the key goes only to the vault.
-    expect(requests[1]!.body).toEqual({
-      kind: "play-service-account",
-      value: {},
-      expectedVersion: 0,
-    });
-    expect(requests[2]!.body).toEqual({
-      kind: "play-service-account",
-      value: { serviceAccount: Buffer.from(KEY_FILE).toString("base64") },
-      expectedVersion: 0,
-    });
+    expect(held.get("play-service-account")).toBe(KEY_FILE);
+    expect(maskSecretValues(KEY_FILE)).not.toContain("MIIB");
     expect(text).toHaveBeenCalledWith(
       expect.objectContaining({ initialValue: "com.example.app" }),
     );
@@ -409,7 +266,7 @@ describe("ensurePlayServiceAccount", () => {
       "mine.apps.googleusercontent.com",
     );
     vi.stubEnv("HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET", "GOCSPX-mine");
-    fakeConsole();
+    fakeStore();
 
     await withTTY(true, () => ensure({ name: "play-service-account" }));
 
@@ -423,8 +280,8 @@ describe("ensurePlayServiceAccount", () => {
     );
   });
 
-  it("deletes the key again when the vault refuses it, and says what remains", async () => {
-    fakeConsole({ putStatus: 503 });
+  it("deletes the key again when the adapter refuses it, and says what remains", async () => {
+    fakeStore({ setError: new Error("PERMISSION_DENIED") });
 
     const error = await withTTY(true, () =>
       ensure({ name: "play-service-account" }),
@@ -433,19 +290,19 @@ describe("ensurePlayServiceAccount", () => {
       (e: unknown) => e as Error,
     );
 
-    expect(error?.message).toContain(
-      "The vault did not store play-service-account",
-    );
-    expect(error?.message).toContain("The key abc123 was deleted again.");
-    expect(error?.message).toContain(
-      `The service account ${EMAIL} and its Play Console access remain`,
+    expect(error?.message).toBe(
+      [
+        "The spec-store secrets adapter did not store play-service-account: PERMISSION_DENIED",
+        "The key abc123 was deleted again.",
+        `The service account ${EMAIL} and its Play Console access remain, and the next run reuses them.`,
+      ].join("\n"),
     );
     expect(issued.revoke).toHaveBeenCalledTimes(1);
     expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("says where to delete a key the cleanup could not delete", async () => {
-    fakeConsole({ putStatus: 503 });
+    fakeStore({ setError: new Error("PERMISSION_DENIED") });
     issued.revoke.mockResolvedValueOnce(false);
 
     await expect(
@@ -455,99 +312,42 @@ describe("ensurePlayServiceAccount", () => {
     );
   });
 
-  it("deletes a key the vault does not list as stored", async () => {
-    fakeConsole();
-    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
-      const request = new Request(input, init);
-      if (request.method === "GET") return Response.json({ secrets: [] });
-      if (request.method === "PUT") {
-        const body = (await request.json()) as { value: object };
-        if (Object.keys(body.value).length === 0) {
-          return Response.json(
-            { error: { code: "invalid_request", message: "x" } },
-            { status: 400 },
-          );
-        }
-        return Response.json({
-          secret: {
-            name: "play-service-account",
-            kind: "play-service-account",
-            version: 1,
-            metadata: {},
-          },
-        });
-      }
-      return Response.json({}, { status: 404 });
+  it("keeps a key the adapter stored though the write failed", async () => {
+    fakeStore({
+      setError: new Error("socket hang up"),
+      readBack: async () => KEY_FILE,
+    });
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).resolves.toEqual({ status: "issued", email: EMAIL });
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps the key, and says what to check, when the adapter cannot say whether it stored it", async () => {
+    fakeStore({
+      setError: new Error("socket hang up"),
+      readBack: async () => {
+        throw new Error("socket hang up");
+      },
     });
 
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toThrow(
-      "The vault did not store play-service-account: the vault does not list it as the key just stored.",
+      `Hot Updater could not confirm that the spec-store secrets adapter stored play-service-account: socket hang up\nThe key abc123 is kept. Check spec://play-service-account: when it holds the key, run the build again; when it does not, delete the key under the service account ${EMAIL} in Google Cloud, then run this again.`,
     );
-    expect(issued.revoke).toHaveBeenCalledTimes(1);
-  });
-
-  /** The fake Console, with the key's write and the lists after it failing as `fail` says. */
-  const failingStore = (fail: { put?: boolean; listAfterPut?: boolean }) => {
-    const requests = fakeConsole();
-    const answer = vi.mocked(globalThis.fetch).getMockImplementation()!;
-    let stored = false;
-    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
-      const request = new Request(input, init);
-      if (request.method === "PUT") {
-        const { value } = (await request.clone().json()) as { value: object };
-        if (Object.keys(value).length > 0) {
-          const response = await answer(input, init);
-          stored = true;
-          if (fail.put) throw new TypeError("fetch failed");
-          return response;
-        }
-      }
-      if (request.method === "GET" && stored && fail.listAfterPut) {
-        throw new TypeError("fetch failed");
-      }
-      return answer(input, init);
-    });
-    return requests;
-  };
-
-  it("keeps a key the vault stored though the write went unanswered", async () => {
-    failingStore({ put: true });
-
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).resolves.toEqual({ status: "issued", email: EMAIL, version: 1 });
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps the key, and says what to check, when the vault cannot say whether it stored it", async () => {
-    failingStore({ listAfterPut: true });
+  it("keeps a key a write-only adapter stored, and says the build can't read it yet", async () => {
+    fakeStore({ readBack: async () => undefined });
 
     await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
+      withTTY(true, () => ensure({ name: "play-service-account", read: true })),
     ).rejects.toThrow(
-      "Hot Updater could not confirm that the vault stored play-service-account",
+      "play-service-account is stored, but the spec-store secrets adapter does not read it back, which the build uploads with.",
     );
     expect(issued.revoke).not.toHaveBeenCalled();
-    expect(issued.dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it("deletes a key whose write went unanswered and that the vault does not list", async () => {
-    fakeConsole();
-    const answer = vi.mocked(globalThis.fetch).getMockImplementation()!;
-    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
-      const request = new Request(input, init);
-      if (request.method === "PUT") {
-        const { value } = (await request.clone().json()) as { value: object };
-        if (Object.keys(value).length > 0) throw new TypeError("fetch failed");
-      }
-      return answer(input, init);
-    });
-
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).rejects.toThrow("The key abc123 was deleted again.");
-    expect(issued.revoke).toHaveBeenCalledTimes(1);
   });
 });

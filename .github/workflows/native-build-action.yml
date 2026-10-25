@@ -6,8 +6,7 @@ on:
       - "examples-server/preview-action/**"
       - "packages/cli-tools/src/credentialResolver.ts"
       - "packages/cli-tools/src/interactive.ts"
-      - "packages/cli-tools/src/vaultClient.ts"
-      - "packages/cli-tools/src/vaultCredentialSource.ts"
+      - "packages/cli-tools/src/secrets.ts"
       - "packages/hot-updater/src/commands/buildNative.ts"
       - "packages/hot-updater/src/utils/prompt.ts"
       - "packages/hot-updater/src/utils/native/**"
@@ -23,14 +22,15 @@ concurrency:
   cancel-in-progress: true
 
 # The native build action (actions/native-build) in CI, which never signs in
-# to an Apple or Google account, against a Console with the vault, Postgres,
-# and MinIO started in the job. The vault holds what a project stored once
-# from a laptop, minus the credentials each run expects to miss: every run
-# must fail before anything is built, naming what is missing and how to
-# provide it. The last run has every credential, builds and registers
-# examples/v0.85.0's .aab, and fails only at Google, which refuses the
-# proof's made-up service account. The proof reads the CLI's output, which
-# scripts/record-cli.mjs records as the action's `cli`, and Postgres.
+# to an Apple or Google account, against Postgres and MinIO started in the
+# job. Every credential is a job variable, which the CLI reads through the
+# default env() secrets adapter, minus the credentials each run expects to
+# miss: every run but the last must fail before anything is built, naming
+# what is missing and how to provide it. The last run has every credential,
+# builds and registers examples/v0.85.0's .aab, and fails only at Google,
+# which refuses the proof's made-up service account. The proof reads the
+# CLI's output, which scripts/record-cli.mjs records as the action's `cli`,
+# and Postgres.
 jobs:
   proof:
     name: Native build action (CI credentials)
@@ -60,32 +60,22 @@ jobs:
 
       - name: Start Postgres and MinIO
         run: bash examples-server/preview-action/scripts/backend.sh native-build-action > "$RUNNER_TEMP/backend.env"
-      - name: Seed the vault and start the Console
-        id: seed
+      - name: Seed the backend and the release keystore
         run: |
           set -a; . "$RUNNER_TEMP/backend.env"; set +a
-          bash examples-server/preview-action/scripts/native-build-seed.sh 3810 "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
-          for name in PROOF_CI_TOKEN PROOF_NARROW_TOKEN PROOF_WRITE_TOKEN; do
-            token="$(grep "^$name=" "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
-            echo "::add-mask::$token"
-            echo "$name=$token" >> "$GITHUB_OUTPUT"
-          done
-          echo "console-url=http://127.0.0.1:3810" >> "$GITHUB_OUTPUT"
-      - name: Check that only the two connection values reach the action
-        run: |
-          test ! -e examples/v0.85.0/.env.hotupdater
-          if env | grep -E '^HOT_UPDATER_' | cut -d= -f1 | grep .; then
-            echo "The job's environment sets the variables above."
-            exit 1
-          fi
+          bash examples-server/preview-action/scripts/native-build-seed.sh "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
+          keystore="$(grep '^HOT_UPDATER_RELEASE_KEYSTORE=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
+          echo "::add-mask::$keystore"
+          # The job's environment is where env() reads every credential.
+          cat "$RUNNER_TEMP/backend.env" "$RUNNER_TEMP/seed.env" >> "$GITHUB_ENV"
+      - name: Check that the credentials come only from the job's environment
+        run: test ! -e examples/v0.85.0/.env.hotupdater
 
       - name: Refuse an iOS build on a Linux runner
         id: ios-on-linux
         continue-on-error: true
         uses: ./actions/native-build
         with:
-          console-url: ${{ steps.seed.outputs.console-url }}
-          vault-token: ${{ steps.seed.outputs.PROOF_CI_TOKEN }}
           platform: ios
           scheme: release
           working-directory: examples/v0.85.0
@@ -100,19 +90,14 @@ jobs:
         continue-on-error: true
         uses: ./actions/native-build
         with:
-          console-url: ${{ steps.seed.outputs.console-url }}
-          vault-token: ${{ steps.seed.outputs.PROOF_CI_TOKEN }}
           platform: android
           scheme: release
           upload: play-internal
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
-      - name: Check that it failed before the build, naming what to store
-        env:
-          PROOF_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
+      - name: Check that it failed before the build, naming what to set
         run: |
           test "${{ steps.upload-missing.outcome }}" = failure
-          set -a; . "$RUNNER_TEMP/backend.env"; set +a
           node examples-server/preview-action/native-build-proof.ts upload-missing
           rm "$PROOF_LOG"
 
@@ -121,38 +106,33 @@ jobs:
         continue-on-error: true
         uses: ./actions/native-build
         with:
-          console-url: ${{ steps.seed.outputs.console-url }}
-          vault-token: ${{ steps.seed.outputs.PROOF_CI_TOKEN }}
           platform: android
           scheme: widget
           register: false
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check that the signing credential failed before the build
-        env:
-          PROOF_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
         run: |
           test "${{ steps.keystore-missing.outcome }}" = failure
           node examples-server/preview-action/native-build-proof.ts keystore-missing
           rm "$PROOF_LOG"
 
-      - name: Build with a token that reads only deploy-credentials
-        id: scope
+      - name: Build with a keystore value that lacks a field
+        id: keystore-malformed
         continue-on-error: true
         uses: ./actions/native-build
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: '{"keystore":"AAAA","storePassword":"malformed-proof-pass","keyAlias":"release"}'
         with:
-          console-url: ${{ steps.seed.outputs.console-url }}
-          vault-token: ${{ steps.seed.outputs.PROOF_NARROW_TOKEN }}
           platform: android
           scheme: release
+          register: false
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
-      - name: Check that it named the token to issue
-        env:
-          PROOF_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
+      - name: Check that it named the missing field before the build
         run: |
-          test "${{ steps.scope.outcome }}" = failure
-          node examples-server/preview-action/native-build-proof.ts scope
+          test "${{ steps.keystore-malformed.outcome }}" = failure
+          node examples-server/preview-action/native-build-proof.ts keystore-malformed
           rm "$PROOF_LOG"
 
       # build:ios stops at the credential check before anything needs macOS,
@@ -162,9 +142,6 @@ jobs:
         working-directory: examples/v0.85.0
         env:
           CI: "true"
-          HOT_UPDATER_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
-          HOT_UPDATER_VAULT_TOKEN: ${{ steps.seed.outputs.PROOF_CI_TOKEN }}
-          PROOF_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
         run: |
           set +e
           $PROOF_CLI build:ios --scheme release --upload testflight < /dev/null
@@ -183,11 +160,8 @@ jobs:
           node ../../examples-server/preview-action/native-build-proof.ts ios-missing
           rm "$PROOF_LOG"
 
-      - name: Store the Play service account
+      - name: Set the Play service account in the job's environment
         working-directory: examples/v0.85.0
-        env:
-          HOT_UPDATER_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
-          HOT_UPDATER_VAULT_TOKEN: ${{ steps.seed.outputs.PROOF_WRITE_TOKEN }}
         run: |
           work="$(mktemp -d)"
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$work/key.pem" 2>/dev/null
@@ -200,35 +174,40 @@ jobs:
               private_key: fs.readFileSync(process.argv[1], "utf8"),
             }));
           ' "$work/key.pem" "$work/service-account.json"
-          node ../../packages/hot-updater/dist/index.mjs secrets put play-service-account \
+          # env() stores nothing: secrets put names the variable to set.
+          set +e
+          $PROOF_CLI secrets put play-service-account \
             --kind play-service-account --service-account "$work/service-account.json"
+          code=$?
+          set -e
+          test "$code" -ne 0
+          node ../../examples-server/preview-action/native-build-proof.ts put-read-only
+          rm "$PROOF_LOG"
+          json="$(cat "$work/service-account.json")"
+          echo "::add-mask::$json"
+          echo "HOT_UPDATER_PLAY_SERVICE_ACCOUNT=$json" >> "$GITHUB_ENV"
           rm -rf "$work"
 
-      - name: Build, register, and upload with every credential stored
+      - name: Build, register, and upload with every credential set
         id: built
         continue-on-error: true
         uses: ./actions/native-build
         with:
-          console-url: ${{ steps.seed.outputs.console-url }}
-          vault-token: ${{ steps.seed.outputs.PROOF_CI_TOKEN }}
           platform: android
           scheme: release
           upload: play-internal
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check the build and its registration, refused only by Google
-        env:
-          PROOF_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
         run: |
           test "${{ steps.built.outcome }}" = failure
-          set -a; . "$RUNNER_TEMP/backend.env"; set +a
           node examples-server/preview-action/native-build-proof.ts built
 
-      - name: Print the Console's and the seed's logs
+      - name: Print the seed's logs
         if: failure()
         run: |
           for log in "$RUNNER_TEMP"/logs/*.log; do
             echo "::group::$log"
-            sed -E 's/hu_vault_[A-Za-z0-9_-]+/hu_vault_***/g' "$log"
+            cat "$log"
             echo "::endgroup::"
           done

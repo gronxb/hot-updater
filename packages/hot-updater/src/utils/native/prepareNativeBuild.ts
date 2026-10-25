@@ -23,6 +23,7 @@ import type {
   NativeBuildIosScheme,
   NativeBuildOptions,
   Platform,
+  SecretsAdapter,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -44,6 +45,8 @@ import type { NativeBuildTarget } from "./createNativeBuild";
 export type NativeBuildSchemeOptions = {
   /** The scheme's name. */
   scheme: string;
+  /** The config's `secrets` adapter, which the scheme's credentials resolve from. */
+  secrets: SecretsAdapter;
   androidScheme?: NativeBuildAndroidScheme;
   iosScheme?: NativeBuildIosScheme;
 };
@@ -69,13 +72,6 @@ export async function prepareNativeBuild(
      * store upload's, changes nothing.
      */
     beforePrebuild?: (scheme: NativeBuildSchemeOptions) => Promise<void>;
-    /**
-     * The build is registered, through the config's database and storage:
-     * the vault's deploy credentials load before the config's first load,
-     * since some adapters, such as Firebase's, bind process-wide state when
-     * they are created.
-     */
-    credentials?: boolean;
   },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
@@ -86,10 +82,7 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  const config = await loadConfig(
-    { platform, channel: "" },
-    { credentials: options.credentials ?? false },
-  );
+  const config = await loadConfig({ platform, channel: "" });
   if (!config) {
     p.log.error("No config found. Please run `hot-updater init` first.");
     return null;
@@ -153,8 +146,16 @@ export async function prepareNativeBuild(
 
   await options.beforePrebuild?.(
     platform === "ios"
-      ? { scheme, iosScheme: config.nativeBuild.ios[scheme]! }
-      : { scheme, androidScheme: config.nativeBuild.android[scheme]! },
+      ? {
+          scheme,
+          secrets: config.secrets,
+          iosScheme: config.nativeBuild.ios[scheme]!,
+        }
+      : {
+          scheme,
+          secrets: config.secrets,
+          androidScheme: config.nativeBuild.android[scheme]!,
+        },
   );
 
   // The adapter's prebuild writes the native projects, such as Expo's

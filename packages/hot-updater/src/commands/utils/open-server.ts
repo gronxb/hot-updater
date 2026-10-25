@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { loadConfig, lockVaultReveal, p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
   type AnyHotUpdaterPlugin,
   type HotUpdaterCoreApi,
@@ -43,11 +43,10 @@ export interface PluginRequirement {
   readonly serverImportLine: string;
 }
 
-// The definition's own vault, which may hold a master key, reveals nothing here.
 const fromDefinition = (loaded: LoadHotUpdaterResult): PluginServer => ({
   core: loaded.hotUpdater.core,
   plugins: loaded.hotUpdater.plugins,
-  api: lockVaultReveal(loaded.hotUpdater.api),
+  api: loaded.hotUpdater.api,
   fetchAdmin: undefined,
   definitionPath: path.relative(process.cwd(), loaded.absoluteConfigPath),
   dispose: loaded.dispose,
@@ -63,11 +62,9 @@ export const openPluginServer = async (
 ): Promise<PluginServer> => {
   const cwd = process.cwd();
   if (serverPath?.trim()) {
-    return fromDefinition(
-      await loadHotUpdater(serverPath, { cwd, credentials: true }),
-    );
+    return fromDefinition(await loadHotUpdater(serverPath, { cwd }));
   }
-  const config = await loadConfig(null, { credentials: true });
+  const config = await loadConfig(null);
   if (config.database !== undefined) {
     const server = await loadServer(config);
     return {
@@ -82,7 +79,7 @@ export const openPluginServer = async (
     };
   }
   if (findDefaultConfigPaths(cwd).length > 0) {
-    return fromDefinition(await loadHotUpdater("", { cwd, credentials: true }));
+    return fromDefinition(await loadHotUpdater("", { cwd }));
   }
   throw new Error(
     "Set database and plugins in hot-updater.config.ts, or pass the path to your server definition, such as src/hotUpdater.ts.",

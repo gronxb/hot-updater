@@ -50,10 +50,6 @@ import {
 import { checkSchema } from "./doctor/schema";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
-  checkVaultMasterKey,
-  type VaultMasterKeyIssue,
-} from "./doctor/vaultMasterKey";
-import {
   hasVerificationOptions,
   verifyInfrastructure,
   type DoctorVerification,
@@ -123,8 +119,6 @@ interface DoctorDetails {
   releaseCatalogs?: ReleaseCatalogStatus;
   /** The server's artifact records against the releases that use them. */
   artifacts?: ArtifactStatus;
-  /** Env sources that hold the vault's master key beside database credentials. */
-  vault?: { issues: VaultMasterKeyIssue[] };
 
   // Package info
   packageJsonPath?: string;
@@ -578,7 +572,7 @@ async function checkNativeStatus({
     fs.existsSync(path.join(cwd, "android"));
 
   if (!hasNativeDirectories) {
-    const config = await loadConfig(null, { credentials: true });
+    const config = await loadConfig(null);
     const buildAdapter = await config.build({ cwd });
     const getNativeSigningPublicKey =
       buildAdapter.nativeBuild?.getBundleSigningPublicKey;
@@ -621,7 +615,7 @@ async function checkNativeStatus({
     };
   }
 
-  const config = await loadConfig(null, { credentials: true });
+  const config = await loadConfig(null);
   const localFingerprint = await readLocalFingerprintFile(cwd);
   const requireFingerprint = config.updateStrategy === "fingerprint";
   const expectedSigningPublicKey = await readSigningPublicKey(config, cwd);
@@ -854,9 +848,6 @@ async function checkProject(
       if (artifacts) details.artifacts = artifacts;
     }
 
-    const vaultIssues = await checkVaultMasterKey({ cwd });
-    if (vaultIssues.length > 0) details.vault = { issues: vaultIssues };
-
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
       details.versionMismatches = versionMismatches;
@@ -899,8 +890,7 @@ async function checkProject(
       details.native ||
       details.schema ||
       details.releaseCatalogs ||
-      details.artifacts ||
-      details.vault
+      details.artifacts
     ) {
       return {
         success: true,
@@ -1313,11 +1303,6 @@ export const handleDoctor = async ({
       p.log.warn(issue.message);
     }
     if (issue.artifactIds) p.log.info(issue.artifactIds.join(", "));
-    p.log.info(issue.resolution);
-  }
-
-  for (const issue of details?.vault?.issues ?? []) {
-    p.log.warn(issue.message);
     p.log.info(issue.resolution);
   }
 
