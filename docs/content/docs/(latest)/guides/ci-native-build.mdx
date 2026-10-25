@@ -37,8 +37,18 @@ environment variables that provide it.
 
 ## Get the keys once
 
-Hot Updater can issue the App Store Connect API key and the Play service
-account's key for you, on your machine only: in CI it never signs in. Run
+With `env()`, which reads and never stores, bring keys you already have:
+
+- An App Store Connect team API key with the Admin role, from **Users and
+  Access → Integrations** in App Store Connect: its `.p8` file, key ID, and
+  issuer ID.
+- A Google Cloud service account's JSON key, with release access to the app
+  in Play Console.
+- The Android release keystore and its passwords.
+
+With a [`secrets` adapter](/docs/guides/secrets#write-a-secrets-adapter) that
+stores values (`set`), Hot Updater can issue the first two for you, on your
+machine only: in CI it never signs in. Run
 [`secrets put`](/docs/guides/secrets#store-a-secret) without key files:
 
 ```package-install
@@ -50,8 +60,8 @@ npx hot-updater secrets put play-service-account --kind play-service-account
 [Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
 describes, and `secrets put play-service-account` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
-describes. With `env()`, which cannot write, the command names the variables
-to set; add their values to your CI provider's secrets.
+describes. Over a read-only adapter such as `env()`, both refuse before the
+sign-in and name the variables that take a key you already have.
 
 The App Store Connect API key is a team key with the Admin role: CI signs
 with Xcode's cloud-managed distribution certificate, which only an Admin key
