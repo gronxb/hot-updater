@@ -127,6 +127,8 @@ const holdWithLockf = (
         child.once("exit", () => done()),
       );
       resolve(async () => {
+        // Referenced again, so this process waits for the release.
+        child.ref();
         child.stdin.end();
         await exited;
       });
