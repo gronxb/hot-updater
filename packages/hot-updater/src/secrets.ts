@@ -1,6 +1,8 @@
-export {
-  envSecrets as env,
-  githubActionsSecrets as githubActions,
-} from "@hot-updater/cli-tools";
-export type { GitHubActionsSecretsOptions } from "@hot-updater/cli-tools";
+export { envSecrets as env } from "@hot-updater/cli-tools";
 export type { SecretsAdapter, SecretsContext } from "@hot-updater/plugin-core";
+export {
+  awsSecretsManager,
+  type AwsSecretsManagerCredentials,
+  type AwsSecretsManagerOptions,
+} from "./awsSecretsManager";
+export { githubActions, type GitHubActionsOptions } from "./githubActions";

@@ -1,16 +1,16 @@
+import {
+  envSecrets,
+  getHotUpdaterEnvValue,
+  isCI,
+  isReservedVariableName,
+  readLoadedHotUpdaterEnv,
+  registerSecretValue,
+  secretVariableName,
+} from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { execa } from "execa";
 import nacl from "tweetnacl";
-
-import {
-  getHotUpdaterEnvValue,
-  readLoadedHotUpdaterEnv,
-} from "./hotUpdaterEnv";
-import { isCI } from "./interactive";
-import { isReservedVariableName } from "./reservedVariables";
-import { registerSecretValue } from "./secretMasking";
-import { envSecrets, secretVariableName } from "./secrets";
 
 const GITHUB_API_URL = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
@@ -32,7 +32,7 @@ const isInstallationToken = (token: string) => token.startsWith("ghs_");
 const WORKFLOW_TOKEN_REFUSAL =
   "A workflow's GITHUB_TOKEN can't write secrets: GitHub has no secrets permission for it. Store the secret from your machine, signed in with `gh auth login`, or pass a fine-grained token with the repository permission Secrets: Read and write (Environments: Read and write for an environment) as `token`.";
 
-export interface GitHubActionsSecretsOptions {
+export interface GitHubActionsOptions {
   /**
    * The repository, as `owner/name`. Defaults to the GitHub repository of
    * the project's `origin` remote.
@@ -184,8 +184,8 @@ const githubError = async (
  *
  * `set` needs a user token, never a workflow's `GITHUB_TOKEN`.
  */
-export const githubActionsSecrets = (
-  options: GitHubActionsSecretsOptions = {},
+export const githubActions = (
+  options: GitHubActionsOptions = {},
 ): SecretsAdapter => {
   const { environment } = options;
   if (options.repo !== undefined && !REPO_PATTERN.test(options.repo)) {

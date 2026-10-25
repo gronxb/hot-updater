@@ -57,17 +57,14 @@
   "devDependencies": {
     "@clack/prompts": "catalog:tools",
     "@hot-updater/test-utils": "workspace:*",
-    "@noble/hashes": "2.2.0",
     "@types/node": "catalog:",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
     "jszip": "^3.10.1",
-    "libsodium-wrappers": "0.8.4",
     "picocolors": "1.1.1",
     "tar": "^7.5.16",
-    "tweetnacl": "1.0.3",
     "verkit": "catalog:",
     "workspace-tools": "^0.41.7"
   },
@@ -77,7 +74,6 @@
     "@clack/core": "1.4.3",
     "@clack/prompts": "1.7.0",
     "@isaacs/fs-minipass": "4.0.1",
-    "@noble/hashes": "2.2.0",
     "@nodelib/fs.scandir": "2.1.5",
     "@nodelib/fs.stat": "2.0.5",
     "@nodelib/fs.walk": "1.2.8",
@@ -182,7 +178,6 @@
     "strip-final-newline": "4.0.0",
     "tar": "7.5.16",
     "to-regex-range": "5.0.1",
-    "tweetnacl": "1.0.3",
     "unicorn-magic": [
       "0.1.0",
       "0.3.0"

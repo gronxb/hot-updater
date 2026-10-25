@@ -13,7 +13,6 @@ export * from "./crypto";
 export * from "./cwd";
 export * from "./ensureInstallPackages";
 export * from "./getAndroidSdkPath";
-export * from "./githubActionsSecrets";
 export * from "./getPackageManager";
 export * from "./getReactNativeMetadatas";
 export * from "./hotUpdaterConfig";

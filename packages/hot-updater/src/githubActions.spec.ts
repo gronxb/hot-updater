@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { maskSecretValues } from "@hot-updater/cli-tools";
 import sodium from "libsodium-wrappers";
 import {
   afterEach,
@@ -13,8 +14,7 @@ import {
   vi,
 } from "vitest";
 
-import { githubActionsSecrets } from "./githubActionsSecrets";
-import { maskSecretValues } from "./secretMasking";
+import { githubActions } from "./githubActions";
 
 const execaMock = vi.hoisted(() => vi.fn());
 vi.mock("execa", () => ({ execa: execaMock }));
@@ -140,12 +140,12 @@ afterEach(async () => {
   await fs.rm(directory, { force: true, recursive: true });
 });
 
-describe("githubActionsSecrets set", () => {
+describe("githubActions set", () => {
   it("seals the value for the repository's public key and stores it under its variable name", async () => {
     const calls = stubGitHub();
     const value = JSON.stringify({ keyId: "ABC123", p8: "-----BEGIN…" });
 
-    await githubActionsSecrets().set!("asc-api-key", value, { cwd: directory });
+    await githubActions().set!("asc-api-key", value, { cwd: directory });
 
     expect(calls.map(({ url, init }) => [init.method ?? "GET", url])).toEqual([
       [
@@ -170,7 +170,7 @@ describe("githubActionsSecrets set", () => {
 
   it("seals each write with a fresh ephemeral key", async () => {
     const calls = stubGitHub();
-    const secrets = githubActionsSecrets({ repo: "acme/app" });
+    const secrets = githubActions({ repo: "acme/app" });
 
     await secrets.set!("TOKEN_A", "same value", { cwd: directory });
     await secrets.set!("TOKEN_A", "same value", { cwd: directory });
@@ -186,7 +186,7 @@ describe("githubActionsSecrets set", () => {
   it("stores in an environment's secrets", async () => {
     const calls = stubGitHub();
 
-    await githubActionsSecrets({
+    await githubActions({
       repo: "acme/app",
       environment: "prod/eu",
     }).set!("release-keystore", "{}", { cwd: directory });
@@ -202,8 +202,11 @@ describe("githubActionsSecrets set", () => {
     stubGitHub({ keyStatus: 404 });
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app", environment: "production" })
-        .set!("asc-api-key", "{}", { cwd: directory }),
+      githubActions({ repo: "acme/app", environment: "production" }).set!(
+        "asc-api-key",
+        "{}",
+        { cwd: directory },
+      ),
     ).rejects.toThrow(
       "Could not read the secrets public key of acme/app, environment production: the repository or its environment production does not exist, or the token can't see it. Create the environment in the repository's settings first (Not Found).",
     );
@@ -216,7 +219,7 @@ describe("githubActionsSecrets set", () => {
     });
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app" }).set!("asc-api-key", "{}", {
+      githubActions({ repo: "acme/app" }).set!("asc-api-key", "{}", {
         cwd: directory,
       }),
     ).rejects.toThrow(
@@ -228,7 +231,7 @@ describe("githubActionsSecrets set", () => {
     stubGitHub();
     const value = "spec-github-secret-value";
 
-    await githubActionsSecrets({ repo: "acme/app" }).set!("TOKEN_B", value, {
+    await githubActions({ repo: "acme/app" }).set!("TOKEN_B", value, {
       cwd: directory,
     });
 
@@ -244,7 +247,7 @@ describe("githubActionsSecrets set", () => {
     const calls = stubGitHub();
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app" }).set!(name, "x", {
+      githubActions({ repo: "acme/app" }).set!(name, "x", {
         cwd: directory,
       }),
     ).rejects.toThrow(reason);
@@ -255,7 +258,7 @@ describe("githubActionsSecrets set", () => {
     const calls = stubGitHub();
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app" }).set!(
+      githubActions({ repo: "acme/app" }).set!(
         "big",
         "x".repeat(48 * 1024 + 1),
         { cwd: directory },
@@ -265,16 +268,14 @@ describe("githubActionsSecrets set", () => {
   });
 });
 
-describe("githubActionsSecrets token", () => {
+describe("githubActions token", () => {
   it("uses the token option before anything else", async () => {
     vi.stubEnv("GH_TOKEN", "ghp_specEnvironmentToken");
     const calls = stubGitHub();
 
-    await githubActionsSecrets({ repo: "acme/app", token: PAT }).set!(
-      "a",
-      "v",
-      { cwd: directory },
-    );
+    await githubActions({ repo: "acme/app", token: PAT }).set!("a", "v", {
+      cwd: directory,
+    });
 
     expect(calls[0]!.init.headers).toMatchObject({
       Authorization: `Bearer ${PAT}`,
@@ -285,7 +286,7 @@ describe("githubActionsSecrets token", () => {
   it("uses GH_TOKEN, then GITHUB_TOKEN, before gh auth token", async () => {
     vi.stubEnv("GITHUB_TOKEN", "ghp_specGithubToken");
     const calls = stubGitHub();
-    const secrets = githubActionsSecrets({ repo: "acme/app" });
+    const secrets = githubActions({ repo: "acme/app" });
 
     await secrets.set!("a", "v", { cwd: directory });
     vi.stubEnv("GH_TOKEN", "ghp_specGhToken");
@@ -307,7 +308,7 @@ describe("githubActionsSecrets token", () => {
     );
     const calls = stubGitHub();
 
-    await githubActionsSecrets({ repo: "acme/app" }).set!("a", "v", {
+    await githubActions({ repo: "acme/app" }).set!("a", "v", {
       cwd: directory,
     });
 
@@ -320,7 +321,7 @@ describe("githubActionsSecrets token", () => {
     vi.stubEnv("GITHUB_TOKEN", WORKFLOW_TOKEN);
     const calls = stubGitHub();
 
-    await githubActionsSecrets({ repo: "acme/app" }).set!("a", "v", {
+    await githubActions({ repo: "acme/app" }).set!("a", "v", {
       cwd: directory,
     });
 
@@ -336,7 +337,7 @@ describe("githubActionsSecrets token", () => {
     const calls = stubGitHub();
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app" }).set!("a", "v", {
+      githubActions({ repo: "acme/app" }).set!("a", "v", {
         cwd: directory,
       }),
     ).rejects.toThrow(
@@ -351,7 +352,7 @@ describe("githubActionsSecrets token", () => {
     const calls = stubGitHub();
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app" }).set!("a", "v", {
+      githubActions({ repo: "acme/app" }).set!("a", "v", {
         cwd: directory,
       }),
     ).rejects.toThrow(
@@ -368,7 +369,7 @@ describe("githubActionsSecrets token", () => {
     vi.stubEnv("GITHUB_TOKEN", WORKFLOW_TOKEN);
     const calls = stubGitHub();
 
-    await githubActionsSecrets({ repo: "acme/app" }).set!("a", "v", {
+    await githubActions({ repo: "acme/app" }).set!("a", "v", {
       cwd: directory,
     });
 
@@ -382,14 +383,14 @@ describe("githubActionsSecrets token", () => {
     stubGitHub();
 
     await expect(
-      githubActionsSecrets({ repo: "acme/app" }).set!("a", "v", {
+      githubActions({ repo: "acme/app" }).set!("a", "v", {
         cwd: directory,
       }),
     ).rejects.toThrow("sign in with `gh auth login`");
   });
 });
 
-describe("githubActionsSecrets repository", () => {
+describe("githubActions repository", () => {
   it.each([
     "https://github.com/acme/app",
     "https://x-access-token:secret@github.com/acme/app.git",
@@ -398,7 +399,7 @@ describe("githubActionsSecrets repository", () => {
   ])("reads acme/app from the origin %s", async (remote) => {
     gitRemote(remote);
     const calls = stubGitHub();
-    const secrets = githubActionsSecrets({ token: PAT });
+    const secrets = githubActions({ token: PAT });
 
     await secrets.set!("a", "v", { cwd: directory });
 
@@ -420,7 +421,7 @@ describe("githubActionsSecrets repository", () => {
     gitRemote(remote);
     stubGitHub();
 
-    const error = await githubActionsSecrets({ token: PAT }).set!("a", "v", {
+    const error = await githubActions({ token: PAT }).set!("a", "v", {
       cwd: directory,
     }).catch((caught: unknown) => caught);
 
@@ -431,18 +432,18 @@ describe("githubActionsSecrets repository", () => {
   });
 
   it("refuses a repo that is not owner/name", () => {
-    expect(() =>
-      githubActionsSecrets({ repo: "https://github.com/a/b" }),
-    ).toThrow('githubActions() takes the repository as "owner/name"');
+    expect(() => githubActions({ repo: "https://github.com/a/b" })).toThrow(
+      'githubActions() takes the repository as "owner/name"',
+    );
   });
 });
 
-describe("githubActionsSecrets get", () => {
+describe("githubActions get", () => {
   it("holds nothing outside a workflow run", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_API_KEY", '{"keyId":"local"}');
 
     await expect(
-      githubActionsSecrets().get(["asc-api-key", "OTHER"], { cwd: directory }),
+      githubActions().get(["asc-api-key", "OTHER"], { cwd: directory }),
     ).resolves.toEqual({ "asc-api-key": undefined, OTHER: undefined });
     expect(execaMock).not.toHaveBeenCalled();
   });
@@ -454,21 +455,22 @@ describe("githubActionsSecrets get", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      githubActionsSecrets().get(["asc-api-key", "OTHER"], { cwd: directory }),
+      githubActions().get(["asc-api-key", "OTHER"], { cwd: directory }),
     ).resolves.toEqual({ "asc-api-key": '{"keyId":"ci"}', OTHER: undefined });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
-describe("githubActionsSecrets describe", () => {
+describe("githubActions describe", () => {
   it("names the secret, the repository, the environment, and the workflow env", () => {
     expect(
-      githubActionsSecrets({ repo: "acme/app", environment: "production" })
-        .describe!("asc-api-key"),
+      githubActions({ repo: "acme/app", environment: "production" }).describe!(
+        "asc-api-key",
+      ),
     ).toBe(
       "GitHub Actions secret HOT_UPDATER_ASC_API_KEY of acme/app, environment production, which a workflow reads as env HOT_UPDATER_ASC_API_KEY",
     );
-    expect(githubActionsSecrets().describe!("asc-api-key")).toBe(
+    expect(githubActions().describe!("asc-api-key")).toBe(
       "GitHub Actions secret HOT_UPDATER_ASC_API_KEY of the origin repository, which a workflow reads as env HOT_UPDATER_ASC_API_KEY",
     );
   });
