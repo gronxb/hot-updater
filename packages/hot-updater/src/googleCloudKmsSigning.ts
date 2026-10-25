@@ -2,6 +2,8 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 
 import type { BundleSigningAdapter } from "@hot-updater/plugin-core";
 
+import { crc32c } from "./utils/crc32c";
+
 const KEY_VERSION_PATTERN =
   /^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+\/cryptoKeyVersions\/[1-9]\d*$/u;
 
@@ -45,20 +47,6 @@ interface GoogleSignResponse {
 interface ResolvedGoogleCloudKmsKey {
   publicKey: string;
 }
-
-const toBytes = (value: Uint8Array | string) =>
-  typeof value === "string" ? Buffer.from(value, "utf8") : value;
-
-const crc32c = (value: Uint8Array | string) => {
-  let crc = 0xffffffff;
-  for (const byte of toBytes(value)) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0x82f63b78 : 0);
-    }
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-};
 
 const unwrapChecksum = (checksum: unknown) => {
   if (

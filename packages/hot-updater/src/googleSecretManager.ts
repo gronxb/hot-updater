@@ -1,0 +1,374 @@
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
+
+import { crc32c } from "./utils/crc32c";
+import { createGoogleAccessToken } from "./utils/googleAccessToken";
+
+const ADAPTER_NAME = "googleSecretManager";
+const API_URL = "https://secretmanager.googleapis.com/v1";
+
+const PROJECT_PATTERN = /^[a-z0-9][a-z0-9.:-]*$/u;
+const SECRET_ID_PATTERN = /^[A-Za-z0-9_-]{1,255}$/u;
+const PREFIX_PATTERN = /^[A-Za-z0-9_-]*$/u;
+const VERSION_ID_PATTERN = /^[1-9]\d*$/u;
+
+/**
+ * The secret's annotation that lists the versions this adapter added and
+ * has not destroyed yet: the only versions it ever destroys.
+ */
+export const GOOGLE_SECRET_VERSIONS_ANNOTATION = "hot-updater-versions";
+
+/** What `set` needs on the secret, checked before it adds a version. */
+const SET_PERMISSIONS = [
+  "secretmanager.versions.add",
+  "secretmanager.versions.destroy",
+  "secretmanager.secrets.update",
+] as const;
+
+export interface GoogleSecretManagerOptions {
+  /** The Google Cloud project ID or number that holds the secrets. */
+  readonly project: string;
+  /**
+   * Put before each name to make its secret ID, such as `hot-updater-` for
+   * `hot-updater-asc-api-key`. Letters, digits, `-`, and `_`.
+   */
+  readonly prefix?: string;
+}
+
+interface GoogleSecret {
+  readonly annotations?: Readonly<Record<string, string>>;
+}
+
+interface GoogleErrorDetail {
+  readonly reason?: string;
+}
+
+interface GoogleError {
+  readonly code?: number;
+  readonly status?: string;
+  readonly message?: string;
+  readonly details?: readonly GoogleErrorDetail[];
+}
+
+interface GoogleResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly body: unknown;
+  readonly error: GoogleError;
+}
+
+/** The fields read from Secret Manager's responses. */
+type GoogleJson = Partial<
+  Record<
+    "error" | "payload" | "data" | "dataCrc32c" | "permissions" | "name",
+    unknown
+  >
+>;
+
+const isRecord = (value: unknown): value is GoogleJson =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const hint = (response: GoogleResponse, permission: string) => {
+  const { status, error } = response;
+  if (error.details?.some((detail) => detail.reason === "SERVICE_DISABLED")) {
+    return " Enable the Secret Manager API (secretmanager.googleapis.com) in the project.";
+  }
+  if (status === 401) {
+    return " Google rejected the access token: sign in again with `gcloud auth application-default login`, or check the job's Workload Identity Federation.";
+  }
+  if (status === 403) {
+    return ` The Google identity needs ${permission}.`;
+  }
+  if (status === 429) {
+    return " Secret Manager's quota is exhausted: try again later.";
+  }
+  return "";
+};
+
+/**
+ * An error for a failed request: the HTTP status, Google's status and
+ * message, which name resources but never a value, and what to fix.
+ */
+const requestError = (
+  action: string,
+  response: GoogleResponse,
+  permission: string,
+) => {
+  const { status, message } = response.error;
+  const detail = [status, message?.slice(0, 300)].filter(Boolean).join(": ");
+  return new Error(
+    `${ADAPTER_NAME} could not ${action} (${response.status}${detail ? ` ${detail}` : ""}).${hint(response, permission)}`,
+  );
+};
+
+/** Secrets from Google Cloud Secret Manager. */
+export const googleSecretManager = ({
+  project,
+  prefix = "",
+}: GoogleSecretManagerOptions): SecretsAdapter => {
+  const accessToken = createGoogleAccessToken(ADAPTER_NAME);
+
+  // Checked on first use, so a config loads without its options.
+  const projectPath = () => {
+    if (typeof project !== "string" || !PROJECT_PATTERN.test(project)) {
+      throw new Error(
+        `${ADAPTER_NAME} needs the Google Cloud project ID or number as project, and ${JSON.stringify(project)} is not one.`,
+      );
+    }
+    if (!PREFIX_PATTERN.test(prefix)) {
+      throw new Error(
+        `${ADAPTER_NAME}'s prefix takes letters, digits, "-", and "_", and ${JSON.stringify(prefix)} has others.`,
+      );
+    }
+    return `projects/${project}`;
+  };
+
+  const secretId = (name: string) => {
+    const id = `${prefix}${name}`;
+    if (!SECRET_ID_PATTERN.test(id)) {
+      throw new Error(
+        `${ADAPTER_NAME} keeps ${JSON.stringify(name)} as the secret ID ${JSON.stringify(id)}, and Secret Manager's IDs take only letters, digits, "-", and "_", up to 255 characters.`,
+      );
+    }
+    return id;
+  };
+
+  const request = async (
+    token: string,
+    method: "GET" | "POST" | "PATCH",
+    path: string,
+    body?: unknown,
+  ): Promise<GoogleResponse> => {
+    const authorization = `Bearer ${token}`;
+    const response = await fetch(
+      `${API_URL}/${path}`,
+      body === undefined
+        ? { method, headers: { authorization }, redirect: "error" }
+        : {
+            method,
+            headers: { authorization, "content-type": "application/json" },
+            body: JSON.stringify(body),
+            redirect: "error",
+          },
+    );
+    let parsed: unknown;
+    try {
+      parsed = await response.json();
+    } catch {
+      parsed = undefined;
+    }
+    return {
+      status: response.status,
+      ok: response.ok,
+      body: parsed,
+      error:
+        isRecord(parsed) && isRecord(parsed.error)
+          ? (parsed.error as GoogleError)
+          : {},
+    };
+  };
+
+  const access = async (
+    token: string,
+    secret: string,
+  ): Promise<string | undefined> => {
+    const response = await request(
+      token,
+      "GET",
+      `${secret}/versions/latest:access`,
+    );
+    if (response.status === 404) return undefined;
+    if (!response.ok) {
+      throw requestError(
+        `read ${secret}`,
+        response,
+        "roles/secretmanager.secretAccessor on the secret",
+      );
+    }
+    const payload = isRecord(response.body) ? response.body.payload : undefined;
+    const data = isRecord(payload) ? payload.data : undefined;
+    if (typeof data !== "string") {
+      throw new Error(`${ADAPTER_NAME} read no payload for ${secret}.`);
+    }
+    const bytes = Buffer.from(data, "base64");
+    const checksum = isRecord(payload) ? payload.dataCrc32c : undefined;
+    if (checksum !== undefined && Number(checksum) !== crc32c(bytes)) {
+      throw new Error(
+        `${ADAPTER_NAME} read ${secret} with a checksum that does not match its payload.`,
+      );
+    }
+    return bytes.toString("utf8");
+  };
+
+  const getOrCreateSecret = async (
+    token: string,
+    parent: string,
+    id: string,
+  ): Promise<GoogleSecret> => {
+    const secret = `${parent}/secrets/${id}`;
+    const read = async () => {
+      const response = await request(token, "GET", secret);
+      if (response.status === 404) return undefined;
+      if (!response.ok) {
+        throw requestError(
+          `read ${secret}`,
+          response,
+          "secretmanager.secrets.get on the secret",
+        );
+      }
+      return response.body as GoogleSecret;
+    };
+
+    const existing = await read();
+    if (existing) return existing;
+    const created = await request(
+      token,
+      "POST",
+      `${parent}/secrets?secretId=${encodeURIComponent(id)}`,
+      { replication: { automatic: {} } },
+    );
+    if (created.ok) return created.body as GoogleSecret;
+    // Another run created it first.
+    if (created.status === 409) {
+      const raced = await read();
+      if (raced) return raced;
+    }
+    throw requestError(
+      `create ${secret}`,
+      created,
+      `secretmanager.secrets.create on ${parent}`,
+    );
+  };
+
+  const assertCanSet = async (token: string, secret: string) => {
+    const response = await request(
+      token,
+      "POST",
+      `${secret}:testIamPermissions`,
+      { permissions: SET_PERMISSIONS },
+    );
+    if (!response.ok) {
+      throw requestError(
+        `check its permissions on ${secret}`,
+        response,
+        SET_PERMISSIONS.join(", "),
+      );
+    }
+    const held =
+      isRecord(response.body) && Array.isArray(response.body.permissions)
+        ? response.body.permissions
+        : [];
+    const missing = SET_PERMISSIONS.filter((name) => !held.includes(name));
+    if (missing.length > 0) {
+      throw new Error(
+        `${ADAPTER_NAME} stores a value as a new version of ${secret} and destroys the versions it added before, and the Google identity lacks ${missing.join(", ")} on it: grant roles/secretmanager.editor or a custom role with secretmanager.secrets.create, secretmanager.secrets.get, secretmanager.secrets.update, secretmanager.versions.add, secretmanager.versions.destroy, and secretmanager.versions.access.`,
+      );
+    }
+  };
+
+  /**
+   * Destroys `version` of `secret`: true once it is destroyed, or already
+   * was, false when it could not be, so it stays listed for the next `set`.
+   */
+  const destroy = async (token: string, secret: string, version: string) => {
+    const response = await request(
+      token,
+      "POST",
+      `${secret}/versions/${version}:destroy`,
+      {},
+    );
+    return (
+      response.ok ||
+      response.status === 404 ||
+      response.error.status === "FAILED_PRECONDITION"
+    );
+  };
+
+  return {
+    name: ADAPTER_NAME,
+    get: async (names) => {
+      const parent = projectPath();
+      const secrets = names.map(
+        (name) => `${parent}/secrets/${secretId(name)}`,
+      );
+      // No prototype: a secret may be named __proto__.
+      const values: Record<string, string | undefined> = Object.create(null);
+      if (names.length === 0) return values;
+      const token = await accessToken();
+      const read = await Promise.all(
+        secrets.map((secret) => access(token, secret)),
+      );
+      names.forEach((name, index) => {
+        values[name] = read[index];
+      });
+      return values;
+    },
+    /**
+     * Adds `value` as the secret's newest version, creating the secret when
+     * it is missing, then destroys the versions this adapter added before,
+     * which the secret's `hot-updater-versions` annotation lists: versions
+     * added any other way are never touched. The permissions this needs are
+     * checked before anything is written. A version that could not be
+     * destroyed stays listed for the next `set`; when the annotation itself
+     * cannot be updated, `set` throws, naming the version it stored.
+     */
+    set: async (name, value) => {
+      const parent = projectPath();
+      const id = secretId(name);
+      const secret = `${parent}/secrets/${id}`;
+      const token = await accessToken();
+      const current = await getOrCreateSecret(token, parent, id);
+      await assertCanSet(token, secret);
+
+      const data = Buffer.from(value, "utf8");
+      const added = await request(token, "POST", `${secret}:addVersion`, {
+        payload: {
+          data: data.toString("base64"),
+          dataCrc32c: String(crc32c(data)),
+        },
+      });
+      const versionName =
+        isRecord(added.body) && typeof added.body.name === "string"
+          ? added.body.name
+          : "";
+      const version = versionName.slice(versionName.lastIndexOf("/") + 1);
+      if (!added.ok || !VERSION_ID_PATTERN.test(version)) {
+        throw requestError(
+          `add a version to ${secret}`,
+          added,
+          "secretmanager.versions.add on the secret",
+        );
+      }
+
+      const annotations = { ...current.annotations };
+      const previous = (annotations[GOOGLE_SECRET_VERSIONS_ANNOTATION] ?? "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => VERSION_ID_PATTERN.test(entry) && entry !== version);
+      const destroyed = await Promise.all(
+        previous.map((entry) => destroy(token, secret, entry)),
+      );
+      annotations[GOOGLE_SECRET_VERSIONS_ANNOTATION] = [
+        version,
+        ...previous.filter((_, index) => !destroyed[index]),
+      ].join(",");
+
+      const updated = await request(
+        token,
+        "PATCH",
+        `${secret}?updateMask=annotations`,
+        { annotations },
+      );
+      if (!updated.ok) {
+        throw requestError(
+          `list version ${version}, which it stored, in ${secret}'s ${GOOGLE_SECRET_VERSIONS_ANNOTATION} annotation, so the next set will not destroy it`,
+          updated,
+          "secretmanager.secrets.update on the secret",
+        );
+      }
+    },
+    describe: (name) => {
+      const id = `${prefix}${name}`;
+      return `projects/${project}/secrets/${id} (https://console.cloud.google.com/security/secret-manager/secret/${encodeURIComponent(id)}/versions?project=${encodeURIComponent(project)})`;
+    },
+  };
+};

@@ -8,7 +8,10 @@ import * as secretsApi from "./secrets";
 
 describe("secrets exports", () => {
   it("exposes only the supported secrets adapters", () => {
-    expect(Object.keys(secretsApi).sort()).toEqual(["env"]);
+    expect(Object.keys(secretsApi).sort()).toEqual([
+      "env",
+      "googleSecretManager",
+    ]);
   });
 
   it("reads env() from the environment, read-only", async () => {
