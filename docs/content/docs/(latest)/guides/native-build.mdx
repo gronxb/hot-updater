@@ -184,7 +184,10 @@ read it:
 
 - When the `secrets` adapter stores values, the CLI stores the key through it
   as one JSON value, reads it back, and builds read it from there, CI's
-  included.
+  included. A store that does not read it back on your machine, such as
+  [`githubActions()`](/docs/guides/secrets-adapters/github-actions) outside a
+  workflow, keeps the key for CI, and the CLI also writes a copy to the file
+  below, with the variables that let builds on your machine read it.
 - When the adapter is read-only, such as the default `env()`, the CLI writes
   the key to `<cacheDir>/issued/<name>.json` (`node_modules/.hot-updater` unless
   `cacheDir` sets another directory), a file only your user can read in a
@@ -205,6 +208,12 @@ as in [Build and upload from CI](/docs/guides/ci-native-build):
 env:
   HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
 ```
+
+With `env()`, when the project's `origin` (or another remote) is on GitHub and
+you have a token (`GH_TOKEN` or `GITHUB_TOKEN`, or the GitHub CLI's
+`gh auth token`), the CLI offers once to store the key as that secret with
+[`githubActions()`](/docs/guides/secrets-adapters/github-actions). Declining
+leaves the file as it is, and a failed write says so and leaves it too.
 
 The CLI writes the file only after a sign-in, and never revokes a key it wrote
 there.
