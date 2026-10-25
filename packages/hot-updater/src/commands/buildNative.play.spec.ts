@@ -152,7 +152,6 @@ describe("build:android --upload play-internal", () => {
     expect(ensurePlayServiceAccount).toHaveBeenCalledWith({
       name: "play-service-account",
       packageName: "com.example.app",
-      read: true,
     });
   });
 
