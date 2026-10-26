@@ -5,30 +5,25 @@ import {
   InvalidArgumentError,
   Option,
 } from "@commander-js/extra-typings";
-import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
-import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, CREDENTIAL_LOGIN_GROUPS, p } from "@hot-updater/cli-tools";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
 import {
-  deviceCommandOption,
   interactiveCommandOption,
+  nativeBuildDryRunCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildJsonCommandOption,
-  nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
-  playUploadCommandOption,
-  portCommandOption,
-  testFlightUploadCommandOption,
+  playSubmitCommandOption,
+  testFlightSubmitCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
 import {
-  buildAndroidNative,
-  type BuildNativeOptions,
-  buildIosNative,
+  handleNativeBuildCreate,
+  type NativeBuildCreateOptions,
 } from "@/commands/buildNative";
 import {
   getConsolePort,
@@ -45,7 +40,6 @@ import { init } from "@/commands/init";
 import { initHelp } from "@/commands/initHelp";
 import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
-import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import {
   handleGooglePlayUpload,
   handleTestFlight,
@@ -295,7 +289,9 @@ channelCommand
 
 const nativeBuildCommand = program
   .command("native-build")
-  .description("Query and manage the native build registry");
+  .description(
+    "Build native apps, and find and delete the builds Hot Updater tracks",
+  );
 
 nativeBuildCommand
   .command("find")
@@ -327,6 +323,34 @@ nativeBuildCommand
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleNativeBuildDelete);
+
+nativeBuildCommand
+  .command("ios")
+  .description(
+    "Build an iOS .ipa, or a simulator .app, and track it in Hot Updater as an OTA patch base and preview build",
+  )
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(testFlightSubmitCommandOption)
+  .addOption(nativeBuildDryRunCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
+  .action(async (options: NativeBuildCreateOptions) => {
+    await handleNativeBuildCreate("ios", options);
+  });
+
+nativeBuildCommand
+  .command("android")
+  .description(
+    "Build an Android .aab or .apk, and track it in Hot Updater as an OTA patch base and preview build",
+  )
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(playSubmitCommandOption)
+  .addOption(nativeBuildDryRunCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
+  .action(async (options: NativeBuildCreateOptions) => {
+    await handleNativeBuildCreate("android", options);
+  });
 
 const SERVER_PATH_HELP =
   "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";
@@ -480,6 +504,24 @@ const LOGIN_COMMANDS = [
   signIn: string;
 }[];
 
+/**
+ * A shortcut takes nothing but what it declares: anything else, an option or
+ * an argument, exits 1 naming the full command that takes it.
+ */
+const onlyShortcut = (
+  command: { readonly args: readonly string[] },
+  shortcut: string,
+  takes: string,
+  full: string,
+) => {
+  if (command.args.length === 0) return true;
+  p.log.error(
+    `hot-updater ${shortcut} takes ${takes}: for ${command.args.join(" ")}, run npx hot-updater ${full}.`,
+  );
+  process.exitCode = 1;
+  return false;
+};
+
 /** The `apple` and `google-play` commands, by the kind each logs in for. */
 const loginGroups = new Map<(typeof ISSUED_KINDS)[number], Command>();
 for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
@@ -487,58 +529,72 @@ for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
     .command(CREDENTIAL_LOGIN_GROUPS[kind])
     .description(group);
   loginGroups.set(kind, groupCommand);
+  const shortcut = `${CREDENTIAL_LOGIN_GROUPS[kind]} login`;
   groupCommand
     .command("login")
     .description(
       `Alias of hot-updater secrets issue ${kind}: ${description[0]!.toLowerCase()}${description.slice(1)}`,
     )
-    .argument(
-      "[name]",
-      `the secret's name, which builds resolve (default: ${kind})`,
-    )
-    .option(
-      "--replace",
-      "issue a new key even when one is stored; the old key stays valid until you revoke it",
-    )
+    .allowUnknownOption()
+    .allowExcessArguments()
     .addHelpText(
       "after",
       [
         "",
         `Alias of \`hot-updater secrets issue ${kind}\`: it ${signIn}, at a terminal only, never in CI.`,
         "Hot Updater keeps no session: only the key it issues stays, so there is no logout or whoami.",
-        "A key already stored, or set by the environment, is kept. --replace never revokes the old key: it names the key and where to revoke it.",
+        `A key already stored, or set by the environment, is kept. It takes no options: for another name or a new key, run \`hot-updater secrets issue ${kind} <name> --replace\`.`,
       ].join("\n"),
     )
-    .action((name, options) => handleSecretsIssue(kind, name ?? kind, options));
+    .action(async (_options, command) => {
+      if (
+        !onlyShortcut(
+          command,
+          shortcut,
+          "no options or arguments",
+          `secrets issue ${kind} [name] [--replace]`,
+        )
+      ) {
+        return;
+      }
+      await handleSecretsIssue(kind, kind);
+    });
 }
 
 loginGroups
   .get("play-service-account")!
   .command("upload")
   .description(
-    "Shortcut for hot-updater build:android --upload play-internal --register: build the .aab, register it, and release it to Google Play's internal track",
+    "Shortcut for hot-updater native-build android --submit play-internal: build the .aab, track it, and release it to Google Play's internal track",
   )
-  .addOption(nativeBuildOutputCommandOption)
   .option(
     "-s, --scheme <scheme>",
     "the nativeBuild.android scheme (default: the only one that uploads to Google Play, else a prompt at a terminal)",
   )
-  .option(
-    "--no-register",
-    "upload without registering the build, which then is no patch base native-build find sees",
-  )
-  .addOption(nativeBuildJsonCommandOption)
+  .allowUnknownOption()
+  .allowExcessArguments()
   .addHelpText(
     "after",
     [
       "",
-      "Shortcut for `hot-updater build:android --scheme <scheme> --upload play-internal --register`.",
+      "Shortcut for `hot-updater native-build android --scheme <scheme> --submit play-internal`.",
+      "It takes only --scheme; for --json or --output-path, run native-build android.",
       "Without a Play service account, it signs in with Google at a terminal, as",
-      "build:android does, with your own Desktop OAuth client until Hot Updater ships",
-      "one; in CI it never signs in (run google-play login once first).",
+      "native-build android does, with your own Desktop OAuth client until Hot Updater",
+      "ships one; in CI it never signs in (run google-play login once first).",
     ].join("\n"),
   )
-  .action(async (options: StoreUploadOptions) => {
+  .action(async (options: StoreUploadOptions, command) => {
+    if (
+      !onlyShortcut(
+        command,
+        "google-play upload",
+        "only --scheme",
+        "native-build android -s <scheme> --submit play-internal [--json] [-o <path>]",
+      )
+    ) {
+      return;
+    }
     await handleGooglePlayUpload(options);
   });
 
@@ -1161,78 +1217,38 @@ dbCommand
   );
 
 program
-  .command("build:android")
-  .description("build an Android .apk or .aab")
-  .addOption(nativeBuildOutputCommandOption)
-  .addOption(interactiveCommandOption)
-  .addOption(nativeBuildSchemeCommandOption)
-  .addOption(nativeBuildRegisterCommandOption)
-  .addOption(nativeBuildJsonCommandOption)
-  .addOption(playUploadCommandOption)
-  .action(async (options: BuildNativeOptions) => {
-    await buildAndroidNative(options);
-  });
-
-program
-  .command("build:ios")
-  .description("build an iOS .ipa, or a simulator .app")
-  .addOption(nativeBuildOutputCommandOption)
-  .addOption(interactiveCommandOption)
-  .addOption(nativeBuildSchemeCommandOption)
-  .addOption(nativeBuildRegisterCommandOption)
-  .addOption(nativeBuildJsonCommandOption)
-  .addOption(testFlightUploadCommandOption)
-  .action(async (options: BuildNativeOptions) => {
-    await buildIosNative(options);
-  });
-
-program
   .command("testflight")
   .description(
-    "Shortcut for hot-updater build:ios --upload testflight --register: build the .ipa, register it, and upload it to TestFlight",
+    "Shortcut for hot-updater native-build ios --submit testflight: build the .ipa, track it, and upload it to TestFlight",
   )
-  .addOption(nativeBuildOutputCommandOption)
   .option(
     "-s, --scheme <scheme>",
     "the nativeBuild.ios scheme (default: the only one that uploads to TestFlight, else a prompt at a terminal)",
   )
-  .option(
-    "--no-register",
-    "upload without registering the build, which then is no patch base native-build find sees",
-  )
-  .addOption(nativeBuildJsonCommandOption)
+  .allowUnknownOption()
+  .allowExcessArguments()
   .addHelpText(
     "after",
     [
       "",
-      "Shortcut for `hot-updater build:ios --scheme <scheme> --upload testflight --register`.",
+      "Shortcut for `hot-updater native-build ios --scheme <scheme> --submit testflight`.",
+      "It takes only --scheme; for --json or --output-path, run native-build ios.",
       "Without an App Store Connect API key, it signs in to your Apple Account at a",
-      "terminal, as build:ios does; in CI it never signs in (run apple login once first).",
+      "terminal, as native-build ios does; in CI it never signs in (run apple login once first).",
     ].join("\n"),
   )
-  .action(async (options: StoreUploadOptions) => {
+  .action(async (options: StoreUploadOptions, command) => {
+    if (
+      !onlyShortcut(
+        command,
+        "testflight",
+        "only --scheme",
+        "native-build ios -s <scheme> --submit testflight [--json] [-o <path>]",
+      )
+    ) {
+      return;
+    }
     await handleTestFlight(options);
-  });
-
-program
-  .command("run:android")
-  .description("build and run Android app to device or emulator")
-  .addOption(interactiveCommandOption)
-  .addOption(nativeBuildSchemeCommandOption)
-  .addOption(deviceCommandOption)
-  .addOption(portCommandOption)
-  .action(async (options: AndroidNativeRunOptions) => {
-    await runAndroidNative(options);
-  });
-
-program
-  .command("run:ios")
-  .description("build and run iOS app to device or simulator")
-  .addOption(interactiveCommandOption)
-  .addOption(nativeBuildSchemeCommandOption)
-  .addOption(deviceCommandOption)
-  .action(async (options: IosNativeRunOptions) => {
-    await runIosNative(options);
   });
 
 program.hook("preAction", (_command, actionCommand) => {

@@ -21,7 +21,9 @@ vi.mock("@hot-updater/apple-helper", () => ({ buildIos: vi.fn() }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
-  p: { log: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
+  p: {
+    log: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warn: vi.fn() },
+  },
   withCredentialResolver: vi.fn(async (run) => {
     try {
       return await run({
@@ -80,7 +82,17 @@ vi.mock("@/utils/native/createNativeBuild", () => ({
     };
   }),
 }));
+vi.mock("../utils/native/nativeBuildScope", () => ({
+  resolveNativeBuildScope: vi.fn(async () => ({
+    platform: "ios",
+    channel: "production",
+    fingerprintHash: "fp",
+    appVersion: null,
+  })),
+}));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  // The tracking preflight passes: its own specs cover it.
+  preflightNativeBuildRegistration: vi.fn(async () => {}),
   registerNativeBuild: vi.fn(async () => {
     events.push("register");
   }),
@@ -97,7 +109,7 @@ import { createNativeBuild } from "@/utils/native/createNativeBuild";
 
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
-import { buildAndroidNative } from "./buildNative";
+import { handleNativeBuildCreate } from "./buildNative";
 
 const AAB = "/out/app/build/outputs/bundle/app-staging-release.aab";
 
@@ -114,11 +126,9 @@ const mockExit = () =>
 
 describe("build:android --upload play-internal", () => {
   it("checks the scheme and resolves the service account before the prebuild, then builds, registers and uploads", async () => {
-    await buildAndroidNative({
-      interactive: false,
+    await handleNativeBuildCreate("android", {
       scheme: "release",
-      register: true,
-      upload: "play-internal",
+      submit: "play-internal",
     });
 
     expect(events).toEqual([
@@ -143,10 +153,9 @@ describe("build:android --upload play-internal", () => {
   });
 
   it("asks for the key with the scheme's applicationId, which the build reads", async () => {
-    await buildAndroidNative({
-      interactive: false,
+    await handleNativeBuildCreate("android", {
       scheme: "release",
-      upload: "play-internal",
+      submit: "play-internal",
     });
 
     expect(ensurePlayServiceAccount).toHaveBeenCalledWith({
@@ -162,10 +171,9 @@ describe("build:android --upload play-internal", () => {
     const exit = mockExit();
 
     await expect(
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     ).rejects.toThrow("exit");
 
@@ -182,10 +190,9 @@ describe("build:android --upload play-internal", () => {
     const exit = mockExit();
 
     await expect(
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     ).rejects.toThrow("exit");
 
@@ -207,10 +214,9 @@ describe("build:android --upload play-internal", () => {
     const exit = mockExit();
 
     await expect(
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     ).rejects.toThrow("exit");
 
@@ -223,10 +229,9 @@ describe("build:android --upload play-internal", () => {
   it("uploads under the scheme's applicationId without aapt2", async () => {
     vi.mocked(readBuiltPackageName).mockResolvedValueOnce(undefined);
 
-    await buildAndroidNative({
-      interactive: false,
+    await handleNativeBuildCreate("android", {
       scheme: "release",
-      upload: "play-internal",
+      submit: "play-internal",
     });
 
     expect(uploadToPlay).toHaveBeenCalledWith(
@@ -234,10 +239,12 @@ describe("build:android --upload play-internal", () => {
     );
   });
 
-  it("uploads nothing without --upload", async () => {
-    await buildAndroidNative({ interactive: false, scheme: "release" });
+  it("submits nothing without --submit, and tracks the build", async () => {
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+    });
 
-    expect(events).toEqual(["prebuild", "build", "dispose"]);
+    expect(events).toEqual(["prebuild", "build", "register", "dispose"]);
     expect(resolvePlayUploadServiceAccount).not.toHaveBeenCalled();
   });
 
@@ -250,10 +257,9 @@ describe("build:android --upload play-internal", () => {
     const exit = mockExit();
 
     await expect(
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     ).rejects.toThrow("exit");
 
@@ -274,10 +280,9 @@ describe("build:android --upload play-internal", () => {
     const exit = mockExit();
 
     await expect(
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     ).rejects.toThrow("exit");
 

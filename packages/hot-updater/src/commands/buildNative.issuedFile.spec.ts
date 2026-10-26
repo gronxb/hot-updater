@@ -167,11 +167,21 @@ vi.mock("@/utils/native/createNativeBuild", () => ({
     artifactKind: scheme.platform === "ios" ? "ipa" : "aab",
   })),
 }));
+vi.mock("../utils/native/nativeBuildScope", () => ({
+  resolveNativeBuildScope: vi.fn(async () => ({
+    platform: "ios",
+    channel: "production",
+    fingerprintHash: "fp",
+    appVersion: null,
+  })),
+}));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  // The tracking preflight passes: its own specs cover it.
+  preflightNativeBuildRegistration: vi.fn(async () => {}),
   registerNativeBuild: vi.fn(),
 }));
 
-import { buildAndroidNative, buildIosNative } from "./buildNative";
+import { handleNativeBuildCreate } from "./buildNative";
 
 const withTTY = async <T>(run: () => Promise<T>) => {
   const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -224,10 +234,9 @@ describe("a first build whose secrets adapter is envSecrets()", () => {
   it("uploads to TestFlight with the key the sign-in issued, from its file", async () => {
     scheme.platform = "ios";
     await withTTY(() =>
-      buildIosNative({
-        interactive: false,
+      handleNativeBuildCreate("ios", {
         scheme: "release",
-        upload: "testflight",
+        submit: "testflight",
       }),
     );
 
@@ -246,10 +255,9 @@ describe("a first build whose secrets adapter is envSecrets()", () => {
     scheme.platform = "ios";
     scheme.writeOnly = true;
     await withTTY(() =>
-      buildIosNative({
-        interactive: false,
+      handleNativeBuildCreate("ios", {
         scheme: "release",
-        upload: "testflight",
+        submit: "testflight",
       }),
     );
 
@@ -263,10 +271,9 @@ describe("a first build whose secrets adapter is envSecrets()", () => {
     scheme.platform = "android";
     scheme.writeOnly = true;
     await withTTY(() =>
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     );
 
@@ -278,10 +285,9 @@ describe("a first build whose secrets adapter is envSecrets()", () => {
   it("uploads to Google Play with the service account the sign-in issued, from its file", async () => {
     scheme.platform = "android";
     await withTTY(() =>
-      buildAndroidNative({
-        interactive: false,
+      handleNativeBuildCreate("android", {
         scheme: "release",
-        upload: "play-internal",
+        submit: "play-internal",
       }),
     );
 

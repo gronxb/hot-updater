@@ -15,6 +15,7 @@ import {
   createUUIDv7,
   type NativeBuildRegistration,
   type NativeBuildRow,
+  type NativeBuildScope,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
 
@@ -56,6 +57,53 @@ const removeUnregisteredArtifact = async (
     p.log.warn(
       `The native build was not registered, and its artifact stays at ${registration.artifact.storageUri}.`,
     );
+  }
+};
+
+/**
+ * Checks, before a build, that it can be tracked: the config's server
+ * answers the registry for `scope`, and its storage stores and reads
+ * objects. When the registry holds a build for `scope`, its artifact is
+ * read back (`exists`), with the server's real storage location; with
+ * none, nothing stored names one yet, and no write is probed: the first
+ * upload after the build is the check.
+ */
+export const preflightNativeBuildRegistration = async (
+  scope: NativeBuildScope,
+): Promise<void> => {
+  const server = await loadServer(await loadConfig(null));
+  try {
+    const { core, storage } = server;
+    /** What the build can't reach, with why. */
+    const unreachable = (what: string, error: unknown) =>
+      new Error(
+        `${what}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    const where = `its ${storage.name} storage`;
+    if (storage.put === undefined || storage.exists === undefined) {
+      throw unreachable(
+        where,
+        new Error(
+          `the storage adapter does not implement ${storage.put === undefined ? "put" : "exists"}.`,
+        ),
+      );
+    }
+    let found: NativeBuildRow | null;
+    try {
+      found = await core.findNativeBuild(scope);
+    } catch (error) {
+      throw unreachable("its native build registry", error);
+    }
+    if (found !== null) {
+      try {
+        await storage.exists({ storageUri: found.artifact_storage_uri });
+      } catch (error) {
+        throw unreachable(where, error);
+      }
+    }
+  } finally {
+    await server.dispose();
   }
 };
 

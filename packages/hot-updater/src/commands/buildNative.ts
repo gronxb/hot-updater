@@ -20,6 +20,7 @@ import {
   getConfiguredSecrets,
   getCwd,
   CredentialUnavailableError,
+  loadConfig,
   p,
   parseSecretReference,
   withCredentialResolver,
@@ -29,6 +30,7 @@ import type {
   Platform,
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
+import { NIL_UUID } from "@hot-updater/protocol";
 import { ExecaError } from "execa";
 
 import {
@@ -39,38 +41,66 @@ import {
   type NativeBuildSchemeOptions,
   prepareNativeBuild,
 } from "@/utils/native/prepareNativeBuild";
-import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
+import {
+  preflightNativeBuildRegistration,
+  registerNativeBuild,
+} from "@/utils/native/registerNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
 import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 
 /**
- * `build:android` and `build:ios`: `register` also registers the build,
- * `upload` uploads it to a store, and `json` prints the result.
+ * `native-build ios` and `native-build android`: every build but a Debug
+ * one is tracked, recorded in Hot Updater with its artifact, as an OTA
+ * patch base and preview build; `submit` submits it to a store, and `json`
+ * prints the result.
  */
-export type BuildNativeOptions = NativeBuildOptions & {
-  register?: boolean;
-  upload?: "testflight" | "play-internal";
+export interface NativeBuildCreateOptions {
+  /** The `nativeBuild` scheme; without it, a prompt at a terminal. */
+  readonly scheme?: string;
+  readonly outputPath?: string;
+  readonly submit?: "testflight" | "play-internal";
   /**
-   * Prints `{ build, nativeBuild }` as one line of JSON, the last of the
-   * output: the build, and its registration or null without `register`.
-   * The registration holds what the build's artifact embeds, such as an app
-   * version an xcconfig sets, which the project doesn't declare.
+   * Builds, but records and submits nothing, as `npm publish --dry-run`
+   * does: the checks run read-only, the store key is resolved but never
+   * issued, and the artifact stays on this machine.
    */
-  json?: boolean;
-};
+  readonly dryRun?: boolean;
+  /**
+   * Prints `{ dryRun, build, nativeBuild, registration, submission }` as
+   * one line of JSON, the last of the output: the build, its record or
+   * null, why it has none (`registration.skipped`: "debug", "dry-run", or
+   * null), and the store it went to (`submission.destination`, skipped on
+   * a dry run). The record holds what the build's artifact embeds, such as
+   * an app version an xcconfig sets, which the project doesn't declare.
+   */
+  readonly json?: boolean;
+}
+
+/**
+ * Why a build is not tracked: a Debug build has no built-in bundle, and a
+ * dry run records nothing.
+ */
+export type NativeBuildTrackingSkip = "debug" | "dry-run";
 
 const buildNativeInternal = async ({
-  options: { register = false, upload, json = false, ...options },
+  options: { submit: upload, dryRun = false, json = false, ...schemeOptions },
   platform,
 }: {
-  options: BuildNativeOptions;
+  options: NativeBuildCreateOptions;
   platform: Platform;
 }): Promise<NativeBuildResult> => {
+  // Without a scheme, prepareNativeBuild asks for one at a terminal and
+  // refuses elsewhere with the --scheme form.
+  const options: NativeBuildOptions = {
+    ...schemeOptions,
+    interactive: schemeOptions.scheme === undefined,
+  };
   printBanner();
   const platformName = platform === "android" ? "Android" : "iOS";
 
@@ -86,6 +116,10 @@ const buildNativeInternal = async ({
         let serviceAccount: Credentials["play-service-account"] | undefined;
         // The new service account's key: stored, or in its file.
         let serviceAccountIssued: "stored" | { file: string } | undefined;
+        // Why the build is not tracked, decided before it is built.
+        let trackingSkipped: NativeBuildTrackingSkip | null = null;
+        // A dry run's missing store key: reported, and the run fails at the end.
+        let missingSubmitKey: string | undefined;
         const preparedConfig = await prepareNativeBuild({
           ...options,
           platform,
@@ -122,6 +156,16 @@ const buildNativeInternal = async ({
                     }),
                   )
                 : undefined;
+            trackingSkipped = await prepareTracking({
+              platform,
+              scheme,
+              json,
+              debug: /debug$/i.test(
+                (platform === "android"
+                  ? androidScheme?.variant
+                  : iosScheme?.configuration) ?? "Release",
+              ),
+            });
             // The key the upload or the device build's signing resolves: a
             // developer without one signs in with their Apple Account here,
             // before anything is built, and Hot Updater issues it.
@@ -133,7 +177,8 @@ const buildNativeInternal = async ({
                     "signing.ascApiKey",
                   )
                 : undefined);
-            if (ascApiKeyName) {
+            // A dry run never signs in: it only reads the keys it would use.
+            if (ascApiKeyName && !dryRun) {
               try {
                 const ensured = await ensureAscApiKey({
                   name: ascApiKeyName,
@@ -156,7 +201,7 @@ const buildNativeInternal = async ({
                 );
               }
             }
-            if (uploadServiceAccount) {
+            if (uploadServiceAccount && !dryRun) {
               // A developer without one signs in with Google here, before
               // anything is built, and Hot Updater issues it.
               try {
@@ -193,13 +238,25 @@ const buildNativeInternal = async ({
                 );
               }
             }
+            /** A dry run's store key: one it lacks is reported, not fatal. */
+            const submitKey = async <T>(resolve: () => Promise<T>) => {
+              if (!dryRun) return resolve();
+              try {
+                return await resolve();
+              } catch (error) {
+                if (!(error instanceof CredentialUnavailableError)) throw error;
+                missingSubmitKey = error.message;
+                return undefined;
+              }
+            };
             [, ascApiKey, serviceAccount] = await Promise.all([
               resolveSigningCredentials(credentials, {
                 iosScheme,
                 androidScheme,
               }),
-              uploadKey && credentials.resolve(uploadKey),
-              uploadServiceAccount && credentials.resolve(uploadServiceAccount),
+              uploadKey && submitKey(() => credentials.resolve(uploadKey)),
+              uploadServiceAccount &&
+                submitKey(() => credentials.resolve(uploadServiceAccount)),
             ]);
           },
         });
@@ -272,8 +329,10 @@ const buildNativeInternal = async ({
             summarizeNativeBuild(result),
           ].join("\n"),
         );
-        const registered = register ? await registerNativeBuild(result) : null;
-        const apiKey = ascApiKey;
+        if (dryRun) trackingSkipped = "dry-run";
+        const registered =
+          trackingSkipped === null ? await trackBuild(result, upload) : null;
+        const apiKey = dryRun ? undefined : ascApiKey;
         if (apiKey) {
           const { state, testFlightUrl } = await reportUploadFailure(
             () =>
@@ -293,7 +352,7 @@ const buildNativeInternal = async ({
             );
           }
         }
-        const playServiceAccount = serviceAccount;
+        const playServiceAccount = dryRun ? undefined : serviceAccount;
         if (playServiceAccount) {
           const { versionCode, status } = await reportUploadFailure(
             async () =>
@@ -326,9 +385,26 @@ const buildNativeInternal = async ({
             ]),
           );
         }
+        if (dryRun) {
+          p.log.message(summarizeDryRun(result, upload));
+        }
         if (json) {
           console.log(
-            JSON.stringify({ build: result, nativeBuild: registered }),
+            JSON.stringify({
+              dryRun,
+              build: result,
+              nativeBuild: registered,
+              registration: { skipped: trackingSkipped },
+              submission: {
+                destination: upload ?? null,
+                skipped: dryRun && upload ? "dry-run" : null,
+              },
+            }),
+          );
+        }
+        if (missingSubmitKey !== undefined) {
+          throw new NativeBuildFailure(
+            `The dry run built, and a real run could not submit to ${upload === "testflight" ? "TestFlight" : "Google Play"}: ${missingSubmitKey}`,
           );
         }
         return result;
@@ -339,6 +415,95 @@ const buildNativeInternal = async ({
     return catchError(e);
   }
 };
+
+/**
+ * Decides, before anything is built or any sign-in, whether the build is
+ * tracked, and checks that it can be: a Debug build is not, which a line
+ * says; any other build's server must answer the registry and its storage,
+ * or the command stops here, in seconds, naming which it can't reach.
+ */
+const prepareTracking = async ({
+  platform,
+  scheme,
+  json,
+  debug,
+}: {
+  platform: Platform;
+  scheme: string;
+  json: boolean;
+  debug: boolean;
+}): Promise<NativeBuildTrackingSkip | null> => {
+  if (debug) {
+    p.log.info(
+      `Not tracking this build: the scheme ${scheme} builds Debug, which loads its JavaScript from Metro and has no built-in bundle to track.`,
+    );
+    return "debug";
+  }
+  try {
+    await preflightNativeBuildRegistration(
+      await resolveNativeBuildScope(
+        await loadConfig({ platform, channel: "" }),
+        { platform, scheme, json },
+      ),
+    );
+  } catch (error) {
+    throw new NativeBuildFailure(
+      `Hot Updater tracks every native build, and can't reach ${error instanceof Error ? error.message : String(error)}\nNothing was built. Check the database and storage in hot-updater.config.ts, and their credentials.`,
+      { cause: error },
+    );
+  }
+  return null;
+};
+
+/**
+ * Tracks the build, before any store submission: a build Hot Updater could
+ * not track is submitted nowhere, and stays at its path.
+ */
+const trackBuild = async (
+  result: NativeBuildResult,
+  upload: NativeBuildCreateOptions["submit"],
+) => {
+  try {
+    return await registerNativeBuild(result);
+  } catch (error) {
+    throw new NativeBuildFailure(
+      [
+        `Tracking the native build failed: ${error instanceof Error ? error.message : String(error)}`,
+        `The build stays at ${result.artifactPath}${upload ? `, and was not submitted to ${upload === "testflight" ? "TestFlight" : "Google Play"}` : ""}.`,
+      ].join("\n"),
+      { cause: error },
+    );
+  }
+};
+
+/** What a dry run would have recorded and where it would have submitted. */
+const summarizeDryRun = (
+  result: NativeBuildResult,
+  upload: NativeBuildCreateOptions["submit"],
+): string =>
+  ui.block("Dry run: nothing was recorded or submitted", [
+    ui.kv("Platform", ui.platform(result.platform)),
+    ui.kv("Channel", ui.channel(result.channel)),
+    result.fingerprintHash === null
+      ? ui.kv("App version", ui.version(result.appVersion))
+      : ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
+    ui.kv("Min bundle ID", ui.id(result.minBundleId)),
+    ui.kv("Artifact", ui.path(result.artifactPath)),
+    ui.kv(
+      "Would record",
+      result.minBundleId === NIL_UUID
+        ? "nothing: a Debug build has no built-in bundle"
+        : "this native build, its artifact, and its built-in bundle, in Hot Updater",
+    ),
+    ui.kv(
+      "Would submit",
+      upload === "testflight"
+        ? "to TestFlight"
+        : upload === "play-internal"
+          ? "to Google Play's internal testing track"
+          : "nothing (no --submit)",
+    ),
+  ]);
 
 const summarizeNativeBuild = (result: NativeBuildResult): string => {
   const rows: [label: string, value: string][] = [
@@ -435,14 +600,8 @@ const catchError = (e: unknown): never => {
   process.exit(1);
 };
 
-export const buildAndroidNative = async (
-  options: BuildNativeOptions,
-): Promise<NativeBuildResult> => {
-  return buildNativeInternal({ options, platform: "android" });
-};
-
-export const buildIosNative = async (
-  options: BuildNativeOptions,
-): Promise<NativeBuildResult> => {
-  return buildNativeInternal({ options, platform: "ios" });
-};
+/** `native-build ios` and `native-build android`. */
+export const handleNativeBuildCreate = async (
+  platform: Platform,
+  options: NativeBuildCreateOptions,
+): Promise<NativeBuildResult> => buildNativeInternal({ options, platform });

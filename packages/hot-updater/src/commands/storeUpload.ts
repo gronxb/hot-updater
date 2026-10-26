@@ -5,16 +5,12 @@ import type { Platform } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
-import { buildAndroidNative, buildIosNative } from "./buildNative";
+import { handleNativeBuildCreate } from "./buildNative";
 
-/** `testflight` and `google-play upload`: build options they pass on. */
+/** `testflight` and `google-play upload` take only the scheme. */
 export interface StoreUploadOptions {
   /** The scheme; else the one that uploads to the store, or a prompt. */
   readonly scheme?: string;
-  /** Registers the build, as a patch base `native-build find` sees: on unless `--no-register`. */
-  readonly register?: boolean;
-  readonly json?: boolean;
-  readonly outputPath?: string;
 }
 
 /** What each store shortcut builds, and how it names the store. */
@@ -24,11 +20,13 @@ interface StoreShortcut {
   readonly store: string;
   /** The command, after `npx hot-updater`. */
   readonly command: string;
+  /** The full command it runs, with `<scheme>` for the scheme. */
+  readonly full: (scheme: string) => string;
   /** How to add a scheme the store takes. */
   readonly addScheme: string;
   /**
    * Throws for a scheme whose build the store would not take, as the
-   * build's own `--upload` checks it before the prebuild.
+   * build's own `--submit` checks it before the prebuild.
    */
   readonly check: (scheme: string, config: never) => void;
 }
@@ -37,6 +35,7 @@ const TESTFLIGHT: StoreShortcut = {
   platform: "ios",
   store: "TestFlight",
   command: "testflight",
+  full: (scheme) => `native-build ios -s ${scheme} --submit testflight`,
   addScheme:
     "Add a device scheme with signing.ascApiKey, as https://hot-updater.dev/docs/guides/native-build#upload-to-testflight shows",
   check: (scheme, iosScheme) =>
@@ -47,6 +46,7 @@ const GOOGLE_PLAY: StoreShortcut = {
   platform: "android",
   store: "Google Play",
   command: "google-play upload",
+  full: (scheme) => `native-build android -s ${scheme} --submit play-internal`,
   addScheme:
     "Add a release scheme that builds an .aab, signed with signing.keystore, as https://hot-updater.dev/docs/guides/native-build#upload-to-google-play shows",
   check: (scheme, androidScheme) =>
@@ -113,7 +113,7 @@ const resolveScheme = async (
   const reason = nonInteractiveReason();
   if (reason !== undefined) {
     return fail(
-      `Several nativeBuild.${platform} schemes upload to ${store}: ${uploadable.join(", ")}. Hot Updater asks which one only at a terminal, never ${reason}: run npx hot-updater ${command} --scheme <${uploadable.join(" | ")}>.`,
+      `Several nativeBuild.${platform} schemes upload to ${store}: ${uploadable.join(", ")}. Hot Updater asks which one only at a terminal, never ${reason}: run npx hot-updater ${command} --scheme <${uploadable.join(" | ")}>, or npx hot-updater ${shortcut.full(`<${uploadable.join(" | ")}>`)}.`,
     );
   }
   const picked = await p.select({
@@ -125,48 +125,35 @@ const resolveScheme = async (
 };
 
 /**
- * `testflight`: the shortcut for `build:ios --scheme <scheme> --upload
- * testflight --register`, with the same handler. It registers the build
- * unless `--no-register`, and without `--scheme` picks the scheme that
- * uploads to TestFlight.
+ * `testflight`: the shortcut for `native-build ios --scheme <scheme>
+ * --submit testflight`, with the same handler, which tracks the build.
+ * Without `--scheme`, it picks the scheme that uploads to TestFlight.
  */
 export const handleTestFlight = async ({
   scheme,
-  register = true,
-  ...options
 }: StoreUploadOptions): Promise<void> => {
   printBanner();
   const resolved = await resolveScheme(TESTFLIGHT, scheme);
   if (resolved === undefined) return;
-  await buildIosNative({
-    ...options,
+  await handleNativeBuildCreate("ios", {
     scheme: resolved,
-    // The scheme is picked above: the build asks nothing more.
-    interactive: false,
-    upload: "testflight",
-    register,
+    submit: "testflight",
   });
 };
 
 /**
- * `google-play upload`: the shortcut for `build:android --scheme <scheme>
- * --upload play-internal --register`, with the same handler. It registers
- * the build unless `--no-register`, and without `--scheme` picks the scheme
- * that uploads to Google Play.
+ * `google-play upload`: the shortcut for `native-build android --scheme
+ * <scheme> --submit play-internal`, with the same handler, which tracks the
+ * build. Without `--scheme`, it picks the scheme that uploads to Google Play.
  */
 export const handleGooglePlayUpload = async ({
   scheme,
-  register = true,
-  ...options
 }: StoreUploadOptions): Promise<void> => {
   printBanner();
   const resolved = await resolveScheme(GOOGLE_PLAY, scheme);
   if (resolved === undefined) return;
-  await buildAndroidNative({
-    ...options,
+  await handleNativeBuildCreate("android", {
     scheme: resolved,
-    interactive: false,
-    upload: "play-internal",
-    register,
+    submit: "play-internal",
   });
 };

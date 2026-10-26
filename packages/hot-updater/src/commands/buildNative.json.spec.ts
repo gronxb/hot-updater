@@ -4,7 +4,9 @@ vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
 vi.mock("@hot-updater/apple-helper", () => ({ buildIos: vi.fn() }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
-  p: { log: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
+  p: {
+    log: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warn: vi.fn() },
+  },
   withCredentialResolver: vi.fn(async (run) =>
     run({ resolve: vi.fn(), dispose: vi.fn() }),
   ),
@@ -39,15 +41,25 @@ const row = {
   app_version: "2.0.0",
   artifact_kind: "app",
 };
+vi.mock("../utils/native/nativeBuildScope", () => ({
+  resolveNativeBuildScope: vi.fn(async () => ({
+    platform: "ios",
+    channel: "production",
+    fingerprintHash: "fp",
+    appVersion: null,
+  })),
+}));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  // The tracking preflight passes: its own specs cover it.
+  preflightNativeBuildRegistration: vi.fn(async () => {}),
   registerNativeBuild: vi.fn(async () => row),
 }));
 
-import { buildIosNative } from "./buildNative";
+import { handleNativeBuildCreate } from "./buildNative";
 
 const lastLine = () => vi.mocked(console.log).mock.calls.at(-1)?.[0];
 
-describe("build:* --json", () => {
+describe("native-build ios|android --json", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -57,38 +69,24 @@ describe("build:* --json", () => {
     vi.restoreAllMocks();
   });
 
-  it("prints the build and its registration as the last line", async () => {
-    await buildIosNative({
-      interactive: false,
+  it("prints the build and its record as the last line", async () => {
+    await handleNativeBuildCreate("ios", {
       scheme: "simulator",
-      register: true,
       json: true,
     });
 
     expect(JSON.parse(String(lastLine()))).toEqual({
+      dryRun: false,
       build,
       nativeBuild: row,
-    });
-  });
-
-  it("prints a null registration without --register", async () => {
-    await buildIosNative({
-      interactive: false,
-      scheme: "simulator",
-      json: true,
-    });
-
-    expect(JSON.parse(String(lastLine()))).toEqual({
-      build,
-      nativeBuild: null,
+      registration: { skipped: null },
+      submission: { destination: null, skipped: null },
     });
   });
 
   it("prints no JSON without --json", async () => {
-    await buildIosNative({
-      interactive: false,
+    await handleNativeBuildCreate("ios", {
       scheme: "simulator",
-      register: true,
     });
 
     expect(console.log).not.toHaveBeenCalled();

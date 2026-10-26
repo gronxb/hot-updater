@@ -17,7 +17,10 @@ import { createDatabaseHarness } from "../../commands/database.testFixtures";
 import { loadServer } from "../loadServer";
 import { testServer } from "../testServer";
 import type { NativeBuildResult } from "./createNativeBuild";
-import { registerNativeBuild } from "./registerNativeBuild";
+import {
+  preflightNativeBuildRegistration,
+  registerNativeBuild,
+} from "./registerNativeBuild";
 
 vi.mock("../loadServer", () => ({ loadServer: vi.fn() }));
 vi.mock("../git", () => ({
@@ -276,5 +279,101 @@ describe("registerNativeBuild", () => {
     expect(
       storage.objects.has(`native-builds/android/${ours!.id}/app-release.apk`),
     ).toBe(true);
+  });
+});
+
+describe("preflightNativeBuildRegistration", () => {
+  let dir: string;
+  let storage: ReturnType<typeof memoryStorage>;
+  const scope = {
+    platform: "android",
+    channel: "production",
+    fingerprintHash: "fingerprint-a",
+    appVersion: null,
+  } as const;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    harness.reset();
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "preflight-"));
+    storage = memoryStorage();
+    vi.mocked(loadConfig).mockResolvedValue({} as never);
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({ database: harness.database, storage: storage.adapter }),
+    );
+    vi.mocked(extractAndroid).mockImplementation(async ({ outputPath }) => {
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.promises.writeFile(outputPath, "built-in hermes bytecode");
+    });
+  });
+
+  afterEach(async () => {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  });
+
+  it("asks the registry, and writes nothing, when it tracks no build yet", async () => {
+    const exists = vi.spyOn(storage.adapter, "exists");
+    const put = vi.spyOn(storage.adapter, "put");
+
+    await preflightNativeBuildRegistration(scope);
+
+    expect(exists).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    expect(storage.objects.size).toBe(0);
+    expect(harness.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("reads back the tracked build's artifact, at the storage location the server wrote it to", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    const row = await registerNativeBuild(android({ artifactPath }));
+    const exists = vi.spyOn(storage.adapter, "exists");
+    const put = vi.spyOn(storage.adapter, "put");
+
+    await preflightNativeBuildRegistration(scope);
+
+    expect(exists).toHaveBeenCalledWith({
+      storageUri: row.artifact_storage_uri,
+    });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("fails when the server has no registry", async () => {
+    vi.spyOn(harness.core, "findNativeBuild").mockRejectedValueOnce(
+      new Error("The server has no native build route"),
+    );
+
+    await expect(preflightNativeBuildRegistration(scope)).rejects.toThrow(
+      "its native build registry: The server has no native build route",
+    );
+    expect(harness.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("fails when the storage can't read the tracked build back", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    await registerNativeBuild(android({ artifactPath }));
+    vi.spyOn(storage.adapter, "exists").mockRejectedValueOnce(
+      new Error("AccessDenied"),
+    );
+
+    await expect(preflightNativeBuildRegistration(scope)).rejects.toThrow(
+      "its memoryStorage storage: AccessDenied",
+    );
+  });
+
+  it("fails before any read when the storage can't store", async () => {
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({
+        database: harness.database,
+        storage: createStorageAdapter({ name: "readOnly", protocol: "mem" }),
+      }),
+    );
+    const find = vi.spyOn(harness.core, "findNativeBuild");
+
+    await expect(preflightNativeBuildRegistration(scope)).rejects.toThrow(
+      "its readOnly storage: the storage adapter does not implement put.",
+    );
+    expect(find).not.toHaveBeenCalled();
   });
 });
