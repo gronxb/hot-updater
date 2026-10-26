@@ -40,6 +40,7 @@ const fakeCli = ({
   builtChannel,
   builtTarget,
   builtDebug = false,
+  buildFails = false,
   channelDelete = {
     code: 0,
     json: {
@@ -57,6 +58,8 @@ const fakeCli = ({
   builtTarget?: { fingerprintHash: string | null; appVersion: string | null };
   /** The scheme builds Debug, which the CLI does not track. */
   builtDebug?: boolean;
+  /** Whether `native-build <platform>` fails, as a failed native build exits. */
+  buildFails?: boolean;
   channelDelete?: { code: number; json: Record<string, unknown> };
 } = {}) => {
   const calls: string[] = [];
@@ -106,6 +109,7 @@ const fakeCli = ({
       };
     }
     if (command === "native-build" && (sub === "ios" || sub === "android")) {
+      if (buildFails) return { code: 1, stdout: "" };
       const platform = sub;
       const build = {
         id: `build-${++counter}`,
@@ -175,6 +179,7 @@ const deps = (
   const outputs: Record<string, string> = {};
   const value = {
     cli,
+    buildLogs: vi.fn((_since: number): string[] => []),
     fetch: vi.fn(
       async () =>
         new Response(null, {
@@ -199,6 +204,23 @@ const deps = (
 };
 
 describe("runAction preview", () => {
+  it("sets a failed build's log as the platform's build-log output", async () => {
+    const logFile = "/work/.hot-updater/log/10261157-ios-simulator-build.log";
+    const fake = fakeCli({ buildFails: true });
+    const buildLogs = vi.fn((_since: number) => [logFile]);
+    const { deps: d, outputs } = deps(fake.cli, { buildLogs });
+
+    await expect(
+      runAction(d, env({ INPUT_PLATFORMS: "ios" }), event),
+    ).rejects.toThrow("hot-updater native-build ios");
+
+    expect(outputs).toEqual({ "ios-build-log": logFile });
+    expect(d.log.info).toHaveBeenCalledWith(`Build log: ${logFile}`);
+    expect(buildLogs).toHaveBeenCalledTimes(1);
+    // Nothing deploys after the build fails.
+    expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
   it("builds and registers a native build when none has the project's fingerprint, then deploys to the pull request's channel", async () => {
     const fake = fakeCli();
     const { deps: d, outputs } = deps(fake.cli);

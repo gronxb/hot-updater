@@ -1,6 +1,6 @@
 // @ts-check
 
-import { parseJsonOutput } from "../../shared/cli.mjs";
+import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 
 /**
  * @typedef {"android" | "ios"} Platform
@@ -12,6 +12,7 @@ import { parseJsonOutput } from "../../shared/cli.mjs";
  *
  * @typedef {object} Deps
  * @property {import("../../shared/cli.mjs").Cli} cli
+ * @property {import("../../shared/cli.mjs").BuildLogs} buildLogs
  * @property {(name: string, value: string) => void} setOutput
  * @property {{ info: (message: string) => void, notice: (message: string) => void }} log
  * @property {(markdown: string) => void} summary Appends to the job's summary.
@@ -112,8 +113,10 @@ export const buildArgs = (inputs) => [
  */
 export const runAction = async (deps, inputs) => {
   const args = buildArgs(inputs);
+  const since = Date.now();
   const { code, stdout } = await deps.cli(args, { capture: true });
   if (code !== 0) {
+    reportBuildLogs(deps, "build-log", since);
     throw new Error(
       `hot-updater ${args.join(" ")} exited with ${code}: its output above says why.`,
     );

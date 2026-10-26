@@ -34,4 +34,19 @@ export const createXcodebuildLogger = ({ logPrefix }: { logPrefix: string }) =>
       ["Copying"],
       ["Build Succeeded", "BUILD SUCCEEDED", "ARCHIVE SUCCEEDED"],
     ],
+    failureSummary: {
+      lines: [
+        // `error: …` and `File.swift:1:2: error: …`, not a warning that says
+        // "this will be an error".
+        /(^|:\s)error: /,
+        /^\*\* [A-Z ]+ FAILED \*\*$/,
+      ],
+      blocks: [
+        {
+          start: "The following build commands failed:",
+          end: /^\(\d+ failures?\)$/,
+          includeEnd: true,
+        },
+      ],
+    },
   });

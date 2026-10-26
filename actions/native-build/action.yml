@@ -38,6 +38,11 @@ outputs:
   native-build:
     description: JSON of the native build Hot Updater tracks, or null for a Debug build.
     value: ${{ steps.run.outputs.native-build }}
+  build-log:
+    description: >-
+      When the build fails, the CLI's build log, which the action uploads as
+      the hot-updater-build-log-<platform>-<scheme> artifact.
+    value: ${{ steps.run.outputs.build-log }}
 
 runs:
   using: composite
@@ -51,3 +56,13 @@ runs:
         INPUT_SUBMIT: ${{ inputs.submit }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_CLI: ${{ inputs.cli }}
+    # The log keeps the native build tool's whole output, which the job's
+    # log has only the errors of.
+    - if: failure() && steps.run.outputs.build-log != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: hot-updater-build-log-${{ inputs.platform }}-${{ inputs.scheme }}
+        path: ${{ steps.run.outputs.build-log }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        overwrite: true

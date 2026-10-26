@@ -1,6 +1,6 @@
 // @ts-check
 
-import { parseJsonOutput } from "../../shared/cli.mjs";
+import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 import {
   renderClosedComment,
   renderPreviewComment,
@@ -38,6 +38,7 @@ export { parseJsonOutput };
  *   Runs the project's hot-updater CLI. Without `capture`, it prints the
  *   command's output and throws when the command fails; with it, it returns
  *   the output and the exit code.
+ * @property {import("../../shared/cli.mjs").BuildLogs} buildLogs
  * @property {typeof fetch} fetch
  * @property {import("./github.mjs").GitHubContext | null} github
  * @property {(name: string, value: string) => void} setOutput
@@ -212,9 +213,19 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       `No ${platform} native build on ${inputs.previewChannel} has ${describeTarget(found)}: building one.`,
     );
     const scheme = /** @type {string} */ (inputs.schemes[platform]);
+    const since = Date.now();
     // Every native build is tracked, so the preview can install it.
     const registered = /** @type {NativeBuildJson} */ (
-      await json(deps, ["native-build", platform, "--scheme", scheme, "--json"])
+      await json(deps, [
+        "native-build",
+        platform,
+        "--scheme",
+        scheme,
+        "--json",
+      ]).catch((error) => {
+        reportBuildLogs(deps, `${platform}-build-log`, since);
+        throw error;
+      })
     );
     if (registered.build.channel !== inputs.previewChannel) {
       throw new Error(

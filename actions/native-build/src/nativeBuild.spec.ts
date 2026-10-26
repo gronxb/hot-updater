@@ -27,13 +27,17 @@ const deps = (
     code: 0,
     stdout: `> Building\n${JSON.stringify({ build: BUILD, nativeBuild: { id: "nb-1" }, registration: { skipped: null } })}\n`,
   },
+  /** The logs the build wrote. */
+  logs: string[] = [],
 ) => {
   const outputs: Record<string, string> = {};
   const summaries: string[] = [];
   const cli = vi.fn(async () => result);
+  const buildLogs = vi.fn((_since: number) => logs);
   return {
     deps: {
       cli,
+      buildLogs,
       setOutput: (name: string, value: string) => {
         outputs[name] = value;
       },
@@ -41,6 +45,7 @@ const deps = (
       summary: (markdown: string) => summaries.push(markdown),
     },
     cli,
+    buildLogs,
     outputs,
     summaries,
   };
@@ -188,6 +193,38 @@ describe("runAction", () => {
       "hot-updater native-build android --scheme release --submit play-internal --json exited with 1: its output above says why.",
     );
     expect(outputs).toEqual({});
+  });
+
+  it("prints the failed build's log and sets it as the build-log output", async () => {
+    const logFile = "/work/.hot-updater/log/10261157-android-release-build.log";
+    const before = Date.now();
+    const {
+      deps: d,
+      outputs,
+      buildLogs,
+    } = deps({ code: 1, stdout: "> Task :app:compileReleaseKotlin FAILED\n" }, [
+      logFile,
+    ]);
+
+    await expect(runAction(d, parseInputs(env()))).rejects.toThrow(
+      "exited with 1",
+    );
+
+    expect(outputs).toEqual({ "build-log": logFile });
+    expect(d.log.info).toHaveBeenCalledWith(`Build log: ${logFile}`);
+    // The logs written since the build started, not an earlier step's.
+    const [since] = buildLogs.mock.calls[0]!;
+    expect(since).toBeGreaterThanOrEqual(before);
+    expect(since).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("uploads nothing for a build that succeeded", async () => {
+    const { deps: d, outputs, buildLogs } = deps(undefined, ["/work/log"]);
+
+    await runAction(d, parseInputs(env()));
+
+    expect(buildLogs).not.toHaveBeenCalled();
+    expect(outputs).not.toHaveProperty("build-log");
   });
 
   it("refuses a build the CLI left untracked without saying why", async () => {

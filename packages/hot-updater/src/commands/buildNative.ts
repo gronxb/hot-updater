@@ -19,6 +19,7 @@ import {
   type Credentials,
   getConfiguredSecrets,
   getCwd,
+  BuildFailedError,
   CredentialUnavailableError,
   loadConfig,
   p,
@@ -588,7 +589,9 @@ const catchError = (e: unknown): never => {
     console.error(e);
   } else if (
     e instanceof CredentialUnavailableError ||
-    e instanceof NativeBuildFailure
+    e instanceof NativeBuildFailure ||
+    // Its logger printed the tool's errors and the log's path.
+    e instanceof BuildFailedError
   ) {
     p.log.error(e.message);
   } else if (e instanceof Error) {
