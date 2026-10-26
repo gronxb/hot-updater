@@ -16,13 +16,13 @@
  *   the signing credential fails before the build too.
  * - keystore-malformed: the keystore's JSON value lacks a field; the run
  *   names the field and the shape before the build.
- * - ios-missing: build:ios in CI without the App Store Connect API key, as
+ * - ios-missing: native-build ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
  * - put-key-store <service-account.json>: `secrets put` stored the service
  *   account in local()'s store, outside the project, readable by the user
  *   alone, as the file's exact contents, and wrote no `.env.hotupdater`.
  * - built: with every credential set, the service account in local()'s store
- *   alone, the run builds, registers, and fails only at Google, which
+ *   alone, the run builds, tracks, and fails only at Google, which
  *   refuses the proof's made-up service account.
  *
  * Each reads PROOF_LOG.

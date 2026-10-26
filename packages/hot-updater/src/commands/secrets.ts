@@ -398,7 +398,10 @@ export const handleSecretsIssue = async (
       throw new Error(`The kind is one of ${ISSUED_KINDS.join(", ")}.`);
     }
     const issuer = ISSUERS[kind];
-    const issue = `${credentialLoginCommand(kind, name)}${replace ? " --replace" : ""}`;
+    // A shortcut takes no --replace: the full form does.
+    const issue = replace
+      ? `${credentialIssueCommand(kind, name)} --replace`
+      : credentialLoginCommand(kind, name);
     const reason = nonInteractiveReason();
     if (reason !== undefined) {
       throw new Error(

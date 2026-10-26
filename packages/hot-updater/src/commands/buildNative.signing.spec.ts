@@ -27,7 +27,9 @@ vi.mock("@hot-updater/apple-helper", () => ({
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
-  p: { log: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
+  p: {
+    log: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warn: vi.fn() },
+  },
   withCredentialResolver: vi.fn(async (run) =>
     run({ resolve, dispose: vi.fn() }),
   ),
@@ -41,7 +43,17 @@ vi.mock("../utils/native/ascApiKey", () => ({
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
+vi.mock("../utils/native/nativeBuildScope", () => ({
+  resolveNativeBuildScope: vi.fn(async () => ({
+    platform: "ios",
+    channel: "production",
+    fingerprintHash: "fp",
+    appVersion: null,
+  })),
+}));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  // The tracking preflight passes: its own specs cover it.
+  preflightNativeBuildRegistration: vi.fn(async () => {}),
   registerNativeBuild: vi.fn(),
 }));
 vi.mock("@/utils/native/createNativeBuild", () => ({
@@ -86,14 +98,14 @@ import {
 } from "@hot-updater/cli-tools";
 
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
-import { buildAndroidNative, buildIosNative } from "./buildNative";
+import { handleNativeBuildCreate } from "./buildNative";
 
 beforeEach(() => {
   vi.clearAllMocks();
   events.length = 0;
 });
 
-describe("build:* resolves its signing credentials before the prebuild", () => {
+describe("native-build ios|android resolves its signing credentials before the prebuild", () => {
   it("resolves a release variant's keystore first", async () => {
     prebuildScheme.current = {
       androidScheme: {
@@ -102,7 +114,9 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       },
     };
 
-    await buildAndroidNative({ interactive: false, scheme: "release" });
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+    });
 
     expect(events).toEqual([
       "resolve android-keystore release-keystore",
@@ -120,7 +134,9 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       },
     };
 
-    await buildAndroidNative({ interactive: false, scheme: "release" });
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+    });
 
     expect(events).toEqual(["prebuild", "build"]);
   });
@@ -133,7 +149,9 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       },
     };
 
-    await buildIosNative({ interactive: false, scheme: "release" });
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+    });
 
     expect(events).toEqual([
       "ensure asc-api-key widget-asc",
@@ -152,7 +170,9 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       },
     };
 
-    await buildIosNative({ interactive: false, scheme: "release" });
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+    });
 
     expect(events).toEqual(["prebuild", "build"]);
   });
@@ -177,7 +197,9 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     }) as never);
 
     await expect(
-      buildAndroidNative({ interactive: false, scheme: "release" }),
+      handleNativeBuildCreate("android", {
+        scheme: "release",
+      }),
     ).rejects.toThrow("exit");
 
     expect(events).toEqual([
@@ -206,7 +228,9 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
     });
 
     try {
-      await buildIosNative({ interactive: false, scheme: "release" });
+      await handleNativeBuildCreate("ios", {
+        scheme: "release",
+      });
 
       // Then: the sign-in preflight and the resolver use the config's own
       const [, options] = vi.mocked(withCredentialResolver).mock.calls[0]!;

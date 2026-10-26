@@ -8,19 +8,13 @@ export {
   issueAscApiKey,
 } from "./ascApiKey";
 export { buildIos } from "./buildIos";
-export { runIos } from "./runIos";
 export {
   assertTestFlightExportOptions,
   resolveTestFlightUploadKey,
   type UploadToTestFlightResult,
   uploadToTestFlight,
 } from "./uploadToTestFlight";
-export type {
-  AppleDevice,
-  AppleDeviceType,
-  DeviceState,
-  IosNativeRunOptions,
-} from "./types";
+export type { AppleDeviceType } from "./types";
 export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export {

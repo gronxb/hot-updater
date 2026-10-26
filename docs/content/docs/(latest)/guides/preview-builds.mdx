@@ -11,8 +11,8 @@ import { Callout } from "fumadocs-ui/components/callout";
 A preview build is a Release native build that testers install once and
 point at any pull request's bundle without rebuilding:
 
-1. Build a native app with a shared default channel, such as `preview`, and
-   register it.
+1. Build a native app with a shared default channel, such as `preview`,
+   which Hot Updater tracks.
 2. Deploy each pull request's bundle to its own channel, such as `pr-12`.
 3. In the Console's **Preview** page, a tester installs the build, by QR code
    on Android or with `xcrun simctl` on the iOS Simulator, then scans the
@@ -33,25 +33,26 @@ Only builds whose default channel you list open channel links. A production
 build, with another default channel, ignores them, even when it runs the same
 JavaScript.
 
-## Build and register a preview build
+## Build a preview build
 
-Set the shared default channel, then build and register a Release build:
+Set the shared default channel, then build a Release build, which Hot Updater
+tracks:
 
 ```package-install
 npx hot-updater channel set preview
 ```
 
 ```package-install
-npx hot-updater build:android --scheme release --register
+npx hot-updater native-build android --scheme release
 ```
 
-Register the iOS build for the Simulator with a `nativeBuild.ios` scheme that
-sets `simulator: true`. See [Native Build](/docs/guides/native-build#register-a-build)
-for the schemes and what registering uploads.
+Build the iOS app for the Simulator with a `nativeBuild.ios` scheme that sets
+`simulator: true`. See [Native Build](/docs/guides/native-build#how-a-build-is-tracked)
+for the schemes and what tracking uploads.
 
 Every pull request reuses this build while its native code doesn't change.
 Keep pull request channels for bundles only: a channel a native build embeds
-as its default channel can't be deleted while the build is registered. To
+as its default channel can't be deleted while Hot Updater tracks the build. To
 retire a build, see [Delete a build](/docs/guides/native-build#delete-a-build).
 
 ## Open channel links in the app
@@ -122,7 +123,7 @@ under `console` in its configuration.
 
 The Console's **Preview** page then has two cards:
 
-- **Native builds** lists the registered builds, newest first. **Install**
+- **Native builds** lists the tracked builds, newest first. **Install**
   opens a build: an APK shows a QR code that downloads it, a Simulator app
   shows its `xcrun simctl install` command, and every build has a download.
   AAB and IPA builds install through Google Play and your iOS distribution.

@@ -415,7 +415,7 @@ test.
 
 The same run lists the artifact records no Release uses. Doctor warns
 `UNREFERENCED_ARTIFACTS` with their IDs, since `storage prune` keeps the files
-of every artifact record. A [registered native build](/docs/guides/native-build#register-a-build)'s
+of every artifact record. A [registered native build](/docs/guides/native-build#how-a-build-is-tracked)'s
 built-in bundle is an artifact record no Release uses that doctor leaves out:
 it stays as long as its build, and `hot-updater native-build delete` deletes
 it with the build. `--fix` deletes the records, and a later

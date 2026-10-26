@@ -6,8 +6,7 @@ import { buildArgs, cliEnv, parseInputs, runAction } from "./nativeBuild.mjs";
 const env = (overrides: Record<string, string> = {}) => ({
   INPUT_PLATFORM: "android",
   INPUT_SCHEME: "release",
-  INPUT_UPLOAD: "play-internal",
-  INPUT_REGISTER: "true",
+  INPUT_SUBMIT: "play-internal",
   RUNNER_OS: "Linux",
   ...overrides,
 });
@@ -26,7 +25,7 @@ const BUILD = {
 const deps = (
   result: { code: number; stdout: string } = {
     code: 0,
-    stdout: `> Building\n${JSON.stringify({ build: BUILD, nativeBuild: { id: "nb-1" } })}\n`,
+    stdout: `> Building\n${JSON.stringify({ build: BUILD, nativeBuild: { id: "nb-1" }, registration: { skipped: null } })}\n`,
   },
   /** The logs the build wrote. */
   logs: string[] = [],
@@ -53,33 +52,31 @@ const deps = (
 };
 
 describe("parseInputs", () => {
-  it("reads a build that registers and uploads to Google Play", () => {
+  it("reads a build that submits to Google Play", () => {
     expect(parseInputs(env())).toEqual({
       platform: "android",
       scheme: "release",
-      upload: "play-internal",
-      register: true,
+      submit: "play-internal",
     });
   });
 
-  it("reads an iOS build on a macOS runner, registering by default", () => {
+  it("reads an iOS build on a macOS runner", () => {
     expect(
       parseInputs(
         env({
           INPUT_PLATFORM: "ios",
-          INPUT_UPLOAD: "testflight",
-          INPUT_REGISTER: "",
+          INPUT_SUBMIT: "testflight",
           RUNNER_OS: "macOS",
         }),
       ),
-    ).toMatchObject({ platform: "ios", upload: "testflight", register: true });
+    ).toEqual({ platform: "ios", scheme: "release", submit: "testflight" });
   });
 
   it.each([
     [{ INPUT_PLATFORM: "" }, "platform is required: ios or android."],
     [{ INPUT_PLATFORM: "web" }, "platform takes ios or android, not web."],
     [
-      { INPUT_PLATFORM: "ios", INPUT_UPLOAD: "" },
+      { INPUT_PLATFORM: "ios", INPUT_SUBMIT: "" },
       "platform ios builds with Xcode, which needs a macOS runner (runs-on: macos-latest), not Linux.",
     ],
     [
@@ -87,14 +84,13 @@ describe("parseInputs", () => {
       "scheme is required: the nativeBuild.android scheme in hot-updater.config.ts.",
     ],
     [
-      { INPUT_UPLOAD: "app-store" },
-      "upload takes testflight or play-internal, or is empty, not app-store.",
+      { INPUT_SUBMIT: "app-store" },
+      "submit takes testflight or play-internal, or is empty, not app-store.",
     ],
     [
-      { INPUT_UPLOAD: "testflight" },
-      "upload testflight uploads ios builds, and platform is android.",
+      { INPUT_SUBMIT: "testflight" },
+      "submit testflight takes ios builds, and platform is android.",
     ],
-    [{ INPUT_REGISTER: "yes" }, "register must be true or false."],
   ])("refuses %j", (overrides, message) => {
     expect(() => parseInputs(env(overrides))).toThrow(message);
   });
@@ -147,18 +143,18 @@ describe("credentialMasks", () => {
 });
 
 describe("runAction", () => {
-  it("builds, registers, and uploads, then sets the outputs and the summary", async () => {
+  it("builds, tracks, and submits, then sets the outputs and the summary", async () => {
     const { deps: d, cli, outputs, summaries } = deps();
 
     await runAction(d, parseInputs(env()));
 
     expect(cli).toHaveBeenCalledWith(
       [
-        "build:android",
+        "native-build",
+        "android",
         "--scheme",
         "release",
-        "--register",
-        "--upload",
+        "--submit",
         "play-internal",
         "--json",
       ],
@@ -169,18 +165,21 @@ describe("runAction", () => {
       build: JSON.stringify(BUILD),
       "native-build": JSON.stringify({ id: "nb-1" }),
     });
-    expect(summaries[0]).toContain("| Registered | `nb-1` |");
+    expect(summaries[0]).toContain("### hot-updater native-build android");
+    expect(summaries[0]).toContain("| Tracked | `nb-1` |");
     expect(summaries[0]).toContain(
-      "| Uploaded to | Google Play internal testing |",
+      "| Submitted to | Google Play internal testing |",
     );
   });
 
-  it("only builds without upload and register", () => {
-    expect(
-      buildArgs(
-        parseInputs(env({ INPUT_UPLOAD: "", INPUT_REGISTER: "false" })),
-      ),
-    ).toEqual(["build:android", "--scheme", "release", "--json"]);
+  it("only builds, and tracks, without submit", () => {
+    expect(buildArgs(parseInputs(env({ INPUT_SUBMIT: "" })))).toEqual([
+      "native-build",
+      "android",
+      "--scheme",
+      "release",
+      "--json",
+    ]);
   });
 
   it("fails with the CLI's exit code, whose output names what is missing", async () => {
@@ -190,7 +189,7 @@ describe("runAction", () => {
     });
 
     await expect(runAction(d, parseInputs(env()))).rejects.toThrow(
-      "hot-updater build:android --scheme release --register --upload play-internal --json exited with 1: its output above says why.",
+      "hot-updater native-build android --scheme release --submit play-internal --json exited with 1: its output above says why.",
     );
     expect(outputs).toEqual({});
   });
@@ -227,14 +226,38 @@ describe("runAction", () => {
     expect(outputs).not.toHaveProperty("build-log");
   });
 
-  it("refuses a build that register left unregistered", async () => {
+  it("refuses a build the CLI left untracked without saying why", async () => {
     const { deps: d } = deps({
       code: 0,
-      stdout: JSON.stringify({ build: BUILD, nativeBuild: null }),
+      stdout: JSON.stringify({
+        build: BUILD,
+        nativeBuild: null,
+        registration: { skipped: null },
+      }),
     });
 
     await expect(runAction(d, parseInputs(env()))).rejects.toThrow(
-      "build:android registered no native build.",
+      "native-build android tracked no native build.",
     );
+  });
+
+  it("accepts a Debug build, which has no record, and says so", async () => {
+    const {
+      deps: d,
+      outputs,
+      summaries,
+    } = deps({
+      code: 0,
+      stdout: JSON.stringify({
+        build: BUILD,
+        nativeBuild: null,
+        registration: { skipped: "debug" },
+      }),
+    });
+
+    await runAction(d, parseInputs(env({ INPUT_SUBMIT: "" })));
+
+    expect(outputs["native-build"]).toBe("null");
+    expect(summaries[0]).toContain("| Tracked | no (Debug build) |");
   });
 });

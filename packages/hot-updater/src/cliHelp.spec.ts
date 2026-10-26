@@ -143,19 +143,75 @@ describe("CLI commands", () => {
     expect(help("keys", "export-public")).not.toContain("--input");
   });
 
-  it("lists the native build and run commands without a flag", () => {
+  it("builds with native-build ios|android, with no build:* or run:* commands", () => {
     const output = help();
-    for (const command of [
+    for (const removed of [
       "build:android",
       "build:ios",
       "run:android",
       "run:ios",
     ]) {
-      expect(output).toMatch(new RegExp(`^\\s+${command}\\b`, "m"));
+      expect(output).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
+      const result = run(removed);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`unknown command '${removed}'`);
     }
-    expect(help("build:ios")).toContain("--scheme <scheme>");
-    expect(help("build:ios")).not.toContain("--message");
-    expect(help("run:android")).not.toContain("--app-id-suffix");
+
+    const nativeBuild = help("native-build");
+    for (const command of ["find", "delete", "ios", "android"]) {
+      expect(nativeBuild).toMatch(new RegExp(`^\\s+${command} \\[`, "m"));
+    }
+    expect(nativeBuild).not.toMatch(/^\s+create\b/m);
+    // No -p on the parent: it would break find -p and the subcommands.
+    expect(nativeBuild).not.toContain("--platform");
+    const bare = run("native-build");
+    expect(bare.status).toBe(1);
+    expect(bare.stderr).toContain("Usage: hot-updater native-build");
+    expect(bare.stderr).toMatch(/^\s+ios \[options\]/m);
+
+    for (const [platform, destination] of [
+      ["ios", "testflight"],
+      ["android", "play-internal"],
+    ] as const) {
+      const build = help("native-build", platform);
+      const flat = build.replace(/\s+/gu, " ");
+      expect(build).toContain("-s, --scheme <scheme>");
+      expect(build).toContain("-o, --output-path <outputPath>");
+      expect(flat).toContain(`--submit <destination>`);
+      expect(flat).toContain(`(choices: "${destination}")`);
+      expect(flat).toContain(
+        "--dry-run Build, but record and submit nothing: no Hot Updater tracking, no store submission (like npm publish --dry-run)",
+      );
+      expect(build).toContain("--json");
+      for (const removed of [
+        "--upload",
+        "--register",
+        "--no-register",
+        "--untracked",
+        "--interactive",
+        "--device",
+      ]) {
+        expect(build).not.toContain(removed);
+      }
+      const wrong = run(
+        "native-build",
+        platform,
+        "--submit",
+        destination === "testflight" ? "play-internal" : "testflight",
+      );
+      expect(wrong.status).toBe(1);
+      expect(wrong.stderr).toContain("is invalid. Allowed choices are");
+      for (const removed of ["--upload", "--untracked", "--no-register"]) {
+        const refused = run("native-build", platform, removed, destination);
+        expect(refused.status).toBe(1);
+        expect(refused.stderr).toContain(`unknown option '${removed}'`);
+      }
+    }
+
+    // -p parses on find, which has its own: commander reads the subcommand's.
+    const find = run("native-build", "find", "-p", "ios", "--help");
+    expect(find.status).toBe(0);
+    expect(find.stdout).toContain("-p, --platform <platform>");
   });
 
   it("manages API keys with the core api-key command, and groups no plugin commands", () => {
@@ -232,37 +288,41 @@ describe("CLI commands", () => {
     ["apple", "asc-api-key", "Apple Account", "Desktop app"],
     ["google-play", "play-service-account", "Google", "with asc"],
   ] as const)(
-    "has %s login as the alias of secrets issue %s, and keeps no session",
+    "has %s login as the alias of secrets issue %s, taking nothing, and keeps no session",
     (group, kind, account, otherKind) => {
       expect(help()).toMatch(new RegExp(`^\\s+${group}\\s+\\S`, "m"));
       const groupHelp = help(group);
-      expect(groupHelp).toMatch(/^\s+login \[options\] \[name\]\s+Alias of/m);
+      expect(groupHelp).toMatch(/^\s+login\s+Alias of/m);
       // Hot Updater keeps no session: nothing to log out of or ask about.
       for (const missing of ["logout", "whoami", "status"]) {
         expect(groupHelp).not.toMatch(new RegExp(`^\\s+${missing}\\b`, "m"));
       }
-      const login = help(group, "login").replace(/\s+/gu, " ");
+      const loginHelp = help(group, "login");
+      const login = loginHelp.replace(/\s+/gu, " ");
       expect(login).toContain(`Alias of \`hot-updater secrets issue ${kind}\``);
       expect(login).toContain(account);
       expect(login).not.toContain(otherKind);
       expect(login).toContain("Hot Updater keeps no session");
       expect(login).toContain("no logout or whoami");
-      expect(login).toContain("--replace");
-      expect(login).toContain(`(default: ${kind})`);
+      expect(loginHelp).not.toMatch(/^\s+--replace/m);
+      expect(loginHelp).not.toContain("[name]");
 
       // The alias runs secrets issue's handler with its kind: without a
       // terminal, both print the same refusal, byte for byte.
-      for (const args of [[], ["widget-key"], ["widget-key", "--replace"]]) {
-        const alias = run(group, "login", ...args);
-        const canonical = run("secrets", "issue", kind, ...args);
-        expect(alias.status).toBe(1);
-        expect(canonical.status).toBe(1);
-        expect(alias.stdout).toBe(canonical.stdout);
-        expect(alias.stderr).toBe(canonical.stderr);
+      const alias = run(group, "login");
+      const canonical = run("secrets", "issue", kind);
+      expect(alias.status).toBe(1);
+      expect(alias.stdout).toBe(canonical.stdout);
+      expect(alias.stderr).toBe(canonical.stderr);
+
+      // It takes nothing: anything else names the full command.
+      for (const extra of [["widget-key"], ["--replace"], ["--json"]]) {
+        const refused = run(group, "login", ...extra);
+        expect(refused.status).toBe(1);
+        expect(refused.stdout + refused.stderr).toContain(
+          `hot-updater ${group} login takes no options or arguments: for ${extra.join(" ")}, run npx hot-updater secrets issue ${kind} [name] [--replace].`,
+        );
       }
-      expect(run(group, "login", "widget-key").stdout).toContain(
-        `Run \`npx hot-updater ${group} login widget-key\` in a terminal`,
-      );
     },
   );
 
@@ -271,19 +331,19 @@ describe("CLI commands", () => {
       ["testflight"],
       "ios",
       "testflight",
-      "Shortcut for hot-updater build:ios --upload\\s+testflight --register",
+      "Shortcut for hot-updater native-build ios --submit\\s+testflight",
       "apple login",
     ],
     [
       ["google-play", "upload"],
       "android",
       "play-internal",
-      "Shortcut for hot-updater build:android\\s+--upload\\s+play-internal --register",
+      "Shortcut for hot-updater native-build android\\s+--submit\\s+play-internal",
       "google-play login",
     ],
   ] as const)(
-    "has %j as the shortcut for build:%s --upload %s --register",
-    (command, platform, upload, summary, login) => {
+    "has %j as the shortcut for native-build %s --submit %s, taking only --scheme",
+    (command, platform, destination, summary, login) => {
       const parent = command.length === 1 ? help() : help(command[0]);
       expect(parent).toMatch(
         new RegExp(`^\\s+${command.at(-1)} \\[options\\]\\s+${summary}`, "m"),
@@ -291,16 +351,36 @@ describe("CLI commands", () => {
       const shortcut = help(...command);
       const flat = shortcut.replace(/\s+/gu, " ");
       expect(flat).toContain(
-        `Shortcut for \`hot-updater build:${platform} --scheme <scheme> --upload ${upload} --register\`.`,
+        `Shortcut for \`hot-updater native-build ${platform} --scheme <scheme> --submit ${destination}\`.`,
       );
       expect(shortcut).toContain("-s, --scheme <scheme>");
-      expect(shortcut).toContain("--no-register");
-      expect(shortcut).toContain("--json");
-      expect(shortcut).toContain("-o, --output-path <outputPath>");
-      // It always uploads to the store and picks the scheme itself.
-      expect(shortcut).not.toContain("--upload <destination>");
-      expect(shortcut).not.toContain("--interactive");
+      for (const removed of [
+        "--json",
+        "--output-path",
+        "--dry-run",
+        "--untracked",
+        "--no-register",
+        "--submit <destination>",
+        "--interactive",
+      ]) {
+        expect(shortcut).not.toMatch(
+          new RegExp(`^\\s+(-\\w, )?${removed}`, "m"),
+        );
+      }
       expect(flat).toContain(`run ${login} once first`);
+
+      for (const extra of [
+        ["--json"],
+        ["--dry-run"],
+        ["-o", "out"],
+        ["-s", "release", "extra"],
+      ]) {
+        const refused = run(...command, ...extra);
+        expect(refused.status).toBe(1);
+        expect(refused.stdout + refused.stderr).toContain(
+          `hot-updater ${command.join(" ")} takes only --scheme: for ${extra.filter((arg) => arg !== "-s" && arg !== "release").join(" ")}, run npx hot-updater native-build ${platform} -s <scheme> --submit ${destination} [--json] [-o <path>].`,
+        );
+      }
     },
   );
 

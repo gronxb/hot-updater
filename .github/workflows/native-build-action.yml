@@ -27,7 +27,7 @@ concurrency:
 # variable, which the CLI reads first, or is in local()'s store under
 # HOT_UPDATER_HOME, minus the credentials each run expects to miss: every run but the last must fail before anything is built, naming
 # what is missing and how to provide it. The last run has every credential,
-# builds and registers examples/v0.85.0's .aab, and fails only at Google,
+# builds and tracks examples/v0.85.0's .aab, and fails only at Google,
 # which refuses the proof's made-up service account, which `secrets put`
 # stored in local()'s store and the build read from there. The proof reads the
 # CLI's output, which scripts/record-cli.mjs records as the action's `cli`,
@@ -88,14 +88,14 @@ jobs:
           test "${{ steps.ios-on-linux.outcome }}" = failure
           test ! -e "$PROOF_LOG"
 
-      - name: Upload without the Play service account, never signing in to Google
+      - name: Submit without the Play service account, never signing in to Google
         id: upload-missing
         continue-on-error: true
         uses: ./actions/native-build
         with:
           platform: android
           scheme: release
-          upload: play-internal
+          submit: play-internal
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check that it failed before the build, naming what to set
@@ -111,7 +111,6 @@ jobs:
         with:
           platform: android
           scheme: widget
-          register: false
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check that the signing credential failed before the build
@@ -129,7 +128,6 @@ jobs:
         with:
           platform: android
           scheme: release
-          register: false
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check that it named the missing field before the build
@@ -138,7 +136,7 @@ jobs:
           node examples-server/preview-action/native-build-proof.ts keystore-malformed
           rm "$PROOF_LOG"
 
-      # build:ios stops at the credential check before anything needs macOS,
+      # native-build ios stops at the credential check before anything needs macOS,
       # so the CLI runs here directly: once without a terminal, and once on
       # the terminal `script` gives it, where only CI says nobody answers.
       - name: Build for TestFlight without the App Store Connect API key
@@ -147,7 +145,7 @@ jobs:
           CI: "true"
         run: |
           set +e
-          $PROOF_CLI build:ios --scheme release --upload testflight < /dev/null
+          $PROOF_CLI native-build ios --scheme release --submit testflight < /dev/null
           code=$?
           set -e
           test "$code" -ne 0
@@ -155,7 +153,7 @@ jobs:
           rm "$PROOF_LOG"
 
           set +e
-          timeout 300 script -qec "$PROOF_CLI build:ios --scheme release --upload testflight" /dev/null
+          timeout 300 script -qec "$PROOF_CLI native-build ios --scheme release --submit testflight" /dev/null
           code=$?
           set -e
           # 124 is timeout's: a prompt waited on the terminal.
@@ -187,14 +185,14 @@ jobs:
           rm "$PROOF_LOG"
           rm -rf "$work"
 
-      - name: Build, register, and upload with every credential set
+      - name: Build, track, and submit with every credential set
         id: built
         continue-on-error: true
         uses: ./actions/native-build
         with:
           platform: android
           scheme: release
-          upload: play-internal
+          submit: play-internal
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
       - name: Check the build and its registration, refused only by Google

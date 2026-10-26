@@ -229,7 +229,7 @@ describe("ensureAscApiKey", () => {
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      `widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc, or ${keyFile("widget-asc")} on this machine). Store it once from a terminal with \`npx hot-updater apple login widget-asc\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.`,
+      `widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc, or ${keyFile("widget-asc")} on this machine). Store it once from a terminal with \`npx hot-updater secrets issue asc-api-key widget-asc\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.`,
     );
     expect(process.exitCode).toBe(1);
     // Nothing is written, and no Apple prompt.

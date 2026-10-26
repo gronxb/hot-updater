@@ -787,7 +787,7 @@ describe("createBundleDiff", () => {
       /**
        * A signed target, and the built-in bundle of a registered native
        * build: registration records its manifest's SHA-256, never a
-       * signature, as `build:* --register` does.
+       * signature, as `native-build ios|android` does.
        */
       const setupBuiltIn = async (builtInManifest?: string) => {
         const baseAsset = createAsset([1, 2, 3]);

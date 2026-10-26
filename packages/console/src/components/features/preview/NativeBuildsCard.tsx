@@ -195,13 +195,15 @@ export function NativeBuildsCard({
                       ) : (
                         <>
                           <p>
-                            Register a release build with{" "}
+                            Build a release app with{" "}
                             <code className="font-mono text-xs">
-                              hot-updater build:android --register
+                              hot-updater native-build android
                             </code>{" "}
                             or{" "}
-                            <code className="font-mono text-xs">build:ios</code>
-                            .
+                            <code className="font-mono text-xs">
+                              native-build ios
+                            </code>
+                            , which tracks it here.
                           </p>
                           <a
                             className={buttonVariants({

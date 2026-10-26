@@ -133,15 +133,18 @@ export const CREDENTIAL_LOGIN_GROUPS = {
 } as const satisfies Record<IssuedCredentialKind, string>;
 
 /**
- * The shortcut of `credentialIssueCommand`, the one people meet first:
- * `apple login` for an App Store Connect API key, `google-play login` for
- * a Play service account, with `name` when it is not the kind's.
+ * The command people meet first that issues `kind` as `name`: its shortcut,
+ * `apple login` for an App Store Connect API key or `google-play login`
+ * for a Play service account, which takes nothing and stores the kind's
+ * own name; for another name, `credentialIssueCommand`.
  */
 export const credentialLoginCommand = (
   kind: IssuedCredentialKind,
   name: string = kind,
 ): string =>
-  `npx hot-updater ${CREDENTIAL_LOGIN_GROUPS[kind]} login${name === kind ? "" : ` ${name}`}`;
+  name === kind
+    ? `npx hot-updater ${CREDENTIAL_LOGIN_GROUPS[kind]} login`
+    : credentialIssueCommand(kind, name);
 
 /**
  * The command that stores a missing credential of `kind` as `name`: the

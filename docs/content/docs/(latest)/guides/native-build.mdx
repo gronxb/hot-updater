@@ -6,9 +6,12 @@ icon: Hammer
 
 ## Overview
 
-`hot-updater build:android` and `hot-updater build:ios` build the native app
-from a scheme in `hot-updater.config.ts`. Each build compiles in the values
-that select its OTA updates, and prints them with the artifact:
+`hot-updater native-build android` and `hot-updater native-build ios` build
+the native app from a scheme in `hot-updater.config.ts`, and track it in Hot
+Updater: the build, its artifact, and the JavaScript bundle it compiled in are
+recorded with your server, where they serve as a patch base, a preview build,
+and a Console install link. Each build compiles in the values that select its
+OTA updates, and prints them with the artifact:
 
 | Value         | What the build compiles in                                                                          |
 | ------------- | --------------------------------------------------------------------------------------------------- |
@@ -23,8 +26,8 @@ the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
 `extraParams` sets are the ones it reports. On Android it reads them with the
 SDK's `aapt2`.
 
-`hot-updater run:android` and `hot-updater run:ios` build the same schemes and
-install the app on a device, emulator or simulator.
+To run the app on a device, emulator or simulator, install the artifact, as
+[Build](#build) shows, or use your framework's run command.
 
 ## Prerequisites
 
@@ -116,7 +119,7 @@ and never asks the adapter for it.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Android keystore          | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
 | App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                                                             |
-| Play service account      | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--upload play-internal`](#upload-to-google-play)                   |
+| Play service account      | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--submit play-internal`](#upload-to-google-play)                   |
 
 The CLI writes a keystore or key given as contents to a temporary file that
 only your user can read, and deletes it when the build ends. It masks passwords
@@ -129,7 +132,7 @@ runs builds that read them in CI, which never signs in.
 ### Sign in with your Apple Account
 
 An iOS build that needs an App Store Connect API key, for
-`signing.ascApiKey` or [`--upload testflight`](#upload-to-testflight), and
+`signing.ascApiKey` or [`--submit testflight`](#upload-to-testflight), and
 finds none issues one. In a terminal, sign in with your Apple Account when
 asked: Hot Updater asks for its email, password, and two-factor code, and
 signs in with asc, the open-source
@@ -157,9 +160,10 @@ which does the same sign-in without building:
 npx hot-updater apple login
 ```
 
-It keeps a key the adapter already holds; `--replace` issues a new one and
-names the old key to revoke at App Store Connect → Users and Access →
-Integrations, which Hot Updater never revokes itself.
+It keeps a key the adapter already holds; `secrets issue asc-api-key
+--replace` issues a new one and names the old key to revoke at App Store
+Connect → Users and Access → Integrations, which Hot Updater never revokes
+itself.
 
 CI (`CI` is set, even on a terminal a runner allocates) and other builds
 without a terminal use the stored key and never sign in. A build that finds no
@@ -234,12 +238,15 @@ gh secret set HOT_UPDATER_ASC_API_KEY < ~/.hot-updater/secrets/<project-key>/asc
 ## Build
 
 ```package-install
-npx hot-updater build:android --scheme release
+npx hot-updater native-build android --scheme release
 ```
 
 ```package-install
-npx hot-updater build:ios --scheme simulator
+npx hot-updater native-build ios --scheme simulator
 ```
+
+Without `--scheme`, the CLI asks which scheme at a terminal, and in CI or
+without a terminal stops with the schemes to pass.
 
 The build copies its output to `.hot-updater/output/build/<platform>/<scheme>`,
 or to `--output-path`, and prints the artifact and its values:
@@ -283,15 +290,16 @@ without those, the output's last 40 lines, then the log's path. With
 │  Build log: .hot-updater/log/10261157-ios-simulator-build.log
 ```
 
-## Register a build
+## How a build is tracked
 
-Add `--register` to record a release build in the native build registry of
-the server that `database` and `storage` in `hot-updater.config.ts` name, with
-the same credentials `hot-updater deploy` uses:
-
-```package-install
-npx hot-updater build:android --scheme release --register
-```
+Every native build is tracked in the native build registry of the server that
+`database` and `storage` in `hot-updater.config.ts` name, with the same
+credentials `hot-updater deploy` uses. Before it builds, and before any Apple
+or Google sign-in, the CLI checks that it can: it asks the registry for the
+build's scope, or, when the build adapter's prebuild has yet to generate the
+native project, for its newest build, and reads back the artifact of a build
+the registry already tracks there. When the database or the storage can't be reached, it stops in
+seconds, naming which, and builds nothing.
 
 After the build, the CLI:
 
@@ -309,7 +317,7 @@ After the build, the CLI:
    that write fails, the CLI deletes the uploaded artifact again; the built-in
    bundle's files are left to `storage prune`.
 
-The Console's **Preview** page lists registered builds and downloads them; see
+The Console's **Preview** page lists tracked builds and downloads them; see
 [Preview Builds](/docs/guides/preview-builds).
 
 A registered build is found by its platform, its default channel, and its
@@ -331,15 +339,36 @@ before it patches, and downloads the complete file when they differ. See
 [Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
 
 A Debug build loads its JavaScript from Metro and has no built-in bundle, so
-`--register` refuses it. A self-hosted server reached through
-`standaloneRepository` needs the native build routes of this release's
-`@hot-updater/server`; an older one answers `404`, and the CLI asks you to
-upgrade it before it uploads anything.
+the CLI does not track it, and says so before it builds; `--json` reports
+`registration: { skipped: "debug" }`. When tracking fails after the build,
+the CLI exits with the artifact's path, and submits it to no store. A
+self-hosted server reached through `standaloneRepository` needs the native
+build routes of this release's `@hot-updater/server`; an older one answers
+`404`, and the CLI asks you to upgrade it before it builds.
 
 Every official storage adapter streams the artifact to storage except
 `standaloneStorage`, which reads it into memory to post it to your server. A
 Supabase project's Storage upload file size limit, 50 MB on the Free plan,
 caps the artifact size.
+
+## Rehearse a build
+
+`--dry-run` builds, but records and submits nothing, as `npm publish
+--dry-run` does:
+
+```package-install
+npx hot-updater native-build ios --scheme release --submit testflight --dry-run
+```
+
+It resolves the scheme, the app version or fingerprint, and the channel, runs
+the tracking check read-only, and reads the store key `--submit` would use
+without signing in or issuing one. Then it builds, keeps the artifact on this
+machine, and prints what it would have recorded and where it would have
+submitted the build. It writes no record, uploads nothing to your storage, and
+submits to no store. A missing store key is reported, the build still runs,
+and the command exits with an error at the end. With `--json`, the last line
+has `dryRun: true`, `registration: { skipped: "dry-run" }`, and
+`submission: { skipped: "dry-run", destination }`.
 
 ## Find a build
 
@@ -398,27 +427,23 @@ you to upgrade it.
 
 ## Upload to TestFlight
 
-`testflight` builds the `.ipa`, registers it, and uploads it to App Store
+`testflight` builds the `.ipa`, tracks it, and uploads it to App Store
 Connect, which lists it in TestFlight:
 
 ```package-install
 npx hot-updater testflight
 ```
 
-It is the shortcut for `build:ios --scheme <scheme> --upload testflight
---register`, which runs the same build. Without `--scheme`, it builds the one
-`nativeBuild.ios` scheme whose build TestFlight takes, skipping simulator,
-`Debug`, and archive-only schemes, and says which; with several, it asks which
-one at a terminal, and in CI or without a terminal it stops and lists them
-for `--scheme`. It registers the build, so it becomes a patch base
-`native-build find` sees; `--no-register` only uploads. `--json` and
-`--output-path` work as with `build:ios`.
-
-To upload a build without registering it, or from a scheme of your choice,
-add `--upload testflight` to `build:ios`:
+It is the shortcut for `native-build ios --scheme <scheme> --submit
+testflight`, which runs the same build. It builds the one `nativeBuild.ios`
+scheme whose build TestFlight takes, skipping simulator, `Debug`, and
+archive-only schemes, and says which; with several, it asks which one at a
+terminal, and in CI or without a terminal it stops and lists them. It takes
+only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the full
+command:
 
 ```package-install
-npx hot-updater build:ios --scheme release --upload testflight
+npx hot-updater native-build ios --scheme release --submit testflight
 ```
 
 The upload authenticates with an App Store Connect team API key, which has a
@@ -444,7 +469,7 @@ Connect would not take: a simulator scheme, a configuration whose name ends in
 the `exportOptionsPlist`, and before the build, it refuses one whose `method`
 is not `app-store-connect` (or `app-store`).
 
-After the build, and after `--register` when you pass both, the CLI:
+After the build is tracked, the CLI:
 
 1. Reads the bundle ID, version (`CFBundleShortVersionString`) and build
    number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
@@ -462,27 +487,23 @@ the CLI prints.
 
 ## Upload to Google Play
 
-`google-play upload` builds the `.aab`, registers it, and releases it to
-Google Play's internal testing track:
+`google-play upload` builds the `.aab`, tracks it, and releases it to Google
+Play's internal testing track:
 
 ```package-install
 npx hot-updater google-play upload
 ```
 
-It is the shortcut for `build:android --scheme <scheme> --upload play-internal
---register`, which runs the same build. Without `--scheme`, it builds the one
+It is the shortcut for `native-build android --scheme <scheme> --submit
+play-internal`, which runs the same build. It builds the one
 `nativeBuild.android` scheme whose build Google Play takes, skipping `.apk`
 (`aab: false`) and `Debug` schemes, and says which; with several, it asks which
-one at a terminal, and in CI or without a terminal it stops and lists them for
-`--scheme`. It registers the build, so it becomes a patch base
-`native-build find` sees; `--no-register` only uploads. `--json` and
-`--output-path` work as with `build:android`.
-
-To upload a build without registering it, or from a scheme of your choice,
-add `--upload play-internal` to `build:android`:
+one at a terminal, and in CI or without a terminal it stops and lists them. It
+takes only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the
+full command:
 
 ```package-install
-npx hot-updater build:android --scheme release --upload play-internal
+npx hot-updater native-build android --scheme release --submit play-internal
 ```
 
 The upload authenticates with the `secrets` adapter's `play-service-account`, the
@@ -516,9 +537,9 @@ Builds without a terminal, such as CI, use the stored key and never sign in:
 when it is missing, they fail with the command to run once in a terminal,
 `npx hot-updater google-play login` (the shortcut for
 `secrets issue play-service-account`), which does the same
-sign-in without building, keeps a key the adapter already holds, and with
-`--replace` issues a new key and names the old one to delete under the service
-account's keys in Google Cloud. The sign-in needs a Google OAuth client of your
+sign-in without building and keeps a key the adapter already holds;
+`secrets issue play-service-account --replace` issues a new key and names the
+old one to delete under the service account's keys in Google Cloud. The sign-in needs a Google OAuth client of your
 own, of type Desktop app, in `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID` and
 `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET`, until Hot Updater ships one; without
 it, the CLI stops before opening the browser.
@@ -527,7 +548,7 @@ Before the prebuild, the CLI also refuses a scheme whose build Google Play
 would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
 ends in `Debug`.
 
-After the build, and after `--register` when you pass both, the CLI:
+After the build is tracked, the CLI:
 
 1. Reads the application ID from the `.aab`'s manifest with `aapt2`, with the
    suffixes flavors and build types add, or else uses the scheme's
@@ -555,35 +576,18 @@ When an upload fails, the build stays at its output path.
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
 with the stored service account.
 
-## Run on a device
-
-```package-install
-npx hot-updater run:android --scheme previewApk
-```
-
-```package-install
-npx hot-updater run:ios --scheme release
-```
-
-`run:android` installs an `.apk` scheme on every connected device, and starts
-the first emulator when none is connected. `run:ios` runs on the first booted
-simulator or device, or else on the first simulator. Pass
-`--device <name or ID>` to pick one, or `-i` to choose from a list. An iOS
-device build signs with the scheme's `signing.ascApiKey` when it sets one.
-
 ## Command options
 
-| Option                    | Commands        | Description                                                  |
-| ------------------------- | --------------- | ------------------------------------------------------------ |
-| `-s, --scheme <scheme>`   | all             | The `nativeBuild` scheme to build                            |
-| `-i, --interactive`       | all             | Choose the scheme, and with `run:*` the device               |
-| `-o, --output-path <dir>` | `build:*`       | Where to copy the build output                               |
-| `--register`              | `build:*`       | Register the release build, its artifact and built-in bundle |
-| `--json`                  | `build:*`       | Print the build and its registration as JSON, the last line  |
-| `--upload testflight`     | `build:ios`     | Upload the `.ipa` to App Store Connect for TestFlight        |
-| `--upload play-internal`  | `build:android` | Upload the `.aab` to Google Play's internal testing track    |
-| `-d, --device [device]`   | `run:*`         | The device name or ID to run on                              |
-| `--port <port>`           | `run:android`   | The Metro port the device reaches with `adb reverse`         |
+`native-build ios` and `native-build android` take:
+
+| Option                    | Description                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `-s, --scheme <scheme>`   | The `nativeBuild` scheme to build; without it, a prompt at a terminal                     |
+| `-o, --output-path <dir>` | Where to copy the build output                                                            |
+| `--submit testflight`     | `ios`: upload the `.ipa` to App Store Connect for TestFlight                              |
+| `--submit play-internal`  | `android`: release the `.aab` to Google Play's internal testing track                     |
+| `--dry-run`               | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))              |
+| `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line |
 
 The commands of the registry, `native-build find` and `native-build delete`,
 are described in [Find a build](#find-a-build) and
