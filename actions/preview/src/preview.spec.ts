@@ -41,6 +41,7 @@ const fakeCli = ({
   builtTarget,
   builtDebug = false,
   buildFails = false,
+  configChannelLink = null,
   channelDelete = {
     code: 0,
     json: {
@@ -60,6 +61,8 @@ const fakeCli = ({
   builtDebug?: boolean;
   /** Whether `native-build <platform>` fails, as a failed native build exits. */
   buildFails?: boolean;
+  /** The link `channel link` makes from hot-updater.config.ts, if any. */
+  configChannelLink?: string | null;
   channelDelete?: { code: number; json: Record<string, unknown> };
 } = {}) => {
   const calls: string[] = [];
@@ -157,6 +160,12 @@ const fakeCli = ({
           target_app_version: targetAppVersion,
         }));
       return { code: 0, stdout: JSON.stringify(rows, null, 2) };
+    }
+    if (command === "channel" && sub === "link") {
+      return {
+        code: 0,
+        stdout: `loading config\n${JSON.stringify({ channel: args[2], link: configChannelLink })}\n`,
+      };
     }
     if (command === "channel" && sub === "delete") {
       return {
@@ -465,8 +474,78 @@ describe("runAction preview", () => {
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");
   });
 
-  it("writes the comment without a QR code when the Console serves none", async () => {
+  it("shows the Console's QR code without reading the config", async () => {
+    const fake = fakeCli({
+      configChannelLink: "other://hot-updater/channel/pr-12",
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await runAction(d, env(), event);
+
+    expect(d.fetch).toHaveBeenCalledWith(
+      "https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12",
+      { method: "HEAD" },
+    );
+    expect(fake.calls).not.toContain("channel link pr-12 --json");
+    expect(outputs["comment-body"]).toContain(
+      '<img src="https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12"',
+    );
+    expect(outputs["comment-body"]).toContain(
+      "`myapp://hot-updater/channel/pr-12`",
+    );
+    expect(d.log.notice).not.toHaveBeenCalled();
+  });
+
+  it("takes the link from the config, without a QR code, when the Console is unreachable", async () => {
+    const fake = fakeCli({
+      configChannelLink: "myapp://hot-updater/channel/pr-12",
+    });
+    const { deps: d, outputs } = deps(fake.cli, {
+      fetch: vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch,
+    });
+
+    await runAction(d, env(), event);
+
+    expect(fake.calls).toContain("channel link pr-12 --json");
+    const body = outputs["comment-body"]!;
+    expect(body).not.toContain("<img");
+    expect(body).toContain("`myapp://hot-updater/channel/pr-12`");
+    expect(body).toContain(
+      "xcrun simctl openurl booted myapp://hot-updater/channel/pr-12",
+    );
+    expect(body).toContain(
+      "adb shell am start -a android.intent.action.VIEW -d myapp://hot-updater/channel/pr-12",
+    );
+    expect(d.log.notice).toHaveBeenCalledWith(
+      "The Console is unreachable from the runner (fetch failed), as a private Console is, so the comment shows the channel link from hot-updater.config.ts without a QR code.",
+    );
+  });
+
+  it("says neither sets a prefix when the Console is unreachable and the config has none", async () => {
     const fake = fakeCli();
+    const { deps: d, outputs } = deps(fake.cli, {
+      fetch: vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch,
+    });
+
+    await runAction(d, env(), event);
+
+    const body = outputs["comment-body"]!;
+    expect(body).not.toContain("<img");
+    expect(body).not.toContain("adb shell");
+    expect(body).toContain("Set `console.channelLinkPrefix`");
+    expect(d.log.notice).toHaveBeenCalledWith(
+      "The Console is unreachable from the runner (fetch failed), as a private Console is, and hot-updater.config.ts sets no console.channelLinkPrefix, so the comment has no channel link: set it to the prefix of the app's channel links.",
+    );
+  });
+
+  it("takes the link from the config when the Console serves no QR code", async () => {
+    const fake = fakeCli({
+      configChannelLink: "myapp://hot-updater/channel/pr-12",
+    });
     const { deps: d, outputs } = deps(fake.cli, {
       fetch: vi.fn(
         async () => new Response("no prefix", { status: 404 }),
@@ -475,13 +554,31 @@ describe("runAction preview", () => {
 
     await runAction(d, env(), event);
 
-    expect(d.fetch).toHaveBeenCalledWith(
-      "https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12",
-      { method: "HEAD" },
-    );
-    expect(outputs["comment-body"]).not.toContain("<img");
+    const body = outputs["comment-body"]!;
+    expect(body).not.toContain("<img");
+    expect(body).toContain("`myapp://hot-updater/channel/pr-12`");
     expect(d.log.notice).toHaveBeenCalledWith(
-      expect.stringContaining("console.channelLinkPrefix"),
+      "The Console answered 404 to https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12, as when its config sets no console.channelLinkPrefix, so the comment shows the channel link from hot-updater.config.ts without a QR code.",
+    );
+  });
+
+  it("says neither sets a prefix when the Console serves no QR code and the config has none", async () => {
+    const fake = fakeCli();
+    const { deps: d, outputs } = deps(fake.cli, {
+      fetch: vi.fn(
+        // A Console that answers without the link header.
+        async () => new Response(null, { status: 200 }),
+      ) as unknown as typeof fetch,
+    });
+
+    await runAction(d, env(), event);
+
+    expect(outputs["comment-body"]).not.toContain("<img");
+    expect(outputs["comment-body"]).toContain(
+      "Set `console.channelLinkPrefix`",
+    );
+    expect(d.log.notice).toHaveBeenCalledWith(
+      "The Console answered 200 to https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12 without a channel link, and hot-updater.config.ts sets no console.channelLinkPrefix, so the comment has no channel link: set it to the prefix of the app's channel links.",
     );
   });
 

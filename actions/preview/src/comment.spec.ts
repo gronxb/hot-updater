@@ -36,7 +36,10 @@ describe("renderPreviewComment", () => {
         channel: "pr-12",
         previewChannel: "preview",
         previews: [android, ios],
-        channelLink: "myapp://hot-updater/channel/pr-12",
+        channelLink: {
+          link: "myapp://hot-updater/channel/pr-12",
+          qrCode: true,
+        },
         headSha: "0123456789abcdef",
         credit: true,
       }),
@@ -76,7 +79,7 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
       channel: "pr-12",
       previewChannel: "preview",
       previews: [android],
-      channelLink: "myapp://hot-updater/channel/pr-12",
+      channelLink: { link: "myapp://hot-updater/channel/pr-12", qrCode: true },
       headSha: "0123456789abcdef",
       credit: false,
     });
@@ -86,7 +89,36 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
     expect(body.endsWith("<sub>Deployed `0123456`</sub>")).toBe(true);
   });
 
-  it("points to the Console instead of a QR code when the Console serves none", () => {
+  it("shows the link and its commands without a QR code when the Console serves the runner none", () => {
+    const body = renderPreviewComment({
+      consoleUrl: "https://console.internal.example.com",
+      channel: "pr-12",
+      previewChannel: "preview",
+      previews: [android],
+      channelLink: { link: "myapp://hot-updater/channel/pr-12", qrCode: false },
+      headSha: "0123456789abcdef",
+      credit: true,
+    });
+
+    expect(body).not.toContain("<img");
+    expect(body).not.toContain("channel-qr");
+    expect(body)
+      .toContain(`Open the link on a device that has a preview build installed to open this pull request's bundle, or scan its QR code in the Console:
+
+\`myapp://hot-updater/channel/pr-12\` · [Open in the Console](https://console.internal.example.com/preview?channel=pr-12)
+
+<details>
+<summary>Open it on an emulator or simulator</summary>
+
+\`\`\`sh
+adb shell am start -a android.intent.action.VIEW -d myapp://hot-updater/channel/pr-12
+xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
+\`\`\`
+
+</details>`);
+  });
+
+  it("points to the Console when no config sets a channel link prefix", () => {
     const body = renderPreviewComment({
       consoleUrl: "https://example.com/console",
       channel: "pr-7",
@@ -100,7 +132,7 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
     expect(body).not.toContain("<img");
     expect(body).not.toContain("adb shell");
     expect(body).toContain(
-      "Open this pull request's bundle in a preview build from the [Console](https://example.com/console/preview?channel=pr-7). Set `console.channelLinkPrefix` in the Console's config to show its QR code here.",
+      "Open this pull request's bundle in a preview build from the [Console](https://example.com/console/preview?channel=pr-7). Set `console.channelLinkPrefix` to show its channel link here.",
     );
     expect(body).toContain(
       "[Install](https://example.com/console/preview?build=019a0000-0000-7000-8000-00000000b001)",
@@ -154,7 +186,10 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
       channel: "pr 12's",
       previewChannel: "preview",
       previews: [android],
-      channelLink: "myapp://hot-updater/channel/pr%2012's",
+      channelLink: {
+        link: "myapp://hot-updater/channel/pr%2012's",
+        qrCode: true,
+      },
       headSha: "0123456789abcdef",
       credit: true,
     });
@@ -173,7 +208,7 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
       channel: "pr-12",
       previewChannel: "preview",
       previews: [android, ios],
-      channelLink: "myapp://hot-updater/channel/pr-12",
+      channelLink: { link: "myapp://hot-updater/channel/pr-12", qrCode: true },
       headSha: "0123456789abcdef",
       credit: true,
     });

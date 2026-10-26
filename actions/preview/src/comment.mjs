@@ -84,8 +84,10 @@ const footer = (notes, credit) => {
  * @param {string} input.channel The pull request's channel.
  * @param {string} input.previewChannel The channel the native builds embed.
  * @param {PlatformPreview[]} input.previews
- * @param {string | null} input.channelLink The link the Console's QR code
- *   holds, or null when the Console serves none.
+ * @param {{ link: string, qrCode: boolean } | null} input.channelLink The
+ *   pull request's channel link, and whether the Console serves its QR code
+ *   to the runner, or null when neither the Console nor the project's config
+ *   sets `console.channelLinkPrefix`.
  * @param {string} input.headSha
  * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
  */
@@ -122,19 +124,25 @@ export const renderPreviewComment = ({
   const open =
     channelLink === null
       ? [
-          `Open this pull request's bundle in a preview build from the [Console](${channelPage}). Set ${code("console.channelLinkPrefix")} in the Console's config to show its QR code here.`,
+          `Open this pull request's bundle in a preview build from the [Console](${channelPage}). Set ${code("console.channelLinkPrefix")} to show its channel link here.`,
         ]
       : [
-          `Scan the QR code with a device that has a preview build installed to open this pull request's bundle, or open the link:`,
-          `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/preview/channel-qr", { channel }))}" alt="${escapeHtml(`QR code of ${channelLink}`)}" width="180" height="180">`,
-          `${code(channelLink)} · [Open in the Console](${channelPage})`,
+          ...(channelLink.qrCode
+            ? [
+                `Scan the QR code with a device that has a preview build installed to open this pull request's bundle, or open the link:`,
+                `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/preview/channel-qr", { channel }))}" alt="${escapeHtml(`QR code of ${channelLink.link}`)}" width="180" height="180">`,
+              ]
+            : [
+                `Open the link on a device that has a preview build installed to open this pull request's bundle, or scan its QR code in the Console:`,
+              ]),
+          `${code(channelLink.link)} · [Open in the Console](${channelPage})`,
           [
             "<details>",
             "<summary>Open it on an emulator or simulator</summary>",
             "",
             "```sh",
-            `adb shell am start -a android.intent.action.VIEW -d ${shellQuote(shellQuote(channelLink))}`,
-            `xcrun simctl openurl booted ${shellQuote(channelLink)}`,
+            `adb shell am start -a android.intent.action.VIEW -d ${shellQuote(shellQuote(channelLink.link))}`,
+            `xcrun simctl openurl booted ${shellQuote(channelLink.link)}`,
             "```",
             "",
             "</details>",

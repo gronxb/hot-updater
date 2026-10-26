@@ -308,13 +308,14 @@ const previewPlatform = async (deps, inputs, event, platform) => {
 };
 
 /**
- * The link the Console's QR code of `channel` holds, from the Console
- * itself, or null when it serves none, such as without
- * `console.channelLinkPrefix`.
+ * The pull request's channel link, from the Console, which serves its QR
+ * code, or else from the project's config, without a QR code: a private
+ * Console, such as one on a VPN, is out of the runner's reach. Null when
+ * neither sets `console.channelLinkPrefix`.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
- * @returns {Promise<string | null>}
+ * @returns {Promise<{ link: string, qrCode: boolean } | null>}
  */
 const readChannelLink = async (deps, inputs) => {
   const url = consoleLink(
@@ -324,19 +325,30 @@ const readChannelLink = async (deps, inputs) => {
       channel: inputs.channel,
     },
   );
+  /** Why the Console gave no link, for the notice. */
+  let cause;
   try {
     const response = await deps.fetch(url, { method: "HEAD" });
     const link = response.headers.get("x-hot-updater-channel-link");
-    if (response.ok && link) return link;
-    deps.log.notice(
-      `The Console answered ${response.status} to ${url}, so the comment has no QR code: set console.channelLinkPrefix in the Console's config.`,
-    );
+    if (response.ok && link) return { link, qrCode: true };
+    cause =
+      response.status === 404
+        ? `The Console answered 404 to ${url}, as when its config sets no console.channelLinkPrefix`
+        : `The Console answered ${response.status} to ${url} without a channel link`;
   } catch (error) {
-    deps.log.notice(
-      `The Console's channel QR code is unreachable, so the comment has none: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    cause = `The Console is unreachable from the runner (${error instanceof Error ? error.message : String(error)}), as a private Console is`;
   }
-  return null;
+  // The link the Console would make: `channel link` reads the same option
+  // from hot-updater.config.ts and makes it as the Console does.
+  const { link } = /** @type {{ link: string | null }} */ (
+    await json(deps, ["channel", "link", inputs.channel, "--json"])
+  );
+  deps.log.notice(
+    link === null
+      ? `${cause}, and hot-updater.config.ts sets no console.channelLinkPrefix, so the comment has no channel link: set it to the prefix of the app's channel links.`
+      : `${cause}, so the comment shows the channel link from hot-updater.config.ts without a QR code.`,
+  );
+  return link === null ? null : { link, qrCode: false };
 };
 
 /**
