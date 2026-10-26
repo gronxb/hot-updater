@@ -856,8 +856,23 @@ export const readToolchain = async (
     (await readJdk(javaHome ?? env["JAVA_HOME"] ?? "")) ??
     firstLine(await probe("java", ["-version"], cwd));
 
-  const sdkRoot = env["ANDROID_HOME"] || env["ANDROID_SDK_ROOT"];
+  // The SDK Gradle builds with: the environment's, or local.properties',
+  // whose paths it escapes as Java properties do.
+  const localProperties = Object.fromEntries(
+    parseProperties(
+      (await readIfExists(path.join(cwd, "android", "local.properties"))) ?? "",
+    ).map(([name, value]) => [name, value.replace(/\\(.)/g, "$1")]),
+  );
+  const sdkRoot =
+    env["ANDROID_HOME"] ||
+    env["ANDROID_SDK_ROOT"] ||
+    localProperties["sdk.dir"];
   const components: Record<string, string> = {};
+  // An NDK or CMake local.properties names by its path, by its version.
+  for (const name of ["ndk.dir", "cmake.dir"]) {
+    const dir = localProperties[name];
+    if (dir) components[`android-sdk:${name}`] = path.basename(dir);
+  }
   for (const component of ["build-tools", "platforms", "ndk", "cmake"]) {
     const names = sdkRoot
       ? await fs.readdir(path.join(sdkRoot, component)).catch(() => [])

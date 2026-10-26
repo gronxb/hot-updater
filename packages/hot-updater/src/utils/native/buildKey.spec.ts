@@ -467,6 +467,44 @@ describe("computeNativeBuildKey", () => {
     expect(await changes({})).toEqual(["toolchain:jdk"]);
   });
 
+  it("changes with the Android SDK local.properties selects, by its installed components", async () => {
+    const sdk = (name: string, buildTools: string) => {
+      const dir = path.join(gradleHome, name);
+      fs.mkdirSync(path.join(dir, "build-tools", buildTools), {
+        recursive: true,
+      });
+      return dir;
+    };
+    const first = sdk("sdk-a", "35.0.0");
+    const second = sdk("sdk-b", "36.0.0");
+    const real = { readToolchain: undefined };
+    write("apps/mobile/android/local.properties", `sdk.dir=${first}\n`);
+    expect(
+      (
+        await changedBy(
+          () =>
+            write(
+              "apps/mobile/android/local.properties",
+              `sdk.dir=${second}\n`,
+            ),
+          real,
+        )
+      ).changed,
+    ).toEqual(["toolchain:android-sdk:build-tools"]);
+    expect(
+      (
+        await changedBy(
+          () =>
+            write(
+              "apps/mobile/android/local.properties",
+              `sdk.dir=${second}\nndk.dir=${second}/ndk/27.1.12297006\n`,
+            ),
+          real,
+        )
+      ).changed,
+    ).toEqual(["toolchain:android-sdk:ndk.dir"]);
+  });
+
   it("changes with the App Store Connect API key that signs, never with its secret", async () => {
     const device = {
       platform: "ios" as const,
