@@ -449,7 +449,7 @@ export const handleSecretsIssue = async (
       // A read-only adapter's key is written there, with how to store it.
       cacheDir,
       // Read above: a key is issued whatever the adapter holds now.
-      replace: stored === undefined ? {} : { previous: stored },
+      replace: true,
     });
     if (stored === undefined) return;
     p.log.warn(

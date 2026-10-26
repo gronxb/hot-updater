@@ -48,15 +48,6 @@ export interface IssuedCredentialPolicy {
   readonly account: string;
 }
 
-/**
- * `secrets issue` read the adapter itself, and issues a key whatever it
- * holds: the adapter is not read again before the sign-in. `previous` is
- * what it held as the name, the key the new one replaces, if any.
- */
-export interface IssuedCredentialReplacement {
-  readonly previous?: string;
-}
-
 /** A secrets adapter that stores values. */
 export type WritableSecrets = SecretsAdapter &
   Required<Pick<SecretsAdapter, "set">>;
@@ -222,13 +213,17 @@ export const prepareIssuedCredential = async (
   {
     name,
     env = {},
-    replace,
+    replace = false,
     secrets = getConfiguredSecrets(),
     cacheDir,
   }: {
     readonly name: string;
     readonly env?: Readonly<Record<string, string>>;
-    readonly replace?: IssuedCredentialReplacement;
+    /**
+     * Set by `secrets issue`, which read the adapter itself and issues a
+     * key whatever it holds: the adapter is not read again.
+     */
+    readonly replace?: boolean;
     /** The adapter the key is read from and stored in, the config's by default. */
     readonly secrets?: SecretsAdapter;
     /** The config's `cacheDir`, where a read-only adapter's key is written. */
@@ -245,7 +240,7 @@ export const prepareIssuedCredential = async (
   }
 
   const cwd = getCwd();
-  if (replace === undefined) {
+  if (!replace) {
     const held = (await secrets.get([name], { cwd }))[name];
     if (typeof held === "string" && held) return { status: "stored" };
   }
@@ -450,22 +445,19 @@ const errorText = (error: unknown) =>
  * Stores an issued key's `value` as `name`, and reads it back: returns
  * whether the adapter reads it as stored, which a write-only store does
  * not. Throws `CredentialNotStoredError` only when the write failed and
- * the adapter reads back no value, or the `previous` one it replaces, so
- * the caller may revoke the key, and `CredentialStoreUnconfirmedError`
- * when nothing tells, or the adapter reads back another value: a key the
- * store may hold is never revoked.
+ * the adapter reads back no such value, so the caller may revoke the key,
+ * and `CredentialStoreUnconfirmedError` when nothing tells, or the adapter
+ * reads back another value, such as the key it replaces from a store whose
+ * latest version lags: a key the store may hold is never revoked.
  */
 export const storeIssuedCredential = async ({
   secrets,
   name,
   value,
-  previous,
 }: {
   readonly secrets: WritableSecrets;
   readonly name: string;
   readonly value: string;
-  /** What the adapter held as `name` before, which the key replaces. */
-  readonly previous?: string;
 }): Promise<{ readonly readable: boolean }> => {
   const cwd = getCwd();
   const readBack = async () => (await secrets.get([name], { cwd }))[name];
@@ -483,7 +475,7 @@ export const storeIssuedCredential = async ({
       });
     }
     if (held === value) return { readable: true };
-    if (held === undefined || (previous !== undefined && held === previous)) {
+    if (held === undefined) {
       throw new CredentialNotStoredError(errorText(error), { cause: error });
     }
     throw new CredentialStoreUnconfirmedError(errorText(error), {

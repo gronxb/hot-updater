@@ -17,7 +17,6 @@ import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   type IssuedCredentialPolicy,
-  type IssuedCredentialReplacement,
   type IssuedCredentialTarget,
   keepIssuedCopy,
   prepareIssuedCredential,
@@ -171,7 +170,6 @@ const storeIssued = async (
   secrets: WritableSecrets,
   name: string,
   key: IssuedAscApiKey,
-  previous: string | undefined,
 ): Promise<{ readonly readable: boolean }> => {
   const value = storedValue(key);
   // Masked before it is sent, so no failure can print it.
@@ -181,7 +179,6 @@ const storeIssued = async (
       secrets,
       name,
       value,
-      ...(previous !== undefined ? { previous } : {}),
     });
   } catch (error) {
     if (error instanceof CredentialNotStoredError) {
@@ -223,11 +220,8 @@ export const ensureAscApiKey = async ({
   env?: Readonly<Record<string, string>>;
   /** The adapter the key is read from and stored in, the config's by default. */
   secrets?: SecretsAdapter;
-  /**
-   * Set by `secrets issue`: a key is issued whatever the adapter holds,
-   * replacing `previous`.
-   */
-  replace?: IssuedCredentialReplacement;
+  /** Set by `secrets issue`: a key is issued whatever the adapter holds. */
+  replace?: boolean;
   /** The config's `cacheDir`, where a read-only adapter's key is written. */
   cacheDir?: string | null;
   /** The adapter that stores a read-only adapter's key as a GitHub Actions secret. */
@@ -239,7 +233,7 @@ export const ensureAscApiKey = async ({
     name,
     env,
     cacheDir,
-    ...(replace ? { replace } : {}),
+    replace,
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
@@ -287,7 +281,7 @@ export const ensureAscApiKey = async ({
       };
     }
     const store = target.secrets;
-    const { readable } = await storeIssued(store, name, key, replace?.previous);
+    const { readable } = await storeIssued(store, name, key);
     p.log.success(
       ui.block("App Store Connect API key stored", [
         ui.kv("Secret", name),

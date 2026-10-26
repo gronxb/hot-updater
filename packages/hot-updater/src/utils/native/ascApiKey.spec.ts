@@ -753,9 +753,7 @@ describe("ensureAscApiKey", () => {
     });
     const { calls, held } = fakeStore({ values: { "asc-api-key": previous } });
     await expect(
-      withTTY(true, () =>
-        ensure({ name: "asc-api-key", replace: { previous } }),
-      ),
+      withTTY(true, () => ensure({ name: "asc-api-key", replace: true })),
     ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
     // One write and its read-back: no read before the sign-in.
     expect(calls).toEqual(["set asc-api-key", "get asc-api-key"]);
@@ -765,7 +763,7 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("revokes the new key when a failed write reads back the key it replaces", async () => {
+  it("keeps the new key when a failed write reads back the key it replaces, as a lagging latest version does", async () => {
     const previous = JSON.stringify({
       keyId: "OLDKEY0001",
       issuerId: "i",
@@ -773,14 +771,14 @@ describe("ensureAscApiKey", () => {
     });
     fakeStore({
       values: { "asc-api-key": previous },
-      setError: new Error("AccessDenied: PutSecretValue"),
+      setError: new Error("latest still resolves to the old version"),
       readBack: async () => previous,
     });
-    const error = await withTTY(true, () =>
-      ensure({ name: "asc-api-key", replace: { previous } }),
-    ).catch((caught: unknown) => caught);
-    expect(error).toBeInstanceOf(AscApiKeyNotStoredError);
-    expect(error).toMatchObject({ keyId: "KEY1234567", revoked: true });
-    expect(issued.revoke).toHaveBeenCalledTimes(1);
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key", replace: true })),
+    ).rejects.toThrow(
+      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: latest still resolves to the old version\nThe key KEY1234567 is kept.",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
   });
 });
