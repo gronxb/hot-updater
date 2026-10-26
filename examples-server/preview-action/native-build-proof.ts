@@ -90,7 +90,7 @@ const stages: Record<string, () => Promise<void>> = {
     // signing in.
     expectIncludes(
       log,
-      "play-service-account is not in the env secrets adapter (HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater secrets issue play-service-account`",
+      "play-service-account is not in the env secrets adapter (HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater google-play login`",
     );
     expectIncludes(
       log,
@@ -136,7 +136,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      "asc-api-key is not in the env secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater secrets issue asc-api-key`",
+      "asc-api-key is not in the env secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater apple login`",
     );
     expectIncludes(
       log,

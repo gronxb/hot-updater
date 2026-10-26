@@ -126,6 +126,23 @@ export const credentialIssueCommand = (
 ): string =>
   `npx hot-updater secrets issue ${kind}${name === kind ? "" : ` ${name}`}`;
 
+/** The command group of each issued kind's shortcut, `<group> login`. */
+export const CREDENTIAL_LOGIN_GROUPS = {
+  "asc-api-key": "apple",
+  "play-service-account": "google-play",
+} as const satisfies Record<IssuedCredentialKind, string>;
+
+/**
+ * The shortcut of `credentialIssueCommand`, the one people meet first:
+ * `apple login` for an App Store Connect API key, `google-play login` for
+ * a Play service account, with `name` when it is not the kind's.
+ */
+export const credentialLoginCommand = (
+  kind: IssuedCredentialKind,
+  name: string = kind,
+): string =>
+  `npx hot-updater ${CREDENTIAL_LOGIN_GROUPS[kind]} login${name === kind ? "" : ` ${name}`}`;
+
 /**
  * The command that stores a missing credential of `kind` as `name`: the
  * keystore you have, or the key Hot Updater issues after a sign-in.
@@ -136,7 +153,7 @@ export const credentialStoreCommand = (
 ): string =>
   kind === "android-keystore"
     ? credentialPutCommand(kind, name)
-    : credentialIssueCommand(kind, name);
+    : credentialLoginCommand(kind, name);
 
 export class CredentialUnavailableError extends Error {
   readonly kind: CredentialKind;

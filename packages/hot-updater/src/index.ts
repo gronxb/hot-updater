@@ -7,7 +7,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, p } from "@hot-updater/cli-tools";
+import { banner, CREDENTIAL_LOGIN_GROUPS, p } from "@hot-updater/cli-tools";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
@@ -46,6 +46,10 @@ import { initHelp } from "@/commands/initHelp";
 import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
+import {
+  handleTestFlight,
+  type TestFlightOptions,
+} from "@/commands/testflight";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
@@ -407,7 +411,7 @@ secretsCommand
   )
   .addHelpText(
     "after",
-    "\nTo sign in and have Hot Updater issue an App Store Connect API key or a Play service account, run secrets issue.",
+    "\nTo sign in and have Hot Updater issue an App Store Connect API key or a Play service account, run apple login or google-play login (secrets issue).",
   )
   .action((name: string, options) => handleSecretsPut(name, options));
 
@@ -443,6 +447,60 @@ secretsCommand
   .action((kind, name, options) =>
     handleSecretsIssue(kind, name ?? kind, options),
   );
+
+/**
+ * `apple login` and `google-play login`: the shortcuts of `secrets issue`
+ * people meet first, with its handler and options. Hot Updater keeps no
+ * session, so there is no logout or whoami.
+ */
+const LOGIN_COMMANDS = [
+  {
+    kind: "asc-api-key",
+    description:
+      "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
+    signIn:
+      "signs in to your Apple Account with asc, the App Store Connect CLI",
+  },
+  {
+    kind: "play-service-account",
+    description:
+      "Sign in with Google and store the Play service account Hot Updater issues",
+    signIn:
+      'signs in with Google in your browser, with your own "Desktop app" OAuth client in HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID and HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET until Hot Updater ships one',
+  },
+] as const satisfies readonly {
+  kind: (typeof ISSUED_KINDS)[number];
+  description: string;
+  signIn: string;
+}[];
+
+for (const { kind, description, signIn } of LOGIN_COMMANDS) {
+  program
+    .command(CREDENTIAL_LOGIN_GROUPS[kind])
+    .description(description)
+    .command("login")
+    .description(
+      `Alias of hot-updater secrets issue ${kind}: ${description[0]!.toLowerCase()}${description.slice(1)}`,
+    )
+    .argument(
+      "[name]",
+      `the secret's name, which builds resolve (default: ${kind})`,
+    )
+    .option(
+      "--replace",
+      "issue a new key even when one is stored; the old key stays valid until you revoke it",
+    )
+    .addHelpText(
+      "after",
+      [
+        "",
+        `Alias of \`hot-updater secrets issue ${kind}\`: it ${signIn}, at a terminal only, never in CI.`,
+        "Hot Updater keeps no session: only the key it issues stays, so there is no logout or whoami.",
+        "A key already stored, or set by the environment, is kept. --replace never revokes the old key: it names the key and where to revoke it.",
+      ].join("\n"),
+    )
+    .action((name, options) => handleSecretsIssue(kind, name ?? kind, options));
+}
 
 const remoteConfigCommand = program
   .command("remote-config")
@@ -1086,6 +1144,34 @@ program
   .addOption(testFlightUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildIosNative(options);
+  });
+
+program
+  .command("testflight")
+  .description(
+    "Shortcut for hot-updater build:ios --upload testflight --register: build the .ipa, register it, and upload it to TestFlight",
+  )
+  .addOption(nativeBuildOutputCommandOption)
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.ios scheme (default: the only one that uploads to TestFlight, else a prompt at a terminal)",
+  )
+  .option(
+    "--no-register",
+    "upload without registering the build, which then is no patch base native-build find sees",
+  )
+  .addOption(nativeBuildJsonCommandOption)
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Shortcut for `hot-updater build:ios --scheme <scheme> --upload testflight --register`.",
+      "Without an App Store Connect API key, it signs in to your Apple Account at a",
+      "terminal, as build:ios does; in CI it never signs in (run apple login once first).",
+    ].join("\n"),
+  )
+  .action(async (options: TestFlightOptions) => {
+    await handleTestFlight(options);
   });
 
 program

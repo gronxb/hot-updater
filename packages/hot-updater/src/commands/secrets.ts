@@ -6,6 +6,7 @@ import {
   CREDENTIAL_ENV_NAMES,
   type CredentialKind,
   credentialIssueCommand,
+  credentialLoginCommand,
   credentialPutCommand,
   describeSecret,
   getCwd,
@@ -212,7 +213,7 @@ export const handleSecretsPut = async (
     // No key to store: the sign-in that issues one is `secrets issue`'s.
     if (isIssuedKind(kind) && !hasValueFlags(options)) {
       throw new Error(
-        `secrets put stores ${kind === "asc-api-key" ? "an" : "a"} ${kind} you have: ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}. To sign in and have Hot Updater issue one, run \`${credentialIssueCommand(kind, name)}\` in a terminal.`,
+        `secrets put stores ${kind === "asc-api-key" ? "an" : "a"} ${kind} you have: ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}. To sign in and have Hot Updater issue one, run \`${credentialLoginCommand(kind, name)}\` in a terminal.`,
       );
     }
     // Registers the config's secrets adapter, which everything below uses.
@@ -244,6 +245,8 @@ const ISSUERS: Readonly<
     {
       readonly label: string;
       readonly account: string;
+      /** Whose session the sign-in opens, and Hot Updater keeps none of. */
+      readonly session: string;
       readonly ensure: typeof ensureAscApiKey | typeof ensurePlayServiceAccount;
     }
   >
@@ -251,11 +254,13 @@ const ISSUERS: Readonly<
   "asc-api-key": {
     label: "App Store Connect API key",
     account: "Apple Account",
+    session: "Apple",
     ensure: ensureAscApiKey,
   },
   "play-service-account": {
     label: "Play service account",
     account: "Google Account",
+    session: "Google",
     ensure: ensurePlayServiceAccount,
   },
 };
@@ -359,7 +364,8 @@ export interface SecretsIssueOptions {
 }
 
 /**
- * `secrets issue`: signs in, at a terminal, and stores the key Hot Updater
+ * `secrets issue`, and its shortcuts `apple login` and `google-play login`:
+ * signs in, at a terminal, and stores the key Hot Updater
  * issues as `name` through the config's `secrets` adapter, as builds do
  * when theirs is missing: an App Store Connect API key after an Apple
  * Account sign-in, a Play service account after a Google one. A read-only
@@ -375,6 +381,8 @@ export interface SecretsIssueOptions {
  * - A key the adapter holds is kept, without a sign-in, unless `--replace`:
  *   then a new key replaces it, and the old one, which CI may still use,
  *   is named with where to revoke it. Hot Updater never revokes it.
+ * - A run that issued a key ends saying Hot Updater kept no session, only
+ *   the key, and where it is.
  */
 export const handleSecretsIssue = async (
   kind: IssuedCredentialKind,
@@ -388,11 +396,11 @@ export const handleSecretsIssue = async (
       throw new Error(`The kind is one of ${ISSUED_KINDS.join(", ")}.`);
     }
     const issuer = ISSUERS[kind];
-    const issue = `${credentialIssueCommand(kind, name)}${replace ? " --replace" : ""}`;
+    const issue = `${credentialLoginCommand(kind, name)}${replace ? " --replace" : ""}`;
     const reason = nonInteractiveReason();
     if (reason !== undefined) {
       throw new Error(
-        `secrets issue signs in to your ${issuer.account} to issue the ${issuer.label}, which Hot Updater does only at a terminal, never ${reason}. Run \`${issue}\` in a terminal, or store a key you have with \`${credentialPutCommand(kind, name)}\`.`,
+        `Hot Updater signs in to your ${issuer.account} to issue the ${issuer.label} only at a terminal, never ${reason}. Run \`${issue}\` in a terminal, or store a key you have with \`${credentialPutCommand(kind, name)}\`.`,
       );
     }
 
@@ -451,19 +459,31 @@ export const handleSecretsIssue = async (
       // Read above: a key is issued whatever the adapter holds now.
       replace: true,
     });
-    if (stored === undefined) return;
-    p.log.warn(
-      ui.block(`The old ${issuer.label} is still valid`, [
-        ...(previous?.rows ?? []),
-        ...[
-          ...(result.status === "saved"
-            ? [
-                `${describeSecret(secrets, name)} still holds the old key until you set it to the new one.`,
-              ]
-            : []),
-          `Hot Updater never revokes it, as CI or a copy elsewhere, such as a GitHub Actions secret, may still use it. Once nothing does: ${previous ? previous.revoke : `revoke it where you issued it (${kind === "asc-api-key" ? ASC_INTEGRATIONS_URL : "the service account's keys in Google Cloud"})`}.`,
-        ].map((line) => `    ${line}`),
-      ]),
+    if (result.status !== "issued" && result.status !== "saved") return;
+    if (stored !== undefined) {
+      p.log.warn(
+        ui.block(`The old ${issuer.label} is still valid`, [
+          ...(previous?.rows ?? []),
+          ...[
+            ...(result.status === "saved"
+              ? [
+                  `${describeSecret(secrets, name)} still holds the old key until you set it to the new one.`,
+                ]
+              : []),
+            `Hot Updater never revokes it, as CI or a copy elsewhere, such as a GitHub Actions secret, may still use it. Once nothing does: ${previous ? previous.revoke : `revoke it where you issued it (${kind === "asc-api-key" ? ASC_INTEGRATIONS_URL : "the service account's keys in Google Cloud"})`}.`,
+          ].map((line) => `    ${line}`),
+        ]),
+      );
+    }
+    // The sign-in's session ended with it: only the key remains.
+    const key =
+      "keyId" in result ? `key ${result.keyId}` : `a key of ${result.email}`;
+    p.log.info(
+      `Hot Updater kept no ${issuer.session} session: it ${
+        result.status === "saved"
+          ? `wrote ${key} for ${name} to ${result.file}`
+          : `stored ${key} as ${name} in ${describeSecret(secrets, name)}`
+      }.`,
     );
   });
 };

@@ -77,7 +77,7 @@ Sign in with Infisical's CLI and pass the session's access token:
 ```bash
 infisical login  # add --domain https://infisical.example.com for your own instance
 export INFISICAL_TOKEN="$(infisical user get token --plain)"
-npx hot-updater secrets issue asc-api-key
+npx hot-updater apple login
 ```
 
 Your user needs a project role that can create and edit secrets in the

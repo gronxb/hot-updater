@@ -3,7 +3,7 @@ import path from "node:path";
 
 import {
   CREDENTIAL_ENV_NAMES,
-  credentialIssueCommand,
+  credentialLoginCommand,
   describeSecret,
   envSecrets,
   getConfiguredSecrets,
@@ -189,7 +189,7 @@ const describeUnavailable = (
   kind: IssuedCredentialKind,
 ) => {
   const item = name === kind ? kind : `${name} (${kind})`;
-  return `${item} is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}). Store it once from a terminal with \`${credentialIssueCommand(kind, name)}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there.`;
+  return `${item} is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}). Store it once from a terminal with \`${credentialLoginCommand(kind, name)}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there.`;
 };
 
 /**
