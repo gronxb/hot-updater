@@ -281,6 +281,19 @@ describe("computeNativeBuildKey", () => {
         )
       ).changed,
     ).toEqual(["env:APP_FLAVOR"]);
+    // Gradle's project properties don't reach an iOS build.
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+    };
+    expect(
+      await changedBy(
+        () => {},
+        { ...ios, ...env({ ORG_GRADLE_PROJECT_flavor: "a" }) },
+        { ...ios, ...env({ ORG_GRADLE_PROJECT_flavor: "b" }) },
+      ),
+    ).toEqual({ changed: [], same: true });
     // A credential, and a variable no build input reads.
     expect(
       await changedBy(

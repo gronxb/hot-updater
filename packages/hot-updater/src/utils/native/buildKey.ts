@@ -168,13 +168,14 @@ const isSecretValue = (value: string) => maskSecretValues(value) !== value;
 const machineIndependent = (value: string, root: string) =>
   value.split(root).join("<root>").split(os.homedir()).join("~");
 
-/** Environment variables the build reads by prefix, whatever the project names. */
-const ENV_PREFIXES = [
-  "EXPO_PUBLIC_",
-  "RCT_",
-  "ORG_GRADLE_PROJECT_",
-  "HOT_UPDATER_",
-];
+/**
+ * Environment variables the build reads by prefix, whatever the project
+ * names: Gradle's project properties only reach an Android build.
+ */
+const ENV_PREFIXES = {
+  ios: ["EXPO_PUBLIC_", "RCT_", "HOT_UPDATER_"],
+  android: ["EXPO_PUBLIC_", "RCT_", "ORG_GRADLE_PROJECT_", "HOT_UPDATER_"],
+} as const satisfies Record<Platform, readonly string[]>;
 const ENV_NAMES = ["NODE_ENV", "BABEL_ENV", "ENVFILE"];
 
 /** The shell's own variables, which a script names but no build input sets. */
@@ -798,7 +799,7 @@ const readEnv = async ({
     Object.keys(env).filter(
       (name) =>
         ENV_NAMES.includes(name) ||
-        ENV_PREFIXES.some((prefix) => name.startsWith(prefix)),
+        ENV_PREFIXES[platform].some((prefix) => name.startsWith(prefix)),
     ),
   );
   const prefix = toPosix(path.relative(root, cwd));
