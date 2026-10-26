@@ -121,10 +121,12 @@ export const native_builds = sqliteTable("native_builds", {
   "byte_size": column("INTEGER")("byte_size").notNull(),
   "git_commit_hash": column("TEXT")("git_commit_hash"),
   "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
+  "build_key": column("TEXT")("build_key"),
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
   index("native_builds_byScope").on(table["scope_key"], table["id"]),
+  index("native_builds_byBuildKey").on(table["scope_key"], table["build_key"], table["id"]),
   index("native_builds_byChannel").on(table["channel_id"], table["id"]),
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);

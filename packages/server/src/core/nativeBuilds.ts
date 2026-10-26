@@ -227,22 +227,20 @@ export const createNativeBuildApi = (
         "Invalid native build key: it must be nbk1: and a SHA-256.",
       );
     }
-    const { rows } = await db.findMany(
-      "native_builds",
+    const { rows } =
       buildKey === undefined
-        ? {
+        ? await db.findMany("native_builds", {
             index: "byScope",
             where: { scope_key: scopeKey },
             order: "desc",
             limit: 1,
-          }
-        : {
+          })
+        : await db.findMany("native_builds", {
             index: "byBuildKey",
             where: { scope_key: scopeKey, build_key: buildKey },
             order: "desc",
             limit: 1,
-          },
-    );
+          });
     return rows[0] === undefined ? null : pick(rows[0]);
   },
 

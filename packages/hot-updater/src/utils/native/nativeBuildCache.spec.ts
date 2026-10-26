@@ -47,7 +47,7 @@ const memoryStorage = () => {
     },
     async get({ storageUri }) {
       const object = objects.get(keyOf(storageUri));
-      return { response: object ? new Response(object) : null };
+      return { response: object ? new Response(object as BodyInit) : null };
     },
     async exists({ storageUri }) {
       return { exists: objects.has(keyOf(storageUri)) };

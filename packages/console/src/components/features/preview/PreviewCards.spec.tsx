@@ -46,6 +46,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   byte_size: 52_428_800,
   git_commit_hash: "abcdef1234567",
   created_at_ms: 0,
+  build_key: null,
   ...overrides,
 });
 

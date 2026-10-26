@@ -121,10 +121,12 @@ export const native_builds = pgTable("native_builds", {
   "byte_size": column("bigint")("byte_size").notNull(),
   "git_commit_hash": column("varchar(255) COLLATE \"C\"")("git_commit_hash"),
   "created_at_ms": column("bigint")("created_at_ms").notNull(),
+  "build_key": column("varchar(69) COLLATE \"C\"")("build_key"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
   index("native_builds_byScope").on(table["scope_key"], table["id"]),
+  index("native_builds_byBuildKey").on(table["scope_key"], table["build_key"], table["id"]),
   index("native_builds_byChannel").on(table["channel_id"], table["id"]),
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);
