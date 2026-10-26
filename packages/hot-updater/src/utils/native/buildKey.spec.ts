@@ -625,8 +625,46 @@ describe("builds no key covers", () => {
         artifactKind: "app",
       }),
     ).toBe(
-      "ios/Podfile.lock is missing, so the pods resolve anew on each install",
+      "ios/Podfile.lock is missing, so the pods resolve anew on each install: commit it, or set installPods on the scheme so the build installs them before it computes the key",
     );
+  });
+
+  it("keys a generated ios/ by the pods it installed, as an Expo app's", async () => {
+    // As expo prebuild leaves it: ios/ ignored, and no Podfile.lock yet.
+    write(
+      ".gitignore",
+      `${fs.readFileSync(path.join(root, ".gitignore"))}apps/mobile/ios/\n`,
+    );
+    git("rm", "-rq", "--cached", "apps/mobile/ios");
+    fs.rmSync(path.join(app, "ios/Podfile.lock"));
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+    };
+    expect(await uncacheable(ios)).toMatch(/^ios\/Podfile\.lock is missing/);
+
+    // pod install writes Podfile.lock and its copy in Pods/.
+    const install = (react: string) => {
+      const lock = `PODS:\n  - React (${react})\n`;
+      write("apps/mobile/ios/Podfile.lock", lock);
+      write("apps/mobile/ios/Pods/Manifest.lock", lock);
+    };
+    install("0.88.0");
+    expect(await uncacheable(ios)).toBeNull();
+    // Pods resolving to another version miss.
+    expect((await changedBy(() => install("0.88.1"), ios)).changed).toEqual([
+      "input:file:apps/mobile/ios/Podfile.lock",
+      "input:pods-manifest",
+    ]);
+    // What else pod install writes into Pods/ is its output.
+    expect(
+      await changedBy(
+        () =>
+          write("apps/mobile/ios/Pods/Target Support Files/x.xcconfig", "A=1"),
+        ios,
+      ),
+    ).toEqual({ changed: [], same: true });
   });
 
   it("refuses Swift packages without Package.resolved", async () => {

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const events: string[] = [];
+/** Whether the iOS scheme sets installPods. */
+let installPods = false;
 
 const ascApiKey = {
   keyPath: "/tmp/AuthKey_ABC.p8",
@@ -12,6 +14,9 @@ const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 vi.mock("@hot-updater/apple-helper", () => ({
   assertTestFlightExportOptions: vi.fn(async () => {}),
   buildIos: vi.fn(),
+  installPodsIfNeeded: vi.fn(async () => {
+    events.push("pod install");
+  }),
   findTestFlightBuild: vi.fn(async () => {
     events.push("find on TestFlight");
     return {
@@ -102,6 +107,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
         ? {
             iosSchemeConfig: {
               configuration: "Release",
+              installPods,
               signing: { ascApiKey: "secret:asc-api-key" },
             },
           }
@@ -126,8 +132,9 @@ const built = {
   artifactKind: "ipa",
 } as const;
 vi.mock("@/utils/native/createNativeBuild", () => ({
-  createNativeBuild: vi.fn(async () => {
+  createNativeBuild: vi.fn(async ({ builder }) => {
     events.push("build");
+    await builder();
     return built;
   }),
 }));
@@ -150,7 +157,9 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
 }));
 
 import {
+  buildIos,
   findTestFlightBuild,
+  installPodsIfNeeded,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
 
@@ -198,6 +207,7 @@ const lastJson = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   events.length = 0;
+  installPods = false;
   vi.spyOn(console, "log").mockImplementation(() => {});
 });
 
@@ -226,6 +236,55 @@ describe("native-build ios|android with a cached build", () => {
         changed: ["file:src/App.tsx"],
       },
     });
+  });
+
+  it("installs a scheme's pods before the key, which then holds what they resolved to, and builds with them", async () => {
+    installPods = true;
+    vi.mocked(reuseNativeBuild).mockImplementationOnce(async () => {
+      events.push("key");
+      return cacheOf(null);
+    });
+
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+
+    expect(events).toEqual([
+      "pod install",
+      "key",
+      "build",
+      "remember",
+      "register",
+      "remember tracked",
+    ]);
+    expect(installPodsIfNeeded).toHaveBeenCalledExactlyOnceWith("/project/ios");
+    // The key reads the scheme as it is set; the build doesn't install again.
+    expect(reuseNativeBuild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        iosScheme: expect.objectContaining({ installPods: true }),
+      }),
+    );
+    expect(buildIos).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schemeConfig: expect.objectContaining({ installPods: false }),
+      }),
+    );
+  });
+
+  it("installs pods for a reused build too, since its key needs them", async () => {
+    installPods = true;
+    vi.mocked(reuseNativeBuild).mockResolvedValueOnce(cacheOf("storage"));
+
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+
+    expect(events).toEqual(["pod install"]);
+    expect(buildIos).not.toHaveBeenCalled();
+  });
+
+  it("installs no pods for a scheme without installPods", async () => {
+    vi.mocked(reuseNativeBuild).mockResolvedValueOnce(cacheOf(null));
+
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+
+    expect(installPodsIfNeeded).not.toHaveBeenCalled();
   });
 
   it("reuses a tracked build from storage: no build, no tracking, no upload", async () => {

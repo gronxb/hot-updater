@@ -715,6 +715,12 @@ const readIgnoredInputs = async ({
       if (file === localProperties || file === xcodeEnvLocal) return;
       inputs[`file:${fromRoot(file)}`] = await hashes.hash(file);
     });
+    // What `pod install` installed, which xcodebuild checks against
+    // Podfile.lock: Pods/ is otherwise build output.
+    const podsManifest = path.join(cwd, "ios", "Pods", "Manifest.lock");
+    if (platform === "ios" && (await exists(podsManifest))) {
+      inputs["pods-manifest"] = await hashes.hash(podsManifest);
+    }
     if (platform === "ios") {
       const contents = await readIfExists(xcodeEnvLocal);
       const settings = contents
@@ -1245,7 +1251,7 @@ const checkPinned = async (
       !(await exists(path.join(iosDir, "Podfile.lock")))
     ) {
       throw new Uncacheable(
-        "ios/Podfile.lock is missing, so the pods resolve anew on each install",
+        "ios/Podfile.lock is missing, so the pods resolve anew on each install: commit it, or set installPods on the scheme so the build installs them before it computes the key",
       );
     }
     const projects = await fg(["*.xcodeproj/project.pbxproj"], { cwd: iosDir });
