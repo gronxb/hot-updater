@@ -351,7 +351,7 @@ const checkIosNativeStatus = async ({
   const appDelegateFiles = findNativeFiles({
     cwd,
     platform: "ios",
-    pattern: "**/AppDelegate.{swift,mm,m}",
+    pattern: "**/{AppDelegate,SceneDelegate}.{swift,mm,m}",
   });
 
   let bundleProviderConfigured = false;
@@ -360,7 +360,7 @@ const checkIosNativeStatus = async ({
       type: "error",
       platform: "ios",
       code: "APP_DELEGATE_NOT_FOUND",
-      message: "iOS AppDelegate file was not found.",
+      message: "iOS AppDelegate or SceneDelegate file was not found.",
       resolution:
         "Add HotUpdater.bundleURL() to the app's iOS bundleURL provider.",
       fixability: "auto",
@@ -381,7 +381,8 @@ const checkIosNativeStatus = async ({
         type: "error",
         platform: "ios",
         code: "MISSING_IOS_BUNDLE_PROVIDER",
-        message: "iOS AppDelegate does not use HotUpdater.bundleURL().",
+        message:
+          "iOS AppDelegate/SceneDelegate does not use HotUpdater.bundleURL().",
         resolution:
           "Replace the release JS bundle URL provider with HotUpdater.bundleURL().",
         fixability: "auto",

@@ -415,6 +415,38 @@ class MainApplication : Application(), ReactApplication {
       expect(transformAndroid(input)).toBe(input);
     });
 
+    it("RN 0.81 Kotlin: replaces an existing override whose body has nested blocks", () => {
+      const input = `package com.hotupdaterexample
+
+import com.facebook.react.ReactApplication
+import com.facebook.react.defaults.DefaultReactNativeHost
+
+class MainApplication : Application(), ReactApplication {
+  override val reactNativeHost: ReactNativeHost =
+    object : DefaultReactNativeHost(this) {
+      override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+      override fun getJSBundleFile(): String? {
+        if (BuildConfig.DEBUG) {
+          return null
+        } else {
+          return "custom"
+        }
+      }
+    }
+}`;
+
+      const output = transformAndroid(input);
+
+      expect(output).toContain(
+        "HotUpdater.getJSBundleFile(applicationContext)",
+      );
+      expect(output).not.toContain('"custom"');
+      expect(output).not.toContain("} else {\n          return");
+      const count = (char: string) => output.split(char).length - 1;
+      expect(count("{")).toBe(count("}"));
+    });
+
     it("Expo 54 Kotlin: input -> output", () => {
       // Input: Expo 54 template
       const _input = `package com.gronxb.expo54
