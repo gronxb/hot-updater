@@ -223,6 +223,17 @@ export const handleSecretsPut = async (
     // Registers the config's secrets adapter, which everything below uses.
     const { secrets } = await loadConfig(null);
     const cwd = getCwd();
+    // A read-only adapter's value is read before localSecrets()' copy, so a
+    // value stored there would never be used.
+    const configured = getConfiguredAdapter(secrets);
+    if (configured && !configured.set) {
+      const held = (await configured.get([name], { cwd }))[name];
+      if (held) {
+        throw new Error(
+          `${name} is in the ${configured.name} secrets adapter (${describeSecret(configured, name)}), which builds read first and Hot Updater can't write, so the ${options.kind} you store would never be used. Replace it there yourself.`,
+        );
+      }
+    }
 
     const value = await readSecretValue(options);
     // Masked before it is sent, so no failure can print it.

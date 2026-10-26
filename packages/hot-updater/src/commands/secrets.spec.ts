@@ -241,6 +241,29 @@ describe("hot-updater secrets put", () => {
     ).rejects.toThrow();
   });
 
+  it("refuses a value a read-only adapter already holds, which builds read first, before any prompt", async () => {
+    configure({
+      name: "read-only",
+      get: async (names) =>
+        Object.fromEntries(names.map((name) => [name, "held"])),
+      describe: (name) => `ro://${name}`,
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(directory);
+    await fs.writeFile(path.join(directory, "package.json"), "{}");
+
+    await handleSecretsPut("release-keystore", {
+      kind: "android-keystore",
+      keystore: "release.jks",
+      keyAlias: "upload",
+    });
+
+    expect(log.error).toHaveBeenCalledWith(
+      "release-keystore is in the read-only secrets adapter (ro://release-keystore), which builds read first and Hot Updater can't write, so the android-keystore you store would never be used. Replace it there yourself.",
+    );
+    expect(password).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
   it("stores in `localSecrets()`'s store when the config's adapter stores nothing", async () => {
     configure({
       name: "read-only",
