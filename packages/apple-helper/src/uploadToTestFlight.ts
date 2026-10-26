@@ -308,7 +308,11 @@ const applyXcconfig = async (
   if (including.has(file)) return;
   including.add(file);
   const text = await fs.promises.readFile(file, "utf-8").catch(() => undefined);
-  for (const line of text?.split("\n") ?? []) {
+  // Block comments go first, kept as newlines; a line comment ends a line.
+  const uncommented = text?.replace(/\/\*[\s\S]*?\*\//gu, (comment) =>
+    comment.replace(/[^\n]/gu, ""),
+  );
+  for (const line of uncommented?.split("\n") ?? []) {
     const include = line.match(/^\s*#include\??\s*"([^"]+)"/u)?.[1];
     if (include) {
       await applyXcconfig(

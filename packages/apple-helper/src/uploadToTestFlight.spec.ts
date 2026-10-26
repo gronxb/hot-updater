@@ -1394,6 +1394,26 @@ describe("resolveTestFlightUploadKey", () => {
       ).resolves.toMatchObject({ kind: "asc-api-key" });
     });
 
+    it("ignores settings and includes inside comments", async () => {
+      await write("Unsigned.xcconfig", "CODE_SIGNING_ALLOWED = NO\n");
+      await write(
+        "Signing.xcconfig",
+        [
+          "CODE_SIGNING_ALLOWED = YES",
+          "/* Turned off once for QA:",
+          "CODE_SIGNING_ALLOWED = NO",
+          '#include "Unsigned.xcconfig"',
+          "*/",
+          "// CODE_SIGNING_REQUIRED = NO",
+          "",
+        ].join("\n"),
+      );
+
+      await expect(
+        resolve({ xcconfig: "Signing.xcconfig" }),
+      ).resolves.toMatchObject({ kind: "asc-api-key" });
+    });
+
     it("stops at an include cycle", async () => {
       await write(
         "A.xcconfig",
