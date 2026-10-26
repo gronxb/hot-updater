@@ -11,7 +11,8 @@ import {
   withCredentialResolver,
 } from "./credentialResolver";
 import { maskSecretValues } from "./secretMasking";
-import { envSecrets, setConfiguredSecrets } from "./secrets";
+import { getLocalKeyFile, writeLocalKey } from "./localKeyStore";
+import { setConfiguredSecrets, withLocalKeyStore } from "./secrets";
 
 /** A secrets adapter holding `values`, whose `get` records each call. */
 const fakeSecrets = (
@@ -43,13 +44,14 @@ beforeEach(async () => {
   directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-credential-resolver-"),
   );
-  // The project whose .env.hotupdater envSecrets() reads.
+  // The project whose .env.hotupdater the default store reads.
   await fs.writeFile(path.join(directory, "package.json"), "{}");
   vi.spyOn(process, "cwd").mockReturnValue(directory);
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(directory, "home"));
 });
 
 afterEach(async () => {
-  setConfiguredSecrets(envSecrets());
+  setConfiguredSecrets(withLocalKeyStore());
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await fs.rm(directory, { force: true, recursive: true });
@@ -250,14 +252,14 @@ describe("createCredentialResolver", () => {
     );
   });
 
-  it("names envSecrets()'s JSON variable when the environment holds nothing", async () => {
+  it("names the default store's variable and key store file when neither holds it", async () => {
     await expect(
       createCredentialResolver().resolve({
         kind: "android-keystore",
         name: "release-keystore",
       }),
     ).rejects.toThrow(
-      "release-keystore (android-keystore) is not in the envSecrets secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater).",
+      `release-keystore (android-keystore) is not in the default secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment, or ${getLocalKeyFile("release-keystore", directory)} on this machine).`,
     );
   });
 
@@ -658,7 +660,49 @@ describe("credential masking", () => {
   });
 });
 
-describe("envSecrets() as the secrets adapter", () => {
+describe("the default store as the secrets adapter", () => {
+  it("reads a credential this machine's key store holds", async () => {
+    await writeLocalKey(
+      "asc-api-key",
+      JSON.stringify({ keyId: "STORED1", issuerId: "issuer-1", p8: P8_KEY }),
+      directory,
+    );
+
+    await withCredentialResolver(async (resolver) => {
+      const { keyId, keyPath } = await resolver.resolve({
+        kind: "asc-api-key",
+      });
+
+      expect(keyId).toBe("STORED1");
+      expect(await fs.readFile(keyPath, "utf-8")).toBe(P8_KEY);
+    });
+  });
+
+  it("prefers the environment over the key store", async () => {
+    await writeLocalKey(
+      "asc-api-key",
+      JSON.stringify({ keyId: "STORED1", issuerId: "issuer-1", p8: P8_KEY }),
+      directory,
+    );
+    vi.stubEnv(
+      "HOT_UPDATER_ASC_API_KEY",
+      JSON.stringify({ keyId: "ENVJSON1", issuerId: "issuer-1", p8: P8_KEY }),
+    );
+
+    const fromJson = await withCredentialResolver((resolver) =>
+      resolver.resolve({ kind: "asc-api-key" }),
+    );
+    vi.stubEnv("HOT_UPDATER_ASC_KEY", P8_KEY);
+    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "FROMFIELDS");
+    vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
+    const fromFields = await withCredentialResolver((resolver) =>
+      resolver.resolve({ kind: "asc-api-key" }),
+    );
+
+    expect(fromJson.keyId).toBe("ENVJSON1");
+    expect(fromFields.keyId).toBe("FROMFIELDS");
+  });
+
   it("reads a credential's JSON value from its variable", async () => {
     vi.stubEnv(
       "HOT_UPDATER_ASC_API_KEY",

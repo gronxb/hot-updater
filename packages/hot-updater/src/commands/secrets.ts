@@ -9,10 +9,10 @@ import {
   credentialLoginCommand,
   credentialPutCommand,
   describeSecret,
+  describeStoredSecret,
   getConfiguredAdapter,
   getCwd,
   getHotUpdaterEnvValue,
-  getLocalKeyFile,
   isSecretName,
   type IssuedCredentialKind,
   loadConfig,
@@ -229,17 +229,11 @@ export const handleSecretsPut = async (
     registerCredentialValue(value);
     // Always set: an adapter that stores nothing stores in the key store.
     await secrets.set!(name, value, { cwd });
-    const configured = getConfiguredAdapter(secrets);
     p.log.message(
       ui.block("Secret stored", [
         ui.kv("Name", name),
         ui.kv("Kind", options.kind),
-        ui.kv(
-          "In",
-          configured?.set
-            ? describeSecret(configured, name)
-            : getLocalKeyFile(name, cwd),
-        ),
+        ui.kv("In", describeStoredSecret(secrets, name)),
       ]),
     );
   });
@@ -485,7 +479,7 @@ export const handleSecretsIssue = async (
     const key =
       "keyId" in result ? `key ${result.keyId}` : `a key of ${result.email}`;
     p.log.info(
-      `Hot Updater kept no ${issuer.session} session: it stored ${key} as ${name} in ${result.secrets ? describeSecret(result.secrets, name) : describeSecret(secrets, name)}.`,
+      `Hot Updater kept no ${issuer.session} session: it stored ${key} as ${name} in ${result.secrets ? describeSecret(result.secrets, name) : describeStoredSecret(secrets, name)}.`,
     );
   });
 };

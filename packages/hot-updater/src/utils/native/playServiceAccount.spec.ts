@@ -35,9 +35,11 @@ import type {
   IssuePlayServiceAccountRequest,
 } from "@hot-updater/android-helper";
 import {
-  envSecrets,
+  getCwd,
+  getLocalKeyFile,
   maskSecretValues,
   setConfiguredSecrets,
+  withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -142,15 +144,20 @@ const issue = vi.fn(
   },
 );
 
-let cacheDir: string;
+/** A directory of the spec's own; `home` in it is the key store's home. */
+let tmp: string;
 
-/** ensurePlayServiceAccount with the stand-in sign-in, and a cacheDir of its own. */
+/** Where this machine's key store keeps `name` for the project. */
+const keyFile = (name: string) => getLocalKeyFile(name, getCwd());
+
+/** ensurePlayServiceAccount with the stand-in sign-in. */
 const ensure = (options: Parameters<typeof ensurePlayServiceAccount>[0]) =>
-  ensurePlayServiceAccount({ issue, cacheDir, ...options });
+  ensurePlayServiceAccount({ issue, ...options });
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-play-"));
+  tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-play-"));
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(tmp, "home"));
   // The terminal these specs simulate takes a sign-in only outside CI, and
   // CI runners set CI.
   vi.stubEnv("CI", "");
@@ -169,8 +176,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(cacheDir, { recursive: true, force: true });
-  setConfiguredSecrets(envSecrets());
+  await fs.rm(tmp, { recursive: true, force: true });
+  setConfiguredSecrets(withLocalKeyStore());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -207,7 +214,7 @@ describe("ensurePlayServiceAccount", () => {
       withTTY(false, () => ensure({ name: "widget-play" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      `widget-play (play-service-account) is not in the spec-store secrets adapter (spec://widget-play). Store it once from a terminal with \`npx hot-updater google-play login widget-play\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.`,
+      `widget-play (play-service-account) is not in the spec-store secrets adapter (spec://widget-play, or ${keyFile("widget-play")} on this machine). Store it once from a terminal with \`npx hot-updater google-play login widget-play\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.`,
     );
     expect(calls).toEqual(["get widget-play"]);
     expect(issue).not.toHaveBeenCalled();
@@ -230,62 +237,58 @@ describe("ensurePlayServiceAccount", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("writes the key a read-only adapter can't store to a 0600 file, says where to store it, and keeps it", async () => {
-    setConfiguredSecrets(envSecrets());
-    const cacheDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-play-"),
+  it("says this machine has no key, stores the issued key in this machine's key store, names where to delete old keys, and the next run reuses it", async () => {
+    setConfiguredSecrets(withLocalKeyStore());
+
+    const result = await withTTY(true, () =>
+      ensure({ name: "play-service-account" }),
     );
-    try {
-      const result = await withTTY(true, () =>
-        ensure({ name: "play-service-account", cacheDir }),
-      );
-      const file = path.join(cacheDir, "issued", "play-service-account.json");
-      expect(result).toMatchObject({ status: "saved", email: EMAIL, file });
-      await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
-      expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
-      expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
+    const file = keyFile("play-service-account");
+    expect(result).toEqual({ status: "issued", email: EMAIL });
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
+    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
 
-      const guidance = stripVTControlCharacters(
-        String(log.warn.mock.calls[0]![0]),
-      );
-      expect(guidance).toContain("Play service account saved to a file");
-      expect(guidance).toContain(EMAIL);
-      expect(guidance).toContain(
-        `Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT to the contents of ${file}, as one value`,
-      );
-      expect(guidance).toContain("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON");
-      const printed = [...Object.values(log), text, select]
-        .flatMap((fn) => fn.mock.calls.flat())
-        .map(String)
-        .join("\n");
-      expect(printed).not.toContain("MIIB");
-      expect(issued.revoke).not.toHaveBeenCalled();
-      expect(issued.dispose).toHaveBeenCalledTimes(1);
+    const notice = log.info.mock.calls.findIndex(([message]) =>
+      String(message).startsWith("No Play service account on this machine."),
+    );
+    expect(log.info.mock.calls[notice]![0]).toBe(
+      "No Play service account on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (https://hot-updater.dev/docs/concepts/secrets#share-a-key-across-machines) or import it with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`.",
+    );
+    expect(log.info.mock.invocationCallOrder[notice]!).toBeLessThan(
+      issue.mock.invocationCallOrder[0]!,
+    );
+    const stored = stripVTControlCharacters(
+      String(log.success.mock.calls[0]![0]),
+    );
+    expect(stored).toContain(file);
+    expect(stored).toContain(EMAIL);
+    expect(stored).toContain(
+      "Delete the ones no machine or CI uses anymore under the service account's keys at https://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app.",
+    );
+    const printed = [...Object.values(log), text, select]
+      .flatMap((fn) => fn.mock.calls.flat())
+      .map(String)
+      .join("\n");
+    expect(printed).not.toContain("MIIB");
+    expect(issued.revoke).not.toHaveBeenCalled();
+    expect(issued.dispose).toHaveBeenCalledTimes(1);
 
-      const { secrets } = result as Extract<typeof result, { status: "saved" }>;
-      await expect(
-        secrets.get(["play-service-account"], { cwd: cacheDir }),
-      ).resolves.toEqual({ "play-service-account": KEY_FILE });
-    } finally {
-      await fs.rm(cacheDir, { recursive: true, force: true });
-    }
+    vi.clearAllMocks();
+    await expect(
+      withTTY(false, () => ensure({ name: "play-service-account" })),
+    ).resolves.toEqual({ status: "stored" });
+    expect(issue).not.toHaveBeenCalled();
   });
 
-  it("never signs in in CI with a read-only adapter, writing no file", async () => {
+  it("never signs in in CI with the default store, writing nothing", async () => {
     vi.stubEnv("CI", "true");
-    setConfiguredSecrets(envSecrets());
-    const cacheDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-play-"),
-    );
-    try {
-      await expect(
-        withTTY(true, () => ensure({ name: "play-service-account", cacheDir })),
-      ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
-      expect(issue).not.toHaveBeenCalled();
-      await expect(fs.readdir(cacheDir)).resolves.toEqual([]);
-    } finally {
-      await fs.rm(cacheDir, { recursive: true, force: true });
-    }
+    setConfiguredSecrets(withLocalKeyStore());
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
+    expect(issue).not.toHaveBeenCalled();
+    await expect(fs.readdir(tmp)).resolves.toEqual([]);
   });
 
   it("checks in order, signs in, stores the key's own JSON, and reads it back", async () => {
@@ -395,7 +398,7 @@ describe("ensurePlayServiceAccount", () => {
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toThrow(
-      `Hot Updater could not confirm that the spec-store secrets adapter stored play-service-account: socket hang up\nThe key abc123 is kept. Check spec://play-service-account: when it holds the key, run the build again; when it does not, delete the key under the service account ${EMAIL} in Google Cloud, then run this again.`,
+      `Hot Updater could not confirm that the spec-store secrets adapter stored play-service-account: socket hang up\nThe key abc123 is kept. Check spec://play-service-account, or ${keyFile("play-service-account")} on this machine: when it holds the key, run the build again; when it does not, delete the key under the service account ${EMAIL} in Google Cloud, then run this again.`,
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -407,11 +410,11 @@ describe("ensurePlayServiceAccount", () => {
       ensure({ name: "play-service-account" }),
     );
     expect(result).toMatchObject({ status: "issued", email: EMAIL });
-    const file = path.join(cacheDir, "issued", "play-service-account.json");
+    const file = keyFile("play-service-account");
     await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
     const { secrets } = result as { secrets: SecretsAdapter };
     await expect(
-      secrets.get(["play-service-account"], { cwd: cacheDir }),
+      secrets.get(["play-service-account"], { cwd: tmp }),
     ).resolves.toEqual({ "play-service-account": KEY_FILE });
     expect(issued.revoke).not.toHaveBeenCalled();
   });

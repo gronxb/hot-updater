@@ -79,10 +79,10 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
 
 import {
   CredentialUnavailableError,
-  envSecrets,
   p,
   setConfiguredSecrets,
   withCredentialResolver,
+  withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
@@ -168,7 +168,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       events.push(`resolve ${request.kind} ${request.name}`);
       throw new CredentialUnavailableError(
         "android-keystore",
-        "release-keystore (android-keystore) is not in the envSecrets secrets adapter.",
+        "release-keystore (android-keystore) is not in the default secrets adapter.",
       );
     });
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -185,7 +185,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       "exit",
     ]);
     expect(p.log.error).toHaveBeenCalledWith(
-      "release-keystore (android-keystore) is not in the envSecrets secrets adapter.",
+      "release-keystore (android-keystore) is not in the default secrets adapter.",
     );
   });
 
@@ -216,7 +216,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
         expect.objectContaining({ name: "widget-asc", secrets: own }),
       );
     } finally {
-      setConfiguredSecrets(envSecrets());
+      setConfiguredSecrets(withLocalKeyStore());
     }
   });
 });

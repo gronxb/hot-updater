@@ -86,8 +86,8 @@ export const parseInputs = (env) => {
 };
 
 /**
- * The CLI's environment: the job's, whose variables the `envSecrets()` secrets
- * adapter reads, and `CI`, so the CLI never asks anything or starts a
+ * The CLI's environment: the job's, whose variables the CLI reads its
+ * credentials from, and `CI`, so the CLI never asks anything or starts a
  * sign-in, even on a runner that sets no `CI`.
  *
  * @param {Record<string, string | undefined>} env

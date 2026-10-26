@@ -137,6 +137,20 @@ export const getConfiguredAdapter = (
   isLocalKeyStoreSecrets(secrets) ? secrets[LOCAL_KEY_STORE].configured : secrets;
 
 /**
+ * Where `secrets.set` stores `name`, for messages: the config's adapter
+ * when it stores values, else this machine's key store file.
+ */
+export const describeStoredSecret = (
+  secrets: SecretsAdapter,
+  name: string,
+): string => {
+  const configured = getConfiguredAdapter(secrets);
+  return configured?.set
+    ? describeSecret(configured, name)
+    : getLocalKeyFile(name, getCwd());
+};
+
+/**
  * Whether a key `secrets` stores stays on this machine: the default store,
  * and `githubActions()`, whose secrets builds here read from the key
  * store, as GitHub returns no value.

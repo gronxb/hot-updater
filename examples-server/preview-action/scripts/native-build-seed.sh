@@ -5,8 +5,8 @@
 #
 # 1. the app's hot-updater.config.ts re-exports native-build.config.ts;
 # 2. `db migrate` creates core's tables;
-# 3. the release keystore is generated, as the one JSON value the default
-#    envSecrets() secrets adapter reads for `secret:release-keystore`;
+# 3. the release keystore is generated, as the one JSON value the CLI
+#    reads from HOT_UPDATER_RELEASE_KEYSTORE for `secret:release-keystore`;
 #    play-service-account, widget-keystore, and asc-api-key stay missing.
 #
 # It needs the backend's variables (scripts/backend.sh) in its environment,

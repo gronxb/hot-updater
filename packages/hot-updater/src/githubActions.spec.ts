@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { maskSecretValues } from "@hot-updater/cli-tools";
+import {
+  getLocalKeyFile,
+  maskSecretValues,
+  readLocalKey,
+  writeLocalKey,
+} from "@hot-updater/cli-tools";
 import sodium from "libsodium-wrappers";
 import {
   afterEach,
@@ -125,6 +130,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-gha-"));
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(directory, "home"));
   // The runner's own CI and GitHub variables must not leak into the spec.
   vi.stubEnv("CI", undefined);
   vi.stubEnv("GITHUB_ACTIONS", undefined);
@@ -166,6 +172,35 @@ describe("githubActions set", () => {
       });
     }
     expect(openPut(calls[1]!)).toEqual({ keyId: "568250167242549743", value });
+    // And keeps a copy on this machine, which builds here read.
+    expect(await readLocalKey("asc-api-key", directory)).toBe(value);
+    if (process.platform !== "win32") {
+      expect(
+        (await fs.stat(getLocalKeyFile("asc-api-key", directory))).mode & 0o777,
+      ).toBe(0o600);
+    }
+  });
+
+  it("keeps no copy on this machine when GitHub refuses the write", async () => {
+    stubGitHub({ putStatus: 403 });
+
+    await expect(
+      githubActions().set!("asc-api-key", "value", { cwd: directory }),
+    ).rejects.toThrow("Could not store HOT_UPDATER_ASC_API_KEY in acme/app");
+
+    expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
+  });
+
+  it("reports a copy it could not keep, without failing the write GitHub took", async () => {
+    const calls = stubGitHub();
+    // A file where the key store's directory goes.
+    await fs.writeFile(path.join(directory, "home"), "");
+
+    await expect(
+      githubActions().set!("asc-api-key", "value", { cwd: directory }),
+    ).resolves.toBeUndefined();
+
+    expect(calls).toHaveLength(2);
   });
 
   it("seals each write with a fresh ephemeral key", async () => {
@@ -439,18 +474,20 @@ describe("githubActions repository", () => {
 });
 
 describe("githubActions get", () => {
-  it("holds nothing outside a workflow run", async () => {
-    vi.stubEnv("HOT_UPDATER_ASC_API_KEY", '{"keyId":"local"}');
+  it("reads this machine's key store outside a workflow run, never the environment", async () => {
+    vi.stubEnv("HOT_UPDATER_ASC_API_KEY", '{"keyId":"env"}');
+    await writeLocalKey("asc-api-key", '{"keyId":"local"}', directory);
 
     await expect(
       githubActions().get(["asc-api-key", "OTHER"], { cwd: directory }),
-    ).resolves.toEqual({ "asc-api-key": undefined, OTHER: undefined });
+    ).resolves.toEqual({ "asc-api-key": '{"keyId":"local"}', OTHER: undefined });
     expect(execaMock).not.toHaveBeenCalled();
   });
 
   it("reads the workflow's env inside GitHub Actions", async () => {
     vi.stubEnv("GITHUB_ACTIONS", "true");
     vi.stubEnv("HOT_UPDATER_ASC_API_KEY", '{"keyId":"ci"}');
+    await writeLocalKey("OTHER", "machine", directory);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -462,16 +499,18 @@ describe("githubActions get", () => {
 });
 
 describe("githubActions describe", () => {
-  it("names the secret, the repository, the environment, and the workflow env", () => {
+  it("names the secret, the repository, the environment, the workflow env, and the copy", () => {
+    vi.spyOn(process, "cwd").mockReturnValue(directory);
+    const copy = getLocalKeyFile("asc-api-key", directory);
     expect(
       githubActions({ repo: "acme/app", environment: "production" }).describe!(
         "asc-api-key",
       ),
     ).toBe(
-      "GitHub Actions secret HOT_UPDATER_ASC_API_KEY of acme/app, environment production, which a workflow reads as env HOT_UPDATER_ASC_API_KEY",
+      `GitHub Actions secret HOT_UPDATER_ASC_API_KEY of acme/app, environment production, which a workflow reads as env HOT_UPDATER_ASC_API_KEY, with a copy in ${copy} on this machine`,
     );
     expect(githubActions().describe!("asc-api-key")).toBe(
-      "GitHub Actions secret HOT_UPDATER_ASC_API_KEY of the origin repository, which a workflow reads as env HOT_UPDATER_ASC_API_KEY",
+      `GitHub Actions secret HOT_UPDATER_ASC_API_KEY of the origin repository, which a workflow reads as env HOT_UPDATER_ASC_API_KEY, with a copy in ${copy} on this machine`,
     );
   });
 });

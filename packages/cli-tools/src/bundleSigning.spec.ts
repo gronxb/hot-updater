@@ -16,7 +16,7 @@ import {
   readBundleSigningPublicKeyFile,
 } from "./bundleSigning";
 import { normalizeSigningConfig } from "./localBundleSigning";
-import { envSecrets, setConfiguredSecrets } from "./secrets";
+import { setConfiguredSecrets, withLocalKeyStore } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -282,7 +282,7 @@ describe("getBundleSigningPublicKey", () => {
 });
 
 describe("local signing with privateKey from the config's secrets", () => {
-  afterEach(() => setConfiguredSecrets(envSecrets()));
+  afterEach(() => setConfiguredSecrets(withLocalKeyStore()));
 
   const configure = (values: Record<string, string>) => {
     const get = vi.fn<SecretsAdapter["get"]>(async (names) =>

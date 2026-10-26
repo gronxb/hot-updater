@@ -8,8 +8,8 @@
 #    preview build pins the public key;
 # 4. the Console starts, for the comment's install links and QR codes.
 #
-# Every credential the action's CLI reads is a job variable, which the
-# config's default `envSecrets()` secrets adapter reads: the keystore as one JSON
+# Every credential the action's CLI reads is a job variable, which the CLI
+# reads as the config sets no secrets adapter: the keystore as one JSON
 # value, HOT_UPDATER_ANDROID_KEYSTORE for `secret:android-keystore`, and the
 # signing key's path. It needs the backend's variables (scripts/backend.sh)
 # in its environment, and prints those as NAME=value lines.

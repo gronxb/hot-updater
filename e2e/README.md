@@ -75,8 +75,9 @@ The app must refuse that update with a signature verification error and keep
 running its built-in bundle. The same bundle deployed again with the
 example's own key then installs, so only the key differs between the refused
 update and the installed one. That second deploy reads the key as
-`secret:bundle-signing-key` through `envSecrets()`, from
-`HOT_UPDATER_BUNDLE_SIGNING_KEY`, with `keys/private-key.pem` moved away: the
+`secret:bundle-signing-key` from `HOT_UPDATER_BUNDLE_SIGNING_KEY`, with
+`keys/private-key.pem` moved away and `HOT_UPDATER_HOME` at an empty key
+store: the
 control server first runs it without the variable and fails unless the CLI
 refuses it for the missing secret, and the installed update proves the key
 read from the secret is the one the app embeds. The control server fails

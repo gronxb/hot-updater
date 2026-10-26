@@ -239,7 +239,7 @@ describe("build:ios without an App Store Connect API key", () => {
 
   it("reports a key that could not be issued, before the prebuild", async () => {
     vi.mocked(ensureAscApiKey).mockRejectedValueOnce(
-      new Error("The envSecrets secrets adapter is read-only."),
+      new Error("The spec-store secrets adapter could not be reached."),
     );
     const exit = mockExit();
     await expect(
@@ -250,7 +250,7 @@ describe("build:ios without an App Store Connect API key", () => {
       }),
     ).rejects.toThrow("exit");
     expect(p.log.error).toHaveBeenCalledWith(
-      "The envSecrets secrets adapter is read-only.",
+      "The spec-store secrets adapter could not be reached.",
     );
     expect(events).not.toContain("prebuild");
     exit.mockRestore();

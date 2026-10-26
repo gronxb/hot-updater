@@ -227,8 +227,8 @@ type DeployBundleRequest = {
   /**
    * `foreign`: the deploy signs its bundle with a key generated for it, not
    * the one whose public key the app embeds. `secret`: the deploy reads the
-   * project's key through `envSecrets()` as `secret:bundle-signing-key`, with the
-   * key file moved away.
+   * project's key as `secret:bundle-signing-key` from its environment
+   * variable, with the key file moved away and an empty key store.
    */
   signingKey?: "foreign" | "secret";
   strategy?: "appVersion" | "fingerprint";
@@ -7903,9 +7903,11 @@ async function withForeignSigningKey(deploy: () => Promise<string>) {
 }
 
 /**
- * Runs a deploy that reads the project's private key through `envSecrets()` as
- * `secret:bundle-signing-key`, with the key file moved away so no path can
- * supply it. A deploy without the variable must first be refused for it,
+ * Runs a deploy that reads the project's private key as
+ * `secret:bundle-signing-key` from its variable, with the key file moved
+ * away and HOT_UPDATER_HOME at an empty directory, so neither a path nor
+ * this machine's key store can supply it. A deploy without the variable
+ * must first be refused for it,
  * and the deploy with it must sign with the key the app embeds, which the
  * CLI checks against the native files and the app checks on install. The
  * config and the key file are restored when the deploy ends.
@@ -7935,6 +7937,13 @@ async function withSecretSigningKey(
     restores.push(() =>
       fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
     );
+    // No key a developer stored on this machine answers for the variable.
+    const keyStoreHome = await fsPromises.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-e2e-home-"),
+    );
+    restores.push(() =>
+      fsPromises.rm(keyStoreHome, { force: true, recursive: true }),
+    );
     await fsPromises.writeFile(
       fixtureSession.configSourceFile,
       withSecretSigning(configSource),
@@ -7945,7 +7954,10 @@ async function withSecretSigningKey(
     const refusedLogPath = deployLogPath.replace(/\.log$/u, "-no-secret.log");
     const refused = await deploy({
       allowFailure: true,
-      env: { [PROJECT_SIGNING_KEY_VARIABLE]: "" },
+      env: {
+        [PROJECT_SIGNING_KEY_VARIABLE]: "",
+        HOT_UPDATER_HOME: keyStoreHome,
+      },
       logPath: refusedLogPath,
     });
     if (
@@ -7958,7 +7970,10 @@ async function withSecretSigningKey(
     }
 
     return await deploy({
-      env: { [PROJECT_SIGNING_KEY_VARIABLE]: privateKey },
+      env: {
+        [PROJECT_SIGNING_KEY_VARIABLE]: privateKey,
+        HOT_UPDATER_HOME: keyStoreHome,
+      },
     });
   } finally {
     const restored = await Promise.allSettled(

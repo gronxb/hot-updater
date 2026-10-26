@@ -6,6 +6,7 @@ import {
 } from "@hot-updater/apple-helper";
 import {
   describeSecret,
+  describeStoredSecret,
   p,
   registerCredentialValue,
 } from "@hot-updater/cli-tools";
@@ -232,7 +233,7 @@ export const ensureAscApiKey = async ({
     p.log.success(
       ui.block("App Store Connect API key stored", [
         ui.kv("Secret", name),
-        ui.kv("In", describeSecret(store, name)),
+        ui.kv("In", describeStoredSecret(store, name)),
         ui.kv("Key ID", key.keyId),
         `    Each machine that signs in issues its own key. Revoke the ones no machine or CI uses anymore at ${ASC_INTEGRATIONS_URL} (Team Keys).`,
       ]),

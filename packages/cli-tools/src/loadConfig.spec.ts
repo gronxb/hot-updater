@@ -136,14 +136,17 @@ describe("loadConfig", () => {
     }
   });
 
-  it("defaults secrets to envSecrets() and registers it for secret: references", async () => {
+  it("defaults secrets to the environment and this machine's key store, and registers it for secret: references", async () => {
     const { loadConfig } = await import("./loadConfig");
-    const { getConfiguredSecrets } = await import("./secrets");
+    const { getConfiguredAdapter, getConfiguredSecrets } = await import(
+      "./secrets"
+    );
 
     const config = await loadConfig(null);
 
-    expect(config.secrets.name).toBe("envSecrets");
-    expect(config.secrets.set).toBeUndefined();
+    expect(config.secrets.name).toBe("default");
+    expect(config.secrets.set).toBeTypeOf("function");
+    expect(getConfiguredAdapter(config.secrets)).toBeUndefined();
     expect(getConfiguredSecrets()).toBe(config.secrets);
   });
 
@@ -185,8 +188,10 @@ describe("loadConfig", () => {
       ).credentials;
       const values = await credentials();
 
-      // Then
-      expect(config.secrets).toBe(secrets);
+      // Then: the config's adapter, with this machine's key store after it
+      const { getConfiguredAdapter } = await import("./secrets");
+      expect(getConfiguredAdapter(config.secrets)).toBe(secrets);
+      expect(config.secrets.name).toBe("spec-store");
       expect(values).toEqual({
         HU_SPEC_DEPLOY_TOKEN: "store:HU_SPEC_DEPLOY_TOKEN",
       });
@@ -201,8 +206,10 @@ describe("loadConfig", () => {
       );
     } finally {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
-      const { envSecrets, setConfiguredSecrets } = await import("./secrets");
-      setConfiguredSecrets(envSecrets());
+      const { setConfiguredSecrets, withLocalKeyStore } = await import(
+        "./secrets"
+      );
+      setConfiguredSecrets(withLocalKeyStore());
       vi.unstubAllEnvs();
     }
   });
@@ -258,8 +265,10 @@ describe("loadConfig", () => {
       expect(stores.none.get).not.toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
-      const { envSecrets, setConfiguredSecrets } = await import("./secrets");
-      setConfiguredSecrets(envSecrets());
+      const { setConfiguredSecrets, withLocalKeyStore } = await import(
+        "./secrets"
+      );
+      setConfiguredSecrets(withLocalKeyStore());
       vi.unstubAllEnvs();
     }
   });

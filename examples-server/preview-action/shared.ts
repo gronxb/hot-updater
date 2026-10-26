@@ -6,10 +6,9 @@ import pg from "pg";
 
 /**
  * The backend, as the proof's job environment sets it. The storage's keys
- * come through `secretEnv`, which reads them from the config's `secrets`
- * adapter, `envSecrets()`, only when the storage first needs them; a command that
- * doesn't touch the backend, such as `channel set`, loads the config without
- * them.
+ * come through `secretEnv`, which reads them from the job's environment
+ * only when the storage first needs them; a command that doesn't touch the
+ * backend, such as `channel set`, loads the config without them.
  */
 const env = (name: string) => process.env[name]!;
 const storageKeys = secretEnv([

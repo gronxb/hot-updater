@@ -122,7 +122,7 @@ describe("offerGitHubSecret", () => {
     offerGitHubSecret({
       name: "asc-api-key",
       value: "{}",
-      file: "/tmp/issued/asc-api-key.json",
+      file: "/home/dev/.hot-updater/keys/app-0123456789ab/asc-api-key.json",
       findRepository: async () => "acme/app",
       findToken: async () => "gho_token",
       ...options,
@@ -138,7 +138,7 @@ describe("offerGitHubSecret", () => {
     expect(createSecrets).not.toHaveBeenCalled();
   });
 
-  it("writes the variable envSecrets() reads the name from", async () => {
+  it("writes the variable a workflow maps the name to", async () => {
     confirm.mockResolvedValue(true);
     const set = vi.fn(async () => {});
     await expect(

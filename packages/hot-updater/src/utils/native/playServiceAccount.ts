@@ -8,6 +8,7 @@ import {
 } from "@hot-updater/android-helper";
 import {
   describeSecret,
+  describeStoredSecret,
   getHotUpdaterEnvValue,
   p,
   registerCredentialValue,
@@ -260,7 +261,7 @@ export const ensurePlayServiceAccount = async ({
     p.log.success(
       ui.block("Play service account stored", [
         ui.kv("Secret", name),
-        ui.kv("In", describeSecret(store, name)),
+        ui.kv("In", describeStoredSecret(store, name)),
         ui.kv("Service account", issued.email),
         ui.kv("Project", issued.projectId),
         ui.kv("Key ID", issued.keyId),

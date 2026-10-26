@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { envSecrets, loadConfig } from "@hot-updater/cli-tools";
+import {
+  getLocalKeyFile,
+  loadConfig,
+  readLocalKey,
+  withLocalKeyStore,
+} from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -152,12 +157,15 @@ const writableStore = (values: Record<string, string> = {}) => {
 
 let directory: string;
 
-const configure = (secrets: SecretsAdapter) => {
+/** Makes `secrets` the config's, as loadConfig hands it over: with this machine's key store. */
+const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
-    secrets,
-    cacheDir: directory,
+    secrets: withLocalKeyStore(secrets),
   } as never);
 };
+
+/** Where this machine's key store keeps `name` for the project. */
+const keyFile = (name: string) => getLocalKeyFile(name, directory);
 
 const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
   const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -179,6 +187,7 @@ beforeEach(async () => {
   for (const name of ENV_NAMES) vi.stubEnv(name, "");
   vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("no network"));
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-issue-"));
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(directory, "home"));
   // The project is the scratch directory, without a .env.hotupdater.
   await fs.writeFile(path.join(directory, "package.json"), "{}");
   vi.spyOn(process, "cwd").mockReturnValue(directory);
@@ -306,16 +315,17 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
   });
 
-  it("--replace on envSecrets(), which is read-only, writes the new key to its file and says the variable still holds the old one", async () => {
-    vi.stubEnv("HOT_UPDATER_ASC_API_KEY", OLD_ASC);
-    configure(envSecrets());
+  it("--replace on the default store replaces the key on this machine, and names the old one to revoke", async () => {
+    configure();
+    await fs.mkdir(path.dirname(keyFile("asc-api-key")), { recursive: true });
+    await fs.writeFile(keyFile("asc-api-key"), OLD_ASC);
 
     await withTTY(true, () =>
       handleSecretsIssue("asc-api-key", "asc-api-key", { replace: true }),
     );
 
     expect(process.exitCode).toBeUndefined();
-    const file = path.join(directory, "issued", "asc-api-key.json");
+    const file = keyFile("asc-api-key");
     expect(JSON.parse(await fs.readFile(file, "utf-8"))).toMatchObject({
       keyId: "NEWKEY0001",
     });
@@ -323,15 +333,31 @@ describe("hot-updater secrets issue asc-api-key", () => {
     const warned = stripVTControlCharacters(
       log.warn.mock.calls.flat().map(String).join("\n"),
     );
-    expect(warned).toContain(file);
-    expect(warned).toContain(
-      "HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater still holds the old key until you set it to the new one.",
-    );
     expect(warned).toContain("OLDKEY0001");
+    expect(warned).toContain("Hot Updater never revokes it");
+    // Replacing the key, no "no key on this machine" notice.
+    expect(printed()).not.toContain("on this machine. Signing in issues");
+    expect(printed()).not.toContain("issueSpecOldKey01");
     expect(ascKey.revoke).not.toHaveBeenCalled();
     expect(lastLogged()).toBe(
-      `Hot Updater kept no Apple session: it wrote key NEWKEY0001 for asc-api-key to ${file}.`,
+      `Hot Updater kept no Apple session: it stored key NEWKEY0001 as asc-api-key in ${file}.`,
     );
+  });
+
+  it("keeps the key the environment's whole value sets for the default store, which reads it before this machine's key store", async () => {
+    vi.stubEnv("HOT_UPDATER_ASC_API_KEY", OLD_ASC);
+    configure();
+
+    await withTTY(true, () =>
+      handleSecretsIssue("asc-api-key", "asc-api-key", { replace: true }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(issueAscApiKey).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      "HOT_UPDATER_ASC_API_KEY is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater apple login --replace` again.",
+    );
+    expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
   });
 
   it("--replace refuses a key the environment overrides, which a new key would never replace", async () => {

@@ -4,9 +4,10 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import {
-  envSecrets,
+  getLocalKeyFile,
   loadConfig,
   maskSecretValues,
+  withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,8 +65,11 @@ const writableStore = (values: Record<string, string> = {}) => {
   return { store, held };
 };
 
-const configure = (secrets: SecretsAdapter, cacheDir?: string) => {
-  vi.mocked(loadConfig).mockResolvedValue({ secrets, cacheDir } as never);
+/** Makes `secrets` the config's, as loadConfig hands it over: with this machine's key store. */
+const configure = (secrets?: SecretsAdapter) => {
+  vi.mocked(loadConfig).mockResolvedValue({
+    secrets: withLocalKeyStore(secrets),
+  } as never);
 };
 
 let directory: string;
@@ -74,6 +78,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubEnv("CI", "");
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-secrets-"));
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(directory, "home"));
 });
 
 afterEach(async () => {
@@ -208,19 +213,51 @@ describe("hot-updater secrets put", () => {
     expect(loadConfig).not.toHaveBeenCalled();
   });
 
-  it("says where to put the value when the adapter is envSecrets(), which is read-only, before any prompt", async () => {
-    configure(envSecrets());
+  it("stores in this machine's key store without a secrets adapter, 0600, and names the file", async () => {
+    configure();
+    vi.spyOn(process, "cwd").mockReturnValue(directory);
+    await fs.writeFile(path.join(directory, "package.json"), "{}");
+    const json = JSON.stringify({ type: "service_account", private_key: "k" });
+    const file = path.join(directory, "play.json");
+    await fs.writeFile(file, json);
 
-    await handleSecretsPut("release-keystore", {
-      kind: "android-keystore",
-      keystore: "release.jks",
-      keyAlias: "upload",
+    await handleSecretsPut("play-service-account", {
+      kind: "play-service-account",
+      serviceAccount: file,
     });
 
-    expect(log.error).toHaveBeenCalledWith(
-      "The envSecrets secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater to the android-keystore as one JSON value, or set HOT_UPDATER_ANDROID_KEYSTORE_PATH or HOT_UPDATER_ANDROID_KEYSTORE_BASE64, HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, HOT_UPDATER_ANDROID_KEY_PASSWORD; or configure a secrets adapter that stores values.",
-    );
-    expect(password).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBeUndefined();
+    const stored = getLocalKeyFile("play-service-account", directory);
+    expect(stored.startsWith(path.join(directory, "home", "keys"))).toBe(true);
+    await expect(fs.readFile(stored, "utf-8")).resolves.toBe(json);
+    expect((await fs.stat(stored)).mode & 0o777).toBe(0o600);
+    expect(messages().at(-1)).toMatch(/In:\s+/u);
+    expect(messages().at(-1)).toContain(stored);
+    // Never a .env file.
+    await expect(
+      fs.access(path.join(directory, ".env.hotupdater")),
+    ).rejects.toThrow();
+  });
+
+  it("stores in this machine's key store when the config's adapter stores nothing", async () => {
+    configure({
+      name: "read-only",
+      get: async (names) =>
+        Object.fromEntries(names.map((name) => [name, undefined])),
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(directory);
+    await fs.writeFile(path.join(directory, "package.json"), "{}");
+    const file = path.join(directory, "play.json");
+    await fs.writeFile(file, '{"type":"service_account"}');
+
+    await handleSecretsPut("play-service-account", {
+      kind: "play-service-account",
+      serviceAccount: file,
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    await expect(
+      fs.readFile(getLocalKeyFile("play-service-account", directory), "utf-8"),
+    ).resolves.toBe('{"type":"service_account"}');
   });
 });

@@ -5,11 +5,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * The first build of a project whose `secrets` adapter is `envSecrets()`, which
- * can't store the key a sign-in issues: the key goes to its 0600 file, and
- * the same build signs and uploads with it from there. Only the sign-ins,
- * the native build, and the stores are stand-ins; the credential resolver
- * and the issued-key flow are the CLI's own.
+ * The first build of a project without a `secrets` adapter: the key a
+ * sign-in issues goes to this machine's key store, the same build signs and
+ * uploads with it, and the next build on this machine reuses it without
+ * signing in. Only the sign-ins, the native build, and the stores are
+ * stand-ins; the credential resolver and the issued-key flow are the CLI's
+ * own.
  */
 
 const P8 =
@@ -21,7 +22,7 @@ const SERVICE_ACCOUNT = JSON.stringify({
     "-----BEGIN PRIVATE KEY-----\nMIIBfirstBuild\n-----END PRIVATE KEY-----",
 });
 
-const { log, uploads, scheme, cacheDir } = vi.hoisted(() => ({
+const { log, uploads, scheme, home } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -37,7 +38,7 @@ const { log, uploads, scheme, cacheDir } = vi.hoisted(() => ({
     /** A write-only adapter, as GitHub Actions secrets outside a workflow. */
     writeOnly: false,
   },
-  cacheDir: { path: "" },
+  home: { path: "" },
 }));
 
 vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
@@ -115,22 +116,23 @@ vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", async () => {
-  const { envSecrets } = await import("@hot-updater/cli-tools");
+  const { withLocalKeyStore } = await import("@hot-updater/cli-tools");
   return {
     prepareNativeBuild: vi.fn(async (options) => {
-      const secrets = scheme.writeOnly
+      const configured = scheme.writeOnly
         ? {
             name: "write-only",
             get: async (names: readonly string[]) =>
               Object.fromEntries(names.map((name) => [name, undefined])),
             set: async () => {},
           }
-        : envSecrets();
+        : undefined;
+      // As loadConfig hands it over: the key store after the config's adapter.
+      const secrets = withLocalKeyStore(configured);
       if (scheme.platform === "ios") {
         await options.beforePrebuild?.({
           scheme: "release",
           secrets,
-          cacheDir: cacheDir.path,
           iosScheme: {
             configuration: "Release",
             bundleIdentifier: "com.example.app",
@@ -140,7 +142,6 @@ vi.mock("@/utils/native/prepareNativeBuild", async () => {
         await options.beforePrebuild?.({
           scheme: "release",
           secrets,
-          cacheDir: cacheDir.path,
           androidScheme: { packageName: "com.example.app" },
         });
       }
@@ -171,6 +172,10 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
   registerNativeBuild: vi.fn(),
 }));
 
+import { issuePlayServiceAccount } from "@hot-updater/android-helper";
+import { issueAscApiKey } from "@hot-updater/apple-helper";
+import { getCwd, getLocalKeyFile } from "@hot-updater/cli-tools";
+
 import { buildAndroidNative, buildIosNative } from "./buildNative";
 
 const withTTY = async <T>(run: () => Promise<T>) => {
@@ -197,9 +202,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   uploads.length = 0;
   scheme.writeOnly = false;
-  cacheDir.path = await fs.mkdtemp(
-    path.join(os.tmpdir(), "hot-updater-build-"),
-  );
+  home.path = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-build-"));
+  vi.stubEnv("HOT_UPDATER_HOME", home.path);
   vi.stubEnv("CI", "");
   for (const name of [
     "HOT_UPDATER_ASC_KEY_PATH",
@@ -217,32 +221,46 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.unstubAllEnvs();
-  await fs.rm(cacheDir.path, { recursive: true, force: true });
+  await fs.rm(home.path, { recursive: true, force: true });
 });
 
-describe("a first build whose secrets adapter is envSecrets()", () => {
-  it("uploads to TestFlight with the key the sign-in issued, from its file", async () => {
+const keyFile = (name: string) => getLocalKeyFile(name, getCwd());
+
+describe("a first build without a secrets adapter", () => {
+  it("uploads to TestFlight with the key the sign-in issued, keeps it on this machine, and the next build reuses it without signing in", async () => {
     scheme.platform = "ios";
-    await withTTY(() =>
-      buildIosNative({
-        interactive: false,
-        scheme: "release",
-        upload: "testflight",
-      }),
-    );
+    const build = () =>
+      withTTY(() =>
+        buildIosNative({
+          interactive: false,
+          scheme: "release",
+          upload: "testflight",
+        }),
+      );
+    await build();
 
     expect(uploads).toEqual([{ keyId: "KEY1234567", p8: P8 }]);
-    const file = path.join(cacheDir.path, "issued", "asc-api-key.json");
+    const file = keyFile("asc-api-key");
+    expect(file.startsWith(home.path)).toBe(true);
     expect(JSON.parse(await fs.readFile(file, "utf-8"))).toMatchObject({
       keyId: "KEY1234567",
       p8: P8,
     });
     expect(printed()).toContain(file);
+    expect(printed()).toContain("No App Store Connect API key on this machine.");
     expect(printed()).not.toContain("MIGHAgEA");
+    expect(log.error).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    uploads.length = 0;
+    await build();
+
+    expect(issueAscApiKey).not.toHaveBeenCalled();
+    expect(uploads).toEqual([{ keyId: "KEY1234567", p8: P8 }]);
     expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("uploads to TestFlight with the key a write-only adapter stored, from its copy", async () => {
+  it("uploads to TestFlight with the key a write-only adapter stored, from its copy on this machine", async () => {
     scheme.platform = "ios";
     scheme.writeOnly = true;
     await withTTY(() =>
@@ -254,12 +272,12 @@ describe("a first build whose secrets adapter is envSecrets()", () => {
     );
 
     expect(uploads).toEqual([{ keyId: "KEY1234567", p8: P8 }]);
-    expect(printed()).toContain("copied to a file");
+    expect(printed()).toContain("kept on this machine");
     expect(printed()).not.toContain("MIGHAgEA");
     expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("uploads to Google Play with the service account a write-only adapter stored, from its copy", async () => {
+  it("uploads to Google Play with the service account a write-only adapter stored, from its copy on this machine", async () => {
     scheme.platform = "android";
     scheme.writeOnly = true;
     await withTTY(() =>
@@ -275,24 +293,30 @@ describe("a first build whose secrets adapter is envSecrets()", () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("uploads to Google Play with the service account the sign-in issued, from its file", async () => {
+  it("uploads to Google Play with the service account the sign-in issued, and the next build reuses it without signing in", async () => {
     scheme.platform = "android";
-    await withTTY(() =>
-      buildAndroidNative({
-        interactive: false,
-        scheme: "release",
-        upload: "play-internal",
-      }),
-    );
+    const build = () =>
+      withTTY(() =>
+        buildAndroidNative({
+          interactive: false,
+          scheme: "release",
+          upload: "play-internal",
+        }),
+      );
+    await build();
 
     expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
-    const file = path.join(
-      cacheDir.path,
-      "issued",
-      "play-service-account.json",
-    );
-    await expect(fs.readFile(file, "utf-8")).resolves.toBe(SERVICE_ACCOUNT);
+    await expect(
+      fs.readFile(keyFile("play-service-account"), "utf-8"),
+    ).resolves.toBe(SERVICE_ACCOUNT);
     expect(printed()).not.toContain("MIIBfirstBuild");
     expect(log.error).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    uploads.length = 0;
+    await build();
+
+    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
+    expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
   });
 });
