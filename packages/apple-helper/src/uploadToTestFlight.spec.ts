@@ -1264,9 +1264,10 @@ describe("resolveTestFlightUploadKey", () => {
     );
   });
 
-  it("refuses a scheme whose xcconfig turns code signing off", async () => {
+  it("refuses a scheme whose xcconfig, which resolves from ios/ as the build reads it, turns code signing off", async () => {
+    await fs.mkdir(path.join(dir, "ios"), { recursive: true });
     await fs.writeFile(
-      path.join(dir, "Unsigned.xcconfig"),
+      path.join(dir, "ios", "Unsigned.xcconfig"),
       "// No signing for this build.\nCODE_SIGNING_REQUIRED = NO\n",
     );
 
@@ -1282,9 +1283,29 @@ describe("resolveTestFlightUploadKey", () => {
     );
   });
 
-  it("takes a scheme whose extraParams and xcconfig keep code signing on", async () => {
+  it("refuses a scheme whose -xcconfig in extraParams turns code signing off", async () => {
+    await fs.mkdir(path.join(dir, "ios", "config"), { recursive: true });
     await fs.writeFile(
-      path.join(dir, "Release.xcconfig"),
+      path.join(dir, "ios", "config", "Unsigned.xcconfig"),
+      "CODE_SIGNING_ALLOWED=NO\n",
+    );
+
+    await expect(
+      resolveTestFlightUploadKey(
+        iosScheme({
+          extraParams: ["-xcconfig", "config/Unsigned.xcconfig"],
+          signing: { ascApiKey: "secret:asc-api-key" },
+        }),
+      ),
+    ).rejects.toThrow(
+      "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_ALLOWED=NO in config/Unsigned.xcconfig).",
+    );
+  });
+
+  it("takes a scheme whose extraParams and xcconfig keep code signing on", async () => {
+    await fs.mkdir(path.join(dir, "ios"), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "ios", "Release.xcconfig"),
       "CODE_SIGNING_ALLOWED = YES\nCODE_SIGN_STYLE = Automatic\n",
     );
 

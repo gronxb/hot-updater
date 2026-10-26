@@ -260,25 +260,36 @@ const runConcurrently = async <T>(
 const CODE_SIGNING_OFF =
   /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)\s*=\s*NO\s*$/imu;
 
-/** The project-relative path of a scheme's file, as the build resolves it. */
+/** A scheme's `exportOptionsPlist`, which resolves from the project's root. */
 const schemeFile = (file: string) =>
   path.isAbsolute(file) ? file : path.resolve(getCwd(), file);
 
 /**
- * Where the scheme turns code signing off: an `extraParams` entry, or its
- * `xcconfig` file, which the build reads. Undefined when it signs.
+ * Where the scheme turns code signing off: an `extraParams` setting, or an
+ * xcconfig the build includes, its `xcconfig` or an `-xcconfig` in
+ * `extraParams`, which resolve from `ios/`, where xcodebuild runs, as
+ * `writeBuildXcconfig` reads them. Undefined when it signs.
  */
 const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
-  const param = iosScheme.extraParams?.find((entry) =>
-    CODE_SIGNING_OFF.test(entry),
-  );
+  const extraParams = iosScheme.extraParams ?? [];
+  const param = extraParams.find((entry) => CODE_SIGNING_OFF.test(entry));
   if (param) return `${param.trim()} in extraParams`;
-  if (!iosScheme.xcconfig) return undefined;
-  const xcconfig = await fs.promises
-    .readFile(schemeFile(iosScheme.xcconfig), "utf-8")
-    .catch(() => undefined);
-  const setting = xcconfig?.match(CODE_SIGNING_OFF)?.[0];
-  return setting ? `${setting.trim()} in ${iosScheme.xcconfig}` : undefined;
+  const xcconfigs = [
+    ...(iosScheme.xcconfig ? [iosScheme.xcconfig] : []),
+    ...extraParams.flatMap((entry, index) =>
+      entry === "-xcconfig" && index + 1 < extraParams.length
+        ? [extraParams[index + 1]!]
+        : [],
+    ),
+  ];
+  for (const xcconfig of xcconfigs) {
+    const text = await fs.promises
+      .readFile(path.resolve(getCwd(), "ios", xcconfig), "utf-8")
+      .catch(() => undefined);
+    const setting = text?.match(CODE_SIGNING_OFF)?.[0];
+    if (setting) return `${setting.trim()} in ${xcconfig}`;
+  }
+  return undefined;
 };
 
 /**
