@@ -89,6 +89,7 @@ beforeEach(() => {
       "build/",
       "local.properties",
       ".xcode.env.local",
+      "GoogleService-Info.plist",
       ".hot-updater/",
       "",
     ].join("\n"),
@@ -240,14 +241,22 @@ describe("computeNativeBuildKey", () => {
       (
         await changedBy(
           () =>
-            write(
-              "apps/mobile/ios/.xcode.env.local",
-              "export NODE_BINARY=node\n",
-            ),
+            write("apps/mobile/ios/App/GoogleService-Info.plist", "<plist/>"),
           ios,
         )
       ).changed,
-    ).toEqual(["input:file:apps/mobile/ios/.xcode.env.local"]);
+    ).toEqual(["input:file:apps/mobile/ios/App/GoogleService-Info.plist"]);
+    // This machine's Node.js path, which pod install writes.
+    expect(
+      await changedBy(
+        () =>
+          write(
+            "apps/mobile/ios/.xcode.env.local",
+            "export NODE_BINARY=/Users/me/.nvm/node\n",
+          ),
+        ios,
+      ),
+    ).toEqual({ changed: [], same: true });
     expect(
       (
         await changedBy(

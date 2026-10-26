@@ -624,10 +624,13 @@ const readIgnoredInputs = async ({
       }
     }
     // local.properties names the SDK by an absolute path; the SDK's
-    // components are part of the toolchain.
+    // components are part of the toolchain. `pod install` writes this
+    // machine's Node.js path to .xcode.env.local, which React Native says
+    // never to commit: its variables are read below, as the environment.
     const localProperties = path.join(cwd, "android", "local.properties");
+    const xcodeEnvLocal = path.join(cwd, "ios", ".xcode.env.local");
     await mapLimit(files.sort(), 16, async (file) => {
-      if (file === localProperties) return;
+      if (file === localProperties || file === xcodeEnvLocal) return;
       inputs[`file:${fromRoot(file)}`] = await hashes.hash(file);
     });
     if (platform === "android") {
