@@ -189,6 +189,18 @@ npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 Replace `<channel>` with your target channel name, for example `dev`, `staging`,
 or `production`.
 
+## Print a Channel's Link
+
+A preview build opens a channel's link to switch to it. Print the link that
+`console.channelLinkPrefix` makes, with the commands that open it on an
+emulator or simulator:
+
+```package-install
+npx hot-updater channel link <channel>
+```
+
+See [Preview Builds](/docs/guides/preview-builds#show-channel-links-in-the-console).
+
 ## Delete a Channel
 
 Delete a channel with its bundles, such as a closed pull request's preview

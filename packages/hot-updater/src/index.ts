@@ -61,7 +61,11 @@ import {
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import { handleChannelDelete, handleSetChannel } from "./commands/channel";
+import {
+  handleChannelDelete,
+  handleChannelLink,
+  handleSetChannel,
+} from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
@@ -286,6 +290,15 @@ channelCommand
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleChannelDelete);
+
+channelCommand
+  .command("link")
+  .description(
+    "Print a channel's link, which switches a preview build to the channel, from console.channelLinkPrefix",
+  )
+  .argument("<channel>", "the channel to link")
+  .option("--json", "output the link as JSON")
+  .action(handleChannelLink);
 
 const nativeBuildCommand = program
   .command("native-build")
