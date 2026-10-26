@@ -22,6 +22,7 @@ import {
   registerCredentialValue,
   secretVariableName,
 } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -197,6 +198,36 @@ const assertSecretName = (name: string) => {
   }
 };
 
+const listNames = (names: readonly string[]) =>
+  names.length <= 2
+    ? names.join(" and ")
+    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+
+/** The variables `secrets put` reads a keystore's passwords from. */
+const PASSWORD_INPUTS: ReadonlySet<string> = new Set([
+  "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
+  "HOT_UPDATER_ANDROID_KEY_PASSWORD",
+]);
+
+/**
+ * The environment variables set, in `process.env` or `.env.hotupdater`, that
+ * builds read for `name` before what the CLI stores: the kind's per-field
+ * overrides, and with `localSecrets()`, the whole value's variable, which it
+ * reads before its files.
+ */
+const environmentOverrides = (
+  kind: CredentialKind,
+  name: string,
+  secrets: SecretsAdapter,
+  env: Readonly<Record<string, string>>,
+) =>
+  [
+    ...CREDENTIAL_ENV_NAMES[kind].flat(),
+    ...(getConfiguredAdapter(secrets) === undefined
+      ? [secretVariableName(name)]
+      : []),
+  ].filter((variable) => getHotUpdaterEnvValue(env, variable) !== undefined);
+
 /**
  * `secrets put`: stores a build credential you have as `name` through the
  * config's `secrets` adapter, or `localSecrets()`'s store by default, as
@@ -223,6 +254,18 @@ export const handleSecretsPut = async (
     // Registers the config's secrets adapter, which everything below uses.
     const { secrets } = await loadConfig(null);
     const cwd = getCwd();
+    // The keystore's passwords are this command's input, not an override.
+    const overrides = environmentOverrides(
+      options.kind,
+      name,
+      secrets,
+      await readLoadedHotUpdaterEnv(cwd),
+    ).filter((variable) => !PASSWORD_INPUTS.has(variable));
+    if (overrides.length > 0) {
+      throw new Error(
+        `${listNames(overrides)} ${overrides.length === 1 ? "is" : "are"} set in the environment or .env.hotupdater, which builds read before what Hot Updater stores, so the ${options.kind} you store would never be used. Unset ${overrides.length === 1 ? "it" : "them"}, then run this again.`,
+      );
+    }
     // A read-only adapter's value is read before localSecrets()' copy, so a
     // value stored there would never be used.
     const configured = getConfiguredAdapter(secrets);
@@ -365,11 +408,6 @@ const readOverrideFields = async (
   return parseFields(contents);
 };
 
-const listNames = (names: readonly string[]) =>
-  names.length <= 2
-    ? names.join(" and ")
-    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
-
 export interface SecretsIssueOptions {
   /** Issue a new key even when one is stored, which stays valid. */
   readonly replace?: boolean;
@@ -425,14 +463,7 @@ export const handleSecretsIssue = async (
     const cwd = getCwd();
     const env = await readLoadedHotUpdaterEnv(cwd);
 
-    // The default store reads the whole value's variable before the key
-    // store, so a key stored there would never be read either.
-    const overrides = [
-      ...CREDENTIAL_ENV_NAMES[kind].flat(),
-      ...(getConfiguredAdapter(secrets) === undefined
-        ? [secretVariableName(name)]
-        : []),
-    ].filter((variable) => getHotUpdaterEnvValue(env, variable) !== undefined);
+    const overrides = environmentOverrides(kind, name, secrets, env);
     if (overrides.length > 0) {
       const set = `${listNames(overrides)} ${overrides.length === 1 ? "is" : "are"} set in the environment or .env.hotupdater`;
       if (replace) {

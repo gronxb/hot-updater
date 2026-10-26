@@ -241,6 +241,28 @@ describe("hot-updater secrets put", () => {
     ).rejects.toThrow();
   });
 
+  it("refuses a value the environment overrides, which builds read first, before any prompt", async () => {
+    configure();
+    vi.spyOn(process, "cwd").mockReturnValue(directory);
+    await fs.writeFile(path.join(directory, "package.json"), "{}");
+    await fs.writeFile(
+      path.join(directory, ".env.hotupdater"),
+      'HOT_UPDATER_RELEASE_KEYSTORE=\'{"keystore":"old"}\'\n',
+    );
+
+    await handleSecretsPut("release-keystore", {
+      kind: "android-keystore",
+      keystore: "release.jks",
+      keyAlias: "upload",
+    });
+
+    expect(log.error).toHaveBeenCalledWith(
+      "HOT_UPDATER_RELEASE_KEYSTORE is set in the environment or .env.hotupdater, which builds read before what Hot Updater stores, so the android-keystore you store would never be used. Unset it, then run this again.",
+    );
+    expect(password).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
   it("refuses a value a read-only adapter already holds, which builds read first, before any prompt", async () => {
     configure({
       name: "read-only",
