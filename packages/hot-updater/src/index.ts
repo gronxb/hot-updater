@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  Argument,
   Command,
   InvalidArgumentError,
   Option,
@@ -90,7 +91,12 @@ import {
   handleRemoteConfigShow,
   handleRemoteConfigVersions,
 } from "./commands/remoteConfig";
-import { handleSecretsPut, SECRET_KINDS } from "./commands/secrets";
+import {
+  handleSecretsIssue,
+  handleSecretsPut,
+  ISSUED_KINDS,
+  SECRET_KINDS,
+} from "./commands/secrets";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
@@ -379,7 +385,7 @@ const secretsCommand = program
 secretsCommand
   .command("put")
   .description(
-    "Store a build credential as one JSON value that secret:<name> resolves",
+    "Store a build credential you have as one JSON value that secret:<name> resolves",
   )
   .argument("<name>", "the secret's name, such as release-keystore")
   .addOption(
@@ -387,10 +393,7 @@ secretsCommand
       .choices(SECRET_KINDS)
       .makeOptionMandatory(),
   )
-  .option(
-    "--p8 <file>",
-    "asc-api-key: the .p8 key file; without --p8, --key-id, and --issuer-id, sign in with your Apple Account and Hot Updater issues the key",
-  )
+  .option("--p8 <file>", "asc-api-key: the .p8 key file")
   .option("--key-id <id>", "asc-api-key: the key ID")
   .option("--issuer-id <id>", "asc-api-key: the issuer ID")
   .option(
@@ -400,9 +403,46 @@ secretsCommand
   .option("--key-alias <alias>", "android-keystore: the key's alias")
   .option(
     "--service-account <file>",
-    "play-service-account: the service account's JSON key file; without it, sign in with Google and Hot Updater issues the key",
+    "play-service-account: the service account's JSON key file",
+  )
+  .addHelpText(
+    "after",
+    "\nTo sign in and have Hot Updater issue an App Store Connect API key or a Play service account, run secrets issue.",
   )
   .action((name: string, options) => handleSecretsPut(name, options));
+
+secretsCommand
+  .command("issue")
+  .description(
+    "Sign in, at a terminal, and store the App Store Connect API key or Play service account Hot Updater issues",
+  )
+  .addArgument(new Argument("<kind>", "what to issue").choices(ISSUED_KINDS))
+  .argument(
+    "[name]",
+    "the secret's name, which builds resolve (default: the kind)",
+  )
+  .option(
+    "--replace",
+    "issue a new key even when one is stored; the old key stays valid until you revoke it",
+  )
+  .addHelpText(
+    "after",
+    [
+      "",
+      "asc-api-key signs in to your Apple Account with asc, the App Store Connect CLI.",
+      "play-service-account signs in with Google in your browser, with your own",
+      '"Desktop app" OAuth client in HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID and',
+      "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET, until Hot Updater ships one.",
+      "",
+      "A key already stored, or set by the environment, is kept. --replace never",
+      "revokes the old key: it names the key and where to revoke it.",
+      "In CI or without a terminal it never signs in; store a key you have with",
+      "secrets put instead.",
+    ].join("\n"),
+  )
+  .action((kind, name, options) =>
+    handleSecretsIssue(kind, name ?? kind, options),
+  );
 
 const remoteConfigCommand = program
   .command("remote-config")

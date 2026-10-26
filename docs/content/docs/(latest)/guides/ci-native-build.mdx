@@ -46,20 +46,22 @@ Bring the keys you already have:
   in Play Console.
 - The Android release keystore and its passwords.
 
-Or let Hot Updater issue the first two, on your machine only: in CI it never
-signs in. Run [`secrets put`](/docs/concepts/secrets#store-a-secret) without
-key files:
+Store the keys you have with
+[`secrets put`](/docs/concepts/secrets#store-a-secret). Or let Hot Updater
+issue the first two, on your machine only: in CI it never signs in. Run
+[`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in):
 
 ```package-install
-npx hot-updater secrets put asc-api-key --kind asc-api-key
-npx hot-updater secrets put play-service-account --kind play-service-account
+npx hot-updater secrets issue asc-api-key
+npx hot-updater secrets issue play-service-account
 ```
 
-`secrets put asc-api-key` signs you in with your Apple Account once, as
+`secrets issue asc-api-key` signs you in with your Apple Account once, as
 [Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
-describes, and `secrets put play-service-account` signs you in with Google
+describes, and `secrets issue play-service-account` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
-describes. An adapter that stores values keeps the key, where CI reads it.
+describes. Each keeps a key the adapter already holds; `--replace` issues a
+new one and names the old key to revoke once CI no longer uses it. An adapter that stores values keeps the key, where CI reads it.
 With `env()`, which never stores, the CLI writes the key to a file only your
 user can read, prints the variables to store it in, and offers to store it as
 a GitHub Actions secret
@@ -362,7 +364,7 @@ its certificates and restores the keychains before it stops.
 A job without the Play service account stops before the build, without
 signing in to Google. The error names the credential and where the `secrets`
 adapter looks for it, says that Hot Updater signs in only at a terminal and
-never in CI, gives the `secrets put` command that stores it once, and lists
+never in CI, gives the `secrets issue` command that stores it once, and lists
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` and
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the variables that provide it
 instead. A missing keystore or App Store Connect API key fails the same way,

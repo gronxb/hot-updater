@@ -94,9 +94,8 @@ export const credentialOverrideHint = (kind: CredentialKind): string =>
   `Or set ${describeFields(CREDENTIAL_ENV_NAMES[kind])} to provide ${kind} from the environment.`;
 
 /**
- * The command that stores a credential of `kind` as `name` through the
- * config's `secrets` adapter, from the files a developer has, or, for the
- * keys Hot Updater issues, with a sign-in.
+ * The command that stores a credential of `kind` you have as `name` through
+ * the config's `secrets` adapter, from its files.
  */
 export const credentialPutCommand = (
   kind: CredentialKind,
@@ -107,12 +106,37 @@ export const credentialPutCommand = (
     case "android-keystore":
       return `${put} --keystore <release.jks> --key-alias <alias>`;
     case "asc-api-key":
-    // Signs in with an Apple Account, and Hot Updater issues the key.
+      return `${put} --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`;
     case "play-service-account":
-      // Signs in with Google, and Hot Updater issues the key.
-      return put;
+      return `${put} --service-account <key.json>`;
   }
 };
+
+/** The credentials Hot Updater issues itself after a sign-in. */
+export type IssuedCredentialKind = Exclude<CredentialKind, "android-keystore">;
+
+/**
+ * The command that signs in once, at a terminal, and stores the key Hot
+ * Updater issues as `name`: an App Store Connect API key after an Apple
+ * Account sign-in, a Play service account after a Google one.
+ */
+export const credentialIssueCommand = (
+  kind: IssuedCredentialKind,
+  name: string = kind,
+): string =>
+  `npx hot-updater secrets issue ${kind}${name === kind ? "" : ` ${name}`}`;
+
+/**
+ * The command that stores a missing credential of `kind` as `name`: the
+ * keystore you have, or the key Hot Updater issues after a sign-in.
+ */
+export const credentialStoreCommand = (
+  kind: CredentialKind,
+  name: string = kind,
+): string =>
+  kind === "android-keystore"
+    ? credentialPutCommand(kind, name)
+    : credentialIssueCommand(kind, name);
 
 export class CredentialUnavailableError extends Error {
   readonly kind: CredentialKind;
@@ -258,6 +282,7 @@ const isIdentifierField = (field: string) =>
     "project_id",
     "client_email",
     "client_id",
+    "private_key_id",
     "universe_domain",
   ].includes(field) ||
   field.endsWith("_uri") ||
@@ -551,7 +576,7 @@ export const createCredentialResolver = ({
     if (value === undefined) {
       throw new CredentialUnavailableError(
         kind,
-        `${item} is not in the ${store.name} secrets adapter (${describeSecret(store, name)}). Store it once with \`${credentialPutCommand(kind, name)}\`. ${credentialOverrideHint(kind)}`,
+        `${item} is not in the ${store.name} secrets adapter (${describeSecret(store, name)}). Store it once with \`${credentialStoreCommand(kind, name)}\`. ${credentialOverrideHint(kind)}`,
       );
     }
     registerSecretValue(value);

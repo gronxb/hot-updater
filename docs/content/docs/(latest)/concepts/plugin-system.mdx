@@ -213,8 +213,9 @@ provider setup, native trust-anchor rollout, and rotation guidance.
 
 The secrets adapter is where the CLI reads the secrets `hot-updater.config.ts`
 names: native build credentials as `secret:<name>`, and deploy credentials
-through `secretEnv([...])`. It stores keys that `secrets put` stores or a
-sign-in issues when the store can be written. `env()` from
+through `secretEnv([...])`. It stores the keys `secrets put` stores, and the
+keys `secrets issue` or a build issues after a sign-in, when the store can be
+written. `env()` from
 `hot-updater/secrets`, the default, reads environment variables and stores
 nothing; `awsSecretsManager()`, `googleSecretManager()`, and `infisical()`
 read and store secrets in AWS Secrets Manager, Google Cloud Secret Manager,

@@ -20,8 +20,8 @@ import type { CreateGitHubSecrets } from "./githubSecret";
 import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
-  credentialSetupCommand,
   type IssuedCredentialPolicy,
+  type IssuedCredentialReplacement,
   type IssuedCredentialTarget,
   keepIssuedCopy,
   prepareIssuedCredential,
@@ -31,9 +31,9 @@ import {
   writeIssuedCredential,
 } from "./issuedCredential";
 
-/** The command that signs in once, in a terminal, and stores the key. */
-export const playServiceAccountSetupCommand = (name: string) =>
-  credentialSetupCommand(name, "play-service-account");
+/** Where a project's service accounts, and each one's keys, are in Google Cloud. */
+export const serviceAccountKeysUrl = (projectId: string) =>
+  `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${encodeURIComponent(projectId)}`;
 
 const POLICY: IssuedCredentialPolicy = {
   kind: "play-service-account",
@@ -114,7 +114,7 @@ const revokeNotStored = async (
   error: CredentialNotStoredError,
 ): Promise<never> => {
   const revoked = await issued.revoke();
-  const keys = `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${issued.projectId}`;
+  const keys = serviceAccountKeysUrl(issued.projectId);
   throw new Error(
     [
       reason,
@@ -166,11 +166,17 @@ const storeIssued = async (
   secrets: WritableSecrets,
   name: string,
   issued: IssuedPlayServiceAccount,
+  previous: string | undefined,
 ): Promise<{ readonly readable: boolean }> => {
   // Masked before it is sent, so no failure can print it.
   registerCredentialValue(issued.json);
   try {
-    return await storeIssuedCredential({ secrets, name, value: issued.json });
+    return await storeIssuedCredential({
+      secrets,
+      name,
+      value: issued.json,
+      ...(previous !== undefined ? { previous } : {}),
+    });
   } catch (error) {
     if (error instanceof CredentialNotStoredError) {
       await revokeNotStored(
@@ -212,7 +218,7 @@ export const ensurePlayServiceAccount = async ({
   name,
   packageName,
   env = {},
-  environment = true,
+  replace,
   secrets,
   cacheDir,
   githubSecrets,
@@ -226,8 +232,11 @@ export const ensurePlayServiceAccount = async ({
   env?: Readonly<Record<string, string>>;
   /** The adapter the key is read from and stored in, the config's by default. */
   secrets?: SecretsAdapter;
-  /** An environment override of play-service-account counts as the key. */
-  environment?: boolean;
+  /**
+   * Set by `secrets issue`: a key is issued whatever the adapter holds,
+   * replacing `previous`.
+   */
+  replace?: IssuedCredentialReplacement;
   /** The config's `cacheDir`, where a read-only adapter's key is written. */
   cacheDir?: string | null;
   /** The adapter that stores a read-only adapter's key as a GitHub Actions secret. */
@@ -238,8 +247,8 @@ export const ensurePlayServiceAccount = async ({
   const prepared = await prepareIssuedCredential(POLICY, {
     name,
     env,
-    environment,
     cacheDir,
+    ...(replace ? { replace } : {}),
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
@@ -316,7 +325,12 @@ export const ensurePlayServiceAccount = async ({
       };
     }
     const store = target.secrets;
-    const { readable } = await storeIssued(store, name, issued);
+    const { readable } = await storeIssued(
+      store,
+      name,
+      issued,
+      replace?.previous,
+    );
     p.log.success(
       ui.block("Play service account stored", [
         ui.kv("Secret", name),

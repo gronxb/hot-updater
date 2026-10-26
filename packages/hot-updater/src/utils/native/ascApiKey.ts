@@ -16,8 +16,8 @@ import type { CreateGitHubSecrets } from "./githubSecret";
 import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
-  credentialSetupCommand,
   type IssuedCredentialPolicy,
+  type IssuedCredentialReplacement,
   type IssuedCredentialTarget,
   keepIssuedCopy,
   prepareIssuedCredential,
@@ -26,10 +26,6 @@ import {
   type WritableSecrets,
   writeIssuedCredential,
 } from "./issuedCredential";
-
-/** The command that signs in once, in a terminal, and stores the key. */
-export const ascApiKeySetupCommand = (name: string) =>
-  credentialSetupCommand(name, "asc-api-key");
 
 const POLICY: IssuedCredentialPolicy = {
   kind: "asc-api-key",
@@ -175,12 +171,18 @@ const storeIssued = async (
   secrets: WritableSecrets,
   name: string,
   key: IssuedAscApiKey,
+  previous: string | undefined,
 ): Promise<{ readonly readable: boolean }> => {
   const value = storedValue(key);
   // Masked before it is sent, so no failure can print it.
   registerCredentialValue(value);
   try {
-    return await storeIssuedCredential({ secrets, name, value });
+    return await storeIssuedCredential({
+      secrets,
+      name,
+      value,
+      ...(previous !== undefined ? { previous } : {}),
+    });
   } catch (error) {
     if (error instanceof CredentialNotStoredError) {
       await revokeNotStored(key, error);
@@ -209,7 +211,7 @@ const storeIssued = async (
 export const ensureAscApiKey = async ({
   name,
   env = {},
-  environment = true,
+  replace,
   secrets,
   cacheDir,
   githubSecrets,
@@ -221,8 +223,11 @@ export const ensureAscApiKey = async ({
   env?: Readonly<Record<string, string>>;
   /** The adapter the key is read from and stored in, the config's by default. */
   secrets?: SecretsAdapter;
-  /** An environment override of asc-api-key counts as the key. */
-  environment?: boolean;
+  /**
+   * Set by `secrets issue`: a key is issued whatever the adapter holds,
+   * replacing `previous`.
+   */
+  replace?: IssuedCredentialReplacement;
   /** The config's `cacheDir`, where a read-only adapter's key is written. */
   cacheDir?: string | null;
   /** The adapter that stores a read-only adapter's key as a GitHub Actions secret. */
@@ -233,8 +238,8 @@ export const ensureAscApiKey = async ({
   const prepared = await prepareIssuedCredential(POLICY, {
     name,
     env,
-    environment,
     cacheDir,
+    ...(replace ? { replace } : {}),
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
@@ -282,7 +287,7 @@ export const ensureAscApiKey = async ({
       };
     }
     const store = target.secrets;
-    const { readable } = await storeIssued(store, name, key);
+    const { readable } = await storeIssued(store, name, key, replace?.previous);
     p.log.success(
       ui.block("App Store Connect API key stored", [
         ui.kv("Secret", name),

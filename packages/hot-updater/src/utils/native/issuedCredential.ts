@@ -3,12 +3,13 @@ import path from "node:path";
 
 import {
   CREDENTIAL_ENV_NAMES,
-  credentialPutCommand,
+  credentialIssueCommand,
   describeSecret,
   envSecrets,
   getConfiguredSecrets,
   getCwd,
   getHotUpdaterEnvValue,
+  type IssuedCredentialKind,
   p,
   readLoadedHotUpdaterEnv,
   registerCredentialValue,
@@ -20,19 +21,7 @@ import { ui } from "../cli-ui";
 import { canSignIn } from "../prompt";
 import { type CreateGitHubSecrets, offerGitHubSecret } from "./githubSecret";
 
-/**
- * The credentials Hot Updater issues itself after a sign-in, when a build
- * needs one and the config's `secrets` adapter has none: an App Store
- * Connect API key after an Apple Account sign-in, a Play service account
- * after a Google one.
- */
-export type IssuedCredentialKind = "asc-api-key" | "play-service-account";
-
-/** The command that signs in once, at a terminal, and stores the key. */
-export const credentialSetupCommand = (
-  name: string,
-  kind: IssuedCredentialKind,
-) => credentialPutCommand(kind, name);
+export type { IssuedCredentialKind };
 
 /**
  * Why there is no key to sign or upload with: the run is in CI or has no
@@ -57,6 +46,15 @@ export interface IssuedCredentialPolicy {
   readonly signIn: string;
   /** The account `canSignIn` names, such as "Apple Account". */
   readonly account: string;
+}
+
+/**
+ * `secrets issue` read the adapter itself, and issues a key whatever it
+ * holds: the adapter is not read again before the sign-in. `previous` is
+ * what it held as the name, the key the new one replaces, if any.
+ */
+export interface IssuedCredentialReplacement {
+  readonly previous?: string;
 }
 
 /** A secrets adapter that stores values. */
@@ -200,17 +198,17 @@ const describeUnavailable = (
   kind: IssuedCredentialKind,
 ) => {
   const item = name === kind ? kind : `${name} (${kind})`;
-  return `${item} is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}). Store it once from a terminal with \`${credentialSetupCommand(name, kind)}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there.`;
+  return `${item} is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}). Store it once from a terminal with \`${credentialIssueCommand(kind, name)}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there.`;
 };
 
 /**
  * Everything checked before a sign-in, in this order, so nothing fails
  * after the developer signed in:
  *
- * 1. an environment override of the kind is used as it is (unless
- *    `environment` is false, as `secrets put` stores in the adapter anyway);
+ * 1. an environment override of the kind is used as it is;
  * 2. a value the config's `secrets` adapter holds as `name` is used as it
- *    is, so CI builds with the stored key and never signs in;
+ *    is, so CI builds with the stored key and never signs in, unless
+ *    `replace` is set: `secrets issue` read the adapter already;
  * 3. in CI or without a terminal, `canSignIn` refuses with the command
  *    that signs in once;
  * 4. `<cacheDir>/issued/<name>.json` must not hold an earlier key, and the
@@ -224,13 +222,13 @@ export const prepareIssuedCredential = async (
   {
     name,
     env = {},
-    environment = true,
+    replace,
     secrets = getConfiguredSecrets(),
     cacheDir,
   }: {
     readonly name: string;
     readonly env?: Readonly<Record<string, string>>;
-    readonly environment?: boolean;
+    readonly replace?: IssuedCredentialReplacement;
     /** The adapter the key is read from and stored in, the config's by default. */
     readonly secrets?: SecretsAdapter;
     /** The config's `cacheDir`, where a read-only adapter's key is written. */
@@ -239,7 +237,6 @@ export const prepareIssuedCredential = async (
 ): Promise<PreparedCredential> => {
   const fields = CREDENTIAL_ENV_NAMES[policy.kind];
   if (
-    environment &&
     fields
       .flat()
       .some((variable) => getHotUpdaterEnvValue(env, variable) !== undefined)
@@ -248,8 +245,10 @@ export const prepareIssuedCredential = async (
   }
 
   const cwd = getCwd();
-  const held = (await secrets.get([name], { cwd }))[name];
-  if (typeof held === "string" && held) return { status: "stored" };
+  if (replace === undefined) {
+    const held = (await secrets.get([name], { cwd }))[name];
+    if (typeof held === "string" && held) return { status: "stored" };
+  }
 
   if (
     !(await canSignIn({
@@ -451,18 +450,22 @@ const errorText = (error: unknown) =>
  * Stores an issued key's `value` as `name`, and reads it back: returns
  * whether the adapter reads it as stored, which a write-only store does
  * not. Throws `CredentialNotStoredError` only when the write failed and
- * the adapter reads back no such value, so the caller may revoke the key,
- * and `CredentialStoreUnconfirmedError` when nothing tells, or the adapter
- * reads back another value: a key the store may hold is never revoked.
+ * the adapter reads back no value, or the `previous` one it replaces, so
+ * the caller may revoke the key, and `CredentialStoreUnconfirmedError`
+ * when nothing tells, or the adapter reads back another value: a key the
+ * store may hold is never revoked.
  */
 export const storeIssuedCredential = async ({
   secrets,
   name,
   value,
+  previous,
 }: {
   readonly secrets: WritableSecrets;
   readonly name: string;
   readonly value: string;
+  /** What the adapter held as `name` before, which the key replaces. */
+  readonly previous?: string;
 }): Promise<{ readonly readable: boolean }> => {
   const cwd = getCwd();
   const readBack = async () => (await secrets.get([name], { cwd }))[name];
@@ -480,7 +483,7 @@ export const storeIssuedCredential = async ({
       });
     }
     if (held === value) return { readable: true };
-    if (held === undefined) {
+    if (held === undefined || (previous !== undefined && held === previous)) {
       throw new CredentialNotStoredError(errorText(error), { cause: error });
     }
     throw new CredentialStoreUnconfirmedError(errorText(error), {

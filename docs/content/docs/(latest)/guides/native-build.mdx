@@ -145,11 +145,17 @@ certificates and provisioning profiles, so the Mac needs no signing identity
 of its own, and lets the build upload to TestFlight. Creating it needs the
 Account Holder or Admin role in the team.
 
-To sign in ahead of a build, such as before CI's first build, run:
+To sign in ahead of a build, such as before CI's first build, run
+[`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in), which
+does the same sign-in without building:
 
 ```package-install
-npx hot-updater secrets put asc-api-key --kind asc-api-key
+npx hot-updater secrets issue asc-api-key
 ```
+
+It keeps a key the adapter already holds; `--replace` issues a new one and
+names the old key to revoke at App Store Connect → Users and Access →
+Integrations, which Hot Updater never revokes itself.
 
 CI (`CI` is set, even on a terminal a runner allocates) and other builds
 without a terminal use the stored key and never sign in. A build that finds no
@@ -458,10 +464,13 @@ key. When the key surely went nowhere, the CLI deletes the key again; the servic
 account and its Play Console access stay, and the next run reuses them.
 Builds without a terminal, such as CI, use the stored key and never sign in:
 when it is missing, they fail with the command to run once in a terminal,
-`npx hot-updater secrets put play-service-account --kind play-service-account`,
-which does the same sign-in without building. To sign in with a Google OAuth
-client of your own, of type Desktop app, set
-`HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID` and `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET`.
+`npx hot-updater secrets issue play-service-account`, which does the same
+sign-in without building, keeps a key the adapter already holds, and with
+`--replace` issues a new key and names the old one to delete under the service
+account's keys in Google Cloud. The sign-in needs a Google OAuth client of your
+own, of type Desktop app, in `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID` and
+`HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET`, until Hot Updater ships one; without
+it, the CLI stops before opening the browser.
 
 Before the prebuild, the CLI also refuses a scheme whose build Google Play
 would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
