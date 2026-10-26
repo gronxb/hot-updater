@@ -17,10 +17,8 @@ const pagesDir = path.resolve(
 // with the vendor's SDK against hot-updater's own SecretsAdapter.
 const SNIPPETS = [
   "secrets/1password.ts",
-  "secrets/aws-secrets-manager.ts",
   "secrets/bitwarden.ts",
   "secrets/dotenvx.ts",
-  "secrets/google-secret-manager.ts",
   "secrets/infisical.ts",
 ];
 

@@ -43,7 +43,8 @@
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "hono": "catalog:hono"
+    "hono": "catalog:hono",
+    "google-auth-library": "10.7.0"
   },
   "publishConfig": {
     "access": "public"

@@ -1,14 +1,14 @@
 {
   "title": "Secrets Adapters",
-  "description": "Keep the CLI's secrets on this machine, or in a secrets store through an adapter you paste.",
+  "description": "Keep the CLI's secrets on this machine, in AWS or Google Cloud through your provider package, or in another store through an adapter you paste.",
   "icon": "LockKeyhole",
   "pages": [
     "local-secrets",
     "dotenvx",
     "bitwarden",
-    "1password",
-    "infisical",
     "aws-secrets-manager",
-    "google-secret-manager"
+    "google-secret-manager",
+    "1password",
+    "infisical"
   ]
 }
