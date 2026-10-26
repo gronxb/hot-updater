@@ -571,6 +571,35 @@ describe("builds no key covers", () => {
   it("refuses a dynamic Gradle dependency version without a gradle.lockfile", async () => {
     // The template's jscFlavor variable is no dependency.
     expect(await uncacheable()).toBeNull();
+    // The template's JavaScriptCore branch only resolves without Hermes.
+    write(
+      "apps/mobile/android/app/build.gradle",
+      [
+        "def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'",
+        "dependencies {",
+        "    if (hermesEnabled.toBoolean()) {",
+        '        implementation("com.facebook.react:hermes-android")',
+        "    } else {",
+        "        implementation jscFlavor",
+        "    }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    write("apps/mobile/android/gradle.properties", "hermesEnabled=true\n");
+    expect(await uncacheable()).toBeNull();
+    write("apps/mobile/android/gradle.properties", "hermesEnabled=false\n");
+    expect(await uncacheable()).toBe(
+      "android/app/build.gradle declares a dynamic dependency version without a gradle.lockfile, so Gradle may resolve another version on each build",
+    );
+    write(
+      "apps/mobile/android/app/build.gradle",
+      'val lib = "com.example:lib:1.+"\ndependencies { implementation(lib) }\n',
+    );
+    write("apps/mobile/android/gradle.properties", "hermesEnabled=true\n");
+    expect(await uncacheable()).toBe(
+      "android/app/build.gradle declares a dynamic dependency version without a gradle.lockfile, so Gradle may resolve another version on each build",
+    );
     write(
       "apps/mobile/android/app/build.gradle",
       'dependencies { implementation("com.example:lib:1.+") }\n',

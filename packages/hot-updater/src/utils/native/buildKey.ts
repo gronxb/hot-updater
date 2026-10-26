@@ -1119,19 +1119,49 @@ const readSettings = async (
 /** A version Gradle resolves anew: `1.+`, `latest.release`, or a range. */
 const DYNAMIC_VERSION = String.raw`(?:[^"'$\s]*\+|latest\.\w+|[[(][^"']*,[^"']*[\])])`;
 
+/** The dependency configurations that reach the artifact. */
+const CONFIGURATION = String.raw`\b(?:implementation|api|compileOnly|runtimeOnly|classpath|annotationProcessor|kapt|ksp|coreLibraryDesugaring)\s*\(?\s*`;
+
 /**
  * A dependency the app builds with whose version Gradle resolves anew, in a
  * build file or a version catalog. A test configuration's doesn't reach the
- * artifact, nor a variable no configuration names, such as the template's
- * `jscFlavor`.
+ * artifact.
  */
 const DYNAMIC_GRADLE_VERSION = new RegExp(
   [
-    String.raw`\b(?:implementation|api|compileOnly|runtimeOnly|classpath|annotationProcessor|kapt|ksp|coreLibraryDesugaring)\s*\(?\s*["'][\w.-]+:[\w.-]+:${DYNAMIC_VERSION}["']`,
+    String.raw`${CONFIGURATION}["'][\w.-]+:[\w.-]+:${DYNAMIC_VERSION}["']`,
     String.raw`^\s*[\w.-]+\s*=\s*["']${DYNAMIC_VERSION}["']`,
   ].join("|"),
   "m",
 );
+
+/** A variable that holds a dependency with such a version, such as `jscFlavor`. */
+const DYNAMIC_GRADLE_VARIABLE = new RegExp(
+  String.raw`\b(?:def|val|var)\s+(\w+)\s*=\s*["'][\w.-]+:[\w.-]+:${DYNAMIC_VERSION}["']`,
+  "g",
+);
+
+/**
+ * The React Native template's JavaScriptCore dependency, which only a build
+ * with Hermes disabled resolves.
+ */
+const TEMPLATE_JSC_BRANCH =
+  /if\s*\(\s*hermesEnabled\.toBoolean\(\)\s*\)\s*\{[^{}]*\}\s*else\s*\{\s*implementation\s*\(?\s*jscFlavor\s*\)?\s*\}/g;
+
+/**
+ * Whether a Gradle file builds with a dependency Gradle resolves anew:
+ * declared with a dynamic version, or through a variable that holds one,
+ * except the template's `jscFlavor` when Hermes is enabled.
+ */
+const declaresDynamicVersion = (contents: string, hermesEnabled: boolean) => {
+  if (DYNAMIC_GRADLE_VERSION.test(contents)) return true;
+  const used = hermesEnabled
+    ? contents.replace(TEMPLATE_JSC_BRANCH, "")
+    : contents;
+  return [...contents.matchAll(DYNAMIC_GRADLE_VARIABLE)].some(([, name]) =>
+    new RegExp(String.raw`${CONFIGURATION}${name}\b`).test(used),
+  );
+};
 
 /**
  * Lockfiles a cached build needs: without them, the same files resolve to
@@ -1143,6 +1173,7 @@ const checkPinned = async (
   /** The repository's files and the native project's ignored ones. */
   filePaths: readonly string[],
   root: string,
+  env: NodeJS.ProcessEnv,
 ) => {
   const relative = (file: string) => toPosix(path.relative(root, file));
   if (platform === "ios") {
@@ -1187,9 +1218,20 @@ const checkPinned = async (
       filePath.endsWith("gradle.lockfile"),
   );
   if (locked) return;
+  // React Native's templates read hermesEnabled from gradle.properties.
+  const gradleProperties = await readIfExists(
+    path.join(cwd, "android", "gradle.properties"),
+  );
+  const hermesEnabled =
+    (env["ORG_GRADLE_PROJECT_hermesEnabled"] ??
+      (gradleProperties === null
+        ? undefined
+        : Object.fromEntries(parseProperties(gradleProperties))[
+            "hermesEnabled"
+          ])) === "true";
   for (const filePath of gradleFiles) {
     const contents = await readIfExists(path.join(root, filePath));
-    if (contents && DYNAMIC_GRADLE_VERSION.test(contents)) {
+    if (contents && declaresDynamicVersion(contents, hermesEnabled)) {
       throw new Uncacheable(
         `${toPosix(path.relative(cwd, path.join(root, filePath)))} declares a dynamic dependency version without a gradle.lockfile, so Gradle may resolve another version on each build`,
       );
@@ -1262,6 +1304,7 @@ export const computeNativeBuildKey = async (
       platform,
       [...Object.keys(files), ...(await ignoredInputs).nativeFiles],
       root,
+      env,
     );
     const [ignored, nativePackages, settings, signing, env_, toolchain] =
       await Promise.all([
