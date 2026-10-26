@@ -149,14 +149,28 @@ const GENERATED_GLOBS = [
  * password or a token decides who may publish, not what is built.
  */
 const CREDENTIAL_NAME =
-  /PASSWORD|PASSWD|STOREPASS|KEYPASS|SECRET|TOKEN|PRIVATE|CREDENTIAL|SERVICE_ROLE|ACCESS_KEY/i;
+  /PASSWORD|PASSWD|STOREPASS|KEYPASS|SECRET|TOKEN|PRIVATE|CREDENTIAL|SERVICE_ROLE|SERVICE_ACCOUNT|ACCESS_KEY|SIGNING_KEY|KEYSTORE|CONNECTION_STRING|DATABASE_URL|_DSN$|SESSION/i;
+
+/**
+ * Hot Updater's own variables configure the CLI and its servers, not the
+ * app: any key among them, such as `HOT_UPDATER_API_KEY`, is a credential.
+ */
+const HOT_UPDATER_KEY_NAME = /^HOT_UPDATER_\w*KEY/;
 
 const HOT_UPDATER_CREDENTIAL_NAMES = new Set<string>(
   Object.values(CREDENTIAL_ENV_NAMES).flatMap((fields) => fields.flat()),
 );
 
+/**
+ * Whether `name` holds a credential. `EXPO_PUBLIC_*` values are bundled
+ * into the app, so they are public whatever their name, and key the build;
+ * a value the CLI masks is still left out.
+ */
 const isCredentialName = (name: string) =>
-  CREDENTIAL_NAME.test(name) || HOT_UPDATER_CREDENTIAL_NAMES.has(name);
+  !name.startsWith("EXPO_PUBLIC_") &&
+  (CREDENTIAL_NAME.test(name) ||
+    HOT_UPDATER_KEY_NAME.test(name) ||
+    HOT_UPDATER_CREDENTIAL_NAMES.has(name));
 
 /** Whether `value` holds a secret the CLI resolved, which its logs mask. */
 const isSecretValue = (value: string) => maskSecretValues(value) !== value;
@@ -497,7 +511,9 @@ const readNativePackages = async (
     }
   };
   const otherPlatformDirs =
-    platform === "ios" ? ["android"] : ["ios", "apple", "macos"];
+    platform === "ios"
+      ? ["android", "ReactAndroid"]
+      : ["ios", "apple", "macos"];
   const isNative = async (dir: string) =>
     platform === "ios"
       ? (await fs.readdir(dir)).some((name) => name.endsWith(".podspec")) ||

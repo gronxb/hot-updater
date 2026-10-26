@@ -303,14 +303,31 @@ describe("computeNativeBuildKey", () => {
         { ...ios, ...env({ ORG_GRADLE_PROJECT_flavor: "b" }) },
       ),
     ).toEqual({ changed: [], same: true });
-    // A credential, and a variable no build input reads.
+    // Credentials, and a variable no build input reads.
+    const credentials = (value: string) =>
+      env({
+        HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD: value,
+        HOT_UPDATER_API_KEY: value,
+        HOT_UPDATER_BUNDLE_SIGNING_KEY: value,
+        HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING: value,
+        HOT_UPDATER_VERCEL_DATABASE_URL: value,
+        HOT_UPDATER_CONSOLE_SESSION: value,
+        HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON: value,
+        UNRELATED: value,
+      });
     expect(
-      await changedBy(
-        () => {},
-        env({ HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD: "a", UNRELATED: "a" }),
-        env({ HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD: "b", UNRELATED: "b" }),
-      ),
+      await changedBy(() => {}, credentials("a"), credentials("b")),
     ).toEqual({ changed: [], same: true });
+    // A public value the app bundles keys the build, whatever its name.
+    expect(
+      (
+        await changedBy(
+          () => {},
+          env({ EXPO_PUBLIC_MAPS_API_KEY: "a" }),
+          env({ EXPO_PUBLIC_MAPS_API_KEY: "b" }),
+        )
+      ).changed,
+    ).toEqual(["env:EXPO_PUBLIC_MAPS_API_KEY"]);
   });
 
   it("changes with what the build embeds and how the scheme builds it", async () => {
