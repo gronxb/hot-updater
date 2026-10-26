@@ -99,9 +99,10 @@ export const readExportMethod = async (exportOptionsPlist: string) => {
   const text = await fs.promises
     .readFile(exportOptionsPlist, "utf-8")
     .catch(() => undefined);
-  const xml = text?.match(
-    /<key>\s*method\s*<\/key>\s*<string>\s*([^<]*?)\s*<\/string>/u,
-  );
+  // Comments go first: a commented-out method is no method.
+  const xml = text
+    ?.replace(/<!--[\s\S]*?-->/gu, "")
+    .match(/<key>\s*method\s*<\/key>\s*<string>\s*([^<]*?)\s*<\/string>/u);
   if (xml) return xml[1]!;
   const { stdout, exitCode } = await execa(
     "plutil",

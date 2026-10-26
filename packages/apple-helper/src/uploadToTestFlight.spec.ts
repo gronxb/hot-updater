@@ -1228,6 +1228,23 @@ describe("resolveTestFlightUploadKey", () => {
     },
   );
 
+  it("reads the active method, not one an XML comment holds", async () => {
+    await fs.writeFile(
+      path.join(dir, "ExportOptions.plist"),
+      exportOptions("app-store-connect").replace(
+        "<dict>",
+        "<dict>\n\t<!-- <key>method</key><string>development</string> -->",
+      ),
+    );
+
+    await expect(
+      resolveTestFlightUploadKey(
+        iosScheme({ exportOptionsPlist: "ExportOptions.plist" }),
+      ),
+    ).resolves.toEqual({ kind: "asc-api-key", name: "asc-api-key" });
+    expect(execa).not.toHaveBeenCalled();
+  });
+
   it.each(["development", "ad-hoc", "enterprise"])(
     "refuses existing export options with the method %s, saying why",
     async (method) => {
