@@ -89,6 +89,10 @@ const COMPUTED_IMPORTS = new Map([
     "loads the scaffold it generated",
   ],
   [
+    "packages/hot-updater/src/secretsSnippets.spec.ts",
+    "runs the dotenvx snippet it extracted from the docs",
+  ],
+  [
     "packages/server/src/adapters/drizzle.spec.ts",
     "loads the schema file it generated",
   ],
