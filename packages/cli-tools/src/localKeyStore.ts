@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -30,25 +30,6 @@ const git = (cwd: string, args: readonly string[]): string | undefined => {
   }
 };
 
-/**
- * A remote's URL without its scheme, credentials, `.git`, or trailing
- * slash, so the HTTPS and SSH URLs of one repository are the same:
- * `github.com/owner/repo`.
- */
-export const normalizeRemoteUrl = (url: string): string => {
-  const trimmed = url.trim().replace(/\/+$/u, "").replace(/\.git$/u, "");
-  const scp = /^(?:[^@/]+@)?([^:/]+):(?!\/)(.+)$/u.exec(trimmed);
-  if (scp && !/^[a-z][a-z0-9+.-]*:\/\//iu.test(trimmed)) {
-    return `${scp[1]!.toLowerCase()}/${scp[2]}`;
-  }
-  try {
-    const parsed = new URL(trimmed);
-    return `${parsed.hostname.toLowerCase()}${parsed.port ? `:${parsed.port}` : ""}${parsed.pathname}`;
-  } catch {
-    return trimmed;
-  }
-};
-
 const realpath = (directory: string) => {
   try {
     return realpathSync(directory);
@@ -58,115 +39,202 @@ const realpath = (directory: string) => {
 };
 
 /**
- * What identifies the project: its git repository's `origin` remote and
- * its directory in the repository, so every clone of one app on a machine
- * shares its keys, and two apps of one repository do not; without an
- * `origin`, the project's directory.
- */
-export const getProjectIdentity = (cwd: string): string => {
-  const directory = realpath(cwd);
-  const origin = git(directory, ["remote", "get-url", "origin"]);
-  const root = origin
-    ? git(directory, ["rev-parse", "--show-toplevel"])
-    : undefined;
-  if (!origin || !root) return `path:${directory}`;
-  const relative = path
-    .relative(realpath(root), directory)
-    .split(path.sep)
-    .join("/");
-  return `git:${normalizeRemoteUrl(origin)}#${relative}`;
-};
-
-const projectKeys = new Map<string, string>();
-
-/**
- * The project's directory name in the key store: the repository's, or the
- * project directory's, name with a hash of its identity
- * (`getProjectIdentity`), such as `my-app-3f2a9c1d04be`.
+ * The project's directory name in the store: the project directory's name
+ * and the first 12 hex digits of the SHA-256 of its real path, such as
+ * `my-app-3f2a9c1d04be`. Each checkout of an app has its own.
  */
 export const getProjectKey = (cwd: string): string => {
-  const cached = projectKeys.get(cwd);
-  if (cached) return cached;
-  const identity = getProjectIdentity(cwd);
-  const named = identity.startsWith("git:")
-    ? identity.slice(4).split("#")[0]!
-    : identity.slice(5);
+  const directory = realpath(cwd);
   const label =
-    path.posix
-      .basename(named.split(path.sep).join("/"))
+    path
+      .basename(directory)
       .replace(/[^A-Za-z0-9._-]/gu, "-")
       .replace(/^[.-]+/u, "")
       .slice(0, 40) || "project";
-  const hash = createHash("sha256").update(identity).digest("hex").slice(0, 12);
-  const key = `${label}-${hash}`;
-  projectKeys.set(cwd, key);
-  return key;
+  const hash = createHash("sha256")
+    .update(directory)
+    .digest("hex")
+    .slice(0, 12);
+  return `${label}-${hash}`;
 };
 
-/** The project's directory in the key store, `<home>/keys/<project-key>`. */
+/**
+ * The directory `local()` keeps a project's secrets in without a
+ * `path`: `<home>/secrets/<project-key>` (`getHotUpdaterHome`,
+ * `getProjectKey`).
+ */
 export const getLocalKeyStoreDir = (cwd: string): string =>
-  path.join(getHotUpdaterHome(), "keys", getProjectKey(cwd));
+  path.join(getHotUpdaterHome(), "secrets", getProjectKey(cwd));
 
 /**
- * The file the key store keeps `name` in, `<name>.json`. A secret's name
- * has no path separator and does not start with a dot.
+ * `local({ path })`'s directory: `~` is the home directory, and a
+ * relative path is the project's (`cwd`).
  */
-export const getLocalKeyFile = (name: string, cwd: string): string =>
-  path.join(getLocalKeyStoreDir(cwd), `${name}.json`);
+export const resolveLocalSecretsPath = (value: string, cwd: string): string => {
+  if (value === "~") return os.homedir();
+  if (value.startsWith("~/") || value.startsWith("~\\")) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return path.resolve(cwd, value);
+};
 
 const isMissing = (error: unknown) =>
   error instanceof Error &&
   "code" in error &&
   (error.code === "ENOENT" || error.code === "ENOTDIR");
 
-/** `name`'s value in the project's key store, or undefined. */
-export const readLocalKey = async (
-  name: string,
-  cwd: string,
-): Promise<string | undefined> => {
-  try {
-    return (await fs.readFile(getLocalKeyFile(name, cwd), "utf-8")) || undefined;
-  } catch (error) {
-    if (isMissing(error)) return undefined;
-    throw error;
+/** `target`'s real path, through its nearest parent that exists. */
+const realpathThroughParents = (target: string): string => {
+  const missing: string[] = [];
+  let current = target;
+  for (;;) {
+    try {
+      return path.join(realpathSync(current), ...missing.reverse());
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return target;
+      missing.push(path.basename(current));
+      current = parent;
+    }
   }
 };
 
-/** Makes `directory`, and makes it and its parents up to `home` 0700. */
-const makePrivateDirectory = async (directory: string, home: string) => {
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  // mkdir leaves an existing directory's mode as it is. Windows has no
-  // mode bits: the user profile's permissions apply there.
-  if (process.platform === "win32") return;
-  for (
-    let current = directory;
-    current.startsWith(home);
-    current = path.dirname(current)
-  ) {
-    await fs.chmod(current, 0o700);
-    if (current === home) break;
-  }
+/** Whether git ignores `directory`, a path in the work tree at `root`. */
+const isIgnoredByGit = (root: string, directory: string) => {
+  const relative = path.relative(root, directory).split(path.sep).join("/");
+  const result = spawnSync(
+    "git",
+    ["check-ignore", "--quiet", "--", `${relative}/`],
+    { cwd: root, stdio: "ignore", timeout: 10_000 },
+  );
+  return result.status === 0;
 };
 
 /**
- * Stores `value` as `name` in the project's key store: the directories
- * are 0700 and the file 0600, readable by this user alone, and a write
- * replaces the file whole or not at all. Returns the file.
+ * Refuses a directory secrets must not go in: a path that exists and is no
+ * directory, or one in a git work tree that git does not ignore, whose
+ * secrets could be committed.
  */
-export const writeLocalKey = async (
+const assertPrivateDirectory = async (directory: string) => {
+  const stats = await fs.stat(directory).catch((error: unknown) => {
+    if (isMissing(error)) return undefined;
+    throw error;
+  });
+  if (stats && !stats.isDirectory()) {
+    throw new Error(
+      `local() keeps secrets in a directory, and ${directory} is not one. Set its path to a directory.`,
+    );
+  }
+  const real = realpathThroughParents(directory);
+  let probe = real;
+  while (!existsSync(probe) && path.dirname(probe) !== probe) {
+    probe = path.dirname(probe);
+  }
+  const root = git(probe, ["rev-parse", "--show-toplevel"]);
+  if (!root) return;
+  const top = realpath(root);
+  if (isIgnoredByGit(top, real)) return;
+  throw new Error(
+    `local() refuses ${directory}: it is in the git repository ${top}, which does not ignore it, so the secrets in it could be committed. Add ${path.relative(top, real).split(path.sep).join("/")}/ to .gitignore, or set its path outside the repository, such as ~/.hot-updater/secrets/<app>.`,
+  );
+};
+
+/** Makes `directory` 0700, and every directory it creates on the way. */
+const makePrivateDirectory = async (directory: string) => {
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  // mkdir leaves an existing directory's mode as it is. Windows has no
+  // mode bits: the user profile's permissions apply there.
+  if (process.platform !== "win32") await fs.chmod(directory, 0o700);
+};
+
+/** Where `local()` keeps a project's secrets, one file per name. */
+export interface LocalSecretsStore {
+  /** The project's directory. */
+  readonly directory: (cwd: string) => string;
+  /**
+   * The file `name` is kept in, `<name>.json`. A secret's name has no path
+   * separator and does not start with a dot.
+   */
+  readonly file: (name: string, cwd: string) => string;
+  /** `name`'s value, or undefined. */
+  readonly read: (name: string, cwd: string) => Promise<string | undefined>;
+  /**
+   * Stores `value` as `name`: the directory is 0700 and the file 0600,
+   * readable by this user alone, and a write replaces the file whole or
+   * not at all. Returns the file.
+   */
+  readonly write: (name: string, value: string, cwd: string) => Promise<string>;
+}
+
+/**
+ * The store `local({ path })` reads and writes: `path`, or
+ * `getLocalKeyStoreDir` without one. Its first use refuses a directory
+ * secrets must not go in (`assertPrivateDirectory`).
+ */
+export const createLocalSecretsStore = ({
+  path: configured,
+}: { readonly path?: string } = {}): LocalSecretsStore => {
+  const checked = new Map<string, Promise<void>>();
+  const directory = (cwd: string) =>
+    configured === undefined
+      ? getLocalKeyStoreDir(cwd)
+      : resolveLocalSecretsPath(configured, cwd);
+  const check = (target: string) => {
+    let pending = checked.get(target);
+    if (!pending) {
+      pending = assertPrivateDirectory(target);
+      checked.set(target, pending);
+      pending.catch(() => checked.delete(target));
+    }
+    return pending;
+  };
+  const file = (name: string, cwd: string) =>
+    path.join(directory(cwd), `${name}.json`);
+  return {
+    directory,
+    file,
+    read: async (name, cwd) => {
+      await check(directory(cwd));
+      try {
+        return (await fs.readFile(file(name, cwd), "utf-8")) || undefined;
+      } catch (error) {
+        if (isMissing(error)) return undefined;
+        throw error;
+      }
+    },
+    write: async (name, value, cwd) => {
+      const target = directory(cwd);
+      await check(target);
+      await makePrivateDirectory(target);
+      const destination = file(name, cwd);
+      const temporary = `${destination}.${randomUUID()}.tmp`;
+      try {
+        await fs.writeFile(temporary, value, { mode: 0o600, flag: "wx" });
+        await fs.rename(temporary, destination);
+      } catch (error) {
+        await fs.rm(temporary, { force: true });
+        throw error;
+      }
+      return destination;
+    },
+  };
+};
+
+const defaultStore = createLocalSecretsStore();
+
+/** The file `local()` without a `path` keeps `name` in. */
+export const getLocalKeyFile = (name: string, cwd: string): string =>
+  defaultStore.file(name, cwd);
+
+/** `name`'s value in `local()`'s default store, or undefined. */
+export const readLocalKey = (
+  name: string,
+  cwd: string,
+): Promise<string | undefined> => defaultStore.read(name, cwd);
+
+/** Stores `value` as `name` in `local()`'s default store. */
+export const writeLocalKey = (
   name: string,
   value: string,
   cwd: string,
-): Promise<string> => {
-  const file = getLocalKeyFile(name, cwd);
-  await makePrivateDirectory(path.dirname(file), getHotUpdaterHome());
-  const temporary = `${file}.${randomUUID()}.tmp`;
-  try {
-    await fs.writeFile(temporary, value, { mode: 0o600, flag: "wx" });
-    await fs.rename(temporary, file);
-  } catch (error) {
-    await fs.rm(temporary, { force: true });
-    throw error;
-  }
-  return file;
-};
+): Promise<string> => defaultStore.write(name, value, cwd);

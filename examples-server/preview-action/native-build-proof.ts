@@ -3,14 +3,14 @@
  * left in Postgres, read from the CLI's recorded output (PROOF_LOG, written
  * by scripts/record-cli.mjs) and from Postgres directly. The config sets no
  * `secrets` adapter, so the CLI reads every credential from the job's
- * environment, then this machine's key store under HOT_UPDATER_HOME.
+ * environment, then local()'s store under HOT_UPDATER_HOME.
  *
  *   node native-build-proof.ts <stage>
  *
  * Stages:
  * - upload-missing: the environment lacks play-service-account; the run
  *   never signs in to Google, and fails before the build, naming the
- *   variable and the key store file the default store reads, the command
+ *   variable and the local() file it reads, the command
  *   that signs in once, and the variables that replace it.
  * - keystore-missing: the scheme's keystore is missing, without an upload;
  *   the signing credential fails before the build too.
@@ -19,9 +19,9 @@
  * - ios-missing: build:ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
  * - put-key-store <service-account.json>: `secrets put` stored the service
- *   account in the key store, outside the project, readable by the user
+ *   account in local()'s store, outside the project, readable by the user
  *   alone, as the file's exact contents, and wrote no `.env.hotupdater`.
- * - built: with every credential set, the service account in the key store
+ * - built: with every credential set, the service account in local()'s store
  *   alone, the run builds, registers, and fails only at Google, which
  *   refuses the proof's made-up service account.
  *
@@ -67,13 +67,13 @@ const escapeRegExp = (text: string) =>
   text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Where the default store says it reads `name`: its variable, then its
- * file in the key store, `<HOT_UPDATER_HOME>/keys/<project-key>/<name>.json`,
+ * Where local() says it reads `name`: its variable, then its
+ * file in local()'s store, `<HOT_UPDATER_HOME>/secrets/<project-key>/<name>.json`,
  * whose project key hashes the repository's origin and the project's
  * directory in it.
  */
 const defaultStorePattern = (variable: string, name: string) =>
-  `${variable} in the environment, or ${escapeRegExp(env("HOT_UPDATER_HOME"))}/keys/[A-Za-z0-9._-]+-[0-9a-f]{12}/${escapeRegExp(name)}\\.json on this machine`;
+  `${variable} in the environment, or ${escapeRegExp(env("HOT_UPDATER_HOME"))}/secrets/[A-Za-z0-9._-]+-[0-9a-f]{12}/${escapeRegExp(name)}\\.json on this machine`;
 
 const expectMatches = (log: string, expected: string) => {
   if (!new RegExp(expected, "u").test(log)) {
@@ -83,9 +83,9 @@ const expectMatches = (log: string, expected: string) => {
   }
 };
 
-/** The key store's files of `name`, one per project. */
+/** local()'s files of `name`, one per project. */
 const keyStoreFiles = (name: string) => {
-  const keys = path.join(env("HOT_UPDATER_HOME"), "keys");
+  const keys = path.join(env("HOT_UPDATER_HOME"), "secrets");
   return existsSync(keys)
     ? readdirSync(keys)
         .map((project) => path.join(keys, project, `${name}.json`))
@@ -123,7 +123,7 @@ const stages: Record<string, () => Promise<void>> = {
     // signing in.
     expectMatches(
       log,
-      `play-service-account is not in the default secrets adapter \\(${defaultStorePattern("HOT_UPDATER_PLAY_SERVICE_ACCOUNT", "play-service-account")}\\)\\. Store it once from a terminal with \`npx hot-updater google-play login\``,
+      `play-service-account is not in the local secrets adapter \\(${defaultStorePattern("HOT_UPDATER_PLAY_SERVICE_ACCOUNT", "play-service-account")}\\)\\. Store it once from a terminal with \`npx hot-updater google-play login\``,
     );
     expectIncludes(
       log,
@@ -141,7 +141,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectMatches(
       log,
-      `widget-keystore \\(android-keystore\\) is not in the default secrets adapter \\(${defaultStorePattern("HOT_UPDATER_WIDGET_KEYSTORE", "widget-keystore")}\\)\\. Store it once with ${escapeRegExp("`npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.")}`,
+      `widget-keystore \\(android-keystore\\) is not in the local secrets adapter \\(${defaultStorePattern("HOT_UPDATER_WIDGET_KEYSTORE", "widget-keystore")}\\)\\. Store it once with ${escapeRegExp("`npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.")}`,
     );
     expectIncludes(
       log,
@@ -153,7 +153,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      'The default secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
+      'The local secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
     );
     expectExcludes(
       log,
@@ -169,7 +169,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectMatches(
       log,
-      `asc-api-key is not in the default secrets adapter \\(${defaultStorePattern("HOT_UPDATER_ASC_API_KEY", "asc-api-key")}\\)\\. Store it once from a terminal with \`npx hot-updater apple login\``,
+      `asc-api-key is not in the local secrets adapter \\(${defaultStorePattern("HOT_UPDATER_ASC_API_KEY", "asc-api-key")}\\)\\. Store it once from a terminal with \`npx hot-updater apple login\``,
     );
     expectIncludes(
       log,
@@ -181,8 +181,8 @@ const stages: Record<string, () => Promise<void>> = {
     );
     expectNothingBuilt(log);
   },
-  // The default store keeps what `secrets put` imports in this machine's
-  // key store, outside the project, where the next build reads it.
+  // local() keeps what `secrets put` imports in this machine's
+  // local() store, outside the project, where the next build reads it.
   "put-key-store": async () => {
     const log = readLog();
     expectIncludes(log, "Secret stored");
@@ -191,7 +191,7 @@ const stages: Record<string, () => Promise<void>> = {
     const files = keyStoreFiles("play-service-account");
     if (files.length !== 1) {
       throw new Error(
-        `Expected one play-service-account in the key store, found ${files.length}.`,
+        `Expected one play-service-account in local()'s store, found ${files.length}.`,
       );
     }
     const file = files[0]!;
@@ -219,16 +219,16 @@ const stages: Record<string, () => Promise<void>> = {
   },
   built: async () => {
     const log = readLog();
-    // The service account comes from the key store alone.
+    // The service account comes from local()'s store alone.
     if (process.env["HOT_UPDATER_PLAY_SERVICE_ACCOUNT"]) {
       throw new Error("HOT_UPDATER_PLAY_SERVICE_ACCOUNT is set.");
     }
     if (keyStoreFiles("play-service-account").length !== 1) {
-      throw new Error("The key store holds no play-service-account.");
+      throw new Error("local()'s store holds no play-service-account.");
     }
     expectExcludes(
       log,
-      "is not in the default secrets adapter",
+      "is not in the local secrets adapter",
       "every credential the build needs is set.",
     );
     expectExcludes(

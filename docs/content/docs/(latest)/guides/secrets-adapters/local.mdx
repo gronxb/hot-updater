@@ -1,0 +1,47 @@
+---
+title: "local()"
+description: "The default secrets adapter: the environment, then a file per secret in your home directory that only you can read."
+icon: LockKeyhole
+---
+
+## Keep secrets on this machine
+
+`local()` from `hot-updater` is the `secrets` adapter a config gets
+when it sets none, and the one `init` writes:
+
+```ts title="hot-updater.config.ts (partial)"
+import { defineConfig, local } from "hot-updater";
+
+export default defineConfig({
+  secrets: local(),
+  // build, storage, database and plugins stay as they are
+});
+```
+
+- `get` reads a name from its environment variable, such as
+  `HOT_UPDATER_ASC_API_KEY` for `asc-api-key`, in the environment or
+  `.env.hotupdater`, then from
+  `~/.hot-updater/secrets/<project-key>/<name>.json`.
+- `set` writes that file. `apple login`, `google-play login`, `secrets put`,
+  and `keys generate --secret` store there, and the next build reads it with
+  no step in between.
+
+[The local() store](/docs/concepts/secrets#the-local-store)
+describes the directory, its permissions, and the project key, and
+`HOT_UPDATER_HOME` moves `~/.hot-updater`.
+
+| Option | Description                                                                                                                                                                                         |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path` | The directory that holds this project's secrets, one `<name>.json` each, such as `~/.hot-updater/secrets/my-app` to share it across clones. `~` is your home directory, and a relative path is the project's. Defaults to `~/.hot-updater/secrets/<project-key>`, one per checkout |
+
+A `path` inside a git repository must be one git ignores, such as a
+`.secrets/` you add to `.gitignore`: the first use refuses any other, so a
+secret can't be committed, and refuses a path that is a file.
+
+The store is one machine's. In CI, map each GitHub Actions secret to the
+job's environment, such as
+`HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}`, which
+`local()` reads before its files ([Read secrets in CI](/docs/concepts/secrets#read-secrets-in-ci)).
+After a sign-in issues a key, the CLI offers once to store it as that secret
+too. On another machine, sign in there, import the key with `secrets put`, or
+[share it through a store](/docs/concepts/secrets#share-a-key-across-machines).

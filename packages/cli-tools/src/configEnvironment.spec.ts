@@ -17,7 +17,7 @@ const createProject = async () => {
   const factories = (names: readonly string[]) =>
     names.map((name) => `export const ${name} = (options) => options;`);
   for (const [name, exports] of Object.entries({
-    "hot-updater": factories(["defineConfig"]),
+    "hot-updater": factories(["defineConfig", "local"]),
     "@hot-updater/bare": factories(["bare"]),
     "@hot-updater/supabase": [
       ...factories(["supabaseStorage", "supabaseDatabase"]),

@@ -183,7 +183,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
     const publicKeyPath = path.join(outputDir, "public-key.pem");
     if (secrets !== undefined && secretName !== undefined) {
-      // The config's adapter, or this machine's key store, which stores
+      // The config's adapter, or `local()`'s store, which stores
       // what an adapter can't.
       await storePrivateKey(
         secrets as WritableSecrets,

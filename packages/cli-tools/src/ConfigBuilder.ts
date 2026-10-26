@@ -116,7 +116,7 @@ export class ConfigBuilder {
   private pluginsInfo: ProviderConfig | null = null;
   private intermediateCode = "";
   private readonly imports: ImportInfo[] = [
-    { pkg: "hot-updater", named: ["defineConfig"] },
+    { pkg: "hot-updater", named: ["defineConfig", "local"] },
     { pkg: "node:fs", named: ["existsSync"] },
   ];
 
@@ -203,6 +203,7 @@ ${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default def
   storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
   ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
+  secrets: local(),
   updateStrategy: "appVersion", // or "fingerprint"
 });
 `.trim();

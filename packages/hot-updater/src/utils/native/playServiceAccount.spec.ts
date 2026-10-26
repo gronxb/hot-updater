@@ -144,10 +144,10 @@ const issue = vi.fn(
   },
 );
 
-/** A directory of the spec's own; `home` in it is the key store's home. */
+/** A directory of the spec's own; `home` in it is `local()`'s store's home. */
 let tmp: string;
 
-/** Where this machine's key store keeps `name` for the project. */
+/** Where `local()`'s store keeps `name` for the project. */
 const keyFile = (name: string) => getLocalKeyFile(name, getCwd());
 
 /** ensurePlayServiceAccount with the stand-in sign-in. */
@@ -237,7 +237,7 @@ describe("ensurePlayServiceAccount", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("says this machine has no key, stores the issued key in this machine's key store, names where to delete old keys, and the next run reuses it", async () => {
+  it("says this machine has no key, stores the issued key in `local()`'s store, names where to delete old keys, and the next run reuses it", async () => {
     setConfiguredSecrets(withLocalKeyStore());
 
     const result = await withTTY(true, () =>

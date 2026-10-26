@@ -168,7 +168,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       events.push(`resolve ${request.kind} ${request.name}`);
       throw new CredentialUnavailableError(
         "android-keystore",
-        "release-keystore (android-keystore) is not in the default secrets adapter.",
+        "release-keystore (android-keystore) is not in the local secrets adapter.",
       );
     });
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -185,7 +185,7 @@ describe("build:* resolves its signing credentials before the prebuild", () => {
       "exit",
     ]);
     expect(p.log.error).toHaveBeenCalledWith(
-      "release-keystore (android-keystore) is not in the default secrets adapter.",
+      "release-keystore (android-keystore) is not in the local secrets adapter.",
     );
   });
 

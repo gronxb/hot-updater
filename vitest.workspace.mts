@@ -56,7 +56,7 @@ export default defineConfig({
             "packages/bsdiff/tests/runtime/*.manual.*",
           ],
           environment: "node",
-          // No spec reads or writes the developer's own key store.
+          // No spec reads or writes the developer's own local() store.
           env: {
             HOT_UPDATER_HOME: path.join(
               os.tmpdir(),

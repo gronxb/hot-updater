@@ -20,7 +20,7 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set([
   // Hot Updater's own: the credential overrides and remoteSigning's token.
   ...Object.values(CREDENTIAL_ENV_NAMES).flat(2),
   "HOT_UPDATER_SIGNING_TOKEN",
-  // Where this machine's key store is.
+  // Where `local()`'s store is.
   "HOT_UPDATER_HOME",
 ]);
 

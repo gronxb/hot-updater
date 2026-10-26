@@ -117,8 +117,8 @@ export type ConfigResponse = RequiredDeep<
   signing?: ReturnType<typeof normalizeSigningConfig>;
   /**
    * Where `secret:` references and issued keys are read and stored: the
-   * config's adapter, or the environment when it sets none, with this
-   * machine's key store after it (`withLocalKeyStore`).
+   * config's adapter with `local()`'s store after it (`withLocalKeyStore`),
+   * or `local()` when it sets none.
    */
   secrets: SecretsAdapter;
 };

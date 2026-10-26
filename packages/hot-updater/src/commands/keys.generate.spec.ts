@@ -138,7 +138,7 @@ describe("keys generate --secret", () => {
     expect(output()).toContain('privateKey: "secret:release-signing-key"');
   });
 
-  it("stores the private key in this machine's key store without a secrets adapter, and writes only the public key", async () => {
+  it("stores the private key in `local()`'s store without a secrets adapter, and writes only the public key", async () => {
     const cwd = await createProject();
     mocks.loadConfig.mockResolvedValue({ secrets: withLocalKeyStore() });
 
@@ -149,9 +149,7 @@ describe("keys generate --secret", () => {
     expect(
       (await fs.stat(getLocalKeyFile("bundle-signing-key", cwd))).mode & 0o777,
     ).toBe(0o600);
-    expect(await listFiles(path.join(cwd, "keys"))).toEqual([
-      "public-key.pem",
-    ]);
+    expect(await listFiles(path.join(cwd, "keys"))).toEqual(["public-key.pem"]);
     expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
     expect(output()).not.toContain(privateKey.split("\n")[1]);
   });
@@ -177,7 +175,7 @@ describe("keys generate --secret", () => {
 
   it.each([
     ["the environment", "env"],
-    ["this machine's key store", "store"],
+    ["`local()`'s store", "store"],
   ])("never replaces a key %s already holds", async (_, where) => {
     const cwd = await createProject();
     if (where === "env") {

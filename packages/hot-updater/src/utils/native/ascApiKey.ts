@@ -162,7 +162,7 @@ const storeIssued = async (
  *
  * Only then does the developer sign in with their Apple Account, through
  * `issue`, and the issued key is stored through the config's adapter, or
- * this machine's key store by default, read back, and revoked with the
+ * `local()`'s store by default, read back, and revoked with the
  * same session if nothing holds it. A key the default store keeps comes
  * with an offer to store it as a GitHub Actions secret too, and every
  * issued key with where to revoke the ones no machine uses anymore.
@@ -171,6 +171,7 @@ export const ensureAscApiKey = async ({
   name,
   env = {},
   replace,
+  replacing,
   secrets,
   githubSecrets,
   issue = issueAscApiKey,
@@ -183,6 +184,8 @@ export const ensureAscApiKey = async ({
   secrets?: SecretsAdapter;
   /** Set by `secrets issue`: a key is issued whatever the adapter holds. */
   replace?: boolean;
+  /** Set by `secrets issue --replace` when the adapter holds a key it replaces. */
+  replacing?: boolean;
   /** The adapter that stores a key the default store keeps as a GitHub Actions secret. */
   githubSecrets?: CreateGitHubSecrets;
   /** How the key is issued after the Apple Account signs in. */
@@ -192,6 +195,7 @@ export const ensureAscApiKey = async ({
     name,
     env,
     replace,
+    replacing,
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;

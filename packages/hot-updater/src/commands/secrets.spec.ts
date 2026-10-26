@@ -65,7 +65,7 @@ const writableStore = (values: Record<string, string> = {}) => {
   return { store, held };
 };
 
-/** Makes `secrets` the config's, as loadConfig hands it over: with this machine's key store. */
+/** Makes `secrets` the config's, as loadConfig hands it over: with `local()`'s store. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
     secrets: withLocalKeyStore(secrets),
@@ -213,7 +213,7 @@ describe("hot-updater secrets put", () => {
     expect(loadConfig).not.toHaveBeenCalled();
   });
 
-  it("stores in this machine's key store without a secrets adapter, 0600, and names the file", async () => {
+  it("stores in `local()`'s store without a secrets adapter, 0600, and names the file", async () => {
     configure();
     vi.spyOn(process, "cwd").mockReturnValue(directory);
     await fs.writeFile(path.join(directory, "package.json"), "{}");
@@ -228,7 +228,9 @@ describe("hot-updater secrets put", () => {
 
     expect(process.exitCode).toBeUndefined();
     const stored = getLocalKeyFile("play-service-account", directory);
-    expect(stored.startsWith(path.join(directory, "home", "keys"))).toBe(true);
+    expect(stored.startsWith(path.join(directory, "home", "secrets"))).toBe(
+      true,
+    );
     await expect(fs.readFile(stored, "utf-8")).resolves.toBe(json);
     expect((await fs.stat(stored)).mode & 0o777).toBe(0o600);
     expect(messages().at(-1)).toMatch(/In:\s+/u);
@@ -239,7 +241,7 @@ describe("hot-updater secrets put", () => {
     ).rejects.toThrow();
   });
 
-  it("stores in this machine's key store when the config's adapter stores nothing", async () => {
+  it("stores in `local()`'s store when the config's adapter stores nothing", async () => {
     configure({
       name: "read-only",
       get: async (names) =>

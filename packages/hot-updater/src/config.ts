@@ -15,6 +15,5 @@ export {
   readLocalFingerprint,
 } from "./utils/fingerprint";
 
-export { secretEnv } from "@hot-updater/cli-tools";
+export { local, secretEnv } from "@hot-updater/cli-tools";
 export type { SecretsAdapter, SecretsContext } from "@hot-updater/plugin-core";
-export { githubActions, type GitHubActionsOptions } from "./githubActions";

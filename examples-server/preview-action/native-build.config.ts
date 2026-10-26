@@ -10,7 +10,7 @@ import { database, storage } from "./shared.ts";
  * whose keystore it lacks, and an iOS release scheme that signs with an App
  * Store Connect API key, on the proof's backend. It sets no `secrets`
  * adapter: every credential comes from the job's environment, or from the
- * key store `secrets put` writes under HOT_UPDATER_HOME.
+ * local() store `secrets put` writes under HOT_UPDATER_HOME.
  */
 export default defineConfig({
   nativeBuild: {

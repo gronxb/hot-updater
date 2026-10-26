@@ -1932,9 +1932,15 @@ importers:
       '@bacons/xcode':
         specifier: 1.0.0-alpha.33
         version: 1.0.0-alpha.33
+      '@bitwarden/sdk-napi':
+        specifier: 1.0.0
+        version: 1.0.0
       '@commander-js/extra-typings':
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.3)
+      '@dotenvx/dotenvx':
+        specifier: 2.38.2
+        version: 2.38.2
       '@google-cloud/kms':
         specifier: 6.0.0
         version: 6.0.0
@@ -4172,6 +4178,35 @@ packages:
   '@bcoe/v8-coverage@0.2.3':
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
 
+  '@bitwarden/sdk-napi-darwin-arm64@1.0.0':
+    resolution: {integrity: sha512-0W6P2VByGFqYIf6bkI7qKWlXPGhG9KFibrN14pvllFIkbNRaz3hktMOLJ/JdWZVmdHrz0R5xmAVldbIWNMjFOA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@bitwarden/sdk-napi-darwin-x64@1.0.0':
+    resolution: {integrity: sha512-Esyg8sktE50U+g12lL/xe68hgc5y78jPPV9maNcKTO9EWdde4RIx9u3xEpbYk5fyHaeMFXdo3TK8A8qLD34X5w==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@bitwarden/sdk-napi-linux-x64-gnu@1.0.0':
+    resolution: {integrity: sha512-PBGEOq9saYuBBthCq5jAr7eQSyEmQylB+kwsuT0j666VXT124a3YjDGgobPYaR9KN/IRDQ5h2Tysuy1pojx10A==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@bitwarden/sdk-napi-win32-x64-msvc@1.0.0':
+    resolution: {integrity: sha512-cu92XYjsOWEVECyohGtLxiXcMJMVui+nDJtyNg52iGDeAzWQ7QZh0/bcjkymTCuGoqRD3sT0cCs+5PbW66K2XQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@bitwarden/sdk-napi@1.0.0':
+    resolution: {integrity: sha512-KrOXiuuQdVBvIM4l7XGrKl8otA9tSEKHjRQr0nF71eyCmIDzOV2kt/gchgLK42exGGuD/JcmmgnXx/j+U6W/+g==}
+    engines: {node: '>= 10'}
+
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
 
@@ -4549,6 +4584,19 @@ packages:
   '@dotenvx/dotenvx@1.71.2':
     resolution: {integrity: sha512-Xj9T3Wr+Bo4ILKf9PZJBYJ4SJiZGC/pqIdzOMbX9jgAFb0oGuKkusLleYHN/N6zanZixNvmuMVWYR1T3YJuVTA==}
     hasBin: true
+
+  '@dotenvx/dotenvx@2.38.2':
+    resolution: {integrity: sha512-+tjy8o//H+ZkRfRWLh08UkLHCw/e74uIV27QOZ3RxKwXvGrxjEcQMfUvQJzkvK/qNTk/OsE1MlGiDB6iL+1X0g==}
+    hasBin: true
+
+  '@dotenvx/primitives@3.3.1':
+    resolution: {integrity: sha512-ykX29rVnHwwV6m3AMmvR+niFSwhOG2TYttJjURz3n/3iHtpWC8gEptojYY+eHgBAV4fkaGRM1Rf0wgQ6/DeUYQ==}
+
+  '@dotenvx/providers@0.3.11':
+    resolution: {integrity: sha512-5H5kAr5ps4shR7ZtA3mtDphh9Fbhp21yY77jCBCJLX2pbdEse0bcCBn7M1Ex1YrKF2O9SLKJB8ttJ2P5JsPidQ==}
+
+  '@dotenvx/tooling@1.0.6':
+    resolution: {integrity: sha512-d1AhKqlprzjR7+/7YTYbf9lTjeIUxr2WN+gYL5jf9O25wymlVWzuwOujq9IWJOt33sGWcLjr1eswSOmqm4SRMg==}
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
@@ -20253,6 +20301,10 @@ packages:
     resolution: {integrity: sha512-4yqz8a3n5HmGTlsbADNtr/dJlhkh/55Rq798G6ibiULcXbDtaLpTl1pvdqcbFfeoj3iSi52lePFM7h9H21cw/A==}
     engines: {node: '>=18.17'}
 
+  undici@6.29.1:
+    resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
+    engines: {node: '>=18.17'}
+
   undici@7.18.2:
     resolution: {integrity: sha512-y+8YjDFzWdQlSE9N5nzKMT3g4a5UBX1HKowfdXh0uvAnTaqqwqB92Jt4UXBAeKekDs5IaDKyJFR4X1gYVCgXcw==}
     engines: {node: '>=20.18.1'}
@@ -21252,6 +21304,10 @@ packages:
 
   yocto-spinner@1.2.0:
     resolution: {integrity: sha512-Yw0hUB6UA3o4YUgKy3oSe9a4cxoaZ9sBfYDw+JSxo6Id0KoJGoxzPA24qqUXYKBWABs/zDSGTz9kww7t3F0XGw==}
+    engines: {node: '>=18.19'}
+
+  yocto-spinner@1.2.2:
+    resolution: {integrity: sha512-DODGl1wJjA/s5pnJFKau9lIYHT81lnhob1i3e1TjxZRxEhWRKl74nTbWE6H5KlkViQQTo/Z29YFdxzTZAMY3ng==}
     engines: {node: '>=18.19'}
 
   yoctocolors-cjs@2.1.3:
@@ -23913,6 +23969,25 @@ snapshots:
 
   '@bcoe/v8-coverage@0.2.3': {}
 
+  '@bitwarden/sdk-napi-darwin-arm64@1.0.0':
+    optional: true
+
+  '@bitwarden/sdk-napi-darwin-x64@1.0.0':
+    optional: true
+
+  '@bitwarden/sdk-napi-linux-x64-gnu@1.0.0':
+    optional: true
+
+  '@bitwarden/sdk-napi-win32-x64-msvc@1.0.0':
+    optional: true
+
+  '@bitwarden/sdk-napi@1.0.0':
+    optionalDependencies:
+      '@bitwarden/sdk-napi-darwin-arm64': 1.0.0
+      '@bitwarden/sdk-napi-darwin-x64': 1.0.0
+      '@bitwarden/sdk-napi-linux-x64-gnu': 1.0.0
+      '@bitwarden/sdk-napi-win32-x64-msvc': 1.0.0
+
   '@borewit/text-codec@0.2.2': {}
 
   '@bramus/specificity@2.4.2':
@@ -24465,6 +24540,24 @@ snapshots:
       picomatch: 4.0.7
       which: 4.0.0
       yocto-spinner: 1.2.0
+
+  '@dotenvx/dotenvx@2.38.2':
+    dependencies:
+      '@dotenvx/primitives': 3.3.1
+      '@dotenvx/providers': 0.3.11
+      '@dotenvx/tooling': 1.0.6
+      undici: 6.29.1
+      write-file-atomic: 5.0.1
+      yocto-spinner: 1.2.2
+
+  '@dotenvx/primitives@3.3.1': {}
+
+  '@dotenvx/providers@0.3.11':
+    dependencies:
+      '@dotenvx/primitives': 3.3.1
+      '@dotenvx/tooling': 1.0.6
+
+  '@dotenvx/tooling@1.0.6': {}
 
   '@drizzle-team/brocli@0.10.2': {}
 
@@ -45689,6 +45782,8 @@ snapshots:
 
   undici@6.26.0: {}
 
+  undici@6.29.1: {}
+
   undici@7.18.2: {}
 
   undici@7.24.8: {}
@@ -46791,6 +46886,10 @@ snapshots:
   yocto-queue@1.2.2: {}
 
   yocto-spinner@1.2.0:
+    dependencies:
+      yoctocolors: 2.1.2
+
+  yocto-spinner@1.2.2:
     dependencies:
       yoctocolors: 2.1.2
 

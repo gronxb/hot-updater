@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The first build of a project without a `secrets` adapter: the key a
- * sign-in issues goes to this machine's key store, the same build signs and
+ * sign-in issues goes to `local()`'s store, the same build signs and
  * uploads with it, and the next build on this machine reuses it without
  * signing in. Only the sign-ins, the native build, and the stores are
  * stand-ins; the credential resolver and the issued-key flow are the CLI's
@@ -127,7 +127,7 @@ vi.mock("@/utils/native/prepareNativeBuild", async () => {
             set: async () => {},
           }
         : undefined;
-      // As loadConfig hands it over: the key store after the config's adapter.
+      // As loadConfig hands it over: `local()`'s store after the config's adapter.
       const secrets = withLocalKeyStore(configured);
       if (scheme.platform === "ios") {
         await options.beforePrebuild?.({
@@ -247,7 +247,9 @@ describe("a first build without a secrets adapter", () => {
       p8: P8,
     });
     expect(printed()).toContain(file);
-    expect(printed()).toContain("No App Store Connect API key on this machine.");
+    expect(printed()).toContain(
+      "No App Store Connect API key on this machine.",
+    );
     expect(printed()).not.toContain("MIGHAgEA");
     expect(log.error).not.toHaveBeenCalled();
 

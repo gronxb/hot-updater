@@ -81,7 +81,7 @@ export default defineConfig({
 });
 ```
 
-With `envSecrets()`, `secret:release-keystore` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
+In the job's environment, `secret:release-keystore` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
 the keystore's JSON value, and `secret:bundle-signing-key` reads
 `HOT_UPDATER_BUNDLE_SIGNING_KEY`, the
 [local signing](/docs/guides/signing/local) key's PEM, as

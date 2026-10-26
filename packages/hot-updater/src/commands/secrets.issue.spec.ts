@@ -157,14 +157,14 @@ const writableStore = (values: Record<string, string> = {}) => {
 
 let directory: string;
 
-/** Makes `secrets` the config's, as loadConfig hands it over: with this machine's key store. */
+/** Makes `secrets` the config's, as loadConfig hands it over: with `local()`'s store. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
     secrets: withLocalKeyStore(secrets),
   } as never);
 };
 
-/** Where this machine's key store keeps `name` for the project. */
+/** Where `local()`'s store keeps `name` for the project. */
 const keyFile = (name: string) => getLocalKeyFile(name, directory);
 
 const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
@@ -315,6 +315,26 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
   });
 
+  it("says this machine has no key before signing in, on the default store, and stores the issued key there", async () => {
+    configure();
+
+    await withTTY(true, () => handleSecretsIssue("asc-api-key"));
+
+    expect(process.exitCode).toBeUndefined();
+    const notice = log.info.mock.calls.findIndex(([message]) =>
+      String(message).startsWith(
+        "No App Store Connect API key on this machine.",
+      ),
+    );
+    expect(notice).toBeGreaterThanOrEqual(0);
+    expect(log.info.mock.invocationCallOrder[notice]!).toBeLessThan(
+      vi.mocked(issueAscApiKey).mock.invocationCallOrder[0]!,
+    );
+    expect(
+      JSON.parse((await readLocalKey("asc-api-key", directory))!),
+    ).toMatchObject({ keyId: "NEWKEY0001" });
+  });
+
   it("--replace on the default store replaces the key on this machine, and names the old one to revoke", async () => {
     configure();
     await fs.mkdir(path.dirname(keyFile("asc-api-key")), { recursive: true });
@@ -344,7 +364,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
   });
 
-  it("keeps the key the environment's whole value sets for the default store, which reads it before this machine's key store", async () => {
+  it("keeps the key the environment's whole value sets for the default store, which reads it before `local()`'s store", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_API_KEY", OLD_ASC);
     configure();
 

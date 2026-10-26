@@ -24,12 +24,12 @@ concurrency:
 # The native build action (actions/native-build) in CI, which never signs in
 # to an Apple or Google account, against Postgres and MinIO started in the
 # job. The config sets no secrets adapter: every credential is a job
-# variable, which the CLI reads first, or is in the key store under
+# variable, which the CLI reads first, or is in local()'s store under
 # HOT_UPDATER_HOME, minus the credentials each run expects to miss: every run but the last must fail before anything is built, naming
 # what is missing and how to provide it. The last run has every credential,
 # builds and registers examples/v0.85.0's .aab, and fails only at Google,
 # which refuses the proof's made-up service account, which `secrets put`
-# stored in the key store and the build read from there. The proof reads the
+# stored in local()'s store and the build read from there. The proof reads the
 # CLI's output, which scripts/record-cli.mjs records as the action's `cli`,
 # and Postgres.
 jobs:
@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 90
     env:
       PROOF_LOG: /tmp/native-build-proof.log
-      # This machine's key store, which `secrets put` writes and builds read.
+      # local()'s store, which `secrets put` writes and builds read.
       HOT_UPDATER_HOME: /tmp/hot-updater-home
       # pnpm links the workspace CLI's bin only when its dist exists at
       # install time, which is before this job builds it.
@@ -163,7 +163,7 @@ jobs:
           node ../../examples-server/preview-action/native-build-proof.ts ios-missing
           rm "$PROOF_LOG"
 
-      - name: Store the Play service account in the key store
+      - name: Store the Play service account in local()'s store
         working-directory: examples/v0.85.0
         run: |
           work="$(mktemp -d)"
@@ -179,7 +179,7 @@ jobs:
           ' "$work/key.pem" "$work/service-account.json"
           json="$(cat "$work/service-account.json")"
           echo "::add-mask::$json"
-          # The default store keeps it in this machine's key store, where the
+          # local() keeps it in local()'s store, where the
           # build below reads it: the job's environment does not set it.
           $PROOF_CLI secrets put play-service-account \
             --kind play-service-account --service-account "$work/service-account.json"

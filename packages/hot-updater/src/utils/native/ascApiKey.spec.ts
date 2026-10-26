@@ -154,10 +154,10 @@ const issue = vi.fn(
 const ensure = (options: Parameters<typeof ensureAscApiKey>[0]) =>
   ensureAscApiKey({ issue, ...options });
 
-/** A directory of the spec's own; `home` in it is the key store's home. */
+/** A directory of the spec's own; `home` in it is `local()`'s store's home. */
 let tmp: string;
 
-/** Where this machine's key store keeps `name` for the project. */
+/** Where `local()`'s store keeps `name` for the project. */
 const keyFile = (name: string) => getLocalKeyFile(name, getCwd());
 
 /** Every argument the log and the prompts were given, as one text. */
@@ -262,14 +262,14 @@ describe("ensureAscApiKey", () => {
     await expect(fs.readdir(tmp)).resolves.toEqual([]);
   });
 
-  it("says before signing in that this machine has no key, stores the issued key in this machine's key store, and names where to prune old keys", async () => {
+  it("says before signing in that this machine has no key, stores the issued key in `local()`'s store, and names where to prune old keys", async () => {
     setConfiguredSecrets(withLocalKeyStore());
     git.remote = undefined;
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
 
     expect(result).toEqual({ status: "issued", keyId: "KEY1234567" });
     const file = keyFile("asc-api-key");
-    expect(file.startsWith(path.join(tmp, "home", "keys") + path.sep)).toBe(
+    expect(file.startsWith(path.join(tmp, "home", "secrets") + path.sep)).toBe(
       true,
     );
     expect(JSON.parse(await fs.readFile(file, "utf-8"))).toEqual({
@@ -282,7 +282,9 @@ describe("ensureAscApiKey", () => {
 
     // The notice comes before the Apple prompt and the sign-in.
     const notice = log.info.mock.calls.findIndex(([message]) =>
-      String(message).startsWith("No App Store Connect API key on this machine."),
+      String(message).startsWith(
+        "No App Store Connect API key on this machine.",
+      ),
     );
     expect(notice).toBeGreaterThanOrEqual(0);
     expect(log.info.mock.calls[notice]![0]).toBe(
@@ -331,7 +333,7 @@ describe("ensureAscApiKey", () => {
     expect(printed()).not.toContain("on this machine. Signing in issues");
   });
 
-  it("stores the key of a read-only adapter in this machine's key store, where builds here read it", async () => {
+  it("stores the key of a read-only adapter in `local()`'s store, where builds here read it", async () => {
     fakeStore({ writable: false });
     const githubSecrets = vi.fn();
     await expect(
@@ -340,14 +342,16 @@ describe("ensureAscApiKey", () => {
     // A GitHub Actions secret would not be read through another adapter.
     expect(confirm).not.toHaveBeenCalled();
     expect(githubSecrets).not.toHaveBeenCalled();
-    expect(JSON.parse((await readLocalKey("widget-asc", getCwd()))!)).toEqual(
-      { keyId: "KEY1234567", issuerId: "issuer-1", p8: P8 },
-    );
+    expect(JSON.parse((await readLocalKey("widget-asc", getCwd()))!)).toEqual({
+      keyId: "KEY1234567",
+      issuerId: "issuer-1",
+      p8: P8,
+    });
   });
 
-  it("revokes the key when this machine's key store can't be written", async () => {
+  it("revokes the key when `local()`'s store can't be written", async () => {
     setConfiguredSecrets(withLocalKeyStore());
-    // A file where the key store's home goes.
+    // A file where `local()`'s store's home goes.
     await fs.writeFile(path.join(tmp, "home"), "");
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
@@ -375,7 +379,6 @@ describe("ensureAscApiKey", () => {
     expect(set).toHaveBeenCalledExactlyOnceWith(
       "asc-api-key",
       await fs.readFile(keyFile("asc-api-key"), "utf-8"),
-      expect.anything(),
     );
     expect(
       stripVTControlCharacters(String(log.success.mock.calls.at(-1)![0])),
@@ -566,7 +569,7 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a copy of a key a write-only adapter stored in this machine's key store, which builds here read, and never revokes it", async () => {
+  it("keeps a copy of a key a write-only adapter stored in `local()`'s store, which builds here read, and never revokes it", async () => {
     const { held } = fakeStore({ readBack: async () => undefined });
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
 
@@ -576,9 +579,9 @@ describe("ensureAscApiKey", () => {
     expect(copy).toBe(held.get("asc-api-key"));
     expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     const { secrets } = result as { secrets: SecretsAdapter };
-    await expect(
-      secrets.get(["asc-api-key"], { cwd: tmp }),
-    ).resolves.toEqual({ "asc-api-key": copy });
+    await expect(secrets.get(["asc-api-key"], { cwd: tmp })).resolves.toEqual({
+      "asc-api-key": copy,
+    });
 
     const kept = stripVTControlCharacters(
       String(
@@ -613,9 +616,7 @@ describe("ensureAscApiKey", () => {
         (await secrets.get(["asc-api-key"], { cwd: tmp }))["asc-api-key"]!,
       ),
     ).toMatchObject({ keyId: "KEY1234567", p8: P8 });
-    expect(String(log.warn.mock.calls[0]![0])).toContain(
-      "Keeping a copy at",
-    );
+    expect(String(log.warn.mock.calls[0]![0])).toContain("Keeping a copy at");
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 

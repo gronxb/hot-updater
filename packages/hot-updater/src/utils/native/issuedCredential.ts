@@ -7,15 +7,13 @@ import {
   getConfiguredSecrets,
   getCwd,
   getHotUpdaterEnvValue,
-  getLocalKeyFile,
+  getLocalSecretsStore,
   type IssuedCredentialKind,
   keepsKeysOnThisMachine,
   p,
   readLoadedHotUpdaterEnv,
-  readLocalKey,
   registerCredentialValue,
   withLocalKeyStore,
-  writeLocalKey,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -57,12 +55,12 @@ export type WritableSecrets = SecretsAdapter &
 export type PreparedCredential =
   /** The environment overrides the key: the adapter is not read. */
   | { readonly status: "environment" }
-  /** The secrets adapter, or this machine's key store, holds the key: no sign-in. */
+  /** The secrets adapter, or `local()`'s store, holds the key: no sign-in. */
   | { readonly status: "stored" }
   /**
    * Nothing holds the key, and a sign-in can start: there is a terminal.
-   * The key goes to `secrets`, the config's adapter with this machine's
-   * key store after it. `env` is the environment with the project's
+   * The key goes to `secrets`, the config's adapter with `local()`'s
+   * store after it. `env` is the environment with the project's
    * `.env.hotupdater` under it.
    */
   | {
@@ -90,14 +88,15 @@ const describeUnavailable = (
  * after the developer signed in:
  *
  * 1. an environment override of the kind is used as it is;
- * 2. a value the config's `secrets` adapter, or this machine's key store,
+ * 2. a value the config's `secrets` adapter, or `local()`'s store,
  *    holds as `name` is used as it is, so CI builds with the stored key
  *    and never signs in, unless `replace` is set: `secrets issue` read it
  *    already;
  * 3. in CI or without a terminal, `canSignIn` refuses with the command
  *    that signs in once;
- * 4. when the key would stay on this machine, the developer is told that
- *    signing in issues a new key, and how to share one instead.
+ * 4. when nothing holds a key and the key would stay on this machine, the
+ *    developer is told that signing in issues a new key, and how to share
+ *    one instead.
  *
  * The environment overrides are read, never written.
  */
@@ -107,6 +106,7 @@ export const prepareIssuedCredential = async (
     name,
     env = {},
     replace = false,
+    replacing = false,
     secrets: configured = getConfiguredSecrets(),
   }: {
     readonly name: string;
@@ -116,6 +116,8 @@ export const prepareIssuedCredential = async (
      * key whatever it holds: the adapter is not read again.
      */
     readonly replace?: boolean;
+    /** Set by `secrets issue --replace` when the adapter holds a key it replaces. */
+    readonly replacing?: boolean;
     /** The adapter the key is read from and stored in, the config's by default. */
     readonly secrets?: SecretsAdapter;
   },
@@ -149,7 +151,7 @@ export const prepareIssuedCredential = async (
     );
   }
 
-  if (!replace && keepsKeysOnThisMachine(secrets)) {
+  if (!replacing && keepsKeysOnThisMachine(secrets)) {
     p.log.info(
       `No ${policy.label} on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (${SECRETS_DOCS_URL}) or import it with \`${credentialPutCommand(policy.kind, name)}\`.`,
     );
@@ -204,13 +206,12 @@ export const offerIssuedKeyToGitHub = async ({
   /** The adapter the GitHub Actions offer writes with. */
   readonly githubSecrets?: CreateGitHubSecrets;
 }): Promise<void> => {
-  // githubActions() wrote the GitHub secret already, and another store is
-  // read where it is.
+  // A key another adapter stores is read where it is.
   if (getConfiguredAdapter(secrets) !== undefined) return;
   await offerGitHubSecret({
     name,
     value,
-    file: getLocalKeyFile(name, getCwd()),
+    file: getLocalSecretsStore(secrets).file(name, getCwd()),
     ...(githubSecrets ? { createSecrets: githubSecrets } : {}),
   });
 };
@@ -291,8 +292,8 @@ export const storeIssuedCredential = async ({
 /**
  * The adapter stored the issued key and does not read it back here, as a
  * write-only store does: builds on this machine would not find it, and the
- * key is printed nowhere. Keeps a copy in this machine's key store, which
- * builds here read after the adapter, and returns the adapter this run
+ * key is printed nowhere. Keeps a copy in `local()`'s store, which builds
+ * here read after the adapter, and returns the adapter this run
  * reads the key with: from the copy, or from memory when the copy can't be
  * written, which is reported. The key stays stored either way, and is
  * never revoked.
@@ -310,13 +311,14 @@ export const keepIssuedCopy = async ({
 }): Promise<SecretsAdapter> => {
   registerCredentialValue(value);
   const cwd = getCwd();
+  const store = getLocalSecretsStore(secrets);
   const stored = `The ${secrets.name} secrets adapter stored ${name} (${describeSecret(secrets, name)}), and does not read it back here`;
   let file: string;
   try {
-    file = await writeLocalKey(name, value, cwd);
+    file = await store.write(name, value, cwd);
   } catch (error) {
     p.log.warn(
-      `${stored}. Keeping a copy at ${getLocalKeyFile(name, cwd)} failed: ${error instanceof Error ? error.message : String(error)}\nThis build uses the key; builds that read the adapter where it holds the key, such as CI's, use it too.`,
+      `${stored}. Keeping a copy at ${store.file(name, cwd)} failed: ${error instanceof Error ? error.message : String(error)}\nThis build uses the key; builds that read the adapter where it holds the key, such as CI's, use it too.`,
     );
     return withIssuedKey(
       secrets,
@@ -328,13 +330,13 @@ export const keepIssuedCopy = async ({
   p.log.info(
     ui.block(`${policy.label} kept on this machine`, [
       ui.kv("File", file),
-      `    ${stored}, so Hot Updater kept a copy in this machine's key store, which only you can read and builds here read.`,
+      `    ${stored}, so Hot Updater kept a copy with local(), which only you can read and builds here read.`,
     ]),
   );
   return withIssuedKey(
     secrets,
     name,
-    async () => (await readLocalKey(name, cwd)) ?? value,
+    async () => (await store.read(name, cwd)) ?? value,
     file,
   );
 };

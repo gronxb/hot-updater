@@ -150,14 +150,14 @@ const storeIssued = async (
  *
  * 1. an environment override of play-service-account
  *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
- * 2. a value the config's `secrets` adapter, or this machine's key store,
+ * 2. a value the config's `secrets` adapter, or `local()`'s store,
  *    holds as `name` is used as it is, so CI uploads with the stored key
  *    and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once.
  *
  * Only then does the developer sign in with Google, in a browser, through
  * `issue`, and the issued key is stored through the config's adapter, or
- * this machine's key store by default, read back, and deleted again if
+ * `local()`'s store by default, read back, and deleted again if
  * storing it fails. A key the default store keeps comes with an offer to
  * store it as a GitHub Actions secret too, and every issued key with where
  * to delete the ones no machine uses anymore. The environment overrides
@@ -168,6 +168,7 @@ export const ensurePlayServiceAccount = async ({
   packageName,
   env = {},
   replace,
+  replacing,
   secrets,
   githubSecrets,
   issue = issuePlayServiceAccount,
@@ -182,6 +183,8 @@ export const ensurePlayServiceAccount = async ({
   secrets?: SecretsAdapter;
   /** Set by `secrets issue`: a key is issued whatever the adapter holds. */
   replace?: boolean;
+  /** Set by `secrets issue --replace` when the adapter holds a key it replaces. */
+  replacing?: boolean;
   /** The adapter that stores a key the default store keeps as a GitHub Actions secret. */
   githubSecrets?: CreateGitHubSecrets;
   /** The sign-in that issues the key, android-helper's unless set. */
@@ -191,6 +194,7 @@ export const ensurePlayServiceAccount = async ({
     name,
     env,
     replace,
+    replacing,
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;

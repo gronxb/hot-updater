@@ -7,7 +7,7 @@ import type { ScenarioDefinition } from "./types.ts";
  * differs between the two deploys, so the refusal is the signature's.
  *
  * The project's key comes from `secret:bundle-signing-key`, read from its
- * variable, with the key file moved away and an empty key store: the controller first sees a deploy without
+ * variable, with the key file moved away and an empty local() store: the controller first sees a deploy without
  * the variable refused for it, and the installed update proves the key read
  * from the secret is the one the app embeds.
  */

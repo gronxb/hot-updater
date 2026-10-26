@@ -122,7 +122,7 @@ describe("offerGitHubSecret", () => {
     offerGitHubSecret({
       name: "asc-api-key",
       value: "{}",
-      file: "/home/dev/.hot-updater/keys/app-0123456789ab/asc-api-key.json",
+      file: "/home/dev/.hot-updater/secrets/app-0123456789ab/asc-api-key.json",
       findRepository: async () => "acme/app",
       findToken: async () => "gho_token",
       ...options,
@@ -149,12 +149,8 @@ describe("offerGitHubSecret", () => {
         }),
       ),
     ).resolves.toBe("stored");
-    // githubActions() stores it as HOT_UPDATER_WIDGET_ASC.
-    expect(set).toHaveBeenCalledExactlyOnceWith(
-      "widget-asc",
-      "{}",
-      expect.anything(),
-    );
+    // The writer stores it as HOT_UPDATER_WIDGET_ASC.
+    expect(set).toHaveBeenCalledExactlyOnceWith("widget-asc", "{}");
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining(

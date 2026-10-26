@@ -265,7 +265,7 @@ describe("local signing with privateKey from a secret", () => {
     );
   });
 
-  it("names the default store's variable and key store file when neither has the key", async () => {
+  it("names local()'s variable and file when neither has the key", async () => {
     const cwd = await createTempDir();
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:bundle-signing-key" },

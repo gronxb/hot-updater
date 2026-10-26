@@ -99,10 +99,13 @@ The adapter holds each credential as one JSON value:
 `{"keyId","issuerId","p8"}` for an App Store Connect API key, with the `.p8`
 file's PEM; `{"keystore","storePassword","keyAlias","keyPassword"}` for a
 keystore, the keystore file in base64; and a Play service account's own JSON
-key file. With the default `envSecrets()`, set the JSON in an environment variable:
-`HOT_UPDATER_ASC_API_KEY` for `secret:asc-api-key`, and `HOT_UPDATER_` before
-any other name, upper-cased with `_` for every character but letters and
-digits.
+key file. With the default
+[`local()`](/docs/guides/secrets-adapters/local), set the JSON
+in an environment variable, `HOT_UPDATER_ASC_API_KEY` for
+`secret:asc-api-key` and `HOT_UPDATER_` before any other name, upper-cased
+with `_` for every character but letters and digits, or let `apple login`,
+`google-play login`, or `secrets put` store it in a file in your home
+directory.
 [Secrets](/docs/concepts/secrets) covers storing them.
 
 These environment variables override the adapter for one credential: when any
@@ -164,10 +167,12 @@ key there stops with that command.
 
 Before it asks for your Apple Account, the CLI checks everything that could
 fail afterwards, in this order: a `HOT_UPDATER_ASC_KEY*` override or a key the
-`secrets` adapter holds is used as it is; CI and runs without a terminal stop
-with the command above; and the key needs somewhere to go, the adapter when it
-stores values, or else its file under `cacheDir`. When the issued key surely
-went nowhere, the CLI revokes it again, so no key is left that nothing holds.
+`secrets` adapter holds is used as it is; and CI and runs without a terminal
+stop with the command above. On a machine without a key, it says that signing
+in issues a new one, and how to
+[share one key across machines](/docs/concepts/secrets#share-a-key-across-machines)
+instead. When the issued key surely went nowhere, the CLI revokes it again,
+so no key is left that nothing holds.
 
 The CLI uses the `asc` on your `PATH` when it is version 5.16.1 or later, and
 otherwise downloads asc 5.16.1 from its GitHub release into
@@ -191,29 +196,22 @@ describes.
 ### Where an issued key goes
 
 A key Hot Updater issues after an Apple or Google sign-in goes where builds
-read it:
+read it, as one JSON value:
 
-- When the `secrets` adapter stores values, the CLI stores the key through it
-  as one JSON value, reads it back, and builds read it from there, CI's
-  included. A store that does not read it back on your machine, such as
-  [`githubActions()`](/docs/guides/secrets-adapters/github-actions) outside a
-  workflow, keeps the key for CI, and the CLI also writes a copy to the file
-  below. Builds on your machine read it from the key's own variables
-  (`HOT_UPDATER_ASC_KEY`, `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`,
-  or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`), which the CLI reads before any
-  adapter.
-- When the adapter is read-only, such as the default `envSecrets()`, the CLI writes
-  the key to `<cacheDir>/issued/<name>.json` (`node_modules/.hot-updater` unless
-  `cacheDir` sets another directory), a file only your user can read in a
-  directory git ignores. It prints the file's path and the variables to store
-  it in, never the key: `HOT_UPDATER_ASC_API_KEY` or
-  `HOT_UPDATER_PLAY_SERVICE_ACCOUNT` (the name's variable, as
-  [`envSecrets()`](/docs/guides/secrets-adapters/env-secrets) reads it) set to the file's contents, in the
-  environment or `.env.hotupdater`, or the key's own variables from
-  [Provide signing credentials](#provide-signing-credentials). The build that
-  signed in continues with the key from the file, so its upload goes through.
-  Store the key, then delete the file: a later sign-in for the same name
-  refuses to replace it, since the key it holds is still valid.
+- With the default [`local()`](/docs/guides/secrets-adapters/local),
+  to `~/.hot-updater/secrets/<project-key>/<name>.json`, a file only your user
+  can read, outside the project. The next build on the machine reads it, with
+  no step in between.
+- With an adapter that stores values, through the adapter, read back once
+  stored. One that does not read it back on your machine, such as a
+  write-only store, also gets a copy in the `local()` store, which
+  builds on your machine read after the adapter.
+
+Each machine keeps its own key: on another machine a sign-in issues a new one.
+After issuing, the CLI prints where to revoke the keys nothing uses anymore,
+App Store Connect's Integrations page (Team Keys) or the service account's
+keys in Google Cloud. To use one key on every machine and in CI, see
+[Share a key across machines](/docs/concepts/secrets#share-a-key-across-machines).
 
 For CI, store the same value as a repository secret and map it into the job,
 as in [Build and upload from CI](/docs/guides/ci-native-build):
@@ -223,14 +221,15 @@ env:
   HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
 ```
 
-With `envSecrets()`, when the project's `origin` (or another remote) is on GitHub and
-you have a token (`GH_TOKEN` or `GITHUB_TOKEN`, or the GitHub CLI's
-`gh auth token`), the CLI offers once to store the key as that secret with
-[`githubActions()`](/docs/guides/secrets-adapters/github-actions). Declining
-leaves the file as it is, and a failed write says so and leaves it too.
+With `local()`, when the sign-in runs at a terminal, the project's `origin`
+(or another remote) is on GitHub, and you have a token (`GH_TOKEN` or
+`GITHUB_TOKEN`, or the GitHub CLI's `gh auth token`), the CLI offers once to
+store the key as that secret too. Declining keeps the key on your machine
+alone, and a failed write says so. To store it by hand, copy the file:
 
-The CLI writes the file only after a sign-in, and never revokes a key it wrote
-there.
+```bash
+gh secret set HOT_UPDATER_ASC_API_KEY < ~/.hot-updater/secrets/<project-key>/asc-api-key.json
+```
 
 ## Build
 
@@ -410,9 +409,8 @@ Team Keys), with the Admin, App Manager, or Developer role: the scheme's
 `HOT_UPDATER_ASC_KEY*` environment variables in
 [Provide signing credentials](#provide-signing-credentials) override it.
 Without one, [sign in with your Apple Account](#sign-in-with-your-apple-account)
-when asked, and the CLI issues and stores it before it builds; with a read-only
-adapter, it writes the key to a file and the same build uploads with it from
-there ([where an issued key goes](#where-an-issued-key-goes)). The
+when asked, and the CLI issues and stores it before it builds
+([where an issued key goes](#where-an-issued-key-goes)). The
 CLI resolves the key before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing key fails before either runs, and
 deletes the key's temporary file when the upload ends.
