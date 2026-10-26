@@ -66,8 +66,6 @@ type PreparedNativeBuildConfig = {
 export async function prepareNativeBuild(
   options: NativeBuildOptions & {
     platform: Platform;
-    /** `build` exports an iOS device build as an `.ipa`; `run` installs the `.app`. */
-    operation: "build" | "run";
     /**
      * Runs on the scheme, as the config sets it, before the adapter's
      * prebuild writes the native projects, so a check that fails, such as a
@@ -130,9 +128,7 @@ export async function prepareNativeBuild(
   }
 
   const iosDeviceScheme =
-    options.operation === "build" &&
-    platform === "ios" &&
-    !config.nativeBuild.ios[scheme]?.simulator
+    platform === "ios" && !config.nativeBuild.ios[scheme]?.simulator
       ? config.nativeBuild.ios[scheme]
       : undefined;
   if (

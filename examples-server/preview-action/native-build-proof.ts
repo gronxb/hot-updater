@@ -16,11 +16,11 @@
  *   the signing credential fails before the build too.
  * - keystore-malformed: the keystore's JSON value lacks a field; the run
  *   names the field and the shape before the build.
- * - ios-missing: build:ios in CI without the App Store Connect API key, as
+ * - ios-missing: native-build ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
  * - put-read-only: `secrets put` with envSecrets(), which stores nothing, names
  *   the variable to set instead.
- * - built: with every credential set, the run builds, registers, and fails
+ * - built: with every credential set, the run builds, tracks, and fails
  *   only at Google, which refuses the proof's made-up service account.
  *
  * Each reads PROOF_LOG.

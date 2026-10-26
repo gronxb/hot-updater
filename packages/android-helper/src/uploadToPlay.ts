@@ -27,7 +27,7 @@ const CHUNK_ATTEMPTS = 3;
 /** Commits while Google is still processing the uploaded bundle. */
 const COMMIT_ATTEMPTS = 6;
 
-/** The track `--upload play-internal` releases to. */
+/** The track `--submit play-internal` releases to. */
 const INTERNAL_TRACK = "internal";
 
 const BUNDLE_STILL_PROCESSING =

@@ -729,6 +729,9 @@ importers:
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../../plugins/bare
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../../plugins/mock
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server

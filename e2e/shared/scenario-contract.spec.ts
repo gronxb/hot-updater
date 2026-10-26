@@ -307,7 +307,7 @@ describe("E2E scenario contract", () => {
       "force-update-auto-reload",
       "skipped-force-update-propagates",
       // A host app embeds React Native's bundle in a framework, not as a
-      // native build `build:*` registers.
+      // native build `native-build ios|android` tracks.
       "store-install-patches-from-built-in",
       "store-install-built-in-mismatch-downloads",
       // The post-crash native check is proved on the example app first; a

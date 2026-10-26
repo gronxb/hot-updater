@@ -271,8 +271,6 @@ export interface NativeBuildIosScheme {
    * Convenience shortcut option for simulator builds.
    * When true, this option should not be used together with the destination option.
    *
-   * This option only affects build:ios, not run:ios.
-   *
    * @default false
    */
   simulator?: boolean;

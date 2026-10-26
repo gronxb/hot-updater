@@ -1,24 +1,16 @@
-import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   type NativeBuildArtifactKind,
   type NativeBuildRow,
-  type NativeBuildScope,
   type Platform,
 } from "@hot-updater/plugin-core";
 
 import { ui } from "../utils/cli-ui";
-import { generateFingerprint } from "../utils/fingerprint";
 import { formatBytes } from "../utils/formatBytes";
 import { loadServer } from "../utils/loadServer";
-import { nativeBuildAppVersionScope } from "../utils/native/appVersionScope";
+import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
 import { printBanner } from "../utils/printBanner";
-import { getChannel } from "../utils/setChannel";
-import {
-  formatAppVersionCandidates,
-  isAmbiguousAppVersion,
-} from "../utils/version/appVersionCandidates";
-import { resolveNativeAppVersion } from "../utils/version/getNativeAppVersion";
 import { confirmMutation, safeDispose } from "./release";
 
 export interface NativeBuildFindOptions {
@@ -60,13 +52,13 @@ export const handleNativeBuildFind = async (
         `scheme ${options.scheme} is not in nativeBuild.${options.platform} in hot-updater.config.ts.`,
       );
     }
-    const scope = await resolveScope(config, options);
+    const scope = await resolveNativeBuildScope(config, options);
     const artifactKind =
       options.scheme === undefined
         ? undefined
         : schemeArtifactKind(config, options.platform, options.scheme);
 
-    // The registry `build:* --register` writes to.
+    // The registry `native-build ios|android` tracks builds in.
     const server = await loadServer(await loadConfig(null));
     let nativeBuild: NativeBuildRow | null;
     try {
@@ -117,7 +109,7 @@ export const handleNativeBuildFind = async (
   }
 };
 
-/** The kind of artifact `build:<platform> --scheme <scheme>` builds. */
+/** The kind of artifact `native-build <platform> --scheme <scheme>` builds. */
 const schemeArtifactKind = (
   config: Awaited<ReturnType<typeof loadConfig>>,
   platform: Platform,
@@ -130,68 +122,6 @@ const schemeArtifactKind = (
     : config.nativeBuild.ios[scheme]?.simulator
       ? "app"
       : "ipa";
-
-/**
- * What a build of the project would embed, read without writing the native
- * projects: a lookup must not rewrite them, as the build adapter's prebuild
- * (such as `expo prebuild`) would. The adapter reports what its prebuild
- * would write; anything else is read from the native projects as they are.
- */
-const resolveScope = async (
-  config: Awaited<ReturnType<typeof loadConfig>>,
-  { platform, channel, scheme, json }: NativeBuildFindOptions,
-): Promise<NativeBuildScope> => {
-  const buildAdapter = await config.build({ cwd: getCwd() });
-  const prebuildValues =
-    (await buildAdapter.nativeBuild?.getNativeProjectValues?.({ platform })) ??
-    {};
-  const buildChannel =
-    channel ?? prebuildValues.channel ?? (await getChannel(platform)).value;
-  if (config.updateStrategy === "fingerprint") {
-    // From the config's fingerprint inputs, as a build writes fingerprint.json
-    // and deploy targets, whatever the committed fingerprint.json records.
-    const { hash } = await generateFingerprint(platform);
-    return {
-      platform,
-      channel: buildChannel,
-      fingerprintHash: hash,
-      appVersion: null,
-    };
-  }
-  const versionScope =
-    scheme === undefined ? {} : nativeBuildAppVersionScope(config, scheme);
-  // The version the prebuild would write stands for the one it overwrites,
-  // so a scheme's own version in the native project, such as a product
-  // flavor's, still wins, as in the build.
-  let resolved = await resolveNativeAppVersion(
-    platform,
-    versionScope,
-    prebuildValues.appVersion,
-  );
-  const prebuild = buildAdapter.nativeBuild?.prebuild;
-  if (!resolved.version && resolved.candidates.length === 0 && prebuild) {
-    // No native project declares a version, and the adapter can't say what
-    // its prebuild would write: generating the project is the only way left.
-    const warning = `No ${platform} native project to read the app version from: running the ${buildAdapter.name} build adapter's prebuild, which writes it.`;
-    if (json) console.error(warning);
-    else p.log.warn(warning);
-    await prebuild({ platform });
-    resolved = await resolveNativeAppVersion(platform, versionScope);
-  }
-  if (!resolved.version) {
-    throw new Error(
-      isAmbiguousAppVersion(resolved)
-        ? `The native project builds several app versions (${formatAppVersionCandidates(resolved.candidates)}). Pass --scheme with the nativeBuild scheme that builds the app.`
-        : `Failed to retrieve native app version of ${platform}`,
-    );
-  }
-  return {
-    platform,
-    channel: buildChannel,
-    fingerprintHash: null,
-    appVersion: resolved.version,
-  };
-};
 
 /**
  * Deletes a registered native build: its row and its built-in bundle's in

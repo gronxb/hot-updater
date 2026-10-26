@@ -1,6 +1,6 @@
 ---
 title: "Build and Upload from CI"
-description: "Build, register, and upload native apps to TestFlight and Google Play from CI, with credentials from the job's environment or a secrets store, without signing in."
+description: "Build, track, and submit native apps to TestFlight and Google Play from CI, with credentials from the job's environment or a secrets store, without signing in."
 icon: Workflow
 ---
 
@@ -9,17 +9,18 @@ import { Callout } from "fumadocs-ui/components/callout";
 ## Overview
 
 A CI job builds the native apps with the same commands you run on your
-machine, `build:ios` and `build:android`, with `--register` and
-`--upload`. It never signs in to an Apple or Google account. The CLI reads
+machine, `native-build ios` and `native-build android`, with `--submit`.
+Every build is tracked in Hot Updater, so the job needs the deploy
+credentials your config reads. It never signs in to an Apple or Google account. The CLI reads
 each credential through the config's [`secrets` adapter](/docs/concepts/secrets),
 so the same `hot-updater.config.ts` builds on your machine and in CI:
 
-| What the job needs        | Where the CLI reads it                                                                                                        |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Android release keystore  | The secret `signing.keystore` names, such as `secret:release-keystore`, or the `HOT_UPDATER_ANDROID_KEYSTORE_*` variables     |
-| App Store Connect API key | The secret `signing.ascApiKey` names, else `asc-api-key`, or the `HOT_UPDATER_ASC_KEY*` variables, for signing and TestFlight |
-| Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                |
-| Deploy credentials        | The names your config reads with [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), for `--register`    |
+| What the job needs        | Where the CLI reads it                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Android release keystore  | The secret `signing.keystore` names, such as `secret:release-keystore`, or the `HOT_UPDATER_ANDROID_KEYSTORE_*` variables        |
+| App Store Connect API key | The secret `signing.ascApiKey` names, else `asc-api-key`, or the `HOT_UPDATER_ASC_KEY*` variables, for signing and TestFlight    |
+| Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                   |
+| Deploy credentials        | The names your config reads with [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), for tracking the build |
 
 With [`envSecrets()`](/docs/guides/secrets-adapters/env-secrets), the default, the job's
 environment holds them, from your CI provider's secrets. With a secrets store,
@@ -61,8 +62,9 @@ npx hot-updater google-play login
 [Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
 describes, and `google-play login` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
-describes. Each keeps a key the adapter already holds; `--replace` issues a
-new one and names the old key to revoke once CI no longer uses it. An adapter that stores values keeps the key, where CI reads it.
+describes. Each keeps a key the adapter already holds; `secrets issue <kind>
+--replace` issues a new one and names the old key to revoke once CI no longer
+uses it. An adapter that stores values keeps the key, where CI reads it.
 With `envSecrets()`, which never stores, the CLI writes the key to a file only your
 user can read, prints the variables to store it in, and offers to store it as
 a GitHub Actions secret
@@ -74,8 +76,8 @@ may use, and uploads with the same key.
 
 ## Add the workflow
 
-The `native-build` action runs `build:<platform> --scheme <scheme> --register
---upload <store> --json` with the job's environment, sets the build as its
+The `native-build` action runs `native-build <platform> --scheme <scheme>
+--submit <store> --json` with the job's environment, sets the build as its
 outputs, and writes a summary of the job. Use the tag of the hot-updater
 release your project installs. Each workflow below builds when you push a
 version tag or run it by hand; pick the one for your `secrets` adapter.
@@ -130,11 +132,11 @@ jobs:
       - uses: gronxb/hot-updater/actions/native-build@v1.2.0
         env:
           HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
-          # ...and the deploy variables your config reads for --register
+          # ...and the deploy variables your config reads, which tracking needs
         with:
           platform: ios
           scheme: release
-          upload: testflight
+          submit: testflight
 
   android:
     runs-on: ubuntu-latest
@@ -155,11 +157,11 @@ jobs:
         env:
           HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
           HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}
-          # ...and the deploy variables your config reads for --register
+          # ...and the deploy variables your config reads, which tracking needs
         with:
           platform: android
           scheme: release
-          upload: play-internal
+          submit: play-internal
 ```
 
 A credential's own variables work too, such as `HOT_UPDATER_ASC_KEY`,
@@ -175,7 +177,7 @@ With [`awsSecretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager),
 the job assumes a role through GitHub Actions OIDC, and the repository stores
 no AWS key. Create the role with the trust policy and the read policy in
 [Read secrets in GitHub Actions](/docs/guides/secrets-adapters/aws-secrets-manager#read-secrets-in-github-actions);
-the deploy credentials `secretEnv` names for `--register` come from Secrets
+the deploy credentials `secretEnv` names for tracking the build come from Secrets
 Manager too.
 
 ```yaml title=".github/workflows/native-release.yml"
@@ -209,7 +211,7 @@ jobs:
         with:
           platform: ios
           scheme: release
-          upload: testflight
+          submit: testflight
 ```
 
 `configure-aws-credentials` sets the role's short-lived credentials in the
@@ -261,7 +263,7 @@ jobs:
         with:
           platform: android
           scheme: release
-          upload: play-internal
+          submit: play-internal
 ```
 
 `google-github-actions/auth` writes the federation file and sets
@@ -308,7 +310,7 @@ jobs:
         with:
           platform: ios
           scheme: release
-          upload: testflight
+          submit: testflight
 ```
 
 The adapter requests the job's ID token itself and exchanges it for a
@@ -326,11 +328,11 @@ shortcuts for the store uploads:
 ```bash
 npx --no-install hot-updater testflight --scheme release
 # the same as
-npx --no-install hot-updater build:ios --scheme release --register --upload testflight
+npx --no-install hot-updater native-build ios --scheme release --submit testflight
 
 npx --no-install hot-updater google-play upload --scheme release
 # the same as
-npx --no-install hot-updater build:android --scheme release --register --upload play-internal
+npx --no-install hot-updater native-build android --scheme release --submit play-internal
 ```
 
 In CI, pass `--scheme` when several schemes upload to TestFlight: it asks
@@ -339,7 +341,8 @@ nothing there.
 ## What a CI build does
 
 1. It loads the config, with the deploy credentials `secretEnv` names for
-   `--register`.
+   tracking the build, and checks that the database and storage answer before
+   it builds.
 2. Before the prebuild, it resolves every credential the build signs and
    uploads with through the `secrets` adapter, and checks that the stores
    would take the scheme's build. A missing or unreadable credential stops it
@@ -358,7 +361,7 @@ nothing there.
    which never leaves Apple. A scheme whose `exportOptionsPlist` exports for
    another method, such as `development`, may be signed with the certificate
    Xcode creates, so it builds in the runner's own keychains and keeps it.
-5. It builds, registers the build, uploads it, and deletes the temporary files
+5. It builds, tracks the build, submits it, and deletes the temporary files
    and the keychain.
 
 A self-hosted macOS runner that keeps a signing identity in its login keychain
@@ -383,8 +386,9 @@ with its own variables. A store the job can't sign in to, or a role without
 read access, fails with the store's reason.
 
 <Callout type="info">
-  `--register` writes to the server's database, so a job that registers also
-  needs the deploy credentials your config reads.
+  Every build is tracked in the server's database and storage, so the job
+  needs the deploy credentials your config reads. A Debug scheme's build is
+  the exception: it has no built-in bundle to track.
 </Callout>
 
 ## Inputs
@@ -393,8 +397,7 @@ read access, fails with the store's reason.
 | ------------------- | ------------------------------ | ------------------------------------------------------------------------- |
 | `platform`          |                                | `ios`, on a macOS runner, or `android`. Required                          |
 | `scheme`            |                                | The `nativeBuild.<platform>` scheme. Required                             |
-| `upload`            |                                | `testflight` for iOS, `play-internal` for Android, or empty to only build |
-| `register`          | `true`                         | Whether to register the build                                             |
+| `submit`            |                                | `testflight` for iOS, `play-internal` for Android, or empty to only build |
 | `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                         |
 | `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                   |
 
@@ -409,7 +412,7 @@ CLI, so a self-hosted runner that sets no `CI` never starts a sign-in either.
 | --------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `artifact-path` | The built `.ipa`, `.aab`, `.apk`, simulator `.app`, or `.xcarchive`                                                 |
 | `build`         | JSON of the build: platform, scheme, artifact path and kind, min bundle ID, channel, and fingerprint or app version |
-| `native-build`  | JSON of the registered native build, or `null` without `register`                                                   |
+| `native-build`  | JSON of the native build Hot Updater tracks, or `null` for a Debug build                                            |
 | `build-log`     | When the build fails, the path of the CLI's build log                                                               |
 
 When the build fails, the job's log shows the build's errors and the path of

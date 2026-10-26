@@ -11,11 +11,11 @@ import { Callout } from "fumadocs-ui/components/callout";
 The preview action runs [preview builds](/docs/guides/preview-builds) for
 every pull request:
 
-1. It looks for a registered native build of the project's fingerprint, or
+1. It looks for a tracked native build of the project's fingerprint, or
    app version, on the shared preview channel.
 2. When there is one, it deploys only the pull request's bundle, to the pull
-   request's channel, such as `pr-12`. When there is none, it builds and
-   registers a preview build first.
+   request's channel, such as `pr-12`. When there is none, it builds a
+   preview build first, which Hot Updater tracks.
 3. It comments on the pull request: each platform's install link in the
    Console, the bundle, and the QR code of the channel link, which switches
    an installed preview build to the pull request's bundle. It edits the same
@@ -158,14 +158,14 @@ Before anything else, the action runs `hot-updater channel set <preview-channel>
 so a build it makes embeds the preview channel. Then, for each platform:
 
 1. `hot-updater native-build find -p <platform> -c <preview-channel> -s <scheme> --json`
-   prints the newest registered build that a build of the project would
+   prints the newest tracked build that a build of the project would
    match: the same fingerprint, from the config's fingerprint inputs, or with
    the `appVersion` strategy, the version of the app the scheme builds, and
    the kind of artifact the scheme builds, so a Simulator scheme never reuses
    an `.ipa`, nor an APK scheme an `.aab`. It writes nothing to the native
    projects; see [Find a build](/docs/guides/native-build#find-a-build).
-2. With no build, `hot-updater build:<platform> --scheme <scheme> --register --json`
-   builds and registers one, and prints what its artifact embeds: the
+2. With no build, `hot-updater native-build <platform> --scheme <scheme> --json`
+   builds and tracks one, and prints what its artifact embeds: the
    channel, and the fingerprint or app version. With one, the action skips
    the native build and runs `hot-updater fingerprint create`, since a
    committed `fingerprint.json` can be older than the project.
@@ -186,12 +186,12 @@ every run.
 
 When the pull request closes, `hot-updater channel delete <channel> --yes`
 deletes the channel and its bundles, and the comment says so. The preview
-builds stay registered for the next pull request.
+builds stay tracked for the next pull request.
 
 <Callout type="warn">
   Keep the preview channel for native builds and pull request channels for
   bundles. A channel a native build embeds can't be deleted while the build
-  is registered, so the action refuses a `channel` equal to
+  is tracked, so the action refuses a `channel` equal to
   `preview-channel`, and the cleanup fails when a native build embeds the
   pull request's channel. `hot-updater native-build delete <build id>`
   deletes such a build; see

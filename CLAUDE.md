@@ -72,8 +72,9 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
   - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
   - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
-  - `hot-updater secrets put <name> --kind <kind>` is a built-in command that stores a build credential you have, from its files, through the config's `secrets` adapter (`set`). `hot-updater secrets issue <asc-api-key|play-service-account> [name] [--replace]` is the only command that signs in ahead of a build: at a terminal only, it signs in with an Apple Account or Google, and stores the key Hot Updater issues as builds do when theirs is missing. `hot-updater apple login [name] [--replace]` and `hot-updater google-play login [name] [--replace]` are its shortcuts for `asc-api-key` and `play-service-account`, with the same handler and options, and the hints people meet first name them. It keeps a stored key unless `--replace`, which never revokes the old one. Hot Updater keeps no session, so there is no `logout` or `whoami`: each run ends saying only the key stayed. Hot Updater hosts no secret.
-  - `hot-updater testflight [--scheme <scheme>] [--no-register]` and `hot-updater google-play upload [...]` are the shortcuts for `build:ios --upload testflight --register` and `build:android --upload play-internal --register`, running the build's own handler: without `--scheme` they build the one scheme `resolveTestFlightUploadKey` / `resolvePlayUploadServiceAccount` accepts, ask at a terminal among several, and refuse in CI.
+  - `hot-updater secrets put <name> --kind <kind>` is a built-in command that stores a build credential you have, from its files, through the config's `secrets` adapter (`set`). `hot-updater secrets issue <asc-api-key|play-service-account> [name] [--replace]` is the only command that signs in ahead of a build: at a terminal only, it signs in with an Apple Account or Google, and stores the key Hot Updater issues as builds do when theirs is missing. `hot-updater apple login` and `hot-updater google-play login` are its shortcuts for `asc-api-key` and `play-service-account`, with the same handler: they take no options or arguments (anything else exits 1 naming `secrets issue`), and the hints people meet first name them for the default names. It keeps a stored key unless `--replace`, which never revokes the old one. Hot Updater keeps no session, so there is no `logout` or `whoami`: each run ends saying only the key stayed. Hot Updater hosts no secret.
+  - `hot-updater native-build ios|android [-s <scheme>] [-o <path>] [--submit testflight|play-internal] [--dry-run] [--json]` builds a native app; `native-build find|delete` query and delete the builds it tracks. There is no `build:*`, `run:*`, or opt-out flag: every build but a Debug one (no built-in bundle) is tracked, recorded with its artifact in the config's database and storage. Before building, and before any sign-in, a read-only preflight (the registry for the build's scope, and a storage `exists` on a tracked build's artifact) fails fast naming what it can't reach; a tracking failure after the build exits with the artifact's path and submits nothing. `--dry-run` builds but records and submits nothing, and never signs in.
+  - `hot-updater testflight` and `hot-updater google-play upload` are the shortcuts for `native-build ios --submit testflight` and `native-build android --submit play-internal`, running the build's own handler. They take only `--scheme` (anything else exits 1 naming the full command); without it they build the one scheme `resolveTestFlightUploadKey` / `resolvePlayUploadServiceAccount` accepts, ask at a terminal among several, and refuse in CI.
   - Each `secretEnv` reads the `secrets` adapter (`envSecrets()` by default) of the config load that created it; credential resolvers take the consuming command's config's adapter, else the one `loadConfig` last loaded. That state and the masking registry live on `globalThis`, since the config file loads its own copy of Hot Updater's modules. Loading reads no secret: `secretEnv` returns a function adapters call on first use, and resolved values never go into the CLI's own `process.env`, only to the caller, 0600 temporary files, or a child's explicit environment, which `isReservedVariableName` guards. Adapters and signers check their credentials and create clients on first use, so a config without them still loads.
 
 ### Reference Projects
@@ -155,16 +156,16 @@ npx hot-updater channel set <channel>
 # Delete a channel and its bundles, such as a closed pull request's
 npx hot-updater channel delete <channel> --yes
 
-# Build a release app, and register it with the config's database and storage
-npx hot-updater build:android --scheme release --register
+# Build a release app, tracked in the config's database and storage
+npx hot-updater native-build android --scheme release
+npx hot-updater native-build ios --scheme release --dry-run
 
-# Build an .ipa, register it, and upload it to TestFlight (= build:ios --scheme <scheme> --upload testflight --register)
+# Build an .ipa, track it, and upload it to TestFlight (= native-build ios --scheme <scheme> --submit testflight)
 npx hot-updater testflight
-npx hot-updater testflight --scheme release --no-register
+npx hot-updater testflight --scheme release
 
-# Build an .aab, register it, and release it to Google Play's internal track (= build:android --scheme <scheme> --upload play-internal --register)
+# Build an .aab, track it, and release it to Google Play's internal track (= native-build android --scheme <scheme> --submit play-internal)
 npx hot-updater google-play upload
-npx hot-updater google-play upload --scheme release --no-register
 
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>

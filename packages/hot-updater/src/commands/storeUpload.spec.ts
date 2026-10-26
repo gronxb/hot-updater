@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { log, select, isCancel, buildIosNative, buildAndroidNative } =
-  vi.hoisted(() => ({
-    log: { error: vi.fn(), info: vi.fn() },
-    select: vi.fn(),
-    isCancel: vi.fn((_answer: unknown) => false),
-    buildIosNative: vi.fn(async (_options: unknown) => ({})),
-    buildAndroidNative: vi.fn(async (_options: unknown) => ({})),
-  }));
+const { log, select, isCancel, handleNativeBuildCreate } = vi.hoisted(() => ({
+  log: { error: vi.fn(), info: vi.fn() },
+  select: vi.fn(),
+  isCancel: vi.fn((_answer: unknown) => false),
+  handleNativeBuildCreate: vi.fn(
+    async (_platform: string, _options: unknown) => ({}),
+  ),
+}));
 
 // The config, the prompt, and the build handlers are stood in for; which
 // scheme a store takes is the helpers' own check, unmocked.
@@ -17,7 +17,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: { log, select, isCancel },
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
-vi.mock("./buildNative", () => ({ buildIosNative, buildAndroidNative }));
+vi.mock("./buildNative", () => ({ handleNativeBuildCreate }));
 
 import { loadConfig } from "@hot-updater/cli-tools";
 
@@ -42,8 +42,6 @@ const SHORTCUTS = [
   {
     command: "testflight",
     run: handleTestFlight,
-    build: buildIosNative,
-    other: buildAndroidNative,
     platform: "ios",
     store: "TestFlight",
     upload: "testflight",
@@ -61,8 +59,6 @@ const SHORTCUTS = [
   {
     command: "google-play upload",
     run: handleGooglePlayUpload,
-    build: buildAndroidNative,
-    other: buildIosNative,
     platform: "android",
     store: "Google Play",
     upload: "play-internal",
@@ -114,37 +110,15 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
       },
     } as never);
   };
-  /** The options the platform's build handler is called with. */
-  const built = () => shortcut.build.mock.calls.map(([options]) => options);
+  /** The platform and options native-build's handler is called with. */
+  const built = () => handleNativeBuildCreate.mock.calls;
+  const full = shortcut.upload === "testflight" ? "ios" : "android";
 
-  it(`runs build:${platform}'s handler with --upload ${upload} --register for the scheme given, without reading the config`, async () => {
+  it(`runs native-build ${platform}'s handler with --submit ${upload} for the scheme given, tracking it, without reading the config`, async () => {
     await withTTY(false, () => shortcut.run({ scheme: "release" }));
 
     expect(loadConfig).not.toHaveBeenCalled();
-    expect(shortcut.other).not.toHaveBeenCalled();
-    expect(built()).toEqual([
-      { scheme: "release", interactive: false, upload, register: true },
-    ]);
-  });
-
-  it("--no-register uploads without registering, and passes --json and --output-path on", async () => {
-    await shortcut.run({
-      scheme: "release",
-      register: false,
-      json: true,
-      outputPath: "out",
-    });
-
-    expect(built()).toEqual([
-      {
-        scheme: "release",
-        interactive: false,
-        upload,
-        register: false,
-        json: true,
-        outputPath: "out",
-      },
-    ]);
+    expect(built()).toEqual([[full, { scheme: "release", submit: upload }]]);
   });
 
   it(`uses the only scheme ${store} takes, skipping the others, and says which`, async () => {
@@ -158,9 +132,7 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     expect(log.info).toHaveBeenCalledWith(
       `Scheme release: the only nativeBuild.${platform} scheme that uploads to ${store}.`,
     );
-    expect(built()).toEqual([
-      { scheme: "release", interactive: false, upload, register: true },
-    ]);
+    expect(built()).toEqual([[full, { scheme: "release", submit: upload }]]);
   });
 
   it(`asks which scheme at a terminal when several upload to ${store}`, async () => {
@@ -180,9 +152,7 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
         { value: "staging", label: "staging" },
       ],
     });
-    expect(built()).toEqual([
-      expect.objectContaining({ scheme: "staging", upload, register: true }),
-    ]);
+    expect(built()).toEqual([[full, { scheme: "staging", submit: upload }]]);
   });
 
   it.each([
@@ -198,9 +168,9 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
 
       expect(process.exitCode).toBe(1);
       expect(select).not.toHaveBeenCalled();
-      expect(shortcut.build).not.toHaveBeenCalled();
+      expect(handleNativeBuildCreate).not.toHaveBeenCalled();
       expect(log.error).toHaveBeenCalledWith(
-        `Several nativeBuild.${platform} schemes upload to ${store}: release, staging. Hot Updater asks which one only at a terminal, ${reason}: run npx hot-updater ${shortcut.command} --scheme <release | staging>.`,
+        `Several nativeBuild.${platform} schemes upload to ${store}: release, staging. Hot Updater asks which one only at a terminal, ${reason}: run npx hot-updater ${shortcut.command} --scheme <release | staging>, or npx hot-updater native-build ${full} -s <release | staging> --submit ${upload}.`,
       );
     },
   );
@@ -211,7 +181,7 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     await withTTY(true, () => shortcut.run({}));
 
     expect(process.exitCode).toBe(1);
-    expect(shortcut.build).not.toHaveBeenCalled();
+    expect(handleNativeBuildCreate).not.toHaveBeenCalled();
     const [message] = log.error.mock.calls[0]!;
     expect(message).toContain(
       `No nativeBuild.${platform} scheme in hot-updater.config.ts uploads to ${store}.`,
@@ -229,7 +199,7 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     await withTTY(true, () => shortcut.run({}));
 
     expect(process.exitCode).toBe(1);
-    expect(shortcut.build).not.toHaveBeenCalled();
+    expect(handleNativeBuildCreate).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining(shortcut.docs),
     );
@@ -244,6 +214,6 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     await withTTY(true, () => shortcut.run({}));
 
     expect(process.exitCode).toBe(1);
-    expect(shortcut.build).not.toHaveBeenCalled();
+    expect(handleNativeBuildCreate).not.toHaveBeenCalled();
   });
 });

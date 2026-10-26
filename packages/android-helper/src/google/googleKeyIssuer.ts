@@ -39,7 +39,7 @@ const SERVICES = ["iam.googleapis.com", "androidpublisher.googleapis.com"];
 
 /**
  * What the service account may do in Play Console, for the app only: read
- * it, and release to testing tracks, which `--upload play-internal` does.
+ * it, and release to testing tracks, which `--submit play-internal` does.
  */
 const APP_PERMISSIONS = [
   "CAN_VIEW_NON_FINANCIAL_DATA",
@@ -510,7 +510,7 @@ const ensureServiceAccount = async ({
             serviceAccount: {
               displayName: "Hot Updater Play uploads",
               description:
-                "Uploads Android App Bundles to Google Play for hot-updater build:android --upload play-internal.",
+                "Uploads Android App Bundles to Google Play for hot-updater native-build android --submit play-internal.",
             },
           },
         ),

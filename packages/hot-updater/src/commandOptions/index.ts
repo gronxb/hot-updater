@@ -23,32 +23,22 @@ export const nativeBuildOutputCommandOption = new Option(
   "the path where the artifacts will be generated",
 );
 
-export const nativeBuildRegisterCommandOption = new Option(
-  "--register",
-  "register the release build, its artifact and built-in bundle, with the database and storage in hot-updater.config.ts",
-).default(false);
-
 export const nativeBuildJsonCommandOption = new Option(
   "--json",
-  "print the build, and with --register its registration, as JSON on the last line of the output",
+  "print the build, its record in Hot Updater, or null and why it has none, as JSON on the last line of the output",
 ).default(false);
 
-export const testFlightUploadCommandOption = new Option(
-  "--upload <destination>",
-  "upload the .ipa to a store: testflight uploads it to App Store Connect with the scheme's App Store Connect API key",
+export const testFlightSubmitCommandOption = new Option(
+  "--submit <destination>",
+  "submit the .ipa to a store: testflight uploads it to App Store Connect with the scheme's App Store Connect API key",
 ).choices(["testflight"]);
 
-export const playUploadCommandOption = new Option(
-  "--upload <destination>",
-  "upload the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",
+export const playSubmitCommandOption = new Option(
+  "--submit <destination>",
+  "submit the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",
 ).choices(["play-internal"]);
 
-export const deviceCommandOption = new Option(
-  "-d, --device [deviceName | deviceId]",
-  "specify the ADB device name or use default",
-);
-
-export const portCommandOption = new Option(
-  "--port <port>",
-  "specify the port number",
+export const nativeBuildDryRunCommandOption = new Option(
+  "--dry-run",
+  "Build, but record and submit nothing: no Hot Updater tracking, no store submission (like npm publish --dry-run)",
 );

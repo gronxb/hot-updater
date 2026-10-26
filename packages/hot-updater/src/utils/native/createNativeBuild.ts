@@ -5,7 +5,7 @@ import { colors, getCwd, p } from "@hot-updater/cli-tools";
 import type { BuildAdapter } from "@hot-updater/plugin-core";
 import { NIL_UUID, type Platform } from "@hot-updater/protocol";
 
-/** The kinds of artifact `build:android` and `build:ios` produce. */
+/** The kinds of artifact `native-build android` and `native-build ios` produce. */
 export type NativeBuildArtifactKind = "apk" | "aab" | "ipa" | "app";
 
 /**
@@ -17,7 +17,7 @@ export type NativeBuildTarget =
   | { fingerprintHash: null; appVersion: string };
 
 /**
- * What `build:android` and `build:ios` built: the artifact under the output
+ * What `native-build android` and `native-build ios` built: the artifact under the output
  * path, and the values compiled into it that select its updates.
  */
 export type NativeBuildResult = NativeBuildTarget & {

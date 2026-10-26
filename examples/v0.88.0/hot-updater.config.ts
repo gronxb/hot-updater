@@ -20,7 +20,7 @@ export default defineConfig({
         configuration: "Release",
         installPods: true,
       },
-      // CI builds this one through `hot-updater build:ios` from a fresh ios/.
+      // CI builds this one through `hot-updater native-build ios` from a fresh ios/.
       releaseSimulator: {
         bundleIdentifier: "org.reactjs.native.example.HotUpdaterExample",
         scheme: "HotUpdaterExample",
