@@ -57,6 +57,13 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
+      # ubuntu-latest's default JDK is 25 on Ubuntu 26.04, whose restricted
+      # method warning fails AGP's CMake configure. React Native builds with
+      # JDK 17, which every Ubuntu image ships.
+      - name: Use JDK 17
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
       - run: pnpm install
       - name: Build
         run: pnpm build

@@ -354,12 +354,17 @@ caps the artifact size.
 ## Reuse a build
 
 Each build computes a native build key, `nbk1:` and a SHA-256, of every input
-that can change the artifact, after the build adapter's prebuild:
+that can change the artifact, after the build adapter's prebuild and, for an
+iOS scheme with `installPods: true`, after `pod install`, so the key holds the
+`Podfile.lock` the pods resolved to even when the prebuild generates `ios/`, as
+`expo prebuild` does:
 
 - every file of the git repository as a commit would record it, staged or
   not, except the build output, `cacheDir`, and `.hot-updater`;
 - the files git ignores that the build reads: the native project's ignored
-  files except what builds write (`build`, `Pods`, `.gradle`, `.cxx`),
+  files except what builds write (`build`, `Pods` but its `Manifest.lock`,
+  `.gradle`, `.cxx`), a generated Xcode project by its structure, whatever
+  object IDs `pod install` gives it,
   `.env*` files, the package manager's install state, and the files of each
   native package installed in `node_modules`;
 - the scheme's settings and the files it names, such as `xcconfig` and
@@ -406,7 +411,7 @@ This machine keeps the newest build of each platform and scheme in
 `<cacheDir>/native-build/<platform>/<scheme>`, which the next build replaces;
 `cacheDir: null` turns that copy off. A build whose inputs no key can cover
 always builds, and says why: a Debug build, a project outside git, pods
-without `ios/Podfile.lock`, Swift packages without `Package.resolved`, a
+without `ios/Podfile.lock` on a scheme that doesn't set `installPods`, Swift packages without `Package.resolved`, a
 dynamic Gradle dependency version (`1.+`) without a `gradle.lockfile`, a file
 that reads environment variables by a computed name, an export method that
 signs for a list of devices, or a provisioning profile not installed on this

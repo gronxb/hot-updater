@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseEnv } from "node:util";
 
+import { parse as parsePbxproj } from "@bacons/xcode/json";
 import { CREDENTIAL_ENV_NAMES, maskSecretValues } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
@@ -474,6 +475,61 @@ const readRepositoryFiles = async (
 };
 
 /**
+ * An Xcode project's structure without its object IDs: each object is
+ * labelled by the order it is reached in from the root object, through
+ * every reference, so the files, groups, targets, build phases, and settings
+ * count, with their order, but not the IDs. `pod install` integrates a
+ * project the build adapter's prebuild just generated, such as an Expo
+ * app's, with new random IDs each time.
+ */
+export const canonicalXcodeProject = (contents: string): string => {
+  const project = parsePbxproj(contents) as unknown as {
+    objects: Record<string, unknown>;
+    rootObject: string;
+  };
+  const { objects } = project;
+  const isObject = (value: string) => Object.hasOwn(objects, value);
+  const labels = new Map<string, number>();
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      if (isObject(value) && !labels.has(value)) {
+        labels.set(value, labels.size);
+        visit(objects[value]);
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach(visit);
+    } else if (value && typeof value === "object") {
+      // A dictionary keyed by IDs, such as TargetAttributes, is reached
+      // through its keys' own references, never in their random order.
+      for (const key of Object.keys(value).sort()) {
+        if (!isObject(key)) visit((value as Record<string, unknown>)[key]);
+      }
+    }
+  };
+  visit(project.rootObject);
+  const label = (text: string) =>
+    labels.has(text) ? `#${labels.get(text)}` : isObject(text) ? "#?" : text;
+  const relabel = (value: unknown): unknown =>
+    typeof value === "string"
+      ? label(value)
+      : Array.isArray(value)
+        ? value.map(relabel)
+        : value && typeof value === "object"
+          ? Object.fromEntries(
+              Object.entries(value).map(([key, entry]) => [
+                label(key),
+                relabel(entry),
+              ]),
+            )
+          : value;
+  const { objects: _objects, ...rest } = project;
+  return stableStringify({
+    ...(relabel(rest) as object),
+    objects: [...labels.keys()].map((id) => relabel(objects[id])),
+  });
+};
+
+/**
  * A Java properties file's `key=value` and `key: value` entries, with the
  * lines a trailing backslash continues joined, as Gradle reads them.
  */
@@ -644,6 +700,18 @@ const readNativePackages = async (
 };
 
 /**
+ * The digest of a generated Xcode project's structure, without its random
+ * object IDs; one the parser can't read counts byte for byte.
+ */
+const xcodeProjectDigest = async (file: string, hashes: FileHashes) => {
+  try {
+    return sha256(canonicalXcodeProject(await fs.readFile(file, "utf8")));
+  } catch {
+    return hashes.hash(file);
+  }
+};
+
+/**
  * Inputs git ignores that change what the build produces: the native
  * projects' ignored files (all of them, for a project an adapter's prebuild
  * generates), `.env*` files, and the package manager's install state.
@@ -713,8 +781,16 @@ const readIgnoredInputs = async ({
     const xcodeEnvLocal = path.join(cwd, "ios", ".xcode.env.local");
     await mapLimit(files.sort(), 16, async (file) => {
       if (file === localProperties || file === xcodeEnvLocal) return;
-      inputs[`file:${fromRoot(file)}`] = await hashes.hash(file);
+      inputs[`file:${fromRoot(file)}`] = file.endsWith(".pbxproj")
+        ? await xcodeProjectDigest(file, hashes)
+        : await hashes.hash(file);
     });
+    // What `pod install` installed, which xcodebuild checks against
+    // Podfile.lock: Pods/ is otherwise build output.
+    const podsManifest = path.join(cwd, "ios", "Pods", "Manifest.lock");
+    if (platform === "ios" && (await exists(podsManifest))) {
+      inputs["pods-manifest"] = await hashes.hash(podsManifest);
+    }
     if (platform === "ios") {
       const contents = await readIfExists(xcodeEnvLocal);
       const settings = contents
@@ -1245,7 +1321,7 @@ const checkPinned = async (
       !(await exists(path.join(iosDir, "Podfile.lock")))
     ) {
       throw new Uncacheable(
-        "ios/Podfile.lock is missing, so the pods resolve anew on each install",
+        "ios/Podfile.lock is missing, so the pods resolve anew on each install: commit it, or set installPods on the scheme so the build installs them before it computes the key",
       );
     }
     const projects = await fg(["*.xcodeproj/project.pbxproj"], { cwd: iosDir });

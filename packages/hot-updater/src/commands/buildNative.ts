@@ -14,6 +14,7 @@ import {
   buildIos,
   type EnrichedNativeBuildIosScheme,
   findTestFlightBuild,
+  installPodsIfNeeded,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
@@ -292,6 +293,14 @@ const buildNativeInternal = async ({
           );
         }
 
+        // The pods a scheme installs resolve before the key is computed, so
+        // the key holds the Podfile.lock they resolved to, which a project
+        // whose ios/ the prebuild generates has no other way to have. The
+        // build then uses them as installed.
+        const installsPods = platform === "ios" && iosSchemeConfig!.installPods;
+        if (installsPods) {
+          await installPodsIfNeeded(path.join(getCwd(), "ios"));
+        }
         // Debug builds are neither tracked nor cached.
         const cache: NativeBuildCache | null =
           trackingSkipped === "debug"
@@ -318,7 +327,9 @@ const buildNativeInternal = async ({
               buildAdapter,
               outputPath,
               androidSchemeConfig,
-              iosSchemeConfig,
+              iosSchemeConfig: installsPods
+                ? { ...iosSchemeConfig!, installPods: false }
+                : iosSchemeConfig,
               credentials,
             });
         if (!reused) await cache?.remember(result, null);
