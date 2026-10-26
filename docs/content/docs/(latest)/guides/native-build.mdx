@@ -264,6 +264,25 @@ Install a simulator `.app` with
 `xcrun simctl install booted <path-to-app>`, and an `.apk` with
 `adb install <path-to-apk>`.
 
+The build writes the whole output of `xcodebuild` or Gradle to a log in
+`.hot-updater/log`, such as `.hot-updater/log/10261157-ios-simulator-build.log`.
+When the build fails, the CLI prints why on stderr: `xcodebuild`'s `error:`
+lines and the commands that failed, or Gradle's `What went wrong` block, or
+without those, the output's last 40 lines, then the log's path. With
+`--json`, stdout keeps only the JSON.
+
+```txt
+■  Build failed
+│
+■  /path/to/app/ios/App/AppDelegate.swift:12:5: error: cannot find 'missingSymbol' in scope
+│  ** BUILD FAILED **
+│  The following build commands failed:
+│  	SwiftCompile normal arm64 /path/to/app/ios/App/AppDelegate.swift (in target 'App' from project 'App')
+│  (1 failure)
+│
+│  Build log: .hot-updater/log/10261157-ios-simulator-build.log
+```
+
 ## Register a build
 
 Add `--register` to record a release build in the native build registry of

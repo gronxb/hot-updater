@@ -3,6 +3,7 @@
 import { appendFileSync } from "node:fs";
 
 import {
+  createBuildLogs,
   createCli,
   log,
   maskCredentials,
@@ -24,6 +25,7 @@ try {
   await runAction(
     {
       cli: createCli({ env: cliEnv(env) }),
+      buildLogs: createBuildLogs(),
       setOutput,
       log,
       summary: (markdown) => {
