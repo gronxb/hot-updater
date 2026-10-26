@@ -212,62 +212,110 @@ const SYSTEM_ENV_NAMES = new Set([
   "_",
 ]);
 
+/** The environment variables a file reads, and whether it reads any by a computed name. */
+type EnvReads = { readonly names: string[]; readonly dynamic: boolean };
+
+/** A scanner of literal reads and of reads by a computed name. */
+const patternReads =
+  (literal: RegExp, dynamic: readonly RegExp[]) =>
+  (contents: string): EnvReads => ({
+    names: [...contents.matchAll(literal)].flatMap(([, name]) =>
+      name ? [name] : [],
+    ),
+    dynamic: dynamic.some((pattern) => pattern.test(contents)),
+  });
+
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
 /**
- * Reads of environment variables in the files that configure the build, by
- * a name each file spells out, and reads by a computed name, which no key
- * can follow.
+ * JavaScript's reads of `process.env`: each must be a member by its name
+ * (`process.env.NAME`, `process.env["NAME"]`) or a destructuring of names
+ * (`const { NAME } = process.env`). Any other use, such as a spread, a
+ * computed member, or passing the object on, reads names no key can follow.
+ */
+const javaScriptReads = (contents: string): EnvReads => {
+  const names: string[] = [];
+  let dynamic = false;
+  for (const match of contents.matchAll(/\bprocess\.env\b/g)) {
+    const before = contents.slice(0, match.index);
+    const after = contents.slice(match.index + match[0].length);
+    const member =
+      /^\s*\??\.\s*([A-Za-z_$][\w$]*)/.exec(after) ??
+      /^\s*(?:\?\.)?\[\s*(["'`])([A-Za-z_$][\w$]*)\1\s*\]/.exec(after);
+    if (member) {
+      names.push(member[2] ?? member[1]!);
+      continue;
+    }
+    const pattern = /\{([^{}]*)\}\s*=\s*$/.exec(before);
+    const entries = pattern?.[1]!.split(",").map((entry) => entry.trim());
+    if (!entries || entries.some((entry) => entry.startsWith("..."))) {
+      dynamic = true;
+      continue;
+    }
+    for (const entry of entries) {
+      const name = entry
+        .split(/[:=]/)[0]!
+        .trim()
+        .replace(/^(["'])(.*)\1$/, "$2");
+      if (IDENTIFIER.test(name)) names.push(name);
+    }
+  }
+  return { names, dynamic };
+};
+
+/**
+ * The files that configure the build, and how each reads the environment:
+ * by names it spells out, which the key follows, or by a computed name,
+ * which it can't.
  */
 const ENV_READS: readonly {
   readonly pattern: RegExp;
-  readonly literal: RegExp;
-  readonly dynamic: readonly RegExp[];
+  readonly scan: (contents: string) => EnvReads;
 }[] = [
   {
     // Gradle, in Groovy or Kotlin.
     pattern: /\.gradle(\.kts)?$/,
-    literal:
+    scan: patternReads(
       /(?:System\.getenv|providers\.environmentVariable)\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']/g,
-    dynamic: [
-      /System\.getenv\(\s*\)/,
-      /System\.getenv\(\s*[^"'\s)]/,
-      /providers\.environmentVariable\(\s*[^"'\s)]/,
-      /providers\.environmentVariablesPrefixedBy\(/,
-    ],
+      [
+        /System\.getenv\(\s*\)/,
+        /System\.getenv\(\s*[^"'\s)]/,
+        /providers\.environmentVariable\(\s*[^"'\s)]/,
+        /providers\.environmentVariablesPrefixedBy\(/,
+      ],
+    ),
   },
   {
     // CocoaPods' Podfile, in Ruby.
     pattern: /(^|\/)Podfile$/,
-    literal: /ENV(?:\[|\.fetch\()\s*["']([A-Za-z_][A-Za-z0-9_]*)["']/g,
-    dynamic: [
-      /ENV\[\s*[^"'\s\]]/,
-      /ENV\.fetch\(\s*[^"'\s)]/,
-      /ENV\.(?:to_h|to_hash|each|each_pair|select|filter|keys|map)\b/,
-    ],
+    scan: patternReads(
+      /ENV(?:\[|\.fetch\()\s*["']([A-Za-z_][A-Za-z0-9_]*)["']/g,
+      [
+        /ENV\[\s*[^"'\s\]]/,
+        /ENV\.fetch\(\s*[^"'\s)]/,
+        /ENV\.(?:to_h|to_hash|each|each_pair|select|filter|keys|map)\b/,
+      ],
+    ),
   },
   {
     // Babel, Metro, Expo, and React Native CLI configs.
     pattern:
       /(^|\/)(babel|metro|app|react-native)\.config\.(c|m)?(j|t)s$|(^|\/)\.babelrc(\.js)?$/,
-    literal:
-      /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g,
-    dynamic: [
-      /process\.env\[\s*(?!["'][A-Za-z_][A-Za-z0-9_]*["']\s*\])/,
-      /\.\.\.\s*process\.env\b(?!\s*[.[])/,
-      /\(\s*process\.env\s*\)/,
-    ],
+    scan: javaScriptReads,
   },
   {
     // Xcode build phases, and the environment files they source.
     pattern: /\.pbxproj$|(^|\/)\.xcode\.env(\.local)?$/,
-    literal: /\$(?:\{|\()?([A-Z_][A-Z0-9_]*)/g,
-    dynamic: [],
+    scan: patternReads(/\$(?:\{|\()?([A-Z_][A-Z0-9_]*)/g, []),
   },
 ];
 
-/** JavaScript the app bundles, whose literal `process.env` reads it inlines. */
+/**
+ * JavaScript the app bundles, whose `process.env` reads by name Babel
+ * inlines; any other use of `process.env` stays a runtime read of an
+ * object the app doesn't have, which builds nothing.
+ */
 const SOURCE_FILE = /\.(c|m)?(j|t)sx?$/;
-const SOURCE_ENV_READ =
-  /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
 
 /**
  * SHA-256s of files, kept across runs by size, modification time, and inode,
@@ -889,15 +937,14 @@ const readEnv = async ({
   await mapLimit(scanned, 32, async ({ filePath, appPath, reads }) => {
     const contents = await readIfExists(path.join(root, filePath));
     if (contents === null) return;
-    const dynamic = reads?.dynamic.find((pattern) => pattern.test(contents));
-    if (dynamic) {
+    const found = (reads?.scan ?? javaScriptReads)(contents);
+    if (reads && found.dynamic) {
       throw new Uncacheable(
         `${appPath} reads environment variables by a computed name, which no key can follow`,
       );
     }
-    for (const match of contents.matchAll(reads?.literal ?? SOURCE_ENV_READ)) {
-      const name = match[1] ?? match[2];
-      if (name && !SYSTEM_ENV_NAMES.has(name)) names.add(name);
+    for (const name of found.names) {
+      if (!SYSTEM_ENV_NAMES.has(name)) names.add(name);
     }
   });
 

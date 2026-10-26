@@ -355,6 +355,49 @@ describe("computeNativeBuildKey", () => {
     ).toEqual(["env:EXPO_PUBLIC_MAPS_API_KEY"]);
   });
 
+  it("reads the environment variables JavaScript configs and app code read by name", async () => {
+    write(
+      "apps/mobile/babel.config.js",
+      "const { BUILD_FLAVOR, 'QUOTED_NAME': quoted, DEFAULTED = 'x' } = process.env;\nmodule.exports = { presets: [process.env?.BABEL_PRESET, process.env['BRACKETED']] };\n",
+    );
+    write(
+      "apps/mobile/src/config.ts",
+      "export const url = process.env.APP_URL;\nconsole.log(process.env);\n",
+    );
+    const env = (value: string) => ({
+      env: {
+        GRADLE_USER_HOME: gradleHome,
+        BUILD_FLAVOR: value,
+        QUOTED_NAME: value,
+        DEFAULTED: value,
+        BABEL_PRESET: value,
+        BRACKETED: value,
+        APP_URL: value,
+      },
+    });
+    expect((await changedBy(() => {}, env("a"), env("b"))).changed).toEqual([
+      "env:APP_URL",
+      "env:BABEL_PRESET",
+      "env:BRACKETED",
+      "env:BUILD_FLAVOR",
+      "env:DEFAULTED",
+      "env:QUOTED_NAME",
+    ]);
+    // A config that hands the whole environment on reads names no key can
+    // follow; app code that does reads nothing at build time.
+    for (const read of [
+      "const { ...all } = process.env;",
+      "module.exports = { env: { ...process.env } };",
+      "plugins(process.env);",
+      "process.env[name];",
+    ]) {
+      write("apps/mobile/metro.config.js", `${read}\n`);
+      expect(await uncacheable()).toBe(
+        "metro.config.js reads environment variables by a computed name, which no key can follow",
+      );
+    }
+  });
+
   it("reads the environment variables a generated native project reads", async () => {
     // As an Expo app's: android/ is generated and ignored.
     write(
