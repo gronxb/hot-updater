@@ -8,6 +8,7 @@ import {
   registerSecretValue,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
+import { execa } from "execa";
 
 const API_URL = "https://androidpublisher.googleapis.com";
 /** Where Google serves resumable upload sessions, as its docs show both. */
@@ -304,6 +305,32 @@ export const findPlayInternalRelease = async ({
   } finally {
     await request("Deleting the Google Play edit", "DELETE", edit).catch(
       () => undefined,
+    );
+  }
+};
+
+/**
+ * The subject of the keystore Android Studio and Gradle debug builds sign
+ * with, in `keytool`'s output, whose labels follow the JVM's locale.
+ */
+const ANDROID_DEBUG_SIGNER = /\bCN=Android Debug\s*,\s*O=Android\b/u;
+
+/**
+ * Throws when the `.aab` is signed with the Android debug keystore, which
+ * Google Play refuses: a release build type left on `signingConfigs.debug`,
+ * as React Native's template ships it. It reads the signer with the JDK's
+ * `keytool`, which Gradle needs too; without one it checks nothing.
+ */
+export const assertPlaySigned = async (aabPath: string): Promise<void> => {
+  const { stdout, exitCode } = await execa(
+    "keytool",
+    // English labels, whatever the machine's locale.
+    ["-J-Duser.language=en", "-printcert", "-jarfile", aabPath],
+    { reject: false },
+  );
+  if (exitCode === 0 && ANDROID_DEBUG_SIGNER.test(String(stdout))) {
+    throw new Error(
+      `Google Play refuses an .aab signed with the Android debug keystore, and ${aabPath} is. Set the scheme's signing.keystore, or a release signingConfig in android/app/build.gradle, then build again.`,
     );
   }
 };

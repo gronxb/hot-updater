@@ -95,6 +95,14 @@ export const APP_STORE_EXPORT_METHODS = new Set([
 
 /** The `method` of export options, or "" when it has none or can't be read. */
 export const readExportMethod = async (exportOptionsPlist: string) => {
+  // An XML plist is read as text, on any platform; a binary one needs plutil.
+  const text = await fs.promises
+    .readFile(exportOptionsPlist, "utf-8")
+    .catch(() => undefined);
+  const xml = text?.match(
+    /<key>\s*method\s*<\/key>\s*<string>\s*([^<]*?)\s*<\/string>/u,
+  );
+  if (xml) return xml[1]!;
   const { stdout, exitCode } = await execa(
     "plutil",
     ["-extract", "method", "raw", "-o", "-", exportOptionsPlist],

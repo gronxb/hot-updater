@@ -5,6 +5,7 @@ import path from "path";
 import {
   type CredentialRequest,
   type Credentials,
+  getCwd,
   p,
   parseSecretReference,
   registerSecretValue,
@@ -255,22 +256,50 @@ const runConcurrently = async <T>(
   }
 };
 
+/** Build settings that turn code signing off: App Store Connect takes no such `.ipa`. */
+const CODE_SIGNING_OFF =
+  /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)\s*=\s*NO\s*$/imu;
+
+/** The project-relative path of a scheme's file, as the build resolves it. */
+const schemeFile = (file: string) =>
+  path.isAbsolute(file) ? file : path.resolve(getCwd(), file);
+
+/**
+ * Where the scheme turns code signing off: an `extraParams` entry, or its
+ * `xcconfig` file, which the build reads. Undefined when it signs.
+ */
+const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
+  const param = iosScheme.extraParams?.find((entry) =>
+    CODE_SIGNING_OFF.test(entry),
+  );
+  if (param) return `${param.trim()} in extraParams`;
+  if (!iosScheme.xcconfig) return undefined;
+  const xcconfig = await fs.promises
+    .readFile(schemeFile(iosScheme.xcconfig), "utf-8")
+    .catch(() => undefined);
+  const setting = xcconfig?.match(CODE_SIGNING_OFF)?.[0];
+  return setting ? `${setting.trim()} in ${iosScheme.xcconfig}` : undefined;
+};
+
 /**
  * The App Store Connect API key a scheme's `.ipa` uploads with: the
  * `signing.ascApiKey` it signs with, or else the `asc-api-key` item. It reads
- * only the config, before the native projects are written, and throws for a
- * scheme whose build App Store Connect would not take: a simulator `.app`,
- * an `.xcarchive` it cannot export, or a Debug configuration, which loads
- * its JavaScript from Metro.
+ * the config, and the scheme's files that exist before the native projects
+ * are written, and throws, saying why, for a scheme whose build App Store
+ * Connect would not take: a simulator `.app`, a Debug configuration, which
+ * loads its JavaScript from Metro, code signing turned off, an
+ * `.xcarchive` it cannot export, or export options of another method. An
+ * `exportOptionsPlist` the adapter's prebuild writes later is checked after
+ * it (`assertTestFlightExportOptions`).
  */
-export const resolveTestFlightUploadKey = ({
+export const resolveTestFlightUploadKey = async ({
   scheme,
   iosScheme,
 }: {
   /** The scheme's name. */
   scheme: string;
   iosScheme: NativeBuildIosScheme;
-}): CredentialRequest<"asc-api-key"> => {
+}): Promise<CredentialRequest<"asc-api-key">> => {
   if (iosScheme.simulator) {
     throw new Error(
       `TestFlight takes an .ipa, and the scheme ${scheme} builds a simulator .app.`,
@@ -282,10 +311,29 @@ export const resolveTestFlightUploadKey = ({
       `TestFlight takes a release build, and the scheme ${scheme} builds the ${configuration} configuration, which loads its JavaScript from Metro.`,
     );
   }
+  const unsigned = await codeSigningOff(iosScheme);
+  if (unsigned) {
+    throw new Error(
+      `TestFlight takes a signed .ipa, and the scheme ${scheme} turns code signing off (${unsigned}).`,
+    );
+  }
   if (!iosScheme.exportOptionsPlist && !iosScheme.signing) {
     throw new Error(
       `The scheme ${scheme} archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.`,
     );
+  }
+  if (
+    iosScheme.exportOptionsPlist &&
+    fs.existsSync(schemeFile(iosScheme.exportOptionsPlist))
+  ) {
+    const method = await readExportMethod(
+      schemeFile(iosScheme.exportOptionsPlist),
+    );
+    if (!APP_STORE_EXPORT_METHODS.has(method)) {
+      throw new Error(
+        `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${scheme}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
+      );
+    }
   }
   return {
     kind: "asc-api-key",

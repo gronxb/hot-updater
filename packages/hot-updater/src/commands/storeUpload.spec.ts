@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, select, isCancel, handleNativeBuildCreate } = vi.hoisted(() => ({
@@ -215,5 +219,84 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
 
     expect(process.exitCode).toBe(1);
     expect(handleNativeBuildCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("hot-updater testflight scheme eligibility", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "testflight-schemes-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("skips an unsigned scheme with development export options, so CI builds the one App Store scheme", async () => {
+    // QA #14: deviceUnsigned exports for development with code signing off.
+    const development = path.join(dir, "Development.plist");
+    await fs.writeFile(
+      development,
+      "<plist><dict><key>method</key><string>development</string></dict></plist>",
+    );
+    vi.mocked(loadConfig).mockResolvedValue({
+      nativeBuild: {
+        android: {},
+        ios: {
+          release: IOS_DEVICE,
+          deviceUnsigned: {
+            bundleIdentifier: "com.example.app",
+            scheme: "App",
+            exportOptionsPlist: development,
+            extraParams: [
+              "CODE_SIGNING_ALLOWED=NO",
+              "CODE_SIGNING_REQUIRED=NO",
+            ],
+          },
+        },
+      },
+    } as never);
+
+    await withTTY(false, () => handleTestFlight({}));
+
+    expect(process.exitCode).toBeUndefined();
+    expect(log.info).toHaveBeenCalledWith(
+      "Scheme release: the only nativeBuild.ios scheme that uploads to TestFlight.",
+    );
+    expect(handleNativeBuildCreate.mock.calls).toEqual([
+      ["ios", { scheme: "release", submit: "testflight" }],
+    ]);
+  });
+
+  it("says why each refused scheme can't upload when none can", async () => {
+    const development = path.join(dir, "Development.plist");
+    await fs.writeFile(
+      development,
+      "<plist><dict><key>method</key><string>development</string></dict></plist>",
+    );
+    vi.mocked(loadConfig).mockResolvedValue({
+      nativeBuild: {
+        android: {},
+        ios: {
+          deviceUnsigned: {
+            ...IOS_DEVICE,
+            extraParams: ["CODE_SIGNING_ALLOWED=NO"],
+          },
+          development: { ...IOS_DEVICE, exportOptionsPlist: development },
+        },
+      },
+    } as never);
+
+    await withTTY(false, () => handleTestFlight({}));
+
+    expect(process.exitCode).toBe(1);
+    const [message] = log.error.mock.calls[0]!;
+    expect(message).toContain(
+      "TestFlight takes a signed .ipa, and the scheme deviceUnsigned turns code signing off (CODE_SIGNING_ALLOWED=NO in extraParams).",
+    );
+    expect(message).toContain(
+      "TestFlight takes an .ipa exported for App Store Connect, and the scheme development's exportOptionsPlist exports with the method development.",
+    );
   });
 });

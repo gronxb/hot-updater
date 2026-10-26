@@ -16,6 +16,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     createCredentialResolver,
     parseSecretReference,
     registerSecretValue,
+    // The project the scheme's relative files resolve from.
+    getCwd: () => dir,
     p: { log: { info: vi.fn(), warn: vi.fn(), success: vi.fn() } },
   };
 });
@@ -1174,53 +1176,157 @@ const iosScheme = (
   },
 });
 
+/** An XML export options plist with `method`, as Xcode writes it. */
+const exportOptions = (
+  method: string,
+) => `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>${method}</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+</dict>
+</plist>
+`;
+
 describe("resolveTestFlightUploadKey", () => {
-  it("uploads with the key the scheme signs with", () => {
-    expect(
+  it("uploads with the key the scheme signs with", async () => {
+    await expect(
       resolveTestFlightUploadKey(
         iosScheme({ signing: { ascApiKey: "secret:team-asc-key" } }),
       ),
-    ).toEqual({ kind: "asc-api-key", name: "team-asc-key" });
+    ).resolves.toEqual({ kind: "asc-api-key", name: "team-asc-key" });
   });
 
-  it("uploads with the asc-api-key item for a scheme with its own export options", () => {
-    expect(
+  it("uploads with the asc-api-key item for a scheme whose export options the prebuild writes later", async () => {
+    await expect(
       resolveTestFlightUploadKey(
         iosScheme({ exportOptionsPlist: "ExportOptions.plist" }),
       ),
-    ).toEqual({ kind: "asc-api-key", name: "asc-api-key" });
-    // The file may not exist until the adapter's prebuild writes it.
+    ).resolves.toEqual({ kind: "asc-api-key", name: "asc-api-key" });
+    // The file does not exist yet: assertTestFlightExportOptions reads it
+    // after the prebuild.
     expect(execa).not.toHaveBeenCalled();
   });
 
-  it("refuses a simulator scheme", () => {
-    expect(() =>
+  it.each(["app-store-connect", "app-store"])(
+    "takes existing export options with the method %s, read without plutil",
+    async (method) => {
+      await fs.writeFile(
+        path.join(dir, "ExportOptions.plist"),
+        exportOptions(method),
+      );
+
+      await expect(
+        resolveTestFlightUploadKey(
+          iosScheme({ exportOptionsPlist: "ExportOptions.plist" }),
+        ),
+      ).resolves.toEqual({ kind: "asc-api-key", name: "asc-api-key" });
+      expect(execa).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["development", "ad-hoc", "enterprise"])(
+    "refuses existing export options with the method %s, saying why",
+    async (method) => {
+      await fs.writeFile(
+        path.join(dir, "ExportOptions.plist"),
+        exportOptions(method),
+      );
+
+      await expect(
+        resolveTestFlightUploadKey(
+          iosScheme({ exportOptionsPlist: "ExportOptions.plist" }),
+        ),
+      ).rejects.toThrow(
+        `TestFlight takes an .ipa exported for App Store Connect, and the scheme release's exportOptionsPlist exports with the method ${method}. Set its method to app-store-connect.`,
+      );
+    },
+  );
+
+  it("refuses a scheme that turns code signing off in extraParams, as QA's deviceUnsigned did", async () => {
+    await fs.writeFile(
+      path.join(dir, "ExportOptions.plist"),
+      exportOptions("development"),
+    );
+
+    await expect(
+      resolveTestFlightUploadKey(
+        iosScheme({
+          extraParams: ["CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO"],
+          exportOptionsPlist: "ExportOptions.plist",
+        }),
+      ),
+    ).rejects.toThrow(
+      "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_ALLOWED=NO in extraParams).",
+    );
+  });
+
+  it("refuses a scheme whose xcconfig turns code signing off", async () => {
+    await fs.writeFile(
+      path.join(dir, "Unsigned.xcconfig"),
+      "// No signing for this build.\nCODE_SIGNING_REQUIRED = NO\n",
+    );
+
+    await expect(
+      resolveTestFlightUploadKey(
+        iosScheme({
+          xcconfig: "Unsigned.xcconfig",
+          signing: { ascApiKey: "secret:asc-api-key" },
+        }),
+      ),
+    ).rejects.toThrow(
+      "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_REQUIRED = NO in Unsigned.xcconfig).",
+    );
+  });
+
+  it("takes a scheme whose extraParams and xcconfig keep code signing on", async () => {
+    await fs.writeFile(
+      path.join(dir, "Release.xcconfig"),
+      "CODE_SIGNING_ALLOWED = YES\nCODE_SIGN_STYLE = Automatic\n",
+    );
+
+    await expect(
+      resolveTestFlightUploadKey(
+        iosScheme({
+          extraParams: ["CODE_SIGNING_ALLOWED=YES", "-quiet"],
+          xcconfig: "Release.xcconfig",
+          signing: { ascApiKey: "secret:asc-api-key" },
+        }),
+      ),
+    ).resolves.toEqual({ kind: "asc-api-key", name: "asc-api-key" });
+  });
+
+  it("refuses a simulator scheme", async () => {
+    await expect(
       resolveTestFlightUploadKey(
         iosScheme({
           simulator: true,
           signing: { ascApiKey: "secret:asc-api-key" },
         }),
       ),
-    ).toThrow(
+    ).rejects.toThrow(
       "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
     );
   });
 
-  it("refuses a Debug configuration", () => {
-    expect(() =>
+  it("refuses a Debug configuration", async () => {
+    await expect(
       resolveTestFlightUploadKey(
         iosScheme({
           configuration: "StagingDebug",
           signing: { ascApiKey: "secret:asc-api-key" },
         }),
       ),
-    ).toThrow(
+    ).rejects.toThrow(
       "TestFlight takes a release build, and the scheme release builds the StagingDebug configuration, which loads its JavaScript from Metro.",
     );
   });
 
-  it("refuses a scheme that only archives", () => {
-    expect(() => resolveTestFlightUploadKey(iosScheme())).toThrow(
+  it("refuses a scheme that only archives", async () => {
+    await expect(resolveTestFlightUploadKey(iosScheme())).rejects.toThrow(
       "The scheme release archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.",
     );
   });

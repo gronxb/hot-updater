@@ -512,8 +512,9 @@ npx hot-updater testflight
 
 It is the shortcut for `native-build ios --scheme <scheme> --submit
 testflight`, which runs the same build. It builds the one `nativeBuild.ios`
-scheme whose build TestFlight takes, skipping simulator, `Debug`, and
-archive-only schemes, and says which; with several, it asks which one at a
+scheme whose build TestFlight takes, skipping simulator, `Debug`, unsigned,
+and archive-only schemes and ones that export for another method, and says
+which; with several, it asks which one at a
 terminal, and in CI or without a terminal it stops and lists them. It takes
 only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the full
 command:
@@ -538,12 +539,14 @@ Certificates and provisioning profiles stay with the build's signing.
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
 with the stored key.
 
-Before the prebuild, the CLI also refuses a scheme whose build App Store
-Connect would not take: a simulator scheme, a configuration whose name ends in
-`Debug`, and a scheme with neither `signing.ascApiKey` nor an
-`exportOptionsPlist`, which only archives. After the prebuild, which may write
-the `exportOptionsPlist`, and before the build, it refuses one whose `method`
-is not `app-store-connect` (or `app-store`).
+Before the prebuild, the CLI also refuses, saying why, a scheme whose build
+App Store Connect would not take: a simulator scheme, a configuration whose
+name ends in `Debug`, a scheme that turns code signing off
+(`CODE_SIGNING_ALLOWED=NO` or `CODE_SIGNING_REQUIRED=NO` in `extraParams` or
+its `xcconfig`), a scheme with neither `signing.ascApiKey` nor an
+`exportOptionsPlist`, which only archives, and an `exportOptionsPlist` whose
+`method` is not `app-store-connect` (or `app-store`). An `exportOptionsPlist`
+the prebuild writes is checked after the prebuild, before the build.
 
 After the build is tracked, the CLI:
 
@@ -622,7 +625,9 @@ it, the CLI stops before opening the browser.
 
 Before the prebuild, the CLI also refuses a scheme whose build Google Play
 would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
-ends in `Debug`.
+ends in `Debug`. Before it uploads, it refuses an `.aab` signed with the Android
+debug keystore, as a release build type left on `signingConfigs.debug` is: set
+the scheme's `signing.keystore`, or a release signing config in Gradle.
 
 After the build is tracked, the CLI:
 

@@ -4,6 +4,7 @@ import {
   buildAndroid,
   type EnrichedNativeBuildAndroidScheme,
   findPlayInternalRelease,
+  assertPlaySigned,
   readBuiltPackageName,
   readBuiltVersionCode,
   resolvePlayUploadServiceAccount,
@@ -417,6 +418,11 @@ const buildNativeInternal = async ({
             }
           }
           if (!alreadySubmitted) {
+            // Google Play refuses a debug-signed .aab after the upload.
+            await reportUploadFailure(
+              () => assertPlaySigned(result.artifactPath),
+              `The build stays at ${result.artifactPath}.`,
+            );
             const { versionCode, status } = await reportUploadFailure(
               async () =>
                 uploadToPlay({

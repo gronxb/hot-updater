@@ -28,7 +28,7 @@ interface StoreShortcut {
    * Throws for a scheme whose build the store would not take, as the
    * build's own `--submit` checks it before the prebuild.
    */
-  readonly check: (scheme: string, config: never) => void;
+  readonly check: (scheme: string, config: never) => Promise<unknown> | unknown;
 }
 
 const TESTFLIGHT: StoreShortcut = {
@@ -66,7 +66,7 @@ const storeSchemes = async ({ platform, check }: StoreShortcut) => {
     ([a], [b]) => a.localeCompare(b),
   )) {
     try {
-      check(scheme, schemeConfig as never);
+      await check(scheme, schemeConfig as never);
       uploadable.push(scheme);
     } catch (error) {
       refused.push(error instanceof Error ? error.message : String(error));
