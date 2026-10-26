@@ -128,11 +128,14 @@ runs builds that read them in CI, which never signs in.
 An iOS build that needs an App Store Connect API key, for
 `signing.ascApiKey` or [`--upload testflight`](#upload-to-testflight), and
 finds none issues one. In a terminal, sign in with your Apple Account when
-asked: Hot Updater asks for its email, and asc, the open-source
+asked: Hot Updater asks for its email, password, and two-factor code, and
+signs in with asc, the open-source
 [App Store Connect CLI](https://github.com/rorkai/App-Store-Connect-CLI)
-(MIT), asks for its password and two-factor code in its own prompts. Hot
-Updater then creates a team API key with the Admin role in that team, named
-`hot-updater <bundle ID> <date>`, stores it under the name the build resolves
+(MIT). The password goes only to that asc process, in its environment. With
+no trusted device at hand, enter any wrong code once: Apple texts a code to
+your phone, and Hot Updater asks for it. Hot Updater then creates a team API
+key with the Admin role in that team, named `hot-updater <date>`, stores it
+under the name the build resolves
 ([where an issued key goes](#where-an-issued-key-goes)), and continues the
 build. It keeps only the issued key: neither the password nor the Apple
 session is saved.

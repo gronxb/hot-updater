@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { rmSync } from "node:fs";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -96,6 +97,103 @@ export const ascEnvironment = (
   };
 };
 
+/**
+ * The prompts the Apple Account's password and two-factor codes are typed
+ * into. Each answers `undefined` when the developer cancels.
+ */
+export interface AscSignInPrompts {
+  password(appleId: string | undefined): Promise<string | undefined>;
+  /** `attempt` counts from 1; asc asks again after Apple texts a code. */
+  twoFactorCode(attempt: number): Promise<string | undefined>;
+}
+
+const answer = (value: string | symbol) =>
+  p.isCancel(value) ? undefined : value;
+
+/** Hot Updater's own prompts, so the sign-in looks like the rest of the CLI. */
+const cliPrompts: AscSignInPrompts = {
+  password: async (appleId) =>
+    answer(
+      await p.password({
+        message: appleId ? `Password of ${appleId}` : "Apple Account password",
+        mask: "•",
+        validate: (value) => (value ? undefined : "Enter the password."),
+      }),
+    ),
+  twoFactorCode: async (attempt) =>
+    answer(
+      await p.text({
+        message:
+          attempt === 1
+            ? "Two-factor code from your trusted device (no device at hand? enter any wrong code once, and Apple texts one to your phone)"
+            : "Verification code Apple sent to your phone",
+        validate: (value) =>
+          /^\d{6}$/u.test(value?.trim() ?? "")
+            ? undefined
+            : "Enter the 6-digit code.",
+      }),
+    )?.trim(),
+};
+
+/** `value` as one word for `sh`. */
+const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+
+/**
+ * A two-factor code command for asc that asks `prompts` in this process:
+ * asc runs it when Apple wants a code, and it prints what the developer
+ * typed, which it gets over a socket in the 0700 work directory. A
+ * cancelled prompt makes it print nothing and fail, which stops the sign-in.
+ */
+const listenForTwoFactorCodes = async (
+  root: string,
+  prompts: AscSignInPrompts,
+) => {
+  const socketPath = path.join(root, "2fa.sock");
+  const scriptPath = path.join(root, "two-factor-code.cjs");
+  await fs.writeFile(
+    scriptPath,
+    [
+      'const socket = require("node:net").connect(' +
+        JSON.stringify(socketPath) +
+        ");",
+      'let code = "";',
+      'socket.on("data", (chunk) => { code += chunk; });',
+      'socket.on("end", () => {',
+      "  code = code.trim();",
+      "  if (!code) process.exit(1);",
+      '  process.stdout.write(code + "\\n");',
+      "});",
+      'socket.on("error", () => process.exit(1));',
+      "",
+    ].join("\n"),
+    { mode: 0o600 },
+  );
+  let attempts = 0;
+  let cancelled = false;
+  const server = net.createServer((socket) => {
+    attempts += 1;
+    prompts.twoFactorCode(attempts).then(
+      (code) => {
+        if (!code) cancelled = true;
+        socket.end(code ? `${code}\n` : "");
+      },
+      () => {
+        cancelled = true;
+        socket.destroy();
+      },
+    );
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  return {
+    command: `${shellQuote(process.execPath)} ${shellQuote(scriptPath)}`,
+    cancelled: () => cancelled,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -143,9 +241,10 @@ const assertP8 = (p8: string) => {
  * `IssueAscApiKey` with asc, the open-source App Store Connect CLI
  * (https://github.com/rorkai/App-Store-Connect-CLI, MIT):
  *
- * 1. `asc web auth login` asks for the password and the two-factor code in
- *    asc's own prompts, on this terminal. Hot Updater never reads, passes,
- *    or keeps them.
+ * 1. `asc web auth login` signs in with the password and the two-factor
+ *    codes typed into Hot Updater's prompts. The password reaches only that
+ *    asc process, in its environment (never an argument), each code only
+ *    asc's two-factor code command, and neither is kept or printed.
  * 2. `chooseTeam` sees the team asc signed in to, unless `teamId` is set.
  * 3. `asc web api-keys create` issues the key and saves its one-time `.p8`,
  *    which is checked before it is handed out; a key that fails the check is
@@ -158,32 +257,45 @@ const assertP8 = (p8: string) => {
  *
  * @param asc The asc binary; found or downloaded with `findAscCli` unless set.
  * @param env The environment asc's own is derived from.
+ * @param prompts Where the password and two-factor codes are asked.
  */
 export const createAscCliKeyIssuer =
   ({
     asc,
     env = process.env,
+    prompts = cliPrompts,
   }: {
     asc?: Pick<AscCli, "path">;
     env?: NodeJS.ProcessEnv;
+    prompts?: AscSignInPrompts;
   } = {}): IssueAscApiKey =>
   async ({ name, role, appleId, teamId, chooseTeam }) => {
     const cli = asc ?? (await findAscCli());
     p.log.info(
-      "asc, the open-source App Store Connect CLI, asks for the Apple Account's password and two-factor code. Hot Updater keeps only the API key it issues.",
+      "Hot Updater signs in with asc, the open-source App Store Connect CLI. It keeps only the API key it issues: neither the password nor the session.",
     );
+    const password = await prompts.password(appleId);
+    if (password === undefined) {
+      throw new AscCommandError("Signing in was cancelled.", undefined);
+    }
+    registerSecretValue(password);
     const work = await createWorkDirectory();
     const ascEnv = ascEnvironment(work.root, env);
 
-    // stdin and asc's prompts stay on this terminal; stdout carries asc's
-    // JSON, and its error output is shown as it comes and kept for messages.
-    const run = async (step: string, args: readonly string[]) => {
+    // asc asks nothing on this terminal: the password and codes come from
+    // Hot Updater's prompts. stdout carries asc's JSON; its error output is
+    // kept for messages.
+    const run = async (
+      step: string,
+      args: readonly string[],
+      extraEnv: NodeJS.ProcessEnv = {},
+    ) => {
       const result = await execa(cli.path, args, {
-        env: ascEnv,
+        env: { ...ascEnv, ...extraEnv },
         extendEnv: false,
-        stdin: "inherit",
+        stdin: "ignore",
         stdout: "pipe",
-        stderr: ["pipe", "inherit"],
+        stderr: "pipe",
         reject: false,
       });
       const stderr = String(result.stderr ?? "");
@@ -216,14 +328,33 @@ export const createAscCliKeyIssuer =
     };
 
     try {
-      const login = await run("Signing in with asc web auth login", [
-        "web",
-        "auth",
-        "login",
-        ...(appleId ? ["--apple-id", appleId] : []),
-        "--output",
-        "json",
-      ]);
+      const twoFactor = await listenForTwoFactorCodes(work.root, prompts);
+      let login: Record<string, unknown>;
+      try {
+        login = await run(
+          "Signing in with asc web auth login",
+          [
+            "web",
+            "auth",
+            "login",
+            ...(appleId ? ["--apple-id", appleId] : []),
+            "--two-factor-code-command",
+            twoFactor.command,
+            "--output",
+            "json",
+          ],
+          { ASC_WEB_PASSWORD: password },
+        );
+      } catch (error) {
+        if (twoFactor.cancelled()) {
+          throw new AscCommandError("Signing in was cancelled.", undefined, {
+            cause: error,
+          });
+        }
+        throw error;
+      } finally {
+        await twoFactor.close();
+      }
       if (login.authenticated !== true) {
         throw new AscCommandError(
           "asc web auth login finished without a signed-in session.",

@@ -98,6 +98,14 @@ export type EnsureAscApiKeyResult =
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * The issued key's name in App Store Connect, `hot-updater <date>`. App Store
+ * Connect refuses a long key name (ENTITY_ERROR.ATTRIBUTE.INVALID.TOO_LONG for
+ * 48 characters), so it carries no bundle identifier, whose length the app
+ * picks: a team key serves every app in the team anyway.
+ */
+const issuedKeyName = () => `hot-updater ${today()}`;
+
 /** Throws `CredentialSetupRefusedError` for a cancelled prompt. */
 const answered = <T>(answer: T | symbol): T => {
   if (p.isCancel(answer)) {
@@ -200,7 +208,6 @@ const storeIssued = async (
  */
 export const ensureAscApiKey = async ({
   name,
-  bundleIdentifier,
   env = {},
   environment = true,
   secrets,
@@ -210,8 +217,6 @@ export const ensureAscApiKey = async ({
 }: {
   /** The secret builds resolve, `asc-api-key` unless `signing.ascApiKey` names another. */
   name: string;
-  /** The app the key is named after in App Store Connect. */
-  bundleIdentifier?: string;
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
   /** The adapter the key is read from and stored in, the config's by default. */
@@ -244,7 +249,7 @@ export const ensureAscApiKey = async ({
   ).trim();
 
   const key = await issue({
-    name: `hot-updater ${bundleIdentifier ?? name} ${today()}`,
+    name: issuedKeyName(),
     role: KEY_ROLE,
     appleId,
     chooseTeam: async (team) => {

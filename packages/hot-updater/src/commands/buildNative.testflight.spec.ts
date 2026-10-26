@@ -203,16 +203,13 @@ describe("build:ios --upload testflight", () => {
 });
 
 describe("build:ios without an App Store Connect API key", () => {
-  it("issues the key before the prebuild, named after the app", async () => {
+  it("issues the key before the prebuild", async () => {
     await buildIosNative({
       interactive: false,
       scheme: "release",
       upload: "testflight",
     });
-    expect(ensureAscApiKey).toHaveBeenCalledWith({
-      name: "asc-api-key",
-      bundleIdentifier: "com.example.app",
-    });
+    expect(ensureAscApiKey).toHaveBeenCalledWith({ name: "asc-api-key" });
     expect(events.indexOf("ensure asc-api-key")).toBeLessThan(
       events.indexOf("prebuild"),
     );
@@ -266,10 +263,7 @@ describe("build:ios without an App Store Connect API key", () => {
       signing: { ascApiKey: "secret:widget-asc" },
     };
     await buildIosNative({ interactive: false, scheme: "release" });
-    expect(ensureAscApiKey).toHaveBeenCalledWith({
-      name: "widget-asc",
-      bundleIdentifier: "com.example.widget",
-    });
+    expect(ensureAscApiKey).toHaveBeenCalledWith({ name: "widget-asc" });
     // The signing key resolves before the prebuild, with the build's others.
     expect(events).toEqual([
       "ensure widget-asc",

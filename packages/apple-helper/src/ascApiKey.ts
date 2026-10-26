@@ -52,7 +52,7 @@ export interface IssuedAscApiKey {
 /**
  * Signs in to App Store Connect with an Apple Account and issues a team API
  * key. The developer types the password and the two-factor code into the
- * sign-in's own prompts; the caller never sees them. Nothing of the sign-in
+ * sign-in's prompts; the caller never sees them. Nothing of the sign-in
  * outlives `dispose`.
  */
 export type IssueAscApiKey = (
