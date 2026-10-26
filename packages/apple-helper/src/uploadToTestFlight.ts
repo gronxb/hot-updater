@@ -5,6 +5,7 @@ import path from "path";
 import {
   type CredentialRequest,
   type Credentials,
+  getCwd,
   p,
   parseSecretReference,
   registerSecretValue,
@@ -256,21 +257,134 @@ const runConcurrently = async <T>(
 };
 
 /**
+ * A signing build setting's assignment: the key, any conditions such as
+ * `[sdk=iphoneos*]`, and the value, without a trailing comment.
+ */
+const SIGNING_SETTING =
+  /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)((?:\[[^\]]*\])*)\s*=\s*([^\s/]*)\s*(?:\/\/.*)?$/u;
+
+/**
+ * Each signing setting's last unconditional value and where it was set,
+ * and the settings some condition also sets, whose value for the device
+ * archive the config alone can't tell.
+ */
+interface SigningSettings {
+  readonly values: Map<string, { value: string; where: string }>;
+  readonly conditional: Set<string>;
+}
+
+/** A scheme's `exportOptionsPlist`, which resolves from the project's root. */
+const schemeFile = (file: string) =>
+  path.isAbsolute(file) ? file : path.resolve(getCwd(), file);
+
+/** Applies one assignment, as Xcode does: the last unconditional one wins. */
+const applySetting = (
+  settings: SigningSettings,
+  line: string,
+  label: string,
+) => {
+  const [, key, conditions, value] = line.match(SIGNING_SETTING) ?? [];
+  if (!key) return;
+  if (conditions) settings.conditional.add(key);
+  else
+    settings.values.set(key, {
+      value: value!,
+      where: `${line.trim()} in ${label}`,
+    });
+};
+
+/**
+ * Applies an xcconfig's signing settings over `settings`, in order,
+ * following its `#include`s, which resolve from the including file, as
+ * Xcode reads it. A file included again applies again; only an include
+ * cycle (`including`) stops.
+ */
+const applyXcconfig = async (
+  file: string,
+  label: string,
+  settings: SigningSettings,
+  including: Set<string>,
+) => {
+  if (including.has(file)) return;
+  including.add(file);
+  const text = await fs.promises.readFile(file, "utf-8").catch(() => undefined);
+  // Block comments go first, kept as newlines; a line comment ends a line.
+  const uncommented = text?.replace(/\/\*[\s\S]*?\*\//gu, (comment) =>
+    comment.replace(/[^\n]/gu, ""),
+  );
+  for (const line of uncommented?.split("\n") ?? []) {
+    const include = line.match(/^\s*#include\??\s*"([^"]+)"/u)?.[1];
+    if (include) {
+      await applyXcconfig(
+        path.resolve(path.dirname(file), include),
+        include,
+        settings,
+        including,
+      );
+    } else {
+      applySetting(settings, line, label);
+    }
+  }
+  including.delete(file);
+};
+
+/**
+ * Where the scheme turns code signing off, after every override the build
+ * applies: the `extraParams` settings first, then the xcconfigs the build
+ * xcconfig includes over them, in order, its `xcconfig` and each
+ * `-xcconfig` in `extraParams`, which resolve from `ios/`, where xcodebuild
+ * runs (`writeBuildXcconfig`). Undefined when it signs, or when a
+ * conditional setting, such as `[sdk=iphoneos*]`, may decide: the build
+ * does.
+ */
+const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
+  const extraParams = iosScheme.extraParams ?? [];
+  const settings: SigningSettings = {
+    values: new Map(),
+    conditional: new Set(),
+  };
+  for (const entry of extraParams) applySetting(settings, entry, "extraParams");
+  const xcconfigs = [
+    ...(iosScheme.xcconfig ? [iosScheme.xcconfig] : []),
+    ...extraParams.flatMap((entry, index) =>
+      entry === "-xcconfig" && index + 1 < extraParams.length
+        ? [extraParams[index + 1]!]
+        : [],
+    ),
+  ];
+  for (const xcconfig of xcconfigs) {
+    await applyXcconfig(
+      path.resolve(getCwd(), "ios", xcconfig),
+      xcconfig,
+      settings,
+      new Set(),
+    );
+  }
+  for (const [key, { value, where }] of settings.values) {
+    if (/^no$/iu.test(value) && !settings.conditional.has(key)) return where;
+  }
+  return undefined;
+};
+
+/**
  * The App Store Connect API key a scheme's `.ipa` uploads with: the
  * `signing.ascApiKey` it signs with, or else the `asc-api-key` item. It reads
- * only the config, before the native projects are written, and throws for a
- * scheme whose build App Store Connect would not take: a simulator `.app`,
- * an `.xcarchive` it cannot export, or a Debug configuration, which loads
- * its JavaScript from Metro.
+ * the config, and the scheme's files that exist before the native projects
+ * are written, and throws, saying why, for a scheme whose build App Store
+ * Connect would not take: a simulator `.app`, a Debug configuration, which
+ * loads its JavaScript from Metro, code signing turned off, an
+ * `.xcarchive` it cannot export, or export options of another method. An
+ * `exportOptionsPlist` the adapter's prebuild writes later is checked after
+ * it (`assertTestFlightExportOptions`).
  */
-export const resolveTestFlightUploadKey = ({
+export const resolveTestFlightUploadKey = async ({
   scheme,
   iosScheme,
 }: {
   /** The scheme's name. */
   scheme: string;
   iosScheme: NativeBuildIosScheme;
-}): CredentialRequest<"asc-api-key"> => {
+}): Promise<CredentialRequest<"asc-api-key">> => {
   if (iosScheme.simulator) {
     throw new Error(
       `TestFlight takes an .ipa, and the scheme ${scheme} builds a simulator .app.`,
@@ -282,10 +396,29 @@ export const resolveTestFlightUploadKey = ({
       `TestFlight takes a release build, and the scheme ${scheme} builds the ${configuration} configuration, which loads its JavaScript from Metro.`,
     );
   }
+  const unsigned = await codeSigningOff(iosScheme);
+  if (unsigned) {
+    throw new Error(
+      `TestFlight takes a signed .ipa, and the scheme ${scheme} turns code signing off (${unsigned}).`,
+    );
+  }
   if (!iosScheme.exportOptionsPlist && !iosScheme.signing) {
     throw new Error(
       `The scheme ${scheme} archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.`,
     );
+  }
+  if (
+    iosScheme.exportOptionsPlist &&
+    fs.existsSync(schemeFile(iosScheme.exportOptionsPlist))
+  ) {
+    const method = await readExportMethod(
+      schemeFile(iosScheme.exportOptionsPlist),
+    );
+    if (!APP_STORE_EXPORT_METHODS.has(method)) {
+      throw new Error(
+        `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${scheme}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
+      );
+    }
   }
   return {
     kind: "asc-api-key",

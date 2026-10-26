@@ -6,6 +6,9 @@ const events: string[] = [];
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
 vi.mock("@hot-updater/android-helper", () => ({
+  assertPlaySigned: vi.fn(async () => {
+    events.push("check signer");
+  }),
   buildAndroid: vi.fn(),
   readBuiltPackageName: vi.fn(async () => "com.example.app.staging"),
   resolvePlayUploadServiceAccount: vi.fn(() => {
@@ -111,6 +114,7 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
 }));
 
 import {
+  assertPlaySigned,
   readBuiltPackageName,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
@@ -150,6 +154,8 @@ describe("native-build android --submit play-internal", () => {
       "prebuild",
       "build",
       "register",
+      // The .aab's signer, before anything goes to Google Play.
+      "check signer",
       "upload",
       "dispose",
     ]);
@@ -162,6 +168,30 @@ describe("native-build android --submit play-internal", () => {
       packageName: "com.example.app.staging",
       serviceAccount,
     });
+  });
+
+  it("submits nothing when the .aab is debug-signed, saying why", async () => {
+    vi.mocked(assertPlaySigned).mockRejectedValueOnce(
+      new Error(
+        "Google Play refuses an .aab signed with the Android debug keystore, and /out/app-release.aab is.",
+      ),
+    );
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
+
+    await expect(
+      handleNativeBuildCreate("android", {
+        scheme: "release",
+        submit: "play-internal",
+      }),
+    ).rejects.toThrow("exit");
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(uploadToPlay).not.toHaveBeenCalled();
+    expect(vi.mocked(p.log.error).mock.calls.flat().join("\n")).toContain(
+      "Google Play refuses an .aab signed with the Android debug keystore",
+    );
   });
 
   it("asks for the key with the scheme's applicationId, which the build reads", async () => {

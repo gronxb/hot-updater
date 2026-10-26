@@ -8,6 +8,7 @@ import {
   registerSecretValue,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
+import { execa } from "execa";
 
 const API_URL = "https://androidpublisher.googleapis.com";
 /** Where Google serves resumable upload sessions, as its docs show both. */
@@ -304,6 +305,35 @@ export const findPlayInternalRelease = async ({
   } finally {
     await request("Deleting the Google Play edit", "DELETE", edit).catch(
       () => undefined,
+    );
+  }
+};
+
+/**
+ * The common name of every Android debug certificate: Android Studio's and
+ * the Android Gradle plugin's (`CN=Android Debug, O=Android, C=US`), and React
+ * Native's template `debug.keystore` (`CN=Android Debug, OU=Android,
+ * O=Unknown, …`), as `keytool` prints the owner, whatever the label's
+ * language.
+ */
+const ANDROID_DEBUG_SIGNER = /:\s*CN=Android Debug\s*(?:,|$)/mu;
+
+/**
+ * Throws when the `.aab` is signed with the Android debug keystore, which
+ * Google Play refuses: a release build type left on `signingConfigs.debug`,
+ * as React Native's template ships it. It reads the signer with the JDK's
+ * `keytool`, which Gradle needs too; without one it checks nothing.
+ */
+export const assertPlaySigned = async (aabPath: string): Promise<void> => {
+  const { stdout, exitCode } = await execa(
+    "keytool",
+    // English labels, whatever the machine's locale.
+    ["-J-Duser.language=en", "-printcert", "-jarfile", aabPath],
+    { reject: false },
+  );
+  if (exitCode === 0 && ANDROID_DEBUG_SIGNER.test(String(stdout))) {
+    throw new Error(
+      `Google Play refuses an .aab signed with the Android debug keystore, and ${aabPath} is. Set the scheme's signing.keystore, or a release signingConfig in android/app/build.gradle, then build again.`,
     );
   }
 };

@@ -1,6 +1,7 @@
 export { buildAndroid } from "./buildAndroid";
 export {
   findPlayInternalRelease,
+  assertPlaySigned,
   resolvePlayUploadServiceAccount,
   type UploadToPlayResult,
   uploadToPlay,
