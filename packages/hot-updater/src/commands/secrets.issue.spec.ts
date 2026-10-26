@@ -157,14 +157,14 @@ const writableStore = (values: Record<string, string> = {}) => {
 
 let directory: string;
 
-/** Makes `secrets` the config's, as loadConfig hands it over: with `local()`'s store. */
+/** Makes `secrets` the config's, as loadConfig hands it over: with `localSecrets()`'s store. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
     secrets: withLocalKeyStore(secrets),
   } as never);
 };
 
-/** Where `local()`'s store keeps `name` for the project. */
+/** Where `localSecrets()`'s store keeps `name` for the project. */
 const keyFile = (name: string) => getLocalKeyFile(name, directory);
 
 const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
@@ -364,7 +364,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
   });
 
-  it("keeps the key the environment's whole value sets for the default store, which reads it before `local()`'s store", async () => {
+  it("keeps the key the environment's whole value sets for localSecrets(), which reads it before its files", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_API_KEY", OLD_ASC);
     configure();
 
@@ -375,7 +375,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(process.exitCode).toBe(1);
     expect(issueAscApiKey).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      "HOT_UPDATER_ASC_API_KEY is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater apple login --replace` again.",
+      "HOT_UPDATER_ASC_API_KEY is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater secrets issue asc-api-key --replace` again.",
     );
     expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
   });

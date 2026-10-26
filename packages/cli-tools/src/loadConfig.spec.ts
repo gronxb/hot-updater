@@ -136,14 +136,14 @@ describe("loadConfig", () => {
     }
   });
 
-  it("defaults secrets to the environment and `local()`'s store, and registers it for secret: references", async () => {
+  it("defaults secrets to the environment and `localSecrets()`'s store, and registers it for secret: references", async () => {
     const { loadConfig } = await import("./loadConfig");
     const { getConfiguredAdapter, getConfiguredSecrets } =
       await import("./secrets");
 
     const config = await loadConfig(null);
 
-    expect(config.secrets.name).toBe("local");
+    expect(config.secrets.name).toBe("localSecrets");
     expect(config.secrets.set).toBeTypeOf("function");
     expect(getConfiguredAdapter(config.secrets)).toBeUndefined();
     expect(getConfiguredSecrets()).toBe(config.secrets);
@@ -187,7 +187,7 @@ describe("loadConfig", () => {
       ).credentials;
       const values = await credentials();
 
-      // Then: the config's adapter, with `local()`'s store after it
+      // Then: the config's adapter, with `localSecrets()`'s store after it
       const { getConfiguredAdapter } = await import("./secrets");
       expect(getConfiguredAdapter(config.secrets)).toBe(secrets);
       expect(config.secrets.name).toBe("spec-store");

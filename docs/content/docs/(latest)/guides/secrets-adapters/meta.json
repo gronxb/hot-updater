@@ -3,7 +3,7 @@
   "description": "Keep the CLI's secrets on this machine, or in a secrets store through an adapter you paste.",
   "icon": "LockKeyhole",
   "pages": [
-    "local",
+    "local-secrets",
     "dotenvx",
     "bitwarden",
     "1password",

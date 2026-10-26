@@ -36,7 +36,7 @@ import { existsSync } from "node:fs";
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins"; // [!code ++]
 
 if (existsSync(".env.hotupdater")) {
@@ -68,6 +68,7 @@ export default defineConfig({
     }, // [!code ++]
   }), // [!code ++]
   plugins: [insights(), apiKeys()], // [!code ++]
+  secrets: localSecrets(), // keys from apple login and google-play login
   updateStrategy: "appVersion",
 });
 ```
@@ -133,11 +134,11 @@ through it, the path the server's own writes take:
 `secrets` is where the CLI reads the secrets the config names: the native
 build credentials a [`secret:<name>`](/docs/guides/native-build#provide-signing-credentials)
 reference names, and the deploy credentials `secretEnv` names. It defaults to
-[`local()`](/docs/guides/secrets-adapters/local) from
+[`localSecrets()`](/docs/guides/secrets-adapters/local-secrets) from
 `hot-updater`, which reads each name from an environment variable, in the
 environment or `.env.hotupdater`, then from a file in your home directory
 that only you can read, where it stores the keys Hot Updater issues. In CI,
-map the CI's secrets to the job's environment, which `local()` reads first.
+map the CI's secrets to the job's environment, which `localSecrets()` reads first.
 Any other store is a short adapter you paste, such as
 [dotenvx](/docs/guides/secrets-adapters/dotenvx) or
 [Bitwarden](/docs/guides/secrets-adapters/bitwarden):
@@ -146,19 +147,19 @@ Any other store is a short adapter you paste, such as
 `secretEnv([...names])` from `hot-updater` returns a function an adapter calls
 when it needs its credentials, so loading the config reads no secret. A name
 set in the environment wins; the others come from `secrets`, except with
-`local()`, whose files hold only the keys Hot Updater stores. The values go only
+`localSecrets()`, whose files hold only the keys Hot Updater stores. The values go only
 to that adapter, never into the CLI's `process.env`, and are masked in the
 CLI's output. Names that change how a process loads code, such as
 `NODE_OPTIONS`, `PATH`, or `LD_PRELOAD`, are refused.
 
 ```typescript title="hot-updater.config.ts (partial)"
 import { s3Storage } from "@hot-updater/aws";
-import { defineConfig, local, secretEnv } from "hot-updater";
+import { defineConfig, localSecrets, secretEnv } from "hot-updater";
 
 const deploy = secretEnv(["S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]);
 
 export default defineConfig({
-  secrets: local(),
+  secrets: localSecrets(),
   storage: s3Storage({
     bucketName: "bundles",
     region: "us-east-1",

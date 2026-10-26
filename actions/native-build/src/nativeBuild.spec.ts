@@ -185,7 +185,8 @@ describe("runAction", () => {
   it("fails with the CLI's exit code, whose output names what is missing", async () => {
     const { deps: d, outputs } = deps({
       code: 1,
-      stdout: "play-service-account is not in the local secrets adapter.\n",
+      stdout:
+        "play-service-account is not in the localSecrets secrets adapter.\n",
     });
 
     await expect(runAction(d, parseInputs(env()))).rejects.toThrow(

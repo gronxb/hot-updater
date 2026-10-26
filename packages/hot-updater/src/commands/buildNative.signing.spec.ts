@@ -188,7 +188,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       events.push(`resolve ${request.kind} ${request.name}`);
       throw new CredentialUnavailableError(
         "android-keystore",
-        "release-keystore (android-keystore) is not in the local secrets adapter.",
+        "release-keystore (android-keystore) is not in the localSecrets secrets adapter.",
       );
     });
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -207,7 +207,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       "exit",
     ]);
     expect(p.log.error).toHaveBeenCalledWith(
-      "release-keystore (android-keystore) is not in the local secrets adapter.",
+      "release-keystore (android-keystore) is not in the localSecrets secrets adapter.",
     );
   });
 

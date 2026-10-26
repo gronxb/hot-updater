@@ -225,7 +225,7 @@ import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { applicationDefault } from "firebase-admin/app";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -251,6 +251,7 @@ export default defineConfig({
     credential,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
+  secrets: localSecrets(), // keys from apple login and google-play login
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```

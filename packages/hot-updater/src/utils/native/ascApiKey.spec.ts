@@ -154,10 +154,10 @@ const issue = vi.fn(
 const ensure = (options: Parameters<typeof ensureAscApiKey>[0]) =>
   ensureAscApiKey({ issue, ...options });
 
-/** A directory of the spec's own; `home` in it is `local()`'s store's home. */
+/** A directory of the spec's own; `home` in it is `localSecrets()`'s store's home. */
 let tmp: string;
 
-/** Where `local()`'s store keeps `name` for the project. */
+/** Where `localSecrets()`'s store keeps `name` for the project. */
 const keyFile = (name: string) => getLocalKeyFile(name, getCwd());
 
 /** Every argument the log and the prompts were given, as one text. */
@@ -262,7 +262,7 @@ describe("ensureAscApiKey", () => {
     await expect(fs.readdir(tmp)).resolves.toEqual([]);
   });
 
-  it("says before signing in that this machine has no key, stores the issued key in `local()`'s store, and names where to prune old keys", async () => {
+  it("says before signing in that this machine has no key, stores the issued key in `localSecrets()`'s store, and names where to prune old keys", async () => {
     setConfiguredSecrets(withLocalKeyStore());
     git.remote = undefined;
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
@@ -333,7 +333,7 @@ describe("ensureAscApiKey", () => {
     expect(printed()).not.toContain("on this machine. Signing in issues");
   });
 
-  it("stores the key of a read-only adapter in `local()`'s store, where builds here read it", async () => {
+  it("stores the key of a read-only adapter in `localSecrets()`'s store, where builds here read it", async () => {
     fakeStore({ writable: false });
     const githubSecrets = vi.fn();
     await expect(
@@ -349,9 +349,9 @@ describe("ensureAscApiKey", () => {
     });
   });
 
-  it("revokes the key when `local()`'s store can't be written", async () => {
+  it("revokes the key when `localSecrets()`'s store can't be written", async () => {
     setConfiguredSecrets(withLocalKeyStore());
-    // A file where `local()`'s store's home goes.
+    // A file where `localSecrets()`'s store's home goes.
     await fs.writeFile(path.join(tmp, "home"), "");
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
@@ -569,7 +569,7 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a copy of a key a write-only adapter stored in `local()`'s store, which builds here read, and never revokes it", async () => {
+  it("keeps a copy of a key a write-only adapter stored in `localSecrets()`'s store, which builds here read, and never revokes it", async () => {
     const { held } = fakeStore({ readBack: async () => undefined });
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
 

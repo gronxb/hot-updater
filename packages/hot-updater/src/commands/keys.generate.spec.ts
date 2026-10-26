@@ -138,7 +138,7 @@ describe("keys generate --secret", () => {
     expect(output()).toContain('privateKey: "secret:release-signing-key"');
   });
 
-  it("stores the private key in `local()`'s store without a secrets adapter, and writes only the public key", async () => {
+  it("stores the private key in `localSecrets()`'s store without a secrets adapter, and writes only the public key", async () => {
     const cwd = await createProject();
     mocks.loadConfig.mockResolvedValue({ secrets: withLocalKeyStore() });
 
@@ -175,7 +175,7 @@ describe("keys generate --secret", () => {
 
   it.each([
     ["the environment", "env"],
-    ["`local()`'s store", "store"],
+    ["`localSecrets()`'s store", "store"],
   ])("never replaces a key %s already holds", async (_, where) => {
     const cwd = await createProject();
     if (where === "env") {

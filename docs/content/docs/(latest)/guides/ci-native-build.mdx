@@ -22,7 +22,7 @@ so the same `hot-updater.config.ts` builds on your machine and in CI:
 | Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                   |
 | Deploy credentials        | The names your config reads with [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), for tracking the build |
 
-With [`local()`](/docs/guides/secrets-adapters/local), the
+With [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), the
 default, the job's environment holds them, from your CI provider's secrets.
 With a secrets store, the job only signs in to the store, and the store holds
 every value. [Add the workflow](#add-the-workflow) has a complete workflow
@@ -62,9 +62,10 @@ npx hot-updater google-play login
 [Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
 describes, and `google-play login` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
-describes. Each keeps a key the adapter already holds; `secrets issue <kind>
---replace` issues a new one and names the old key to revoke once CI no longer uses it. With
-`local()`, the key stays in a file on your machine, and the CLI offers
+describes. Each keeps a key the adapter already holds;
+`secrets issue <kind> --replace` issues a new one and names the old key to
+revoke once CI no longer uses it. With
+`localSecrets()`, the key stays in a file on your machine, and the CLI offers
 to store it as the GitHub Actions secret CI reads; another adapter stores it
 where CI reads it
 ([where an issued key goes](/docs/guides/native-build#where-an-issued-key-goes)).
@@ -87,7 +88,7 @@ The stores take each build number once: raise `CFBundleVersion` and
 
 ### Environment variables
 
-With `local()`, which reads the environment before its files, add each
+With `localSecrets()`, which reads the environment before its files, add each
 value in the repository's
 **Settings → Secrets and variables → Actions** under its variable name. To
 require a reviewer before a job reads them, add them to a protected
@@ -308,7 +309,7 @@ The action takes no credential input: the CLI reads every credential through
 the config's `secrets` adapter. It masks the job's `HOT_UPDATER_*` credential
 variables in the log, field by field for a JSON value, and the CLI masks every
 value it reads from a store. The action refuses `ios` on a runner that is not
-macOS and an `upload` of the other platform's store. It sets `CI` for the
+macOS and a `submit` to the other platform's store. It sets `CI` for the
 CLI, so a self-hosted runner that sets no `CI` never starts a sign-in either.
 
 | Output          | Description                                                                                                         |

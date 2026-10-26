@@ -858,7 +858,7 @@ const updateManagedObject = (
     }
   }
 
-  // The secrets adapter is the project's: init adds local() only to a
+  // The secrets adapter is the project's: init adds localSecrets() only to a
   // config that sets none.
   const nextSecrets = findAnyProperty(next.objectExpression, "secrets");
   if (nextSecrets && !findAnyProperty(existing.objectExpression, "secrets")) {
@@ -988,7 +988,7 @@ const rebuildImportBlock = (
   },
 ): TextEdit => {
   // Keep environment-loading imports under the existing config's control,
-  // and a kept build's adapter import with it. local() is imported only
+  // and a kept build's adapter import with it. localSecrets() is imported only
   // where the config uses it: a project's own secrets adapter stays.
   const references = usedIdentifiers(usedText);
   const imports = scaffold.imports
@@ -999,8 +999,13 @@ const rebuildImportBlock = (
             ...info,
             named: info.named?.filter((name) => name !== "existsSync"),
           }
-        : info.pkg === "hot-updater" && references && !references.has("local")
-          ? { ...info, named: info.named?.filter((name) => name !== "local") }
+        : info.pkg === "hot-updater" &&
+            references &&
+            !references.has("localSecrets")
+          ? {
+              ...info,
+              named: info.named?.filter((name) => name !== "localSecrets"),
+            }
           : info,
     );
   const importDeclarations = importDeclarationsOf(source);

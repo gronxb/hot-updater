@@ -59,7 +59,7 @@ export const getProjectKey = (cwd: string): string => {
 };
 
 /**
- * The directory `local()` keeps a project's secrets in without a
+ * The directory `localSecrets()` keeps a project's secrets in without a
  * `path`: `<home>/secrets/<project-key>` (`getHotUpdaterHome`,
  * `getProjectKey`).
  */
@@ -67,7 +67,7 @@ export const getLocalKeyStoreDir = (cwd: string): string =>
   path.join(getHotUpdaterHome(), "secrets", getProjectKey(cwd));
 
 /**
- * `local({ path })`'s directory: `~` is the home directory, and a
+ * `localSecrets({ path })`'s directory: `~` is the home directory, and a
  * relative path is the project's (`cwd`).
  */
 export const resolveLocalSecretsPath = (value: string, cwd: string): string => {
@@ -122,7 +122,7 @@ const assertPrivateDirectory = async (directory: string) => {
   });
   if (stats && !stats.isDirectory()) {
     throw new Error(
-      `local() keeps secrets in a directory, and ${directory} is not one. Set its path to a directory.`,
+      `localSecrets() keeps secrets in a directory, and ${directory} is not one. Set its path to a directory.`,
     );
   }
   const real = realpathThroughParents(directory);
@@ -135,7 +135,7 @@ const assertPrivateDirectory = async (directory: string) => {
   const top = realpath(root);
   if (isIgnoredByGit(top, real)) return;
   throw new Error(
-    `local() refuses ${directory}: it is in the git repository ${top}, which does not ignore it, so the secrets in it could be committed. Add ${path.relative(top, real).split(path.sep).join("/")}/ to .gitignore, or set its path outside the repository, such as ~/.hot-updater/secrets/<app>.`,
+    `localSecrets() refuses ${directory}: it is in the git repository ${top}, which does not ignore it, so the secrets in it could be committed. Add ${path.relative(top, real).split(path.sep).join("/")}/ to .gitignore, or set its path outside the repository, such as ~/.hot-updater/secrets/<app>.`,
   );
 };
 
@@ -147,7 +147,7 @@ const makePrivateDirectory = async (directory: string) => {
   if (process.platform !== "win32") await fs.chmod(directory, 0o700);
 };
 
-/** Where `local()` keeps a project's secrets, one file per name. */
+/** Where `localSecrets()` keeps a project's secrets, one file per name. */
 export interface LocalSecretsStore {
   /** The project's directory. */
   readonly directory: (cwd: string) => string;
@@ -167,7 +167,7 @@ export interface LocalSecretsStore {
 }
 
 /**
- * The store `local({ path })` reads and writes: `path`, or
+ * The store `localSecrets({ path })` reads and writes: `path`, or
  * `getLocalKeyStoreDir` without one. Its first use refuses a directory
  * secrets must not go in (`assertPrivateDirectory`).
  */
@@ -222,17 +222,17 @@ export const createLocalSecretsStore = ({
 
 const defaultStore = createLocalSecretsStore();
 
-/** The file `local()` without a `path` keeps `name` in. */
+/** The file `localSecrets()` without a `path` keeps `name` in. */
 export const getLocalKeyFile = (name: string, cwd: string): string =>
   defaultStore.file(name, cwd);
 
-/** `name`'s value in `local()`'s default store, or undefined. */
+/** `name`'s value in `localSecrets()`'s default store, or undefined. */
 export const readLocalKey = (
   name: string,
   cwd: string,
 ): Promise<string | undefined> => defaultStore.read(name, cwd);
 
-/** Stores `value` as `name` in `local()`'s default store. */
+/** Stores `value` as `name` in `localSecrets()`'s default store. */
 export const writeLocalKey = (
   name: string,
   value: string,

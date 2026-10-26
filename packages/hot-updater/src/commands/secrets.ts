@@ -199,7 +199,7 @@ const assertSecretName = (name: string) => {
 
 /**
  * `secrets put`: stores a build credential you have as `name` through the
- * config's `secrets` adapter, or `local()`'s store by default, as
+ * config's `secrets` adapter, or `localSecrets()`'s store by default, as
  * one JSON value that `secret:<name>` resolves. It never signs in:
  * `secrets issue` does.
  */
@@ -227,7 +227,7 @@ export const handleSecretsPut = async (
     const value = await readSecretValue(options);
     // Masked before it is sent, so no failure can print it.
     registerCredentialValue(value);
-    // Always set: an adapter that stores nothing stores in `local()`'s store.
+    // Always set: an adapter that stores nothing stores in `localSecrets()`'s store.
     await secrets.set!(name, value, { cwd });
     p.log.message(
       ui.block("Secret stored", [
@@ -370,7 +370,7 @@ export interface SecretsIssueOptions {
  * issues as `name` through the config's `secrets` adapter, as builds do
  * when theirs is missing: an App Store Connect API key after an Apple
  * Account sign-in, a Play service account after a Google one. Without an
- * adapter that stores values, the key goes to `local()`'s store,
+ * adapter that stores values, the key goes to `localSecrets()`'s store,
  * which builds here read.
  *
  * - In CI or without a terminal, it refuses before anything else, naming

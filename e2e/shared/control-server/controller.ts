@@ -228,7 +228,7 @@ type DeployBundleRequest = {
    * `foreign`: the deploy signs its bundle with a key generated for it, not
    * the one whose public key the app embeds. `secret`: the deploy reads the
    * project's key as `secret:bundle-signing-key` from its environment
-   * variable, with the key file moved away and an empty local() store.
+   * variable, with the key file moved away and an empty localSecrets() store.
    */
   signingKey?: "foreign" | "secret";
   strategy?: "appVersion" | "fingerprint";
@@ -7906,7 +7906,7 @@ async function withForeignSigningKey(deploy: () => Promise<string>) {
  * Runs a deploy that reads the project's private key as
  * `secret:bundle-signing-key` from its variable, with the key file moved
  * away and HOT_UPDATER_HOME at an empty directory, so neither a path nor
- * local()'s store can supply it. A deploy without the variable
+ * localSecrets()'s store can supply it. A deploy without the variable
  * must first be refused for it,
  * and the deploy with it must sign with the key the app embeds, which the
  * CLI checks against the native files and the app checks on install. The

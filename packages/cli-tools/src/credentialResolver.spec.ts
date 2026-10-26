@@ -252,14 +252,14 @@ describe("createCredentialResolver", () => {
     );
   });
 
-  it("names local()'s variable and file when neither holds it", async () => {
+  it("names localSecrets()'s variable and file when neither holds it", async () => {
     await expect(
       createCredentialResolver().resolve({
         kind: "android-keystore",
         name: "release-keystore",
       }),
     ).rejects.toThrow(
-      `release-keystore (android-keystore) is not in the local secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment, or ${getLocalKeyFile("release-keystore", directory)} on this machine).`,
+      `release-keystore (android-keystore) is not in the localSecrets secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment, or ${getLocalKeyFile("release-keystore", directory)} on this machine).`,
     );
   });
 
@@ -661,7 +661,7 @@ describe("credential masking", () => {
 });
 
 describe("the default store as the secrets adapter", () => {
-  it("reads a credential `local()`'s store holds", async () => {
+  it("reads a credential `localSecrets()`'s store holds", async () => {
     await writeLocalKey(
       "asc-api-key",
       JSON.stringify({ keyId: "STORED1", issuerId: "issuer-1", p8: P8_KEY }),
@@ -678,7 +678,7 @@ describe("the default store as the secrets adapter", () => {
     });
   });
 
-  it("prefers the environment over `local()`'s store", async () => {
+  it("prefers the environment over `localSecrets()`'s store", async () => {
     await writeLocalKey(
       "asc-api-key",
       JSON.stringify({ keyId: "STORED1", issuerId: "issuer-1", p8: P8_KEY }),

@@ -69,20 +69,20 @@ export const readSecretVariables = async (
   return values;
 };
 
-/** `local()`'s name, the `secrets` adapter when the config sets none. */
-export const LOCAL_SECRETS_NAME = "local";
+/** `localSecrets()`'s name, the `secrets` adapter when the config sets none. */
+export const LOCAL_SECRETS_NAME = "localSecrets";
 
 const LOCAL_KEY_STORE = Symbol.for("@hot-updater/cli-tools/local-key-store");
 
 type LocalKeyStoreSecrets = SecretsAdapter & {
   readonly [LOCAL_KEY_STORE]: {
-    /** The config's own adapter; undefined for `local()`. */
+    /** The config's own adapter; undefined for `localSecrets()`. */
     readonly configured?: SecretsAdapter;
     readonly store: LocalSecretsStore;
   };
 };
 
-/** `local()`'s store without a `path`, the one after any adapter. */
+/** `localSecrets()`'s store without a `path`, the one after any adapter. */
 const defaultLocalSecretsStore = createLocalSecretsStore();
 
 const isLocalKeyStoreSecrets = (
@@ -101,9 +101,11 @@ const isLocalKeyStoreSecrets = (
  * so another machine signs in and issues a key of its own.
  *
  * @example
- * export default defineConfig({ secrets: local(), ... });
+ * export default defineConfig({ secrets: localSecrets(), ... });
  */
-export const local = (options: LocalSecretsOptions = {}): SecretsAdapter =>
+export const localSecrets = (
+  options: LocalSecretsOptions = {},
+): SecretsAdapter =>
   createLocalKeyStoreSecrets(undefined, createLocalSecretsStore(options));
 
 export interface LocalSecretsOptions {
@@ -119,11 +121,11 @@ export interface LocalSecretsOptions {
 }
 
 /**
- * The config's `secrets` adapter with `local()`'s store after it:
+ * The config's `secrets` adapter with `localSecrets()`'s store after it:
  * `get` reads each name the adapter does not hold from
  * `~/.hot-updater/secrets/<project-key>/<name>.json`, and `set` stores there
  * when the adapter stores nothing. Without an adapter, it is
- * `local()` itself. Keys Hot Updater issues, and credentials
+ * `localSecrets()` itself. Keys Hot Updater issues, and credentials
  * `secrets put` imports, are reused by the next build on this machine with
  * no step in between.
  */
@@ -173,8 +175,8 @@ const createLocalKeyStoreSecrets = (
 };
 
 /**
- * The `local()` store `secrets` reads after its adapter, and stores
- * in when the adapter stores nothing: `local({ path })`'s, else the
+ * The `localSecrets()` store `secrets` reads after its adapter, and stores
+ * in when the adapter stores nothing: `localSecrets({ path })`'s, else the
  * default one.
  */
 export const getLocalSecretsStore = (
@@ -185,8 +187,8 @@ export const getLocalSecretsStore = (
     : defaultLocalSecretsStore;
 
 /**
- * The config's own `secrets` adapter, without `local()`'s store
- * after it: undefined for `local()`, and when the config sets none.
+ * The config's own `secrets` adapter, without `localSecrets()`'s store
+ * after it: undefined for `localSecrets()`, and when the config sets none.
  * `secretEnv` reads deploy credentials from it.
  */
 export const getConfiguredAdapter = (
@@ -198,7 +200,7 @@ export const getConfiguredAdapter = (
 
 /**
  * Where `secrets.set` stores `name`, for messages: the config's adapter
- * when it stores values, else `local()`'s file.
+ * when it stores values, else `localSecrets()`'s file.
  */
 export const describeStoredSecret = (
   secrets: SecretsAdapter,
@@ -211,7 +213,7 @@ export const describeStoredSecret = (
 };
 
 /**
- * Whether a key `secrets` stores stays on this machine: it is `local()`,
+ * Whether a key `secrets` stores stays on this machine: it is `localSecrets()`,
  * whose files no other machine reads.
  */
 export const keepsKeysOnThisMachine = (secrets: SecretsAdapter): boolean =>
@@ -264,11 +266,11 @@ export const setConfiguredSecrets = (secrets: SecretsAdapter): void => {
 };
 
 /**
- * The config's `secrets` adapter with `local()`'s store after it
- * (`withLocalKeyStore`), `local()` until a config loads.
+ * The config's `secrets` adapter with `localSecrets()`'s store after it
+ * (`withLocalKeyStore`), `localSecrets()` until a config loads.
  */
 export const getConfiguredSecrets = (): SecretsAdapter =>
-  (globalThis as SecretsSlot)[CONFIGURED_SECRETS] ?? local();
+  (globalThis as SecretsSlot)[CONFIGURED_SECRETS] ?? localSecrets();
 
 /** Where an adapter keeps `name`, for messages. */
 export const describeSecret = (secrets: SecretsAdapter, name: string) =>
@@ -331,7 +333,7 @@ export const secretEnv = <const TName extends string>(
       else variables[name] = value;
     }
     if (fromStore.length > 0) {
-      // Deploy credentials come from the config's own adapter: `local()`'s
+      // Deploy credentials come from the config's own adapter: `localSecrets()`'s
       // store holds only the keys Hot Updater stores.
       const secrets = getConfiguredAdapter(
         scope?.secrets ?? getConfiguredSecrets(),

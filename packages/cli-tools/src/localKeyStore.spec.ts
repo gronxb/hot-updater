@@ -38,7 +38,7 @@ const project = async (name: string, { git = false } = {}) => {
 
 const mode = async (target: string) => (await fs.stat(target)).mode & 0o777;
 
-describe("local()'s default directory", () => {
+describe("localSecrets()'s default directory", () => {
   it("lives under HOT_UPDATER_HOME, else ~/.hot-updater", () => {
     expect(getHotUpdaterHome()).toBe(path.join(root, "home"));
     vi.stubEnv("HOT_UPDATER_HOME", "");
@@ -80,7 +80,7 @@ describe("local()'s default directory", () => {
   });
 });
 
-describe("local({ path })", () => {
+describe("localSecrets({ path })", () => {
   it("expands ~ to the home directory, and resolves a relative path from the project", () => {
     expect(resolveLocalSecretsPath("~", "/project")).toBe(os.homedir());
     expect(resolveLocalSecretsPath("~/.secrets/app", "/project")).toBe(
@@ -114,7 +114,7 @@ describe("local({ path })", () => {
     const store = createLocalSecretsStore({ path: "secrets" });
 
     await expect(store.write("asc-api-key", "value", app)).rejects.toThrow(
-      `local() refuses ${path.join(app, "secrets")}: it is in the git repository ${app}, which does not ignore it, so the secrets in it could be committed. Add secrets/ to .gitignore, or set its path outside the repository`,
+      `localSecrets() refuses ${path.join(app, "secrets")}: it is in the git repository ${app}, which does not ignore it, so the secrets in it could be committed. Add secrets/ to .gitignore, or set its path outside the repository`,
     );
     await expect(store.read("asc-api-key", app)).rejects.toThrow(
       "could be committed",
@@ -128,7 +128,7 @@ describe("local({ path })", () => {
     const store = createLocalSecretsStore({ path: "secrets" });
 
     await expect(store.write("asc-api-key", "value", app)).rejects.toThrow(
-      `local() keeps secrets in a directory, and ${path.join(app, "secrets")} is not one.`,
+      `localSecrets() keeps secrets in a directory, and ${path.join(app, "secrets")} is not one.`,
     );
   });
 

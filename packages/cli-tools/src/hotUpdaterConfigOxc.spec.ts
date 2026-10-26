@@ -131,7 +131,7 @@ export default defineConfig({
       "supabaseUrl: process.env.CUSTOM_SUPABASE_URL!",
     );
     expect(updatedConfig).toContain(
-      "  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: local(),\n});",
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n});",
     );
   });
 });

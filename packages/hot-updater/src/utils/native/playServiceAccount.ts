@@ -150,14 +150,14 @@ const storeIssued = async (
  *
  * 1. an environment override of play-service-account
  *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
- * 2. a value the config's `secrets` adapter, or `local()`'s store,
+ * 2. a value the config's `secrets` adapter, or `localSecrets()`'s store,
  *    holds as `name` is used as it is, so CI uploads with the stored key
  *    and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once.
  *
  * Only then does the developer sign in with Google, in a browser, through
  * `issue`, and the issued key is stored through the config's adapter, or
- * `local()`'s store by default, read back, and deleted again if
+ * `localSecrets()`'s store by default, read back, and deleted again if
  * storing it fails. A key the default store keeps comes with an offer to
  * store it as a GitHub Actions secret too, and every issued key with where
  * to delete the ones no machine uses anymore. The environment overrides

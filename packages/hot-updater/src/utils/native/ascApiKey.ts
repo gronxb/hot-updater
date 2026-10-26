@@ -162,7 +162,7 @@ const storeIssued = async (
  *
  * Only then does the developer sign in with their Apple Account, through
  * `issue`, and the issued key is stored through the config's adapter, or
- * `local()`'s store by default, read back, and revoked with the
+ * `localSecrets()`'s store by default, read back, and revoked with the
  * same session if nothing holds it. A key the default store keeps comes
  * with an offer to store it as a GitHub Actions secret too, and every
  * issued key with where to revoke the ones no machine uses anymore.

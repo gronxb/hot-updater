@@ -65,7 +65,7 @@ const writableStore = (values: Record<string, string> = {}) => {
   return { store, held };
 };
 
-/** Makes `secrets` the config's, as loadConfig hands it over: with `local()`'s store. */
+/** Makes `secrets` the config's, as loadConfig hands it over: with `localSecrets()`'s store. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
     secrets: withLocalKeyStore(secrets),
@@ -213,7 +213,7 @@ describe("hot-updater secrets put", () => {
     expect(loadConfig).not.toHaveBeenCalled();
   });
 
-  it("stores in `local()`'s store without a secrets adapter, 0600, and names the file", async () => {
+  it("stores in `localSecrets()`'s store without a secrets adapter, 0600, and names the file", async () => {
     configure();
     vi.spyOn(process, "cwd").mockReturnValue(directory);
     await fs.writeFile(path.join(directory, "package.json"), "{}");
@@ -241,7 +241,7 @@ describe("hot-updater secrets put", () => {
     ).rejects.toThrow();
   });
 
-  it("stores in `local()`'s store when the config's adapter stores nothing", async () => {
+  it("stores in `localSecrets()`'s store when the config's adapter stores nothing", async () => {
     configure({
       name: "read-only",
       get: async (names) =>

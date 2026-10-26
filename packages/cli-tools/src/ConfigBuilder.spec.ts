@@ -52,7 +52,7 @@ describe("ConfigBuilder", () => {
     );
     expect(scaffold.text).toBe(`import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig, local } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -76,7 +76,7 @@ export default defineConfig({
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  secrets: local(),
+  secrets: localSecrets(),
   updateStrategy: "appVersion", // or "fingerprint"
 });`);
   });
@@ -124,7 +124,7 @@ export default defineConfig({
       .toBe(`import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { fromIni } from "@aws-sdk/credential-providers";
-import { defineConfig, local } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -139,7 +139,7 @@ export default defineConfig({
   storage: s3Storage(awsOptions),
   database: dynamoDB(awsOptions),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  secrets: local(),
+  secrets: localSecrets(),
   updateStrategy: "appVersion", // or "fingerprint"
 });`);
   });

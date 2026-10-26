@@ -55,11 +55,11 @@ export type WritableSecrets = SecretsAdapter &
 export type PreparedCredential =
   /** The environment overrides the key: the adapter is not read. */
   | { readonly status: "environment" }
-  /** The secrets adapter, or `local()`'s store, holds the key: no sign-in. */
+  /** The secrets adapter, or `localSecrets()`'s store, holds the key: no sign-in. */
   | { readonly status: "stored" }
   /**
    * Nothing holds the key, and a sign-in can start: there is a terminal.
-   * The key goes to `secrets`, the config's adapter with `local()`'s
+   * The key goes to `secrets`, the config's adapter with `localSecrets()`'s
    * store after it. `env` is the environment with the project's
    * `.env.hotupdater` under it.
    */
@@ -88,7 +88,7 @@ const describeUnavailable = (
  * after the developer signed in:
  *
  * 1. an environment override of the kind is used as it is;
- * 2. a value the config's `secrets` adapter, or `local()`'s store,
+ * 2. a value the config's `secrets` adapter, or `localSecrets()`'s store,
  *    holds as `name` is used as it is, so CI builds with the stored key
  *    and never signs in, unless `replace` is set: `secrets issue` read it
  *    already;
@@ -292,7 +292,7 @@ export const storeIssuedCredential = async ({
 /**
  * The adapter stored the issued key and does not read it back here, as a
  * write-only store does: builds on this machine would not find it, and the
- * key is printed nowhere. Keeps a copy in `local()`'s store, which builds
+ * key is printed nowhere. Keeps a copy in `localSecrets()`'s store, which builds
  * here read after the adapter, and returns the adapter this run
  * reads the key with: from the copy, or from memory when the copy can't be
  * written, which is reported. The key stays stored either way, and is
@@ -330,7 +330,7 @@ export const keepIssuedCopy = async ({
   p.log.info(
     ui.block(`${policy.label} kept on this machine`, [
       ui.kv("File", file),
-      `    ${stored}, so Hot Updater kept a copy with local(), which only you can read and builds here read.`,
+      `    ${stored}, so Hot Updater kept a copy with localSecrets(), which only you can read and builds here read.`,
     ]),
   );
   return withIssuedKey(

@@ -33,7 +33,7 @@ export function withForeignSigning(
  */
 export const PROJECT_SIGNING_KEY_SECRET = "bundle-signing-key";
 
-/** The variable local() reads `PROJECT_SIGNING_KEY_SECRET` from. */
+/** The variable localSecrets() reads `PROJECT_SIGNING_KEY_SECRET` from. */
 export const PROJECT_SIGNING_KEY_VARIABLE = "HOT_UPDATER_BUNDLE_SIGNING_KEY";
 
 /**
@@ -58,12 +58,12 @@ export function withSecretSigning(source: string): string {
 
 /**
  * Whether a deploy without the key's secret was refused for it: the CLI
- * names the variable and the local() file it read, and
+ * names the variable and the localSecrets() file it read, and
  * blocks the deploy.
  */
 export function refusedForMissingSigningSecret(output: string): boolean {
   const missing = new RegExp(
-    `which is not in the local secrets adapter \\(${PROJECT_SIGNING_KEY_VARIABLE} in the environment, or \\S+/secrets/[^/\\s]+/${PROJECT_SIGNING_KEY_SECRET}\\.json on this machine\\)`,
+    `which is not in the localSecrets secrets adapter \\(${PROJECT_SIGNING_KEY_VARIABLE} in the environment, or \\S+/secrets/[^/\\s]+/${PROJECT_SIGNING_KEY_SECRET}\\.json on this machine\\)`,
     "u",
   );
   return missing.test(output) && output.includes("Deployment blocked.");

@@ -103,7 +103,7 @@ The adapter holds each credential as one JSON value:
 file's PEM; `{"keystore","storePassword","keyAlias","keyPassword"}` for a
 keystore, the keystore file in base64; and a Play service account's own JSON
 key file. With the default
-[`local()`](/docs/guides/secrets-adapters/local), set the JSON
+[`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), set the JSON
 in an environment variable, `HOT_UPDATER_ASC_API_KEY` for
 `secret:asc-api-key` and `HOT_UPDATER_` before any other name, upper-cased
 with `_` for every character but letters and digits, or let `apple login`,
@@ -202,13 +202,13 @@ describes.
 A key Hot Updater issues after an Apple or Google sign-in goes where builds
 read it, as one JSON value:
 
-- With the default [`local()`](/docs/guides/secrets-adapters/local),
+- With the default [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets),
   to `~/.hot-updater/secrets/<project-key>/<name>.json`, a file only your user
   can read, outside the project. The next build on the machine reads it, with
   no step in between.
 - With an adapter that stores values, through the adapter, read back once
   stored. One that does not read it back on your machine, such as a
-  write-only store, also gets a copy in the `local()` store, which
+  write-only store, also gets a copy in the `localSecrets()` store, which
   builds on your machine read after the adapter.
 
 Each machine keeps its own key: on another machine a sign-in issues a new one.
@@ -225,7 +225,7 @@ env:
   HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
 ```
 
-With `local()`, when the sign-in runs at a terminal, the project's `origin`
+With `localSecrets()`, when the sign-in runs at a terminal, the project's `origin`
 (or another remote) is on GitHub, and you have a token (`GH_TOKEN` or
 `GITHUB_TOKEN`, or the GitHub CLI's `gh auth token`), the CLI offers once to
 store the key as that secret too. Declining keeps the key on your machine

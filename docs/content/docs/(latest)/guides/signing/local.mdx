@@ -33,7 +33,7 @@ export default defineConfig({
 });
 ```
 
-With the default [`local()`](/docs/guides/secrets-adapters/local)
+With the default [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets)
 adapter, `secret:bundle-signing-key` is the `HOT_UPDATER_BUNDLE_SIGNING_KEY`
 environment variable holding the RSA private key in PEM, such as a CI
 secret, or else the key `keys generate --secret` stored in a file in your
@@ -67,7 +67,7 @@ npx hot-updater keys generate --secret
 
 `--secret <name>` names the secret, `bundle-signing-key` by default. The
 command stores the private key through the config's `secrets` adapter, in
-`~/.hot-updater/secrets/<project-key>/` with the default `local()`,
+`~/.hot-updater/secrets/<project-key>/` with the default `localSecrets()`,
 and writes only `keys/public-key.pem`. To deploy from CI or another machine,
 store the same key there too, such as the CI secret
 `HOT_UPDATER_BUNDLE_SIGNING_KEY`. The command never replaces a secret it
@@ -127,7 +127,7 @@ before changing the signer used for installed apps.
 
 ## Deploy from CI
 
-With `privateKey: "secret:bundle-signing-key"` and `local()`, give the
+With `privateKey: "secret:bundle-signing-key"` and `localSecrets()`, give the
 deploy job the key as `HOT_UPDATER_BUNDLE_SIGNING_KEY`. No key file is written.
 
 If local PEM custody is required in GitHub Actions, store the key as a secret
