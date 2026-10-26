@@ -7,6 +7,7 @@ import { maskSecretValues, registerSecretValue } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  canonicalXcodeProject,
   computeNativeBuildKey,
   diffNativeBuildKeyComponents,
   type NativeBuildKeyComponents,
@@ -55,6 +56,69 @@ const key = async (overrides: Partial<NativeBuildKeyInput> = {}) => {
 
 const uncacheable = async (overrides: Partial<NativeBuildKeyInput> = {}) =>
   (await computeNativeBuildKey(input(overrides))).uncacheable;
+
+/**
+ * An Xcode project with one target building `files` in order, its objects
+ * named by `id` (24 hex digits, as Xcode and CocoaPods write them).
+ */
+const xcodeProject = (id: (name: string) => string, files: string[]) => {
+  const object = (name: string, body: string) => `\t\t${id(name)} = {${body}};`;
+  return [
+    "// !$*UTF8*$!",
+    "{",
+    "\tarchiveVersion = 1;",
+    "\tclasses = {",
+    "\t};",
+    "\tobjectVersion = 54;",
+    "\tobjects = {",
+    ...files.flatMap((file) => [
+      object(
+        `build:${file}`,
+        `isa = PBXBuildFile; fileRef = ${id(`ref:${file}`)}; `,
+      ),
+      object(
+        `ref:${file}`,
+        `isa = PBXFileReference; path = ${file}; sourceTree = "<group>"; `,
+      ),
+    ]),
+    object(
+      "sources",
+      `isa = PBXSourcesBuildPhase; files = (${files.map((file) => `${id(`build:${file}`)}, `).join("")}); `,
+    ),
+    object(
+      "group",
+      `isa = PBXGroup; children = (${files.map((file) => `${id(`ref:${file}`)}, `).join("")}); sourceTree = "<group>"; `,
+    ),
+    object(
+      "target",
+      `isa = PBXNativeTarget; buildPhases = (${id("sources")}, ); name = App; `,
+    ),
+    object(
+      "project",
+      `isa = PBXProject; attributes = {TargetAttributes = {${id("target")} = {CreatedOnToolsVersion = 16.0; }; }; }; mainGroup = ${id("group")}; targets = (${id("target")}, ); `,
+    ),
+    "\t};",
+    `\trootObject = ${id("project")};`,
+    "}",
+    "",
+  ].join("\n");
+};
+
+/** Object IDs as `pod install` writes them: new random ones each time. */
+const randomIds = () => {
+  const ids = new Map<string, string>();
+  return (name: string) => {
+    if (!ids.has(name)) {
+      ids.set(
+        name,
+        Array.from({ length: 24 }, () =>
+          "0123456789ABCDEF".charAt(Math.floor(Math.random() * 16)),
+        ).join(""),
+      );
+    }
+    return ids.get(name)!;
+  };
+};
 
 /** What changed between the key before and after `change`. */
 const changedBy = async (
@@ -657,6 +721,34 @@ describe("builds no key covers", () => {
       "input:file:apps/mobile/ios/Podfile.lock",
       "input:pods-manifest",
     ]);
+    // pod install integrates the generated project with new object IDs
+    // each time, which change nothing; another source file does.
+    write(
+      "apps/mobile/ios/App.xcodeproj/project.pbxproj",
+      xcodeProject(randomIds(), ["AppDelegate.swift"]),
+    );
+    expect(
+      await changedBy(
+        () =>
+          write(
+            "apps/mobile/ios/App.xcodeproj/project.pbxproj",
+            xcodeProject(randomIds(), ["AppDelegate.swift"]),
+          ),
+        ios,
+      ),
+    ).toEqual({ changed: [], same: true });
+    expect(
+      (
+        await changedBy(
+          () =>
+            write(
+              "apps/mobile/ios/App.xcodeproj/project.pbxproj",
+              xcodeProject(randomIds(), ["AppDelegate.swift", "Extra.swift"]),
+            ),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["input:file:apps/mobile/ios/App.xcodeproj/project.pbxproj"]);
     // What else pod install writes into Pods/ is its output.
     expect(
       await changedBy(
@@ -797,6 +889,31 @@ describe("builds no key covers", () => {
         },
       }),
     ).toMatch(/^the release keystore's certificate could not be read/);
+  });
+});
+
+describe("canonicalXcodeProject", () => {
+  it("reads one structure the same whatever its object IDs", () => {
+    const files = ["AppDelegate.swift", "ExpoModulesProvider.swift"];
+    const first = xcodeProject(randomIds(), files);
+    const second = xcodeProject(randomIds(), files);
+
+    expect(second).not.toBe(first);
+    expect(canonicalXcodeProject(second)).toBe(canonicalXcodeProject(first));
+  });
+
+  it("reads another file, or the same files in another order, as another project", () => {
+    const ids = randomIds();
+    const project = canonicalXcodeProject(
+      xcodeProject(ids, ["A.swift", "B.swift"]),
+    );
+
+    expect(
+      canonicalXcodeProject(xcodeProject(ids, ["B.swift", "A.swift"])),
+    ).not.toBe(project);
+    expect(
+      canonicalXcodeProject(xcodeProject(ids, ["A.swift", "C.swift"])),
+    ).not.toBe(project);
   });
 });
 
