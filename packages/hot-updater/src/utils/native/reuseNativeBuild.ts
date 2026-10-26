@@ -167,7 +167,8 @@ export const reuseNativeBuild = async ({
   // The channel the build falls back to, as createNativeBuild reads it.
   const channel = (await getChannel(platform)).value;
   const startedAt = performance.now();
-  const key = await computeNativeBuildKey({
+  // A key that can't be computed only costs the reuse: the command builds.
+  const key: NativeBuildKey = await computeNativeBuildKey({
     cwd,
     platform,
     scheme,
@@ -186,7 +187,11 @@ export const reuseNativeBuild = async ({
       androidScheme,
     ),
     hotUpdaterVersion: version ?? "unknown",
-  });
+  }).catch((error: unknown) => ({
+    key: null,
+    components: null,
+    uncacheable: `the native build key could not be computed (${error instanceof Error ? error.message : String(error)})`,
+  }));
   const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   const slot =
     resolvedCacheDir === null || key.key === null
@@ -281,9 +286,20 @@ export const reuseNativeBuild = async ({
         `    ${ui.muted("Artifact:")} ${ui.path(path.relative(cwd, hit.result.artifactPath))}`,
       ].join("\n"),
     );
-    // A build downloaded from storage is kept here for the next run.
-    if (hit.source === "storage" && cached?.key !== key.key) {
-      await remember(hit.result, hit.nativeBuild.id);
+    // A build downloaded from storage is kept here for the next run, and
+    // one copied from here is marked tracked.
+    if (hit.source === "storage") {
+      if (
+        cached?.key === key.key &&
+        cached.build.minBundleId === hit.nativeBuild.min_bundle_id
+      ) {
+        await rememberTrackedBuild(
+          { key, slot, hit, report: report(hit), remember },
+          hit.nativeBuild.id,
+        );
+      } else {
+        await remember(hit.result, hit.nativeBuild.id);
+      }
     }
     return { key, slot, hit, report: report(hit), remember };
   }
