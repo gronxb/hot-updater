@@ -39,6 +39,7 @@ const register = () =>
     fingerprintHash: null,
     appVersion: "1.2.0",
     gitCommitHash: null,
+    buildKey: null,
     artifact: { kind: "ipa", storageUri: ARTIFACT_URI, byteSize: 49_000_000 },
     embeddedBundle: {
       manifestStorageUri: `storage://bundles/${MIN_BUNDLE_ID}/manifest.json`,

@@ -48,6 +48,7 @@ const register = (
     id: `01900000-0000-7000-8000-00000000b00${suffix}`,
     minBundleId: `01900000-0000-7000-8000-00000000a00${suffix}`,
     gitCommitHash: null,
+    buildKey: null,
     artifact: {
       kind: scope.platform === "android" ? "apk" : "app",
       storageUri: `storage://native-builds/${scope.platform}/b00${suffix}/artifact`,
@@ -426,6 +427,7 @@ describe("handleNativeBuildFind", () => {
         id: "01900000-0000-7000-8000-00000000b001",
         minBundleId: "01900000-0000-7000-8000-00000000a001",
         gitCommitHash: null,
+        buildKey: null,
         artifact: {
           kind,
           storageUri: `storage://native-builds/${platform}/b001/artifact`,

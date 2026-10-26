@@ -564,7 +564,9 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     const buildKey = url.searchParams.get("buildKey");
     return json({
       data: await refusingInvalid(() =>
-        core.findNativeBuild(scope, buildKey === null ? {} : { buildKey }),
+        buildKey === null
+          ? core.findNativeBuild(scope)
+          : core.findNativeBuild(scope, { buildKey }),
       ),
     });
   }),
