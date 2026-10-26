@@ -232,6 +232,26 @@ describe("the default store", () => {
     );
   });
 
+  it("refreshes the copy a write-only adapter's value has on this machine when the adapter stores another", async () => {
+    const set = vi.fn(async () => {});
+    const secrets = withLocalKeyStore({ ...storeOf({}), set });
+    await writeLocalKey("asc-api-key", "old", directory);
+    await writeLocalKey("other", "kept", directory);
+
+    await secrets.set!("asc-api-key", "new", { cwd: directory });
+
+    expect(set).toHaveBeenCalledWith("asc-api-key", "new", { cwd: directory });
+    await expect(
+      fs.readFile(getLocalKeyFile("asc-api-key", directory), "utf-8"),
+    ).resolves.toBe("new");
+    await expect(
+      fs.readFile(getLocalKeyFile("other", directory), "utf-8"),
+    ).resolves.toBe("kept");
+    expect(
+      (await secrets.get(["asc-api-key"], { cwd: directory }))["asc-api-key"],
+    ).toBe("new");
+  });
+
   it("stores through the config's adapter when it stores values", async () => {
     const set = vi.fn(async () => {});
     const secrets = withLocalKeyStore({ ...storeOf({}), set });

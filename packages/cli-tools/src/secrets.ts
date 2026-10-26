@@ -9,6 +9,7 @@ import {
   createLocalSecretsStore,
   type LocalSecretsStore,
 } from "./localKeyStore";
+import { p } from "./prompts";
 import { isReservedVariableName } from "./reservedVariables";
 import { registerSecretValue } from "./secretMasking";
 
@@ -162,6 +163,16 @@ const createLocalKeyStoreSecrets = (
     set: async (name, value, context) => {
       if (configured?.set) {
         await configured.set(name, value, context);
+        // A copy kept for a write-only adapter would hand builds here the
+        // value this one replaces: it follows the adapter.
+        if ((await store.read(name, context.cwd)) === undefined) return;
+        try {
+          await store.write(name, value, context.cwd);
+        } catch (error) {
+          p.log.warn(
+            `The ${configured.name} secrets adapter stored ${name}, and the copy on this machine at ${store.file(name, context.cwd)} still holds the value it replaced: ${error instanceof Error ? error.message : String(error)}. Delete that file.`,
+          );
+        }
         return;
       }
       await store.write(name, value, context.cwd);
