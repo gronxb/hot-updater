@@ -246,7 +246,8 @@ describe("computeNativeBuildKey", () => {
         )
       ).changed,
     ).toEqual(["input:file:apps/mobile/ios/App/GoogleService-Info.plist"]);
-    // This machine's Node.js path, which pod install writes.
+    // This machine's Node.js path, which pod install writes, but the
+    // file's other settings.
     expect(
       await changedBy(
         () =>
@@ -257,6 +258,18 @@ describe("computeNativeBuildKey", () => {
         ios,
       ),
     ).toEqual({ changed: [], same: true });
+    expect(
+      (
+        await changedBy(
+          () =>
+            write(
+              "apps/mobile/ios/.xcode.env.local",
+              "export NODE_BINARY=/Users/me/.nvm/node\nexport ENTRY_FILE=index.ios.js\n",
+            ),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["input:.xcode.env.local"]);
     expect(
       (
         await changedBy(
@@ -328,6 +341,39 @@ describe("computeNativeBuildKey", () => {
         )
       ).changed,
     ).toEqual(["env:EXPO_PUBLIC_MAPS_API_KEY"]);
+  });
+
+  it("reads the environment variables a generated native project reads", async () => {
+    // As an Expo app's: android/ is generated and ignored.
+    write(
+      ".gitignore",
+      `${fs.readFileSync(path.join(root, ".gitignore"))}apps/mobile/android/\n`,
+    );
+    git("rm", "-rq", "--cached", "apps/mobile/android");
+    write(
+      "apps/mobile/android/settings.gradle",
+      'def community = System.getenv("EXPO_USE_COMMUNITY_AUTOLINKING")\n',
+    );
+    const env = (value: string) => ({
+      env: {
+        GRADLE_USER_HOME: gradleHome,
+        EXPO_USE_COMMUNITY_AUTOLINKING: value,
+      },
+    });
+    expect((await changedBy(() => {}, env("0"), env("1"))).changed).toEqual([
+      "env:EXPO_USE_COMMUNITY_AUTOLINKING",
+    ]);
+    write(
+      "apps/mobile/android/app/build.gradle",
+      'dependencies { implementation("com.example:lib:+") }\n',
+    );
+    expect(await uncacheable()).toBe(
+      "android/app/build.gradle declares a dynamic dependency version without a gradle.lockfile, so Gradle may resolve another version on each build",
+    );
+    write("apps/mobile/android/app/build.gradle", "System.getenv(name)\n");
+    expect(await uncacheable()).toBe(
+      "android/app/build.gradle reads environment variables by a computed name, which no key can follow",
+    );
   });
 
   it("changes with what the build embeds and how the scheme builds it", async () => {

@@ -600,8 +600,13 @@ const readIgnoredInputs = async ({
   platform: Platform;
   hashes: FileHashes;
   excluded: (relativePath: string) => boolean;
-}): Promise<Record<string, string>> => {
+}): Promise<{
+  inputs: Record<string, string>;
+  /** The native project's ignored files, by path from the repository. */
+  nativeFiles: string[];
+}> => {
   const inputs: Record<string, string> = {};
+  const nativeFiles: string[] = [];
   const nativeDir = platform === "ios" ? "ios" : "android";
   const fromRoot = (absolutePath: string) =>
     toPosix(path.relative(root, absolutePath));
@@ -639,16 +644,30 @@ const readIgnoredInputs = async ({
         files.push(absolute);
       }
     }
+    nativeFiles.push(...files.map(fromRoot));
     // local.properties names the SDK by an absolute path; the SDK's
     // components are part of the toolchain. `pod install` writes this
-    // machine's Node.js path to .xcode.env.local, which React Native says
-    // never to commit: its variables are read below, as the environment.
+    // machine's Node.js path to .xcode.env.local as NODE_BINARY, which
+    // React Native says never to commit: the file's other settings count.
     const localProperties = path.join(cwd, "android", "local.properties");
     const xcodeEnvLocal = path.join(cwd, "ios", ".xcode.env.local");
     await mapLimit(files.sort(), 16, async (file) => {
       if (file === localProperties || file === xcodeEnvLocal) return;
       inputs[`file:${fromRoot(file)}`] = await hashes.hash(file);
     });
+    if (platform === "ios") {
+      const contents = await readIfExists(xcodeEnvLocal);
+      const settings = contents
+        ? parseAssignments(contents).filter(([name]) => name !== "NODE_BINARY")
+        : [];
+      if (settings.length > 0) {
+        inputs[".xcode.env.local"] = assignmentsDigest(
+          contents!,
+          root,
+          new Set(["NODE_BINARY"]),
+        );
+      }
+    }
     if (platform === "android") {
       const contents = await readIfExists(localProperties);
       if (contents !== null) {
@@ -685,7 +704,7 @@ const readIgnoredInputs = async ({
       }
     }
   }
-  return inputs;
+  return { inputs, nativeFiles };
 };
 
 /** What the toolchain probes read the project from. */
@@ -805,12 +824,15 @@ const readEnv = async ({
   cwd,
   root,
   files,
+  nativeFiles,
   env,
   platform,
 }: {
   cwd: string;
   root: string;
   files: Readonly<Record<string, string>>;
+  /** The native project's ignored files, by path from the repository. */
+  nativeFiles: readonly string[];
   env: NodeJS.ProcessEnv;
   platform: Platform;
 }): Promise<Record<string, string>> => {
@@ -836,32 +858,21 @@ const readEnv = async ({
     /** How the file reads the environment; null for app JavaScript. */
     reads: (typeof ENV_READS)[number] | null;
   };
-  const scanned = Object.keys(files).flatMap((filePath): Scanned[] => {
-    const appPath = inApp(filePath);
-    if (appPath === null || appPath.startsWith(otherNativeDir)) return [];
-    const reads = ENV_READS.find(({ pattern }) => pattern.test(appPath));
-    if (reads) return [{ filePath, appPath, reads }];
-    return SOURCE_FILE.test(appPath) &&
-      !appPath.startsWith("ios/") &&
-      !appPath.startsWith("android/") &&
-      !/(^|\/)hot-updater\.config\.(c|m)?(j|t)s$/.test(appPath)
-      ? [{ filePath, appPath, reads: null }]
-      : [];
-  });
   // A generated native project, which git ignores, configures the build too.
-  for (const file of [
-    path.join(cwd, "ios", "Podfile"),
-    path.join(cwd, "ios", ".xcode.env.local"),
-  ]) {
-    const filePath = toPosix(path.relative(root, file));
-    if (!(filePath in files) && (await exists(file))) {
-      scanned.push({
-        filePath,
-        appPath: toPosix(path.relative(cwd, file)),
-        reads: ENV_READS.find(({ pattern }) => pattern.test(filePath))!,
-      });
-    }
-  }
+  const scanned = [...Object.keys(files), ...nativeFiles].flatMap(
+    (filePath): Scanned[] => {
+      const appPath = inApp(filePath);
+      if (appPath === null || appPath.startsWith(otherNativeDir)) return [];
+      const reads = ENV_READS.find(({ pattern }) => pattern.test(appPath));
+      if (reads) return [{ filePath, appPath, reads }];
+      return SOURCE_FILE.test(appPath) &&
+        !appPath.startsWith("ios/") &&
+        !appPath.startsWith("android/") &&
+        !/(^|\/)hot-updater\.config\.(c|m)?(j|t)s$/.test(appPath)
+        ? [{ filePath, appPath, reads: null }]
+        : [];
+    },
+  );
 
   await mapLimit(scanned, 32, async ({ filePath, appPath, reads }) => {
     const contents = await readIfExists(path.join(root, filePath));
@@ -1117,7 +1128,8 @@ const DYNAMIC_GRADLE_VERSION = new RegExp(
 const checkPinned = async (
   cwd: string,
   platform: Platform,
-  files: Readonly<Record<string, string>>,
+  /** The repository's files and the native project's ignored ones. */
+  filePaths: readonly string[],
   root: string,
 ) => {
   const relative = (file: string) => toPosix(path.relative(root, file));
@@ -1151,13 +1163,13 @@ const checkPinned = async (
     return;
   }
   const androidPrefix = `${relative(path.join(cwd, "android"))}/`;
-  const gradleFiles = Object.keys(files).filter(
+  const gradleFiles = filePaths.filter(
     (filePath) =>
       filePath.startsWith(androidPrefix) &&
       /(\.gradle(\.kts)?|\.versions\.toml)$/.test(filePath) &&
       !isGenerated(filePath),
   );
-  const locked = Object.keys(files).some(
+  const locked = filePaths.some(
     (filePath) =>
       filePath.startsWith(androidPrefix) &&
       filePath.endsWith("gradle.lockfile"),
@@ -1226,14 +1238,28 @@ export const computeNativeBuildKey = async (
           ),
     );
     const files = await readRepositoryFiles(root, excluded);
-    await checkPinned(realCwd, platform, files, root);
+    const ignoredInputs = readIgnoredInputs({
+      cwd: realCwd,
+      root,
+      platform,
+      hashes,
+      excluded,
+    });
+    await checkPinned(
+      realCwd,
+      platform,
+      [...Object.keys(files), ...(await ignoredInputs).nativeFiles],
+      root,
+    );
     const [ignored, nativePackages, settings, signing, env_, toolchain] =
       await Promise.all([
-        readIgnoredInputs({ cwd: realCwd, root, platform, hashes, excluded }),
+        ignoredInputs.then(({ inputs }) => inputs),
         readNativePackages(realCwd, platform, root, hashes),
         readSettings({ ...input, cwd: realCwd }, root),
         readSigning(input),
-        readEnv({ cwd: realCwd, root, files, env, platform }),
+        ignoredInputs.then(({ nativeFiles }) =>
+          readEnv({ cwd: realCwd, root, files, nativeFiles, env, platform }),
+        ),
         (input.readToolchain ?? readToolchain)(platform, {
           cwd: realCwd,
           root,
