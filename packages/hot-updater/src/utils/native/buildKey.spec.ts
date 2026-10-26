@@ -221,6 +221,18 @@ describe("computeNativeBuildKey", () => {
         )
       ).changed,
     ).toEqual(["input:local.properties"]);
+    // A quoted .env value's later lines, and a properties value a
+    // backslash continues.
+    write("apps/mobile/.env", 'EXPO_PUBLIC_MESSAGE="first\nold"\n');
+    write("apps/mobile/android/local.properties", "flags=a,\\\n  old\n");
+    expect(
+      (
+        await changedBy(() => {
+          write("apps/mobile/.env", 'EXPO_PUBLIC_MESSAGE="first\nnew"\n');
+          write("apps/mobile/android/local.properties", "flags=a,\\\n  new\n");
+        })
+      ).changed,
+    ).toEqual(["input:env-file:apps/mobile/.env", "input:local.properties"]);
     // A JavaScript-only package is a version in the lockfile, and an iOS
     // source of a native package doesn't reach an Android build.
     expect(

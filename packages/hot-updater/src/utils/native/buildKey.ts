@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { parseEnv } from "node:util";
 
 import { CREDENTIAL_ENV_NAMES, maskSecretValues } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
@@ -424,30 +425,39 @@ const readRepositoryFiles = async (
   return files;
 };
 
-/** `KEY=VALUE` lines of a properties or `.env` file. */
-const parseAssignments = (contents: string): [string, string][] =>
-  contents.split(/\r?\n/).flatMap((line) => {
-    const match = /^\s*(?:export\s+)?([A-Za-z_][\w.-]*)\s*[=:]\s?(.*)$/.exec(
-      line,
-    );
-    return match && !line.trim().startsWith("#")
-      ? [[match[1]!, match[2]!.trim()] as [string, string]]
-      : [];
-  });
+/**
+ * A Java properties file's `key=value` and `key: value` entries, with the
+ * lines a trailing backslash continues joined, as Gradle reads them.
+ */
+const parseProperties = (contents: string): [string, string][] =>
+  contents
+    .replace(/(?<!\\)((?:\\\\)*)\\\r?\n[ \t]*/g, "$1")
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      const match = /^\s*([^\s#!=:][^=:\s]*)\s*[=:\s]\s*(.*)$/.exec(line);
+      return match ? [[match[1]!, match[2]!.trim()] as [string, string]] : [];
+    });
 
 /**
- * The digest of a properties or `.env` file's settings, without its
- * credentials: a credential's name stays, its value never enters the key.
+ * A `.env` or shell environment file's variables, read as dotenv and Expo
+ * read them: quoted values may span lines.
+ */
+const parseDotenv = (contents: string): [string, string][] =>
+  Object.entries(parseEnv(contents));
+
+/**
+ * The digest of a file's settings, without its credentials: a credential's
+ * name stays, its value never enters the key.
  */
 const assignmentsDigest = (
-  contents: string,
+  entries: readonly [string, string][],
   root: string,
   omit: ReadonlySet<string> = new Set(),
 ) =>
   sha256(
     stableStringify(
       Object.fromEntries(
-        parseAssignments(contents)
+        entries
           .filter(([name]) => !omit.has(name))
           .map(([name, value]) => [
             name,
@@ -658,11 +668,11 @@ const readIgnoredInputs = async ({
     if (platform === "ios") {
       const contents = await readIfExists(xcodeEnvLocal);
       const settings = contents
-        ? parseAssignments(contents).filter(([name]) => name !== "NODE_BINARY")
+        ? parseDotenv(contents).filter(([name]) => name !== "NODE_BINARY")
         : [];
       if (settings.length > 0) {
         inputs[".xcode.env.local"] = assignmentsDigest(
-          contents!,
+          settings,
           root,
           new Set(["NODE_BINARY"]),
         );
@@ -672,7 +682,7 @@ const readIgnoredInputs = async ({
       const contents = await readIfExists(localProperties);
       if (contents !== null) {
         inputs["local.properties"] = assignmentsDigest(
-          contents,
+          parseProperties(contents),
           root,
           new Set(["sdk.dir", "ndk.dir", "cmake.dir"]),
         );
@@ -686,7 +696,7 @@ const readIgnoredInputs = async ({
       const file = path.join(dir, name);
       if (!(await fs.stat(file)).isFile()) continue;
       inputs[`env-file:${fromRoot(file)}`] = assignmentsDigest(
-        await fs.readFile(file, "utf8"),
+        parseDotenv(await fs.readFile(file, "utf8")),
         root,
       );
     }
@@ -730,7 +740,7 @@ const probe = async (command: string, args: string[], cwd: string) => {
 const readJdk = async (home: string) => {
   const release = await readIfExists(path.join(home, "release"));
   if (release === null) return null;
-  const values = Object.fromEntries(parseAssignments(release));
+  const values = Object.fromEntries(parseDotenv(release));
   return [
     values["IMPLEMENTOR"],
     values["JAVA_VERSION"],
@@ -789,7 +799,7 @@ export const readToolchain = async (
     .map(
       (contents) =>
         contents &&
-        Object.fromEntries(parseAssignments(contents))["org.gradle.java.home"],
+        Object.fromEntries(parseProperties(contents))["org.gradle.java.home"],
     )
     .find(Boolean);
   const jdk =
@@ -811,7 +821,7 @@ export const readToolchain = async (
       ? {}
       : {
           "gradle.properties (user)": assignmentsDigest(
-            userProperties,
+            parseProperties(userProperties),
             root,
             new Set(["org.gradle.java.home"]),
           ),
