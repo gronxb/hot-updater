@@ -153,7 +153,7 @@ const mockExit = () =>
     throw new Error("exit");
   }) as never);
 
-describe("build:ios --upload testflight", () => {
+describe("native-build ios --submit testflight", () => {
   it("checks the scheme and resolves the key before the prebuild, then builds, registers and uploads", async () => {
     await handleNativeBuildCreate("ios", {
       scheme: "release",
@@ -242,7 +242,7 @@ describe("build:ios --upload testflight", () => {
   });
 });
 
-describe("build:ios without an App Store Connect API key", () => {
+describe("native-build ios without an App Store Connect API key", () => {
   it("issues the key before the prebuild", async () => {
     await handleNativeBuildCreate("ios", {
       scheme: "release",

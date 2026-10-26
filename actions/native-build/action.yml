@@ -1,12 +1,11 @@
 name: hot-updater native build
 description: >-
-  Builds a native app with hot-updater build:ios or build:android, signed
-  with the credentials the config's secrets adapter reads, the job's
-  environment by default, registers the build, and uploads it to TestFlight
-  or Google Play's internal track. It never signs in to an Apple or Google
+  Builds a native app with hot-updater native-build ios or native-build
+  android, signed with the credentials the config's secrets adapter reads,
+  the job's environment by default, tracks the build in Hot Updater, and
+  submits it to TestFlight or Google Play's internal track. It never signs in to an Apple or Google
   account: it reads what hot-updater apple login or google-play login stored.
 author: gronxb
-
 inputs:
   platform:
     description: ios (on a macOS runner) or android.
@@ -14,13 +13,11 @@ inputs:
   scheme:
     description: The nativeBuild.<platform> scheme in hot-updater.config.ts.
     required: true
-  upload:
+  submit:
     description: >-
-      Where to upload the build: testflight for ios, play-internal for
-      android, or empty to only build.
-  register:
-    description: Whether to register the build with the server's native build registry.
-    default: "true"
+      Where to submit the build: testflight for ios, play-internal for
+      android, or empty to only build. Every build but a Debug one is tracked
+      in Hot Updater.
   working-directory:
     description: The app's directory, which has hot-updater.config.ts.
     default: .
@@ -39,7 +36,7 @@ outputs:
       artifact embeds them.
     value: ${{ steps.run.outputs.build }}
   native-build:
-    description: JSON of the registered native build, or null without register.
+    description: JSON of the native build Hot Updater tracks, or null for a Debug build.
     value: ${{ steps.run.outputs.native-build }}
 
 runs:
@@ -51,7 +48,6 @@ runs:
       env:
         INPUT_PLATFORM: ${{ inputs.platform }}
         INPUT_SCHEME: ${{ inputs.scheme }}
-        INPUT_UPLOAD: ${{ inputs.upload }}
-        INPUT_REGISTER: ${{ inputs.register }}
+        INPUT_SUBMIT: ${{ inputs.submit }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_CLI: ${{ inputs.cli }}

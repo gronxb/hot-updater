@@ -10,16 +10,16 @@ Use env.example as a reference and set only applicable values in the app's ignor
 .env.hotupdater. The supplied adapters connect with the accounts' connection
 strings, which `az` reads; an `az login` session alone does not configure them.
 
-| Variable | Purpose and when needed | Where to obtain it |
-| --- | --- | --- |
-| `HOT_UPDATER_AZURE_SUBSCRIPTION_ID` | Subscription of every resource; recorded for init reuse. | `az account list`: the subscription the user names or the only enabled one. |
-| `HOT_UPDATER_AZURE_RESOURCE_GROUP` | Resource group of every resource; recorded for init reuse. | Query or create the group and record its name. |
-| `HOT_UPDATER_AZURE_LOCATION` | Region of a new resource group and its resources; recorded for init reuse. | Read an existing group's region, or use the established deployment preference for a new one. |
-| `HOT_UPDATER_AZURE_STORAGE_ACCOUNT` | Storage account of the bundles and the Function App; recorded for init reuse. | Query or create the account and record its name. |
-| `HOT_UPDATER_AZURE_COSMOS_ACCOUNT` | Cosmos DB for NoSQL account of the database; recorded for init reuse. | Query or create the account and record its name. |
-| `HOT_UPDATER_AZURE_FUNCTION_APP` | Function App that runs the server; recorded for init reuse. | Query or create the app and record its name. |
-| `HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING` | Required by the supplied local storage config and app/hotUpdater.ts, the credential helper's server definition, which stays in the scaffold and is never copied into the app. | `az storage account show-connection-string`; save it privately. |
-| `HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING` | Required by the supplied local database config and app/hotUpdater.ts. | `az cosmosdb keys list --type connection-strings`: the primary SQL connection string; save it privately. |
+| Variable                                      | Purpose and when needed                                                                                                                                                       | Where to obtain it                                                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `HOT_UPDATER_AZURE_SUBSCRIPTION_ID`           | Subscription of every resource; recorded for init reuse.                                                                                                                      | `az account list`: the subscription the user names or the only enabled one.                              |
+| `HOT_UPDATER_AZURE_RESOURCE_GROUP`            | Resource group of every resource; recorded for init reuse.                                                                                                                    | Query or create the group and record its name.                                                           |
+| `HOT_UPDATER_AZURE_LOCATION`                  | Region of a new resource group and its resources; recorded for init reuse.                                                                                                    | Read an existing group's region, or use the established deployment preference for a new one.             |
+| `HOT_UPDATER_AZURE_STORAGE_ACCOUNT`           | Storage account of the bundles and the Function App; recorded for init reuse.                                                                                                 | Query or create the account and record its name.                                                         |
+| `HOT_UPDATER_AZURE_COSMOS_ACCOUNT`            | Cosmos DB for NoSQL account of the database; recorded for init reuse.                                                                                                         | Query or create the account and record its name.                                                         |
+| `HOT_UPDATER_AZURE_FUNCTION_APP`              | Function App that runs the server; recorded for init reuse.                                                                                                                   | Query or create the app and record its name.                                                             |
+| `HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING` | Required by the supplied local storage config and app/hotUpdater.ts, the credential helper's server definition, which stays in the scaffold and is never copied into the app. | `az storage account show-connection-string`; save it privately.                                          |
+| `HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING`  | Required by the supplied local database config and app/hotUpdater.ts.                                                                                                         | `az cosmosdb keys list --type connection-strings`: the primary SQL connection string; save it privately. |
 
 <!-- if credential -->
 

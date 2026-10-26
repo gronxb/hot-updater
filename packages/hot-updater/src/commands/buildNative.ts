@@ -123,7 +123,6 @@ const buildNativeInternal = async ({
         const preparedConfig = await prepareNativeBuild({
           ...options,
           platform,
-          operation: "build",
           // A scheme the store would refuse, or a missing signing or upload
           // credential, fails before the prebuild and the build, so a CI run
           // without one stops at once. The resolver keeps each credential for

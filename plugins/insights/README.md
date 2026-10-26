@@ -25,7 +25,7 @@ import { HotUpdater, insights } from "@hot-updater/react-native";
 
 | Entry      | Re-exported as                                                     |
 | ---------- | ------------------------------------------------------------------ |
-| `./server` | `@hot-updater/server/plugins`                             |
+| `./server` | `@hot-updater/server/plugins`                                      |
 | `./client` | `insights` and its types from the `@hot-updater/react-native` root |
 
 Its test suites, such as `insightsTestSuite`, are in `@hot-updater/test-utils`.

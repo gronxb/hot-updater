@@ -1,5 +1,6 @@
-import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
+
 import { hdiff } from "../../../dist/node.js";
 
 const port = readPortArg();
@@ -10,7 +11,10 @@ const [baseBytes, nextBytes] = await Promise.all([
 ]);
 
 const server = createServer(async (request, response) => {
-  const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
+  const url = new URL(
+    request.url ?? "/",
+    `http://${request.headers.host ?? "127.0.0.1"}`,
+  );
 
   if (url.pathname === "/healthz") {
     response.writeHead(200, { "content-type": "text/plain" });
@@ -57,7 +61,10 @@ process.on("SIGINT", close);
 process.on("SIGTERM", close);
 
 async function readFixture(name) {
-  const fileUrl = new URL(`../../../fixture/${name}/index.ios.bundle.hbc`, import.meta.url);
+  const fileUrl = new URL(
+    `../../../fixture/${name}/index.ios.bundle.hbc`,
+    import.meta.url,
+  );
   return new Uint8Array(await readFile(fileUrl));
 }
 
@@ -75,7 +82,7 @@ function readPortArg() {
 
 async function sha256Hex(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
-    ""
-  );
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
 }

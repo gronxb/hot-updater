@@ -160,7 +160,7 @@ const channels = defineTable(
 );
 
 /**
- * The native builds `build:android` and `build:ios` register, newest first
+ * The native builds `native-build android` and `native-build ios` track, newest first
  * in each scope: a platform, a channel, and the fingerprint or app version
  * the build compiled in. `min_bundle_id` names the build's built-in bundle,
  * a `bundles` row no release publishes. Its references keep no counters, so

@@ -8,8 +8,7 @@ import { parseJsonOutput } from "../../shared/cli.mjs";
  * @typedef {object} Inputs
  * @property {Platform} platform
  * @property {string} scheme
- * @property {"testflight" | "play-internal" | null} upload
- * @property {boolean} register
+ * @property {"testflight" | "play-internal" | null} submit
  *
  * @typedef {object} Deps
  * @property {import("../../shared/cli.mjs").Cli} cli
@@ -17,13 +16,14 @@ import { parseJsonOutput } from "../../shared/cli.mjs";
  * @property {{ info: (message: string) => void, notice: (message: string) => void }} log
  * @property {(markdown: string) => void} summary Appends to the job's summary.
  *
- * @typedef {object} NativeBuildJson What `build:* --json` prints last.
+ * @typedef {object} NativeBuildJson What `native-build <platform> --json` prints last.
  * @property {{ platform: Platform, scheme: string, artifactPath: string, artifactKind: string, minBundleId: string, channel: string, fingerprintHash: string | null, appVersion: string | null }} build
  * @property {{ id: string } | null} nativeBuild
+ * @property {{ skipped: "debug" | "dry-run" | null }} registration Why the build has no record.
  */
 
-/** The store each platform uploads to. */
-const UPLOADS = /** @type {const} */ ({
+/** The store each platform submits to. */
+const SUBMITS = /** @type {const} */ ({
   testflight: "ios",
   "play-internal": "android",
 });
@@ -59,29 +59,23 @@ export const parseInputs = (env) => {
     );
   }
 
-  const upload = input("UPLOAD");
-  if (upload !== "" && !(upload in UPLOADS)) {
+  const submit = input("SUBMIT");
+  if (submit !== "" && !(submit in SUBMITS)) {
     throw new Error(
-      `upload takes testflight or play-internal, or is empty, not ${upload}.`,
+      `submit takes testflight or play-internal, or is empty, not ${submit}.`,
     );
   }
-  const store = /** @type {keyof typeof UPLOADS | ""} */ (upload);
-  if (store !== "" && UPLOADS[store] !== platform) {
+  const store = /** @type {keyof typeof SUBMITS | ""} */ (submit);
+  if (store !== "" && SUBMITS[store] !== platform) {
     throw new Error(
-      `upload ${store} uploads ${UPLOADS[store]} builds, and platform is ${platform}.`,
+      `submit ${store} takes ${SUBMITS[store]} builds, and platform is ${platform}.`,
     );
-  }
-
-  const register = input("REGISTER") || "true";
-  if (register !== "true" && register !== "false") {
-    throw new Error("register must be true or false.");
   }
 
   return {
     platform,
     scheme,
-    upload: store === "" ? null : store,
-    register: register === "true",
+    submit: store === "" ? null : store,
   };
 };
 
@@ -96,21 +90,21 @@ export const parseInputs = (env) => {
 export const cliEnv = (env) => ({ ...env, CI: env["CI"] || "true" });
 
 /**
- * The `build:*` arguments of `inputs`.
+ * The `native-build <platform>` arguments of `inputs`.
  *
  * @param {Inputs} inputs
  */
 export const buildArgs = (inputs) => [
-  `build:${inputs.platform}`,
+  "native-build",
+  inputs.platform,
   "--scheme",
   inputs.scheme,
-  ...(inputs.register ? ["--register"] : []),
-  ...(inputs.upload ? ["--upload", inputs.upload] : []),
+  ...(inputs.submit ? ["--submit", inputs.submit] : []),
   "--json",
 ];
 
 /**
- * Builds, registers, and uploads as the inputs ask, and sets the outputs.
+ * Builds, tracks, and submits as the inputs ask, and sets the outputs.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
@@ -125,8 +119,9 @@ export const runAction = async (deps, inputs) => {
     );
   }
   const result = /** @type {NativeBuildJson} */ (parseJsonOutput(stdout));
-  if (inputs.register && result.nativeBuild === null) {
-    throw new Error(`build:${inputs.platform} registered no native build.`);
+  // Every build is tracked but a Debug one, which has no built-in bundle.
+  if (result.nativeBuild === null && result.registration?.skipped !== "debug") {
+    throw new Error(`native-build ${inputs.platform} tracked no native build.`);
   }
 
   deps.setOutput("artifact-path", result.build.artifactPath);
@@ -142,19 +137,22 @@ export const runAction = async (deps, inputs) => {
       ? ["App version", build.appVersion ?? ""]
       : ["Fingerprint", `\`${build.fingerprintHash}\``],
     ["Channel", build.channel],
-    ["Registered", result.nativeBuild ? `\`${result.nativeBuild.id}\`` : "no"],
     [
-      "Uploaded to",
-      inputs.upload === "testflight"
+      "Tracked",
+      result.nativeBuild ? `\`${result.nativeBuild.id}\`` : "no (Debug build)",
+    ],
+    [
+      "Submitted to",
+      inputs.submit === "testflight"
         ? "TestFlight"
-        : inputs.upload === "play-internal"
+        : inputs.submit === "play-internal"
           ? "Google Play internal testing"
           : "no store",
     ],
   ];
   deps.summary(
     [
-      `### hot-updater build:${build.platform}`,
+      `### hot-updater native-build ${build.platform}`,
       "",
       "| | |",
       "| --- | --- |",

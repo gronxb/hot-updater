@@ -31,7 +31,7 @@ type Build = {
 
 /**
  * The project's CLI over a registry and a channel's bundles, as the commands
- * the action runs answer: `build:*` registers a build of the project's
+ * the action runs answer: `native-build <platform>` tracks a build of the project's
  * target, `deploy` deploys a bundle of it.
  */
 const fakeCli = ({
@@ -39,6 +39,7 @@ const fakeCli = ({
   builds = [] as Build[],
   builtChannel,
   builtTarget,
+  builtDebug = false,
   channelDelete = {
     code: 0,
     json: {
@@ -54,6 +55,8 @@ const fakeCli = ({
   builtChannel?: string;
   /** What a build's artifact embeds, when it isn't the project's target. */
   builtTarget?: { fingerprintHash: string | null; appVersion: string | null };
+  /** The scheme builds Debug, which the CLI does not track. */
+  builtDebug?: boolean;
   channelDelete?: { code: number; json: Record<string, unknown> };
 } = {}) => {
   const calls: string[] = [];
@@ -102,8 +105,8 @@ const fakeCli = ({
         )}\n`,
       };
     }
-    if (command?.startsWith("build:")) {
-      const platform = command.slice("build:".length);
+    if (command === "native-build" && (sub === "ios" || sub === "android")) {
+      const platform = sub;
       const build = {
         id: `build-${++counter}`,
         platform,
@@ -121,7 +124,10 @@ const fakeCli = ({
             fingerprintHash: build.fingerprintHash,
             appVersion: build.appVersion,
           },
-          nativeBuild: { id: build.id, artifact_kind: build.kind },
+          nativeBuild: builtDebug
+            ? null
+            : { id: build.id, artifact_kind: build.kind },
+          registration: { skipped: builtDebug ? "debug" : null },
         })}\n`,
       };
     }
@@ -202,7 +208,7 @@ describe("runAction preview", () => {
     expect(fake.calls).toEqual([
       "channel set preview",
       "native-build find -p android -c preview -s releaseApk --json",
-      "build:android --scheme releaseApk --register --json",
+      "native-build android --scheme releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
     ]);
@@ -245,7 +251,9 @@ describe("runAction preview", () => {
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
     ]);
-    expect(fake.calls.some((call) => call.startsWith("build:"))).toBe(false);
+    expect(
+      fake.calls.some((call) => /^native-build (ios|android) /.test(call)),
+    ).toBe(false);
     expect(JSON.parse(outputs["previews"]!)[0]).toMatchObject({
       nativeBuild: { id: "build-0" },
       built: false,
@@ -275,7 +283,7 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toContain(
-      "build:android --scheme releaseApk --register --json",
+      "native-build android --scheme releaseApk --json",
     );
   });
 
@@ -329,7 +337,17 @@ describe("runAction preview", () => {
     const { deps: d } = deps(fake.cli);
 
     await expect(runAction(d, env(), event)).rejects.toThrow(
-      "build:android built a native build that embeds the production channel, not preview.",
+      "native-build android built a native build that embeds the production channel, not preview.",
+    );
+    expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
+  it("fails without deploying when the preview scheme builds Debug, which Hot Updater does not track", async () => {
+    const fake = fakeCli({ builtDebug: true });
+    const { deps: d } = deps(fake.cli);
+
+    await expect(runAction(d, env(), event)).rejects.toThrow(
+      "The android-scheme releaseApk builds Debug, which Hot Updater does not track, so a preview can't install it: use a Release scheme.",
     );
     expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
   });
@@ -415,9 +433,11 @@ describe("runAction preview", () => {
 
     await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
 
-    expect(fake.calls.filter((call) => call.startsWith("build:"))).toEqual([
-      "build:android --scheme releaseApk --register --json",
-      "build:ios --scheme simulator --register --json",
+    expect(
+      fake.calls.filter((call) => /^native-build (ios|android) /.test(call)),
+    ).toEqual([
+      "native-build android --scheme releaseApk --json",
+      "native-build ios --scheme simulator --json",
     ]);
     expect(outputs["comment-body"]).toContain("| Android |");
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");

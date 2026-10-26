@@ -731,7 +731,9 @@ describe("E2E remote asset proxy URLs", () => {
       // The server also selects same.png, which no manifest changed. The
       // client downloads only the changed assets, so only the selection is
       // wrong.
-      await (await select("target-extra"))(changed);
+      await (
+        await select("target-extra")
+      )(changed);
       expect(() =>
         controller.handleAssertBundleArtifactTransfers({
           ...expectation,

@@ -54,25 +54,25 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
   - Run: complete COMMON.md's Local CLI and client credential steps using the
     chosen project URL/service-role access from ENVIRONMENT.md. Run the
     credential helper from the app directory.
-<!-- if credential -->
-    Reuse the same saved {{CREDENTIAL_LABEL}} on retries.
+    <!-- if credential -->
+        Reuse the same saved {{CREDENTIAL_LABEL}} on retries.
   - Verify/record: registration succeeds and the local config targets this
     project/bucket. Save only the private credential-file reference.
   - Retry: allow for schema-cache propagation; inspect permission/schema errors
-    and retry the helper without rotating the {{CREDENTIAL_LABEL}} or recreating
-    resources.
-<!-- else -->
+  and retry the helper without rotating the {{CREDENTIAL_LABEL}} or recreating
+  resources.
+  <!-- else -->
   - Verify/record: the local config targets this project/bucket.
   - Retry: allow for schema-cache propagation; inspect permission/schema errors
-    without recreating resources.
-<!-- end -->
+  without recreating resources.
+  <!-- end -->
 
 - [ ] **sb.function — Deploy the complete Edge Function**
   - Requires: sb.client-credential.
-  - Run: fill __HOT_UPDATER_BUCKET_NAME__. Keep the hot-updater-v1 directory,
+  - Run: fill **HOT_UPDATER_BUCKET_NAME**. Keep the hot-updater-v1 directory,
     functionName in index.ts and config.toml entry unchanged. Confirm
     ownership before deploying over an existing hot-updater-v1 function.
-    Deploy deno.json and all _hot-updater/
+    Deploy deno.json and all \_hot-updater/
     vendored files along with index.ts. Keep verify_jwt=false: the function
     authenticates client requests itself.
     From the scaffold root:

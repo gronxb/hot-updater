@@ -7500,7 +7500,7 @@ async function resetRemoteBundles() {
 
 /**
  * Registers the installed app binary as a native build, as `hot-updater
- * build:* --register` registers a release build, unless an earlier run of
+ * native-build ios|android` tracks a release build, unless an earlier run of
  * the same binary did. Its channel is the binary's own, so this deletes the
  * releases a failed earlier run left there.
  */

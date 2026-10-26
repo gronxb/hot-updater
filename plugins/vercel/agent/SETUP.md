@@ -68,18 +68,18 @@ and deployment.
     credential helper's server definition, which stays in the scaffold, and
     first runs app/migrate.ts: it creates the tables of core and the plugins
     app/hotUpdater.ts runs and writes their schema settings,
-<!-- if credential -->
-    then registers the client {{CREDENTIAL_LABEL}}.
+    <!-- if credential -->
+        then registers the client {{CREDENTIAL_LABEL}}.
   - Verify/record: the helper succeeds and the {{CREDENTIAL_LABEL}} is
     persisted privately; the tables and `private_hot_updater_settings` exist.
   - Retry: rerun the helper with the saved {{CREDENTIAL_LABEL}}; it creates
     only what is missing. Never edit settings or rotate the {{CREDENTIAL_LABEL}}.
-<!-- else -->
-    and registers no client credential, since client routes are public.
+    <!-- else -->
+        and registers no client credential, since client routes are public.
   - Verify/record: the helper succeeds; the tables and
     `private_hot_updater_settings` exist.
   - Retry: rerun the helper; it creates only what is missing.
-<!-- end -->
+  <!-- end -->
 
 - [ ] **vc.function — Deploy the Function**
   - Requires: vc.database-credential.

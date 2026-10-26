@@ -77,7 +77,6 @@ describe("prepareNativeBuild", () => {
         prepareNativeBuild({
           platform: "ios",
           interactive: true,
-          operation: "build",
         } as Parameters<typeof prepareNativeBuild>[0]),
       ).resolves.toBeNull();
     } finally {
@@ -102,7 +101,6 @@ describe("prepareNativeBuild", () => {
         platform: "ios",
         scheme: "release",
         interactive: false,
-        operation: "build",
       } as Parameters<typeof prepareNativeBuild>[0]),
     ).resolves.toBeNull();
     expect(p.log.error).toHaveBeenCalledWith(
@@ -124,7 +122,6 @@ describe("prepareNativeBuild", () => {
         platform: "ios",
         scheme: "release",
         interactive: false,
-        operation: "build",
       }),
     ).resolves.toMatchObject({
       scheme: "release",
@@ -152,7 +149,6 @@ describe("prepareNativeBuild", () => {
       platform: "ios",
       scheme: "release",
       interactive: false,
-      operation: "build",
       beforePrebuild,
     });
 
@@ -167,7 +163,6 @@ describe("prepareNativeBuild", () => {
         platform: "ios",
         scheme: "release",
         interactive: false,
-        operation: "build",
         beforePrebuild: async () => {
           throw new Error("TestFlight takes an .ipa");
         },
@@ -188,7 +183,6 @@ describe("prepareNativeBuild", () => {
         platform: "ios",
         scheme: "release",
         interactive: false,
-        operation: "build",
       }),
     ).resolves.toBeNull();
     expect(p.log.error).toHaveBeenCalledWith(
@@ -197,24 +191,6 @@ describe("prepareNativeBuild", () => {
       ),
     );
     expect(buildAdapter.nativeBuild.prebuild).not.toHaveBeenCalled();
-  });
-
-  it("runs an iOS device scheme that has no export options, which run:ios installs as an .app", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({
-      updateStrategy: "appVersion",
-      nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
-      build: () => buildAdapter,
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-
-    await expect(
-      prepareNativeBuild({
-        platform: "ios",
-        scheme: "release",
-        interactive: false,
-        operation: "run",
-      }),
-    ).resolves.toMatchObject({ scheme: "release" });
-    expect(p.log.error).not.toHaveBeenCalled();
   });
 
   it("returns the fingerprint a fingerprint build compiles in", async () => {
@@ -237,7 +213,6 @@ describe("prepareNativeBuild", () => {
         platform: "android",
         scheme: "release",
         interactive: false,
-        operation: "build",
       }),
     ).resolves.toMatchObject({
       scheme: "release",

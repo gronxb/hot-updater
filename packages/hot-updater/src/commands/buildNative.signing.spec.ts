@@ -105,7 +105,7 @@ beforeEach(() => {
   events.length = 0;
 });
 
-describe("build:* resolves its signing credentials before the prebuild", () => {
+describe("native-build ios|android resolves its signing credentials before the prebuild", () => {
   it("resolves a release variant's keystore first", async () => {
     prebuildScheme.current = {
       androidScheme: {

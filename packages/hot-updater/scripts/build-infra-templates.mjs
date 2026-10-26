@@ -28,7 +28,14 @@ import { INFRASTRUCTURE_UPDATES } from "../src/commands/infrastructureUpdates.ts
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
-const providers = ["cloudflare", "supabase", "aws", "firebase", "vercel", "azure"];
+const providers = [
+  "cloudflare",
+  "supabase",
+  "aws",
+  "firebase",
+  "vercel",
+  "azure",
+];
 const builds = ["bare", "rock", "expo"];
 const upgradeFiles = await readInfrastructureUpgradeFiles(
   path.join(packageRoot, "infrastructure-upgrades"),
@@ -189,7 +196,11 @@ for (const provider of providers) {
     path.join(output, "app/hotUpdater.ts"),
     renderCredentialDefinition(scaffoldOf(builds[0]), builds[0]),
   );
-  if (provider === "firebase" || provider === "vercel" || provider === "azure") {
+  if (
+    provider === "firebase" ||
+    provider === "vercel" ||
+    provider === "azure"
+  ) {
     // Firestore and Cosmos DB have no migration tooling, and Vercel's
     // PostgreSQL takes the server's migrator, so the credential script runs
     // the migrator of the server definition it loaded: Cosmos DB's container

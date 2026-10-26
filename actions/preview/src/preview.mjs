@@ -177,12 +177,13 @@ const describeTarget = (scope) =>
     : `fingerprint ${scope.fingerprintHash}`;
 
 /**
- * What `build:<platform> --register --json` prints last: the build, with
- * what its artifact embeds, and its registration.
+ * What `native-build <platform> --json` prints last: the build, with what
+ * its artifact embeds, its record in Hot Updater, and why it has none.
  *
  * @typedef {object} NativeBuildJson
  * @property {{ channel: string, fingerprintHash: string | null, appVersion: string | null }} build
  * @property {{ id: string, artifact_kind: import("./comment.mjs").ArtifactKind } | null} nativeBuild
+ * @property {{ skipped: "debug" | "dry-run" | null }} [registration]
  */
 
 /**
@@ -210,22 +211,22 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     deps.log.info(
       `No ${platform} native build on ${inputs.previewChannel} has ${describeTarget(found)}: building one.`,
     );
+    const scheme = /** @type {string} */ (inputs.schemes[platform]);
+    // Every native build is tracked, so the preview can install it.
     const registered = /** @type {NativeBuildJson} */ (
-      await json(deps, [
-        `build:${platform}`,
-        "--scheme",
-        /** @type {string} */ (inputs.schemes[platform]),
-        "--register",
-        "--json",
-      ])
+      await json(deps, ["native-build", platform, "--scheme", scheme, "--json"])
     );
     if (registered.build.channel !== inputs.previewChannel) {
       throw new Error(
-        `build:${platform} built a native build that embeds the ${registered.build.channel} channel, not ${inputs.previewChannel}. An Expo project sets it in the @hot-updater/expo config plugin.`,
+        `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${inputs.previewChannel}. An Expo project sets it in the @hot-updater/expo config plugin.`,
       );
     }
     if (registered.nativeBuild === null) {
-      throw new Error(`build:${platform} registered no native build.`);
+      throw new Error(
+        registered.registration?.skipped === "debug"
+          ? `The ${platform}-scheme ${scheme} builds Debug, which Hot Updater does not track, so a preview can't install it: use a Release scheme.`
+          : `native-build ${platform} tracked no native build.`,
+      );
     }
     // What the artifact embeds, such as an app version an xcconfig sets.
     target = {

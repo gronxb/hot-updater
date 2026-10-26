@@ -39,7 +39,7 @@ const execFileAsync = promisify(execFile);
 
 type Platform = "ios" | "android";
 
-/** Where `hot-updater build:* --register` stores a native build's artifact. */
+/** Where `hot-updater native-build ios|android` stores a native build's artifact. */
 const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
 
 /** The channel prefix the controller's proxy and deploys leave unnamespaced. */
@@ -224,8 +224,8 @@ export type InstalledNativeBuild = {
 };
 
 /**
- * Registers the E2E app binary the run installs, as `hot-updater build:*
- * --register` registers a build: its artifact under `native-builds/`, and
+ * Registers the E2E app binary the run installs, as `hot-updater
+ * native-build ios|android` tracks a build: its artifact under `native-builds/`, and
  * its built-in bundle, taken byte for byte from it with the build helpers'
  * extractors, as a bundle no release publishes. An ID registers once, so a
  * binary an earlier run registered is checked, not registered again.

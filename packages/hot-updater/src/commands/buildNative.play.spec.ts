@@ -124,7 +124,7 @@ const mockExit = () =>
     throw new Error("exit");
   }) as never);
 
-describe("build:android --upload play-internal", () => {
+describe("native-build android --submit play-internal", () => {
   it("checks the scheme and resolves the service account before the prebuild, then builds, registers and uploads", async () => {
     await handleNativeBuildCreate("android", {
       scheme: "release",

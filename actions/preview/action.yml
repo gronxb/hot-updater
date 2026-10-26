@@ -5,7 +5,6 @@ description: >-
   fingerprint, and comments the install link and the channel's QR code. When
   the pull request closes, it deletes the channel.
 author: gronxb
-
 inputs:
   console-url:
     description: >-

@@ -9,12 +9,23 @@ export default {
     }
 
     if (url.pathname !== "/demo/patch" || request.method !== "GET") {
-      return Response.json({ code: "NOT_FOUND", message: "Not found" }, { status: 404 });
+      return Response.json(
+        { code: "NOT_FOUND", message: "Not found" },
+        { status: 404 },
+      );
     }
 
     try {
-      const base = await readFixtureAsset(env, request.url, "/one/index.ios.bundle.hbc");
-      const next = await readFixtureAsset(env, request.url, "/two/index.ios.bundle.hbc");
+      const base = await readFixtureAsset(
+        env,
+        request.url,
+        "/one/index.ios.bundle.hbc",
+      );
+      const next = await readFixtureAsset(
+        env,
+        request.url,
+        "/two/index.ios.bundle.hbc",
+      );
       const patch = await hdiff(base, next);
       const hash = await sha256Hex(patch);
 
@@ -34,7 +45,7 @@ export default {
           code: "INTERNAL_ERROR",
           message: err instanceof Error ? err.message : "Unknown error",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
   },
@@ -43,14 +54,16 @@ export default {
 async function readFixtureAsset(env, requestUrl, assetPath) {
   const response = await env.ASSETS.fetch(new URL(assetPath, requestUrl));
   if (!response.ok) {
-    throw new Error(`Failed to load fixture asset ${assetPath}: ${response.status}`);
+    throw new Error(
+      `Failed to load fixture asset ${assetPath}: ${response.status}`,
+    );
   }
   return new Uint8Array(await response.arrayBuffer());
 }
 
 async function sha256Hex(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
-    ""
-  );
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
 }

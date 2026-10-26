@@ -47,7 +47,7 @@ supply this CLI. Do this before remote provisioning.
   - Verify/record: required indexes are ready in the selected project, not merely
     accepted for creation, and the TTL policy on `expireAt` in hot_updater_v1 is
     active (`gcloud firestore fields ttls list --project <project-id>
-    --database <database-id>`), which
+--database <database-id>`), which
     deletes rows past their tables' retention. Record the target/index readiness.
   - Retry: inspect current indexes and wait for building ones; do not remove/recreate them.
 
@@ -73,22 +73,22 @@ supply this CLI. Do this before remote provisioning.
     app/migrate.ts to write the schema settings of core and the plugins
     app/hotUpdater.ts runs, which the database checks before its first read
     (the database answers 503 until they exist),
-<!-- if credential -->
-    then registers the client {{CREDENTIAL_LABEL}}.
+    <!-- if credential -->
+        then registers the client {{CREDENTIAL_LABEL}}.
   - Verify/record: helper succeeds against the chosen project and the
     {{CREDENTIAL_LABEL}} is persisted privately. The settings are documents with
     `pk = private_hot_updater_settings` in hot_updater_v1; do not create them by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper with the
     saved {{CREDENTIAL_LABEL}}. Never edit settings to bypass a failed check or
     rotate the {{CREDENTIAL_LABEL}}.
-<!-- else -->
-    and registers no client credential, since client routes are public.
+    <!-- else -->
+        and registers no client credential, since client routes are public.
   - Verify/record: helper succeeds against the chosen project. The settings are
     documents with `pk = private_hot_updater_settings` in hot_updater_v1; do not
     create them by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper. Never edit
-    settings to bypass a failed check.
-<!-- end -->
+  settings to bypass a failed check.
+  <!-- end -->
 
 - [ ] **fb.function — Deploy the server**
   - Requires: fb.database-credential.
