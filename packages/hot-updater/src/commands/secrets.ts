@@ -447,6 +447,17 @@ export const handleSecretsIssue = async (
       stored === undefined
         ? undefined
         : describeHeldKey(kind, parseFields(stored));
+    // A read-only adapter's key is read before localSecrets()' copy, so a
+    // new key stored there would never be used.
+    const configured = getConfiguredAdapter(secrets);
+    if (stored !== undefined && replace && configured && !configured.set) {
+      const held = (await configured.get([name], { cwd }))[name];
+      if (held) {
+        throw new Error(
+          `${name} is in the ${configured.name} secrets adapter (${describeSecret(configured, name)}), which builds read first and Hot Updater can't write, so a new ${issuer.label} would never be used. Replace it there yourself, or remove it there, then run \`${issue}\` again.`,
+        );
+      }
+    }
     if (stored !== undefined && !replace) {
       p.log.message(
         ui.block(`${issuer.label} already stored`, [
