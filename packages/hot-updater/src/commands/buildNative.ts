@@ -139,7 +139,6 @@ const buildNativeInternal = async ({
                   name: ascApiKeyName,
                   secrets,
                   cacheDir,
-                  bundleIdentifier: iosScheme!.bundleIdentifier,
                 });
                 // A key builds here can't read from the adapter is in its
                 // file: this build signs and uploads with it from there.

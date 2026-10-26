@@ -526,12 +526,7 @@ describe("ensureAscApiKey", () => {
     const { calls, held } = fakeStore();
 
     await expect(
-      withTTY(true, () =>
-        ensure({
-          name: "asc-api-key",
-          bundleIdentifier: "com.example.app",
-        }),
-      ),
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
 
     expect(calls).toEqual([
@@ -550,9 +545,9 @@ describe("ensureAscApiKey", () => {
       expect.objectContaining({
         role: "ADMIN",
         appleId: "dev@example.com",
-        name: expect.stringMatching(
-          /^hot-updater com\.example\.app \d{4}-\d{2}-\d{2}$/u,
-        ),
+        // App Store Connect refuses a long key name (TOO_LONG at 48
+        // characters), so it carries only the date.
+        name: expect.stringMatching(/^hot-updater \d{4}-\d{2}-\d{2}$/u),
       }),
     );
     // Hot Updater asks only for the Apple Account's email.

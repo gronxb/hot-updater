@@ -14,6 +14,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 import type { IssueAscApiKeyRequest, IssuedAscApiKey } from "../ascApiKey";
 import {
   AscCommandError,
+  type AscSignInPrompts,
   ascEnvironment,
   createAscCliKeyIssuer,
 } from "./ascCliKeyIssuer";
@@ -27,6 +28,7 @@ import {
 const FAKE_ASC = String.raw`
 const fs = require("node:fs");
 const path = require("node:path");
+const { execSync } = require("node:child_process");
 const args = process.argv.slice(2);
 const scenario = JSON.parse(process.env.FAKE_ASC_SCENARIO || "{}");
 const env = Object.fromEntries(
@@ -46,6 +48,21 @@ const fail = (message) => {
 const command = args.slice(0, 3).join(" ");
 if (command === "web auth login") {
   if (scenario.login) fail(scenario.login);
+  if (process.env.ASC_WEB_PASSWORD !== "correct horse") fail("incorrect Apple Account email or password");
+  // Apple asks for a code; a wrong one makes it text another, and asc runs
+  // the command again, as asc 5.16.1 does on the phone fallback.
+  const codes = [];
+  for (let i = 0; i < (scenario.codeRounds ?? 1); i += 1) {
+    let code;
+    try {
+      code = execSync(flag("--two-factor-code-command"), { encoding: "utf8", shell: "/bin/sh" }).trim();
+    } catch {
+      fail("two-factor code command failed");
+    }
+    codes.push(code);
+  }
+  fs.appendFileSync(process.env.FAKE_ASC_LOG, JSON.stringify({ codes }) + "\n");
+  if (codes.at(-1) !== "123456") fail("incorrect verification code");
   // A session file, as asc keeps one in ASC_WEB_SESSION_CACHE_DIR.
   fs.writeFileSync(path.join(process.env.ASC_WEB_SESSION_CACHE_DIR, "session-x.json"), "{}");
   process.stdout.write(JSON.stringify({
@@ -86,6 +103,25 @@ if (command === "web auth login") {
 
 type Call = { args: string[]; env: Record<string, string> };
 
+/** Prompts that answer like a developer who types the right things. */
+const prompts = (overrides: Partial<AscSignInPrompts> = {}) => {
+  const asked: string[] = [];
+  return {
+    asked,
+    prompts: {
+      password: async (appleId: string | undefined) => {
+        asked.push(`password ${appleId}`);
+        return "correct horse";
+      },
+      twoFactorCode: async (attempt: number) => {
+        asked.push(`code ${attempt}`);
+        return "123456";
+      },
+      ...overrides,
+    } satisfies AscSignInPrompts,
+  };
+};
+
 let dir: string;
 let ascPath: string;
 let logPath: string;
@@ -95,9 +131,11 @@ const issued: IssuedAscApiKey[] = [];
 const issue = async (
   scenario: Record<string, unknown> = {},
   request: Partial<IssueAscApiKeyRequest> = {},
+  signIn: AscSignInPrompts = prompts().prompts,
 ) => {
   const key = await createAscCliKeyIssuer({
     asc: { path: ascPath },
+    prompts: signIn,
     env: {
       ...process.env,
       FAKE_ASC_LOG: logPath,
@@ -109,7 +147,7 @@ const issue = async (
       ASC_KEY_ID: "OTHERKEY",
     },
   })({
-    name: "hot-updater com.example.app 2026-10-25",
+    name: "hot-updater 2026-10-25",
     role: "ADMIN",
     appleId: "dev@example.com",
     ...request,
@@ -118,11 +156,14 @@ const issue = async (
   return key;
 };
 
-const calls = async (): Promise<Call[]> =>
+const lines = async () =>
   (await fs.readFile(logPath, "utf-8").catch(() => ""))
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Call);
+    .map((line) => JSON.parse(line) as Partial<Call> & { codes?: string[] });
+
+const calls = async (): Promise<Call[]> =>
+  (await lines()).filter((line): line is Call => Array.isArray(line.args));
 
 /** The temporary directory asc ran in, from the first call's HOME. */
 const workDirectory = async () => path.dirname((await calls())[0]!.env.HOME!);
@@ -155,7 +196,7 @@ describe("createAscCliKeyIssuer", () => {
       p8,
       keyId: "KEY1234567",
       issuerId: "69a6de70-0000-47e3-e053-5b8c7c11a4d1",
-      name: "hot-updater com.example.app 2026-10-25",
+      name: "hot-updater 2026-10-25",
       team: {
         appleId: "dev@example.com",
         teamId: "11111111-2222-3333-4444-555555555555",
@@ -164,12 +205,16 @@ describe("createAscCliKeyIssuer", () => {
     });
     const [login, create, ...rest] = await calls();
     expect(rest).toEqual([]);
+    const codeCommand =
+      login!.args[login!.args.indexOf("--two-factor-code-command") + 1]!;
     expect(login!.args).toEqual([
       "web",
       "auth",
       "login",
       "--apple-id",
       "dev@example.com",
+      "--two-factor-code-command",
+      codeCommand,
       "--output",
       "json",
     ]);
@@ -179,7 +224,7 @@ describe("createAscCliKeyIssuer", () => {
       "api-keys",
       "create",
       "--name",
-      "hot-updater com.example.app 2026-10-25",
+      "hot-updater 2026-10-25",
       "--role",
       "ADMIN",
       "--output-dir",
@@ -204,7 +249,21 @@ describe("createAscCliKeyIssuer", () => {
       true,
     );
     expect(((await fs.stat(root)).mode & 0o777).toString(8)).toBe("700");
-    for (const call of await calls()) {
+    const [login, ...rest] = await calls();
+    // The password typed into the prompt reaches the sign-in alone, never
+    // the caller's ASC_WEB_PASSWORD.
+    expect(login!.env.ASC_WEB_PASSWORD).toBe("correct horse");
+    for (const call of [
+      {
+        ...login!,
+        env: Object.fromEntries(
+          Object.entries(login!.env).filter(
+            ([name]) => name !== "ASC_WEB_PASSWORD",
+          ),
+        ),
+      },
+      ...rest,
+    ]) {
       expect(call.env).toEqual({
         HOME: path.join(root, "home"),
         XDG_CONFIG_HOME: path.join(root, "home", ".config"),
@@ -330,6 +389,69 @@ describe("createAscCliKeyIssuer", () => {
     );
     expect((error as Error).message).toBe(
       "asc printed no issuer ID for the key. Revoking the App Store Connect API key KEY1234567 failed too: revoke it at https://appstoreconnect.apple.com/access/integrations/api.",
+    );
+  });
+
+  it("asks for the password and the two-factor code in Hot Updater's prompts, and passes neither as an argument", async () => {
+    const signIn = prompts();
+    await issue({}, {}, signIn.prompts);
+    expect(signIn.asked).toEqual(["password dev@example.com", "code 1"]);
+    expect((await lines()).find((line) => line.codes)?.codes).toEqual([
+      "123456",
+    ]);
+    for (const call of await calls()) {
+      expect(call.args.join(" ")).not.toContain("correct horse");
+      expect(call.args.join(" ")).not.toContain("123456");
+    }
+  });
+
+  it("asks again when asc wants another code, as after Apple texts one", async () => {
+    let attempts = 0;
+    const signIn = prompts({
+      twoFactorCode: async (attempt) => {
+        attempts = attempt;
+        return attempt === 1 ? "000000" : "123456";
+      },
+    });
+    await issue({ codeRounds: 2 }, {}, signIn.prompts);
+    expect(attempts).toBe(2);
+    expect((await lines()).find((line) => line.codes)?.codes).toEqual([
+      "000000",
+      "123456",
+    ]);
+  });
+
+  it("starts nothing when the password prompt is cancelled", async () => {
+    const error = await issue(
+      {},
+      {},
+      prompts({ password: async () => undefined }).prompts,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AscCommandError);
+    expect((error as Error).message).toBe("Signing in was cancelled.");
+    expect(await calls()).toEqual([]);
+  });
+
+  it("stops the sign-in, creates nothing, and deletes its state when the code prompt is cancelled", async () => {
+    const error = await issue(
+      {},
+      {},
+      prompts({ twoFactorCode: async () => undefined }).prompts,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AscCommandError);
+    expect((error as Error).message).toBe("Signing in was cancelled.");
+    expect((await calls()).map((call) => call.args[2])).toEqual(["login"]);
+    expect(existsSync(await workDirectory())).toBe(false);
+  });
+
+  it("reports a wrong password as asc does", async () => {
+    const error = await issue(
+      {},
+      {},
+      prompts({ password: async () => "wrong" }).prompts,
+    ).catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe(
+      "Signing in with asc web auth login failed: Error: incorrect Apple Account email or password",
     );
   });
 
