@@ -256,24 +256,66 @@ const runConcurrently = async <T>(
   }
 };
 
-/** Build settings that turn code signing off: App Store Connect takes no such `.ipa`. */
-const CODE_SIGNING_OFF =
-  /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)\s*=\s*NO\s*$/imu;
+/** The build settings that turn code signing off when set to NO. */
+const SIGNING_SETTING =
+  /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)\s*=\s*([^\s/]*)\s*(?:\/\/.*)?$/u;
+
+/** A signing setting's value, and the line and place that set it last. */
+type SigningSettings = Map<string, { value: string; where: string }>;
 
 /** A scheme's `exportOptionsPlist`, which resolves from the project's root. */
 const schemeFile = (file: string) =>
   path.isAbsolute(file) ? file : path.resolve(getCwd(), file);
 
 /**
- * Where the scheme turns code signing off: an `extraParams` setting, or an
- * xcconfig the build includes, its `xcconfig` or an `-xcconfig` in
- * `extraParams`, which resolve from `ios/`, where xcodebuild runs, as
- * `writeBuildXcconfig` reads them. Undefined when it signs.
+ * Applies an xcconfig's unconditional signing settings over `settings`, in
+ * order, following its `#include`s, which resolve from the including file,
+ * as Xcode reads it: the last assignment wins.
+ */
+const applyXcconfig = async (
+  file: string,
+  label: string,
+  settings: SigningSettings,
+  visited: Set<string>,
+) => {
+  if (visited.has(file)) return;
+  visited.add(file);
+  const text = await fs.promises.readFile(file, "utf-8").catch(() => undefined);
+  for (const line of text?.split("\n") ?? []) {
+    const include = line.match(/^\s*#include\??\s*"([^"]+)"/u)?.[1];
+    if (include) {
+      await applyXcconfig(
+        path.resolve(path.dirname(file), include),
+        include,
+        settings,
+        visited,
+      );
+      continue;
+    }
+    const [, key, value] = line.match(SIGNING_SETTING) ?? [];
+    if (key)
+      settings.set(key, { value: value!, where: `${line.trim()} in ${label}` });
+  }
+};
+
+/**
+ * Where the scheme turns code signing off, after every override the build
+ * applies: the `extraParams` settings first, then the xcconfigs the build
+ * xcconfig includes over them, in order, its `xcconfig` and each
+ * `-xcconfig` in `extraParams`, which resolve from `ios/`, where xcodebuild
+ * runs (`writeBuildXcconfig`). Undefined when it signs.
  */
 const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
   const extraParams = iosScheme.extraParams ?? [];
-  const param = extraParams.find((entry) => CODE_SIGNING_OFF.test(entry));
-  if (param) return `${param.trim()} in extraParams`;
+  const settings: SigningSettings = new Map();
+  for (const entry of extraParams) {
+    const [, key, value] = entry.match(SIGNING_SETTING) ?? [];
+    if (key)
+      settings.set(key, {
+        value: value!,
+        where: `${entry.trim()} in extraParams`,
+      });
+  }
   const xcconfigs = [
     ...(iosScheme.xcconfig ? [iosScheme.xcconfig] : []),
     ...extraParams.flatMap((entry, index) =>
@@ -282,14 +324,17 @@ const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
         : [],
     ),
   ];
+  const visited = new Set<string>();
   for (const xcconfig of xcconfigs) {
-    const text = await fs.promises
-      .readFile(path.resolve(getCwd(), "ios", xcconfig), "utf-8")
-      .catch(() => undefined);
-    const setting = text?.match(CODE_SIGNING_OFF)?.[0];
-    if (setting) return `${setting.trim()} in ${xcconfig}`;
+    await applyXcconfig(
+      path.resolve(getCwd(), "ios", xcconfig),
+      xcconfig,
+      settings,
+      visited,
+    );
   }
-  return undefined;
+  return [...settings.values()].find(({ value }) => /^no$/iu.test(value))
+    ?.where;
 };
 
 /**

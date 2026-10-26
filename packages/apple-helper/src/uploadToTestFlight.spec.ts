@@ -1319,6 +1319,78 @@ describe("resolveTestFlightUploadKey", () => {
     );
   });
 
+  describe("with the settings the build applies last", () => {
+    const write = async (file: string, text: string) => {
+      await fs.mkdir(path.dirname(path.join(dir, "ios", file)), {
+        recursive: true,
+      });
+      await fs.writeFile(path.join(dir, "ios", file), text);
+    };
+    const resolve = (overrides: Partial<NativeBuildIosScheme>) =>
+      resolveTestFlightUploadKey(
+        iosScheme({
+          signing: { ascApiKey: "secret:asc-api-key" },
+          ...overrides,
+        }),
+      );
+
+    it("takes a scheme whose later -xcconfig turns signing back on", async () => {
+      await write("Base.xcconfig", "CODE_SIGNING_ALLOWED = NO\n");
+      await write("Release.xcconfig", "CODE_SIGNING_ALLOWED = YES\n");
+
+      await expect(
+        resolve({
+          xcconfig: "Base.xcconfig",
+          extraParams: ["-xcconfig", "Release.xcconfig"],
+        }),
+      ).resolves.toMatchObject({ kind: "asc-api-key" });
+    });
+
+    it("takes an xcconfig whose later line turns signing back on", async () => {
+      await write(
+        "Signing.xcconfig",
+        "CODE_SIGNING_ALLOWED = NO\nCODE_SIGNING_ALLOWED = YES // signed after all\n",
+      );
+
+      await expect(
+        resolve({ xcconfig: "Signing.xcconfig" }),
+      ).resolves.toMatchObject({ kind: "asc-api-key" });
+    });
+
+    it("takes an extraParams NO that an xcconfig, which outranks the command line, overrides", async () => {
+      await write("Signing.xcconfig", "CODE_SIGNING_ALLOWED = YES\n");
+
+      await expect(
+        resolve({
+          xcconfig: "Signing.xcconfig",
+          extraParams: ["CODE_SIGNING_ALLOWED=NO"],
+        }),
+      ).resolves.toMatchObject({ kind: "asc-api-key" });
+    });
+
+    it("refuses a NO that comes after a YES", async () => {
+      await write(
+        "Signing.xcconfig",
+        "CODE_SIGNING_REQUIRED = YES\nCODE_SIGNING_REQUIRED = NO\n",
+      );
+
+      await expect(resolve({ xcconfig: "Signing.xcconfig" })).rejects.toThrow(
+        "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_REQUIRED = NO in Signing.xcconfig).",
+      );
+    });
+
+    it("follows an #include, relative to the including file, to the NO it sets", async () => {
+      await write("config/Release.xcconfig", '#include "Shared.xcconfig"\n');
+      await write("config/Shared.xcconfig", "CODE_SIGNING_ALLOWED = NO\n");
+
+      await expect(
+        resolve({ xcconfig: "config/Release.xcconfig" }),
+      ).rejects.toThrow(
+        "turns code signing off (CODE_SIGNING_ALLOWED = NO in Shared.xcconfig).",
+      );
+    });
+  });
+
   it("takes a scheme whose extraParams and xcconfig keep code signing on", async () => {
     await fs.mkdir(path.join(dir, "ios"), { recursive: true });
     await fs.writeFile(

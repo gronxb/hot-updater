@@ -542,9 +542,9 @@ with the stored key.
 Before the prebuild, the CLI also refuses, saying why, a scheme whose build
 App Store Connect would not take: a simulator scheme, a configuration whose
 name ends in `Debug`, a scheme that turns code signing off
-(`CODE_SIGNING_ALLOWED=NO` or `CODE_SIGNING_REQUIRED=NO` in `extraParams`, or
-in an xcconfig the build includes: its `xcconfig` or an `-xcconfig` in
-`extraParams`), a scheme with neither `signing.ascApiKey` nor an
+(`CODE_SIGNING_ALLOWED` or `CODE_SIGNING_REQUIRED` left `NO` after the
+overrides the build applies: `extraParams` settings, then its `xcconfig` and
+each `-xcconfig` in `extraParams`, in order), a scheme with neither `signing.ascApiKey` nor an
 `exportOptionsPlist`, which only archives, and an `exportOptionsPlist` whose
 `method` is not `app-store-connect` (or `app-store`). An `exportOptionsPlist`
 the prebuild writes is checked after the prebuild, before the build.
