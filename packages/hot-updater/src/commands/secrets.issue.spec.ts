@@ -118,6 +118,18 @@ const printed = () =>
       .join("\n"),
   );
 
+/** The last thing the log printed, of every level, without colors. */
+const lastLogged = () => {
+  const calls = Object.values(log).flatMap((fn) =>
+    fn.mock.calls.map((args, index) => ({
+      order: fn.mock.invocationCallOrder[index]!,
+      text: args.map(String).join(" "),
+    })),
+  );
+  calls.sort((a, b) => a.order - b.order);
+  return stripVTControlCharacters(calls.at(-1)?.text ?? "");
+};
+
 /** A writable secrets adapter the config sets, recording each call. */
 const writableStore = (values: Record<string, string> = {}) => {
   const held = new Map(Object.entries(values));
@@ -207,6 +219,10 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(printed()).toContain("App Store Connect API key stored");
     expect(printed()).not.toContain("issueSpecNewKey01");
     expect(ascKey.revoke).not.toHaveBeenCalled();
+    // The run ends saying that only the key stayed, not a session.
+    expect(lastLogged()).toBe(
+      "Hot Updater kept no Apple session: it stored key NEWKEY0001 as asc-api-key in spec://asc-api-key.",
+    );
   });
 
   it("stores the key as the name given", async () => {
@@ -236,6 +252,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(output).toContain(
       "`npx hot-updater secrets issue asc-api-key --replace`",
     );
+    expect(output).not.toContain("kept no Apple session");
     expect(output).not.toContain("issueSpecOldKey01");
   });
 
@@ -284,6 +301,9 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
     expect(warned).toContain("Hot Updater never revokes it");
     expect(printed()).not.toContain("issueSpecOldKey01");
+    expect(lastLogged()).toBe(
+      "Hot Updater kept no Apple session: it stored key NEWKEY0001 as asc-api-key in spec://asc-api-key.",
+    );
   });
 
   it("--replace on envSecrets(), which is read-only, writes the new key to its file and says the variable still holds the old one", async () => {
@@ -309,6 +329,9 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
     expect(warned).toContain("OLDKEY0001");
     expect(ascKey.revoke).not.toHaveBeenCalled();
+    expect(lastLogged()).toBe(
+      `Hot Updater kept no Apple session: it wrote key NEWKEY0001 for asc-api-key to ${file}.`,
+    );
   });
 
   it("--replace refuses a key the environment overrides, which a new key would never replace", async () => {
@@ -324,7 +347,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(text).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
     expect(log.error).toHaveBeenCalledWith(
-      "HOT_UPDATER_ASC_KEY_ID is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater secrets issue asc-api-key --replace` again.",
+      "HOT_UPDATER_ASC_KEY_ID is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater apple login --replace` again.",
     );
   });
 
@@ -335,7 +358,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      "secrets issue signs in to your Apple Account to issue the App Store Connect API key, which Hot Updater does only at a terminal, never without a terminal. Run `npx hot-updater secrets issue asc-api-key widget-asc` in a terminal, or store a key you have with `npx hot-updater secrets put widget-asc --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
+      "Hot Updater signs in to your Apple Account to issue the App Store Connect API key only at a terminal, never without a terminal. Run `npx hot-updater apple login widget-asc` in a terminal, or store a key you have with `npx hot-updater secrets put widget-asc --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
     );
     expect(loadConfig).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
@@ -388,6 +411,9 @@ describe("hot-updater secrets issue play-service-account", () => {
     expect(printed()).toContain("Play service account stored");
     expect(printed()).not.toContain("issueSpecNewPlayKey01");
     expect(playKey.revoke).not.toHaveBeenCalled();
+    expect(lastLogged()).toBe(
+      "Hot Updater kept no Google session: it stored a key of hot-updater-play@my-app.iam.gserviceaccount.com as play-service-account in spec://play-service-account.",
+    );
   });
 
   it("keeps a stored service account without signing in, naming it", async () => {
@@ -455,7 +481,7 @@ describe("hot-updater secrets issue play-service-account", () => {
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Run `npx hot-updater secrets issue play-service-account` in a terminal, or store a key you have with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`.",
+        "Run `npx hot-updater google-play login` in a terminal, or store a key you have with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`.",
       ),
     );
     expect(issuePlayServiceAccount).not.toHaveBeenCalled();
@@ -469,17 +495,17 @@ describe("hot-updater secrets put without the key's files", () => {
       "asc-api-key",
       "an asc-api-key",
       "--p8 <file>, --key-id <id>, --issuer-id <id>",
-      "npx hot-updater secrets issue asc-api-key",
+      "npx hot-updater apple login",
     ],
     [
       "widget-play",
       "play-service-account",
       "a play-service-account",
       "--service-account <file>",
-      "npx hot-updater secrets issue play-service-account widget-play",
+      "npx hot-updater google-play login widget-play",
     ],
   ] as const)(
-    "never signs in for %s (%s), and names secrets issue",
+    "never signs in for %s (%s), and names the login shortcut",
     async (name, kind, item, flags, issue) => {
       const { store } = writableStore();
 

@@ -230,7 +230,7 @@ describe("createCredentialResolver", () => {
 
     expect(error).toBeInstanceOf(CredentialUnavailableError);
     expect((error as Error).message).toBe(
-      "asc-api-key is not in the fake secrets adapter (fake://asc-api-key). Store it once with `npx hot-updater secrets issue asc-api-key`. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
+      "asc-api-key is not in the fake secrets adapter (fake://asc-api-key). Store it once with `npx hot-updater apple login`. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
     );
     expect((error as CredentialUnavailableError).envNames).toEqual([
       "HOT_UPDATER_ASC_KEY_PATH",
@@ -238,6 +238,16 @@ describe("createCredentialResolver", () => {
       "HOT_UPDATER_ASC_KEY_ID",
       "HOT_UPDATER_ASC_ISSUER_ID",
     ]);
+  });
+
+  it("names the google-play login shortcut with a custom name", async () => {
+    const resolver = createCredentialResolver({ secrets: fakeSecrets({}) });
+
+    await expect(
+      resolver.resolve({ kind: "play-service-account", name: "widget-play" }),
+    ).rejects.toThrow(
+      "widget-play (play-service-account) is not in the fake secrets adapter (fake://widget-play). Store it once with `npx hot-updater google-play login widget-play`.",
+    );
   });
 
   it("names envSecrets()'s JSON variable when the environment holds nothing", async () => {

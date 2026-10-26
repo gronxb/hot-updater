@@ -48,17 +48,18 @@ Bring the keys you already have:
 
 Store the keys you have with
 [`secrets put`](/docs/concepts/secrets#store-a-secret). Or let Hot Updater
-issue the first two, on your machine only: in CI it never signs in. Run
-[`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in):
+issue the first two, on your machine only: in CI it never signs in. Run the
+[`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in)
+shortcuts:
 
 ```package-install
-npx hot-updater secrets issue asc-api-key
-npx hot-updater secrets issue play-service-account
+npx hot-updater apple login
+npx hot-updater google-play login
 ```
 
-`secrets issue asc-api-key` signs you in with your Apple Account once, as
+`apple login` signs you in with your Apple Account once, as
 [Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
-describes, and `secrets issue play-service-account` signs you in with Google
+describes, and `google-play login` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
 describes. Each keeps a key the adapter already holds; `--replace` issues a
 new one and names the old key to revoke once CI no longer uses it. An adapter that stores values keeps the key, where CI reads it.
@@ -319,11 +320,21 @@ short-lived Infisical token. Outside GitHub Actions, set
 ### Without the action
 
 Any CI runs the command the action runs, with the credentials or the store's
-sign-in in its environment:
+sign-in in its environment. `testflight` and `google-play upload` are the
+shortcuts for the store uploads:
 
 ```bash
+npx --no-install hot-updater testflight --scheme release
+# the same as
 npx --no-install hot-updater build:ios --scheme release --register --upload testflight
+
+npx --no-install hot-updater google-play upload --scheme release
+# the same as
+npx --no-install hot-updater build:android --scheme release --register --upload play-internal
 ```
+
+In CI, pass `--scheme` when several schemes upload to TestFlight: it asks
+nothing there.
 
 ## What a CI build does
 
@@ -364,7 +375,7 @@ its certificates and restores the keychains before it stops.
 A job without the Play service account stops before the build, without
 signing in to Google. The error names the credential and where the `secrets`
 adapter looks for it, says that Hot Updater signs in only at a terminal and
-never in CI, gives the `secrets issue` command that stores it once, and lists
+never in CI, gives the command that stores it once (`google-play login`), and lists
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` and
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the variables that provide it
 instead. A missing keystore or App Store Connect API key fails the same way,

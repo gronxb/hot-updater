@@ -146,11 +146,12 @@ of its own, and lets the build upload to TestFlight. Creating it needs the
 Account Holder or Admin role in the team.
 
 To sign in ahead of a build, such as before CI's first build, run
-[`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in), which
-does the same sign-in without building:
+`apple login`, the shortcut for
+[`secrets issue asc-api-key`](/docs/concepts/secrets#issue-a-key-with-a-sign-in),
+which does the same sign-in without building:
 
 ```package-install
-npx hot-updater secrets issue asc-api-key
+npx hot-updater apple login
 ```
 
 It keeps a key the adapter already holds; `--replace` issues a new one and
@@ -379,8 +380,24 @@ you to upgrade it.
 
 ## Upload to TestFlight
 
-Add `--upload testflight` to upload the `.ipa` to App Store Connect, which
-lists it in TestFlight:
+`testflight` builds the `.ipa`, registers it, and uploads it to App Store
+Connect, which lists it in TestFlight:
+
+```package-install
+npx hot-updater testflight
+```
+
+It is the shortcut for `build:ios --scheme <scheme> --upload testflight
+--register`, which runs the same build. Without `--scheme`, it builds the one
+`nativeBuild.ios` scheme whose build TestFlight takes, skipping simulator,
+`Debug`, and archive-only schemes, and says which; with several, it asks which
+one at a terminal, and in CI or without a terminal it stops and lists them
+for `--scheme`. It registers the build, so it becomes a patch base
+`native-build find` sees; `--no-register` only uploads. `--json` and
+`--output-path` work as with `build:ios`.
+
+To upload a build without registering it, or from a scheme of your choice,
+add `--upload testflight` to `build:ios`:
 
 ```package-install
 npx hot-updater build:ios --scheme release --upload testflight
@@ -428,8 +445,24 @@ the CLI prints.
 
 ## Upload to Google Play
 
-Add `--upload play-internal` to upload the `.aab` to Google Play and release
-it to the internal testing track:
+`google-play upload` builds the `.aab`, registers it, and releases it to
+Google Play's internal testing track:
+
+```package-install
+npx hot-updater google-play upload
+```
+
+It is the shortcut for `build:android --scheme <scheme> --upload play-internal
+--register`, which runs the same build. Without `--scheme`, it builds the one
+`nativeBuild.android` scheme whose build Google Play takes, skipping `.apk`
+(`aab: false`) and `Debug` schemes, and says which; with several, it asks which
+one at a terminal, and in CI or without a terminal it stops and lists them for
+`--scheme`. It registers the build, so it becomes a patch base
+`native-build find` sees; `--no-register` only uploads. `--json` and
+`--output-path` work as with `build:android`.
+
+To upload a build without registering it, or from a scheme of your choice,
+add `--upload play-internal` to `build:android`:
 
 ```package-install
 npx hot-updater build:android --scheme release --upload play-internal
@@ -464,7 +497,8 @@ key. When the key surely went nowhere, the CLI deletes the key again; the servic
 account and its Play Console access stay, and the next run reuses them.
 Builds without a terminal, such as CI, use the stored key and never sign in:
 when it is missing, they fail with the command to run once in a terminal,
-`npx hot-updater secrets issue play-service-account`, which does the same
+`npx hot-updater google-play login` (the shortcut for
+`secrets issue play-service-account`), which does the same
 sign-in without building, keeps a key the adapter already holds, and with
 `--replace` issues a new key and names the old one to delete under the service
 account's keys in Google Cloud. The sign-in needs a Google OAuth client of your

@@ -191,7 +191,9 @@ describe("CLI commands", () => {
 
     // put stores a key you have: its help no longer offers a sign-in.
     expect(put).not.toMatch(/sign in with/i);
-    expect(put).toContain("run secrets issue");
+    expect(put).toContain(
+      "run apple login or google-play login (secrets issue)",
+    );
 
     const issue = help("secrets", "issue").replace(/\s+/gu, " ");
     expect(issue).toContain('choices: "asc-api-key", "play-service-account"');
@@ -216,7 +218,7 @@ describe("CLI commands", () => {
     const noTerminal = run("secrets", "issue", "asc-api-key");
     expect(noTerminal.status).toBe(1);
     expect(noTerminal.stdout + noTerminal.stderr).toContain(
-      "Run `npx hot-updater secrets issue asc-api-key` in a terminal",
+      "Run `npx hot-updater apple login` in a terminal",
     );
 
     const missing = run("secrets", "put", "release-keystore");
@@ -225,6 +227,82 @@ describe("CLI commands", () => {
       "required option '--kind <kind>' not specified",
     );
   });
+
+  it.each([
+    ["apple", "asc-api-key", "Apple Account", "Desktop app"],
+    ["google-play", "play-service-account", "Google", "with asc"],
+  ] as const)(
+    "has %s login as the alias of secrets issue %s, and keeps no session",
+    (group, kind, account, otherKind) => {
+      expect(help()).toMatch(new RegExp(`^\\s+${group}\\s+\\S`, "m"));
+      const groupHelp = help(group);
+      expect(groupHelp).toMatch(/^\s+login \[options\] \[name\]\s+Alias of/m);
+      // Hot Updater keeps no session: nothing to log out of or ask about.
+      for (const missing of ["logout", "whoami", "status"]) {
+        expect(groupHelp).not.toMatch(new RegExp(`^\\s+${missing}\\b`, "m"));
+      }
+      const login = help(group, "login").replace(/\s+/gu, " ");
+      expect(login).toContain(`Alias of \`hot-updater secrets issue ${kind}\``);
+      expect(login).toContain(account);
+      expect(login).not.toContain(otherKind);
+      expect(login).toContain("Hot Updater keeps no session");
+      expect(login).toContain("no logout or whoami");
+      expect(login).toContain("--replace");
+      expect(login).toContain(`(default: ${kind})`);
+
+      // The alias runs secrets issue's handler with its kind: without a
+      // terminal, both print the same refusal, byte for byte.
+      for (const args of [[], ["widget-key"], ["widget-key", "--replace"]]) {
+        const alias = run(group, "login", ...args);
+        const canonical = run("secrets", "issue", kind, ...args);
+        expect(alias.status).toBe(1);
+        expect(canonical.status).toBe(1);
+        expect(alias.stdout).toBe(canonical.stdout);
+        expect(alias.stderr).toBe(canonical.stderr);
+      }
+      expect(run(group, "login", "widget-key").stdout).toContain(
+        `Run \`npx hot-updater ${group} login widget-key\` in a terminal`,
+      );
+    },
+  );
+
+  it.each([
+    [
+      ["testflight"],
+      "ios",
+      "testflight",
+      "Shortcut for hot-updater build:ios --upload\\s+testflight --register",
+      "apple login",
+    ],
+    [
+      ["google-play", "upload"],
+      "android",
+      "play-internal",
+      "Shortcut for hot-updater build:android\\s+--upload\\s+play-internal --register",
+      "google-play login",
+    ],
+  ] as const)(
+    "has %j as the shortcut for build:%s --upload %s --register",
+    (command, platform, upload, summary, login) => {
+      const parent = command.length === 1 ? help() : help(command[0]);
+      expect(parent).toMatch(
+        new RegExp(`^\\s+${command.at(-1)} \\[options\\]\\s+${summary}`, "m"),
+      );
+      const shortcut = help(...command);
+      const flat = shortcut.replace(/\s+/gu, " ");
+      expect(flat).toContain(
+        `Shortcut for \`hot-updater build:${platform} --scheme <scheme> --upload ${upload} --register\`.`,
+      );
+      expect(shortcut).toContain("-s, --scheme <scheme>");
+      expect(shortcut).toContain("--no-register");
+      expect(shortcut).toContain("--json");
+      expect(shortcut).toContain("-o, --output-path <outputPath>");
+      // It always uploads to the store and picks the scheme itself.
+      expect(shortcut).not.toContain("--upload <destination>");
+      expect(shortcut).not.toContain("--interactive");
+      expect(flat).toContain(`run ${login} once first`);
+    },
+  );
 
   it("manages Remote Config with remote-config, by version number", () => {
     expect(help()).toMatch(
