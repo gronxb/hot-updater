@@ -135,7 +135,7 @@ const assertPrivateDirectory = async (directory: string) => {
   const top = realpath(root);
   if (isIgnoredByGit(top, real)) return;
   throw new Error(
-    `localSecrets() refuses ${directory}: it is in the git repository ${top}, which does not ignore it, so the secrets in it could be committed. Add ${path.relative(top, real).split(path.sep).join("/")}/ to .gitignore, or set its path outside the repository, such as ~/.hot-updater/secrets/<app>.`,
+    `localSecrets() refuses ${directory}: it is in the git repository ${top}, which does not ignore it, so the secrets in it could be committed. Add ${path.relative(top, real).split(path.sep).join("/")}/ to that repository's .gitignore, or keep the secrets outside it with localSecrets({ path }).`,
   );
 };
 

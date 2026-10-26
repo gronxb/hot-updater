@@ -114,7 +114,7 @@ describe("localSecrets({ path })", () => {
     const store = createLocalSecretsStore({ path: "secrets" });
 
     await expect(store.write("asc-api-key", "value", app)).rejects.toThrow(
-      `localSecrets() refuses ${path.join(app, "secrets")}: it is in the git repository ${app}, which does not ignore it, so the secrets in it could be committed. Add secrets/ to .gitignore, or set its path outside the repository`,
+      `localSecrets() refuses ${path.join(app, "secrets")}: it is in the git repository ${app}, which does not ignore it, so the secrets in it could be committed. Add secrets/ to that repository's .gitignore, or keep the secrets outside it with localSecrets({ path }).`,
     );
     await expect(store.read("asc-api-key", app)).rejects.toThrow(
       "could be committed",
