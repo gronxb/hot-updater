@@ -363,7 +363,8 @@ iOS scheme with `installPods: true`, after `pod install`, so the key holds the
   not, except the build output, `cacheDir`, and `.hot-updater`;
 - the files git ignores that the build reads: the native project's ignored
   files except what builds write (`build`, `Pods` but its `Manifest.lock`,
-  `.gradle`, `.cxx`),
+  `.gradle`, `.cxx`), a generated Xcode project by its structure, whatever
+  object IDs `pod install` gives it,
   `.env*` files, the package manager's install state, and the files of each
   native package installed in `node_modules`;
 - the scheme's settings and the files it names, such as `xcconfig` and
