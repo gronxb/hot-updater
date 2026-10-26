@@ -23,10 +23,11 @@ every pull request:
 4. When the pull request closes, it deletes the channel and its bundles.
 
 The CLI reads the deploy credentials and the release keystore through the
-config's [`secrets` adapter](/docs/concepts/secrets): the job's environment by
-default, or a secrets store the job signs in to, as
+config's [`secrets` adapter](/docs/concepts/secrets): with `localSecrets()`,
+what `init` writes, the job's environment, where the workflow maps repository
+secrets, or a secrets store the job signs in to, as
 [Build and upload from CI](/docs/guides/ci-native-build#add-the-workflow)
-shows for each adapter. It signs bundles with the config's
+shows. It signs bundles with the config's
 [`signing` adapter](/docs/guides/bundle-signing). The workflow passes the
 Console's URL for the comment's links.
 
@@ -96,8 +97,9 @@ instead of a file, use the [AWS KMS](/docs/guides/signing/aws-kms) or
 ### The bundle signing key in CI
 
 Read the bundle signing key as a secret, `privateKey: "secret:bundle-signing-key"`,
-as above: the job maps the repository secret to the variable the `secrets`
-adapter reads, as the workflow below does, and needs no key file.
+as above: the job maps the repository secret to
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, which `localSecrets()` reads before its
+files, as the workflow below does, and needs no key file.
 
 A config that reads the key from a file with `privateKeyPath` needs that file
 in the job. Write it from a repository secret before the action, readable
