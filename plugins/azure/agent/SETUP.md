@@ -68,7 +68,7 @@ deployment.
       `Strong`, get the user's approval to change it, since other apps on it
       read under it too, and change it as the last preflight step, before any
       resource is created (`az cosmosdb update --default-consistency-level
-Strong`): Azure refuses it for an account whose regions lie more than
+      Strong`): Azure refuses it for an account whose regions lie more than
       5,000 miles apart unless support enabled global strong consistency, and
       then stop. A new name must be free
       (`az cosmosdb check-name-exists` returns false).
@@ -78,8 +78,8 @@ Strong`): Azure refuses it for an account whose regions lie more than
       HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING, or it runs no functions yet
       (`az functionapp function list`). Deploying replaces its whole package. A new name must be free across
       azurewebsites.net (`az rest --method post --url
-https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01
---body '{"name":"<app>","type":"Microsoft.Web/sites"}'`).
+      https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01
+      --body '{"name":"<app>","type":"Microsoft.Web/sites"}'`).
   - Verify/record: subscriptionId, resourceGroup, a location that hosts Flex
     Consumption, and the preflight results.
   - Retry: query the same group before another create request.
@@ -102,7 +102,7 @@ https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft
     approved it there), or create one: API for NoSQL
     (`--kind GlobalDocumentDB`), serverless (`--capabilities EnableServerless`
     on the core CLI; `--capacity-mode Serverless` when `az cosmosdb create
---help` lists it, as the cosmosdb-preview extension does, whose preview
+    --help` lists it, as the cosmosdb-preview extension does, whose preview
     API refuses the capability) in
     the group's region, with `Strong` default consistency. Account creation
     takes several minutes.
@@ -129,27 +129,27 @@ https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft
     first runs app/migrate.ts, which creates the database and container when
     they are missing and writes the schema settings of core and the plugins
     app/hotUpdater.ts runs (the database answers 503 until they exist),
-    <!-- if credential -->
-        then registers the client {{CREDENTIAL_LABEL}}.
+<!-- if credential -->
+    then registers the client {{CREDENTIAL_LABEL}}.
   - Verify/record: helper succeeds against the chosen account and the
     {{CREDENTIAL_LABEL}} is persisted privately. Do not create settings items
     by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper with the
     saved {{CREDENTIAL_LABEL}}. Never edit settings to bypass a failed check or
     rotate the {{CREDENTIAL_LABEL}}.
-    <!-- else -->
-        and registers no client credential, since client routes are public.
+<!-- else -->
+    and registers no client credential, since client routes are public.
   - Verify/record: helper succeeds against the chosen account. Do not create
     settings items by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper. Never edit
-  settings to bypass a failed check.
-  <!-- end -->
+    settings to bypass a failed check.
+<!-- end -->
 
 - [ ] **az.function — Deploy the server**
   - Requires: az.database-credential.
   - Run: reuse the app az.scope checked, or create it on a Flex Consumption
     plan (`az functionapp create --flexconsumption-location <location>
---runtime node --runtime-version 22 --storage-account <account>`). Set the
+    --runtime node --runtime-version 22 --storage-account <account>`). Set the
     app settings HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
     HOT_UPDATER_AZURE_BLOB_CONTAINER (`hot-updater`) and
     HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING, preserving unrelated settings.

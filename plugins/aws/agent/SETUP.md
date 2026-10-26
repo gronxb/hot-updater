@@ -54,19 +54,19 @@ init. reference/ is additional context, not executable provisioning code.
 - [ ] **aws.client-credential — Initialize local access and the client credential**
   - Requires: aws.database. Run this before Lambda deployment, as init does.
   - Run: follow COMMON.md's Local CLI and client credential steps with the
-  selected table/region and standard AWS credential chain. At this stage leave
-  HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID unset if no distribution exists yet;
-  it is not needed for credential registration. ENVIRONMENT.md explains the inputs.
-  <!-- if credential -->
+    selected table/region and standard AWS credential chain. At this stage leave
+    HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID unset if no distribution exists yet;
+    it is not needed for credential registration. ENVIRONMENT.md explains the inputs.
+<!-- if credential -->
   - Verify/record: the supplied helper registers/reuses the saved client
     {{CREDENTIAL_LABEL}} in the selected table. Record its private file path,
     never its contents.
   - Retry: inspect local access and reuse the same {{CREDENTIAL_LABEL}}; do not
-  recreate the table.
-  <!-- else -->
+    recreate the table.
+<!-- else -->
   - Verify/record: the local config loads against the selected table.
   - Retry: inspect local access; do not recreate the table.
-  <!-- end -->
+<!-- end -->
 
 - [ ] **aws.iam — Prepare the Lambda execution role**
   - Requires: aws.client-credential. Fill account/region/table/bucket/SSM placeholders in iam/.
@@ -77,9 +77,9 @@ init. reference/ is additional context, not executable provisioning code.
     iam/dynamodb-policy.json → HotUpdaterDynamoDBReadAccess;
     iam/s3-policy.json → HotUpdaterS3ReadAccess;
     iam/ssm-policy.json → HotUpdaterSSMAccess. In that IAM document,
-    **HOT_UPDATER_SSM_PARAMETER_PATH** is the SSM name without its leading slash
+    __HOT_UPDATER_SSM_PARAMETER_PATH__ is the SSM name without its leading slash
     (`hot-updater/v1/<lambda-name>/keypair`); lambda/index.cjs uses the full
-    **HOT_UPDATER_SSM_PARAMETER_NAME** (`/hot-updater/v1/<lambda-name>/keypair`).
+    __HOT_UPDATER_SSM_PARAMETER_NAME__ (`/hot-updater/v1/<lambda-name>/keypair`).
     Preserve unrelated policies.
   - Verify/record: roleName/roleArn; both lambda.amazonaws.com and
     edgelambda.amazonaws.com can assume it; resource ARNs match this installation.
@@ -118,7 +118,7 @@ init. reference/ is additional context, not executable provisioning code.
 - [ ] **aws.distribution — Expose the deployment**
   - Requires: aws.lambda and aws.signing.
   - Run: query/create the policies using `aws cloudfront create-cache-policy
---cli-input-json file://cloudfront/cache-policy.json` and catalog-cache-policy.json;
+    --cli-input-json file://cloudfront/cache-policy.json` and catalog-cache-policy.json;
     for origin-request-policy.json use create-origin-request-policy with the same
     --cli-input-json form. Record each policy ID before the next creation.
     Create/reuse an S3 OAC (sigv4, always signing); record oacId. Fill distribution.json

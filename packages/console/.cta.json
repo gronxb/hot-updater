@@ -8,5 +8,8 @@
   "git": true,
   "version": 1,
   "framework": "react-cra",
-  "chosenAddOns": ["nitro", "start"]
+  "chosenAddOns": [
+    "nitro",
+    "start"
+  ]
 }

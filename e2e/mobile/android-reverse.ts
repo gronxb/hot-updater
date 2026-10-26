@@ -4,10 +4,7 @@ import { promisify } from "node:util";
 import type { MobileContext } from "./context.ts";
 
 type ReverseMapping = { device: string; host: string };
-export type ExecuteAdb = (
-  args: string[],
-  env: NodeJS.ProcessEnv,
-) => Promise<string>;
+export type ExecuteAdb = (args: string[], env: NodeJS.ProcessEnv) => Promise<string>;
 const execFileAsync = promisify(execFile);
 
 export const executeAdb: ExecuteAdb = async (args, env) => {

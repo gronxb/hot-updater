@@ -68,16 +68,16 @@ Record observations in deployment.json as described in COMMON.md.
   - Run: complete COMMON.md's Local CLI and client credential steps.
     ENVIRONMENT.md explains the local D1 API and R2 S3 credentials. Run the
     supplied credential helper from the app directory.
-    <!-- if credential -->
-        Do not use a provider token as the client {{CREDENTIAL_LABEL}}.
+<!-- if credential -->
+    Do not use a provider token as the client {{CREDENTIAL_LABEL}}.
   - Verify/record: helper registration succeeds with the saved/reused
     {{CREDENTIAL_LABEL}} and local config points to the selected D1/R2. Record
     only its private file path.
   - Retry: reuse the persisted {{CREDENTIAL_LABEL}} and resources; inspect access errors.
-  <!-- else -->
+<!-- else -->
   - Verify/record: local config points to the selected D1/R2.
   - Retry: reuse the resources; inspect access errors.
-  <!-- end -->
+<!-- end -->
 
 - [ ] **cf.complete — Verify and report**
   - Requires: all preceding steps.

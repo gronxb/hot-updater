@@ -2,13 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  chmodSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-} from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,20 +38,16 @@ if (missingRustTools.length > 0) {
 ensureRustTargetInstalled(rustupBin, target.rustTarget);
 
 console.log(`[wasm] building ${target.manifestPath}`);
-execFileSync(
-  cargoBin,
-  [
-    "build",
-    "--manifest-path",
-    target.manifestPath,
-    "--target",
-    target.rustTarget,
-    "--release",
-  ],
-  {
-    stdio: "inherit",
-  },
-);
+execFileSync(cargoBin, [
+  "build",
+  "--manifest-path",
+  target.manifestPath,
+  "--target",
+  target.rustTarget,
+  "--release",
+], {
+  stdio: "inherit",
+});
 
 if (!existsSync(target.sourceWasm)) {
   throw new Error(
@@ -75,22 +65,15 @@ console.log(`[wasm] sha256 ${sha256File(target.outputWasm)}`);
 function resolveBuildTarget(targetConfig) {
   const crateDir = resolvePath(targetConfig.crateDir || "rust/hdiff-wasm");
   const rustTarget = targetConfig.rustTarget || "wasm32-unknown-unknown";
-  const manifestPath = resolvePath(
-    targetConfig.manifestPath || path.join(crateDir, "Cargo.toml"),
-  );
-  const crateName =
-    targetConfig.crateName || readCargoPackageName(manifestPath);
-  const wasmFileName =
-    targetConfig.wasmFileName || `${crateName.replaceAll("-", "_")}.wasm`;
+  const manifestPath = resolvePath(targetConfig.manifestPath || path.join(crateDir, "Cargo.toml"));
+  const crateName = targetConfig.crateName || readCargoPackageName(manifestPath);
+  const wasmFileName = targetConfig.wasmFileName || `${crateName.replaceAll("-", "_")}.wasm`;
 
   const sourceWasm = resolvePath(
-    targetConfig.sourceWasm ||
-      path.join(crateDir, "target", rustTarget, "release", wasmFileName),
+    targetConfig.sourceWasm || path.join(crateDir, "target", rustTarget, "release", wasmFileName)
   );
 
-  const outputWasm = resolvePath(
-    targetConfig.outputWasm || "assets/hdiff.wasm",
-  );
+  const outputWasm = resolvePath(targetConfig.outputWasm || "assets/hdiff.wasm");
 
   return {
     rustTarget,
@@ -108,9 +91,7 @@ function ensureRustTargetInstalled(rustup, target) {
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
-    throw new Error(
-      `[wasm] ${rustup} is required to build wasm. Original error: ${String(error)}`,
-    );
+    throw new Error(`[wasm] ${rustup} is required to build wasm. Original error: ${String(error)}`);
   }
 
   const installed = new Set(installedTargets.split(/\r?\n/).filter(Boolean));
@@ -144,8 +125,7 @@ function canRun(bin, args) {
 
 function readCargoPackageName(manifestPath) {
   const raw = readFileSync(manifestPath, "utf8");
-  const packageSection =
-    raw.match(/\[package\]([\s\S]*?)(?:\n\s*\[|$)/)?.[1] ?? "";
+  const packageSection = raw.match(/\[package\]([\s\S]*?)(?:\n\s*\[|$)/)?.[1] ?? "";
   const name = packageSection.match(/^\s*name\s*=\s*"([^"]+)"/m)?.[1];
   if (!name) {
     throw new Error(`[wasm] unable to resolve crate name from ${manifestPath}`);

@@ -24,9 +24,9 @@ import { remoteConfig } from "@hot-updater/server/plugins";
 import { HotUpdater, remoteConfig } from "@hot-updater/react-native";
 ```
 
-| Entry      | Re-exported as                                                         |
-| ---------- | ---------------------------------------------------------------------- |
-| `./server` | `@hot-updater/server/plugins`                                          |
+| Entry      | Re-exported as                                                          |
+| ---------- | ----------------------------------------------------------------------- |
+| `./server` | `@hot-updater/server/plugins`                             |
 | `./client` | `remoteConfig` and its types from the `@hot-updater/react-native` root |
 
 See [Remote Config](https://hot-updater.dev/docs/guides/remote-config).
