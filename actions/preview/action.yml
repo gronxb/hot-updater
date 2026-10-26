@@ -2,9 +2,8 @@ name: hot-updater preview
 description: >-
   Deploys a pull request's bundle to its own channel, builds a preview
   native build, which Hot Updater tracks, only when the registry has none for
-  the project's
-  fingerprint, and comments the install link and the channel's QR code. When
-  the pull request closes, it deletes the channel.
+  the project's fingerprint, and comments the install link and the channel's
+  QR code. When the pull request closes, it deletes the channel.
 author: gronxb
 
 inputs:
