@@ -138,6 +138,7 @@ import {
 
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
 import { handleNativeBuildCreate } from "./buildNative";
 
 beforeEach(() => {
@@ -354,6 +355,24 @@ describe("native-build ios tracking", () => {
     expect(p.log.error).toHaveBeenCalledWith(
       "Hot Updater tracks every native build, and can't reach its native build registry: connection refused\nNothing was built. Check the database and storage in hot-updater.config.ts, and their credentials.",
     );
+  });
+
+  it("checks the registry without a scope when the native project is not generated yet, and builds", async () => {
+    vi.mocked(resolveNativeBuildScope).mockRejectedValueOnce(
+      new Error("ios/HotUpdaterExample/Info.plist does not exist"),
+    );
+
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+
+    expect(preflightNativeBuildRegistration).toHaveBeenCalledWith(null);
+    expect(events).toEqual([
+      "preflight",
+      "prebuild",
+      "build",
+      "register",
+      "dispose",
+    ]);
+    expect(p.log.error).not.toHaveBeenCalled();
   });
 
   it("tracks no Debug build, saying so before the build, without the preflight", async () => {

@@ -297,8 +297,9 @@ Every native build is tracked in the native build registry of the server that
 `database` and `storage` in `hot-updater.config.ts` name, with the same
 credentials `hot-updater deploy` uses. Before it builds, and before any Apple
 or Google sign-in, the CLI checks that it can: it asks the registry for the
-build's scope, and reads back the artifact of a build the registry already
-tracks there. When the database or the storage can't be reached, it stops in
+build's scope, or, when the build adapter's prebuild has yet to generate the
+native project, for its newest build, and reads back the artifact of a build
+the registry already tracks there. When the database or the storage can't be reached, it stops in
 seconds, naming which, and builds nothing.
 
 After the build, the CLI:

@@ -439,13 +439,15 @@ const prepareTracking = async ({
     );
     return "debug";
   }
+  // The scope the build would have, read without writing the native
+  // projects. An adapter whose prebuild generates them may leave nothing to
+  // read yet: the registry is then checked without a scope.
+  const scope = await resolveNativeBuildScope(
+    await loadConfig({ platform, channel: "" }),
+    { platform, scheme, json },
+  ).catch(() => null);
   try {
-    await preflightNativeBuildRegistration(
-      await resolveNativeBuildScope(
-        await loadConfig({ platform, channel: "" }),
-        { platform, scheme, json },
-      ),
-    );
+    await preflightNativeBuildRegistration(scope);
   } catch (error) {
     throw new NativeBuildFailure(
       `Hot Updater tracks every native build, and can't reach ${error instanceof Error ? error.message : String(error)}\nNothing was built. Check the database and storage in hot-updater.config.ts, and their credentials.`,

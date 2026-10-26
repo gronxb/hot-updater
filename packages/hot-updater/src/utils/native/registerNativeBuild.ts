@@ -66,10 +66,12 @@ const removeUnregisteredArtifact = async (
  * objects. When the registry holds a build for `scope`, its artifact is
  * read back (`exists`), with the server's real storage location; with
  * none, nothing stored names one yet, and no write is probed: the first
- * upload after the build is the check.
+ * upload after the build is the check. Without a scope, as before a build
+ * adapter's prebuild writes the native projects it reads from, the
+ * registry's newest build stands in for it.
  */
 export const preflightNativeBuildRegistration = async (
-  scope: NativeBuildScope,
+  scope: NativeBuildScope | null,
 ): Promise<void> => {
   const server = await loadServer(await loadConfig(null));
   try {
@@ -91,7 +93,11 @@ export const preflightNativeBuildRegistration = async (
     }
     let found: NativeBuildRow | null;
     try {
-      found = await core.findNativeBuild(scope);
+      found =
+        scope === null
+          ? ((await core.listNativeBuilds({ order: "desc", limit: 1 }))[0] ??
+            null)
+          : await core.findNativeBuild(scope);
     } catch (error) {
       throw unreachable("its native build registry", error);
     }

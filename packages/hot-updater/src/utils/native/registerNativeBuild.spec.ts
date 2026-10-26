@@ -338,6 +338,35 @@ describe("preflightNativeBuildRegistration", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it("without a scope, as before a prebuild generates the native projects, reads back the registry's newest build", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    // Another scope's build: a scope-free check still reaches it.
+    const row = await registerNativeBuild(
+      android({ artifactPath, fingerprintHash: "fingerprint-b" }),
+    );
+    const exists = vi.spyOn(storage.adapter, "exists");
+    const find = vi.spyOn(harness.core, "findNativeBuild");
+    // Only the preflight's own reads: the registration above found too.
+    find.mockClear();
+
+    await preflightNativeBuildRegistration(null);
+
+    expect(find).not.toHaveBeenCalled();
+    expect(exists).toHaveBeenCalledWith({
+      storageUri: row.artifact_storage_uri,
+    });
+  });
+
+  it("without a scope and with nothing tracked, reads the registry and probes nothing", async () => {
+    const exists = vi.spyOn(storage.adapter, "exists");
+
+    await preflightNativeBuildRegistration(null);
+
+    expect(exists).not.toHaveBeenCalled();
+    expect(harness.dispose).toHaveBeenCalledOnce();
+  });
+
   it("fails when the server has no registry", async () => {
     vi.spyOn(harness.core, "findNativeBuild").mockRejectedValueOnce(
       new Error("The server has no native build route"),
