@@ -489,7 +489,7 @@ public class MainApplication extends Application implements ReactApplication {
 
 ### iOS
 
-<Tabs items={['Swift', 'Objective-C']}>
+<Tabs items={['Swift', 'Swift (RN 0.88+)', 'Objective-C']}>
   <Tab value="Swift">
 
 For Swift projects, modify your `AppDelegate.swift`:
@@ -525,6 +525,32 @@ class AppDelegate: RCTAppDelegate {
     Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
     HotUpdater.bundleURL() // [!code ++]
 #endif
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Swift (RN 0.88+)">
+
+The React Native 0.88 template hosts React in `SceneDelegate.swift` and its `AppDelegate.swift` has no `bundleURL()`. Modify `SceneDelegate.swift` instead:
+
+```swift title="ios/<your-app-name>/SceneDelegate.swift"
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+import UIKit
+import HotUpdater // [!code ++]
+
+class SceneDelegate: RCTDefaultReactNativeFactoryDelegate, UIWindowSceneDelegate {
+  // ...
+
+  override func bundleURL() -> URL? {
+    #if DEBUG
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+    #else
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
+    #endif
   }
 }
 ```
