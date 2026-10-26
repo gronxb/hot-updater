@@ -26,10 +26,10 @@ export function withForeignSigning(
   );
 }
 
-/** The secret a deploy reads the project's key from, through `env()`. */
+/** The secret a deploy reads the project's key from, through `envSecrets()`. */
 export const PROJECT_SIGNING_KEY_SECRET = "bundle-signing-key";
 
-/** The variable `env()` reads `PROJECT_SIGNING_KEY_SECRET` from. */
+/** The variable `envSecrets()` reads `PROJECT_SIGNING_KEY_SECRET` from. */
 export const PROJECT_SIGNING_KEY_VARIABLE = "HOT_UPDATER_BUNDLE_SIGNING_KEY";
 
 /**
@@ -54,12 +54,12 @@ export function withSecretSigning(source: string): string {
 
 /**
  * Whether a deploy without the key's secret was refused for it: the CLI
- * names the variable `env()` read and blocks the deploy.
+ * names the variable `envSecrets()` read and blocks the deploy.
  */
 export function refusedForMissingSigningSecret(output: string): boolean {
   return (
     output.includes(
-      `which is not in the env secrets adapter (${PROJECT_SIGNING_KEY_VARIABLE} in the environment or .env.hotupdater)`,
+      `which is not in the envSecrets secrets adapter (${PROJECT_SIGNING_KEY_VARIABLE} in the environment or .env.hotupdater)`,
     ) && output.includes("Deployment blocked.")
   );
 }

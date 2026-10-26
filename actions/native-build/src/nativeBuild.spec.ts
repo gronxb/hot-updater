@@ -96,7 +96,7 @@ describe("parseInputs", () => {
 });
 
 describe("cliEnv", () => {
-  it("gives the CLI the job's variables, which env() reads, and CI so it never signs in", () => {
+  it("gives the CLI the job's variables, which envSecrets() reads, and CI so it never signs in", () => {
     expect(
       cliEnv({ PATH: "/bin", HOT_UPDATER_RELEASE_KEYSTORE: "{}" }),
     ).toEqual({
@@ -181,7 +181,8 @@ describe("runAction", () => {
   it("fails with the CLI's exit code, whose output names what is missing", async () => {
     const { deps: d, outputs } = deps({
       code: 1,
-      stdout: "play-service-account is not in the env secrets adapter.\n",
+      stdout:
+        "play-service-account is not in the envSecrets secrets adapter.\n",
     });
 
     await expect(runAction(d, parseInputs(env()))).rejects.toThrow(

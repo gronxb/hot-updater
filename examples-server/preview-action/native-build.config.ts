@@ -9,7 +9,7 @@ import { database, storage } from "./shared.ts";
  * Android release scheme whose keystore the job's environment holds, one
  * whose keystore it lacks, and an iOS release scheme that signs with an App
  * Store Connect API key, on the proof's backend. Every credential comes
- * through the default `env()` secrets adapter.
+ * through the default `envSecrets()` secrets adapter.
  */
 export default defineConfig({
   nativeBuild: {

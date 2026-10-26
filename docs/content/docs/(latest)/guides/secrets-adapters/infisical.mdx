@@ -6,7 +6,7 @@ icon: LockKeyhole
 
 ## Read secrets from Infisical
 
-`infisical()` from `hot-updater/secrets` reads the secrets the config names
+`infisical()` from `hot-updater` reads the secrets the config names
 from an [Infisical](https://infisical.com) project, and stores the
 credentials `secrets put` stores and `secrets issue` and builds issue after an
 Apple or Google sign-in. It works
@@ -15,8 +15,7 @@ machine identity, with Universal Auth or with the GitHub Actions OIDC
 token, or with an access token.
 
 ```ts title="hot-updater.config.ts (partial)"
-import { defineConfig } from "hot-updater";
-import { infisical } from "hot-updater/secrets";
+import { defineConfig, infisical } from "hot-updater";
 
 export default defineConfig({
   secrets: infisical({

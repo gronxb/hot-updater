@@ -136,13 +136,13 @@ describe("loadConfig", () => {
     }
   });
 
-  it("defaults secrets to env() and registers it for secret: references", async () => {
+  it("defaults secrets to envSecrets() and registers it for secret: references", async () => {
     const { loadConfig } = await import("./loadConfig");
     const { getConfiguredSecrets } = await import("./secrets");
 
     const config = await loadConfig(null);
 
-    expect(config.secrets.name).toBe("env");
+    expect(config.secrets.name).toBe("envSecrets");
     expect(config.secrets.set).toBeUndefined();
     expect(getConfiguredSecrets()).toBe(config.secrets);
   });

@@ -99,7 +99,7 @@ The adapter holds each credential as one JSON value:
 `{"keyId","issuerId","p8"}` for an App Store Connect API key, with the `.p8`
 file's PEM; `{"keystore","storePassword","keyAlias","keyPassword"}` for a
 keystore, the keystore file in base64; and a Play service account's own JSON
-key file. With the default `env()`, set the JSON in an environment variable:
+key file. With the default `envSecrets()`, set the JSON in an environment variable:
 `HOT_UPDATER_ASC_API_KEY` for `secret:asc-api-key`, and `HOT_UPDATER_` before
 any other name, upper-cased with `_` for every character but letters and
 digits.
@@ -201,13 +201,13 @@ read it:
   (`HOT_UPDATER_ASC_KEY`, `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`,
   or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`), which the CLI reads before any
   adapter.
-- When the adapter is read-only, such as the default `env()`, the CLI writes
+- When the adapter is read-only, such as the default `envSecrets()`, the CLI writes
   the key to `<cacheDir>/issued/<name>.json` (`node_modules/.hot-updater` unless
   `cacheDir` sets another directory), a file only your user can read in a
   directory git ignores. It prints the file's path and the variables to store
   it in, never the key: `HOT_UPDATER_ASC_API_KEY` or
   `HOT_UPDATER_PLAY_SERVICE_ACCOUNT` (the name's variable, as
-  [`env()`](/docs/guides/secrets-adapters/env) reads it) set to the file's contents, in the
+  [`envSecrets()`](/docs/guides/secrets-adapters/env-secrets) reads it) set to the file's contents, in the
   environment or `.env.hotupdater`, or the key's own variables from
   [Provide signing credentials](#provide-signing-credentials). The build that
   signed in continues with the key from the file, so its upload goes through.
@@ -222,7 +222,7 @@ env:
   HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
 ```
 
-With `env()`, when the project's `origin` (or another remote) is on GitHub and
+With `envSecrets()`, when the project's `origin` (or another remote) is on GitHub and
 you have a token (`GH_TOKEN` or `GITHUB_TOKEN`, or the GitHub CLI's
 `gh auth token`), the CLI offers once to store the key as that secret with
 [`githubActions()`](/docs/guides/secrets-adapters/github-actions). Declining

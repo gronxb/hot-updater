@@ -349,13 +349,13 @@ describe("ensureAscApiKey", () => {
     );
   });
 
-  it("names where a read-only adapter other than env() reads the key", async () => {
+  it("names where a read-only adapter other than envSecrets() reads the key", async () => {
     fakeStore({ writable: false });
     const githubSecrets = vi.fn();
     await withTTY(true, () =>
       ensure({ name: "widget-asc", cacheDir, githubSecrets }),
     );
-    // CI reads a GitHub Actions secret only through env(): no offer.
+    // CI reads a GitHub Actions secret only through envSecrets(): no offer.
     expect(confirm).not.toHaveBeenCalled();
     expect(githubSecrets).not.toHaveBeenCalled();
     const file = path.join(cacheDir, "issued", "widget-asc.json");
@@ -655,7 +655,7 @@ describe("ensureAscApiKey", () => {
       "The spec-store secrets adapter stored asc-api-key (spec://asc-api-key), and does not read it back here",
     );
     // Builds read the per-field variables before any adapter; the whole
-    // value would go through env(), which is not the config's adapter.
+    // value would go through envSecrets(), which is not the config's adapter.
     expect(guidance).toContain(
       "Set HOT_UPDATER_ASC_KEY to its p8, HOT_UPDATER_ASC_KEY_ID to its keyId, HOT_UPDATER_ASC_ISSUER_ID to its issuerId (the file's fields) in the environment or .env.hotupdater",
     );

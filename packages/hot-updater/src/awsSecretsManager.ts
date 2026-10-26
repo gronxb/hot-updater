@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { registerSecretValue } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
-import { AwsClient } from "aws4fetch";
 
 /** AWS credentials, as the AWS SDK takes them. */
 export interface AwsSecretsManagerCredentials {
@@ -259,6 +258,9 @@ export const awsSecretsManager = ({
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> => {
     const { endpoint: url, region: signingRegion } = resolveSettings();
+    // aws4fetch loads on the first call: the config file imports this
+    // adapter on every command.
+    const { AwsClient } = await import("aws4fetch");
     const signer = new AwsClient({
       ...(await resolveCredentials()),
       region: signingRegion,

@@ -227,7 +227,7 @@ type DeployBundleRequest = {
   /**
    * `foreign`: the deploy signs its bundle with a key generated for it, not
    * the one whose public key the app embeds. `secret`: the deploy reads the
-   * project's key through `env()` as `secret:bundle-signing-key`, with the
+   * project's key through `envSecrets()` as `secret:bundle-signing-key`, with the
    * key file moved away.
    */
   signingKey?: "foreign" | "secret";
@@ -7903,7 +7903,7 @@ async function withForeignSigningKey(deploy: () => Promise<string>) {
 }
 
 /**
- * Runs a deploy that reads the project's private key through `env()` as
+ * Runs a deploy that reads the project's private key through `envSecrets()` as
  * `secret:bundle-signing-key`, with the key file moved away so no path can
  * supply it. A deploy without the variable must first be refused for it,
  * and the deploy with it must sign with the key the app embeds, which the

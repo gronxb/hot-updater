@@ -75,7 +75,7 @@ describe("refusedForMissingSigningSecret", () => {
   it("accepts only the CLI's refusal for the missing secret", () => {
     const refusal = [
       "Signing configuration error:",
-      "  Failed to resolve the bundle signing provider public key. signing.privateKey reads the bundle signing key bundle-signing-key, which is not in the env secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment or .env.hotupdater). Set it to the RSA private key in PEM, or generate a key pair with `npx hot-updater keys generate --secret bundle-signing-key`.",
+      "  Failed to resolve the bundle signing provider public key. signing.privateKey reads the bundle signing key bundle-signing-key, which is not in the envSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment or .env.hotupdater). Set it to the RSA private key in PEM, or generate a key pair with `npx hot-updater keys generate --secret bundle-signing-key`.",
       "Deployment blocked. Fix the signing configuration and try again.",
     ].join("\n");
 

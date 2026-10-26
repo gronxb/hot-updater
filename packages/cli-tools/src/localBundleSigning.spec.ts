@@ -236,7 +236,7 @@ describe("local signing with privateKey from a secret", () => {
     expect(maskSecretValues(`line ${body}`)).toBe("line ********");
   });
 
-  it("reads a one-line PEM from env(), with \\n for its line breaks", async () => {
+  it("reads a one-line PEM from envSecrets(), with \\n for its line breaks", async () => {
     const cwd = await createTempDir();
     const { privateKey, publicKey } = createPem();
     await fs.writeFile(
@@ -265,7 +265,7 @@ describe("local signing with privateKey from a secret", () => {
     );
   });
 
-  it("names env()'s variable when the environment has no key", async () => {
+  it("names envSecrets()'s variable when the environment has no key", async () => {
     const cwd = await createTempDir();
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:bundle-signing-key" },
