@@ -410,6 +410,13 @@ CLI, so a self-hosted runner that sets no `CI` never starts a sign-in either.
 | `artifact-path` | The built `.ipa`, `.aab`, `.apk`, simulator `.app`, or `.xcarchive`                                                 |
 | `build`         | JSON of the build: platform, scheme, artifact path and kind, min bundle ID, channel, and fingerprint or app version |
 | `native-build`  | JSON of the registered native build, or `null` without `register`                                                   |
+| `build-log`     | When the build fails, the path of the CLI's build log                                                               |
+
+When the build fails, the job's log shows the build's errors and the path of
+the CLI's build log, which keeps the whole output of `xcodebuild` or Gradle,
+and the action uploads that log as the
+`hot-updater-build-log-<platform>-<scheme>` artifact. Download it from the
+run's **Summary** page.
 
 Upload the artifact with `actions/upload-artifact` to keep it with the run:
 

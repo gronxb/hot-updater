@@ -5,6 +5,7 @@ import {
 import { type IosNativeRunOptions, runIos } from "@hot-updater/apple-helper";
 import {
   createMinBundleId,
+  BuildFailedError,
   CredentialUnavailableError,
   p,
   withCredentialResolver,
@@ -77,7 +78,11 @@ const runNativeInternal = async <
 const cleanup = (e: unknown): never => {
   if (e instanceof ExecaError) {
     console.error(e);
-  } else if (e instanceof CredentialUnavailableError) {
+  } else if (
+    e instanceof CredentialUnavailableError ||
+    // Its logger printed the tool's errors and the log's path.
+    e instanceof BuildFailedError
+  ) {
     p.log.error(e.message);
   } else if (e instanceof Error) {
     p.log.error(e.stack ?? e.message);
