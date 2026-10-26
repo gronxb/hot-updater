@@ -256,30 +256,57 @@ const runConcurrently = async <T>(
   }
 };
 
-/** The build settings that turn code signing off when set to NO. */
+/**
+ * A signing build setting's assignment: the key, any conditions such as
+ * `[sdk=iphoneos*]`, and the value, without a trailing comment.
+ */
 const SIGNING_SETTING =
-  /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)\s*=\s*([^\s/]*)\s*(?:\/\/.*)?$/u;
+  /^\s*(CODE_SIGNING_ALLOWED|CODE_SIGNING_REQUIRED)((?:\[[^\]]*\])*)\s*=\s*([^\s/]*)\s*(?:\/\/.*)?$/u;
 
-/** A signing setting's value, and the line and place that set it last. */
-type SigningSettings = Map<string, { value: string; where: string }>;
+/**
+ * Each signing setting's last unconditional value and where it was set,
+ * and the settings some condition also sets, whose value for the device
+ * archive the config alone can't tell.
+ */
+interface SigningSettings {
+  readonly values: Map<string, { value: string; where: string }>;
+  readonly conditional: Set<string>;
+}
 
 /** A scheme's `exportOptionsPlist`, which resolves from the project's root. */
 const schemeFile = (file: string) =>
   path.isAbsolute(file) ? file : path.resolve(getCwd(), file);
 
+/** Applies one assignment, as Xcode does: the last unconditional one wins. */
+const applySetting = (
+  settings: SigningSettings,
+  line: string,
+  label: string,
+) => {
+  const [, key, conditions, value] = line.match(SIGNING_SETTING) ?? [];
+  if (!key) return;
+  if (conditions) settings.conditional.add(key);
+  else
+    settings.values.set(key, {
+      value: value!,
+      where: `${line.trim()} in ${label}`,
+    });
+};
+
 /**
- * Applies an xcconfig's unconditional signing settings over `settings`, in
- * order, following its `#include`s, which resolve from the including file,
- * as Xcode reads it: the last assignment wins.
+ * Applies an xcconfig's signing settings over `settings`, in order,
+ * following its `#include`s, which resolve from the including file, as
+ * Xcode reads it. A file included again applies again; only an include
+ * cycle (`including`) stops.
  */
 const applyXcconfig = async (
   file: string,
   label: string,
   settings: SigningSettings,
-  visited: Set<string>,
+  including: Set<string>,
 ) => {
-  if (visited.has(file)) return;
-  visited.add(file);
+  if (including.has(file)) return;
+  including.add(file);
   const text = await fs.promises.readFile(file, "utf-8").catch(() => undefined);
   for (const line of text?.split("\n") ?? []) {
     const include = line.match(/^\s*#include\??\s*"([^"]+)"/u)?.[1];
@@ -288,14 +315,13 @@ const applyXcconfig = async (
         path.resolve(path.dirname(file), include),
         include,
         settings,
-        visited,
+        including,
       );
-      continue;
+    } else {
+      applySetting(settings, line, label);
     }
-    const [, key, value] = line.match(SIGNING_SETTING) ?? [];
-    if (key)
-      settings.set(key, { value: value!, where: `${line.trim()} in ${label}` });
   }
+  including.delete(file);
 };
 
 /**
@@ -303,19 +329,17 @@ const applyXcconfig = async (
  * applies: the `extraParams` settings first, then the xcconfigs the build
  * xcconfig includes over them, in order, its `xcconfig` and each
  * `-xcconfig` in `extraParams`, which resolve from `ios/`, where xcodebuild
- * runs (`writeBuildXcconfig`). Undefined when it signs.
+ * runs (`writeBuildXcconfig`). Undefined when it signs, or when a
+ * conditional setting, such as `[sdk=iphoneos*]`, may decide: the build
+ * does.
  */
 const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
   const extraParams = iosScheme.extraParams ?? [];
-  const settings: SigningSettings = new Map();
-  for (const entry of extraParams) {
-    const [, key, value] = entry.match(SIGNING_SETTING) ?? [];
-    if (key)
-      settings.set(key, {
-        value: value!,
-        where: `${entry.trim()} in extraParams`,
-      });
-  }
+  const settings: SigningSettings = {
+    values: new Map(),
+    conditional: new Set(),
+  };
+  for (const entry of extraParams) applySetting(settings, entry, "extraParams");
   const xcconfigs = [
     ...(iosScheme.xcconfig ? [iosScheme.xcconfig] : []),
     ...extraParams.flatMap((entry, index) =>
@@ -324,17 +348,18 @@ const codeSigningOff = async (iosScheme: NativeBuildIosScheme) => {
         : [],
     ),
   ];
-  const visited = new Set<string>();
   for (const xcconfig of xcconfigs) {
     await applyXcconfig(
       path.resolve(getCwd(), "ios", xcconfig),
       xcconfig,
       settings,
-      visited,
+      new Set(),
     );
   }
-  return [...settings.values()].find(({ value }) => /^no$/iu.test(value))
-    ?.where;
+  for (const [key, { value, where }] of settings.values) {
+    if (/^no$/iu.test(value) && !settings.conditional.has(key)) return where;
+  }
+  return undefined;
 };
 
 /**

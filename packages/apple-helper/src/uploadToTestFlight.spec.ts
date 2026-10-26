@@ -1368,6 +1368,44 @@ describe("resolveTestFlightUploadKey", () => {
       ).resolves.toMatchObject({ kind: "asc-api-key" });
     });
 
+    it("leaves a NO to the build when a condition such as [sdk=iphoneos*] may set it back", async () => {
+      await write(
+        "Signing.xcconfig",
+        "CODE_SIGNING_ALLOWED = NO\nCODE_SIGNING_ALLOWED[sdk=iphoneos*] = YES\n",
+      );
+
+      await expect(
+        resolve({ xcconfig: "Signing.xcconfig" }),
+      ).resolves.toMatchObject({ kind: "asc-api-key" });
+    });
+
+    it("applies an xcconfig included again, after a file that turned signing off", async () => {
+      await write("Shared.xcconfig", "CODE_SIGNING_ALLOWED = YES\n");
+      await write(
+        "Base.xcconfig",
+        '#include "Shared.xcconfig"\nCODE_SIGNING_ALLOWED = NO\n',
+      );
+
+      await expect(
+        resolve({
+          xcconfig: "Base.xcconfig",
+          extraParams: ["-xcconfig", "Shared.xcconfig"],
+        }),
+      ).resolves.toMatchObject({ kind: "asc-api-key" });
+    });
+
+    it("stops at an include cycle", async () => {
+      await write(
+        "A.xcconfig",
+        '#include "B.xcconfig"\nCODE_SIGNING_ALLOWED = NO\n',
+      );
+      await write("B.xcconfig", '#include "A.xcconfig"\n');
+
+      await expect(resolve({ xcconfig: "A.xcconfig" })).rejects.toThrow(
+        "turns code signing off (CODE_SIGNING_ALLOWED = NO in A.xcconfig).",
+      );
+    });
+
     it("refuses a NO that comes after a YES", async () => {
       await write(
         "Signing.xcconfig",
