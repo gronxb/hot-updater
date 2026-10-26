@@ -64,18 +64,22 @@
     "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/console": "workspace:*",
-    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@iarna/toml": "2.2.5",
     "jiti": "2.6.1"
   },
   "devDependencies": {
+    "@1password/sdk": "0.5.0",
     "@aws-sdk/client-kms": "3.1066.0",
-    "@aws-sdk/credential-providers": "3.1066.0",
+    "@aws-sdk/client-secrets-manager": "3.1066.0",
     "@bacons/xcode": "1.0.0-alpha.33",
+    "@bitwarden/sdk-napi": "1.0.0",
     "@commander-js/extra-typings": "^14.0.0",
+    "@dotenvx/dotenvx": "2.38.2",
     "@google-cloud/kms": "6.0.0",
+    "@google-cloud/secret-manager": "7.1.1",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/azure": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
@@ -85,34 +89,31 @@
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@hot-updater/vercel": "workspace:*",
+    "@infisical/sdk": "5.0.2",
     "@noble/hashes": "2.2.0",
     "@types/connect": "^3.4.38",
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
-    "aws4fetch": "1.0.20",
+    "@typescript/native": "npm:typescript@7.0.2",
     "commander": "^14.0.0",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
     "fast-xml-parser": "5.7.2",
-    "google-auth-library": "10.7.0",
     "is-port-reachable": "^4.0.0",
     "kysely": "catalog:db",
     "libsodium-wrappers": "0.8.4",
     "open": "^10.1.0",
     "plist": "^3.1.0",
-    "tsdown": "catalog:tools",
     "sql-formatter": "15.6.10",
+    "tsdown": "catalog:tools",
     "tweetnacl": "1.0.3",
-    "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "verkit": "catalog:"
   },
   "peerDependencies": {
     "@aws-sdk/client-kms": "^3.1066.0",
-    "@aws-sdk/credential-providers": "^3.1066.0",
     "@google-cloud/kms": "^6.0.0",
-    "google-auth-library": "^10.0.0 || ^11.0.0",
     "@hot-updater/aws": "workspace:^",
     "@hot-updater/azure": "workspace:^",
     "@hot-updater/cloudflare": "workspace:^",
@@ -124,13 +125,7 @@
     "@aws-sdk/client-kms": {
       "optional": true
     },
-    "@aws-sdk/credential-providers": {
-      "optional": true
-    },
     "@google-cloud/kms": {
-      "optional": true
-    },
-    "google-auth-library": {
       "optional": true
     },
     "@hot-updater/supabase": {
@@ -171,7 +166,6 @@
       "0.9.10"
     ],
     "anynum": "1.0.0",
-    "aws4fetch": "1.0.20",
     "base64-js": "1.5.1",
     "braces": "3.0.3",
     "bundle-name": "4.1.0",

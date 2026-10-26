@@ -122,7 +122,7 @@ describe("offerGitHubSecret", () => {
     offerGitHubSecret({
       name: "asc-api-key",
       value: "{}",
-      file: "/tmp/issued/asc-api-key.json",
+      file: "/home/dev/.hot-updater/secrets/app-0123456789ab/asc-api-key.json",
       findRepository: async () => "acme/app",
       findToken: async () => "gho_token",
       ...options,
@@ -138,7 +138,7 @@ describe("offerGitHubSecret", () => {
     expect(createSecrets).not.toHaveBeenCalled();
   });
 
-  it("writes the variable envSecrets() reads the name from", async () => {
+  it("writes the variable a workflow maps the name to", async () => {
     confirm.mockResolvedValue(true);
     const set = vi.fn(async () => {});
     await expect(
@@ -149,12 +149,8 @@ describe("offerGitHubSecret", () => {
         }),
       ),
     ).resolves.toBe("stored");
-    // githubActions() stores it as HOT_UPDATER_WIDGET_ASC.
-    expect(set).toHaveBeenCalledExactlyOnceWith(
-      "widget-asc",
-      "{}",
-      expect.anything(),
-    );
+    // The writer stores it as HOT_UPDATER_WIDGET_ASC.
+    expect(set).toHaveBeenCalledExactlyOnceWith("widget-asc", "{}");
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining(

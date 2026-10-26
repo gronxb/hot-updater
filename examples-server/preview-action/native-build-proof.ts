@@ -1,31 +1,34 @@
 /**
  * The native build action's CI proof: what each run must have printed, and
  * left in Postgres, read from the CLI's recorded output (PROOF_LOG, written
- * by scripts/record-cli.mjs) and from Postgres directly. Every credential
- * comes from the job's environment through the default envSecrets() secrets
- * adapter.
+ * by scripts/record-cli.mjs) and from Postgres directly. The config sets no
+ * `secrets` adapter, so the CLI reads every credential from the job's
+ * environment, then localSecrets()'s store under HOT_UPDATER_HOME.
  *
  *   node native-build-proof.ts <stage>
  *
  * Stages:
  * - upload-missing: the environment lacks play-service-account; the run
  *   never signs in to Google, and fails before the build, naming the
- *   variable envSecrets() reads, the command that signs in once, and the
- *   variables that replace it.
+ *   variable and the localSecrets() file it reads, the command
+ *   that signs in once, and the variables that replace it.
  * - keystore-missing: the scheme's keystore is missing, without an upload;
  *   the signing credential fails before the build too.
  * - keystore-malformed: the keystore's JSON value lacks a field; the run
  *   names the field and the shape before the build.
  * - ios-missing: native-build ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
- * - put-read-only: `secrets put` with envSecrets(), which stores nothing, names
- *   the variable to set instead.
- * - built: with every credential set, the run builds, tracks, and fails
- *   only at Google, which refuses the proof's made-up service account.
+ * - put-key-store <service-account.json>: `secrets put` stored the service
+ *   account in localSecrets()'s store, outside the project, readable by the user
+ *   alone, as the file's exact contents, and wrote no `.env.hotupdater`.
+ * - built: with every credential set, the service account in localSecrets()'s store
+ *   alone, the run builds, tracks, and fails only at Google, which
+ *   refuses the proof's made-up service account.
  *
  * Each reads PROOF_LOG.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
 
 import pg from "pg";
 
@@ -60,6 +63,36 @@ const expectExcludes = (log: string, unexpected: string, why: string) => {
   }
 };
 
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Where localSecrets() says it reads `name`: its variable, then its
+ * file in localSecrets()'s store, `<HOT_UPDATER_HOME>/secrets/<project-key>/<name>.json`,
+ * whose project key hashes the repository's origin and the project's
+ * directory in it.
+ */
+const defaultStorePattern = (variable: string, name: string) =>
+  `${variable} in the environment, or ${escapeRegExp(env("HOT_UPDATER_HOME"))}/secrets/[A-Za-z0-9._-]+-[0-9a-f]{12}/${escapeRegExp(name)}\\.json on this machine`;
+
+const expectMatches = (log: string, expected: string) => {
+  if (!new RegExp(expected, "u").test(log)) {
+    throw new Error(
+      `The output does not match:\n  ${expected}\n\nOutput:\n${log}`,
+    );
+  }
+};
+
+/** localSecrets()'s files of `name`, one per project. */
+const keyStoreFiles = (name: string) => {
+  const keys = path.join(env("HOT_UPDATER_HOME"), "secrets");
+  return existsSync(keys)
+    ? readdirSync(keys)
+        .map((project) => path.join(keys, project, `${name}.json`))
+        .filter((file) => existsSync(file))
+    : [];
+};
+
 /** Fingerprinting is the first step after the prebuild: none ran. */
 const expectNothingBuilt = (log: string) =>
   expectExcludes(
@@ -88,9 +121,9 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     // The words of a build that finds no key to issue, and CI never
     // signing in.
-    expectIncludes(
+    expectMatches(
       log,
-      "play-service-account is not in the envSecrets secrets adapter (HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater google-play login`",
+      `play-service-account is not in the localSecrets secrets adapter \\(${defaultStorePattern("HOT_UPDATER_PLAY_SERVICE_ACCOUNT", "play-service-account")}\\)\\. Store it once from a terminal with \`npx hot-updater google-play login\``,
     );
     expectIncludes(
       log,
@@ -106,9 +139,9 @@ const stages: Record<string, () => Promise<void>> = {
   },
   "keystore-missing": async () => {
     const log = readLog();
-    expectIncludes(
+    expectMatches(
       log,
-      "widget-keystore (android-keystore) is not in the envSecrets secrets adapter (HOT_UPDATER_WIDGET_KEYSTORE in the environment or .env.hotupdater). Store it once with `npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.",
+      `widget-keystore \\(android-keystore\\) is not in the localSecrets secrets adapter \\(${defaultStorePattern("HOT_UPDATER_WIDGET_KEYSTORE", "widget-keystore")}\\)\\. Store it once with ${escapeRegExp("`npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.")}`,
     );
     expectIncludes(
       log,
@@ -120,7 +153,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      'The envSecrets secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
+      'The localSecrets secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
     );
     expectExcludes(
       log,
@@ -134,9 +167,9 @@ const stages: Record<string, () => Promise<void>> = {
   // anything runs, with the command that signs in once.
   "ios-missing": async () => {
     const log = readLog();
-    expectIncludes(
+    expectMatches(
       log,
-      "asc-api-key is not in the envSecrets secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater apple login`",
+      `asc-api-key is not in the localSecrets secrets adapter \\(${defaultStorePattern("HOT_UPDATER_ASC_API_KEY", "asc-api-key")}\\)\\. Store it once from a terminal with \`npx hot-updater apple login\``,
     );
     expectIncludes(
       log,
@@ -148,18 +181,54 @@ const stages: Record<string, () => Promise<void>> = {
     );
     expectNothingBuilt(log);
   },
-  "put-read-only": async () => {
+  // localSecrets() keeps what `secrets put` imports in this machine's
+  // localSecrets() store, outside the project, where the next build reads it.
+  "put-key-store": async () => {
     const log = readLog();
-    expectIncludes(
-      log,
-      "The envSecrets secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater to the play-service-account as one JSON value",
-    );
+    expectIncludes(log, "Secret stored");
+    const source = process.argv[3];
+    if (!source) throw new Error("Pass the service account's file.");
+    const files = keyStoreFiles("play-service-account");
+    if (files.length !== 1) {
+      throw new Error(
+        `Expected one play-service-account in localSecrets()'s store, found ${files.length}.`,
+      );
+    }
+    const file = files[0]!;
+    expectIncludes(log, file);
+    if (readFileSync(file, "utf8") !== readFileSync(source, "utf8")) {
+      throw new Error(`${file} does not hold the service account as given.`);
+    }
+    if ((statSync(file).mode & 0o777) !== 0o600) {
+      throw new Error(`${file} is readable by others.`);
+    }
+    if ((statSync(path.dirname(file)).mode & 0o777) !== 0o700) {
+      throw new Error(`${path.dirname(file)} is open to others.`);
+    }
+    if (!path.relative(process.cwd(), file).startsWith("..")) {
+      throw new Error(`${file} is inside the project.`);
+    }
+    if (existsSync(".env.hotupdater")) {
+      throw new Error("secrets put wrote .env.hotupdater.");
+    }
+    const { private_key: privateKey } = JSON.parse(
+      readFileSync(source, "utf8"),
+    ) as { private_key: string };
+    const keyLine = privateKey.split("\n")[1]!;
+    expectExcludes(log, keyLine, "the private key is printed.");
   },
   built: async () => {
     const log = readLog();
+    // The service account comes from localSecrets()'s store alone.
+    if (process.env["HOT_UPDATER_PLAY_SERVICE_ACCOUNT"]) {
+      throw new Error("HOT_UPDATER_PLAY_SERVICE_ACCOUNT is set.");
+    }
+    if (keyStoreFiles("play-service-account").length !== 1) {
+      throw new Error("localSecrets()'s store holds no play-service-account.");
+    }
     expectExcludes(
       log,
-      "is not in the envSecrets secrets adapter",
+      "is not in the localSecrets secrets adapter",
       "every credential the build needs is set.",
     );
     expectExcludes(

@@ -8,7 +8,8 @@ import { database, storage } from "./shared.ts";
  * hot-updater.config.ts that re-exports it into the example: the build,
  * schemes, and fingerprint inputs of the example's own config, on the
  * proof's backend, with the bundle signed by a local key the seed generates
- * and the keystore read from the job's environment by `envSecrets()`.
+ * and the keystore read from the job's environment, as the config sets no
+ * `secrets` adapter.
  */
 export default defineConfig({
   nativeBuild: {

@@ -9,6 +9,8 @@ import {
   credentialLoginCommand,
   credentialPutCommand,
   describeSecret,
+  describeStoredSecret,
+  getConfiguredAdapter,
   getCwd,
   getHotUpdaterEnvValue,
   isSecretName,
@@ -18,7 +20,9 @@ import {
   p,
   readLoadedHotUpdaterEnv,
   registerCredentialValue,
+  secretVariableName,
 } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -194,10 +198,41 @@ const assertSecretName = (name: string) => {
   }
 };
 
+const listNames = (names: readonly string[]) =>
+  names.length <= 2
+    ? names.join(" and ")
+    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+
+/** The variables `secrets put` reads a keystore's passwords from. */
+const PASSWORD_INPUTS: ReadonlySet<string> = new Set([
+  "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
+  "HOT_UPDATER_ANDROID_KEY_PASSWORD",
+]);
+
+/**
+ * The environment variables set, in `process.env` or `.env.hotupdater`, that
+ * builds read for `name` before what the CLI stores: the kind's per-field
+ * overrides, and with `localSecrets()`, the whole value's variable, which it
+ * reads before its files.
+ */
+const environmentOverrides = (
+  kind: CredentialKind,
+  name: string,
+  secrets: SecretsAdapter,
+  env: Readonly<Record<string, string>>,
+) =>
+  [
+    ...CREDENTIAL_ENV_NAMES[kind].flat(),
+    ...(getConfiguredAdapter(secrets) === undefined
+      ? [secretVariableName(name)]
+      : []),
+  ].filter((variable) => getHotUpdaterEnvValue(env, variable) !== undefined);
+
 /**
  * `secrets put`: stores a build credential you have as `name` through the
- * config's `secrets` adapter, as one JSON value that `secret:<name>`
- * resolves. It never signs in: `secrets issue` does.
+ * config's `secrets` adapter, or `localSecrets()`'s store by default, as
+ * one JSON value that `secret:<name>` resolves. It never signs in:
+ * `secrets issue` does.
  */
 export const handleSecretsPut = async (
   name: string,
@@ -218,21 +253,41 @@ export const handleSecretsPut = async (
     }
     // Registers the config's secrets adapter, which everything below uses.
     const { secrets } = await loadConfig(null);
-
-    if (secrets.set === undefined) {
+    const cwd = getCwd();
+    // The keystore's passwords are this command's input, not an override.
+    const overrides = environmentOverrides(
+      options.kind,
+      name,
+      secrets,
+      await readLoadedHotUpdaterEnv(cwd),
+    ).filter((variable) => !PASSWORD_INPUTS.has(variable));
+    if (overrides.length > 0) {
       throw new Error(
-        `The ${secrets.name} secrets adapter is read-only, so Hot Updater stores nothing in it. Set ${describeSecret(secrets, name)} to the ${options.kind} as one JSON value, or set ${CREDENTIAL_ENV_NAMES[options.kind].map((field) => field.join(" or ")).join(", ")}; or configure a secrets adapter that stores values.`,
+        `${listNames(overrides)} ${overrides.length === 1 ? "is" : "are"} set in the environment or .env.hotupdater, which builds read before what Hot Updater stores, so the ${options.kind} you store would never be used. Unset ${overrides.length === 1 ? "it" : "them"}, then run this again.`,
       );
     }
+    // A read-only adapter's value is read before localSecrets()' copy, so a
+    // value stored there would never be used.
+    const configured = getConfiguredAdapter(secrets);
+    if (configured && !configured.set) {
+      const held = (await configured.get([name], { cwd }))[name];
+      if (held) {
+        throw new Error(
+          `${name} is in the ${configured.name} secrets adapter (${describeSecret(configured, name)}), which builds read first and Hot Updater can't write, so the ${options.kind} you store would never be used. Replace it there yourself.`,
+        );
+      }
+    }
+
     const value = await readSecretValue(options);
     // Masked before it is sent, so no failure can print it.
     registerCredentialValue(value);
-    await secrets.set(name, value, { cwd: getCwd() });
+    // Always set: an adapter that stores nothing stores in `localSecrets()`'s store.
+    await secrets.set!(name, value, { cwd });
     p.log.message(
       ui.block("Secret stored", [
         ui.kv("Name", name),
         ui.kv("Kind", options.kind),
-        ui.kv("In", describeSecret(secrets, name)),
+        ui.kv("In", describeStoredSecret(secrets, name)),
       ]),
     );
   });
@@ -353,11 +408,6 @@ const readOverrideFields = async (
   return parseFields(contents);
 };
 
-const listNames = (names: readonly string[]) =>
-  names.length <= 2
-    ? names.join(" and ")
-    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
-
 export interface SecretsIssueOptions {
   /** Issue a new key even when one is stored, which stays valid. */
   readonly replace?: boolean;
@@ -368,8 +418,9 @@ export interface SecretsIssueOptions {
  * signs in, at a terminal, and stores the key Hot Updater
  * issues as `name` through the config's `secrets` adapter, as builds do
  * when theirs is missing: an App Store Connect API key after an Apple
- * Account sign-in, a Play service account after a Google one. A read-only
- * adapter's key goes to an owner-only file, with where to store it.
+ * Account sign-in, a Play service account after a Google one. Without an
+ * adapter that stores values, the key goes to `localSecrets()`'s store,
+ * which builds here read.
  *
  * - In CI or without a terminal, it refuses before anything else, naming
  *   the command to run in one and `secrets put`, which stores a key you
@@ -408,13 +459,11 @@ export const handleSecretsIssue = async (
     }
 
     // Registers the config's secrets adapter, which everything below uses.
-    const { secrets, cacheDir } = await loadConfig(null);
+    const { secrets } = await loadConfig(null);
     const cwd = getCwd();
     const env = await readLoadedHotUpdaterEnv(cwd);
 
-    const overrides = CREDENTIAL_ENV_NAMES[kind]
-      .flat()
-      .filter((variable) => getHotUpdaterEnvValue(env, variable) !== undefined);
+    const overrides = environmentOverrides(kind, name, secrets, env);
     if (overrides.length > 0) {
       const set = `${listNames(overrides)} ${overrides.length === 1 ? "is" : "are"} set in the environment or .env.hotupdater`;
       if (replace) {
@@ -440,6 +489,17 @@ export const handleSecretsIssue = async (
       stored === undefined
         ? undefined
         : describeHeldKey(kind, parseFields(stored));
+    // A read-only adapter's key is read before localSecrets()' copy, so a
+    // new key stored there would never be used.
+    const configured = getConfiguredAdapter(secrets);
+    if (stored !== undefined && replace && configured && !configured.set) {
+      const held = (await configured.get([name], { cwd }))[name];
+      if (held) {
+        throw new Error(
+          `${name} is in the ${configured.name} secrets adapter (${describeSecret(configured, name)}), which builds read first and Hot Updater can't write, so a new ${issuer.label} would never be used. Replace it there yourself, or remove it there, then run \`${issue}\` again.`,
+        );
+      }
+    }
     if (stored !== undefined && !replace) {
       p.log.message(
         ui.block(`${issuer.label} already stored`, [
@@ -457,22 +517,16 @@ export const handleSecretsIssue = async (
       name,
       env,
       secrets,
-      // A read-only adapter's key is written there, with how to store it.
-      cacheDir,
       // Read above: a key is issued whatever the adapter holds now.
       replace: true,
+      replacing: stored !== undefined,
     });
-    if (result.status !== "issued" && result.status !== "saved") return;
+    if (result.status !== "issued") return;
     if (stored !== undefined) {
       p.log.warn(
         ui.block(`The old ${issuer.label} is still valid`, [
           ...(previous?.rows ?? []),
           ...[
-            ...(result.status === "saved"
-              ? [
-                  `${describeSecret(secrets, name)} still holds the old key until you set it to the new one.`,
-                ]
-              : []),
             `Hot Updater never revokes it, as CI or a copy elsewhere, such as a GitHub Actions secret, may still use it. Once nothing does: ${previous ? previous.revoke : `revoke it where you issued it (${kind === "asc-api-key" ? ASC_INTEGRATIONS_URL : "the service account's keys in Google Cloud"})`}.`,
           ].map((line) => `    ${line}`),
         ]),
@@ -482,11 +536,7 @@ export const handleSecretsIssue = async (
     const key =
       "keyId" in result ? `key ${result.keyId}` : `a key of ${result.email}`;
     p.log.info(
-      `Hot Updater kept no ${issuer.session} session: it ${
-        result.status === "saved"
-          ? `wrote ${key} for ${name} to ${result.file}`
-          : `stored ${key} as ${name} in ${describeSecret(secrets, name)}`
-      }.`,
+      `Hot Updater kept no ${issuer.session} session: it stored ${key} as ${name} in ${result.secrets ? describeSecret(result.secrets, name) : describeStoredSecret(secrets, name)}.`,
     );
   });
 };

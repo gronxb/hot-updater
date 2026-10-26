@@ -5,33 +5,40 @@ import path from "node:path";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getLocalKeyFile, writeLocalKey } from "./localKeyStore";
 import {
   assertUnreservedEnv,
   isReservedVariableName,
 } from "./reservedVariables";
 import { maskSecretValues } from "./secretMasking";
 import {
-  envSecrets,
+  getConfiguredAdapter,
   getConfiguredSecrets,
+  localSecrets,
   parseSecretReference,
   secretEnv,
   secretVariableName,
   setConfiguredSecrets,
+  withLocalKeyStore,
 } from "./secrets";
 
 let directory: string;
+let home: string;
 
 beforeEach(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-secrets-"));
+  home = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-home-"));
+  vi.stubEnv("HOT_UPDATER_HOME", home);
   await fs.writeFile(path.join(directory, "package.json"), "{}");
   vi.spyOn(process, "cwd").mockReturnValue(directory);
 });
 
 afterEach(async () => {
-  setConfiguredSecrets(envSecrets());
+  setConfiguredSecrets(withLocalKeyStore());
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await fs.rm(directory, { force: true, recursive: true });
+  await fs.rm(home, { force: true, recursive: true });
 });
 
 const storeOf = (
@@ -73,8 +80,7 @@ describe("isReservedVariableName", () => {
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
     "HOT_UPDATER_SIGNING_TOKEN",
     "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
-    "INFISICAL_TOKEN",
-    "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+    "HOT_UPDATER_HOME",
   ])("reserves %s", (name) => {
     expect(isReservedVariableName(name)).toBe(true);
   });
@@ -86,6 +92,7 @@ describe("isReservedVariableName", () => {
     "AWS_SECRET_ACCESS_KEY",
     "PATHNAME",
     "ENVIRONMENT",
+    "INFISICAL_TOKEN",
   ])("allows %s", (name) => {
     expect(isReservedVariableName(name)).toBe(false);
   });
@@ -124,7 +131,7 @@ describe("parseSecretReference", () => {
   });
 });
 
-describe("envSecrets()", () => {
+describe("the default store", () => {
   it("maps a name to its variable", () => {
     expect(secretVariableName("CLOUDFLARE_API_TOKEN")).toBe(
       "CLOUDFLARE_API_TOKEN",
@@ -135,31 +142,162 @@ describe("envSecrets()", () => {
     );
   });
 
-  it("reads process.env, then .env.hotupdater, and maps a missing name to undefined", async () => {
+  it("reads process.env, then .env.hotupdater, then `localSecrets()`'s store, and maps a missing name to undefined", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_API_KEY", '{"keyId":"K"}');
     await fs.writeFile(
       path.join(directory, ".env.hotupdater"),
       "FROM_FILE=file-value\nHOT_UPDATER_ASC_API_KEY=shadowed\n",
     );
+    await writeLocalKey("asc-api-key", '{"keyId":"STORED"}', directory);
+    await writeLocalKey("play-service-account", '{"type":"x"}', directory);
 
-    const values = await envSecrets().get(
-      ["asc-api-key", "FROM_FILE", "MISSING_SPEC_VAR"],
+    const values = await withLocalKeyStore().get(
+      ["asc-api-key", "FROM_FILE", "play-service-account", "MISSING_SPEC_VAR"],
       { cwd: directory },
     );
 
-    expect(values).toEqual({
+    expect({ ...values }).toEqual({
       "asc-api-key": '{"keyId":"K"}',
       FROM_FILE: "file-value",
+      "play-service-account": '{"type":"x"}',
       MISSING_SPEC_VAR: undefined,
     });
   });
 
-  it("is read-only and the default until a config sets another", () => {
-    expect(envSecrets().set).toBeUndefined();
-    expect(getConfiguredSecrets().name).toBe("envSecrets");
-    const store = storeOf({});
-    setConfiguredSecrets(store);
-    expect(getConfiguredSecrets()).toBe(store);
+  it("stores in `localSecrets()`'s store under HOT_UPDATER_HOME, readable by this user alone", async () => {
+    const secrets = withLocalKeyStore();
+
+    await secrets.set!("asc-api-key", '{"keyId":"NEW"}', { cwd: directory });
+
+    const file = getLocalKeyFile("asc-api-key", directory);
+    expect(file.startsWith(path.join(home, "secrets") + path.sep)).toBe(true);
+    expect(await fs.readFile(file, "utf-8")).toBe('{"keyId":"NEW"}');
+    if (process.platform !== "win32") {
+      expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
+      expect((await fs.stat(path.join(home, "secrets"))).mode & 0o777).toBe(
+        0o700,
+      );
+    }
+    expect(
+      (await secrets.get(["asc-api-key"], { cwd: directory }))["asc-api-key"],
+    ).toBe('{"keyId":"NEW"}');
+    expect(secrets.describe!("asc-api-key")).toBe(
+      `HOT_UPDATER_ASC_API_KEY in the environment, or ${file} on this machine`,
+    );
+  });
+
+  it("replaces a stored value whole, and keeps the file 0600", async () => {
+    const secrets = withLocalKeyStore();
+    await secrets.set!("asc-api-key", "first", { cwd: directory });
+    const file = getLocalKeyFile("asc-api-key", directory);
+    await fs.chmod(file, 0o644);
+
+    await secrets.set!("asc-api-key", "second", { cwd: directory });
+
+    expect(await fs.readFile(file, "utf-8")).toBe("second");
+    expect(await fs.readdir(path.dirname(file))).toEqual(["asc-api-key.json"]);
+    if (process.platform !== "win32") {
+      expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it("is the default until a config sets another, which keeps `localSecrets()`'s store after it", async () => {
+    expect(getConfiguredSecrets().name).toBe("localSecrets");
+    const store = storeOf({ "asc-api-key": "from-store" });
+    await writeLocalKey("play-service-account", "from-machine", directory);
+    await writeLocalKey("asc-api-key", "shadowed", directory);
+    const secrets = withLocalKeyStore(store);
+
+    expect(secrets.name).toBe("spec-store");
+    expect(withLocalKeyStore(secrets)).toBe(secrets);
+    expect({
+      ...(await secrets.get(["asc-api-key", "play-service-account"], {
+        cwd: directory,
+      })),
+    }).toEqual({
+      "asc-api-key": "from-store",
+      "play-service-account": "from-machine",
+    });
+    // A read-only adapter's keys go to `localSecrets()`'s store.
+    await secrets.set!("android-keystore", "keystore", { cwd: directory });
+    expect(
+      await fs.readFile(
+        getLocalKeyFile("android-keystore", directory),
+        "utf-8",
+      ),
+    ).toBe("keystore");
+    expect(secrets.describe!("asc-api-key")).toBe(
+      `spec://asc-api-key, or ${getLocalKeyFile("asc-api-key", directory)} on this machine`,
+    );
+  });
+
+  it("refreshes the copy a write-only adapter's value has on this machine when the adapter stores another", async () => {
+    const set = vi.fn(async () => {});
+    const secrets = withLocalKeyStore({ ...storeOf({}), set });
+    await writeLocalKey("asc-api-key", "old", directory);
+    await writeLocalKey("other", "kept", directory);
+
+    await secrets.set!("asc-api-key", "new", { cwd: directory });
+
+    expect(set).toHaveBeenCalledWith("asc-api-key", "new", { cwd: directory });
+    await expect(
+      fs.readFile(getLocalKeyFile("asc-api-key", directory), "utf-8"),
+    ).resolves.toBe("new");
+    await expect(
+      fs.readFile(getLocalKeyFile("other", directory), "utf-8"),
+    ).resolves.toBe("kept");
+    expect(
+      (await secrets.get(["asc-api-key"], { cwd: directory }))["asc-api-key"],
+    ).toBe("new");
+  });
+
+  it("stores through the config's adapter when it stores values", async () => {
+    const set = vi.fn(async () => {});
+    const secrets = withLocalKeyStore({ ...storeOf({}), set });
+
+    await secrets.set!("asc-api-key", "value", { cwd: directory });
+
+    expect(set).toHaveBeenCalledWith("asc-api-key", "value", {
+      cwd: directory,
+    });
+    await expect(
+      fs.access(getLocalKeyFile("asc-api-key", directory)),
+    ).rejects.toThrow();
+  });
+});
+
+describe("localSecrets()", () => {
+  it("is the store a config without secrets gets, reading the environment, then its files", async () => {
+    const secrets = localSecrets();
+    await writeLocalKey("asc-api-key", "from-file", directory);
+
+    expect(secrets.name).toBe("localSecrets");
+    expect(getConfiguredAdapter(secrets)).toBeUndefined();
+    expect(withLocalKeyStore(secrets)).toBe(secrets);
+    await expect(
+      secrets.get(["asc-api-key"], { cwd: directory }),
+    ).resolves.toEqual({ "asc-api-key": "from-file" });
+  });
+
+  it("keeps the files in the directory path names, relative to the project", async () => {
+    const secrets = localSecrets({ path: "../outside-secrets" });
+
+    await secrets.set!("asc-api-key", "value", { cwd: directory });
+
+    const file = path.resolve(directory, "../outside-secrets/asc-api-key.json");
+    try {
+      await expect(fs.readFile(file, "utf-8")).resolves.toBe("value");
+      await expect(
+        secrets.get(["asc-api-key"], { cwd: directory }),
+      ).resolves.toEqual({ "asc-api-key": "value" });
+      vi.spyOn(process, "cwd").mockReturnValue(directory);
+      expect(secrets.describe!("asc-api-key")).toBe(
+        `HOT_UPDATER_ASC_API_KEY in the environment, or ${file} on this machine`,
+      );
+    } finally {
+      await fs.rm(path.dirname(file), { recursive: true, force: true });
+    }
   });
 });
 
@@ -209,8 +347,9 @@ describe("secretEnv", () => {
     );
   });
 
-  it("tells envSecrets() users where to set a missing name", async () => {
+  it("reads deploy credentials from the environment alone without a configured adapter, never from `localSecrets()`'s store", async () => {
     vi.stubEnv("SPEC_MISSING", undefined);
+    await writeLocalKey("SPEC_MISSING", "machine-value", directory);
 
     await expect(secretEnv(["SPEC_MISSING"])()).rejects.toThrow(
       "secretEnv found no value for SPEC_MISSING: set it in the environment or .env.hotupdater, or read it from a secrets store with the config's secrets.",

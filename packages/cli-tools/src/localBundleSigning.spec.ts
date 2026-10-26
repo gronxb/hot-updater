@@ -14,7 +14,7 @@ import {
   normalizeSigningConfig,
 } from "./localBundleSigning";
 import { maskSecretValues } from "./secretMasking";
-import { envSecrets } from "./secrets";
+import { withLocalKeyStore } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -236,7 +236,7 @@ describe("local signing with privateKey from a secret", () => {
     expect(maskSecretValues(`line ${body}`)).toBe("line ********");
   });
 
-  it("reads a one-line PEM from envSecrets(), with \\n for its line breaks", async () => {
+  it("reads a one-line PEM from the environment, with \\n for its line breaks", async () => {
     const cwd = await createTempDir();
     const { privateKey, publicKey } = createPem();
     await fs.writeFile(
@@ -245,7 +245,7 @@ describe("local signing with privateKey from a secret", () => {
     );
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:env-signing-key" },
-      { secrets: envSecrets() },
+      { secrets: withLocalKeyStore() },
     );
 
     await expect(signing.getPublicKey({ cwd })).resolves.toEqual({
@@ -265,15 +265,15 @@ describe("local signing with privateKey from a secret", () => {
     );
   });
 
-  it("names envSecrets()'s variable when the environment has no key", async () => {
+  it("names localSecrets()'s variable and file when neither has the key", async () => {
     const cwd = await createTempDir();
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:bundle-signing-key" },
-      { secrets: envSecrets() },
+      { secrets: withLocalKeyStore() },
     );
 
     await expect(signing.getPublicKey({ cwd })).rejects.toThrow(
-      "(HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment or .env.hotupdater)",
+      "(HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or ",
     );
   });
 

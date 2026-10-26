@@ -22,11 +22,11 @@ so the same `hot-updater.config.ts` builds on your machine and in CI:
 | Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                   |
 | Deploy credentials        | The names your config reads with [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), for tracking the build |
 
-With [`envSecrets()`](/docs/guides/secrets-adapters/env-secrets), the default, the job's
-environment holds them, from your CI provider's secrets. With a secrets store,
-the job only signs in to the store, keyless through GitHub Actions OIDC where
-the store allows it, and the store holds every value. [Add the
-workflow](#add-the-workflow) has a complete workflow for each.
+With [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), the
+default, the job's environment holds them, from your CI provider's secrets.
+With a secrets store, the job only signs in to the store, and the store holds
+every value. [Add the workflow](#add-the-workflow) has a complete workflow
+for both.
 
 The CLI treats a run as CI when the `CI` environment variable is set, as
 GitHub Actions, GitLab CI, CircleCI, Buildkite, Bitrise, and Codemagic set it,
@@ -62,12 +62,12 @@ npx hot-updater google-play login
 [Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
 describes, and `google-play login` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
-describes. Each keeps a key the adapter already holds; `secrets issue <kind>
---replace` issues a new one and names the old key to revoke once CI no longer
-uses it. An adapter that stores values keeps the key, where CI reads it.
-With `envSecrets()`, which never stores, the CLI writes the key to a file only your
-user can read, prints the variables to store it in, and offers to store it as
-a GitHub Actions secret
+describes. Each keeps a key the adapter already holds;
+`secrets issue <kind> --replace` issues a new one and names the old key to
+revoke once CI no longer uses it. With
+`localSecrets()`, the key stays in a file on your machine, and the CLI offers
+to store it as the GitHub Actions secret CI reads; another adapter stores it
+where CI reads it
 ([where an issued key goes](/docs/guides/native-build#where-an-issued-key-goes)).
 
 The App Store Connect API key is a team key with the Admin role: CI signs
@@ -80,7 +80,7 @@ The `native-build` action runs `native-build <platform> --scheme <scheme>
 --submit <store> --json` with the job's environment, sets the build as its
 outputs, and writes a summary of the job. Use the tag of the hot-updater
 release your project installs. Each workflow below builds when you push a
-version tag or run it by hand; pick the one for your `secrets` adapter.
+version tag or run it by hand.
 
 The stores take each build number once: raise `CFBundleVersion` and
 `versionCode` for every build you upload, such as from the tag or
@@ -88,8 +88,8 @@ The stores take each build number once: raise `CFBundleVersion` and
 
 ### Environment variables
 
-With `envSecrets()`, or [`githubActions()`](/docs/guides/secrets-adapters/github-actions),
-which stores under the same names, add each value in the repository's
+With `localSecrets()`, which reads the environment before its files, add each
+value in the repository's
 **Settings → Secrets and variables → Actions** under its variable name. To
 require a reviewer before a job reads them, add them to a protected
 [environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
@@ -171,14 +171,13 @@ A credential's own variables work too, such as `HOT_UPDATER_ASC_KEY`,
 lists them. `HOT_UPDATER_ASC_KEY` also takes a key whose line breaks are
 written as `\n`.
 
-### AWS Secrets Manager
+### Read secrets from a secrets store
 
-With [`awsSecretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager),
-the job assumes a role through GitHub Actions OIDC, and the repository stores
-no AWS key. Create the role with the trust policy and the read policy in
-[Read secrets in GitHub Actions](/docs/guides/secrets-adapters/aws-secrets-manager#read-secrets-in-github-actions);
-the deploy credentials `secretEnv` names for tracking the build come from Secrets
-Manager too.
+With a [secrets adapter](/docs/concepts/secrets#choose-an-adapter) you pasted,
+the job gives the CLI only what signs in to the store, and the store holds
+every credential, the deploy credentials `secretEnv` names included. With
+[dotenvx](/docs/guides/secrets-adapters/dotenvx), that is one secret, the
+private key of the encrypted file committed with the project:
 
 ```yaml title=".github/workflows/native-release.yml"
 name: Native release
@@ -190,7 +189,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   ios:
@@ -203,121 +201,27 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
-        with:
-          role-to-assume: arn:aws:iam::123456789012:role/hot-updater-ci
-          aws-region: ap-northeast-2
       - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+        env:
+          DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
         with:
           platform: ios
           scheme: release
           submit: testflight
 ```
 
-`configure-aws-credentials` sets the role's short-lived credentials in the
-job's environment, where the adapter reads them; CI needs no AWS SDK. An
-Android job takes the same two steps before the action.
+The other adapters sign in the same way, on the build step:
 
-### Google Secret Manager
+| Adapter                                                                      | The job sets                                                                                                       |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [Bitwarden](/docs/guides/secrets-adapters/bitwarden)                         | `BWS_ACCESS_TOKEN`, a read-only machine account's                                                                  |
+| [1Password](/docs/guides/secrets-adapters/1password)                         | `OP_SERVICE_ACCOUNT_TOKEN`, a read-only service account's                                                         |
+| [Infisical](/docs/guides/secrets-adapters/infisical)                         | `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, a **Viewer** machine identity's |
+| [AWS Secrets Manager](/docs/guides/secrets-adapters/aws-secrets-manager)     | Nothing stored: `aws-actions/configure-aws-credentials` assumes a role through OIDC (`id-token: write`)            |
+| [Google Secret Manager](/docs/guides/secrets-adapters/google-secret-manager) | Nothing stored: `google-github-actions/auth` signs in through Workload Identity Federation (`id-token: write`)     |
 
-With [`googleSecretManager()`](/docs/guides/secrets-adapters/google-secret-manager),
-the job signs in through Workload Identity Federation, and the repository
-stores no Google key. Create the pool, the provider, and the CI service
-account as
-[Read secrets in GitHub Actions](/docs/guides/secrets-adapters/google-secret-manager#read-secrets-in-github-actions)
-shows.
-
-```yaml title=".github/workflows/native-release.yml"
-name: Native release
-
-on:
-  push:
-    tags: ["v*"]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  id-token: write
-
-jobs:
-  android:
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-      - run: npm ci
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/my-app
-          service_account: hot-updater-ci@my-project.iam.gserviceaccount.com
-      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
-        with:
-          platform: android
-          scheme: release
-          submit: play-internal
-```
-
-`google-github-actions/auth` writes the federation file and sets
-`GOOGLE_APPLICATION_CREDENTIALS`; the adapter exchanges the job's OIDC token
-for a Google token itself, so CI needs no package. An iOS job takes the same
-auth step before the action.
-
-### Infisical
-
-With [`infisical()`](/docs/guides/secrets-adapters/infisical), the job signs
-in as a machine identity with GitHub Actions OIDC, and the repository stores
-no Infisical credential. Create the identity with OIDC Auth and the
-**Viewer** role as
-[In GitHub Actions with OIDC](/docs/guides/secrets-adapters/infisical#in-github-actions-with-oidc)
-shows, and save its ID as the repository variable
-`INFISICAL_MACHINE_IDENTITY_ID`.
-
-```yaml title=".github/workflows/native-release.yml"
-name: Native release
-
-on:
-  push:
-    tags: ["v*"]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  id-token: write
-
-jobs:
-  ios:
-    runs-on: macos-latest
-    environment: production
-    env:
-      INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
-        with:
-          platform: ios
-          scheme: release
-          submit: testflight
-```
-
-The adapter requests the job's ID token itself and exchanges it for a
-short-lived Infisical token. Outside GitHub Actions, set
-`INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and
-`INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET` from your CI's secrets instead
-([In CI with Universal Auth](/docs/guides/secrets-adapters/infisical#in-ci-with-universal-auth)).
+Each adapter's page has its step and the least privilege its CI identity
+needs.
 
 ### Without the action
 
@@ -405,7 +309,7 @@ The action takes no credential input: the CLI reads every credential through
 the config's `secrets` adapter. It masks the job's `HOT_UPDATER_*` credential
 variables in the log, field by field for a JSON value, and the CLI masks every
 value it reads from a store. The action refuses `ios` on a runner that is not
-macOS and an `upload` of the other platform's store. It sets `CI` for the
+macOS and a `submit` to the other platform's store. It sets `CI` for the
 CLI, so a self-hosted runner that sets no `CI` never starts a sign-in either.
 
 | Output          | Description                                                                                                         |

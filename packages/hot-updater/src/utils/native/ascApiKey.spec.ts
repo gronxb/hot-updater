@@ -52,10 +52,13 @@ import type {
   IssuedAscApiKey,
 } from "@hot-updater/apple-helper";
 import {
-  envSecrets,
+  getCwd,
+  getLocalKeyFile,
   maskSecretValues,
+  readLocalKey,
   setConfiguredSecrets,
   withCredentialResolver,
+  withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -147,11 +150,15 @@ const issue = vi.fn(
   }),
 );
 
-/** ensureAscApiKey with the stand-in sign-in, and a cacheDir of its own. */
+/** ensureAscApiKey with the stand-in sign-in. */
 const ensure = (options: Parameters<typeof ensureAscApiKey>[0]) =>
-  ensureAscApiKey({ issue, cacheDir, ...options });
+  ensureAscApiKey({ issue, ...options });
 
-let cacheDir: string;
+/** A directory of the spec's own; `home` in it is `localSecrets()`'s store's home. */
+let tmp: string;
+
+/** Where `localSecrets()`'s store keeps `name` for the project. */
+const keyFile = (name: string) => getLocalKeyFile(name, getCwd());
 
 /** Every argument the log and the prompts were given, as one text. */
 const printed = () =>
@@ -168,7 +175,8 @@ const printed = () =>
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-asc-"));
+  tmp = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-asc-"));
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(tmp, "home"));
   git.remote = "git@github.com:acme/app.git";
   git.token = "gho_specToken";
   vi.stubEnv("GH_TOKEN", "");
@@ -187,8 +195,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(cacheDir, { recursive: true, force: true });
-  setConfiguredSecrets(envSecrets());
+  await fs.rm(tmp, { recursive: true, force: true });
+  setConfiguredSecrets(withLocalKeyStore());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -221,7 +229,7 @@ describe("ensureAscApiKey", () => {
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc). Store it once from a terminal with `npx hot-updater secrets issue asc-api-key widget-asc`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
+      `widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc, or ${keyFile("widget-asc")} on this machine). Store it once from a terminal with \`npx hot-updater secrets issue asc-api-key widget-asc\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.`,
     );
     expect(process.exitCode).toBe(1);
     // Nothing is written, and no Apple prompt.
@@ -244,29 +252,26 @@ describe("ensureAscApiKey", () => {
     expect(issue).not.toHaveBeenCalled();
   });
 
-  it("never signs in in CI with a read-only adapter, writing no file", async () => {
+  it("never signs in in CI with the default store, writing nothing", async () => {
     vi.stubEnv("CI", "true");
-    setConfiguredSecrets(envSecrets());
+    setConfiguredSecrets(withLocalKeyStore());
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", cacheDir })),
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(issue).not.toHaveBeenCalled();
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([]);
+    await expect(fs.readdir(tmp)).resolves.toEqual([]);
   });
 
-  it("writes the key a read-only adapter can't store to a 0600 file, says where to store it, and keeps it", async () => {
-    setConfiguredSecrets(envSecrets());
+  it("says before signing in that this machine has no key, stores the issued key in `localSecrets()`'s store, and names where to prune old keys", async () => {
+    setConfiguredSecrets(withLocalKeyStore());
     git.remote = undefined;
-    const result = await withTTY(true, () =>
-      ensure({ name: "asc-api-key", cacheDir }),
-    );
+    const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
 
-    const file = path.join(cacheDir, "issued", "asc-api-key.json");
-    expect(result).toMatchObject({
-      status: "saved",
-      keyId: "KEY1234567",
-      file,
-    });
+    expect(result).toEqual({ status: "issued", keyId: "KEY1234567" });
+    const file = keyFile("asc-api-key");
+    expect(file.startsWith(path.join(tmp, "home", "secrets") + path.sep)).toBe(
+      true,
+    );
     expect(JSON.parse(await fs.readFile(file, "utf-8"))).toEqual({
       keyId: "KEY1234567",
       issuerId: "issuer-1",
@@ -274,26 +279,29 @@ describe("ensureAscApiKey", () => {
     });
     expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
-    await expect(
-      fs.readFile(path.join(cacheDir, "issued", ".gitignore"), "utf-8"),
-    ).resolves.toBe("*\n");
 
-    const guidance = stripVTControlCharacters(
-      String(log.warn.mock.calls[0]![0]),
+    // The notice comes before the Apple prompt and the sign-in.
+    const notice = log.info.mock.calls.findIndex(([message]) =>
+      String(message).startsWith(
+        "No App Store Connect API key on this machine.",
+      ),
     );
-    expect(guidance).toContain("App Store Connect API key saved to a file");
-    expect(guidance).toContain(`File:`);
-    expect(guidance).toContain(file);
-    expect(guidance).toContain(
-      `Set HOT_UPDATER_ASC_API_KEY to the contents of ${file}, as one value, in the environment or .env.hotupdater`,
+    expect(notice).toBeGreaterThanOrEqual(0);
+    expect(log.info.mock.calls[notice]![0]).toBe(
+      "No App Store Connect API key on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (https://hot-updater.dev/docs/concepts/secrets#share-a-key-across-machines) or import it with `npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
     );
-    expect(guidance).toContain(
-      "HOT_UPDATER_ASC_KEY to its p8, HOT_UPDATER_ASC_KEY_ID to its keyId, HOT_UPDATER_ASC_ISSUER_ID to its issuerId",
+    expect(log.info.mock.invocationCallOrder[notice]!).toBeLessThan(
+      text.mock.invocationCallOrder[0]!,
     );
-    expect(guidance).toContain(
-      "env: HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}",
+    const stored = stripVTControlCharacters(
+      String(log.success.mock.calls[0]![0]),
     );
-    expect(guidance).toContain("then delete the file");
+    expect(stored).toContain("App Store Connect API key stored");
+    expect(stored).toContain(file);
+    expect(stored).toContain("KEY1234567");
+    expect(stored).toContain(
+      "Revoke the ones no machine or CI uses anymore at https://appstoreconnect.apple.com/access/integrations/api (Team Keys).",
+    );
     // The key is in the file alone: nothing printed or asked holds it.
     expect(printed()).not.toContain("MIGHAgEA");
     expect(printed()).not.toContain("BEGIN PRIVATE KEY");
@@ -302,32 +310,16 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
 
-    // The adapter the build resolves with reads the key from the file, and
-    // every other name from the config's.
-    vi.stubEnv("HOT_UPDATER_OTHER_KEY", "other-value");
-    const { secrets } = result as Extract<typeof result, { status: "saved" }>;
+    // The next build on this machine reuses it, with no sign-in.
+    vi.clearAllMocks();
     await expect(
-      secrets.get(["asc-api-key", "other-key"], { cwd: cacheDir }),
-    ).resolves.toEqual({
-      "asc-api-key": await fs.readFile(file, "utf-8"),
-      "other-key": "other-value",
+      withTTY(false, () => ensure({ name: "asc-api-key" })),
+    ).resolves.toEqual({ status: "stored" });
+    expect(issue).not.toHaveBeenCalled();
+    const resolved = await withCredentialResolver(async (credentials) => {
+      const key = await credentials.resolve({ kind: "asc-api-key" });
+      return { ...key, p8: await fs.readFile(key.keyPath, "utf-8") };
     });
-    expect(secrets.describe?.("asc-api-key")).toBe(file);
-
-    // The line the guidance tells the developer to write resolves the key.
-    const project = path.join(cacheDir, "project");
-    await fs.mkdir(project);
-    await fs.writeFile(
-      path.join(project, ".env.hotupdater"),
-      `HOT_UPDATER_ASC_API_KEY='${await fs.readFile(file, "utf-8")}'\n`,
-    );
-    const resolved = await withCredentialResolver(
-      async (credentials) => {
-        const key = await credentials.resolve({ kind: "asc-api-key" });
-        return { ...key, p8: await fs.readFile(key.keyPath, "utf-8") };
-      },
-      { secrets: envSecrets(), cwd: project },
-    );
     expect(resolved).toMatchObject({
       keyId: "KEY1234567",
       issuerId: "issuer-1",
@@ -335,94 +327,45 @@ describe("ensureAscApiKey", () => {
     });
   });
 
-  it("restricts only the issued directory, not a cacheDir it creates", async () => {
-    setConfiguredSecrets(envSecrets());
-    git.remote = undefined;
-    const custom = path.join(cacheDir, "custom", "cache");
-    await withTTY(true, () =>
-      ensure({ name: "asc-api-key", cacheDir: custom }),
-    );
-    const umask = process.umask();
-    expect((await fs.stat(custom)).mode & 0o777).toBe(0o777 & ~umask);
-    expect((await fs.stat(path.join(custom, "issued"))).mode & 0o777).toBe(
-      0o700,
-    );
+  it("gives no per-machine notice when the config's adapter shares the key", async () => {
+    fakeStore();
+    await withTTY(true, () => ensure({ name: "asc-api-key" }));
+    expect(printed()).not.toContain("on this machine. Signing in issues");
   });
 
-  it("names where a read-only adapter other than envSecrets() reads the key", async () => {
+  it("stores the key of a read-only adapter in `localSecrets()`'s store, where builds here read it", async () => {
     fakeStore({ writable: false });
     const githubSecrets = vi.fn();
-    await withTTY(true, () =>
-      ensure({ name: "widget-asc", cacheDir, githubSecrets }),
-    );
-    // CI reads a GitHub Actions secret only through envSecrets(): no offer.
+    await expect(
+      withTTY(true, () => ensure({ name: "widget-asc", githubSecrets })),
+    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    // A GitHub Actions secret would not be read through another adapter.
     expect(confirm).not.toHaveBeenCalled();
     expect(githubSecrets).not.toHaveBeenCalled();
-    const file = path.join(cacheDir, "issued", "widget-asc.json");
-    const guidance = stripVTControlCharacters(
-      String(log.warn.mock.calls[0]![0]),
-    );
-    expect(guidance).toContain(
-      `Store the contents of ${file} as one value at spec://widget-asc, so builds read it.`,
-    );
-    expect(guidance).toContain(
-      "In CI, the job reads it from the spec-store secrets adapter, or from those variables.",
-    );
-  });
-
-  it("never replaces a key an earlier sign-in left in its file, and signs in no more", async () => {
-    setConfiguredSecrets(envSecrets());
-    const file = path.join(cacheDir, "issued", "asc-api-key.json");
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, "earlier key", { mode: 0o600 });
-
-    await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", cacheDir })),
-    ).rejects.toThrow(
-      `${file} holds an App Store Connect API key Hot Updater issued earlier, which builds here do not read yet.`,
-    );
-    expect(issue).not.toHaveBeenCalled();
-    await expect(fs.readFile(file, "utf-8")).resolves.toBe("earlier key");
-  });
-
-  it("refuses before any Apple sign-in when cacheDir can't hold the file", async () => {
-    setConfiguredSecrets(envSecrets());
-    const notADirectory = path.join(cacheDir, "file");
-    await fs.writeFile(notADirectory, "");
-    await expect(
-      withTTY(true, () =>
-        ensure({ name: "asc-api-key", cacheDir: notADirectory }),
-      ),
-    ).rejects.toThrow("whose directory Hot Updater can't write");
-    expect(text).not.toHaveBeenCalled();
-    expect(issue).not.toHaveBeenCalled();
-  });
-
-  it("revokes the key when its file can't be written after the sign-in", async () => {
-    setConfiguredSecrets(envSecrets());
-    const file = path.join(cacheDir, "issued", "asc-api-key.json");
-    const signIn = issue.getMockImplementation()!;
-    issue.mockImplementationOnce(async (request) => {
-      // Something writes the file during the sign-in.
-      await fs.writeFile(file, "other");
-      return signIn(request);
+    expect(JSON.parse((await readLocalKey("widget-asc", getCwd()))!)).toEqual({
+      keyId: "KEY1234567",
+      issuerId: "issuer-1",
+      p8: P8,
     });
+  });
+
+  it("revokes the key when `localSecrets()`'s store can't be written", async () => {
+    setConfiguredSecrets(withLocalKeyStore());
+    // A file where `localSecrets()`'s store's home goes.
+    await fs.writeFile(path.join(tmp, "home"), "");
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", cacheDir })),
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toBeInstanceOf(AscApiKeyNotStoredError);
     expect(issued.revoke).toHaveBeenCalledTimes(1);
-    await expect(fs.readFile(file, "utf-8")).resolves.toBe("other");
   });
 
-  it("stores the saved key as a GitHub Actions secret once when the developer agrees", async () => {
-    setConfiguredSecrets(envSecrets());
+  it("stores the key as a GitHub Actions secret too, once, when the developer agrees", async () => {
+    setConfiguredSecrets(withLocalKeyStore());
     const set = vi.fn(async () => {});
     const githubSecrets = vi.fn(() => ({ name: "github", get: vi.fn(), set }));
     confirm.mockResolvedValue(true);
 
-    await withTTY(true, () =>
-      ensure({ name: "asc-api-key", cacheDir, githubSecrets }),
-    );
+    await withTTY(true, () => ensure({ name: "asc-api-key", githubSecrets }));
 
     expect(confirm).toHaveBeenLastCalledWith({
       message:
@@ -433,11 +376,9 @@ describe("ensureAscApiKey", () => {
       repo: "acme/app",
       token: "gho_specToken",
     });
-    const file = path.join(cacheDir, "issued", "asc-api-key.json");
     expect(set).toHaveBeenCalledExactlyOnceWith(
       "asc-api-key",
-      await fs.readFile(file, "utf-8"),
-      expect.anything(),
+      await fs.readFile(keyFile("asc-api-key"), "utf-8"),
     );
     expect(
       stripVTControlCharacters(String(log.success.mock.calls.at(-1)![0])),
@@ -451,9 +392,9 @@ describe("ensureAscApiKey", () => {
     ["declines", false, false],
     ["cancels", Symbol("cancel"), true],
   ])(
-    "keeps the file alone when the developer %s the GitHub Actions offer",
+    "keeps the key on this machine alone when the developer %s the GitHub Actions offer",
     async (_, answer, cancelled) => {
-      setConfiguredSecrets(envSecrets());
+      setConfiguredSecrets(withLocalKeyStore());
       const set = vi.fn(async () => {});
       confirm.mockResolvedValue(answer);
       isCancel.mockImplementation((value) => cancelled && value === answer);
@@ -462,11 +403,10 @@ describe("ensureAscApiKey", () => {
         withTTY(true, () =>
           ensure({
             name: "asc-api-key",
-            cacheDir,
             githubSecrets: () => ({ name: "github", get: vi.fn(), set }),
           }),
         ),
-      ).resolves.toMatchObject({ status: "saved" });
+      ).resolves.toMatchObject({ status: "issued" });
       expect(confirm).toHaveBeenCalled();
       expect(set).not.toHaveBeenCalled();
       expect(process.exitCode).toBeUndefined();
@@ -475,14 +415,13 @@ describe("ensureAscApiKey", () => {
     },
   );
 
-  it("reports a failed GitHub Actions write, keeping the key in its file", async () => {
-    setConfiguredSecrets(envSecrets());
+  it("reports a failed GitHub Actions write, keeping the key on this machine", async () => {
+    setConfiguredSecrets(withLocalKeyStore());
     confirm.mockResolvedValue(true);
     await expect(
       withTTY(true, () =>
         ensure({
           name: "asc-api-key",
-          cacheDir,
           githubSecrets: () => ({
             name: "github",
             get: vi.fn(),
@@ -492,10 +431,9 @@ describe("ensureAscApiKey", () => {
           }),
         }),
       ),
-    ).resolves.toMatchObject({ status: "saved" });
-    const file = path.join(cacheDir, "issued", "asc-api-key.json");
+    ).resolves.toMatchObject({ status: "issued" });
     expect(log.warn).toHaveBeenLastCalledWith(
-      `Storing HOT_UPDATER_ASC_API_KEY in acme/app's GitHub Actions secrets failed: HTTP 403\nStore the contents of ${file} as that secret yourself.`,
+      `Storing HOT_UPDATER_ASC_API_KEY in acme/app's GitHub Actions secrets failed: HTTP 403\nStore the contents of ${keyFile("asc-api-key")} as that secret yourself.`,
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -505,12 +443,10 @@ describe("ensureAscApiKey", () => {
     ["no GitHub token", { token: undefined }],
     ["a remote elsewhere", { remote: "https://gitlab.com/acme/app.git" }],
   ])("offers nothing with %s", async (_, lookup) => {
-    setConfiguredSecrets(envSecrets());
+    setConfiguredSecrets(withLocalKeyStore());
     Object.assign(git, lookup);
     const githubSecrets = vi.fn();
-    await withTTY(true, () =>
-      ensure({ name: "asc-api-key", cacheDir, githubSecrets }),
-    );
+    await withTTY(true, () => ensure({ name: "asc-api-key", githubSecrets }));
     expect(confirm).not.toHaveBeenCalled();
     expect(githubSecrets).not.toHaveBeenCalled();
   });
@@ -613,7 +549,7 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toThrow(
-      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: the spec-store secrets adapter stored asc-api-key, and reads back another value.\nThe key KEY1234567 is kept. Check spec://asc-api-key",
+      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: the spec-store secrets adapter stored asc-api-key, and reads back another value.\nThe key KEY1234567 is kept. Check spec://asc-api-key, or ",
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -633,62 +569,70 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a copy of a key a write-only adapter stored, which this run reads, and never revokes it", async () => {
+  it("keeps a copy of a key a write-only adapter stored in `localSecrets()`'s store, which builds here read, and never revokes it", async () => {
     const { held } = fakeStore({ readBack: async () => undefined });
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
 
-    const file = path.join(cacheDir, "issued", "asc-api-key.json");
+    const file = keyFile("asc-api-key");
     expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
     const copy = await fs.readFile(file, "utf-8");
     expect(copy).toBe(held.get("asc-api-key"));
     expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     const { secrets } = result as { secrets: SecretsAdapter };
-    await expect(
-      secrets.get(["asc-api-key"], { cwd: cacheDir }),
-    ).resolves.toEqual({ "asc-api-key": copy });
+    await expect(secrets.get(["asc-api-key"], { cwd: tmp })).resolves.toEqual({
+      "asc-api-key": copy,
+    });
 
-    const guidance = stripVTControlCharacters(
-      String(log.warn.mock.calls[0]![0]),
+    const kept = stripVTControlCharacters(
+      String(
+        log.info.mock.calls.find(([message]) =>
+          String(message).includes("kept on this machine"),
+        )![0],
+      ),
     );
-    expect(guidance).toContain("App Store Connect API key copied to a file");
-    expect(guidance).toContain(
-      "The spec-store secrets adapter stored asc-api-key (spec://asc-api-key), and does not read it back here",
+    expect(kept).toContain(file);
+    expect(kept).toContain(
+      "The spec-store secrets adapter stored asc-api-key (spec://asc-api-key",
     );
-    // Builds read the per-field variables before any adapter; the whole
-    // value would go through envSecrets(), which is not the config's adapter.
-    expect(guidance).toContain(
-      "Set HOT_UPDATER_ASC_KEY to its p8, HOT_UPDATER_ASC_KEY_ID to its keyId, HOT_UPDATER_ASC_ISSUER_ID to its issuerId (the file's fields) in the environment or .env.hotupdater",
-    );
-    expect(guidance).not.toContain("HOT_UPDATER_ASC_API_KEY");
     expect(printed()).not.toContain("MIGHAgEA");
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
 
-    // The next sign-in for it stops at the copy, issuing no other key.
+    // The next build here reads the copy, and signs in no more.
     vi.clearAllMocks();
-    const refusal = await withTTY(true, () =>
-      ensure({ name: "asc-api-key" }),
-    ).catch((error: unknown) => String(error));
-    expect(refusal).toContain("which builds here do not read yet.");
-    expect(refusal).toContain("HOT_UPDATER_ASC_KEY_ID to its keyId");
-    expect(refusal).not.toContain("HOT_UPDATER_ASC_API_KEY");
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key" })),
+    ).resolves.toEqual({ status: "stored" });
     expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("replaces the copy of a key a write-only adapter stored when --replace issues another", async () => {
+    const { held } = fakeStore({ readBack: async () => undefined });
+    await fs.mkdir(path.dirname(keyFile("asc-api-key")), { recursive: true });
+    await fs.writeFile(keyFile("asc-api-key"), '{"keyId":"OLDKEY0001"}');
+
+    const result = await withTTY(true, () =>
+      ensure({ name: "asc-api-key", replace: true, replacing: true }),
+    );
+
+    expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
+    expect(await fs.readFile(keyFile("asc-api-key"), "utf-8")).toBe(
+      held.get("asc-api-key"),
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
   });
 
   it("uses the key from memory when its copy can't be written", async () => {
     fakeStore({ readBack: async () => undefined });
-    const notADirectory = path.join(cacheDir, "file");
-    await fs.writeFile(notADirectory, "");
-    const result = await withTTY(true, () =>
-      ensure({ name: "asc-api-key", cacheDir: notADirectory }),
-    );
+    await fs.writeFile(path.join(tmp, "home"), "");
+    const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
     const { secrets } = result as { secrets: SecretsAdapter };
     expect(
       JSON.parse(
-        (await secrets.get(["asc-api-key"], { cwd: cacheDir }))["asc-api-key"]!,
+        (await secrets.get(["asc-api-key"], { cwd: tmp }))["asc-api-key"]!,
       ),
     ).toMatchObject({ keyId: "KEY1234567", p8: P8 });
-    expect(String(log.warn.mock.calls[0]![0])).toContain("Writing a copy to");
+    expect(String(log.warn.mock.calls[0]![0])).toContain("Keeping a copy at");
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 

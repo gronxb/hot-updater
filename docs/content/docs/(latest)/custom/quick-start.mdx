@@ -227,7 +227,7 @@ import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins";
 
 if (existsSync(".env.hotupdater")) {
@@ -257,6 +257,7 @@ export default defineConfig({
     },
   }),
   plugins: [insights(), apiKeys()],
+  secrets: localSecrets(), // keys from apple login and google-play login
   updateStrategy: "appVersion",
 });
 ```

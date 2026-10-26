@@ -1,19 +1,19 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import {
   CREDENTIAL_ENV_NAMES,
   credentialLoginCommand,
+  credentialPutCommand,
   describeSecret,
-  envSecrets,
+  getConfiguredAdapter,
   getConfiguredSecrets,
   getCwd,
   getHotUpdaterEnvValue,
+  getLocalSecretsStore,
   type IssuedCredentialKind,
+  keepsKeysOnThisMachine,
   p,
   readLoadedHotUpdaterEnv,
   registerCredentialValue,
-  secretVariableName,
+  withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -52,135 +52,26 @@ export interface IssuedCredentialPolicy {
 export type WritableSecrets = SecretsAdapter &
   Required<Pick<SecretsAdapter, "set">>;
 
-/** Where an issued key goes once the developer signed in. */
-export type IssuedCredentialTarget =
-  /**
-   * The config's `secrets` adapter stores values: the key goes there, and
-   * to `file` as well when the adapter does not read it back here.
-   */
-  | {
-      readonly kind: "adapter";
-      readonly secrets: WritableSecrets;
-      readonly file: string;
-    }
-  /**
-   * The adapter is read-only, such as `envSecrets()`: the key goes to `file`, a
-   * 0600 file under `cacheDir`, and the developer is told where to store it.
-   */
-  | {
-      readonly kind: "file";
-      readonly secrets: SecretsAdapter;
-      readonly file: string;
-    };
-
 export type PreparedCredential =
   /** The environment overrides the key: the adapter is not read. */
   | { readonly status: "environment" }
-  /** The secrets adapter holds the key already: no sign-in. */
+  /** The secrets adapter, or `localSecrets()`'s store, holds the key: no sign-in. */
   | { readonly status: "stored" }
   /**
-   * The adapter has no key, and everything a sign-in needs holds: a
-   * terminal, and somewhere to keep the key. `env` is the environment
-   * with the project's `.env.hotupdater` under it.
+   * Nothing holds the key, and a sign-in can start: there is a terminal.
+   * The key goes to `secrets`, the config's adapter with `localSecrets()`'s
+   * store after it. `env` is the environment with the project's
+   * `.env.hotupdater` under it.
    */
   | {
       readonly status: "missing";
-      readonly target: IssuedCredentialTarget;
+      readonly secrets: WritableSecrets;
       readonly env: Readonly<Record<string, string>>;
     };
 
-/** The config's `cacheDir` when it sets none, or sets `null`. */
-const DEFAULT_CACHE_DIR = path.join("node_modules", ".hot-updater");
-
-/**
- * The file a key issued for a read-only adapter is written to,
- * `<cacheDir>/issued/<name>.json`. A secret's name has no path separator
- * and does not start with a dot.
- */
-export const issuedCredentialFile = (
-  name: string,
-  cacheDir: string | null | undefined,
-  cwd: string = getCwd(),
-) =>
-  path.join(
-    path.resolve(cwd, cacheDir ?? DEFAULT_CACHE_DIR),
-    "issued",
-    `${name}.json`,
-  );
-
-/** No such file, or a path through something that is no directory. */
-const isMissing = (error: unknown) =>
-  error instanceof Error &&
-  "code" in error &&
-  (error.code === "ENOENT" || error.code === "ENOTDIR");
-
-/**
- * A file left from an earlier sign-in holds a key that builds here do not
- * read yet: it is never replaced, which would lose that key while it stays
- * valid, and no other key is issued for it.
- */
-const refuseEarlierFile = async (
-  policy: IssuedCredentialPolicy,
-  name: string,
-  secrets: SecretsAdapter,
-  file: string,
-) => {
-  const exists = await fs.lstat(file).then(
-    () => true,
-    (error: unknown) => {
-      if (isMissing(error)) return false;
-      throw error;
-    },
-  );
-  if (!exists) return;
-  throw new Error(
-    [
-      `${file} holds ${policy.what} Hot Updater issued earlier, which builds here do not read yet.`,
-      ...(secrets.set === undefined
-        ? [
-            ...localGuidance(policy.kind, name, secrets, file),
-            ciGuidance(name, secrets),
-          ]
-        : [fieldGuidance(policy.kind)]),
-      "Or delete the file, and run this again to sign in and issue another.",
-    ].join("\n"),
-  );
-};
-
-/** Makes `file`'s directory, 0700 and ignored by git. */
-const prepareIssuedDirectory = async (file: string) => {
-  const directory = path.dirname(file);
-  // Only `issued` is the CLI's to restrict: cacheDir keeps its own mode.
-  await fs.mkdir(path.dirname(directory), { recursive: true });
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  // mkdir leaves an existing directory's mode as it is.
-  await fs.chmod(directory, 0o700);
-  // A custom cacheDir may be in the repository: no issued key is committed.
-  await fs.writeFile(path.join(directory, ".gitignore"), "*\n", {
-    mode: 0o600,
-  });
-  await fs.access(directory, fs.constants.W_OK);
-};
-
-/**
- * Makes `file`'s directory before any sign-in, so the issued key's write
- * cannot fail on it.
- */
-const prepareIssuedFile = async (
-  policy: IssuedCredentialPolicy,
-  name: string,
-  secrets: SecretsAdapter,
-  file: string,
-) => {
-  try {
-    await prepareIssuedDirectory(file);
-  } catch (error) {
-    throw new Error(
-      `${name} is ${policy.what}, which Hot Updater issues when you sign in with ${policy.signIn}, and the ${secrets.name} secrets adapter is read-only, so the key would be written to ${file}, whose directory Hot Updater can't write: ${error instanceof Error ? error.message : String(error)}. Set cacheDir in hot-updater.config.ts to a directory it can write, or set ${CREDENTIAL_ENV_NAMES[policy.kind].map((field) => field.join(" or ")).join(", ")} to use a key you already have.`,
-      { cause: error },
-    );
-  }
-};
+/** The docs page on sharing one key across machines. */
+export const SECRETS_DOCS_URL =
+  "https://hot-updater.dev/docs/concepts/secrets#share-a-key-across-machines";
 
 /** What the adapter's `name` holds, or why it can't be read, for messages. */
 const describeUnavailable = (
@@ -197,14 +88,15 @@ const describeUnavailable = (
  * after the developer signed in:
  *
  * 1. an environment override of the kind is used as it is;
- * 2. a value the config's `secrets` adapter holds as `name` is used as it
- *    is, so CI builds with the stored key and never signs in, unless
- *    `replace` is set: `secrets issue` read the adapter already;
+ * 2. a value the config's `secrets` adapter, or `localSecrets()`'s store,
+ *    holds as `name` is used as it is, so CI builds with the stored key
+ *    and never signs in, unless `replace` is set: `secrets issue` read it
+ *    already;
  * 3. in CI or without a terminal, `canSignIn` refuses with the command
  *    that signs in once;
- * 4. `<cacheDir>/issued/<name>.json` must not hold an earlier key, and the
- *    key goes to the adapter when it stores values (`set`), and otherwise
- *    to that file, whose directory must be writable.
+ * 4. when nothing holds a key and the key would stay on this machine, the
+ *    developer is told that signing in issues a new key, and how to share
+ *    one instead.
  *
  * The environment overrides are read, never written.
  */
@@ -214,8 +106,8 @@ export const prepareIssuedCredential = async (
     name,
     env = {},
     replace = false,
-    secrets = getConfiguredSecrets(),
-    cacheDir,
+    replacing = false,
+    secrets: configured = getConfiguredSecrets(),
   }: {
     readonly name: string;
     readonly env?: Readonly<Record<string, string>>;
@@ -224,10 +116,10 @@ export const prepareIssuedCredential = async (
      * key whatever it holds: the adapter is not read again.
      */
     readonly replace?: boolean;
+    /** Set by `secrets issue --replace` when the adapter holds a key it replaces. */
+    readonly replacing?: boolean;
     /** The adapter the key is read from and stored in, the config's by default. */
     readonly secrets?: SecretsAdapter;
-    /** The config's `cacheDir`, where a read-only adapter's key is written. */
-    readonly cacheDir?: string | null;
   },
 ): Promise<PreparedCredential> => {
   const fields = CREDENTIAL_ENV_NAMES[policy.kind];
@@ -239,6 +131,7 @@ export const prepareIssuedCredential = async (
     return { status: "environment" };
   }
 
+  const secrets = withLocalKeyStore(configured) as WritableSecrets;
   const cwd = getCwd();
   if (!replace) {
     const held = (await secrets.get([name], { cwd }))[name];
@@ -258,74 +151,16 @@ export const prepareIssuedCredential = async (
     );
   }
 
-  const file = issuedCredentialFile(name, cacheDir, cwd);
-  await refuseEarlierFile(policy, name, secrets, file);
-  let target: IssuedCredentialTarget;
-  if (secrets.set === undefined) {
-    await prepareIssuedFile(policy, name, secrets, file);
-    target = { kind: "file", secrets, file };
-  } else {
-    // The adapter itself, so a class keeps its methods and their receiver.
-    target = { kind: "adapter", secrets: secrets as WritableSecrets, file };
+  if (!replacing && keepsKeysOnThisMachine(secrets)) {
+    p.log.info(
+      `No ${policy.label} on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (${SECRETS_DOCS_URL}) or import it with \`${credentialPutCommand(policy.kind, name)}\`.`,
+    );
   }
   return {
     status: "missing",
-    target,
+    secrets,
     env: { ...(await readLoadedHotUpdaterEnv(cwd)), ...env },
   };
-};
-
-const isEnvSecrets = (secrets: SecretsAdapter) =>
-  secrets.name === envSecrets().name;
-
-/** What each field of an issued key's JSON goes in, for the per-field variables. */
-const FIELD_VARIABLES: Readonly<
-  Record<IssuedCredentialKind, readonly string[]>
-> = {
-  "asc-api-key": [
-    "HOT_UPDATER_ASC_KEY to its p8",
-    "HOT_UPDATER_ASC_KEY_ID to its keyId",
-    "HOT_UPDATER_ASC_ISSUER_ID to its issuerId",
-  ],
-  "play-service-account": [
-    "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON to the whole file (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH to a copy of it)",
-  ],
-};
-
-/**
- * Where to store the key `file` holds so builds read it, naming variables,
- * never values: as one value where the read-only adapter reads `name`, or
- * in the per-field variables every adapter's builds read first.
- */
-const localGuidance = (
-  kind: IssuedCredentialKind,
-  name: string,
-  secrets: SecretsAdapter,
-  file: string,
-): string[] => {
-  const variable = secretVariableName(name);
-  return [
-    isEnvSecrets(secrets)
-      ? `Set ${variable} to the contents of ${file}, as one value, in the environment or .env.hotupdater (${variable}='<contents>'), so builds read it.`
-      : `Store the contents of ${file} as one value at ${describeSecret(secrets, name)}, so builds read it.`,
-    `Or set ${FIELD_VARIABLES[kind].join(", ")} (the file's fields).`,
-  ];
-};
-
-/**
- * The per-field variables, which builds read before any secrets adapter:
- * the only ones that work whatever adapter the config sets, as the whole
- * value's variable is read through `envSecrets()`.
- */
-const fieldGuidance = (kind: IssuedCredentialKind) =>
-  `Set ${FIELD_VARIABLES[kind].join(", ")} (the file's fields) in the environment or .env.hotupdater, which builds read before any secrets adapter.`;
-
-/** Where CI reads the key from: a secret the job maps to `envSecrets()`'s variable. */
-const ciGuidance = (name: string, secrets: SecretsAdapter) => {
-  const variable = secretVariableName(name);
-  return isEnvSecrets(secrets)
-    ? `In CI, store the contents as the secret ${variable} and map it into the job's environment (env: ${variable}: \${{ secrets.${variable} }}).`
-    : `In CI, the job reads it from the ${secrets.name} secrets adapter, or from those variables.`;
 };
 
 /**
@@ -353,68 +188,30 @@ export const withIssuedKey = (
     other === name ? where : describeSecret(secrets, other),
 });
 
-/** `withIssuedKey`, reading the key from the issued key's `file`. */
-export const withIssuedFile = (
-  secrets: SecretsAdapter,
-  name: string,
-  file: string,
-): SecretsAdapter =>
-  withIssuedKey(secrets, name, () => fs.readFile(file, "utf-8"), file);
-
 /**
- * Writes an issued key's `value` to `file`, 0600 and never over another
- * file, and tells the developer how to store it, naming the file and the
- * variables, never the key, and that the file goes once it is stored;
- * then, for `envSecrets()`, offers once to store it as a GitHub Actions secret.
- * The value is masked before anything can print it. A failed write throws:
- * the key is nowhere, and the caller revokes it.
+ * After a key Hot Updater issued is stored in the default store, which
+ * keeps it on this machine: offers once to store it as the GitHub Actions
+ * secret CI reads it from, when the project has a GitHub remote and the
+ * developer a token.
  */
-export const writeIssuedCredential = async ({
-  policy,
+export const offerIssuedKeyToGitHub = async ({
   name,
   value,
   secrets,
-  file,
-  details = [],
   githubSecrets,
 }: {
-  readonly policy: IssuedCredentialPolicy;
   readonly name: string;
   readonly value: string;
   readonly secrets: SecretsAdapter;
-  readonly file: string;
-  /** Lines naming the key, such as its service account, after the file. */
-  readonly details?: readonly string[];
   /** The adapter the GitHub Actions offer writes with. */
   readonly githubSecrets?: CreateGitHubSecrets;
 }): Promise<void> => {
-  registerCredentialValue(value);
-  try {
-    await fs.writeFile(file, value, { mode: 0o600, flag: "wx" });
-  } catch (error) {
-    throw new CredentialNotStoredError(
-      `writing ${file} failed: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-  p.log.warn(
-    ui.block(`${policy.label} saved to a file`, [
-      ui.kv("File", file),
-      ...details,
-      ...[
-        `The ${secrets.name} secrets adapter is read-only, so Hot Updater wrote the key it issued to this file, which only you can read. Store it where builds read it, then delete the file.`,
-        ...localGuidance(policy.kind, name, secrets, file),
-        ciGuidance(name, secrets),
-      ].map((line) => `    ${line}`),
-    ]),
-  );
-  // CI reads the GitHub Actions secret through envSecrets(), as the variable envSecrets()
-  // reads the name from: another adapter would not read it there.
-  if (!isEnvSecrets(secrets)) return;
+  // A key another adapter stores is read where it is.
+  if (getConfiguredAdapter(secrets) !== undefined) return;
   await offerGitHubSecret({
     name,
     value,
-    file,
+    file: getLocalSecretsStore(secrets).file(name, getCwd()),
     ...(githubSecrets ? { createSecrets: githubSecrets } : {}),
   });
 };
@@ -460,7 +257,11 @@ export const storeIssuedCredential = async ({
   readonly value: string;
 }): Promise<{ readonly readable: boolean }> => {
   const cwd = getCwd();
-  const readBack = async () => (await secrets.get([name], { cwd }))[name];
+  // An adapter that stores values is read back alone: localSecrets()'s copy
+  // after it may hold the key this one replaces.
+  const configured = getConfiguredAdapter(secrets);
+  const reader = configured?.set ? configured : secrets;
+  const readBack = async () => (await reader.get([name], { cwd }))[name];
 
   try {
     await secrets.set(name, value, { cwd });
@@ -494,34 +295,34 @@ export const storeIssuedCredential = async ({
 
 /**
  * The adapter stored the issued key and does not read it back here, as a
- * write-only store such as GitHub Actions secrets outside a workflow does:
- * builds on this machine would not find it, and the key is printed
- * nowhere. Writes a copy to `file`, 0600, with how to set it for builds
- * here, and returns the adapter this run reads the key with: from the copy,
- * or from memory when the copy can't be written, which is reported. The
- * key stays stored either way, and is never revoked.
+ * write-only store does: builds on this machine would not find it, and the
+ * key is printed nowhere. Keeps a copy in `localSecrets()`'s store, which builds
+ * here read after the adapter, and returns the adapter this run
+ * reads the key with: from the copy, or from memory when the copy can't be
+ * written, which is reported. The key stays stored either way, and is
+ * never revoked.
  */
 export const keepIssuedCopy = async ({
   policy,
   name,
   value,
   secrets,
-  file,
 }: {
   readonly policy: IssuedCredentialPolicy;
   readonly name: string;
   readonly value: string;
   readonly secrets: SecretsAdapter;
-  readonly file: string;
 }): Promise<SecretsAdapter> => {
   registerCredentialValue(value);
-  const stored = `The ${secrets.name} secrets adapter stored ${name} (${describeSecret(secrets, name)}), and does not read it back here, so builds on this machine would not find it`;
+  const cwd = getCwd();
+  const store = getLocalSecretsStore(secrets);
+  const stored = `The ${secrets.name} secrets adapter stored ${name} (${describeSecret(secrets, name)}), and does not read it back here`;
+  let file: string;
   try {
-    await prepareIssuedDirectory(file);
-    await fs.writeFile(file, value, { mode: 0o600, flag: "wx" });
+    file = await store.write(name, value, cwd);
   } catch (error) {
     p.log.warn(
-      `${stored}. Writing a copy to ${file} failed: ${error instanceof Error ? error.message : String(error)}\nThis build uses the key; builds that read the adapter where it holds the key, such as CI's, use it too.`,
+      `${stored}. Keeping a copy at ${store.file(name, cwd)} failed: ${error instanceof Error ? error.message : String(error)}\nThis build uses the key; builds that read the adapter where it holds the key, such as CI's, use it too.`,
     );
     return withIssuedKey(
       secrets,
@@ -530,15 +331,16 @@ export const keepIssuedCopy = async ({
       describeSecret(secrets, name),
     );
   }
-  p.log.warn(
-    ui.block(`${policy.label} copied to a file`, [
+  p.log.info(
+    ui.block(`${policy.label} kept on this machine`, [
       ui.kv("File", file),
-      ...[
-        `${stored}. Hot Updater wrote a copy to this file, which only you can read, and this build uses it. Builds that read the adapter where it holds the key, such as CI's, need nothing more.`,
-        fieldGuidance(policy.kind),
-        "Then delete the file.",
-      ].map((line) => `    ${line}`),
+      `    ${stored}, so Hot Updater kept a copy with localSecrets(), which only you can read and builds here read.`,
     ]),
   );
-  return withIssuedFile(secrets, name, file);
+  return withIssuedKey(
+    secrets,
+    name,
+    async () => (await store.read(name, cwd)) ?? value,
+    file,
+  );
 };

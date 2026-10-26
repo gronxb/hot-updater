@@ -8,6 +8,7 @@ import {
 } from "@hot-updater/android-helper";
 import {
   describeSecret,
+  describeStoredSecret,
   getHotUpdaterEnvValue,
   p,
   registerCredentialValue,
@@ -21,13 +22,11 @@ import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   type IssuedCredentialPolicy,
-  type IssuedCredentialTarget,
   keepIssuedCopy,
+  offerIssuedKeyToGitHub,
   prepareIssuedCredential,
   storeIssuedCredential,
-  withIssuedFile,
   type WritableSecrets,
-  writeIssuedCredential,
 } from "./issuedCredential";
 
 /** Where a project's service accounts, and each one's keys, are in Google Cloud. */
@@ -56,16 +55,6 @@ export type EnsurePlayServiceAccountResult =
        * write-only store: the adapter this run reads it with, from a copy.
        */
       readonly secrets?: SecretsAdapter;
-    }
-  /**
-   * The key was issued, and the adapter is read-only: it is in `file`, and
-   * `secrets` is the adapter that reads it from there for this run.
-   */
-  | {
-      readonly status: "saved";
-      readonly email: string;
-      readonly file: string;
-      readonly secrets: SecretsAdapter;
     };
 
 const PACKAGE_NAME_PATTERN =
@@ -126,41 +115,6 @@ const revokeNotStored = async (
   );
 };
 
-/**
- * Writes the key to the file a read-only adapter's key goes to. Only a
- * failed write deletes it: once the file holds it, it stays.
- */
-const saveIssued = async (
-  target: Extract<IssuedCredentialTarget, { kind: "file" }>,
-  name: string,
-  issued: IssuedPlayServiceAccount,
-  githubSecrets: CreateGitHubSecrets | undefined,
-) => {
-  try {
-    await writeIssuedCredential({
-      policy: POLICY,
-      name,
-      value: issued.json,
-      secrets: target.secrets,
-      file: target.file,
-      details: [
-        ui.kv("Service account", issued.email),
-        ui.kv("Project", issued.projectId),
-      ],
-      ...(githubSecrets ? { githubSecrets } : {}),
-    });
-  } catch (error) {
-    if (error instanceof CredentialNotStoredError) {
-      await revokeNotStored(
-        issued,
-        `Hot Updater did not keep ${name}: ${error.message}`,
-        error,
-      );
-    }
-    throw error;
-  }
-};
-
 const storeIssued = async (
   secrets: WritableSecrets,
   name: string,
@@ -196,19 +150,17 @@ const storeIssued = async (
  *
  * 1. an environment override of play-service-account
  *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
- * 2. a value the config's `secrets` adapter holds as `name` is used as it
- *    is, so CI uploads with the stored key and never signs in;
- * 3. without a terminal, it refuses with the command that signs in once;
- * 4. the adapter must store values, and a build's must also read it back,
- *    which is checked once it is stored; a read-only adapter needs a
- *    writable `cacheDir` instead.
+ * 2. a value the config's `secrets` adapter, or `localSecrets()`'s store,
+ *    holds as `name` is used as it is, so CI uploads with the stored key
+ *    and never signs in;
+ * 3. without a terminal, it refuses with the command that signs in once.
  *
  * Only then does the developer sign in with Google, in a browser, through
- * `issue`, and the issued key is stored, read back, and deleted again if
- * storing it fails. A read-only adapter's key is written to
- * `<cacheDir>/issued/<name>.json` instead, with how to store it, and an
- * offer to store it as a GitHub Actions secret.
- * The adapter is the only place a key is stored: the environment overrides
+ * `issue`, and the issued key is stored through the config's adapter, or
+ * `localSecrets()`'s store by default, read back, and deleted again if
+ * storing it fails. A key the default store keeps comes with an offer to
+ * store it as a GitHub Actions secret too, and every issued key with where
+ * to delete the ones no machine uses anymore. The environment overrides
  * are read, never written.
  */
 export const ensurePlayServiceAccount = async ({
@@ -216,8 +168,8 @@ export const ensurePlayServiceAccount = async ({
   packageName,
   env = {},
   replace,
+  replacing,
   secrets,
-  cacheDir,
   githubSecrets,
   issue = issuePlayServiceAccount,
 }: {
@@ -231,9 +183,9 @@ export const ensurePlayServiceAccount = async ({
   secrets?: SecretsAdapter;
   /** Set by `secrets issue`: a key is issued whatever the adapter holds. */
   replace?: boolean;
-  /** The config's `cacheDir`, where a read-only adapter's key is written. */
-  cacheDir?: string | null;
-  /** The adapter that stores a read-only adapter's key as a GitHub Actions secret. */
+  /** Set by `secrets issue --replace` when the adapter holds a key it replaces. */
+  replacing?: boolean;
+  /** The adapter that stores a key the default store keeps as a GitHub Actions secret. */
   githubSecrets?: CreateGitHubSecrets;
   /** The sign-in that issues the key, android-helper's unless set. */
   issue?: IssuePlayServiceAccount;
@@ -241,12 +193,12 @@ export const ensurePlayServiceAccount = async ({
   const prepared = await prepareIssuedCredential(POLICY, {
     name,
     env,
-    cacheDir,
     replace,
+    replacing,
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
-  const { target, env: fileEnv } = prepared;
+  const { secrets: store, env: fileEnv } = prepared;
 
   const app = answered(
     await p.text({
@@ -309,25 +261,23 @@ export const ensurePlayServiceAccount = async ({
   });
 
   try {
-    if (target.kind === "file") {
-      await saveIssued(target, name, issued, githubSecrets);
-      return {
-        status: "saved",
-        email: issued.email,
-        file: target.file,
-        secrets: withIssuedFile(target.secrets, name, target.file),
-      };
-    }
-    const store = target.secrets;
     const { readable } = await storeIssued(store, name, issued);
     p.log.success(
       ui.block("Play service account stored", [
         ui.kv("Secret", name),
-        ui.kv("In", describeSecret(store, name)),
+        ui.kv("In", describeStoredSecret(store, name)),
         ui.kv("Service account", issued.email),
         ui.kv("Project", issued.projectId),
+        ui.kv("Key ID", issued.keyId),
+        `    Each machine that signs in creates its own key. Delete the ones no machine or CI uses anymore under the service account's keys at ${serviceAccountKeysUrl(issued.projectId)}.`,
       ]),
     );
+    await offerIssuedKeyToGitHub({
+      name,
+      value: issued.json,
+      secrets: store,
+      ...(githubSecrets ? { githubSecrets } : {}),
+    });
     if (readable) return { status: "issued", email: issued.email };
     // The adapter keeps the key, which builds here would not find.
     return {
@@ -338,7 +288,6 @@ export const ensurePlayServiceAccount = async ({
         name,
         value: issued.json,
         secrets: store,
-        file: target.file,
       }),
     };
   } finally {

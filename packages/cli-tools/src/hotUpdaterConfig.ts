@@ -664,20 +664,26 @@ const findManagedProperty = (
   return property?.type === "Property" ? property : null;
 };
 
-/** The `plugins` property, written either way: `plugins: [...]` or `plugins`. */
-const findPluginsProperty = (
+/** The `name` property, written either way: `name: value` or `name`. */
+const findAnyProperty = (
   objectExpression: ObjectExpression,
+  name: string,
 ): ObjectProperty | null => {
   const property = objectExpression.properties.find(
     (candidate) =>
       candidate.type === "Property" &&
       candidate.kind === "init" &&
       !candidate.method &&
-      getObjectPropertyName(candidate) === "plugins",
+      getObjectPropertyName(candidate) === name,
   );
 
   return property?.type === "Property" ? property : null;
 };
+
+/** The `plugins` property, written either way: `plugins: [...]` or `plugins`. */
+const findPluginsProperty = (
+  objectExpression: ObjectExpression,
+): ObjectProperty | null => findAnyProperty(objectExpression, "plugins");
 
 const getCallCallee = (expression: Expression) => {
   if (
@@ -852,6 +858,13 @@ const updateManagedObject = (
     }
   }
 
+  // The secrets adapter is the project's: init adds localSecrets() only to a
+  // config that sets none.
+  const nextSecrets = findAnyProperty(next.objectExpression, "secrets");
+  if (nextSecrets && !findAnyProperty(existing.objectExpression, "secrets")) {
+    missingPropertyTexts.push(getPropertyBlockText(next.source, nextSecrets));
+  }
+
   return {
     text: applyTextEdits(objectText, [
       ...propertyEdits,
@@ -975,7 +988,9 @@ const rebuildImportBlock = (
   },
 ): TextEdit => {
   // Keep environment-loading imports under the existing config's control,
-  // and a kept build's adapter import with it.
+  // and a kept build's adapter import with it. localSecrets() is imported only
+  // where the config uses it: a project's own secrets adapter stays.
+  const references = usedIdentifiers(usedText);
   const imports = scaffold.imports
     .filter((info) => !(keptBuild && BUILD_IMPORT_PACKAGES.has(info.pkg)))
     .map((info) =>
@@ -984,7 +999,14 @@ const rebuildImportBlock = (
             ...info,
             named: info.named?.filter((name) => name !== "existsSync"),
           }
-        : info,
+        : info.pkg === "hot-updater" &&
+            references &&
+            !references.has("localSecrets")
+          ? {
+              ...info,
+              named: info.named?.filter((name) => name !== "localSecrets"),
+            }
+          : info,
     );
   const importDeclarations = importDeclarationsOf(source);
   const firstImport = importDeclarations[0];

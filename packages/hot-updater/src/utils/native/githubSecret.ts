@@ -7,22 +7,24 @@ import {
   registerSecretValue,
   secretVariableName,
 } from "@hot-updater/cli-tools";
-import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
-import { githubActions } from "../../githubActions";
 import { ui } from "../cli-ui";
+import {
+  createGitHubSecretWriter,
+  type GitHubSecretWriter,
+} from "./githubSecretWriter";
 
 /**
- * A secrets adapter that writes a repository's GitHub Actions secrets with
- * a user's token, as `githubActions()` does: `set(name)` stores the secret
- * `secretVariableName(name)`, which a workflow maps to the same variable.
+ * Writes a repository's GitHub Actions secrets with a user's token:
+ * `set(name)` stores the secret `secretVariableName(name)`, which a
+ * workflow maps to the same variable.
  */
 export type CreateGitHubSecrets = (options: {
   /** The repository, `owner/name`. */
   readonly repo: string;
   readonly token: string;
-}) => SecretsAdapter;
+}) => GitHubSecretWriter;
 
 const GITHUB_REMOTE_PATTERN =
   /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/u;
@@ -60,7 +62,7 @@ export const findGitHubRepository = async (
 const isInstallationToken = (token: string) => token.startsWith("ghs_");
 
 /**
- * The developer's GitHub token, as `githubActions()` reads it: `GH_TOKEN` or
+ * The developer's GitHub token: `GH_TOKEN` or
  * `GITHUB_TOKEN`, in the environment or `.env.hotupdater`, else the GitHub
  * CLI's (`gh auth token`), never an installation token.
  */
@@ -96,15 +98,16 @@ export type GitHubSecretOffer =
 
 /**
  * Offers once to store an issued key's `value` as the GitHub Actions secret
- * CI's `envSecrets()` reads `name` from (`secretVariableName(name)`), when the
- * project has a GitHub remote and the developer a token. A failed write is
- * reported, never thrown: the key is in `file` either way.
+ * CI reads `name` from (`secretVariableName(name)`, which a workflow maps
+ * to the variable of the same name), when the project has a GitHub remote
+ * and the developer a token. A failed write is reported, never thrown: the
+ * key is in `file`, `localSecrets()`'s store, either way.
  */
 export const offerGitHubSecret = async ({
   name,
   value,
   file,
-  createSecrets = githubActions,
+  createSecrets = createGitHubSecretWriter,
   findRepository = findGitHubRepository,
   findToken = findGitHubToken,
 }: {
@@ -112,7 +115,7 @@ export const offerGitHubSecret = async ({
   readonly value: string;
   /** The file that holds the key, which a failure points to. */
   readonly file: string;
-  /** The adapter that writes the secret, `githubActions()` unless set. */
+  /** What writes the secret, `createGitHubSecretWriter` unless set. */
   readonly createSecrets?: CreateGitHubSecrets;
   readonly findRepository?: (cwd: string) => Promise<string | undefined>;
   readonly findToken?: (cwd: string) => Promise<string | undefined>;
@@ -134,11 +137,7 @@ export const offerGitHubSecret = async ({
   if (p.isCancel(answer) || !answer) return "declined";
 
   try {
-    const secrets = createSecrets({ repo: repository, token });
-    if (secrets.set === undefined) {
-      throw new Error(`the ${secrets.name} secrets adapter stores nothing.`);
-    }
-    await secrets.set(name, value, { cwd });
+    await createSecrets({ repo: repository, token }).set(name, value);
   } catch (error) {
     p.log.warn(
       `Storing ${variable} in ${repository}'s GitHub Actions secrets failed: ${error instanceof Error ? error.message : String(error)}\nStore the contents of ${file} as that secret yourself.`,

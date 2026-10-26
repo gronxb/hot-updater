@@ -197,7 +197,7 @@ config that a function returns, it leaves the file unchanged and prints the
 import { azureBlobStorage, cosmosDatabase } from "@hot-updater/azure";
 import { bare } from "@hot-updater/bare";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -214,6 +214,7 @@ export default defineConfig({
     connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
+  secrets: localSecrets(), // keys from apple login and google-play login
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```

@@ -79,7 +79,7 @@ const jsonObject = (value) => {
 /**
  * The values to mask in the job's log among the credentials the job's
  * environment gives the CLI: the `HOT_UPDATER_*` credential variables, and
- * each `HOT_UPDATER_*` variable that holds a JSON credential, as `envSecrets()`
+ * each `HOT_UPDATER_*` variable that holds a JSON credential, as the CLI
  * reads one per secret, whole and field by field but its identifiers. A
  * multi-line value is masked line by line, as GitHub masks one line.
  *

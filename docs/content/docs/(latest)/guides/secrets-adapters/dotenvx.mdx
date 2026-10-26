@@ -1,0 +1,153 @@
+---
+title: "dotenvx"
+description: "A secrets adapter you paste into your project: keep the CLI's secrets encrypted in a file committed to git, readable on any machine and in CI with one private key."
+icon: LockKeyhole
+---
+
+## Add the adapter
+
+[dotenvx](https://dotenvx.com) encrypts each value of an env file with a
+public key, so the file can be committed: every machine and CI with the
+private key reads it, and anyone with the repository can add a value.
+Paste this file into your project. It implements
+[`SecretsAdapter`](/docs/concepts/secrets#write-a-secrets-adapter) with
+dotenvx's own package, and keeps the CLI's secrets in a file of their own,
+`hot-updater.secrets.env`.
+
+```package-install
+npm install @dotenvx/dotenvx --save-dev
+```
+
+```ts title="secrets/dotenvx.ts"
+import path from "node:path";
+
+import { getSync, set } from "@dotenvx/dotenvx";
+import type { SecretsAdapter } from "hot-updater";
+
+const dotenvxOptions = {
+  noArmor: true,
+  noNative: true,
+  no1Password: true,
+  noBitwarden: true,
+};
+
+/** `asc-api-key` as `HOT_UPDATER_ASC_API_KEY`, as the environment names it. */
+const variable = (name: string) =>
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+    ? name
+    : `HOT_UPDATER_${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+
+export const dotenvx = ({
+  path: file = "hot-updater.secrets.env",
+}: {
+  /** The encrypted file, committed to git, relative to the project. */
+  path?: string;
+} = {}): SecretsAdapter => {
+  const locate = (cwd: string) => {
+    const envFile = path.resolve(cwd, file);
+    // .env.hotupdater holds plaintext deploy settings the CLI loads as they are.
+    if (path.basename(envFile) === ".env.hotupdater") {
+      throw new Error("dotenvx() keeps its own file, not .env.hotupdater.");
+    }
+    return {
+      path: envFile,
+      // The private key: next to the file locally, DOTENV_PRIVATE_KEY in CI.
+      envKeysFile: path.join(path.dirname(envFile), ".env.keys"),
+      ...dotenvxOptions,
+    };
+  };
+
+  return {
+    name: "dotenvx",
+    get: async (names, { cwd }) => {
+      // The file's values, over any variable of the same name.
+      const values = getSync(undefined, { ...locate(cwd), overload: true });
+      return Object.fromEntries(
+        names.map((name) => {
+          const value = values[variable(name)];
+          if (value?.startsWith("encrypted:")) {
+            throw new Error(
+              `dotenvx() can't decrypt ${variable(name)}: set DOTENV_PRIVATE_KEY, or keep .env.keys next to ${file}.`,
+            );
+          }
+          return [name, value || undefined];
+        }),
+      );
+    },
+    // Writing needs only the public key in the file.
+    set: async (name, value, { cwd }) => {
+      const { processedEnvs } = await set(variable(name), value, {
+        ...locate(cwd),
+        encrypt: true,
+      });
+      const error = processedEnvs.find((env) => env.error)?.error;
+      if (error) throw error;
+    },
+    describe: (name) => `${variable(name)} in ${file}, encrypted with dotenvx`,
+  };
+};
+```
+
+```ts title="hot-updater.config.ts (partial)"
+import { defineConfig } from "hot-updater";
+
+import { dotenvx } from "./secrets/dotenvx";
+
+export default defineConfig({
+  secrets: dotenvx(),
+  // build, storage, database and plugins stay as they are
+});
+```
+
+A name is the variable the environment would read it from:
+`secret:asc-api-key` is `HOT_UPDATER_ASC_API_KEY` in
+`hot-updater.secrets.env`. The first `apple login`, `google-play login`,
+or `secrets put` creates the file with its public key, and the private key
+in `.env.keys` next to it.
+
+## Keep the private key private
+
+`hot-updater.secrets.env` is committed; `.env.keys` never is. Make sure git
+ignores it before you commit:
+
+```bash
+git check-ignore .env.keys || echo ".env.keys" >> .gitignore
+git add hot-updater.secrets.env .gitignore
+```
+
+- Writing a value needs only the public key, which the file holds: any
+  machine adds or replaces a key.
+- Reading needs the private key: `.env.keys` on your machine, or
+  `DOTENV_PRIVATE_KEY` in the environment. Keep it only in your CI's
+  secrets and your password manager.
+- If the private key leaks, revoke the keys Hot Updater issued (the App Store
+  Connect API key, and the Play service account's key), then issue new ones
+  with a new file and key pair: the file's history in git stays decryptable
+  with the leaked key.
+
+## Read secrets in CI
+
+Store the private key, the value of `DOTENV_PRIVATE_KEY_ENV` in `.env.keys`,
+as the GitHub Actions secret `DOTENV_PRIVATE_KEY`, and set it on the build
+step:
+
+```yaml title=".github/workflows/native-release.yml (partial)"
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  env:
+    DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
+  with:
+    platform: ios
+    scheme: release
+    submit: testflight
+```
+
+## Deploy credentials
+
+`.env.hotupdater`, where managed `init` writes your deploy settings, is a
+different file: plaintext, git-ignored, and loaded by the config as it is.
+`dotenvx()` never reads or writes it, and refuses a `path` that names it.
+To keep deploy credentials encrypted too, move them yourself: copy the ones
+`secretEnv` reads into `hot-updater.secrets.env` and encrypt them with
+`npx dotenvx encrypt -f hot-updater.secrets.env`. Leave `.env.hotupdater`
+unencrypted: the CLI's own loader reads it as plain text and can't read an
+encrypted value.

@@ -33,11 +33,12 @@ export default defineConfig({
 });
 ```
 
-With the default `envSecrets()` adapter, `secret:bundle-signing-key` is the
-`HOT_UPDATER_BUNDLE_SIGNING_KEY` environment variable, in the environment or
-`.env.hotupdater`, holding the RSA private key in PEM. A `.env.hotupdater`
-value is one line: put the PEM in double quotes with `\n` for its line
-breaks. The CLI reads the secret once per run, when it first derives the
+With the default [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets)
+adapter, `secret:bundle-signing-key` is the `HOT_UPDATER_BUNDLE_SIGNING_KEY`
+environment variable holding the RSA private key in PEM, such as a CI
+secret, or else the key `keys generate --secret` stored in a file in your
+home directory. A `.env.hotupdater` value is one line: put the PEM in double
+quotes with `\n` for its line breaks. The CLI reads the secret once per run, when it first derives the
 public key or signs, masks it in its output, and keeps it in memory only: it
 is never written to disk. A deploy whose secret is missing fails and names
 where it looked.
@@ -64,17 +65,16 @@ Generate the key pair and store its private key as the secret:
 npx hot-updater keys generate --secret
 ```
 
-`--secret <name>` names the secret, `bundle-signing-key` by default. When the
-config's `secrets` adapter stores values, the command stores the private key
-there and writes only `keys/public-key.pem`. When the adapter is read-only,
-such as `envSecrets()`, it writes `keys/private-key.pem` with owner-only permissions
-and prints the variable to store it as, such as a CI secret; delete the file
-once it is stored. The command never replaces a secret it reads a value
-from, since installed apps reject bundles signed with a new key: follow
-[Key Rotation](/docs/guides/bundle-signing#key-rotation) instead. A
-write-only store, such as
-[GitHub Actions secrets](/docs/guides/secrets-adapters/github-actions) outside
-a workflow, returns no value, so check that the name is unused there first.
+`--secret <name>` names the secret, `bundle-signing-key` by default. The
+command stores the private key through the config's `secrets` adapter, in
+`~/.hot-updater/secrets/<project-key>/` with the default `localSecrets()`,
+and writes only `keys/public-key.pem`. To deploy from CI or another machine,
+store the same key there too, such as the CI secret
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`. The command never replaces a secret it
+reads a value from, since installed apps reject bundles signed with a new
+key: follow [Key Rotation](/docs/guides/bundle-signing#key-rotation) instead.
+A store that reads back nothing on your machine returns no value, so check
+that the name is unused there first.
 
 Without `--secret`, the command writes both files for `privateKeyPath`:
 
@@ -127,8 +127,8 @@ before changing the signer used for installed apps.
 
 ## Deploy from CI
 
-With `privateKey: "secret:bundle-signing-key"` and `envSecrets()`, give the deploy
-job the key as `HOT_UPDATER_BUNDLE_SIGNING_KEY`. No key file is written.
+With `privateKey: "secret:bundle-signing-key"` and `localSecrets()`, give the
+deploy job the key as `HOT_UPDATER_BUNDLE_SIGNING_KEY`. No key file is written.
 
 If local PEM custody is required in GitHub Actions, store the key as a secret
 in a protected GitHub Environment with required reviewers. Avoid a broadly

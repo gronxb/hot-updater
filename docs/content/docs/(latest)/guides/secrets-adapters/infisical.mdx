@@ -1,159 +1,134 @@
 ---
 title: "Infisical"
-description: "Read and store the CLI's secrets in Infisical Cloud or your own Infisical instance."
+description: "A secrets adapter you paste into your project: read and store the CLI's secrets in Infisical Cloud or your own Infisical instance."
 icon: LockKeyhole
 ---
 
-## Read secrets from Infisical
+## Add the adapter
 
-`infisical()` from `hot-updater` reads the secrets the config names
-from an [Infisical](https://infisical.com) project, and stores the
-credentials `secrets put` stores and `secrets issue` and builds issue after an
-Apple or Google sign-in. It works
-with Infisical Cloud and with a self-hosted instance, and signs in as a
-machine identity, with Universal Auth or with the GitHub Actions OIDC
-token, or with an access token.
+Hot Updater ships no Infisical adapter: paste this file into your project.
+It implements [`SecretsAdapter`](/docs/concepts/secrets#write-a-secrets-adapter)
+with Infisical's official SDK, keeping each name as one secret in a project,
+environment, and folder.
+
+```package-install
+npm install @infisical/sdk --save-dev
+```
+
+```ts title="secrets/infisical.ts"
+import { InfisicalSDK } from "@infisical/sdk";
+import type { SecretsAdapter } from "hot-updater";
+
+export const infisical = ({
+  projectId,
+  environment,
+  secretPath = "/",
+  siteUrl = "https://app.infisical.com",
+}: {
+  projectId: string;
+  environment: string;
+  secretPath?: string;
+  siteUrl?: string;
+}): SecretsAdapter => {
+  const where = { projectId, environment, secretPath };
+  let signedIn: Promise<InfisicalSDK> | undefined;
+  // INFISICAL_TOKEN on your machine (`infisical login`), a machine
+  // identity's Universal Auth in CI.
+  const client = () =>
+    (signedIn ??= (async () => {
+      const sdk = new InfisicalSDK({ siteUrl });
+      const token = process.env.INFISICAL_TOKEN;
+      if (token) return sdk.auth().accessToken(token);
+      return sdk.auth().universalAuth.login({
+        clientId: process.env.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID ?? "",
+        clientSecret: process.env.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET ?? "",
+      });
+    })());
+
+  const list = async () => {
+    const { secrets } = await (await client()).secrets().listSecrets({
+      ...where,
+      viewSecretValue: true,
+      expandSecretReferences: false,
+    });
+    return new Map(secrets.map((secret) => [secret.secretKey, secret]));
+  };
+
+  return {
+    name: "infisical",
+    // One request for the folder: a name it does not hold is missing.
+    get: async (names) => {
+      const held = await list();
+      return Object.fromEntries(
+        names.map((name) => [name, held.get(name)?.secretValue] as const),
+      );
+    },
+    set: async (name, value) => {
+      const secrets = (await client()).secrets();
+      if ((await list()).has(name)) {
+        await secrets.updateSecret(name, { ...where, secretValue: value });
+      } else {
+        await secrets.createSecret(name, { ...where, secretValue: value });
+      }
+    },
+    describe: (name) =>
+      `${name} in Infisical project ${projectId}, ${environment}:${secretPath}`,
+  };
+};
+```
 
 ```ts title="hot-updater.config.ts (partial)"
-import { defineConfig, infisical } from "hot-updater";
+import { defineConfig } from "hot-updater";
+
+import { infisical } from "./secrets/infisical";
 
 export default defineConfig({
   secrets: infisical({
     projectId: "6f4a…",
     environment: "prod",
-    path: "/hot-updater",
+    secretPath: "/hot-updater",
   }),
   // build, storage, database and plugins stay as they are
 });
 ```
 
-| Option        | Description                                                                                                                                                                               |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `projectId`   | The project's ID, from its **Project Settings**.                                                                                                                                          |
-| `environment` | The environment's slug, such as `prod`.                                                                                                                                                   |
-| `path`        | The folder the secrets are in. Default `/`.                                                                                                                                               |
-| `siteUrl`     | Infisical's URL. Default `https://app.infisical.com`; `https://eu.infisical.com` for EU Cloud, or your instance's, such as `https://infisical.example.com`. HTTPS, or HTTP on `localhost` |
-| `auth`        | How to sign in, [below](#sign-in). By default, the first way the environment sets up.                                                                                                     |
-
-## How secrets are stored
-
-Each name is one secret in the project, environment, and folder, such as
-`asc-api-key` or `CLOUDFLARE_API_TOKEN`. A credential with several fields is
-one JSON value, as [Secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
-lists for each kind.
-
-- `get` lists the folder's names, without their values, and then reads each
-  name it holds. A name the folder and its imports don't hold is missing.
-  A wrong `projectId`, `environment`, or `path` fails with Infisical's reason
-  instead.
-- Values are read as they were stored. `${...}` secret references in a value
-  are not expanded.
-- `set` updates the secret, or creates it when the folder doesn't hold it.
-  Infisical keeps each earlier value as a version of the secret.
+`secret:asc-api-key` reads the secret `asc-api-key` in that folder. A
+credential is one [JSON value](/docs/concepts/secrets#sign-native-builds-with-secrets).
+`get` lists the folder once, so a name it does not hold is missing, and a
+wrong `projectId`, `environment`, or `secretPath` fails with Infisical's
+reason. For a self-hosted instance, pass its URL as `siteUrl`.
 
 ## Sign in
 
-| `auth`                                 | Reads                                                                          | For                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------- |
-| `{ method: "token" }`                  | `INFISICAL_TOKEN`                                                              | Your own machine, after `infisical login` |
-| `{ method: "universal-auth" }`         | `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET` | Any CI, or a server                       |
-| `{ method: "github-oidc", audience? }` | `INFISICAL_MACHINE_IDENTITY_ID`, and the job's ID token                        | GitHub Actions, with no stored secret     |
-
-These are the variables Infisical's own CLI reads, so one setup serves both.
-Each is read from the environment or the project's `.env.hotupdater`.
-`universal-auth` also takes `clientId` and `clientSecret`, `github-oidc`
-takes `identityId`, and `token` takes `token`, but keep a secret out of the
-config file. Without `auth`, the adapter signs in with `INFISICAL_TOKEN` when
-it is set, then with Universal Auth when both of its variables are set, then
-with GitHub OIDC in a GitHub Actions job that can request an ID token.
-`secretEnv` refuses the `INFISICAL_*` names: a secrets store can't hand out
-the variables Hot Updater signs in to it with.
-
-### On your machine
-
-Sign in with Infisical's CLI and pass the session's access token:
-
-```bash
-infisical login  # add --domain https://infisical.example.com for your own instance
-export INFISICAL_TOKEN="$(infisical user get token --plain)"
-npx hot-updater apple login
-```
+| Where        | Set                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| Your machine | `INFISICAL_TOKEN`, after `infisical login`: `export INFISICAL_TOKEN="$(infisical user get token --plain)"` |
+| CI           | `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, a machine identity's     |
 
 Your user needs a project role that can create and edit secrets in the
 environment, such as **Member**, to store a secret.
 
-### In CI with Universal Auth
+## Read secrets in CI
 
 1. In your organization's **Access Control** > **Machine Identities**,
-   create an identity. It has **Universal Auth**: in its **Authentication**
-   section, select **Add Client Secret**.
+   create an identity with **Universal Auth**, and add a client secret.
 2. In the project's **Access Control** > **Machine Identities**, add the
    identity with the **Viewer** role, which reads secrets and their values
    but can't create, edit, or delete them.
-3. Store the client ID and secret in your CI as
+3. Store the client ID and secret as the CI secrets
    `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and
-   `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`.
-
-### In GitHub Actions with OIDC
-
-With OIDC Auth, the job proves which repository and environment it runs in
-with GitHub's ID token, and Infisical returns a short-lived access token. No
-Infisical credential is stored in GitHub.
-
-1. Create an identity, and set its authentication to **OIDC Auth**:
-
-   | Setting            | Value                                                                              |
-   | ------------------ | ---------------------------------------------------------------------------------- |
-   | OIDC Discovery URL | `https://token.actions.githubusercontent.com`                                      |
-   | Issuer             | `https://token.actions.githubusercontent.com`                                      |
-   | Subject            | `repo:<owner>/<repo>:environment:production`, the job's repository and environment |
-   | Audiences          | `https://github.com/<owner>`, GitHub's default audience                            |
-
-2. Add the identity to the project with the **Viewer** role.
-3. Save the identity's ID as the repository variable
-   `INFISICAL_MACHINE_IDENTITY_ID`, and give the job `id-token: write`:
+   `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, and set them on the build step:
 
 ```yaml title=".github/workflows/native-release.yml (partial)"
-permissions:
-  contents: read
-  id-token: write
-
-# ...in the job:
-env:
-  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-steps:
-  # ...checkout, Node, Java, and npm ci
-  - uses: gronxb/hot-updater/actions/native-build@v1.2.0
-    with:
-      platform: android
-      scheme: release
-      upload: play-internal
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  env:
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID }}
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: ${{ secrets.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET }}
+  with:
+    platform: android
+    scheme: release
+    submit: play-internal
 ```
 
-[Build and upload from CI](/docs/guides/ci-native-build#infisical) has the
-complete workflow.
-
-The build reads its signing and upload credentials, such as
-`android-keystore` and `play-service-account`, from Infisical as the
-identity. When the identity's Audiences setting lists another
-value, pass it as `auth: { method: "github-oidc", audience: "…" }`.
-
-## When a read or write fails
-
-The CLI reports Infisical's reason with what to check:
-
-| Answer                      | Meaning                                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 401, or 403 for a bad token | The client secret, the access token, or the ID token's subject or audience doesn't match the identity. |
-| 403                         | The identity's project role can't read or write secrets in the environment and folder.                 |
-| 404                         | No such project, environment, or folder.                                                               |
-
-A role that can list secrets but not read their values fails too, rather
-than reading a secret as missing.
-
-## Connections
-
-Every request has a 30-second timeout and refuses redirects. `siteUrl` must
-be HTTPS, or HTTP on `localhost`, `127.0.0.1`, or `[::1]`. The client
-secret, the access tokens, the ID token, and every value read are masked in
-the CLI's output.
+[Build and upload from CI](/docs/guides/ci-native-build#read-secrets-from-a-secrets-store)
+has the complete workflow.

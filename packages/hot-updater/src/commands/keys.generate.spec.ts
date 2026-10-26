@@ -40,7 +40,12 @@ vi.mock("../utils/git", () => ({
   appendToProjectRootGitignore: vi.fn(() => true),
 }));
 
-import { envSecrets } from "@hot-updater/cli-tools";
+import {
+  getLocalKeyFile,
+  readLocalKey,
+  withLocalKeyStore,
+  writeLocalKey,
+} from "@hot-updater/cli-tools";
 
 import { keysGenerate } from "./keys";
 
@@ -50,6 +55,7 @@ const createProject = async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "keys-generate-"));
   projects.push(cwd);
   mocks.getCwd.mockReturnValue(cwd);
+  vi.stubEnv("HOT_UPDATER_HOME", path.join(cwd, "home"));
   return cwd;
 };
 
@@ -85,6 +91,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   delete process.env["HOT_UPDATER_BUNDLE_SIGNING_KEY"];
   await Promise.all(
     projects
@@ -131,22 +138,18 @@ describe("keys generate --secret", () => {
     expect(output()).toContain('privateKey: "secret:release-signing-key"');
   });
 
-  it("writes an owner-only private key file and names envSecrets()'s variable when the adapter is read-only", async () => {
+  it("stores the private key in `localSecrets()`'s store without a secrets adapter, and writes only the public key", async () => {
     const cwd = await createProject();
-    mocks.loadConfig.mockResolvedValue({ secrets: envSecrets() });
+    mocks.loadConfig.mockResolvedValue({ secrets: withLocalKeyStore() });
 
     await keysGenerate({ keySize: 2048, secret: true });
 
-    const privateKeyPath = path.join(cwd, "keys/private-key.pem");
-    const privateKey = await fs.readFile(privateKeyPath, "utf8");
-    expect((await fs.stat(privateKeyPath)).mode & 0o777).toBe(0o600);
-    expect((await listFiles(path.join(cwd, "keys"))).sort()).toEqual([
-      "private-key.pem",
-      "public-key.pem",
-    ]);
-    expect(output()).toContain(
-      `The envSecrets secrets adapter is read-only, so the private key is in ${privateKeyPath}, readable only by you. Store its contents as HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment or .env.hotupdater, such as a CI secret, then delete the file.`,
-    );
+    const privateKey = (await readLocalKey("bundle-signing-key", cwd))!;
+    expect(privateKey).toContain("BEGIN PRIVATE KEY");
+    expect(
+      (await fs.stat(getLocalKeyFile("bundle-signing-key", cwd))).mode & 0o777,
+    ).toBe(0o600);
+    expect(await listFiles(path.join(cwd, "keys"))).toEqual(["public-key.pem"]);
     expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
     expect(output()).not.toContain(privateKey.split("\n")[1]);
   });
@@ -170,10 +173,17 @@ describe("keys generate --secret", () => {
     );
   });
 
-  it("never replaces a key envSecrets() already holds", async () => {
+  it.each([
+    ["the environment", "env"],
+    ["`localSecrets()`'s store", "store"],
+  ])("never replaces a key %s already holds", async (_, where) => {
     const cwd = await createProject();
-    process.env["HOT_UPDATER_BUNDLE_SIGNING_KEY"] = "existing";
-    mocks.loadConfig.mockResolvedValue({ secrets: envSecrets() });
+    if (where === "env") {
+      process.env["HOT_UPDATER_BUNDLE_SIGNING_KEY"] = "existing";
+    } else {
+      await writeLocalKey("bundle-signing-key", "existing", cwd);
+    }
+    mocks.loadConfig.mockResolvedValue({ secrets: withLocalKeyStore() });
     exit();
 
     await expect(keysGenerate({ keySize: 2048, secret: true })).rejects.toThrow(
@@ -182,6 +192,9 @@ describe("keys generate --secret", () => {
 
     expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
     expect(output()).toContain("bundle-signing-key already holds a value");
+    if (where === "store") {
+      expect(await readLocalKey("bundle-signing-key", cwd)).toBe("existing");
+    }
   });
 
   it("removes the public key when storing the private key fails", async () => {

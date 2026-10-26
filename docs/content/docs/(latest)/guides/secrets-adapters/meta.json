@@ -1,12 +1,14 @@
 {
   "title": "Secrets Adapters",
-  "description": "Read and store the CLI's secrets in the environment or a secrets store.",
+  "description": "Keep the CLI's secrets on this machine, or in a secrets store through an adapter you paste.",
   "icon": "LockKeyhole",
   "pages": [
-    "env-secrets",
-    "github-actions",
+    "local-secrets",
+    "dotenvx",
+    "bitwarden",
+    "1password",
+    "infisical",
     "aws-secrets-manager",
-    "google-secret-manager",
-    "infisical"
+    "google-secret-manager"
   ]
 }

@@ -5,8 +5,9 @@
  *
  * - @hot-updater/server exports its root, the built-in adapters and the
  *   built-in plugins, and nothing else;
- * - hot-updater exports its root, which holds the config helpers and the
- *   secrets adapters, `./plugins` and `./signing`, and nothing else;
+ * - hot-updater exports its root, which holds the config helpers,
+ *   `secretEnv`, and the one built-in secrets adapter, `localSecrets()`,
+ *   `./plugins` and `./signing`, and nothing else;
  * - no package has an export whose key names `internal` or test code, and no
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
@@ -48,9 +49,8 @@ const SERVER_EXPORTS = [
 ];
 
 /**
- * The CLI package's exports: its root, `defineConfig` with the secrets
- * adapters a config sets, the official plugin factories, and the signing
- * adapters.
+ * The CLI package's exports: its root, `defineConfig` with `secretEnv` and
+ * `localSecrets()`, the official plugin factories, and the signing adapters.
  */
 const HOT_UPDATER_EXPORTS = [".", "./package.json", "./plugins", "./signing"];
 
@@ -87,6 +87,10 @@ const COMPUTED_IMPORTS = new Map([
   [
     "packages/hot-updater/src/commands/agent/infra.spec.ts",
     "loads the scaffold it generated",
+  ],
+  [
+    "packages/hot-updater/src/secretsSnippets.spec.ts",
+    "runs the dotenvx snippet it extracted from the docs",
   ],
   [
     "packages/server/src/adapters/drizzle.spec.ts",

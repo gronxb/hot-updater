@@ -324,7 +324,10 @@ export default defineConfig({
       'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
     expect(updatedConfig).toContain(
-      "  plugins: [apiKeys(), insights(), remoteConfig()],\n}",
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n}",
+    );
+    expect(updatedConfig).toContain(
+      'import { defineConfig, localSecrets } from "hot-updater";',
     );
     expect(updatedConfig).not.toContain('updateStrategy: "appVersion"');
   });
@@ -435,7 +438,7 @@ export default defineConfig({
     await writeHotUpdaterConfig(scaffold, configPath);
     const replaced = await fs.readFile(configPath, "utf-8");
     expect(replaced).toContain(
-      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
+      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
     );
     expect(replaced).not.toContain("notes()");
   });
@@ -467,7 +470,7 @@ export default defineConfig({
     await expect(fs.readFile(configPath, "utf-8")).resolves
       .toBe(`import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 export default defineConfig({
@@ -482,6 +485,7 @@ export default defineConfig({
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
+  secrets: localSecrets(),
 });
 `);
   });
