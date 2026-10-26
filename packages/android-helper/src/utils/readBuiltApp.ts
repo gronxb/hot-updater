@@ -145,6 +145,15 @@ export const parseManifestVersionName = (
 };
 
 /**
+ * The `android:versionCode` of the `<manifest>` element in `aapt2 dump
+ * xmltree`, an integer aapt2 prints bare or quoted: null without one.
+ */
+export const parseManifestVersionCode = (xmltree: string): number | null => {
+  const match = /:versionCode\(0x0101021b\)="?(\d+)/.exec(xmltree);
+  return match ? Number(match[1]) : null;
+};
+
+/**
  * The string a resource reference resolves to, from `aapt2 dump resources`:
  * its default configuration's value, or else its first. undefined when the
  * table has none aapt2 printed on one line.
@@ -298,6 +307,41 @@ export const readBuiltPackageName = async ({
       : artifactPath;
     const { stdout } = await execa(aapt2, ["dump", "packagename", apkPath]);
     return stdout.trim() || undefined;
+  } finally {
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  }
+};
+
+/**
+ * The version code of the built `.apk` or `.aab`, which Google Play files
+ * its releases by. undefined without aapt2, or when the manifest has none.
+ */
+export const readBuiltVersionCode = async ({
+  artifactPath,
+  androidProjectPath,
+}: {
+  artifactPath: string;
+  androidProjectPath: string;
+}): Promise<number | undefined> => {
+  const aapt2 = findAapt2(androidProjectPath);
+  if (!aapt2) {
+    return undefined;
+  }
+  const directory = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "android-helper-"),
+  );
+  try {
+    const apkPath = artifactPath.endsWith(".aab")
+      ? await writeBaseModuleApk(artifactPath, directory)
+      : artifactPath;
+    const { stdout } = await execa(aapt2, [
+      "dump",
+      "xmltree",
+      "--file",
+      "AndroidManifest.xml",
+      apkPath,
+    ]);
+    return parseManifestVersionCode(stdout) ?? undefined;
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }

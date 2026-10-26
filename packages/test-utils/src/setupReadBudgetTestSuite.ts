@@ -272,6 +272,8 @@ const nativeBuildScope = {
   fingerprintHash: "native-fingerprint",
   appVersion: null,
 } as const;
+/** The native build key the older of the two native builds is registered with. */
+const nativeBuildKey = `nbk1:${"0".repeat(64)}`;
 const bundleEvents = {
   kind: "bundle",
   platform: "ios",
@@ -339,6 +341,7 @@ const seed = async (database: MeasuredDatabase) => {
       id: createBundleFixture(`8${suffix}`).id,
       minBundleId: createBundleFixture(suffix).id,
       gitCommitHash: null,
+      buildKey: suffix === "011" ? nativeBuildKey : null,
       artifact: {
         kind: "ipa",
         storageUri: `storage://read-budgets/native-builds/${suffix}/App.ipa`,
@@ -609,6 +612,18 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (build) =>
       expect(build).toMatchObject({
         min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build by key: byBuildKey descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { buildKey: nativeBuildKey }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
+        build_key: nativeBuildKey,
       }),
   }),
   budget({

@@ -172,34 +172,33 @@ const explain = (error: unknown, packageName: string): unknown => {
   return error;
 };
 
-export interface UploadToPlayResult {
-  /** The version code Google Play read from the `.aab`. */
-  versionCode: number;
-  /** The release's status: `draft` on an app Play Console has not published. */
-  status: "completed" | "draft";
-}
+/** A Google Play Developer API request, which answers its JSON or throws. */
+type PlayRequest = <T>(
+  action: string,
+  method: string,
+  url: string,
+  body?: object,
+) => Promise<T>;
 
 /**
- * Uploads an `.aab` to Google Play's internal testing track with the Google
- * Play Developer API: it opens an edit, uploads the bundle, releases its
- * version code to the internal track, and commits the edit, which it
- * deletes again when any step fails. The service account stays in memory.
+ * Requests to the Google Play Developer API for `packageName`, as the
+ * service account: each carries an access token, exchanged for a signed
+ * assertion and replaced well before it expires.
  */
-export const uploadToPlay = async ({
-  aabPath,
+const createPlayClient = ({
+  json,
   packageName,
-  serviceAccount: { json },
-  fetch = globalThis.fetch,
-  commitRetryDelayMs = 2_000,
+  fetch,
 }: {
-  aabPath: string;
-  /** The application ID the `.aab` was built with. */
+  json: string;
   packageName: string;
-  serviceAccount: Credentials["play-service-account"];
-  fetch?: typeof globalThis.fetch;
-  /** The first wait before committing again an edit Google is processing. */
-  commitRetryDelayMs?: number;
-}): Promise<UploadToPlayResult> => {
+  fetch: typeof globalThis.fetch;
+}): {
+  /** The app's path under the API. */
+  app: string;
+  authorization: () => Promise<string>;
+  request: PlayRequest;
+} => {
   const account = readServiceAccount(json);
 
   let token: { value: string; issuedAtMs: number } | undefined;
@@ -236,7 +235,7 @@ export const uploadToPlay = async ({
   };
 
   const app = `/androidpublisher/v3/applications/${encodeURIComponent(packageName)}`;
-  const request = async <T>(
+  const request: PlayRequest = async <T>(
     action: string,
     method: string,
     url: string,
@@ -259,6 +258,89 @@ export const uploadToPlay = async ({
     }
     return (response.status === 204 ? undefined : await response.json()) as T;
   };
+
+  return { app, authorization, request };
+};
+
+/**
+ * Whether Google Play's internal testing track already releases the
+ * `.aab`'s version code, as when a reused native build was uploaded
+ * before. It reads the track in an edit it then deletes, changing nothing.
+ */
+export const findPlayInternalRelease = async ({
+  versionCode,
+  packageName,
+  serviceAccount: { json },
+  fetch = globalThis.fetch,
+}: {
+  versionCode: number;
+  /** The application ID the `.aab` was built with. */
+  packageName: string;
+  serviceAccount: Credentials["play-service-account"];
+  fetch?: typeof globalThis.fetch;
+}): Promise<boolean> => {
+  const { app, request } = createPlayClient({ json, packageName, fetch });
+  let editId: string;
+  try {
+    ({ id: editId } = await request<{ id: string }>(
+      "Opening a Google Play edit",
+      "POST",
+      `${API_URL}${app}/edits`,
+      {},
+    ));
+  } catch (error) {
+    throw explain(error, packageName);
+  }
+  const edit = `${API_URL}${app}/edits/${encodeURIComponent(editId)}`;
+  try {
+    const { releases = [] } = await request<{
+      releases?: { versionCodes?: string[] }[];
+    }>("Reading the internal track", "GET", `${edit}/tracks/${INTERNAL_TRACK}`);
+    return releases.some(({ versionCodes = [] }) =>
+      versionCodes.includes(String(versionCode)),
+    );
+  } catch (error) {
+    throw explain(error, packageName);
+  } finally {
+    await request("Deleting the Google Play edit", "DELETE", edit).catch(
+      () => undefined,
+    );
+  }
+};
+
+export interface UploadToPlayResult {
+  /** The version code Google Play read from the `.aab`. */
+  versionCode: number;
+  /** The release's status: `draft` on an app Play Console has not published. */
+  status: "completed" | "draft";
+}
+
+/**
+ * Uploads an `.aab` to Google Play's internal testing track with the Google
+ * Play Developer API: it opens an edit, uploads the bundle, releases its
+ * version code to the internal track, and commits the edit, which it
+ * deletes again when any step fails. The service account stays in memory.
+ */
+export const uploadToPlay = async ({
+  aabPath,
+  packageName,
+  serviceAccount: { json },
+  fetch = globalThis.fetch,
+  commitRetryDelayMs = 2_000,
+}: {
+  aabPath: string;
+  /** The application ID the `.aab` was built with. */
+  packageName: string;
+  serviceAccount: Credentials["play-service-account"];
+  fetch?: typeof globalThis.fetch;
+  /** The first wait before committing again an edit Google is processing. */
+  commitRetryDelayMs?: number;
+}): Promise<UploadToPlayResult> => {
+  const { app, authorization, request } = createPlayClient({
+    json,
+    packageName,
+    fetch,
+  });
 
   let editId: string;
   try {

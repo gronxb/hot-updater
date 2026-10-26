@@ -119,10 +119,13 @@ export const preflightNativeBuildRegistration = async (
  * artifact under `native-builds/<platform>/<id>/`, and the built-in bundle,
  * taken byte for byte from the artifact, as a bundle whose manifest lists
  * only its JavaScript bundle file, at the path an OTA bundle's manifest
- * gives it. No release publishes that bundle.
+ * gives it. No release publishes that bundle. `buildKey` is the native
+ * build key of the build's inputs, which a later build with the same inputs
+ * finds it by, or null for a build no key covers.
  */
 export const registerNativeBuild = async (
   build: NativeBuildResult,
+  { buildKey }: { readonly buildKey: string | null },
 ): Promise<NativeBuildRow> => {
   if (build.minBundleId === NIL_UUID) {
     throw new Error(
@@ -221,6 +224,7 @@ export const registerNativeBuild = async (
       id,
       minBundleId: build.minBundleId,
       gitCommitHash: (await getLatestGitCommit())?.id() ?? null,
+      buildKey,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,

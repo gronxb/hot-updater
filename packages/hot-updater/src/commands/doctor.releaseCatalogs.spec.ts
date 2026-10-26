@@ -338,6 +338,7 @@ describe("doctor's release catalog check", () => {
       appVersion: "1.0.0",
       minBundleId: builtIn.id,
       gitCommitHash: null,
+      buildKey: null,
       artifact: {
         kind: "apk",
         storageUri: "storage://native-builds/android/b001/app-release.apk",

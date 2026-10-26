@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseManifestMetaData,
+  parseManifestVersionCode,
   parseManifestVersionName,
   parseResourceString,
 } from "./readBuiltApp";
@@ -22,6 +23,19 @@ const XMLTREE = `N: android=http://schemas.android.com/apk/res/android (line=2)
             A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.example.Receiver" (Raw: "com.example.Receiver")`;
 
 describe("aapt2 output", () => {
+  it("reads the merged versionCode", () => {
+    expect(parseManifestVersionCode(XMLTREE)).toBe(1);
+    expect(
+      parseManifestVersionCode(
+        XMLTREE.replace(
+          "versionCode(0x0101021b)=1",
+          "versionCode(0x0101021b)=10042",
+        ),
+      ),
+    ).toBe(10042);
+    expect(parseManifestVersionCode("E: manifest (line=2)")).toBeNull();
+  });
+
   it("reads the merged versionName, with its suffix", () => {
     expect(parseManifestVersionName(XMLTREE)).toBe("1.0-staging");
   });

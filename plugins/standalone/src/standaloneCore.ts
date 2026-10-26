@@ -295,11 +295,19 @@ export const createStandaloneCoreApi = (
       call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`, {
         requiredRoute: "native build",
       }),
-    findNativeBuild: (scope) =>
-      call<NativeBuildRow>("GET", "/native-builds/latest", {
-        query: nativeBuildScopeParams(scope),
+    // A server that predates native build keys ignores `buildKey` and
+    // answers the scope's newest build, whose key then differs: no build.
+    findNativeBuild: async (scope, options) => {
+      const buildKey = options?.buildKey;
+      const row = await call<NativeBuildRow>("GET", "/native-builds/latest", {
+        query: {
+          ...nativeBuildScopeParams(scope),
+          ...(buildKey === undefined ? {} : { buildKey }),
+        },
         requiredRoute: "native build",
-      }),
+      });
+      return buildKey !== undefined && row?.build_key !== buildKey ? null : row;
+    },
     // A server without the native build routes holds no native builds: its
     // schema fence refuses a database whose schema has them. So its 404
     // lists none, which keeps doctor working against it.

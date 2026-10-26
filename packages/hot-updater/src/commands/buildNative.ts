@@ -2,13 +2,18 @@ import path from "path";
 
 import {
   buildAndroid,
+  type EnrichedNativeBuildAndroidScheme,
+  findPlayInternalRelease,
   readBuiltPackageName,
+  readBuiltVersionCode,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "@hot-updater/android-helper";
 import {
   assertTestFlightExportOptions,
   buildIos,
+  type EnrichedNativeBuildIosScheme,
+  findTestFlightBuild,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
@@ -26,6 +31,7 @@ import {
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
 import type {
+  BuildAdapter,
   NativeBuildOptions,
   Platform,
   SecretsAdapter,
@@ -36,6 +42,7 @@ import { ExecaError } from "execa";
 import {
   createNativeBuild,
   type NativeBuildResult,
+  type NativeBuildTarget,
 } from "@/utils/native/createNativeBuild";
 import {
   type NativeBuildSchemeOptions,
@@ -51,8 +58,14 @@ import { getChannel } from "@/utils/setChannel";
 import { ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
+import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
 import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
+import {
+  type NativeBuildCache,
+  rememberTrackedBuild,
+  reuseNativeBuild,
+} from "../utils/native/reuseNativeBuild";
 
 /**
  * `native-build ios` and `native-build android`: every build but a Debug
@@ -72,12 +85,22 @@ export interface NativeBuildCreateOptions {
    */
   readonly dryRun?: boolean;
   /**
-   * Prints `{ dryRun, build, nativeBuild, registration, submission }` as
-   * one line of JSON, the last of the output: the build, its record or
+   * `false` (`--no-cache`) builds even when a build with the same native
+   * build key can be reused, such as after a change outside the project
+   * that no key covers, like a provisioning profile; the new build is still
+   * recorded with its key.
+   */
+  readonly cache?: boolean;
+  /**
+   * Prints `{ dryRun, build, nativeBuild, registration, submission, cache }`
+   * as one line of JSON, the last of the output: the build, its record or
    * null, why it has none (`registration.skipped`: "debug", "dry-run", or
-   * null), and the store it went to (`submission.destination`, skipped on
-   * a dry run). The record holds what the build's artifact embeds, such as
-   * an app version an xcconfig sets, which the project doesn't declare.
+   * null), the store it went to (`submission.destination`, skipped on a
+   * dry run, or when the store already has a reused build), and the build
+   * it reused (`cache.hit`: "storage", "local", or null, with the key, why
+   * none could be, and what changed). The record holds what the build's
+   * artifact embeds, such as an app version an xcconfig sets, which the
+   * project doesn't declare.
    */
   readonly json?: boolean;
 }
@@ -89,7 +112,13 @@ export interface NativeBuildCreateOptions {
 export type NativeBuildTrackingSkip = "debug" | "dry-run";
 
 const buildNativeInternal = async ({
-  options: { submit: upload, dryRun = false, json = false, ...schemeOptions },
+  options: {
+    submit: upload,
+    dryRun = false,
+    json = false,
+    cache: useCache = true,
+    ...schemeOptions
+  },
   platform,
 }: {
   options: NativeBuildCreateOptions;
@@ -249,6 +278,7 @@ const buildNativeInternal = async ({
         }
         const {
           buildAdapter,
+          config,
           outputPath,
           scheme,
           target,
@@ -262,62 +292,68 @@ const buildNativeInternal = async ({
           );
         }
 
-        const minBundleId = createMinBundleId(platform);
-
-        p.log.info(
-          ui.line([
-            "Building",
-            ui.platform(platformName),
-            ui.muted(buildAdapter.name),
-          ]),
-        );
-        const result = await createNativeBuild({
-          platform,
-          scheme,
-          minBundleId,
-          target,
-          // The native SDK of a Debug build reports the nil UUID as its
-          // MIN_BUNDLE_ID. Its debug flag follows the variant or configuration
-          // the app builds, which neither the artifact nor the app target's
-          // build settings expose, so the name decides, as for signing.
-          debug: /debug$/i.test(
-            platform === "android"
-              ? androidSchemeConfig!.variant
-              : iosSchemeConfig!.configuration,
-          ),
-          readChannel: async () => (await getChannel(platform)).value,
-          buildAdapter,
-          outputPath,
-          builder:
-            platform === "android"
-              ? () =>
-                  buildAndroid({
-                    schemeConfig: androidSchemeConfig!,
-                    minBundleId,
-                    credentials,
-                  })
-              : () =>
-                  buildIos({
-                    schemeConfig: iosSchemeConfig!,
-                    minBundleId,
-                    credentials,
-                  }),
-        });
-        p.log.success(
-          [
-            ui.line([
-              "Built",
-              ui.platform(platformName),
-              ui.muted(buildAdapter.name),
-            ]),
-            summarizeNativeBuild(result),
-          ].join("\n"),
-        );
+        // Debug builds are neither tracked nor cached.
+        const cache: NativeBuildCache | null =
+          trackingSkipped === "debug"
+            ? null
+            : await reuseNativeBuild({
+                platform,
+                scheme,
+                cacheDir: config.cacheDir,
+                outputPath,
+                target,
+                iosScheme: iosSchemeConfig,
+                androidScheme: androidSchemeConfig,
+                credentials,
+                noCache: !useCache,
+              });
+        const reused = cache?.hit ?? null;
+        const result = reused
+          ? reused.result
+          : await buildNow({
+              platform,
+              platformName,
+              scheme,
+              target,
+              buildAdapter,
+              outputPath,
+              androidSchemeConfig,
+              iosSchemeConfig,
+              credentials,
+            });
+        if (!reused) await cache?.remember(result, null);
         if (dryRun) trackingSkipped = "dry-run";
+        // A build reused from storage is tracked already; one reused from
+        // this machine is tracked with the key it was cached under.
         const registered =
-          trackingSkipped === null ? await trackBuild(result, upload) : null;
+          trackingSkipped !== null
+            ? null
+            : reused?.source === "storage"
+              ? reused.nativeBuild
+              : await trackBuild(result, upload, cache?.key.key ?? null);
+        if (registered && reused?.source !== "storage" && cache) {
+          await rememberTrackedBuild(cache, registered.id);
+        }
+        // A reused build may be in the store already, which takes a build
+        // number once: it is not submitted again.
+        let alreadySubmitted = false;
         const apiKey = dryRun ? undefined : ascApiKey;
-        if (apiKey) {
+        if (apiKey && reused) {
+          const existing = await reportUploadFailure(() =>
+            findTestFlightBuild({ ipaPath: result.artifactPath, apiKey }),
+          );
+          if (existing.found) {
+            alreadySubmitted = true;
+            p.log.info(
+              ui.line([
+                `Build ${existing.bundleVersion} of version ${existing.shortVersion} is already on`,
+                ui.platform("TestFlight"),
+                ui.path(existing.testFlightUrl),
+              ]),
+            );
+          }
+        }
+        if (apiKey && !alreadySubmitted) {
           const { state, testFlightUrl } = await reportUploadFailure(
             () =>
               uploadToTestFlight({
@@ -338,37 +374,65 @@ const buildNativeInternal = async ({
         }
         const playServiceAccount = dryRun ? undefined : serviceAccount;
         if (playServiceAccount) {
-          const { versionCode, status } = await reportUploadFailure(
-            async () =>
-              uploadToPlay({
-                aabPath: result.artifactPath,
-                // The artifact's, with the suffixes flavors and build types add.
-                packageName:
-                  (await readBuiltPackageName({
-                    artifactPath: result.artifactPath,
-                    androidProjectPath: path.join(getCwd(), "android"),
-                  })) ?? androidSchemeConfig!.applicationId,
-                serviceAccount: playServiceAccount,
-              }),
-            [
-              serviceAccountIssued
-                ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
-                : undefined,
-              `The build stays at ${result.artifactPath}.`,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-          );
-          p.log.success(
-            ui.line([
-              status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
-              ui.platform("Google Play internal testing"),
-              ui.muted(`version code ${versionCode}`),
-            ]),
-          );
+          // The artifact's, with the suffixes flavors and build types add.
+          const androidProjectPath = path.join(getCwd(), "android");
+          const packageName =
+            (await readBuiltPackageName({
+              artifactPath: result.artifactPath,
+              androidProjectPath,
+            })) ?? androidSchemeConfig!.applicationId;
+          if (reused) {
+            const versionCode = await readBuiltVersionCode({
+              artifactPath: result.artifactPath,
+              androidProjectPath,
+            });
+            if (
+              versionCode !== undefined &&
+              (await reportUploadFailure(() =>
+                findPlayInternalRelease({
+                  versionCode,
+                  packageName,
+                  serviceAccount: playServiceAccount,
+                }),
+              ))
+            ) {
+              alreadySubmitted = true;
+              p.log.info(
+                ui.line([
+                  `Version code ${versionCode} is already on`,
+                  ui.platform("Google Play internal testing"),
+                ]),
+              );
+            }
+          }
+          if (!alreadySubmitted) {
+            const { versionCode, status } = await reportUploadFailure(
+              async () =>
+                uploadToPlay({
+                  aabPath: result.artifactPath,
+                  packageName,
+                  serviceAccount: playServiceAccount,
+                }),
+              [
+                serviceAccountIssued
+                  ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
+                  : undefined,
+                `The build stays at ${result.artifactPath}.`,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            );
+            p.log.success(
+              ui.line([
+                status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
+                ui.platform("Google Play internal testing"),
+                ui.muted(`version code ${versionCode}`),
+              ]),
+            );
+          }
         }
         if (dryRun) {
-          p.log.message(summarizeDryRun(result, upload));
+          p.log.message(summarizeDryRun(result, upload, reused));
         }
         if (json) {
           console.log(
@@ -379,7 +443,18 @@ const buildNativeInternal = async ({
               registration: { skipped: trackingSkipped },
               submission: {
                 destination: upload ?? null,
-                skipped: dryRun && upload ? "dry-run" : null,
+                skipped:
+                  dryRun && upload
+                    ? "dry-run"
+                    : alreadySubmitted
+                      ? "already-submitted"
+                      : null,
+              },
+              cache: cache?.report ?? {
+                hit: null,
+                key: null,
+                uncacheable: "a Debug build loads its JavaScript from Metro",
+                changed: [],
               },
             }),
           );
@@ -396,6 +471,85 @@ const buildNativeInternal = async ({
   } catch (e) {
     return catchError(e);
   }
+};
+
+/**
+ * Builds the app: issues the build's MIN_BUNDLE_ID, runs the platform's
+ * build and the adapter's postbuild, and copies the output to `outputPath`.
+ */
+const buildNow = async ({
+  platform,
+  platformName,
+  scheme,
+  target,
+  buildAdapter,
+  outputPath,
+  androidSchemeConfig,
+  iosSchemeConfig,
+  credentials,
+}: {
+  platform: Platform;
+  platformName: string;
+  scheme: string;
+  target: NativeBuildTarget;
+  buildAdapter: BuildAdapter;
+  outputPath: string;
+  androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
+  iosSchemeConfig?: EnrichedNativeBuildIosScheme;
+  credentials: CredentialResolver;
+}): Promise<NativeBuildResult> => {
+  const minBundleId = createMinBundleId(platform);
+
+  p.log.info(
+    ui.line([
+      "Building",
+      ui.platform(platformName),
+      ui.muted(buildAdapter.name),
+    ]),
+  );
+  const result = await createNativeBuild({
+    platform,
+    scheme,
+    minBundleId,
+    target,
+    // The native SDK of a Debug build reports the nil UUID as its
+    // MIN_BUNDLE_ID. Its debug flag follows the variant or configuration
+    // the app builds, which neither the artifact nor the app target's
+    // build settings expose, so the name decides, as for signing.
+    debug: /debug$/i.test(
+      platform === "android"
+        ? androidSchemeConfig!.variant
+        : iosSchemeConfig!.configuration,
+    ),
+    readChannel: async () => (await getChannel(platform)).value,
+    buildAdapter,
+    outputPath,
+    builder:
+      platform === "android"
+        ? () =>
+            buildAndroid({
+              schemeConfig: androidSchemeConfig!,
+              minBundleId,
+              credentials,
+            })
+        : () =>
+            buildIos({
+              schemeConfig: iosSchemeConfig!,
+              minBundleId,
+              credentials,
+            }),
+  });
+  p.log.success(
+    [
+      ui.line([
+        "Built",
+        ui.platform(platformName),
+        ui.muted(buildAdapter.name),
+      ]),
+      summarizeNativeBuild(result),
+    ].join("\n"),
+  );
+  return result;
 };
 
 /**
@@ -446,9 +600,10 @@ const prepareTracking = async ({
 const trackBuild = async (
   result: NativeBuildResult,
   upload: NativeBuildCreateOptions["submit"],
+  buildKey: string | null,
 ) => {
   try {
-    return await registerNativeBuild(result);
+    return await registerNativeBuild(result, { buildKey });
   } catch (error) {
     throw new NativeBuildFailure(
       [
@@ -464,6 +619,7 @@ const trackBuild = async (
 const summarizeDryRun = (
   result: NativeBuildResult,
   upload: NativeBuildCreateOptions["submit"],
+  reused: NativeBuildCacheHit | null,
 ): string =>
   ui.block("Dry run: nothing was recorded or submitted", [
     ui.kv("Platform", ui.platform(result.platform)),
@@ -477,7 +633,9 @@ const summarizeDryRun = (
       "Would record",
       result.minBundleId === NIL_UUID
         ? "nothing: a Debug build has no built-in bundle"
-        : "this native build, its artifact, and its built-in bundle, in Hot Updater",
+        : reused?.source === "storage"
+          ? `nothing: Hot Updater tracks this build as ${reused.nativeBuild.id}`
+          : "this native build, its artifact, and its built-in bundle, in Hot Updater",
     ),
     ui.kv(
       "Would submit",

@@ -27,6 +27,13 @@ const SCOPE_KEY_MAX_LENGTH = 2048;
 /** The `git_commit_hash` bound of `bundles` and `native_builds`. */
 const GIT_COMMIT_HASH_MAX_LENGTH = 255;
 
+/**
+ * A native build key: `nbk1:` and a SHA-256, as the CLI computes it. The
+ * format is the CLI's convention, implemented here so the registry stores
+ * and looks up nothing else.
+ */
+const BUILD_KEY = /^nbk1:[0-9a-f]{64}$/;
+
 /** A native build or scope core cannot store or look up: the caller's input. */
 export class NativeBuildInputError extends TypeError {
   override readonly name = "NativeBuildInputError";
@@ -45,6 +52,7 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   byte_size: row.byte_size as number,
   git_commit_hash: (row.git_commit_hash ?? null) as string | null,
   created_at_ms: row.created_at_ms as number,
+  build_key: (row.build_key ?? null) as string | null,
 });
 
 /**
@@ -98,6 +106,7 @@ const problemOf = ({
   fingerprintHash,
   appVersion,
   gitCommitHash,
+  buildKey,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -117,6 +126,9 @@ const problemOf = ({
   }
   if ((fingerprintHash === null) === (appVersion === null)) {
     return "exactly one of fingerprintHash and appVersion is required";
+  }
+  if (buildKey !== null && !BUILD_KEY.test(buildKey)) {
+    return "buildKey must be nbk1: and a SHA-256, or null";
   }
   const kinds: readonly string[] = ARTIFACT_KINDS[platform];
   if (!kinds.includes(artifact.kind)) {
@@ -162,6 +174,7 @@ export const createNativeBuildApi = (
       byte_size: registration.artifact.byteSize,
       git_commit_hash: registration.gitCommitHash,
       created_at_ms: now(),
+      build_key: registration.buildKey,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.
@@ -206,13 +219,30 @@ export const createNativeBuildApi = (
     return row === null ? null : pick(row);
   },
 
-  async findNativeBuild(scope) {
-    const { rows } = await db.findMany("native_builds", {
-      index: "byScope",
-      where: { scope_key: nativeBuildScopeKey(scope) },
-      order: "desc",
-      limit: 1,
-    });
+  async findNativeBuild(scope, options) {
+    const scopeKey = nativeBuildScopeKey(scope);
+    const buildKey = options?.buildKey;
+    if (buildKey !== undefined && !BUILD_KEY.test(buildKey)) {
+      throw new NativeBuildInputError(
+        "Invalid native build key: it must be nbk1: and a SHA-256.",
+      );
+    }
+    const { rows } = await db.findMany(
+      "native_builds",
+      buildKey === undefined
+        ? {
+            index: "byScope",
+            where: { scope_key: scopeKey },
+            order: "desc",
+            limit: 1,
+          }
+        : {
+            index: "byBuildKey",
+            where: { scope_key: scopeKey, build_key: buildKey },
+            order: "desc",
+            limit: 1,
+          },
+    );
     return rows[0] === undefined ? null : pick(rows[0]);
   },
 

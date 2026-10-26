@@ -165,7 +165,10 @@ const channels = defineTable(
  * the build compiled in. `min_bundle_id` names the build's built-in bundle,
  * a `bundles` row no release publishes. Its references keep no counters, so
  * adding this table changes no existing one; a channel with builds is
- * refused deletion through `byChannel`.
+ * refused deletion through `byChannel`. `build_key` is the native build key
+ * of every input the artifact was built from (`nbk1:` and a SHA-256), which
+ * a build with the same inputs reuses it by; a build registered without
+ * one is never reused.
  */
 const nativeBuilds = defineTable(
   {
@@ -189,11 +192,13 @@ const nativeBuilds = defineTable(
     byte_size: { type: "integer" },
     git_commit_hash: { type: "string", maxLength: 255, required: false },
     created_at_ms: { type: "integer" },
+    build_key: { type: "string", maxLength: 69, ascii: true, required: false },
   },
   {
     key: ["id"],
     indexes: {
       byScope: { eq: ["scope_key"], sort: ["id"] },
+      byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
       // Rooted at the channel, so deleting a channel reads its builds under
       // the channel row a registration bumps.
       byChannel: {

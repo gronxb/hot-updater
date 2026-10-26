@@ -230,6 +230,7 @@ describe("admin API protocol 2 routes", () => {
       appVersion: null,
       minBundleId: "01900000-0000-7000-8000-000000000001",
       gitCommitHash: null,
+      buildKey: null,
       artifact: { kind: "ipa", storageUri: "s3://bucket/App.ipa", byteSize: 1 },
       embeddedBundle: {
         manifestStorageUri: "s3://bucket/manifest.json",
@@ -322,6 +323,7 @@ describe("admin API protocol 2 routes", () => {
             appVersion: null,
             minBundleId: "01900000-0000-7000-8000-000000000001",
             gitCommitHash: null,
+            buildKey: null,
             artifact: {
               kind: "ipa",
               storageUri: "s3://bucket/App.ipa",

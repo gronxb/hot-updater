@@ -311,6 +311,7 @@ const isNativeBuildRegistration = (
   isTextOrNull(value.appVersion) &&
   (value.fingerprintHash === null) !== (value.appVersion === null) &&
   isTextOrNull(value.gitCommitHash) &&
+  isTextOrNull(value.buildKey) &&
   isRecord(value.artifact) &&
   typeof value.artifact.kind === "string" &&
   NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&
@@ -556,10 +557,15 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
 
   // A scope without a build answers 200 with null data, so a 404 means a
   // server without these routes.
+  // With `buildKey`, the newest build of the scope with that native build key.
   findNativeBuild: onCore(async (core, request) => {
-    const scope = nativeBuildScopeOf(new URL(request.url));
+    const url = new URL(request.url);
+    const scope = nativeBuildScopeOf(url);
+    const buildKey = url.searchParams.get("buildKey");
     return json({
-      data: await refusingInvalid(() => core.findNativeBuild(scope)),
+      data: await refusingInvalid(() =>
+        core.findNativeBuild(scope, buildKey === null ? {} : { buildKey }),
+      ),
     });
   }),
 

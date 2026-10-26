@@ -34,6 +34,7 @@ import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import {
   assertTestFlightExportOptions,
   createAppStoreConnectToken,
+  findTestFlightBuild,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
 } from "./uploadToTestFlight";
@@ -1264,5 +1265,44 @@ describe("assertTestFlightExportOptions", () => {
       scheme({ signing: { ascApiKey: "secret:asc-api-key" } }),
     );
     expect(execa).not.toHaveBeenCalled();
+  });
+});
+
+describe("findTestFlightBuild", () => {
+  const buildsUrl = `${API}/v1/builds?${new URLSearchParams({
+    "filter[app]": "123",
+    "filter[version]": "42",
+    "filter[preReleaseVersion.version]": "1.2.0",
+    "fields[builds]": "version",
+    limit: "1",
+  })}`;
+
+  it("finds the .ipa's build number of its version, reading only", async () => {
+    const { fetch, requests } = createRecordingFetch({
+      [`GET ${appsUrl}`]: successRoutes()[`GET ${appsUrl}`]!,
+      [`GET ${buildsUrl}`]: { json: { data: [{ id: "build-1" }] } },
+    });
+
+    await expect(
+      findTestFlightBuild({ ipaPath: "/out/App.ipa", apiKey: apiKey(), fetch }),
+    ).resolves.toEqual({
+      found: true,
+      testFlightUrl:
+        "https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      shortVersion: "1.2.0",
+      bundleVersion: "42",
+    });
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "GET"]);
+  });
+
+  it("finds none when App Store Connect has no build of that number", async () => {
+    const { fetch } = createRecordingFetch({
+      [`GET ${appsUrl}`]: successRoutes()[`GET ${appsUrl}`]!,
+      [`GET ${buildsUrl}`]: { json: { data: [] } },
+    });
+
+    await expect(
+      findTestFlightBuild({ ipaPath: "/out/App.ipa", apiKey: apiKey(), fetch }),
+    ).resolves.toMatchObject({ found: false });
   });
 });

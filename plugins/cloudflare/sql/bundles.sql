@@ -36,9 +36,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
 
 CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" TEXT NOT NULL, "_shard" INTEGER NOT NULL, "bundles" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
-CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "fingerprint_hash" TEXT, "app_version" TEXT, "min_bundle_id" TEXT NOT NULL, "artifact_kind" TEXT NOT NULL, "artifact_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "git_commit_hash" TEXT, "created_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT NOT NULL, "platform" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "fingerprint_hash" TEXT, "app_version" TEXT, "min_bundle_id" TEXT NOT NULL, "artifact_kind" TEXT NOT NULL, "artifact_storage_uri" TEXT NOT NULL, "byte_size" INTEGER NOT NULL, "git_commit_hash" TEXT, "created_at_ms" INTEGER NOT NULL, "build_key" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");
+
+CREATE INDEX IF NOT EXISTS "native_builds_byBuildKey" ON "native_builds" ("scope_key", "build_key", "id");
 
 CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channel_id", "id");
 

@@ -42,3 +42,8 @@ export const nativeBuildDryRunCommandOption = new Option(
   "--dry-run",
   "Build, but record and submit nothing: no Hot Updater tracking, no store submission (like npm publish --dry-run)",
 );
+
+export const nativeBuildNoCacheCommandOption = new Option(
+  "--no-cache",
+  "Build even when a build with the same inputs can be reused, such as after a change no key covers, like a provisioning profile",
+);

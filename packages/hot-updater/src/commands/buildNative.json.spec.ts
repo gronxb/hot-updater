@@ -16,6 +16,7 @@ vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async () => ({
     buildAdapter: { name: "bare" },
+    config: { cacheDir: null },
     outputPath: "/out",
     scheme: "simulator",
     target: { fingerprintHash: null, appVersion: "1.0.0" },
@@ -49,6 +50,17 @@ vi.mock("../utils/native/nativeBuildScope", () => ({
     appVersion: null,
   })),
 }));
+// A build no key covers: each build runs; buildNative.cache.spec.ts covers reuse.
+vi.mock("../utils/native/reuseNativeBuild", () => ({
+  reuseNativeBuild: vi.fn(async () => ({
+    key: { key: null, components: null, uncacheable: "it is a test" },
+    slot: null,
+    hit: null,
+    report: { hit: null, key: null, uncacheable: "it is a test", changed: [] },
+    remember: vi.fn(async () => {}),
+  })),
+  rememberTrackedBuild: vi.fn(async () => {}),
+}));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
   // The tracking preflight passes: its own specs cover it.
   preflightNativeBuildRegistration: vi.fn(async () => {}),
@@ -81,6 +93,12 @@ describe("native-build ios|android --json", () => {
       nativeBuild: row,
       registration: { skipped: null },
       submission: { destination: null, skipped: null },
+      cache: {
+        hit: null,
+        key: null,
+        uncacheable: "it is a test",
+        changed: [],
+      },
     });
   });
 

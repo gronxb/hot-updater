@@ -100,6 +100,12 @@ export type NativeBuildRegistration = NativeBuildScope & {
   /** The MIN_BUNDLE_ID the build compiled in: the built-in bundle's ID. */
   readonly minBundleId: string;
   readonly gitCommitHash: string | null;
+  /**
+   * The native build key of every input the artifact was built from:
+   * `nbk1:` and a SHA-256. A build with the same key reuses this one. Null
+   * for a build whose inputs no key covers, which is never reused.
+   */
+  readonly buildKey: string | null;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;
@@ -168,8 +174,15 @@ export interface HotUpdaterCoreApi {
   findChannelByName(name: string): Promise<ChannelRow | null>;
   /** A native build by ID: one read of its key. */
   getNativeBuild(id: string): Promise<NativeBuildRow | null>;
-  /** The newest native build of a scope: one read of its index. */
-  findNativeBuild(scope: NativeBuildScope): Promise<NativeBuildRow | null>;
+  /**
+   * The newest native build of a scope: one read of its index. With
+   * `buildKey`, the newest of the scope registered with that native build
+   * key, also one read.
+   */
+  findNativeBuild(
+    scope: NativeBuildScope,
+    options?: { readonly buildKey?: string },
+  ): Promise<NativeBuildRow | null>;
   /** One page of native builds, by ID: oldest or newest first. */
   listNativeBuilds(input: KeysetInput): Promise<NativeBuildRow[]>;
 
