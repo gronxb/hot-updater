@@ -131,6 +131,16 @@ The Console's **Preview** page then has two cards:
   opens it on the device that shows the page, and the `adb` and
   `xcrun simctl openurl` commands that open it on an emulator or simulator.
 
+The CLI prints the same link from the project's config, with the `adb` and
+`xcrun simctl openurl` commands that open it:
+
+```package-install
+npx hot-updater channel link pr-12
+```
+
+Add `--json` to print `{ "channel", "link" }`, with a null `link` when the
+config sets no prefix.
+
 `/preview?build=<build id>` opens a build's install dialog, and
 `/preview?channel=<channel>` shows a channel's link, so a pull request
 comment can link to either. A bundle's detail sheet links to its channel's

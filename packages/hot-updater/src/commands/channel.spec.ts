@@ -218,6 +218,114 @@ describe("handleChannelDelete", () => {
   });
 });
 
+describe("handleChannelLink", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = undefined;
+  });
+
+  const printed = () =>
+    vi
+      .mocked(console.log)
+      .mock.calls.map(([line]) => String(line))
+      .join("\n");
+
+  it("prints the link console.channelLinkPrefix makes, as JSON", async () => {
+    loadConfig.mockResolvedValue({
+      console: { channelLinkPrefix: "https://example.com/app" },
+    });
+    const { handleChannelLink } = await import("./channel");
+
+    await handleChannelLink("pr-12", { json: true });
+
+    expect(output()).toEqual({
+      channel: "pr-12",
+      link: "https://example.com/app/hot-updater/channel/pr-12",
+    });
+    expect(loadServer).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("prints a null link without a prefix under --json, and succeeds", async () => {
+    loadConfig.mockResolvedValue({});
+    const { handleChannelLink } = await import("./channel");
+
+    await handleChannelLink("pr-12", { json: true });
+
+    expect(output()).toEqual({ channel: "pr-12", link: null });
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("prints the link with the commands that open it on an emulator or simulator", async () => {
+    loadConfig.mockResolvedValue({
+      console: { channelLinkPrefix: "myapp://" },
+    });
+    const { handleChannelLink } = await import("./channel");
+
+    await handleChannelLink("pr-12", {});
+
+    const text = printed();
+    expect(text).toContain("myapp://hot-updater/channel/pr-12");
+    expect(text).toContain(
+      "adb shell am start -a android.intent.action.VIEW -d myapp://hot-updater/channel/pr-12",
+    );
+    expect(text).toContain(
+      "xcrun simctl openurl booted myapp://hot-updater/channel/pr-12",
+    );
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("quotes a link the shell would read otherwise", async () => {
+    loadConfig.mockResolvedValue({
+      console: { channelLinkPrefix: "https://example.com/?app=1&x=" },
+    });
+    const { handleChannelLink } = await import("./channel");
+
+    await handleChannelLink("pr-12", {});
+
+    const text = printed();
+    // adb shell parses the link again on the device, so it's quoted twice.
+    expect(text).toContain(
+      String.raw`-d ''\''https://example.com/?app=1&x=/hot-updater/channel/pr-12'\'''`,
+    );
+    expect(text).toContain(
+      "xcrun simctl openurl booted 'https://example.com/?app=1&x=/hot-updater/channel/pr-12'",
+    );
+  });
+
+  it("fails without a prefix, naming the option", async () => {
+    loadConfig.mockResolvedValue({});
+    const { handleChannelLink } = await import("./channel");
+
+    await handleChannelLink("pr-12", {});
+
+    expect(console.log).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining("console.channelLinkPrefix"),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("fails for a name that is not a channel name", async () => {
+    loadConfig.mockResolvedValue({
+      console: { channelLinkPrefix: "myapp://" },
+    });
+    const { handleChannelLink } = await import("./channel");
+
+    await handleChannelLink(" pr-12", { json: true });
+
+    expect(console.log).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith('" pr-12" is not a channel name.');
+    expect(process.exitCode).toBe(1);
+  });
+});
+
 // The terminal these specs simulate takes prompts only outside CI, and CI
 // runners set CI.
 beforeEach(() => {

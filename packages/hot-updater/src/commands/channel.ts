@@ -1,5 +1,6 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type { ReleaseRow } from "@hot-updater/plugin-core";
+import { createChannelLink } from "@hot-updater/protocol";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { loadServer } from "@/utils/loadServer";
@@ -35,6 +36,68 @@ export const handleSetChannel = async (channel: string) => {
   }
 
   p.log.warn("Rebuild native app after changing channel.");
+};
+
+/**
+ * `value` as one POSIX shell word: as it is when it holds only characters
+ * no shell treats specially, else in single quotes. The Console's
+ * `lib/shell.ts` quotes the commands it shows the same way.
+ */
+const shellQuote = (value: string): string =>
+  /^[\w@%+=:,./-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", `'\\''`)}'`;
+
+/**
+ * Prints a channel's link, `<console.channelLinkPrefix>hot-updater/channel/
+ * <channel>`, the link the Console's QR code of the channel holds, with the
+ * `adb` and `xcrun simctl openurl` commands that open it on an emulator or
+ * simulator. It reads only the config. `--json` prints `{ channel, link }`,
+ * with a null link when the config sets no prefix, and succeeds.
+ */
+export const handleChannelLink = async (
+  channel: string,
+  options: { readonly json?: boolean },
+) => {
+  const config = await loadConfig(null);
+  const prefix = config.console?.channelLinkPrefix;
+  let link: string | null = null;
+  if (prefix !== undefined) {
+    try {
+      link = createChannelLink(prefix, channel);
+    } catch {
+      p.log.error(`${JSON.stringify(channel)} is not a channel name.`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if (options.json) {
+    console.log(JSON.stringify({ channel, link }));
+    return;
+  }
+  if (link === null) {
+    p.log.error(
+      "hot-updater.config.ts sets no console.channelLinkPrefix, the prefix of the app's channel links, such as its URL scheme `myapp://`.",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    ui.block("Channel link", [
+      ui.kv("Channel", ui.channel(channel)),
+      ui.kv("Link", link),
+      ui.kv(
+        "Android",
+        ui.command(
+          `adb shell am start -a android.intent.action.VIEW -d ${shellQuote(shellQuote(link))}`,
+        ),
+      ),
+      ui.kv(
+        "iOS",
+        ui.command(`xcrun simctl openurl booted ${shellQuote(link)}`),
+      ),
+    ]),
+  );
 };
 
 const PAGE = 100;
