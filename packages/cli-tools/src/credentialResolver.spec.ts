@@ -240,13 +240,13 @@ describe("createCredentialResolver", () => {
     ]);
   });
 
-  it("names the google-play login shortcut with a custom name", async () => {
+  it("names the full secrets issue form for a custom name, which the shortcut does not take", async () => {
     const resolver = createCredentialResolver({ secrets: fakeSecrets({}) });
 
     await expect(
       resolver.resolve({ kind: "play-service-account", name: "widget-play" }),
     ).rejects.toThrow(
-      "widget-play (play-service-account) is not in the fake secrets adapter (fake://widget-play). Store it once with `npx hot-updater google-play login widget-play`.",
+      "widget-play (play-service-account) is not in the fake secrets adapter (fake://widget-play). Store it once with `npx hot-updater secrets issue play-service-account widget-play`.",
     );
   });
 

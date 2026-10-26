@@ -347,7 +347,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(text).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
     expect(log.error).toHaveBeenCalledWith(
-      "HOT_UPDATER_ASC_KEY_ID is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater apple login --replace` again.",
+      "HOT_UPDATER_ASC_KEY_ID is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater secrets issue asc-api-key --replace` again.",
     );
   });
 
@@ -358,7 +358,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      "Hot Updater signs in to your Apple Account to issue the App Store Connect API key only at a terminal, never without a terminal. Run `npx hot-updater apple login widget-asc` in a terminal, or store a key you have with `npx hot-updater secrets put widget-asc --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
+      "Hot Updater signs in to your Apple Account to issue the App Store Connect API key only at a terminal, never without a terminal. Run `npx hot-updater secrets issue asc-api-key widget-asc` in a terminal, or store a key you have with `npx hot-updater secrets put widget-asc --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
     );
     expect(loadConfig).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
@@ -502,10 +502,10 @@ describe("hot-updater secrets put without the key's files", () => {
       "play-service-account",
       "a play-service-account",
       "--service-account <file>",
-      "npx hot-updater google-play login widget-play",
+      "npx hot-updater secrets issue play-service-account widget-play",
     ],
   ] as const)(
-    "never signs in for %s (%s), and names the login shortcut",
+    "never signs in for %s (%s), and names the command that issues it",
     async (name, kind, item, flags, issue) => {
       const { store } = writableStore();
 
