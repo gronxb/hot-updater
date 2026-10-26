@@ -120,4 +120,15 @@ export const createGradleLogger = ({ logPrefix }: { logPrefix: string }) =>
       /* Build completion */
       ["BUILD SUCCESSFUL", /\d+ actionable tasks:/],
     ],
+    failureSummary: {
+      lines: [
+        // Kotlin's `e: file.kt:1:2 …` and javac's `File.java:1: error: …`.
+        /^e: /,
+        /(^|:\s)error: /,
+        /^BUILD FAILED/,
+      ],
+      blocks: [
+        { start: "* What went wrong:", end: "* Try:", includeEnd: false },
+      ],
+    },
   });

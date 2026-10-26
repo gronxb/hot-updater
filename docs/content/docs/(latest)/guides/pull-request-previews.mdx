@@ -174,6 +174,12 @@ so a build it makes embeds the preview channel. Then, for each platform:
    The action checks that the bundle targets the build's fingerprint or app
    version.
 
+When a native build fails, the job's log shows the build's errors and the
+path of the CLI's build log, which keeps the whole output of `xcodebuild` or
+Gradle, and the action uploads that log as the
+`hot-updater-preview-build-log-<platform>` artifact. Download it from the
+run's **Summary** page.
+
 A scheme that sets the app version at build time, such as in an `xcconfig`,
 builds a version the project doesn't declare, so its preview builds again on
 every run.
@@ -228,7 +234,8 @@ it out.
 
 The `comment-body` output holds the comment's Markdown, and `previews` a JSON
 array of each platform's native build ID, whether it was built, and bundle
-ID.
+ID. When a platform's native build fails, `ios-build-log` or
+`android-build-log` holds the path of its build log.
 
 ## Pull requests from forks
 

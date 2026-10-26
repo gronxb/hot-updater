@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 
 import {
+  createBuildLogs,
   createCli,
   log,
   maskCredentials,
@@ -49,6 +50,7 @@ try {
   await runAction(
     {
       cli,
+      buildLogs: createBuildLogs(),
       fetch,
       github:
         githubToken && repository

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
+import { BuildFailedError, p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
 import { createGradleLogger } from "../utils/createGradleLogger";
@@ -16,27 +16,15 @@ type RunGradleArgs = {
   androidProjectPath: string;
 };
 
-/**
- * Clean up gradle error message by removing common noise
- */
-const getCleanedErrorMessage = (error: ExecaError) => {
-  const gradleLinesToRemove = [
-    "FAILURE: Build failed with an exception.",
-    "* Try:",
-    "> Run with --stacktrace option to get the stack trace.",
-    "> Run with --info or --debug option to get more log output.",
-    "> Run with --scan to get full insights.",
-    "> Get more help at [undefined](https://help.gradle.org).",
-    "> Get more help at https://help.gradle.org.",
-    "BUILD FAILED",
-  ];
-  return error.message
-    .split("\n")
-    .filter(
-      (line: string) => !gradleLinesToRemove.some((l) => line.includes(l)),
-    )
-    .join("\n")
-    .trim();
+/** Why Gradle failed, without its command line. */
+const describeFailure = (error: unknown) => {
+  if (error instanceof ExecaError) {
+    if (error.signal) return `Gradle was stopped by ${error.signal}.`;
+    if (error.exitCode !== undefined) {
+      return `Gradle exited with code ${error.exitCode}.`;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
 };
 
 /**
@@ -89,31 +77,33 @@ Args       ${gradleArgs.join(" ")}
   await logger.start();
 
   try {
-    const process = execa(getGradleWrapper(), gradleArgs, {
+    const gradle = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
       env,
       all: true,
+      // The output streams to the log file; buffered, it would fill the
+      // error's message.
+      buffer: false,
     });
-    const outputStream = process.all ?? process.stdout;
-    if (outputStream) {
-      await logger.processStream(outputStream);
-    }
-    await process;
+    const outputStream = gradle.all ?? gradle.stdout;
+    // Settled together: Gradle exits before the log finishes reading its
+    // output, and its failure must wait for it.
+    const [gradleResult, loggingResult] = await Promise.allSettled([
+      gradle,
+      outputStream ? logger.processStream(outputStream) : undefined,
+    ]);
+    if (gradleResult.status === "rejected") throw gradleResult.reason;
+    if (loggingResult.status === "rejected") throw loggingResult.reason;
 
     logger.stop();
   } catch (e) {
     logger.writeError(e);
     logger.stop("Build failed", false);
-
-    if (e instanceof ExecaError) {
-      p.log.error(getCleanedErrorMessage(e));
-    } else if (e instanceof Error) {
-      p.log.error(e.message);
-    }
-
-    throw new Error(
-      "Failed to build the app. See the error above for details from Gradle.",
-    );
+    throw new BuildFailedError(`Build failed: ${describeFailure(e)}`, {
+      logPath: logger.logPath,
+      summary: logger.failureSummary,
+      cause: e,
+    });
   } finally {
     await logger.close();
   }

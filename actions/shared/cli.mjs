@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -143,6 +143,60 @@ export const setOutput = (name, value, env = process.env) => {
 };
 
 /**
+ * The app's directory, the `working-directory` input's.
+ *
+ * @param {Record<string, string | undefined>} actionEnv
+ */
+const appDirectory = (actionEnv) =>
+  path.resolve(
+    actionEnv["GITHUB_WORKSPACE"] ?? process.cwd(),
+    actionEnv["INPUT_WORKING_DIRECTORY"]?.trim() || ".",
+  );
+
+/**
+ * @typedef {(since: number) => string[]} BuildLogs
+ *   The logs a native build wrote in the app's `.hot-updater/log` since
+ *   `since`, a time in milliseconds, as absolute paths.
+ */
+
+/**
+ * The CLI's build logs in the `working-directory` input's directory.
+ *
+ * @param {{ actionEnv?: Record<string, string | undefined> }} [options]
+ * @returns {BuildLogs}
+ */
+export const createBuildLogs = ({ actionEnv = process.env } = {}) => {
+  const directory = path.join(appDirectory(actionEnv), ".hot-updater", "log");
+  return (since) => {
+    try {
+      return readdirSync(directory)
+        .map((name) => path.join(directory, name))
+        .filter((file) => statSync(file).mtimeMs >= since)
+        .sort();
+    } catch {
+      return [];
+    }
+  };
+};
+
+/**
+ * Reports the logs a failed native build wrote since `since`: prints their
+ * paths and sets them as the `name` output, which the action's
+ * upload-artifact step uploads.
+ *
+ * @param {{ buildLogs: BuildLogs, setOutput: (name: string, value: string) => void, log: { info: (message: string) => void } }} deps
+ * @param {string} name
+ * @param {number} since
+ */
+export const reportBuildLogs = (deps, name, since) => {
+  const files = deps.buildLogs(since);
+  for (const file of files) {
+    deps.log.info(`Build log: ${file}`);
+  }
+  if (files.length) deps.setOutput(name, files.join("\n"));
+};
+
+/**
  * @typedef {(args: string[], options?: { capture?: boolean }) => Promise<{ code: number, stdout: string }>} Cli
  *   Runs the project's hot-updater CLI. Without `capture`, it prints the
  *   command's output and throws when the command fails; with it, it returns
@@ -159,10 +213,7 @@ export const setOutput = (name, value, env = process.env) => {
  * @returns {Cli}
  */
 export const createCli = ({ env, actionEnv = process.env }) => {
-  const cwd = path.resolve(
-    actionEnv["GITHUB_WORKSPACE"] ?? process.cwd(),
-    actionEnv["INPUT_WORKING_DIRECTORY"]?.trim() || ".",
-  );
+  const cwd = appDirectory(actionEnv);
   const [command = "npx", ...prefix] = (
     actionEnv["INPUT_CLI"]?.trim() || "npx --no-install hot-updater"
   ).split(/\s+/);

@@ -1,14 +1,10 @@
-import type { Readable } from "stream";
-import { pipeline } from "stream/promises";
-
-import { execa } from "execa";
+import { BuildFailedError } from "@hot-updater/cli-tools";
+import { ExecaError, execa } from "execa";
 
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
 
 let cachedXcbeautifyAvailability: boolean | null = null;
 const TERMINATION_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
-// Stream pipeline can close early while children are being terminated.
-const IGNORED_PIPELINE_ERROR_CODES = ["EPIPE", "ERR_STREAM_PREMATURE_CLOSE"];
 type KillableProcess = {
   kill: (signal?: number | NodeJS.Signals) => boolean;
 };
@@ -40,6 +36,9 @@ const createRawXcodebuildProcess = ({
   return execa("xcodebuild", args, {
     cwd: sourceDir,
     all: true,
+    // The output streams to the log file; buffered, it would fill the
+    // error's message.
+    buffer: false,
     env: { ...process.env, ...env, NSUnbufferedIO: "YES" },
   });
 };
@@ -48,55 +47,19 @@ const createXcbeautifyProcess = ({ cwd }: { cwd: string }) => {
   return execa("xcbeautify", [], {
     cwd,
     all: true,
+    buffer: false,
   });
 };
 
-const getErrorCode = (error: unknown) => {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return "";
-  }
-
-  const { code } = error as { code?: unknown };
-  return typeof code === "string" ? code : "";
-};
-
-const shouldIgnorePipelineError = (error: unknown) => {
-  const errorCode = getErrorCode(error);
-  return IGNORED_PIPELINE_ERROR_CODES.includes(errorCode);
-};
-
-const createXcodebuildOutputPipingPromise = async ({
-  xcodebuildOutput,
-  xcbeautifyInput,
-}: {
-  xcodebuildOutput: NodeJS.ReadableStream;
-  xcbeautifyInput: NodeJS.WritableStream;
-}) => {
-  try {
-    return await pipeline(xcodebuildOutput, xcbeautifyInput);
-  } catch (error) {
-    // Ignore expected stream-close races while shutting down child processes.
-    if (shouldIgnorePipelineError(error)) {
-      return;
+/** Why xcodebuild failed, without its command line. */
+const describeFailure = (error: unknown) => {
+  if (error instanceof ExecaError) {
+    if (error.signal) return `xcodebuild was stopped by ${error.signal}.`;
+    if (error.exitCode !== undefined) {
+      return `xcodebuild exited with code ${error.exitCode}.`;
     }
-
-    throw error;
   }
-};
-
-const processOutputStream = async ({
-  outputStream,
-  logger,
-}: {
-  logger: ReturnType<typeof createXcodebuildLogger>;
-  outputStream: Readable | null | undefined;
-}) => {
-  if (!outputStream) {
-    return;
-  }
-
-  // BuildLogger parses high-signal lines and writes full output to log files.
-  await logger.processStream(outputStream);
+  return error instanceof Error ? error.message : String(error);
 };
 
 export const runXcodebuildWithLogging = async ({
@@ -129,55 +92,65 @@ export const runXcodebuildWithLogging = async ({
   }
 
   try {
-    if (useXcbeautify) {
-      // Keep both processes as direct children so Ctrl+C cleanup can kill them explicitly.
-      const xcodebuildProcess = createRawXcodebuildProcess({
-        args,
-        env,
-        sourceDir,
+    // Keep both processes as direct children so Ctrl+C cleanup can kill them explicitly.
+    const xcodebuildProcess = createRawXcodebuildProcess({
+      args,
+      env,
+      sourceDir,
+    });
+    activeProcesses.push(xcodebuildProcess);
+    const xcodebuildOutput = xcodebuildProcess.all ?? xcodebuildProcess.stdout;
+
+    let xcbeautifyProcess: ReturnType<typeof createXcbeautifyProcess> | null =
+      null;
+    if (useXcbeautify && xcodebuildOutput) {
+      xcbeautifyProcess = createXcbeautifyProcess({ cwd: sourceDir });
+      activeProcesses.push(xcbeautifyProcess);
+    }
+
+    // The log file and the failure summary read xcodebuild's raw output;
+    // xcbeautify's only shows progress.
+    const logging = xcodebuildOutput
+      ? logger.processStream(xcodebuildOutput, {
+          display: xcbeautifyProcess
+            ? (xcbeautifyProcess.all ?? xcbeautifyProcess.stdout ?? undefined)
+            : undefined,
+        })
+      : Promise.resolve();
+    const xcbeautifyInput = xcbeautifyProcess?.stdin;
+    if (xcodebuildOutput && xcbeautifyInput) {
+      // xcbeautify exiting early must not end xcodebuild's output, which
+      // the log still reads.
+      xcbeautifyInput.on("error", () => {
+        xcodebuildOutput.unpipe(xcbeautifyInput);
       });
-      const xcbeautifyProcess = createXcbeautifyProcess({ cwd: sourceDir });
-      activeProcesses.push(xcodebuildProcess, xcbeautifyProcess);
+      xcodebuildOutput.pipe(xcbeautifyInput);
+    }
 
-      const xcodebuildOutput =
-        xcodebuildProcess.all ?? xcodebuildProcess.stdout;
-      const xcbeautifyInput = xcbeautifyProcess.stdin;
-      if (!xcodebuildOutput || !xcbeautifyInput) {
-        throw new Error("Failed to pipe xcodebuild output into xcbeautify");
-      }
-
-      const pipingPromise = createXcodebuildOutputPipingPromise({
-        xcodebuildOutput,
-        xcbeautifyInput,
-      });
-
-      await processOutputStream({
-        logger,
-        outputStream: xcbeautifyProcess.all ?? xcbeautifyProcess.stdout,
-      });
-
-      await Promise.all([xcbeautifyProcess, xcodebuildProcess, pipingPromise]);
-    } else {
-      const xcodebuildProcess = createRawXcodebuildProcess({
-        args,
-        env,
-        sourceDir,
-      });
-      activeProcesses.push(xcodebuildProcess);
-
-      await processOutputStream({
-        logger,
-        outputStream: xcodebuildProcess.all ?? xcodebuildProcess.stdout,
-      });
-
-      await xcodebuildProcess;
+    // Settled together: xcodebuild exits before xcbeautify and the log
+    // finish reading its output, and its failure must wait for them.
+    const [xcodebuildResult, loggingResult] = await Promise.allSettled([
+      xcodebuildProcess,
+      logging,
+      // Only formats the terminal's progress.
+      xcbeautifyProcess,
+    ]);
+    if (xcodebuildResult.status === "rejected") {
+      throw xcodebuildResult.reason;
+    }
+    if (loggingResult.status === "rejected") {
+      throw loggingResult.reason;
     }
 
     logger.stop(successMessage);
   } catch (error) {
     logger.writeError(error);
     logger.stop(failureMessage, false);
-    throw error;
+    throw new BuildFailedError(`${failureMessage}: ${describeFailure(error)}`, {
+      logPath: logger.logPath,
+      summary: logger.failureSummary,
+      cause: error,
+    });
   } finally {
     for (const signal of TERMINATION_SIGNALS) {
       process.off(signal, terminateActiveProcesses);
