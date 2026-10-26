@@ -17,13 +17,11 @@ import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   type IssuedCredentialPolicy,
-  type IssuedCredentialTarget,
   keepIssuedCopy,
+  offerIssuedKeyToGitHub,
   prepareIssuedCredential,
   storeIssuedCredential,
-  withIssuedFile,
   type WritableSecrets,
-  writeIssuedCredential,
 } from "./issuedCredential";
 
 const POLICY: IssuedCredentialPolicy = {
@@ -79,16 +77,6 @@ export type EnsureAscApiKeyResult =
        * write-only store: the adapter this run reads it with, from a copy.
        */
       readonly secrets?: SecretsAdapter;
-    }
-  /**
-   * The key was issued, and the adapter is read-only: it is in `file`, and
-   * `secrets` is the adapter that reads it from there for this run.
-   */
-  | {
-      readonly status: "saved";
-      readonly keyId: string;
-      readonly file: string;
-      readonly secrets: SecretsAdapter;
     };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -139,33 +127,6 @@ const revokeNotStored = async (
   );
 };
 
-/**
- * Writes `key` to the file a read-only adapter's key goes to. Only a
- * failed write revokes it: once the file holds it, it stays.
- */
-const saveIssued = async (
-  target: Extract<IssuedCredentialTarget, { kind: "file" }>,
-  name: string,
-  key: IssuedAscApiKey,
-  githubSecrets: CreateGitHubSecrets | undefined,
-) => {
-  try {
-    await writeIssuedCredential({
-      policy: POLICY,
-      name,
-      value: storedValue(key),
-      secrets: target.secrets,
-      file: target.file,
-      ...(githubSecrets ? { githubSecrets } : {}),
-    });
-  } catch (error) {
-    if (error instanceof CredentialNotStoredError) {
-      await revokeNotStored(key, error);
-    }
-    throw error;
-  }
-};
-
 const storeIssued = async (
   secrets: WritableSecrets,
   name: string,
@@ -195,22 +156,21 @@ const storeIssued = async (
  * Makes sure an App Store Connect API key named `name` exists where builds
  * resolve it, issuing one when it does not. Everything that can fail is
  * checked before any Apple sign-in (`prepareIssuedCredential`): an
- * environment override or a stored key is used as it is, a run without a
- * terminal refuses with the command that signs in once, and a read-only
- * `secrets` adapter needs a writable `cacheDir`.
+ * environment override or a stored key is used as it is, and a run without
+ * a terminal refuses with the command that signs in once.
  *
  * Only then does the developer sign in with their Apple Account, through
- * `issue`, and the issued key is stored, read back, and revoked with the
- * same session if the adapter does not hold it. A read-only adapter's key
- * is written to `<cacheDir>/issued/<name>.json` instead, with how to store
- * it, and an offer to store it as a GitHub Actions secret.
+ * `issue`, and the issued key is stored through the config's adapter, or
+ * this machine's key store by default, read back, and revoked with the
+ * same session if nothing holds it. A key the default store keeps comes
+ * with an offer to store it as a GitHub Actions secret too, and every
+ * issued key with where to revoke the ones no machine uses anymore.
  */
 export const ensureAscApiKey = async ({
   name,
   env = {},
   replace,
   secrets,
-  cacheDir,
   githubSecrets,
   issue = issueAscApiKey,
 }: {
@@ -222,9 +182,7 @@ export const ensureAscApiKey = async ({
   secrets?: SecretsAdapter;
   /** Set by `secrets issue`: a key is issued whatever the adapter holds. */
   replace?: boolean;
-  /** The config's `cacheDir`, where a read-only adapter's key is written. */
-  cacheDir?: string | null;
-  /** The adapter that stores a read-only adapter's key as a GitHub Actions secret. */
+  /** The adapter that stores a key the default store keeps as a GitHub Actions secret. */
   githubSecrets?: CreateGitHubSecrets;
   /** How the key is issued after the Apple Account signs in. */
   issue?: IssueAscApiKey;
@@ -232,12 +190,11 @@ export const ensureAscApiKey = async ({
   const prepared = await prepareIssuedCredential(POLICY, {
     name,
     env,
-    cacheDir,
     replace,
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
-  const { target } = prepared;
+  const store = prepared.secrets;
 
   const appleId = answered(
     await p.text({
@@ -271,23 +228,21 @@ export const ensureAscApiKey = async ({
     },
   });
   try {
-    if (target.kind === "file") {
-      await saveIssued(target, name, key, githubSecrets);
-      return {
-        status: "saved",
-        keyId: key.keyId,
-        file: target.file,
-        secrets: withIssuedFile(target.secrets, name, target.file),
-      };
-    }
-    const store = target.secrets;
     const { readable } = await storeIssued(store, name, key);
     p.log.success(
       ui.block("App Store Connect API key stored", [
         ui.kv("Secret", name),
         ui.kv("In", describeSecret(store, name)),
+        ui.kv("Key ID", key.keyId),
+        `    Each machine that signs in issues its own key. Revoke the ones no machine or CI uses anymore at ${ASC_INTEGRATIONS_URL} (Team Keys).`,
       ]),
     );
+    await offerIssuedKeyToGitHub({
+      name,
+      value: storedValue(key),
+      secrets: store,
+      ...(githubSecrets ? { githubSecrets } : {}),
+    });
     if (readable) return { status: "issued", keyId: key.keyId };
     // The adapter keeps the key, which builds here would not find.
     return {
@@ -298,7 +253,6 @@ export const ensureAscApiKey = async ({
         name,
         value: storedValue(key),
         secrets: store,
-        file: target.file,
       }),
     };
   } finally {

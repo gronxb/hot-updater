@@ -1,11 +1,16 @@
 import {
-  envSecrets,
+  getCwd,
   getHotUpdaterEnvValue,
+  getLocalKeyFile,
   isCI,
   isReservedVariableName,
+  p,
+  readLocalKey,
   readLoadedHotUpdaterEnv,
+  readSecretVariables,
   registerSecretValue,
   secretVariableName,
+  writeLocalKey,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -189,13 +194,15 @@ const githubError = async (
 };
 
 /**
- * GitHub Actions secrets of a repository, or of one of its environments, as
- * a write target: `set` encrypts a value for the repository's public key and
- * stores it. GitHub never returns a secret's value, so `get` reads only
- * inside a workflow run, through the environment as `envSecrets()` does: the
- * workflow maps each secret to the variable of the same name, such as
- * `HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}`.
- * Elsewhere `get` holds nothing.
+ * GitHub Actions secrets of a repository, or of one of its environments:
+ * `set` encrypts a value for the repository's public key and stores it,
+ * and keeps a copy in this machine's key store
+ * (`~/.hot-updater/keys/<project-key>/<name>.json`, readable by you alone).
+ * GitHub never returns a secret's value, so `get` reads the environment
+ * inside a workflow run, where the workflow maps each secret to the
+ * variable of the same name, such as
+ * `HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}`, and
+ * this machine's key store elsewhere.
  *
  * `set` needs a user token, never a workflow's `GITHUB_TOKEN`.
  */
@@ -212,20 +219,19 @@ export const githubActions = (
     throw new Error("githubActions() `environment` is empty.");
   }
   let repo = options.repo;
-  const env = envSecrets();
 
   const where = () =>
     `${repo ?? "the origin repository"}${environment === undefined ? "" : `, environment ${environment}`}`;
 
   return {
     name: "githubActions",
-    get: async (names, context) => {
+    get: async (names, { cwd }) => {
       if (process.env["GITHUB_ACTIONS"] === "true") {
-        return env.get(names, context);
+        return readSecretVariables(names, cwd);
       }
       // No prototype: a secret may be named __proto__.
       const values: Record<string, string | undefined> = Object.create(null);
-      for (const name of names) values[name] = undefined;
+      for (const name of names) values[name] = await readLocalKey(name, cwd);
       return values;
     },
     set: async (name, value, { cwd }) => {
@@ -303,10 +309,20 @@ export const githubActions = (
           environment,
         );
       }
+      // After GitHub's write, so a failed one is never read back from the
+      // copy. GitHub holds the value now: a failed copy is reported, not
+      // thrown, and builds here find nothing to read.
+      try {
+        await writeLocalKey(name, value, cwd);
+      } catch (error) {
+        p.log.warn(
+          `githubActions() stored ${secretName} in ${where()}, and could not keep a copy on this machine at ${getLocalKeyFile(name, cwd)}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     },
     describe: (name) => {
       const secretName = secretVariableName(name);
-      return `GitHub Actions secret ${secretName} of ${where()}, which a workflow reads as env ${secretName}`;
+      return `GitHub Actions secret ${secretName} of ${where()}, which a workflow reads as env ${secretName}, with a copy in ${getLocalKeyFile(name, getCwd())} on this machine`;
     },
   };
 };

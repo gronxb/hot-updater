@@ -15,7 +15,6 @@ import {
 import {
   createMinBundleId,
   type CredentialResolver,
-  describeSecret,
   type Credentials,
   getConfiguredSecrets,
   getCwd,
@@ -85,7 +84,7 @@ const buildNativeInternal = async ({
         let ascApiKey: Credentials["asc-api-key"] | undefined;
         let serviceAccount: Credentials["play-service-account"] | undefined;
         // The new service account's key: stored, or in its file.
-        let serviceAccountIssued: "stored" | { file: string } | undefined;
+        let serviceAccountIssued = false;
         const preparedConfig = await prepareNativeBuild({
           ...options,
           platform,
@@ -99,7 +98,6 @@ const buildNativeInternal = async ({
           beforePrebuild: async ({
             scheme,
             secrets: configured,
-            cacheDir,
             iosScheme,
             androidScheme,
           }) => {
@@ -138,14 +136,10 @@ const buildNativeInternal = async ({
                 const ensured = await ensureAscApiKey({
                   name: ascApiKeyName,
                   secrets,
-                  cacheDir,
                 });
-                // A key builds here can't read from the adapter is in its
-                // file: this build signs and uploads with it from there.
-                if (
-                  (ensured.status === "saved" || ensured.status === "issued") &&
-                  ensured.secrets
-                ) {
+                // A key the adapter does not read back here is in its copy:
+                // this build signs and uploads with it from there.
+                if (ensured.status === "issued" && ensured.secrets) {
                   secrets = ensured.secrets;
                 }
               } catch (e) {
@@ -167,23 +161,13 @@ const buildNativeInternal = async ({
                 const ensured = await ensurePlayServiceAccount({
                   name,
                   secrets,
-                  cacheDir,
                   ...(packageName ? { packageName } : {}),
                 });
                 if (ensured.status === "issued") {
-                  serviceAccountIssued = "stored";
+                  serviceAccountIssued = true;
                   // A key the adapter does not read back here is in its
                   // copy: this build uploads with it from there.
-                  if (ensured.secrets) {
-                    secrets = ensured.secrets;
-                    serviceAccountIssued = {
-                      file: describeSecret(ensured.secrets, name),
-                    };
-                  }
-                }
-                if (ensured.status === "saved") {
-                  serviceAccountIssued = { file: ensured.file };
-                  secrets = ensured.secrets;
+                  if (ensured.secrets) secrets = ensured.secrets;
                 }
               } catch (e) {
                 if (e instanceof CredentialSetupRefusedError) throw e;
@@ -308,11 +292,9 @@ const buildNativeInternal = async ({
                 serviceAccount: playServiceAccount,
               }),
             [
-              serviceAccountIssued === "stored"
+              serviceAccountIssued
                 ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
-                : serviceAccountIssued
-                  ? `If Google Play refused the new service account, it may not have its access yet: the key is in ${serviceAccountIssued.file}, so store it as shown above, then run the build again in a few minutes without signing in.`
-                  : undefined,
+                : undefined,
               `The build stays at ${result.artifactPath}.`,
             ]
               .filter(Boolean)

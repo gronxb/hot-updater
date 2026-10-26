@@ -96,9 +96,10 @@ export type GitHubSecretOffer =
 
 /**
  * Offers once to store an issued key's `value` as the GitHub Actions secret
- * CI's `envSecrets()` reads `name` from (`secretVariableName(name)`), when the
- * project has a GitHub remote and the developer a token. A failed write is
- * reported, never thrown: the key is in `file` either way.
+ * CI reads `name` from (`secretVariableName(name)`, which a workflow maps
+ * to the variable of the same name), when the project has a GitHub remote
+ * and the developer a token. A failed write is reported, never thrown: the
+ * key is in `file`, this machine's key store, either way.
  */
 export const offerGitHubSecret = async ({
   name,

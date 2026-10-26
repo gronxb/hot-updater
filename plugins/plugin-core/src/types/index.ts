@@ -449,7 +449,7 @@ export interface SecretsContext {
  * Where the CLI reads secrets by name: the build credentials `secret:<name>`
  * references, and the deploy credentials `secretEnv([...])` names. Values
  * are strings: binary is base64, and a credential with several fields is one
- * JSON value per name. Hot Updater's adapters are exports of `hot-updater`;
+ * JSON value per name. `githubActions()` is an export of `hot-updater`;
  * a store of your own implements this.
  */
 export interface SecretsAdapter {
@@ -640,9 +640,12 @@ export type ConfigInput = {
   signing?: SigningConfig;
   /**
    * Where the CLI reads the secrets the config names: `secret:<name>` build
-   * credentials and `secretEnv([...])` deploy credentials.
+   * credentials and `secretEnv([...])` deploy credentials. Builds read a
+   * credential this adapter does not hold from this machine's key store,
+   * `~/.hot-updater/keys/<project-key>/<name>.json`, where keys Hot Updater
+   * issues go when the adapter stores nothing.
    *
-   * @default envSecrets()
+   * @default the environment, then this machine's key store
    */
   secrets?: SecretsAdapter;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;

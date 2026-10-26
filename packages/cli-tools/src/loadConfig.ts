@@ -16,9 +16,9 @@ import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
 import {
-  envSecrets,
   type SecretsScope,
   setConfiguredSecrets,
+  withLocalKeyStore,
   withSecretsScope,
 } from "./secrets.js";
 
@@ -115,7 +115,11 @@ export type ConfigResponse = RequiredDeep<
   /** The plugins the server runs; none when the config lists none. */
   plugins: readonly AnyHotUpdaterPlugin[];
   signing?: ReturnType<typeof normalizeSigningConfig>;
-  /** Where `secret:` references and `secretEnv` read from; `envSecrets()` unless the config sets another. */
+  /**
+   * Where `secret:` references and issued keys are read and stored: the
+   * config's adapter, or the environment when it sets none, with this
+   * machine's key store after it (`withLocalKeyStore`).
+   */
   secrets: SecretsAdapter;
 };
 
@@ -246,7 +250,7 @@ const resolveConfig = (
   scopes: readonly SecretsScope[],
 ): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
-  const secrets = mergedConfig.secrets ?? envSecrets();
+  const secrets = withLocalKeyStore(mergedConfig.secrets);
   const signing = normalizeSigningConfig(mergedConfig.signing, { secrets });
   for (const scope of scopes) scope.secrets ??= secrets;
   setConfiguredSecrets(secrets);

@@ -47,8 +47,6 @@ export type NativeBuildSchemeOptions = {
   scheme: string;
   /** The config's `secrets` adapter, which the scheme's credentials resolve from. */
   secrets: SecretsAdapter;
-  /** The config's `cacheDir`, where a key issued for a read-only adapter is written. */
-  cacheDir: string | null;
   androidScheme?: NativeBuildAndroidScheme;
   iosScheme?: NativeBuildIosScheme;
 };
@@ -151,13 +149,11 @@ export async function prepareNativeBuild(
       ? {
           scheme,
           secrets: config.secrets,
-          cacheDir: config.cacheDir,
           iosScheme: config.nativeBuild.ios[scheme]!,
         }
       : {
           scheme,
           secrets: config.secrets,
-          cacheDir: config.cacheDir,
           androidScheme: config.nativeBuild.android[scheme]!,
         },
   );

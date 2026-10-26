@@ -111,9 +111,6 @@ const ignorePrivateKey = (cwd: string, outputDir: string) => {
 
 type WritableSecrets = SecretsAdapter & Required<Pick<SecretsAdapter, "set">>;
 
-const isWritable = (secrets: SecretsAdapter): secrets is WritableSecrets =>
-  typeof secrets.set === "function";
-
 /**
  * Stores the private key as `name` and reads it back. The public key file
  * is created first, so an existing one fails before anything is stored, and
@@ -185,12 +182,16 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     registerSecretValue(keyPair.privateKey);
 
     const publicKeyPath = path.join(outputDir, "public-key.pem");
-    if (
-      secrets !== undefined &&
-      secretName !== undefined &&
-      isWritable(secrets)
-    ) {
-      await storePrivateKey(secrets, secretName, keyPair, outputDir, cwd);
+    if (secrets !== undefined && secretName !== undefined) {
+      // The config's adapter, or this machine's key store, which stores
+      // what an adapter can't.
+      await storePrivateKey(
+        secrets as WritableSecrets,
+        secretName,
+        keyPair,
+        outputDir,
+        cwd,
+      );
       spinner.stop("Keys generated");
       p.log.message(
         ui.block("Keys", [
@@ -209,12 +210,6 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
           ui.kv("Gitignore", ignorePrivateKey(cwd, outputDir)),
         ]),
       );
-      if (secrets !== undefined && secretName !== undefined) {
-        // A read-only adapter, such as envSecrets(): the developer stores the key.
-        p.log.warn(
-          `The ${secrets.name} secrets adapter is read-only, so the private key is in ${privateKeyPath}, readable only by you. Store its contents as ${describeSecret(secrets, secretName)}, such as a CI secret, then delete the file.`,
-        );
-      }
     }
 
     p.log.message(

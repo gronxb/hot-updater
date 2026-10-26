@@ -20,6 +20,8 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set([
   // Hot Updater's own: the credential overrides and remoteSigning's token.
   ...Object.values(CREDENTIAL_ENV_NAMES).flat(2),
   "HOT_UPDATER_SIGNING_TOKEN",
+  // Where this machine's key store is.
+  "HOT_UPDATER_HOME",
 ]);
 
 const RESERVED_PREFIXES = [
@@ -29,8 +31,6 @@ const RESERVED_PREFIXES = [
   "NPM_CONFIG_",
   // The OAuth client the Google sign-in issues a Play key with.
   "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_",
-  // What infisical() signs in to Infisical with, such as INFISICAL_TOKEN.
-  "INFISICAL_",
 ] as const;
 
 /**
