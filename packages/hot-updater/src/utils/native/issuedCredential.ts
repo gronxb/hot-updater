@@ -257,7 +257,11 @@ export const storeIssuedCredential = async ({
   readonly value: string;
 }): Promise<{ readonly readable: boolean }> => {
   const cwd = getCwd();
-  const readBack = async () => (await secrets.get([name], { cwd }))[name];
+  // An adapter that stores values is read back alone: localSecrets()'s copy
+  // after it may hold the key this one replaces.
+  const configured = getConfiguredAdapter(secrets);
+  const reader = configured?.set ? configured : secrets;
+  const readBack = async () => (await reader.get([name], { cwd }))[name];
 
   try {
     await secrets.set(name, value, { cwd });

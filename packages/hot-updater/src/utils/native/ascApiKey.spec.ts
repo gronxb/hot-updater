@@ -606,6 +606,22 @@ describe("ensureAscApiKey", () => {
     expect(issue).not.toHaveBeenCalled();
   });
 
+  it("replaces the copy of a key a write-only adapter stored when --replace issues another", async () => {
+    const { held } = fakeStore({ readBack: async () => undefined });
+    await fs.mkdir(path.dirname(keyFile("asc-api-key")), { recursive: true });
+    await fs.writeFile(keyFile("asc-api-key"), '{"keyId":"OLDKEY0001"}');
+
+    const result = await withTTY(true, () =>
+      ensure({ name: "asc-api-key", replace: true, replacing: true }),
+    );
+
+    expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
+    expect(await fs.readFile(keyFile("asc-api-key"), "utf-8")).toBe(
+      held.get("asc-api-key"),
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
   it("uses the key from memory when its copy can't be written", async () => {
     fakeStore({ readBack: async () => undefined });
     await fs.writeFile(path.join(tmp, "home"), "");
