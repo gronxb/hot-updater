@@ -10,6 +10,7 @@ export {
 export { buildIos } from "./buildIos";
 export {
   assertTestFlightExportOptions,
+  findTestFlightBuild,
   resolveTestFlightUploadKey,
   type UploadToTestFlightResult,
   uploadToTestFlight,
@@ -19,5 +20,6 @@ export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosS
 export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export {
   archiveAppBundle,
+  extractAppBundle,
   extractBuiltInBundle,
 } from "./utils/extractBuiltInBundle";

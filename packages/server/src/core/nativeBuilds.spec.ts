@@ -36,6 +36,7 @@ const registration = (
     appVersion: null,
     minBundleId: minBundleId(n),
     gitCommitHash: null,
+    buildKey: null,
     artifact: {
       kind: "ipa",
       storageUri: `storage://native-builds/ios/${buildId(n)}/App.ipa`,
@@ -105,6 +106,44 @@ describe("the native build registry", () => {
         appVersion: null,
       }),
     ).resolves.toBeNull();
+  });
+
+  it("finds the newest build of a scope with a native build key", async () => {
+    const core = setup();
+    const key = (c: string) => `nbk1:${c.repeat(64)}`;
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint-a",
+      appVersion: null,
+    } as const;
+    await core.registerNativeBuild(registration(1, { buildKey: key("a") }));
+    const keyed = await core.registerNativeBuild(
+      registration(2, { buildKey: key("a") }),
+    );
+    // Newer, but without a key, or with another one, or in another scope.
+    await core.registerNativeBuild(registration(3));
+    await core.registerNativeBuild(registration(4, { buildKey: key("b") }));
+    await core.registerNativeBuild(
+      registration(5, { channel: "beta", buildKey: key("a") }),
+    );
+
+    expect(keyed.build_key).toBe(key("a"));
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key("a") }),
+    ).resolves.toEqual(keyed);
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key("c") }),
+    ).resolves.toBeNull();
+    await expect(core.findNativeBuild(scope)).resolves.toMatchObject({
+      id: buildId(4),
+    });
+    await expect(
+      core.findNativeBuild(scope, { buildKey: "nbk1:short" }),
+    ).rejects.toThrow("Invalid native build key");
+    await expect(
+      core.registerNativeBuild(registration(6, { buildKey: "nbk2:x" })),
+    ).rejects.toThrow("buildKey must be nbk1: and a SHA-256, or null");
   });
 
   it("finds a build of the app-version strategy by its exact app version", async () => {

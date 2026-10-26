@@ -331,6 +331,7 @@ export async function registerInstalledNativeBuild({
         id,
         minBundleId,
         gitCommitHash: null,
+        buildKey: null,
         artifact: {
           kind:
             platform === "ios"

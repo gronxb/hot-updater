@@ -113,7 +113,10 @@ describe("registerNativeBuild", () => {
     const artifactPath = path.join(dir, "app-release.apk");
     await fs.promises.writeFile(artifactPath, "apk bytes");
 
-    const row = await registerNativeBuild(android({ artifactPath }));
+    const buildKey = `nbk1:${"d".repeat(64)}`;
+    const row = await registerNativeBuild(android({ artifactPath }), {
+      buildKey,
+    });
 
     expect(loadConfig).toHaveBeenCalledWith(null);
 
@@ -129,14 +132,18 @@ describe("registerNativeBuild", () => {
       artifact_storage_uri: `mem://b/native-builds/android/${row.id}/app-release.apk`,
       byte_size: "apk bytes".length,
       git_commit_hash: "abc123",
+      build_key: buildKey,
     });
     await expect(
-      harness.core.findNativeBuild({
-        platform: "android",
-        channel: "production",
-        fingerprintHash: "fingerprint-a",
-        appVersion: null,
-      }),
+      harness.core.findNativeBuild(
+        {
+          platform: "android",
+          channel: "production",
+          fingerprintHash: "fingerprint-a",
+          appVersion: null,
+        },
+        { buildKey },
+      ),
     ).resolves.toEqual(row);
 
     // The built-in bundle: a manifest listing only the JavaScript bundle at
@@ -188,14 +195,17 @@ describe("registerNativeBuild", () => {
       await fs.promises.writeFile(outputPath, "zipped app");
     });
 
-    const row = await registerNativeBuild({
-      ...android(),
-      platform: "ios",
-      fingerprintHash: null,
-      appVersion: "1.2.0",
-      artifactPath: path.join(dir, "App.app"),
-      artifactKind: "app",
-    });
+    const row = await registerNativeBuild(
+      {
+        ...android(),
+        platform: "ios",
+        fingerprintHash: null,
+        appVersion: "1.2.0",
+        artifactPath: path.join(dir, "App.app"),
+        artifactKind: "app",
+      },
+      { buildKey: null },
+    );
 
     expect(row).toMatchObject({
       platform: "ios",
@@ -213,7 +223,9 @@ describe("registerNativeBuild", () => {
 
   it("refuses a debug build before it loads the config", async () => {
     await expect(
-      registerNativeBuild(android({ minBundleId: NIL_UUID })),
+      registerNativeBuild(android({ minBundleId: NIL_UUID }), {
+        buildKey: null,
+      }),
     ).rejects.toThrow("A debug build has no built-in bundle");
     expect(loadServer).not.toHaveBeenCalled();
   });
@@ -226,6 +238,7 @@ describe("registerNativeBuild", () => {
     await expect(
       registerNativeBuild(
         android({ artifactPath: path.join(dir, "app-release.apk") }),
+        { buildKey: null },
       ),
     ).rejects.toThrow("no native build route");
     expect(storage.objects.size).toBe(0);
@@ -240,7 +253,7 @@ describe("registerNativeBuild", () => {
     );
 
     await expect(
-      registerNativeBuild(android({ artifactPath })),
+      registerNativeBuild(android({ artifactPath }), { buildKey: null }),
     ).rejects.toThrow("connection lost");
     // The built-in bundle's files stay for `storage prune`.
     expect(
@@ -271,7 +284,7 @@ describe("registerNativeBuild", () => {
     );
 
     await expect(
-      registerNativeBuild(android({ artifactPath })),
+      registerNativeBuild(android({ artifactPath }), { buildKey: null }),
     ).rejects.toThrow("response lost");
     const ours = (await harness.core.listNativeBuilds({ limit: 10 })).find(
       ({ min_bundle_id }) => min_bundle_id === MIN_BUNDLE_ID,
@@ -326,7 +339,9 @@ describe("preflightNativeBuildRegistration", () => {
   it("reads back the tracked build's artifact, at the storage location the server wrote it to", async () => {
     const artifactPath = path.join(dir, "app-release.apk");
     await fs.promises.writeFile(artifactPath, "apk bytes");
-    const row = await registerNativeBuild(android({ artifactPath }));
+    const row = await registerNativeBuild(android({ artifactPath }), {
+      buildKey: null,
+    });
     const exists = vi.spyOn(storage.adapter, "exists");
     const put = vi.spyOn(storage.adapter, "put");
 
@@ -344,6 +359,7 @@ describe("preflightNativeBuildRegistration", () => {
     // Another scope's build: a scope-free check still reaches it.
     const row = await registerNativeBuild(
       android({ artifactPath, fingerprintHash: "fingerprint-b" }),
+      { buildKey: null },
     );
     const exists = vi.spyOn(storage.adapter, "exists");
     const find = vi.spyOn(harness.core, "findNativeBuild");
@@ -381,7 +397,7 @@ describe("preflightNativeBuildRegistration", () => {
   it("fails when the storage can't read the tracked build back", async () => {
     const artifactPath = path.join(dir, "app-release.apk");
     await fs.promises.writeFile(artifactPath, "apk bytes");
-    await registerNativeBuild(android({ artifactPath }));
+    await registerNativeBuild(android({ artifactPath }), { buildKey: null });
     vi.spyOn(storage.adapter, "exists").mockRejectedValueOnce(
       new Error("AccessDenied"),
     );

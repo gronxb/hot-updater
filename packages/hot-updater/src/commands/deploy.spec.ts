@@ -1811,6 +1811,7 @@ describe("deploy rollout wiring", () => {
       ...scope,
       minBundleId,
       gitCommitHash: null,
+      buildKey: null,
       artifact: {
         kind: "ipa",
         storageUri: "storage://native-builds/ios/b001/App.ipa",

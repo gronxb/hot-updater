@@ -278,7 +278,7 @@ describe("Standalone core API over admin API protocol 2", () => {
 
   it("registers native builds, finds the newest of a scope, and keeps their built-in bundles", async () => {
     const remote = core();
-    const register = (minBundleId: string) =>
+    const register = (minBundleId: string, buildKey: string | null = null) =>
       remote.registerNativeBuild({
         id: uuidv7(),
         platform: "android",
@@ -287,6 +287,7 @@ describe("Standalone core API over admin API protocol 2", () => {
         appVersion: null,
         minBundleId,
         gitCommitHash: null,
+        buildKey,
         artifact: {
           kind: "apk",
           storageUri: "test://storage/native-builds/android/app.apk",
@@ -299,7 +300,8 @@ describe("Standalone core API over admin API protocol 2", () => {
         },
       });
     const [olderId, newerId] = [uuidv7(), uuidv7()];
-    await register(olderId);
+    const key = `nbk1:${"c".repeat(64)}`;
+    const older = await register(olderId, key);
     const newer = await register(newerId);
 
     await expect(
@@ -318,6 +320,17 @@ describe("Standalone core API over admin API protocol 2", () => {
         appVersion: "1.0.0",
       }),
     ).resolves.toBeNull();
+    await expect(
+      remote.findNativeBuild(
+        {
+          platform: "android",
+          channel: "production",
+          fingerprintHash: "fingerprint-a",
+          appVersion: null,
+        },
+        { buildKey: key },
+      ),
+    ).resolves.toEqual(older);
     await expect(
       remote.listNativeBuilds({ limit: 1, order: "desc" }),
     ).resolves.toEqual([newer]);

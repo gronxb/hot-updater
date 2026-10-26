@@ -100,4 +100,6 @@ export interface NativeBuildRow {
   readonly byte_size: number;
   readonly git_commit_hash: string | null;
   readonly created_at_ms: number;
+  /** The native build key of the build's inputs, or null for none. */
+  readonly build_key: string | null;
 }

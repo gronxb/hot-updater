@@ -351,6 +351,77 @@ Every official storage adapter streams the artifact to storage except
 Supabase project's Storage upload file size limit, 50 MB on the Free plan,
 caps the artifact size.
 
+## Reuse a build
+
+Each build computes a native build key, `nbk1:` and a SHA-256, of every input
+that can change the artifact, after the build adapter's prebuild:
+
+- every file of the git repository as a commit would record it, staged or
+  not, except the build output, `cacheDir`, and `.hot-updater`;
+- the files git ignores that the build reads: the native project's ignored
+  files except what builds write (`build`, `Pods`, `.gradle`, `.cxx`),
+  `.env*` files, the package manager's install state, and the files of each
+  native package installed in `node_modules`;
+- the scheme's settings and the files it names, such as `xcconfig` and
+  `exportOptionsPlist`, the artifact's kind, the channel, and the fingerprint
+  or app version;
+- who signs: the release keystore's certificate and alias, or the App Store
+  Connect API key's ID, the export method, and the installed provisioning
+  profiles a manual export names;
+- the tools: Xcode and its SDK, CocoaPods, or the JDK, the Android SDK's
+  installed components, and Gradle's machine-wide properties, with Node.js,
+  the OS, the architecture, and Hot Updater's version;
+- the environment variables the build reads: `EXPO_PUBLIC_*`, `RCT_*`,
+  `ORG_GRADLE_PROJECT_*`, `HOT_UPDATER_*`, `NODE_ENV`, `BABEL_ENV`,
+  `ENVFILE`, and each name the Gradle files, the Podfile, the Xcode project,
+  and the Babel, Metro, and app configs read.
+
+Passwords, tokens, and other credentials never enter the key, nor this
+machine's directories, so another machine computes the same key from the same
+inputs. The key is not the [fingerprint](/docs/guides/update-strategies/fingerprint):
+the fingerprint changes only with the native interface JavaScript runs
+against, and decides which OTA updates a build takes; the key changes with
+anything that changes the artifact.
+
+With the key, the CLI looks for a build to reuse before it builds:
+
+1. The registry's newest build of the scope tracked with this key, whose
+   artifact your storage still holds. The CLI copies it to the output path,
+   from this machine when it has it, else downloaded from storage, and builds,
+   tracks, and uploads nothing.
+2. Otherwise, this machine's cached build with this key, such as a
+   `--dry-run`'s: it is tracked with the min bundle ID it was built with.
+3. Otherwise, it builds, and tracks the build with its key.
+
+```txt
+◆  Reusing native build 019a0f8e-7c41-7000-8000-0000000000b1 (key nbk1:3f9c2a71d0e4…; storage)
+    Artifact: .hot-updater/output/build/android/release/app-release.aab
+```
+
+```txt
+●  Building: no tracked build has this key; changed since this machine's cached build: src/App.tsx, ios/Podfile.lock, $EXPO_PUBLIC_API_URL (key nbk1:8b01e6c9f27d…)
+```
+
+This machine keeps the newest build of each platform and scheme in
+`<cacheDir>/native-build/<platform>/<scheme>`, which the next build replaces;
+`cacheDir: null` turns that copy off. A build whose inputs no key can cover
+always builds, and says why: a Debug build, a project outside git, pods
+without `ios/Podfile.lock`, Swift packages without `Package.resolved`, a
+dynamic Gradle dependency version (`1.+`) without a `gradle.lockfile`, a file
+that reads environment variables by a computed name, an export method that
+signs for a list of devices, or a provisioning profile not installed on this
+machine. `--no-cache` builds anyway, after a change outside the project no key
+covers, and still tracks the build with its key.
+
+With `--submit`, a reused build is submitted only when the store doesn't have
+it yet: an `.ipa` whose build number of its version App Store Connect already
+has, or an `.aab` whose version code Google Play's internal track releases, is
+reported and skipped. With `--json`, the last line has `cache: { hit, key,
+uncacheable, changed }`: `hit` is `storage`, `local`, or null.
+
+Preview jobs keep finding builds by scope with
+[`native-build find`](#find-a-build), whatever their key.
+
 ## Rehearse a build
 
 `--dry-run` builds, but records and submits nothing, as `npm publish
@@ -587,6 +658,7 @@ with the stored service account.
 | `--submit testflight`     | `ios`: upload the `.ipa` to App Store Connect for TestFlight                              |
 | `--submit play-internal`  | `android`: release the `.aab` to Google Play's internal testing track                     |
 | `--dry-run`               | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))              |
+| `--no-cache`              | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build)) |
 | `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line |
 
 The commands of the registry, `native-build find` and `native-build delete`,

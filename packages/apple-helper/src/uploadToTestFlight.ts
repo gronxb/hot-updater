@@ -327,35 +327,27 @@ export interface UploadToTestFlightResult {
   testFlightUrl: string;
 }
 
-/**
- * Uploads an `.ipa` to App Store Connect, which lists it in TestFlight, with
- * the App Store Connect API's build uploads: it finds the app by the
- * `.ipa`'s bundle ID, reserves the build's version and build number, sends
- * the file in the parts App Store Connect asks for, commits it, and waits
- * for App Store Connect to accept or reject the build.
- */
-export const uploadToTestFlight = async ({
-  ipaPath,
-  apiKey,
-  fetch = globalThis.fetch,
-  pollIntervalMs = 5_000,
-  processingTimeoutMs = 30 * 60_000,
-}: {
-  ipaPath: string;
-  apiKey: AppStoreConnectApiKey;
-  fetch?: typeof globalThis.fetch;
-  /** How often to check whether App Store Connect accepted the build. */
-  pollIntervalMs?: number;
-  /** How long to wait for App Store Connect to accept the build. */
-  processingTimeoutMs?: number;
-}): Promise<UploadToTestFlightResult> => {
-  const ipaName = path.basename(ipaPath);
-  const [info, privateKey, { size: fileSize }] = await Promise.all([
-    readIpaInfo(ipaPath),
-    readPrivateKey(apiKey.keyPath),
-    fs.promises.stat(ipaPath),
-  ]);
+/** An App Store Connect API request, which answers its JSON or throws. */
+type AppStoreConnectRequest = <T>(
+  action: string,
+  method: string,
+  pathname: string,
+  body?: object,
+) => Promise<T>;
 
+/**
+ * Requests to the App Store Connect API with `apiKey`: each carries a token
+ * signed with its private key, replaced well before it expires.
+ */
+const createAppStoreConnectRequest = ({
+  apiKey,
+  privateKey,
+  fetch,
+}: {
+  apiKey: AppStoreConnectApiKey;
+  privateKey: crypto.KeyObject;
+  fetch: typeof globalThis.fetch;
+}): AppStoreConnectRequest => {
   let token: { value: string; issuedAtSeconds: number } | undefined;
   const authorization = () => {
     const now = Math.floor(Date.now() / 1000);
@@ -374,7 +366,7 @@ export const uploadToTestFlight = async ({
     return `Bearer ${token.value}`;
   };
 
-  const request = async <T>(
+  return async <T>(
     action: string,
     method: string,
     pathname: string,
@@ -411,7 +403,10 @@ export const uploadToTestFlight = async ({
     }
     return (response.status === 204 ? undefined : await response.json()) as T;
   };
+};
 
+/** The App Store Connect app of `bundleId`, and its TestFlight page. */
+const findApp = async (request: AppStoreConnectRequest, bundleId: string) => {
   const { data: apps } = await retrying(() =>
     request<{
       data: { id: string; attributes?: { bundleId?: string } }[];
@@ -419,18 +414,100 @@ export const uploadToTestFlight = async ({
       "Finding the App Store Connect app",
       "GET",
       `/v1/apps?${new URLSearchParams({
-        "filter[bundleId]": info.bundleId,
+        "filter[bundleId]": bundleId,
         "fields[apps]": "bundleId",
       })}`,
     ),
   );
-  const app = apps.find((app) => app.attributes?.bundleId === info.bundleId);
+  const app = apps.find((app) => app.attributes?.bundleId === bundleId);
   if (!app) {
     throw new Error(
-      `App Store Connect has no app with the bundle ID ${info.bundleId} that this API key can see. Create the app in App Store Connect, or use a key of its team.`,
+      `App Store Connect has no app with the bundle ID ${bundleId} that this API key can see. Create the app in App Store Connect, or use a key of its team.`,
     );
   }
   const testFlightUrl = `https://appstoreconnect.apple.com/apps/${app.id}/testflight/ios`;
+  return { app, testFlightUrl };
+};
+
+/**
+ * Whether App Store Connect already has the `.ipa`'s build: a build of its
+ * version with its build number, which TestFlight lists or is processing,
+ * as when a reused native build was uploaded before. A build upload that
+ * never finished is no build, so uploading again fails as it would without
+ * this check.
+ */
+export const findTestFlightBuild = async ({
+  ipaPath,
+  apiKey,
+  fetch = globalThis.fetch,
+}: {
+  ipaPath: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+}): Promise<{
+  found: boolean;
+  testFlightUrl: string;
+  shortVersion: string;
+  bundleVersion: string;
+}> => {
+  const [info, privateKey] = await Promise.all([
+    readIpaInfo(ipaPath),
+    readPrivateKey(apiKey.keyPath),
+  ]);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  const { app, testFlightUrl } = await findApp(request, info.bundleId);
+  const { data: builds } = await retrying(() =>
+    request<{ data: { id: string }[] }>(
+      "Finding the build in App Store Connect",
+      "GET",
+      `/v1/builds?${new URLSearchParams({
+        "filter[app]": app.id,
+        "filter[version]": info.bundleVersion,
+        "filter[preReleaseVersion.version]": info.shortVersion,
+        "fields[builds]": "version",
+        limit: "1",
+      })}`,
+    ),
+  );
+  return {
+    found: builds.length > 0,
+    testFlightUrl,
+    shortVersion: info.shortVersion,
+    bundleVersion: info.bundleVersion,
+  };
+};
+
+/**
+ * Uploads an `.ipa` to App Store Connect, which lists it in TestFlight, with
+ * the App Store Connect API's build uploads: it finds the app by the
+ * `.ipa`'s bundle ID, reserves the build's version and build number, sends
+ * the file in the parts App Store Connect asks for, commits it, and waits
+ * for App Store Connect to accept or reject the build.
+ */
+export const uploadToTestFlight = async ({
+  ipaPath,
+  apiKey,
+  fetch = globalThis.fetch,
+  pollIntervalMs = 5_000,
+  processingTimeoutMs = 30 * 60_000,
+}: {
+  ipaPath: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+  /** How often to check whether App Store Connect accepted the build. */
+  pollIntervalMs?: number;
+  /** How long to wait for App Store Connect to accept the build. */
+  processingTimeoutMs?: number;
+}): Promise<UploadToTestFlightResult> => {
+  const ipaName = path.basename(ipaPath);
+  const [info, privateKey, { size: fileSize }] = await Promise.all([
+    readIpaInfo(ipaPath),
+    readPrivateKey(apiKey.keyPath),
+    fs.promises.stat(ipaPath),
+  ]);
+
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  const { app, testFlightUrl } = await findApp(request, info.bundleId);
 
   // A create App Store Connect did not answer is sent again. The API has no
   // way to tell which reservation a request made, so a duplicate after an

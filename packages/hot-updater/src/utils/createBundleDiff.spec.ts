@@ -806,6 +806,7 @@ describe("createBundleDiff", () => {
           appVersion: null,
           minBundleId,
           gitCommitHash: null,
+          buildKey: null,
           artifact: {
             kind: "ipa",
             storageUri: "s3://test-bucket/native-builds/ios/b001",

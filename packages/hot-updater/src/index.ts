@@ -12,6 +12,7 @@ import { normalizeRange } from "verkit";
 import {
   interactiveCommandOption,
   nativeBuildDryRunCommandOption,
+  nativeBuildNoCacheCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildJsonCommandOption,
   nativeBuildSchemeCommandOption,
@@ -346,6 +347,7 @@ nativeBuildCommand
   .addOption(nativeBuildOutputCommandOption)
   .addOption(testFlightSubmitCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
+  .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)
   .action(async (options: NativeBuildCreateOptions) => {
     await handleNativeBuildCreate("ios", options);
@@ -360,6 +362,7 @@ nativeBuildCommand
   .addOption(nativeBuildOutputCommandOption)
   .addOption(playSubmitCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
+  .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)
   .action(async (options: NativeBuildCreateOptions) => {
     await handleNativeBuildCreate("android", options);

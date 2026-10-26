@@ -25,6 +25,7 @@ import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
 
 import {
   createServiceAccountAssertion,
+  findPlayInternalRelease,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "./uploadToPlay";
@@ -561,5 +562,55 @@ describe("resolvePlayUploadServiceAccount", () => {
     ).toThrow(
       "Google Play takes a release build, and the scheme release builds the stagingDebug variant, which is debuggable and loads its JavaScript from Metro.",
     );
+  });
+});
+
+describe("findPlayInternalRelease", () => {
+  const find = (fetch: typeof globalThis.fetch, versionCode = 42) =>
+    findPlayInternalRelease({
+      versionCode,
+      packageName: "com.example.app",
+      serviceAccount: { json: serviceAccountJson },
+      fetch,
+    });
+
+  it("reads the internal track in an edit it deletes, committing nothing", async () => {
+    const { fetch, requests } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`GET ${EDIT}/tracks/internal`]: {
+        json: {
+          track: "internal",
+          releases: [{ versionCodes: ["41"] }, { versionCodes: ["42"] }],
+        },
+      },
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+
+    await expect(find(fetch)).resolves.toBe(true);
+    await expect(find(fetch, 43)).resolves.toBe(false);
+    expect(
+      requests
+        .filter(({ url }) => url !== TOKEN_URI)
+        .map(({ method, url }) => `${method} ${url.replace(APP, "")}`),
+    ).toEqual([
+      "POST /edits",
+      "GET /edits/edit-1/tracks/internal",
+      "DELETE /edits/edit-1",
+      "POST /edits",
+      "GET /edits/edit-1/tracks/internal",
+      "DELETE /edits/edit-1",
+    ]);
+  });
+
+  it("finds none on a track with no release yet", async () => {
+    const { fetch } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`GET ${EDIT}/tracks/internal`]: { json: { track: "internal" } },
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+
+    await expect(find(fetch)).resolves.toBe(false);
   });
 });

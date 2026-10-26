@@ -157,6 +157,7 @@ describe("handleChannelDelete", () => {
       appVersion: null,
       minBundleId: "01900000-0000-7000-8000-000000000100",
       gitCommitHash: null,
+      buildKey: null,
       artifact: {
         kind: "app",
         storageUri: "storage://native-builds/ios/101/App.app.zip",

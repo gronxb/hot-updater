@@ -213,6 +213,7 @@ export const setupCoreAdminTestSuite = (options: {
       const registration = (
         suffix: string,
         id = bundleRow(`8${suffix}`).id,
+        buildKey: string | null = null,
       ) => {
         const builtIn = bundleRow(suffix);
         return admin(
@@ -225,6 +226,7 @@ export const setupCoreAdminTestSuite = (options: {
             appVersion: null,
             minBundleId: builtIn.id,
             gitCommitHash: null,
+            buildKey,
             artifact: {
               kind: "ipa",
               storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
@@ -238,8 +240,12 @@ export const setupCoreAdminTestSuite = (options: {
           }),
         );
       };
-      const register = async (suffix: string) => {
-        const response = await registration(suffix);
+      const register = async (suffix: string, buildKey?: string) => {
+        const response = await registration(
+          suffix,
+          bundleRow(`8${suffix}`).id,
+          buildKey,
+        );
         expect(response.status).toBe(201);
         return ((await response.json()) as { data: NativeBuildRow }).data;
       };
@@ -249,7 +255,8 @@ export const setupCoreAdminTestSuite = (options: {
         total: number;
       };
 
-      await register("60");
+      const keyed = `nbk1:${"a".repeat(64)}`;
+      const keyedBuild = await register("60", keyed);
       const newest = await register("61");
       // Another build of the same built-in bundle.
       const again = await registration("61", bundleRow("862").id);
@@ -262,6 +269,31 @@ export const setupCoreAdminTestSuite = (options: {
         (await adminJson(scope("fingerprintHash=native-fingerprint"))).data,
       ).toEqual(newest);
       expect((await adminJson(scope("appVersion=1.0.0"))).data).toBeNull();
+      // A build key finds the newest build of the scope registered with it,
+      // and a build registered without one matches none.
+      expect(keyedBuild.build_key).toBe(keyed);
+      expect(newest.build_key).toBeNull();
+      expect(
+        (
+          await adminJson(
+            scope(`fingerprintHash=native-fingerprint&buildKey=${keyed}`),
+          )
+        ).data,
+      ).toEqual(keyedBuild);
+      expect(
+        (
+          await adminJson(
+            scope(
+              `fingerprintHash=native-fingerprint&buildKey=nbk1:${"b".repeat(64)}`,
+            ),
+          )
+        ).data,
+      ).toBeNull();
+      const badKey = await admin(
+        scope("fingerprintHash=native-fingerprint&buildKey=not-a-key"),
+      );
+      expect(badKey.status).toBe(400);
+      await badKey.text();
       expect((await adminJson(`/native-builds/${newest.id}`)).data).toEqual(
         newest,
       );

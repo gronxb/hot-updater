@@ -47,6 +47,21 @@ export const extractBuiltInBundle = async ({
 };
 
 /**
+ * Unpacks a `.app` that `archiveAppBundle` stored as one zip file into
+ * `outputPath`, which then holds the `.app` directory.
+ */
+export const extractAppBundle = async ({
+  archivePath,
+  outputPath,
+}: {
+  archivePath: string;
+  outputPath: string;
+}): Promise<void> => {
+  await fs.promises.mkdir(outputPath, { recursive: true });
+  await execa("ditto", ["-x", "-k", archivePath, outputPath]);
+};
+
+/**
  * A `.app` directory as one zip file, the way Finder and Xcode archive it,
  * so a simulator build uploads and downloads as a single artifact.
  */

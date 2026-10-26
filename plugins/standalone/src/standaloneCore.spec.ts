@@ -256,4 +256,45 @@ describe("createStandaloneCoreApi", () => {
       { platform: "android", channel: "beta", appVersion: "1.0.0" },
     ]);
   });
+
+  it("finds a native build by key, and reads an answer with another key as none", async () => {
+    const key = `nbk1:${"a".repeat(64)}`;
+    const queries: Record<string, string>[] = [];
+    let answer: unknown;
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: answer });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      appVersion: null,
+    } as const;
+
+    answer = { id: "build-1", build_key: key };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toEqual(answer);
+    // A server that predates build keys ignores the parameter and answers
+    // the scope's newest build: a row without the key is no match.
+    answer = { id: "build-2" };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toBeNull();
+    answer = { id: "build-3", build_key: null };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toBeNull();
+    expect(queries[0]).toEqual({
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      buildKey: key,
+    });
+  });
 });
