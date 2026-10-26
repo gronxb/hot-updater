@@ -13,7 +13,7 @@ import { cliEnv, parseInputs, runAction } from "./nativeBuild.mjs";
 /**
  * The composite step runs this with the inputs as `INPUT_*` variables. The
  * CLI reads every credential the build needs through the config's
- * `secrets` adapter, `env()` by default, which reads the job's environment.
+ * `secrets` adapter, `envSecrets()` by default, which reads the job's environment.
  */
 const env = process.env;
 

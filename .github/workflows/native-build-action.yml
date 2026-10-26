@@ -24,7 +24,7 @@ concurrency:
 # The native build action (actions/native-build) in CI, which never signs in
 # to an Apple or Google account, against Postgres and MinIO started in the
 # job. Every credential is a job variable, which the CLI reads through the
-# default env() secrets adapter, minus the credentials each run expects to
+# default envSecrets() secrets adapter, minus the credentials each run expects to
 # miss: every run but the last must fail before anything is built, naming
 # what is missing and how to provide it. The last run has every credential,
 # builds and registers examples/v0.85.0's .aab, and fails only at Google,
@@ -66,7 +66,7 @@ jobs:
           bash examples-server/preview-action/scripts/native-build-seed.sh "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
           keystore="$(grep '^HOT_UPDATER_RELEASE_KEYSTORE=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
           echo "::add-mask::$keystore"
-          # The job's environment is where env() reads every credential.
+          # The job's environment is where envSecrets() reads every credential.
           cat "$RUNNER_TEMP/backend.env" "$RUNNER_TEMP/seed.env" >> "$GITHUB_ENV"
       - name: Check that the credentials come only from the job's environment
         run: test ! -e examples/v0.85.0/.env.hotupdater
@@ -174,7 +174,7 @@ jobs:
               private_key: fs.readFileSync(process.argv[1], "utf8"),
             }));
           ' "$work/key.pem" "$work/service-account.json"
-          # env() stores nothing: secrets put names the variable to set.
+          # envSecrets() stores nothing: secrets put names the variable to set.
           set +e
           $PROOF_CLI secrets put play-service-account \
             --kind play-service-account --service-account "$work/service-account.json"

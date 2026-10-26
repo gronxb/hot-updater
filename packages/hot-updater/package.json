@@ -23,11 +23,6 @@
       "import": "./dist/plugins.mjs",
       "require": "./dist/plugins.mjs"
     },
-    "./secrets": {
-      "types": "./dist/secrets.d.mts",
-      "import": "./dist/secrets.mjs",
-      "require": "./dist/secrets.mjs"
-    },
     "./signing": {
       "types": "./dist/signing.d.mts",
       "import": "./dist/signing.mjs",

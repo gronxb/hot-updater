@@ -449,7 +449,7 @@ export interface SecretsContext {
  * Where the CLI reads secrets by name: the build credentials `secret:<name>`
  * references, and the deploy credentials `secretEnv([...])` names. Values
  * are strings: binary is base64, and a credential with several fields is one
- * JSON value per name. Hot Updater's adapters ship in `hot-updater/secrets`;
+ * JSON value per name. Hot Updater's adapters are exports of `hot-updater`;
  * a store of your own implements this.
  */
 export interface SecretsAdapter {
@@ -642,7 +642,7 @@ export type ConfigInput = {
    * Where the CLI reads the secrets the config names: `secret:<name>` build
    * credentials and `secretEnv([...])` deploy credentials.
    *
-   * @default env()
+   * @default envSecrets()
    */
   secrets?: SecretsAdapter;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;

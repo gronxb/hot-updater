@@ -5,7 +5,6 @@ export default defineConfig({
     config: "./src/config.ts",
     index: "./src/index.ts",
     plugins: "./src/plugins.ts",
-    secrets: "./src/secrets.ts",
     signing: "./src/signing.ts",
   },
   deps: {
@@ -32,18 +31,13 @@ export default defineConfig({
         import: "./dist/plugins.mjs",
         require: "./dist/plugins.mjs",
       },
-      "./secrets": {
-        types: "./dist/secrets.d.mts",
-        import: "./dist/secrets.mjs",
-        require: "./dist/secrets.mjs",
-      },
       "./signing": {
         types: "./dist/signing.d.mts",
         import: "./dist/signing.mjs",
         require: "./dist/signing.mjs",
       },
     },
-    exclude: ["index", "plugins", "secrets", "signing"],
+    exclude: ["index", "plugins", "signing"],
     inlinedDependencies: true,
     legacy: true,
   },

@@ -21,7 +21,7 @@ so the same `hot-updater.config.ts` builds on your machine and in CI:
 | Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                |
 | Deploy credentials        | The names your config reads with [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), for `--register`    |
 
-With [`env()`](/docs/guides/secrets-adapters/env), the default, the job's
+With [`envSecrets()`](/docs/guides/secrets-adapters/env-secrets), the default, the job's
 environment holds them, from your CI provider's secrets. With a secrets store,
 the job only signs in to the store, keyless through GitHub Actions OIDC where
 the store allows it, and the store holds every value. [Add the
@@ -62,7 +62,7 @@ describes, and `secrets issue play-service-account` signs you in with Google
 once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
 describes. Each keeps a key the adapter already holds; `--replace` issues a
 new one and names the old key to revoke once CI no longer uses it. An adapter that stores values keeps the key, where CI reads it.
-With `env()`, which never stores, the CLI writes the key to a file only your
+With `envSecrets()`, which never stores, the CLI writes the key to a file only your
 user can read, prints the variables to store it in, and offers to store it as
 a GitHub Actions secret
 ([where an issued key goes](/docs/guides/native-build#where-an-issued-key-goes)).
@@ -85,7 +85,7 @@ The stores take each build number once: raise `CFBundleVersion` and
 
 ### Environment variables
 
-With `env()`, or [`githubActions()`](/docs/guides/secrets-adapters/github-actions),
+With `envSecrets()`, or [`githubActions()`](/docs/guides/secrets-adapters/github-actions),
 which stores under the same names, add each value in the repository's
 **Settings → Secrets and variables → Actions** under its variable name. To
 require a reviewer before a job reads them, add them to a protected

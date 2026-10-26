@@ -286,7 +286,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(printed()).not.toContain("issueSpecOldKey01");
   });
 
-  it("--replace on env(), which is read-only, writes the new key to its file and says the variable still holds the old one", async () => {
+  it("--replace on envSecrets(), which is read-only, writes the new key to its file and says the variable still holds the old one", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_API_KEY", OLD_ASC);
     configure(envSecrets());
 

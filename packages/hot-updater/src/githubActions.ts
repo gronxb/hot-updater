@@ -8,9 +8,6 @@ import {
   secretVariableName,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
-import { blake2b } from "@noble/hashes/blake2.js";
-import { execa } from "execa";
-import nacl from "tweetnacl";
 
 const GITHUB_API_URL = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
@@ -67,7 +64,23 @@ const githubSecretName = (name: string) => {
   return secretName;
 };
 
+// execa, tweetnacl, and @noble/hashes load when `set` runs: the config
+// file imports this adapter on every command.
+const loadExeca = async () => (await import("execa")).execa;
+
+const loadSealing = async () => {
+  const [{ default: nacl }, { blake2b }] = await Promise.all([
+    import("tweetnacl"),
+    import("@noble/hashes/blake2.js"),
+  ]);
+  return { nacl, blake2b };
+};
+
+/** The length of a Curve25519 public key, `nacl.box.publicKeyLength`. */
+const PUBLIC_KEY_LENGTH = 32;
+
 const readOriginRepo = async (cwd: string): Promise<string> => {
+  const execa = await loadExeca();
   const result = await execa("git", ["remote", "get-url", "origin"], {
     cwd,
     reject: false,
@@ -111,6 +124,7 @@ const readToken = async (
   // gh prefers these variables to its stored login: without them, it
   // returns the login instead of the workflow token skipped above.
   const { GH_TOKEN: _, GITHUB_TOKEN: __, ...ghEnv } = process.env;
+  const execa = await loadExeca();
   const result = await execa("gh", ["auth", "token"], {
     env: ghEnv,
     extendEnv: false,
@@ -136,7 +150,8 @@ const concatBytes = (first: Uint8Array, second: Uint8Array) => {
  * BLAKE2b-24(ephemeral public key ‖ public key), and the ephemeral public key
  * before the XSalsa20-Poly1305 box.
  */
-const sealedBox = (value: Uint8Array, publicKey: Uint8Array) => {
+const sealedBox = async (value: Uint8Array, publicKey: Uint8Array) => {
+  const { nacl, blake2b } = await loadSealing();
   const ephemeral = nacl.box.keyPair();
   try {
     const nonce = blake2b(concatBytes(ephemeral.publicKey, publicKey), {
@@ -177,7 +192,7 @@ const githubError = async (
  * GitHub Actions secrets of a repository, or of one of its environments, as
  * a write target: `set` encrypts a value for the repository's public key and
  * stores it. GitHub never returns a secret's value, so `get` reads only
- * inside a workflow run, through the environment as `env()` does: the
+ * inside a workflow run, through the environment as `envSecrets()` does: the
  * workflow maps each secret to the variable of the same name, such as
  * `HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}`.
  * Elsewhere `get` holds nothing.
@@ -260,14 +275,14 @@ export const githubActions = (
           : undefined;
       if (
         typeof publicKey.key_id !== "string" ||
-        key?.length !== nacl.box.publicKeyLength
+        key?.length !== PUBLIC_KEY_LENGTH
       ) {
         throw new Error(
           `GitHub returned no secrets public key for ${where()}.`,
         );
       }
 
-      const encrypted = sealedBox(bytes, new Uint8Array(key));
+      const encrypted = await sealedBox(bytes, new Uint8Array(key));
       const putResponse = await fetch(
         `${GITHUB_API_URL}${base}/${encodeURIComponent(secretName)}`,
         {

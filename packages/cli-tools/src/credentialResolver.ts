@@ -507,7 +507,7 @@ export interface CreateCredentialResolverOptions {
    * Where to find an item no environment override sets, or a function that
    * returns it when an item resolves, for a command whose config loads
    * after the resolver is created. Defaults to the config `loadConfig` last
-   * loaded, `env()` when it sets none.
+   * loaded, `envSecrets()` when it sets none.
    */
   readonly secrets?: SecretsAdapter | (() => SecretsAdapter);
   /** The project directory the adapter is given. Defaults to `getCwd()`. */

@@ -43,7 +43,7 @@ beforeEach(async () => {
   directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-credential-resolver-"),
   );
-  // The project whose .env.hotupdater env() reads.
+  // The project whose .env.hotupdater envSecrets() reads.
   await fs.writeFile(path.join(directory, "package.json"), "{}");
   vi.spyOn(process, "cwd").mockReturnValue(directory);
 });
@@ -240,14 +240,14 @@ describe("createCredentialResolver", () => {
     ]);
   });
 
-  it("names env()'s JSON variable when the environment holds nothing", async () => {
+  it("names envSecrets()'s JSON variable when the environment holds nothing", async () => {
     await expect(
       createCredentialResolver().resolve({
         kind: "android-keystore",
         name: "release-keystore",
       }),
     ).rejects.toThrow(
-      "release-keystore (android-keystore) is not in the env secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater).",
+      "release-keystore (android-keystore) is not in the envSecrets secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater).",
     );
   });
 
@@ -648,7 +648,7 @@ describe("credential masking", () => {
   });
 });
 
-describe("env() as the secrets adapter", () => {
+describe("envSecrets() as the secrets adapter", () => {
   it("reads a credential's JSON value from its variable", async () => {
     vi.stubEnv(
       "HOT_UPDATER_ASC_API_KEY",

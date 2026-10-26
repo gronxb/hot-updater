@@ -5,6 +5,8 @@
  *
  * - @hot-updater/server exports its root, the built-in adapters and the
  *   built-in plugins, and nothing else;
+ * - hot-updater exports its root, which holds the config helpers and the
+ *   secrets adapters, `./plugins` and `./signing`, and nothing else;
  * - no package has an export whose key names `internal` or test code, and no
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
@@ -44,6 +46,13 @@ const SERVER_EXPORTS = [
   "./plugins",
   "./package.json",
 ];
+
+/**
+ * The CLI package's exports: its root, `defineConfig` with the secrets
+ * adapters a config sets, the official plugin factories, and the signing
+ * adapters.
+ */
+const HOT_UPDATER_EXPORTS = [".", "./package.json", "./plugins", "./signing"];
 
 /**
  * Sources whose import() computes its specifier: each loads a file by path,
@@ -153,6 +162,19 @@ if (server) {
     fail(
       "server-exports",
       `@hot-updater/server exports ${keys.join(", ")}; it may export only ${expected.join(", ")}.`,
+    );
+  }
+}
+
+// hot-updater exports exactly its root, plugins, and signing adapters.
+const cli = byName.get("hot-updater");
+if (cli) {
+  const keys = exportKeys(cli).sort();
+  const expected = [...HOT_UPDATER_EXPORTS].sort();
+  if (JSON.stringify(keys) !== JSON.stringify(expected)) {
+    fail(
+      "hot-updater-exports",
+      `hot-updater exports ${keys.join(", ")}; it may export only ${expected.join(", ")}.`,
     );
   }
 }

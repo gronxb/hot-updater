@@ -13,7 +13,7 @@ import { runAction } from "./preview.mjs";
 /**
  * The composite step runs this with the inputs as `INPUT_*` variables. The
  * CLI reads its credentials through the config's `secrets` adapter,
- * `env()` by default, which reads the job's environment.
+ * `envSecrets()` by default, which reads the job's environment.
  */
 const env = process.env;
 

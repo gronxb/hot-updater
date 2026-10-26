@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * The first build of a project whose `secrets` adapter is `env()`, which
+ * The first build of a project whose `secrets` adapter is `envSecrets()`, which
  * can't store the key a sign-in issues: the key goes to its 0600 file, and
  * the same build signs and uploads with it from there. Only the sign-ins,
  * the native build, and the stores are stand-ins; the credential resolver
@@ -220,7 +220,7 @@ afterEach(async () => {
   await fs.rm(cacheDir.path, { recursive: true, force: true });
 });
 
-describe("a first build whose secrets adapter is env()", () => {
+describe("a first build whose secrets adapter is envSecrets()", () => {
   it("uploads to TestFlight with the key the sign-in issued, from its file", async () => {
     scheme.platform = "ios";
     await withTTY(() =>
