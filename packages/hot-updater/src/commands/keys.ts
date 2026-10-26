@@ -210,7 +210,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         ]),
       );
       if (secrets !== undefined && secretName !== undefined) {
-        // A read-only adapter, such as env(): the developer stores the key.
+        // A read-only adapter, such as envSecrets(): the developer stores the key.
         p.log.warn(
           `The ${secrets.name} secrets adapter is read-only, so the private key is in ${privateKeyPath}, readable only by you. Store its contents as ${describeSecret(secrets, secretName)}, such as a CI secret, then delete the file.`,
         );

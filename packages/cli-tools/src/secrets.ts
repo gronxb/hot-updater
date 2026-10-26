@@ -40,7 +40,7 @@ export const parseSecretReference = (
 };
 
 /**
- * The environment variable `env()` reads a secret from: a name that is a
+ * The environment variable `envSecrets()` reads a secret from: a name that is a
  * variable name already, such as `CLOUDFLARE_API_TOKEN`, as it is, and any
  * other, such as `asc-api-key`, upper-cased with `HOT_UPDATER_` before it
  * and every character but letters and digits as `_`
@@ -51,7 +51,7 @@ export const secretVariableName = (name: string): string =>
     ? name
     : `HOT_UPDATER_${name.toUpperCase().replace(/[^A-Z0-9]/gu, "_")}`;
 
-const ENV_SECRETS_NAME = "env";
+const ENV_SECRETS_NAME = "envSecrets";
 
 /**
  * Secrets from the environment, the default `secrets` adapter: each name
@@ -123,7 +123,7 @@ export const setConfiguredSecrets = (secrets: SecretsAdapter): void => {
   (globalThis as SecretsSlot)[CONFIGURED_SECRETS] = secrets;
 };
 
-/** The config's `secrets` adapter, `env()` until a config sets another. */
+/** The config's `secrets` adapter, `envSecrets()` until a config sets another. */
 export const getConfiguredSecrets = (): SecretsAdapter =>
   (globalThis as SecretsSlot)[CONFIGURED_SECRETS] ?? envSecrets();
 

@@ -208,7 +208,7 @@ describe("hot-updater secrets put", () => {
     expect(loadConfig).not.toHaveBeenCalled();
   });
 
-  it("says where to put the value when the adapter is env(), which is read-only, before any prompt", async () => {
+  it("says where to put the value when the adapter is envSecrets(), which is read-only, before any prompt", async () => {
     configure(envSecrets());
 
     await handleSecretsPut("release-keystore", {
@@ -218,7 +218,7 @@ describe("hot-updater secrets put", () => {
     });
 
     expect(log.error).toHaveBeenCalledWith(
-      "The env secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater to the android-keystore as one JSON value, or set HOT_UPDATER_ANDROID_KEYSTORE_PATH or HOT_UPDATER_ANDROID_KEYSTORE_BASE64, HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, HOT_UPDATER_ANDROID_KEY_PASSWORD; or configure a secrets adapter that stores values.",
+      "The envSecrets secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_RELEASE_KEYSTORE in the environment or .env.hotupdater to the android-keystore as one JSON value, or set HOT_UPDATER_ANDROID_KEYSTORE_PATH or HOT_UPDATER_ANDROID_KEYSTORE_BASE64, HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, HOT_UPDATER_ANDROID_KEY_PASSWORD; or configure a secrets adapter that stores values.",
     );
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);

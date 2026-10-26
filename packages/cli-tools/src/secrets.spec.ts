@@ -124,7 +124,7 @@ describe("parseSecretReference", () => {
   });
 });
 
-describe("env()", () => {
+describe("envSecrets()", () => {
   it("maps a name to its variable", () => {
     expect(secretVariableName("CLOUDFLARE_API_TOKEN")).toBe(
       "CLOUDFLARE_API_TOKEN",
@@ -156,7 +156,7 @@ describe("env()", () => {
 
   it("is read-only and the default until a config sets another", () => {
     expect(envSecrets().set).toBeUndefined();
-    expect(getConfiguredSecrets().name).toBe("env");
+    expect(getConfiguredSecrets().name).toBe("envSecrets");
     const store = storeOf({});
     setConfiguredSecrets(store);
     expect(getConfiguredSecrets()).toBe(store);
@@ -209,7 +209,7 @@ describe("secretEnv", () => {
     );
   });
 
-  it("tells env() users where to set a missing name", async () => {
+  it("tells envSecrets() users where to set a missing name", async () => {
     vi.stubEnv("SPEC_MISSING", undefined);
 
     await expect(secretEnv(["SPEC_MISSING"])()).rejects.toThrow(

@@ -138,7 +138,7 @@ describe("offerGitHubSecret", () => {
     expect(createSecrets).not.toHaveBeenCalled();
   });
 
-  it("writes the variable env() reads the name from", async () => {
+  it("writes the variable envSecrets() reads the name from", async () => {
     confirm.mockResolvedValue(true);
     const set = vi.fn(async () => {});
     await expect(

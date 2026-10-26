@@ -96,7 +96,7 @@ export type GitHubSecretOffer =
 
 /**
  * Offers once to store an issued key's `value` as the GitHub Actions secret
- * CI's `env()` reads `name` from (`secretVariableName(name)`), when the
+ * CI's `envSecrets()` reads `name` from (`secretVariableName(name)`), when the
  * project has a GitHub remote and the developer a token. A failed write is
  * reported, never thrown: the key is in `file` either way.
  */

@@ -2,7 +2,7 @@
  * The native build action's CI proof: what each run must have printed, and
  * left in Postgres, read from the CLI's recorded output (PROOF_LOG, written
  * by scripts/record-cli.mjs) and from Postgres directly. Every credential
- * comes from the job's environment through the default env() secrets
+ * comes from the job's environment through the default envSecrets() secrets
  * adapter.
  *
  *   node native-build-proof.ts <stage>
@@ -10,7 +10,7 @@
  * Stages:
  * - upload-missing: the environment lacks play-service-account; the run
  *   never signs in to Google, and fails before the build, naming the
- *   variable env() reads, the command that signs in once, and the
+ *   variable envSecrets() reads, the command that signs in once, and the
  *   variables that replace it.
  * - keystore-missing: the scheme's keystore is missing, without an upload;
  *   the signing credential fails before the build too.
@@ -18,7 +18,7 @@
  *   names the field and the shape before the build.
  * - ios-missing: build:ios in CI without the App Store Connect API key, as
  *   the CLI runs it without a terminal and on one (`script`), never asking.
- * - put-read-only: `secrets put` with env(), which stores nothing, names
+ * - put-read-only: `secrets put` with envSecrets(), which stores nothing, names
  *   the variable to set instead.
  * - built: with every credential set, the run builds, registers, and fails
  *   only at Google, which refuses the proof's made-up service account.
@@ -90,7 +90,7 @@ const stages: Record<string, () => Promise<void>> = {
     // signing in.
     expectIncludes(
       log,
-      "play-service-account is not in the env secrets adapter (HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater google-play login`",
+      "play-service-account is not in the envSecrets secrets adapter (HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater google-play login`",
     );
     expectIncludes(
       log,
@@ -108,7 +108,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      "widget-keystore (android-keystore) is not in the env secrets adapter (HOT_UPDATER_WIDGET_KEYSTORE in the environment or .env.hotupdater). Store it once with `npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.",
+      "widget-keystore (android-keystore) is not in the envSecrets secrets adapter (HOT_UPDATER_WIDGET_KEYSTORE in the environment or .env.hotupdater). Store it once with `npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>`.",
     );
     expectIncludes(
       log,
@@ -120,7 +120,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      'The env secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
+      'The envSecrets secrets adapter\'s release-keystore (android-keystore) has no keyPassword: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
     );
     expectExcludes(
       log,
@@ -136,7 +136,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      "asc-api-key is not in the env secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater apple login`",
+      "asc-api-key is not in the envSecrets secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater). Store it once from a terminal with `npx hot-updater apple login`",
     );
     expectIncludes(
       log,
@@ -152,14 +152,14 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog();
     expectIncludes(
       log,
-      "The env secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater to the play-service-account as one JSON value",
+      "The envSecrets secrets adapter is read-only, so Hot Updater stores nothing in it. Set HOT_UPDATER_PLAY_SERVICE_ACCOUNT in the environment or .env.hotupdater to the play-service-account as one JSON value",
     );
   },
   built: async () => {
     const log = readLog();
     expectExcludes(
       log,
-      "is not in the env secrets adapter",
+      "is not in the envSecrets secrets adapter",
       "every credential the build needs is set.",
     );
     expectExcludes(

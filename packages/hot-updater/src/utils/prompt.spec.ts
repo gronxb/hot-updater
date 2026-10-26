@@ -19,7 +19,7 @@ const setTTY = (value: boolean) => {
 
 /** What the preflight says of a missing key, as the caller passes it. */
 const UNAVAILABLE =
-  "asc-api-key is not in the env secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater).";
+  "asc-api-key is not in the envSecrets secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment or .env.hotupdater).";
 const describeUnavailable = vi.fn(async () => UNAVAILABLE);
 const SIGN_IN = {
   account: "Apple Account",

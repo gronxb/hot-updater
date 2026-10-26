@@ -64,7 +64,7 @@ export type IssuedCredentialTarget =
       readonly file: string;
     }
   /**
-   * The adapter is read-only, such as `env()`: the key goes to `file`, a
+   * The adapter is read-only, such as `envSecrets()`: the key goes to `file`, a
    * 0600 file under `cacheDir`, and the developer is told where to store it.
    */
   | {
@@ -315,12 +315,12 @@ const localGuidance = (
 /**
  * The per-field variables, which builds read before any secrets adapter:
  * the only ones that work whatever adapter the config sets, as the whole
- * value's variable is read through `env()`.
+ * value's variable is read through `envSecrets()`.
  */
 const fieldGuidance = (kind: IssuedCredentialKind) =>
   `Set ${FIELD_VARIABLES[kind].join(", ")} (the file's fields) in the environment or .env.hotupdater, which builds read before any secrets adapter.`;
 
-/** Where CI reads the key from: a secret the job maps to `env()`'s variable. */
+/** Where CI reads the key from: a secret the job maps to `envSecrets()`'s variable. */
 const ciGuidance = (name: string, secrets: SecretsAdapter) => {
   const variable = secretVariableName(name);
   return isEnvSecrets(secrets)
@@ -365,7 +365,7 @@ export const withIssuedFile = (
  * Writes an issued key's `value` to `file`, 0600 and never over another
  * file, and tells the developer how to store it, naming the file and the
  * variables, never the key, and that the file goes once it is stored;
- * then, for `env()`, offers once to store it as a GitHub Actions secret.
+ * then, for `envSecrets()`, offers once to store it as a GitHub Actions secret.
  * The value is masked before anything can print it. A failed write throws:
  * the key is nowhere, and the caller revokes it.
  */
@@ -408,7 +408,7 @@ export const writeIssuedCredential = async ({
       ].map((line) => `    ${line}`),
     ]),
   );
-  // CI reads the GitHub Actions secret through env(), as the variable env()
+  // CI reads the GitHub Actions secret through envSecrets(), as the variable envSecrets()
   // reads the name from: another adapter would not read it there.
   if (!isEnvSecrets(secrets)) return;
   await offerGitHubSecret({

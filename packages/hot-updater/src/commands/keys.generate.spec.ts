@@ -131,7 +131,7 @@ describe("keys generate --secret", () => {
     expect(output()).toContain('privateKey: "secret:release-signing-key"');
   });
 
-  it("writes an owner-only private key file and names env()'s variable when the adapter is read-only", async () => {
+  it("writes an owner-only private key file and names envSecrets()'s variable when the adapter is read-only", async () => {
     const cwd = await createProject();
     mocks.loadConfig.mockResolvedValue({ secrets: envSecrets() });
 
@@ -145,7 +145,7 @@ describe("keys generate --secret", () => {
       "public-key.pem",
     ]);
     expect(output()).toContain(
-      `The env secrets adapter is read-only, so the private key is in ${privateKeyPath}, readable only by you. Store its contents as HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment or .env.hotupdater, such as a CI secret, then delete the file.`,
+      `The envSecrets secrets adapter is read-only, so the private key is in ${privateKeyPath}, readable only by you. Store its contents as HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment or .env.hotupdater, such as a CI secret, then delete the file.`,
     );
     expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
     expect(output()).not.toContain(privateKey.split("\n")[1]);
@@ -170,7 +170,7 @@ describe("keys generate --secret", () => {
     );
   });
 
-  it("never replaces a key env() already holds", async () => {
+  it("never replaces a key envSecrets() already holds", async () => {
     const cwd = await createProject();
     process.env["HOT_UPDATER_BUNDLE_SIGNING_KEY"] = "existing";
     mocks.loadConfig.mockResolvedValue({ secrets: envSecrets() });

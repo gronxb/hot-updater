@@ -6,15 +6,14 @@ icon: LockKeyhole
 
 ## Store secrets in GitHub Actions secrets
 
-`githubActions()` from `hot-updater/secrets` stores the keys `secrets put`
+`githubActions()` from `hot-updater` stores the keys `secrets put`
 stores, and the keys `secrets issue` or a build issues after a sign-in, in a
 GitHub repository's
 [Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets),
 or in one of its environments' secrets, where its workflows read them.
 
 ```ts title="hot-updater.config.ts (partial)"
-import { defineConfig } from "hot-updater";
-import { githubActions } from "hot-updater/secrets";
+import { defineConfig, githubActions } from "hot-updater";
 
 export default defineConfig({
   secrets: githubActions({ environment: "production" }),

@@ -115,7 +115,7 @@ export type ConfigResponse = RequiredDeep<
   /** The plugins the server runs; none when the config lists none. */
   plugins: readonly AnyHotUpdaterPlugin[];
   signing?: ReturnType<typeof normalizeSigningConfig>;
-  /** Where `secret:` references and `secretEnv` read from; `env()` unless the config sets another. */
+  /** Where `secret:` references and `secretEnv` read from; `envSecrets()` unless the config sets another. */
   secrets: SecretsAdapter;
 };
 
