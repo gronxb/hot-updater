@@ -1,9 +1,7 @@
 import { existsSync } from "node:fs";
 
 import { bare } from "@hot-updater/bare";
-import { standaloneRepository } from "@hot-updater/standalone";
-// @ts-ignore
-import { fileStorage } from "/Volumes/SSD_2TB/tmp/nbc-verify/fileStorage.mjs";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
@@ -36,9 +34,14 @@ export default defineConfig({
     },
   },
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: fileStorage(),
-  database: standaloneRepository({
-    baseUrl: "http://127.0.0.1:3941/hot-updater/admin",
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   fingerprint: { debug: true },
