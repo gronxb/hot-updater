@@ -234,9 +234,9 @@ describe("CLI commands", () => {
   ] as const)(
     "has %s login as the alias of secrets issue %s, and keeps no session",
     (group, kind, account, otherKind) => {
-      expect(help()).toMatch(new RegExp(`^\\s+${group}\\s+Sign in`, "m"));
+      expect(help()).toMatch(new RegExp(`^\\s+${group}\\s+\\S`, "m"));
       const groupHelp = help(group);
-      expect(groupHelp).toMatch(/^\s+login \[options\] \[name\]\s/m);
+      expect(groupHelp).toMatch(/^\s+login \[options\] \[name\]\s+Alias of/m);
       // Hot Updater keeps no session: nothing to log out of or ask about.
       for (const missing of ["logout", "whoami", "status"]) {
         expect(groupHelp).not.toMatch(new RegExp(`^\\s+${missing}\\b`, "m"));
@@ -266,24 +266,43 @@ describe("CLI commands", () => {
     },
   );
 
-  it("has testflight as the shortcut for build:ios --upload testflight --register", () => {
-    expect(help()).toMatch(
-      /^\s+testflight \[options\]\s+Shortcut for hot-updater build:ios --upload\s+testflight --register/m,
-    );
-    const testflight = help("testflight");
-    const flat = testflight.replace(/\s+/gu, " ");
-    expect(flat).toContain(
-      "Shortcut for `hot-updater build:ios --scheme <scheme> --upload testflight --register`.",
-    );
-    expect(testflight).toContain("-s, --scheme <scheme>");
-    expect(testflight).toContain("--no-register");
-    expect(testflight).toContain("--json");
-    expect(testflight).toContain("-o, --output-path <outputPath>");
-    // It always uploads to TestFlight and picks the scheme itself.
-    expect(testflight).not.toContain("--upload <destination>");
-    expect(testflight).not.toContain("--interactive");
-    expect(flat).toContain("apple login");
-  });
+  it.each([
+    [
+      ["testflight"],
+      "ios",
+      "testflight",
+      "Shortcut for hot-updater build:ios --upload\\s+testflight --register",
+      "apple login",
+    ],
+    [
+      ["google-play", "upload"],
+      "android",
+      "play-internal",
+      "Shortcut for hot-updater build:android\\s+--upload\\s+play-internal --register",
+      "google-play login",
+    ],
+  ] as const)(
+    "has %j as the shortcut for build:%s --upload %s --register",
+    (command, platform, upload, summary, login) => {
+      const parent = command.length === 1 ? help() : help(command[0]);
+      expect(parent).toMatch(
+        new RegExp(`^\\s+${command.at(-1)} \\[options\\]\\s+${summary}`, "m"),
+      );
+      const shortcut = help(...command);
+      const flat = shortcut.replace(/\s+/gu, " ");
+      expect(flat).toContain(
+        `Shortcut for \`hot-updater build:${platform} --scheme <scheme> --upload ${upload} --register\`.`,
+      );
+      expect(shortcut).toContain("-s, --scheme <scheme>");
+      expect(shortcut).toContain("--no-register");
+      expect(shortcut).toContain("--json");
+      expect(shortcut).toContain("-o, --output-path <outputPath>");
+      // It always uploads to the store and picks the scheme itself.
+      expect(shortcut).not.toContain("--upload <destination>");
+      expect(shortcut).not.toContain("--interactive");
+      expect(flat).toContain(`run ${login} once first`);
+    },
+  );
 
   it("manages Remote Config with remote-config, by version number", () => {
     expect(help()).toMatch(

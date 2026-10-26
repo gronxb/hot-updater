@@ -73,7 +73,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
   - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
   - `hot-updater secrets put <name> --kind <kind>` is a built-in command that stores a build credential you have, from its files, through the config's `secrets` adapter (`set`). `hot-updater secrets issue <asc-api-key|play-service-account> [name] [--replace]` is the only command that signs in ahead of a build: at a terminal only, it signs in with an Apple Account or Google, and stores the key Hot Updater issues as builds do when theirs is missing. `hot-updater apple login [name] [--replace]` and `hot-updater google-play login [name] [--replace]` are its shortcuts for `asc-api-key` and `play-service-account`, with the same handler and options, and the hints people meet first name them. It keeps a stored key unless `--replace`, which never revokes the old one. Hot Updater keeps no session, so there is no `logout` or `whoami`: each run ends saying only the key stayed. Hot Updater hosts no secret.
-  - `hot-updater testflight [--scheme <scheme>] [--no-register]` is the shortcut for `build:ios --scheme <scheme> --upload testflight --register`, running `build:ios`'s handler: without `--scheme` it builds the one `nativeBuild.ios` scheme `resolveTestFlightUploadKey` accepts, asks at a terminal among several, and refuses in CI.
+  - `hot-updater testflight [--scheme <scheme>] [--no-register]` and `hot-updater google-play upload [...]` are the shortcuts for `build:ios --upload testflight --register` and `build:android --upload play-internal --register`, running the build's own handler: without `--scheme` they build the one scheme `resolveTestFlightUploadKey` / `resolvePlayUploadServiceAccount` accepts, ask at a terminal among several, and refuse in CI.
   - Each `secretEnv` reads the `secrets` adapter (`env()` by default) of the config load that created it; credential resolvers take the consuming command's config's adapter, else the one `loadConfig` last loaded. That state and the masking registry live on `globalThis`, since the config file loads its own copy of Hot Updater's modules. Loading reads no secret: `secretEnv` returns a function adapters call on first use, and resolved values never go into the CLI's own `process.env`, only to the caller, 0600 temporary files, or a child's explicit environment, which `isReservedVariableName` guards. Adapters and signers check their credentials and create clients on first use, so a config without them still loads.
 
 ### Reference Projects
@@ -162,8 +162,9 @@ npx hot-updater build:android --scheme release --register
 npx hot-updater testflight
 npx hot-updater testflight --scheme release --no-register
 
-# Build an .aab and release it to Google Play's internal track with the secrets adapter's play-service-account
-npx hot-updater build:android --scheme release --upload play-internal
+# Build an .aab, register it, and release it to Google Play's internal track (= build:android --scheme <scheme> --upload play-internal --register)
+npx hot-updater google-play upload
+npx hot-updater google-play upload --scheme release --no-register
 
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>

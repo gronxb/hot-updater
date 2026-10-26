@@ -47,9 +47,10 @@ import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import {
+  handleGooglePlayUpload,
   handleTestFlight,
-  type TestFlightOptions,
-} from "@/commands/testflight";
+  type StoreUploadOptions,
+} from "@/commands/storeUpload";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
@@ -456,6 +457,8 @@ secretsCommand
 const LOGIN_COMMANDS = [
   {
     kind: "asc-api-key",
+    group:
+      "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
     description:
       "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
     signIn:
@@ -463,6 +466,8 @@ const LOGIN_COMMANDS = [
   },
   {
     kind: "play-service-account",
+    group:
+      "Google Play: login issues the Play service account, upload builds an .aab and releases it to the internal track",
     description:
       "Sign in with Google and store the Play service account Hot Updater issues",
     signIn:
@@ -470,14 +475,19 @@ const LOGIN_COMMANDS = [
   },
 ] as const satisfies readonly {
   kind: (typeof ISSUED_KINDS)[number];
+  group: string;
   description: string;
   signIn: string;
 }[];
 
-for (const { kind, description, signIn } of LOGIN_COMMANDS) {
-  program
+/** The `apple` and `google-play` commands, by the kind each logs in for. */
+const loginGroups = new Map<(typeof ISSUED_KINDS)[number], Command>();
+for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
+  const groupCommand = program
     .command(CREDENTIAL_LOGIN_GROUPS[kind])
-    .description(description)
+    .description(group);
+  loginGroups.set(kind, groupCommand);
+  groupCommand
     .command("login")
     .description(
       `Alias of hot-updater secrets issue ${kind}: ${description[0]!.toLowerCase()}${description.slice(1)}`,
@@ -501,6 +511,36 @@ for (const { kind, description, signIn } of LOGIN_COMMANDS) {
     )
     .action((name, options) => handleSecretsIssue(kind, name ?? kind, options));
 }
+
+loginGroups
+  .get("play-service-account")!
+  .command("upload")
+  .description(
+    "Shortcut for hot-updater build:android --upload play-internal --register: build the .aab, register it, and release it to Google Play's internal track",
+  )
+  .addOption(nativeBuildOutputCommandOption)
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.android scheme (default: the only one that uploads to Google Play, else a prompt at a terminal)",
+  )
+  .option(
+    "--no-register",
+    "upload without registering the build, which then is no patch base native-build find sees",
+  )
+  .addOption(nativeBuildJsonCommandOption)
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Shortcut for `hot-updater build:android --scheme <scheme> --upload play-internal --register`.",
+      "Without a Play service account, it signs in with Google at a terminal, as",
+      "build:android does, with your own Desktop OAuth client until Hot Updater ships",
+      "one; in CI it never signs in (run google-play login once first).",
+    ].join("\n"),
+  )
+  .action(async (options: StoreUploadOptions) => {
+    await handleGooglePlayUpload(options);
+  });
 
 const remoteConfigCommand = program
   .command("remote-config")
@@ -1170,7 +1210,7 @@ program
       "terminal, as build:ios does; in CI it never signs in (run apple login once first).",
     ].join("\n"),
   )
-  .action(async (options: TestFlightOptions) => {
+  .action(async (options: StoreUploadOptions) => {
     await handleTestFlight(options);
   });
 

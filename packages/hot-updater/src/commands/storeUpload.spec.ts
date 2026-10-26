@@ -1,0 +1,249 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { log, select, isCancel, buildIosNative, buildAndroidNative } =
+  vi.hoisted(() => ({
+    log: { error: vi.fn(), info: vi.fn() },
+    select: vi.fn(),
+    isCancel: vi.fn((_answer: unknown) => false),
+    buildIosNative: vi.fn(async (_options: unknown) => ({})),
+    buildAndroidNative: vi.fn(async (_options: unknown) => ({})),
+  }));
+
+// The config, the prompt, and the build handlers are stood in for; which
+// scheme a store takes is the helpers' own check, unmocked.
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig: vi.fn(),
+  p: { log, select, isCancel },
+}));
+vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
+vi.mock("./buildNative", () => ({ buildIosNative, buildAndroidNative }));
+
+import { loadConfig } from "@hot-updater/cli-tools";
+
+import { handleGooglePlayUpload, handleTestFlight } from "./storeUpload";
+
+const IOS_DEVICE = {
+  bundleIdentifier: "com.example.app",
+  scheme: "App",
+  signing: { ascApiKey: "secret:asc-api-key" },
+};
+const ANDROID_RELEASE = {
+  packageName: "com.example.app",
+  signing: { keystore: "secret:release-keystore" },
+};
+
+/**
+ * Each shortcut, what it builds with, the schemes the store takes and
+ * refuses (with the refusal apple-helper or android-helper words), and its
+ * words.
+ */
+const SHORTCUTS = [
+  {
+    command: "testflight",
+    run: handleTestFlight,
+    build: buildIosNative,
+    other: buildAndroidNative,
+    platform: "ios",
+    store: "TestFlight",
+    upload: "testflight",
+    uploadable: IOS_DEVICE,
+    refused: {
+      simulator: { ...IOS_DEVICE, simulator: true },
+      debug: { ...IOS_DEVICE, configuration: "Debug" },
+    },
+    refusals: [
+      "TestFlight takes an .ipa, and the scheme simulator builds a simulator .app.",
+      "TestFlight takes a release build, and the scheme debug builds the Debug configuration",
+    ],
+    docs: "https://hot-updater.dev/docs/guides/native-build#upload-to-testflight",
+  },
+  {
+    command: "google-play upload",
+    run: handleGooglePlayUpload,
+    build: buildAndroidNative,
+    other: buildIosNative,
+    platform: "android",
+    store: "Google Play",
+    upload: "play-internal",
+    uploadable: ANDROID_RELEASE,
+    refused: {
+      apk: { ...ANDROID_RELEASE, aab: false },
+      debug: { ...ANDROID_RELEASE, variant: "Debug" },
+    },
+    refusals: [
+      "Google Play takes an .aab, and the scheme apk builds an .apk (aab: false).",
+      "Google Play takes a release build, and the scheme debug builds the Debug variant",
+    ],
+    docs: "https://hot-updater.dev/docs/guides/native-build#upload-to-google-play",
+  },
+] as const;
+
+const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", {
+    value: isTTY,
+    configurable: true,
+  });
+  try {
+    return await run();
+  } finally {
+    if (descriptor) Object.defineProperty(process.stdin, "isTTY", descriptor);
+    else Reflect.deleteProperty(process.stdin, "isTTY");
+  }
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  process.exitCode = undefined;
+  vi.unstubAllEnvs();
+});
+
+describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
+  const { platform, store, upload } = shortcut;
+  const configure = (schemes: Record<string, unknown>) => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      nativeBuild: {
+        ios: {},
+        android: {},
+        [platform]: schemes,
+      },
+    } as never);
+  };
+  /** The options the platform's build handler is called with. */
+  const built = () => shortcut.build.mock.calls.map(([options]) => options);
+
+  it(`runs build:${platform}'s handler with --upload ${upload} --register for the scheme given, without reading the config`, async () => {
+    await withTTY(false, () => shortcut.run({ scheme: "release" }));
+
+    expect(loadConfig).not.toHaveBeenCalled();
+    expect(shortcut.other).not.toHaveBeenCalled();
+    expect(built()).toEqual([
+      { scheme: "release", interactive: false, upload, register: true },
+    ]);
+  });
+
+  it("--no-register uploads without registering, and passes --json and --output-path on", async () => {
+    await shortcut.run({
+      scheme: "release",
+      register: false,
+      json: true,
+      outputPath: "out",
+    });
+
+    expect(built()).toEqual([
+      {
+        scheme: "release",
+        interactive: false,
+        upload,
+        register: false,
+        json: true,
+        outputPath: "out",
+      },
+    ]);
+  });
+
+  it(`uses the only scheme ${store} takes, skipping the others, and says which`, async () => {
+    configure({ release: shortcut.uploadable, ...shortcut.refused });
+
+    await withTTY(false, () => shortcut.run({}));
+
+    expect(loadConfig).toHaveBeenCalledWith({ platform, channel: "" });
+    expect(process.exitCode).toBeUndefined();
+    expect(select).not.toHaveBeenCalled();
+    expect(log.info).toHaveBeenCalledWith(
+      `Scheme release: the only nativeBuild.${platform} scheme that uploads to ${store}.`,
+    );
+    expect(built()).toEqual([
+      { scheme: "release", interactive: false, upload, register: true },
+    ]);
+  });
+
+  it(`asks which scheme at a terminal when several upload to ${store}`, async () => {
+    configure({
+      staging: shortcut.uploadable,
+      release: shortcut.uploadable,
+      ...shortcut.refused,
+    });
+    select.mockResolvedValueOnce("staging");
+
+    await withTTY(true, () => shortcut.run({}));
+
+    expect(select).toHaveBeenCalledWith({
+      message: `Which scheme do you upload to ${store}?`,
+      options: [
+        { value: "release", label: "release" },
+        { value: "staging", label: "staging" },
+      ],
+    });
+    expect(built()).toEqual([
+      expect.objectContaining({ scheme: "staging", upload, register: true }),
+    ]);
+  });
+
+  it.each([
+    ["without a terminal", false, "", "never without a terminal"],
+    ["in CI, even at a terminal", true, "true", "never in CI (CI is set)"],
+  ])(
+    "refuses several schemes %s, listing them and the --scheme form",
+    async (_case, isTTY, ci, reason) => {
+      vi.stubEnv("CI", ci);
+      configure({ staging: shortcut.uploadable, release: shortcut.uploadable });
+
+      await withTTY(isTTY, () => shortcut.run({}));
+
+      expect(process.exitCode).toBe(1);
+      expect(select).not.toHaveBeenCalled();
+      expect(shortcut.build).not.toHaveBeenCalled();
+      expect(log.error).toHaveBeenCalledWith(
+        `Several nativeBuild.${platform} schemes upload to ${store}: release, staging. Hot Updater asks which one only at a terminal, ${reason}: run npx hot-updater ${shortcut.command} --scheme <release | staging>.`,
+      );
+    },
+  );
+
+  it(`refuses when no scheme uploads to ${store}, saying why each does not and how to add one`, async () => {
+    configure(shortcut.refused);
+
+    await withTTY(true, () => shortcut.run({}));
+
+    expect(process.exitCode).toBe(1);
+    expect(shortcut.build).not.toHaveBeenCalled();
+    const [message] = log.error.mock.calls[0]!;
+    expect(message).toContain(
+      `No nativeBuild.${platform} scheme in hot-updater.config.ts uploads to ${store}.`,
+    );
+    for (const refusal of shortcut.refusals) {
+      expect(message).toContain(refusal);
+    }
+    expect(message).toContain(shortcut.docs);
+    expect(message).toContain(`then run npx hot-updater ${shortcut.command}.`);
+  });
+
+  it("refuses a config without schemes for the platform", async () => {
+    configure({});
+
+    await withTTY(true, () => shortcut.run({}));
+
+    expect(process.exitCode).toBe(1);
+    expect(shortcut.build).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining(shortcut.docs),
+    );
+  });
+
+  it("builds nothing when the scheme prompt is cancelled", async () => {
+    configure({ staging: shortcut.uploadable, release: shortcut.uploadable });
+    const cancel = Symbol("cancel");
+    select.mockResolvedValueOnce(cancel);
+    isCancel.mockImplementationOnce((answer) => answer === cancel);
+
+    await withTTY(true, () => shortcut.run({}));
+
+    expect(process.exitCode).toBe(1);
+    expect(shortcut.build).not.toHaveBeenCalled();
+  });
+});

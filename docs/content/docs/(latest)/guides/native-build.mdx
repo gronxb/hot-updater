@@ -445,8 +445,24 @@ the CLI prints.
 
 ## Upload to Google Play
 
-Add `--upload play-internal` to upload the `.aab` to Google Play and release
-it to the internal testing track:
+`google-play upload` builds the `.aab`, registers it, and releases it to
+Google Play's internal testing track:
+
+```package-install
+npx hot-updater google-play upload
+```
+
+It is the shortcut for `build:android --scheme <scheme> --upload play-internal
+--register`, which runs the same build. Without `--scheme`, it builds the one
+`nativeBuild.android` scheme whose build Google Play takes, skipping `.apk`
+(`aab: false`) and `Debug` schemes, and says which; with several, it asks which
+one at a terminal, and in CI or without a terminal it stops and lists them for
+`--scheme`. It registers the build, so it becomes a patch base
+`native-build find` sees; `--no-register` only uploads. `--json` and
+`--output-path` work as with `build:android`.
+
+To upload a build without registering it, or from a scheme of your choice,
+add `--upload play-internal` to `build:android`:
 
 ```package-install
 npx hot-updater build:android --scheme release --upload play-internal

@@ -320,12 +320,17 @@ short-lived Infisical token. Outside GitHub Actions, set
 ### Without the action
 
 Any CI runs the command the action runs, with the credentials or the store's
-sign-in in its environment. `testflight` is the shortcut for the iOS upload:
+sign-in in its environment. `testflight` and `google-play upload` are the
+shortcuts for the store uploads:
 
 ```bash
 npx --no-install hot-updater testflight --scheme release
 # the same as
 npx --no-install hot-updater build:ios --scheme release --register --upload testflight
+
+npx --no-install hot-updater google-play upload --scheme release
+# the same as
+npx --no-install hot-updater build:android --scheme release --register --upload play-internal
 ```
 
 In CI, pass `--scheme` when several schemes upload to TestFlight: it asks
