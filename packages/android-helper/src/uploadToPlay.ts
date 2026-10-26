@@ -310,10 +310,13 @@ export const findPlayInternalRelease = async ({
 };
 
 /**
- * The subject of the keystore Android Studio and Gradle debug builds sign
- * with, in `keytool`'s output, whose labels follow the JVM's locale.
+ * The common name of every Android debug certificate: Android Studio's and
+ * the Android Gradle plugin's (`CN=Android Debug, O=Android, C=US`), and React
+ * Native's template `debug.keystore` (`CN=Android Debug, OU=Android,
+ * O=Unknown, …`), as `keytool` prints the owner, whatever the label's
+ * language.
  */
-const ANDROID_DEBUG_SIGNER = /\bCN=Android Debug\s*,\s*O=Android\b/u;
+const ANDROID_DEBUG_SIGNER = /:\s*CN=Android Debug\s*(?:,|$)/mu;
 
 /**
  * Throws when the `.aab` is signed with the Android debug keystore, which

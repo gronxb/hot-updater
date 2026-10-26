@@ -75,6 +75,35 @@ describe.skipIf(!hasJdk)("assertPlaySigned", () => {
     );
   });
 
+  it("refuses an .aab signed with React Native's template debug.keystore, which the example's release build uses", async () => {
+    const aab = await bundle("template");
+    // The repository's own keystore, CN=Android Debug, OU=Android, O=Unknown.
+    execFileSync("jarsigner", [
+      "-keystore",
+      path.resolve(
+        import.meta.dirname,
+        "../../../examples/v0.85.0/android/app/debug.keystore",
+      ),
+      "-storepass",
+      "android",
+      aab,
+      "androiddebugkey",
+    ]);
+
+    await expect(assertPlaySigned(aab)).rejects.toThrow(
+      "Google Play refuses an .aab signed with the Android debug keystore",
+    );
+  });
+
+  it("takes an .aab whose release key merely mentions Android Debug in another field", async () => {
+    const aab = await bundle(
+      "lookalike",
+      "CN=Example Release,OU=Android Debug,O=Example,C=US",
+    );
+
+    await expect(assertPlaySigned(aab)).resolves.toBeUndefined();
+  });
+
   it("takes an .aab signed with a release key", async () => {
     const aab = await bundle("release", "CN=Example Release,O=Example,C=US");
 
