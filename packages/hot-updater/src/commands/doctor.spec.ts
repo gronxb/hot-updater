@@ -1183,6 +1183,49 @@ describe("doctor", () => {
     });
   });
 
+  it("finds HotUpdater.bundleURL() in SceneDelegate for apps that host React there", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        platform: {
+          ios: { infoPlistPaths: ["ios/App/Info.plist"] },
+          android: { androidManifestPaths: [] },
+        },
+      }),
+    );
+
+    await writeInfoPlist(cwd, "");
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import UIKit\nclass AppDelegate: UIResponder {}\n",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/SceneDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        native: {
+          ios: { bundleProviderConfigured: true },
+          issues: [],
+        },
+      },
+    });
+  });
+
   it.each(["plugin", "local"])(
     "detects native signing keys that differ from the %s trust anchor",
     async (mode) => {
