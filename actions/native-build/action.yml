@@ -4,7 +4,7 @@ description: >-
   with the credentials the config's secrets adapter reads, the job's
   environment by default, registers the build, and uploads it to TestFlight
   or Google Play's internal track. It never signs in to an Apple or Google
-  account: it reads what one sign-in stored.
+  account: it reads what hot-updater secrets issue stored.
 author: gronxb
 
 inputs:

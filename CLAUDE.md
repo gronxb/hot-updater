@@ -72,7 +72,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
   - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
   - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
-  - `hot-updater secrets put <name> --kind <kind>` is a built-in command that stores a build credential through the config's `secrets` adapter (`set`), or, without the key's files, issues an App Store Connect key or a Play service account after an Apple or Google sign-in. Hot Updater hosts no secret.
+  - `hot-updater secrets put <name> --kind <kind>` is a built-in command that stores a build credential you have, from its files, through the config's `secrets` adapter (`set`). `hot-updater secrets issue <asc-api-key|play-service-account> [name] [--replace]` is the only command that signs in ahead of a build: at a terminal only, it signs in with an Apple Account or Google, and stores the key Hot Updater issues as builds do when theirs is missing. It keeps a stored key unless `--replace`, which never revokes the old one, and Hot Updater keeps no session, so there is no `login`, `logout`, or `whoami`. Hot Updater hosts no secret.
   - Each `secretEnv` reads the `secrets` adapter (`env()` by default) of the config load that created it; credential resolvers take the consuming command's config's adapter, else the one `loadConfig` last loaded. That state and the masking registry live on `globalThis`, since the config file loads its own copy of Hot Updater's modules. Loading reads no secret: `secretEnv` returns a function adapters call on first use, and resolved values never go into the CLI's own `process.env`, only to the caller, 0600 temporary files, or a child's explicit environment, which `isReservedVariableName` guards. Adapters and signers check their credentials and create clients on first use, so a config without them still loads.
 
 ### Reference Projects
@@ -167,9 +167,12 @@ npx hot-updater build:android --scheme release --upload play-internal
 npx hot-updater api-key create --name <name>
 npx hot-updater api-key list src/hotUpdater.ts
 
-# Store a build credential through the config's secrets adapter, or sign in to issue one
+# Store a build credential you have through the config's secrets adapter
 npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey.p8 --key-id <id> --issuer-id <id>
-npx hot-updater secrets put play-service-account --kind play-service-account
+
+# Sign in at a terminal and store the key Hot Updater issues (--replace issues a new one)
+npx hot-updater secrets issue asc-api-key
+npx hot-updater secrets issue play-service-account
 
 # Migrate a server's database (in the server project)
 npx hot-updater db migrate src/hotUpdater.ts

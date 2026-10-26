@@ -221,7 +221,7 @@ describe("createCredentialResolver", () => {
     await resolver.dispose();
   });
 
-  it("fails naming the adapter, the put command, and every replacement env var when nothing provides the item", async () => {
+  it("fails naming the adapter, the command that stores it, and every replacement env var when nothing provides the item", async () => {
     const resolver = createCredentialResolver({ secrets: fakeSecrets({}) });
 
     const error = await resolver
@@ -230,7 +230,7 @@ describe("createCredentialResolver", () => {
 
     expect(error).toBeInstanceOf(CredentialUnavailableError);
     expect((error as Error).message).toBe(
-      "asc-api-key is not in the fake secrets adapter (fake://asc-api-key). Store it once with `npx hot-updater secrets put asc-api-key --kind asc-api-key`. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
+      "asc-api-key is not in the fake secrets adapter (fake://asc-api-key). Store it once with `npx hot-updater secrets issue asc-api-key`. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
     );
     expect((error as CredentialUnavailableError).envNames).toEqual([
       "HOT_UPDATER_ASC_KEY_PATH",

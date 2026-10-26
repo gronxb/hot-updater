@@ -59,11 +59,7 @@ import {
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
-import {
-  AscApiKeyNotStoredError,
-  ascApiKeySetupCommand,
-  ensureAscApiKey,
-} from "./ascApiKey";
+import { AscApiKeyNotStoredError, ensureAscApiKey } from "./ascApiKey";
 import { CredentialSetupRefusedError } from "./issuedCredential";
 
 const P8 =
@@ -225,10 +221,7 @@ describe("ensureAscApiKey", () => {
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc). Store it once from a terminal with `npx hot-updater secrets put widget-asc --kind asc-api-key`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
-    );
-    expect(ascApiKeySetupCommand("widget-asc")).toBe(
-      "npx hot-updater secrets put widget-asc --kind asc-api-key",
+      "widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc). Store it once from a terminal with `npx hot-updater secrets issue asc-api-key widget-asc`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
     );
     expect(process.exitCode).toBe(1);
     // Nothing is written, and no Apple prompt.
@@ -752,11 +745,40 @@ describe("ensureAscApiKey", () => {
     expect(chosen).toBe("OTHERTEAM");
   });
 
-  it("stores through the adapter for secrets put even when the environment overrides the key", async () => {
-    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY");
-    fakeStore();
+  it("issues a key for secrets issue --replace whatever the adapter holds, without reading it again", async () => {
+    const previous = JSON.stringify({
+      keyId: "OLDKEY0001",
+      issuerId: "i",
+      p8: "old",
+    });
+    const { calls, held } = fakeStore({ values: { "asc-api-key": previous } });
     await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key", environment: false })),
-    ).resolves.toMatchObject({ status: "issued" });
+      withTTY(true, () => ensure({ name: "asc-api-key", replace: true })),
+    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    // One write and its read-back: no read before the sign-in.
+    expect(calls).toEqual(["set asc-api-key", "get asc-api-key"]);
+    expect(JSON.parse(held.get("asc-api-key")!)).toMatchObject({
+      keyId: "KEY1234567",
+    });
+    expect(issued.revoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps the new key when a failed write reads back the key it replaces, as a lagging latest version does", async () => {
+    const previous = JSON.stringify({
+      keyId: "OLDKEY0001",
+      issuerId: "i",
+      p8: "old",
+    });
+    fakeStore({
+      values: { "asc-api-key": previous },
+      setError: new Error("latest still resolves to the old version"),
+      readBack: async () => previous,
+    });
+    await expect(
+      withTTY(true, () => ensure({ name: "asc-api-key", replace: true })),
+    ).rejects.toThrow(
+      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: latest still resolves to the old version\nThe key KEY1234567 is kept.",
+    );
+    expect(issued.revoke).not.toHaveBeenCalled();
   });
 });

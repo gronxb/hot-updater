@@ -39,25 +39,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 
 vi.mock("@/utils/printBanner", () => ({ printBanner }));
-// The GitHub Actions offer has its own specs: here it finds nothing to offer.
-vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../utils/native/githubSecret")>()),
-  offerGitHubSecret: vi.fn(async () => "unavailable"),
-}));
-vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/apple-helper")>()),
-  // The Apple Account sign-in, which issues the key.
-  issueAscApiKey: vi.fn(async (request: { name: string }) => ({
-    p8: P8,
-    keyId: "KEY1234567",
-    issuerId: "issuer-1",
-    name: request.name,
-    team: {},
-    revoke: vi.fn(async () => true),
-    dispose: vi.fn(async () => {}),
-  })),
-}));
-
 const P8 =
   "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49putSpecKeyLine01\n-----END PRIVATE KEY-----";
 
@@ -85,20 +66,6 @@ const writableStore = (values: Record<string, string> = {}) => {
 
 const configure = (secrets: SecretsAdapter, cacheDir?: string) => {
   vi.mocked(loadConfig).mockResolvedValue({ secrets, cacheDir } as never);
-};
-
-const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
-  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  Object.defineProperty(process.stdin, "isTTY", {
-    value: isTTY,
-    configurable: true,
-  });
-  try {
-    return await run();
-  } finally {
-    if (descriptor) Object.defineProperty(process.stdin, "isTTY", descriptor);
-    else Reflect.deleteProperty(process.stdin, "isTTY");
-  }
 };
 
 let directory: string;
@@ -255,77 +222,5 @@ describe("hot-updater secrets put", () => {
     );
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
-  });
-});
-
-describe("hot-updater secrets put asc-api-key without a key", () => {
-  it("keeps a stored key, without signing in", async () => {
-    const { store } = writableStore({ "asc-api-key": "{}" });
-
-    await withTTY(false, () =>
-      handleSecretsPut("asc-api-key", { kind: "asc-api-key" }),
-    );
-
-    expect(process.exitCode).toBeUndefined();
-    expect(store.set).not.toHaveBeenCalled();
-    const [stored] = messages();
-    expect(stored).toContain("App Store Connect API key already stored");
-    expect(stored).toContain("spec://asc-api-key");
-  });
-
-  it("refuses to sign in without a terminal, naming the command to run in one", async () => {
-    const { store } = writableStore();
-
-    await withTTY(false, () =>
-      handleSecretsPut("asc-api-key", { kind: "asc-api-key" }),
-    );
-
-    expect(process.exitCode).toBe(1);
-    expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Store it once from a terminal with `npx hot-updater secrets put asc-api-key --kind asc-api-key`",
-      ),
-    );
-    expect(store.set).not.toHaveBeenCalled();
-  });
-
-  it("signs in and writes the issued key to a 0600 file when the adapter is env(), which is read-only", async () => {
-    configure(envSecrets(), directory);
-    text.mockResolvedValue("dev@example.com");
-
-    await withTTY(true, () =>
-      handleSecretsPut("asc-api-key", { kind: "asc-api-key" }),
-    );
-
-    expect(process.exitCode).toBeUndefined();
-    const file = path.join(directory, "issued", "asc-api-key.json");
-    expect(JSON.parse(await fs.readFile(file, "utf-8"))).toMatchObject({
-      keyId: "KEY1234567",
-      p8: P8,
-    });
-    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
-    const warned = stripVTControlCharacters(String(log.warn.mock.calls[0]![0]));
-    expect(warned).toContain(file);
-    expect(warned).toContain("HOT_UPDATER_ASC_API_KEY");
-    expect(
-      Object.values(log)
-        .flatMap((fn) => fn.mock.calls.flat())
-        .join("\n"),
-    ).not.toContain("putSpecKeyLine01");
-  });
-
-  it("never signs in in CI", async () => {
-    vi.stubEnv("CI", "true");
-    const { store } = writableStore();
-
-    await withTTY(true, () =>
-      handleSecretsPut("asc-api-key", { kind: "asc-api-key" }),
-    );
-
-    expect(process.exitCode).toBe(1);
-    expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("never in CI (CI is set)"),
-    );
-    expect(store.set).not.toHaveBeenCalled();
   });
 });

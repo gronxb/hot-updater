@@ -172,12 +172,13 @@ describe("CLI commands", () => {
     expect(help("api-key", "revoke")).toContain("-y, --yes");
   });
 
-  it("stores build credentials with secrets put alone, without --app", () => {
+  it("stores build credentials with secrets put and secrets issue, without --app", () => {
     expect(help()).toMatch(
       /^\s+secrets\s+Store build credentials in the secrets adapter$/m,
     );
     const secrets = help("secrets");
     expect(secrets).toMatch(/^\s+put \[options\] <name>\s/m);
+    expect(secrets).toMatch(/^\s+issue \[options\] <kind> \[name\]\s/m);
     for (const removed of ["list", "env", "import", "token"]) {
       expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
     }
@@ -187,6 +188,36 @@ describe("CLI commands", () => {
     expect(put).toContain("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD");
     expect(help("keys", "generate")).not.toContain("--vault");
     expect(help("keys", "generate")).toContain("--secret [name]");
+
+    // put stores a key you have: its help no longer offers a sign-in.
+    expect(put).not.toMatch(/sign in with/i);
+    expect(put).toContain("run secrets issue");
+
+    const issue = help("secrets", "issue").replace(/\s+/gu, " ");
+    expect(issue).toContain('choices: "asc-api-key", "play-service-account"');
+    expect(issue).not.toContain("android-keystore");
+    expect(issue).toContain("--replace");
+    expect(issue).toContain("never revokes the old key");
+    expect(issue).toContain(
+      "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID and HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
+    );
+    expect(issue).toContain("secrets put instead");
+    for (const removed of ["login", "logout", "whoami"]) {
+      expect(help()).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
+      expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
+    }
+
+    const keystore = run("secrets", "issue", "android-keystore");
+    expect(keystore.status).toBe(1);
+    expect(keystore.stderr).toContain(
+      "'android-keystore' is invalid for argument 'kind'. Allowed choices are asc-api-key, play-service-account.",
+    );
+    // No terminal: it refuses before reading the config or signing in.
+    const noTerminal = run("secrets", "issue", "asc-api-key");
+    expect(noTerminal.status).toBe(1);
+    expect(noTerminal.stdout + noTerminal.stderr).toContain(
+      "Run `npx hot-updater secrets issue asc-api-key` in a terminal",
+    );
 
     const missing = run("secrets", "put", "release-keystore");
     expect(missing.status).toBe(1);

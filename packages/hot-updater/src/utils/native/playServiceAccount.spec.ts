@@ -42,10 +42,7 @@ import {
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { CredentialSetupRefusedError } from "./issuedCredential";
-import {
-  ensurePlayServiceAccount,
-  playServiceAccountSetupCommand,
-} from "./playServiceAccount";
+import { ensurePlayServiceAccount } from "./playServiceAccount";
 
 const EMAIL = "hot-updater-play@my-app.iam.gserviceaccount.com";
 const KEY_FILE = JSON.stringify({
@@ -210,7 +207,7 @@ describe("ensurePlayServiceAccount", () => {
       withTTY(false, () => ensure({ name: "widget-play" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      `widget-play (play-service-account) is not in the spec-store secrets adapter (spec://widget-play). Store it once from a terminal with \`${playServiceAccountSetupCommand("widget-play")}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.`,
+      `widget-play (play-service-account) is not in the spec-store secrets adapter (spec://widget-play). Store it once from a terminal with \`npx hot-updater secrets issue play-service-account widget-play\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.`,
     );
     expect(calls).toEqual(["get widget-play"]);
     expect(issue).not.toHaveBeenCalled();
