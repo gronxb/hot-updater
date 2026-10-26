@@ -443,7 +443,9 @@ const parseProperties = (contents: string): [string, string][] =>
  * read them: quoted values may span lines.
  */
 const parseDotenv = (contents: string): [string, string][] =>
-  Object.entries(parseEnv(contents));
+  Object.entries(parseEnv(contents)).flatMap(([name, value]) =>
+    value === undefined ? [] : [[name, value] as [string, string]],
+  );
 
 /**
  * The digest of a file's settings, without its credentials: a credential's
