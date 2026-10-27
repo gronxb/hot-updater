@@ -19,7 +19,13 @@ import {
 
 import { NativeBuildsTable } from "./NativeBuildsTable";
 
+/**
+ * The filter's values: a channel's is its name behind a prefix, so no channel
+ * name, `all` included, can be taken for "All channels".
+ */
 const ALL_CHANNELS = "all";
+const CHANNEL_VALUE_PREFIX = "channel:";
+const channelValue = (name: string) => `${CHANNEL_VALUE_PREFIX}${name}`;
 
 /**
  * The native builds Hot Updater tracks: one page at a time, newest first,
@@ -68,7 +74,10 @@ export function NativeBuildsPage({
             <Select
               items={[
                 { label: "All channels", value: ALL_CHANNELS },
-                ...choices.map((name) => ({ label: name, value: name })),
+                ...choices.map((name) => ({
+                  label: name,
+                  value: channelValue(name),
+                })),
               ]}
               onOpenChange={(open) => {
                 // A pull request's channel appears while the page is open.
@@ -76,10 +85,14 @@ export function NativeBuildsPage({
               }}
               onValueChange={(value) =>
                 filterBy(
-                  value === null || value === ALL_CHANNELS ? undefined : value,
+                  value?.startsWith(CHANNEL_VALUE_PREFIX)
+                    ? value.slice(CHANNEL_VALUE_PREFIX.length)
+                    : undefined,
                 )
               }
-              value={channel ?? ALL_CHANNELS}
+              value={
+                channel === undefined ? ALL_CHANNELS : channelValue(channel)
+              }
             >
               <SelectTrigger
                 aria-label="Channel"
@@ -91,7 +104,11 @@ export function NativeBuildsPage({
                 <SelectGroup>
                   <SelectItem value={ALL_CHANNELS}>All channels</SelectItem>
                   {choices.map((name) => (
-                    <SelectItem key={name} translate="no" value={name}>
+                    <SelectItem
+                      key={name}
+                      translate="no"
+                      value={channelValue(name)}
+                    >
                       {name}
                     </SelectItem>
                   ))}
