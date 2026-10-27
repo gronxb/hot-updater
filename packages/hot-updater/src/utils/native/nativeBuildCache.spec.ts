@@ -248,6 +248,25 @@ describe("the native build cache", () => {
     expect((await find(OTHER_KEY)).hit).toBeNull();
   });
 
+  it("reuses nothing of this machine's untracked build whose MIN_BUNDLE_ID another build registered first", async () => {
+    await saveCachedNativeBuild({
+      slot,
+      key: KEY,
+      components: components(),
+      build: await built("lost the registration"),
+      outputPath,
+      nativeBuildId: null,
+    });
+    // A build that started in the same millisecond, without this key.
+    await track(null);
+
+    await expect(find()).resolves.toMatchObject({
+      hit: null,
+      missingArtifact: null,
+      takenMinBundleId: true,
+    });
+  });
+
   it("reuses a tracked build with the key from storage, in one registry read, without building or uploading", async () => {
     const row = await track(KEY);
     const put = vi.spyOn(storage.adapter, "put");

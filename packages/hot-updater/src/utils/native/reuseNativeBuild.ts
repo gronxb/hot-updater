@@ -274,7 +274,7 @@ export const reuseNativeBuild = async ({
     );
     return { key, slot, hit: null, report: report(null), remember };
   }
-  const { hit, cached, missingArtifact } = lookup;
+  const { hit, cached, missingArtifact, takenMinBundleId } = lookup;
   if (hit !== null) {
     const id =
       hit.source === "storage"
@@ -314,16 +314,19 @@ export const reuseNativeBuild = async ({
       : diffNativeBuildKeyComponents(cached.components, key.components);
   const why = missingArtifact
     ? `the tracked build ${missingArtifact.id} with this key has no artifact in storage`
-    : cached === null
-      ? "no tracked build has this key, and none is cached on this machine"
-      : `no tracked build has this key; changed since this machine's cached build: ${describeChanges(changed)}`;
+    : takenMinBundleId
+      ? `this machine's cached build with this key has the MIN_BUNDLE_ID ${cached!.build.minBundleId}, which another native build registered first`
+      : cached === null
+        ? "no tracked build has this key, and none is cached on this machine"
+        : `no tracked build has this key; changed since this machine's cached build: ${describeChanges(changed)}`;
   p.log.info(
     ui.line([`Building: ${why}`, ui.muted(`(key ${shortKey(key.key)})`)]),
   );
   return {
     key,
-    // The slot's build is the tracked one that lost its artifact: its
-    // built-in bundle is registered, so it is replaced, never reused.
+    // The slot's build is the tracked one that lost its artifact, or one
+    // whose MIN_BUNDLE_ID another build registered: either way its built-in
+    // bundle is registered, so it is replaced, never reused.
     slot,
     hit: null,
     report: report(null, changed),

@@ -105,6 +105,7 @@ describe("reuseNativeBuild", () => {
         nativeBuildId: null,
       },
       missingArtifact: null,
+      takenMinBundleId: false,
     });
 
     const cache = await reuse();
@@ -133,12 +134,35 @@ describe("reuseNativeBuild", () => {
     });
   });
 
+  it("builds, saying why, when another build registered the MIN_BUNDLE_ID of this machine's cached build", async () => {
+    vi.mocked(findCachedNativeBuild).mockResolvedValueOnce({
+      hit: null,
+      cached: {
+        version: 1,
+        key: KEY,
+        components: components({}),
+        build: result,
+        nativeBuildId: null,
+      },
+      missingArtifact: null,
+      takenMinBundleId: true,
+    });
+
+    const cache = await reuse();
+
+    expect(cache.hit).toBeNull();
+    expect(lines(p.log.info)).toEqual([
+      `Building: this machine's cached build with this key has the MIN_BUNDLE_ID ${result.minBundleId}, which another native build registered first (key nbk1:aaaaaaaaaaaa…)`,
+    ]);
+  });
+
   it("reuses a tracked build, keeping it on this machine for the next run", async () => {
     const nativeBuild = { id: "build-1", min_bundle_id: result.minBundleId };
     vi.mocked(findCachedNativeBuild).mockResolvedValueOnce({
       hit: { source: "storage", nativeBuild: nativeBuild as never, result },
       cached: null,
       missingArtifact: null,
+      takenMinBundleId: false,
     });
 
     const cache = await reuse();
@@ -164,6 +188,7 @@ describe("reuseNativeBuild", () => {
         nativeBuildId: null,
       },
       missingArtifact: null,
+      takenMinBundleId: false,
     });
 
     await reuse();
