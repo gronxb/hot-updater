@@ -1,5 +1,39 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- 8c675a2: CLI prompts refuse to ask without a terminal instead of waiting: `keys export-public` names `-y` and `-p`, `keys remove`, `db migrate`, `db generate`, and `native-build ios|android` without `--scheme` name the option that skips the prompt, and every other prompt fails with an error. `native-build find` no longer runs the build adapter's prebuild, so a lookup leaves `ios/` and `android/` as they are: the Expo adapter reports the app version and channel `expo prebuild` would write from the Expo config (`nativeBuild.getNativeProjectValues`), and other adapters' native projects are read as they are. `hot-updater native-build delete <id>` deletes a registered native build, its built-in bundle, and its stored artifact, through core's new `deleteNativeBuild` and the admin API's `DELETE /native-builds/:id`.
+- Updated dependencies [6276804]
+- Updated dependencies [3462a9a]
+- Updated dependencies [d7f02a6]
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [e97d063]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [43b0a61]
+- Updated dependencies [fbe5798]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [f5cffc0]
+- Updated dependencies [288f6a9]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [6f9313b]
+- Updated dependencies [bcc6f20]
+- Updated dependencies [b78660b]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+- Updated dependencies [32de3ce]
+  - hot-updater@1.2.0-rc.0
+  - @hot-updater/cli-tools@1.2.0-rc.0
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/bare@1.2.0-rc.0
+
 ## 1.1.3
 
 ### Patch Changes

@@ -1,5 +1,24 @@
 # @hot-updater/mock
 
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/protocol@1.2.0-rc.0
+
 ## 1.1.3
 
 ### Patch Changes
