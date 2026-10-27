@@ -1,9 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { ListIcon, RotateCcw, RotateCw, TriangleAlert, X } from "lucide-react";
+import {
+  CircleOff,
+  ListIcon,
+  RotateCcw,
+  RotateCw,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -21,14 +29,6 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -39,13 +39,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { RecoveryInput } from "@/lib/insights-recovery";
+import type { ReleaseHealthInput } from "@/lib/insights-recovery";
 import type { HealthChart } from "@/lib/insights-search";
 import {
   CRASH_MIN_ATTEMPTS,
   CRASH_RATE_THRESHOLD,
   crashRateOf,
-  DEFAULT_ADOPTION_RELEASES,
   MAX_ADOPTION_RELEASES,
   recommendsRollback,
 } from "@/lib/release-adoption";
@@ -62,6 +61,8 @@ import {
 } from "./ComparedBundlesChart";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
+import { InsightsScope, platformLabel } from "./InsightsScope";
+import { ReleaseCombobox } from "./ReleaseCombobox";
 import { RollbackButton } from "./RollbackButton";
 
 const HOUR = 3_600_000;
@@ -113,7 +114,7 @@ function LineSample({ dashed }: { readonly dashed?: boolean }) {
 }
 
 /**
- * Release health: how the newest bundles fare after their deployment, on
+ * Release health: how the live bundles fare after their deployment, on
  * one timeline, per interval. Adoption shows installations downloading each
  * bundle (dashed) and launching it (solid), so the gap is the restarts still
  * to come; Crashes shows them crashing back from it, and offers a rollback
@@ -126,22 +127,22 @@ export function InsightsOverview({
   health,
   onReleasesChange,
   onWindowChange,
+  onShowAllPlatforms,
 }: {
-  readonly input: RecoveryInput;
+  readonly input: ReleaseHealthInput;
   readonly chart: HealthChart;
   readonly onChartChange: (chart: HealthChart) => void;
   readonly health: ReleaseHealthState;
   /** Chooses the bundles to compare; undefined returns to the default. */
   readonly onReleasesChange: (releaseIds?: readonly string[]) => void;
-  readonly onWindowChange: (window: RecoveryInput["window"]) => void;
+  readonly onWindowChange: (window: ReleaseHealthInput["window"]) => void;
+  /** Widens the platform filter, offered when one platform has no bundles. */
+  readonly onShowAllPlatforms?: () => void;
 }) {
   const [active, setActive] = useState<string | null>(null);
   const { period, candidates, releases } = health;
   const ids = (releases ?? []).map(({ release }) => release.releaseId);
   const colorOf = useSeriesColors(ids);
-  const addable = (candidates ?? []).filter(
-    (candidate) => !ids.includes(candidate.releaseId),
-  );
   const full = ids.length >= MAX_ADOPTION_RELEASES;
   const wider =
     period.durationMs < 7 * DAY
@@ -156,7 +157,7 @@ export function InsightsOverview({
       onClick={() => onReleasesChange(undefined)}
     >
       <RotateCcw aria-hidden="true" data-icon="inline-start" />
-      Show the newest {DEFAULT_ADOPTION_RELEASES}
+      Show live bundles
     </Button>
   );
   // Adoption draws each bundle's launches solid and its downloads dashed;
@@ -241,14 +242,28 @@ export function InsightsOverview({
       return (
         <Empty className="min-h-64">
           <EmptyHeader>
-            <EmptyTitle>No bundles deployed here yet</EmptyTitle>
+            <EmptyTitle>
+              No bundles deployed to {input.channel} ·{" "}
+              {platformLabel(input.platform)}
+            </EmptyTitle>
             <EmptyDescription>
-              Release health follows the bundle deployments of the selected
-              channel and health platform. Deploy one, or choose another in the
-              filters.
+              Deploy one, or choose another channel or platform in the filters.
             </EmptyDescription>
           </EmptyHeader>
-          {reset ? <EmptyContent>{reset}</EmptyContent> : null}
+          {reset || (input.platform !== "all" && onShowAllPlatforms) ? (
+            <EmptyContent className="flex-row flex-wrap justify-center">
+              {input.platform !== "all" && onShowAllPlatforms ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onShowAllPlatforms}
+                >
+                  Show all platforms
+                </Button>
+              ) : null}
+              {reset}
+            </EmptyContent>
+          ) : null}
         </Empty>
       );
     }
@@ -339,7 +354,14 @@ export function InsightsOverview({
       <Card className="min-w-0 overflow-hidden shadow-sm">
         <CardHeader className="flex flex-col gap-4 p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <CardTitle>Release health</CardTitle>
+            <div className="flex min-w-0 flex-col gap-1">
+              <CardTitle>Release health</CardTitle>
+              <InsightsScope
+                channel={input.channel}
+                platform={input.platform}
+                narrower={input.releaseId ? [`Release ${input.releaseId}`] : []}
+              />
+            </div>
             <div className="flex items-center gap-2">
               <InsightsPeriodSelector
                 window={input.window}
@@ -419,6 +441,13 @@ export function InsightsOverview({
                       rate={bundle.rate}
                       crashes={bundle.crashes}
                       attempts={bundle.attempts}
+                      // The live bundles no longer include it once it is
+                      // disabled: keep comparing the same ones.
+                      onRolledBack={
+                        health.isDefault
+                          ? () => onReleasesChange(ids)
+                          : undefined
+                      }
                     />
                   </AlertDescription>
                 </Alert>
@@ -500,11 +529,33 @@ export function InsightsOverview({
                                 )}
                               </span>
                               <span className="text-xs break-words text-muted-foreground">
+                                <PlatformIcon
+                                  platform={release.platform}
+                                  className="mr-1 inline size-3 align-[-1px]"
+                                />
+                                <span className="sr-only">
+                                  {platformLabel(release.platform)}{" "}
+                                </span>
                                 Deployed{" "}
                                 {formatDeployedAt(release.deployedAtMs)}
                                 {release.targetAppVersion
                                   ? ` · ${release.targetAppVersion}`
                                   : ""}
+                                {release.enabled && !release.live ? (
+                                  <>
+                                    {" · "}
+                                    <span
+                                      className="inline-flex items-center gap-1 align-middle"
+                                      title="No device gets this bundle with the current delivery settings."
+                                    >
+                                      <CircleOff
+                                        aria-hidden="true"
+                                        className="size-3"
+                                      />
+                                      Unreachable
+                                    </span>
+                                  </>
+                                ) : null}
                               </span>
                             </div>
                           </div>
@@ -577,51 +628,22 @@ export function InsightsOverview({
                   })}
                 </TableBody>
               </Table>
-              {addable.length > 0 ? (
-                <Select
-                  items={Object.fromEntries(
-                    addable.map((candidate) => [
-                      candidate.releaseId,
-                      `${candidate.releaseId} · ${formatDeployedAt(candidate.deployedAtMs)}`,
-                    ]),
-                  )}
-                  value={null}
+              {(candidates ?? []).length > 0 ? (
+                <ReleaseCombobox
+                  scope={{ channel: input.channel, platform: input.platform }}
+                  candidates={candidates ?? []}
+                  excluded={ids}
                   disabled={full}
-                  onValueChange={(value) => {
-                    if (value !== null) onReleasesChange([...ids, value]);
-                  }}
-                >
-                  <SelectTrigger
-                    aria-label="Add a bundle"
-                    className="min-h-11 w-full sm:min-h-9 sm:w-80"
-                  >
-                    <SelectValue
-                      placeholder={
-                        full
-                          ? `Up to ${MAX_ADOPTION_RELEASES} bundles`
-                          : "Add a bundle"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {addable.map((candidate) => (
-                        <SelectItem
-                          key={candidate.releaseId}
-                          value={candidate.releaseId}
-                        >
-                          <span className="flex min-w-0 flex-col gap-0.5">
-                            <BundleIdDisplay bundleId={candidate.releaseId} />{" "}
-                            <span className="text-xs text-muted-foreground">
-                              Deployed{" "}
-                              {formatDeployedAt(candidate.deployedAtMs)}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                  label="Add a bundle"
+                  placeholder={
+                    full
+                      ? `Up to ${MAX_ADOPTION_RELEASES} bundles`
+                      : "Add a bundle by ID or app version…"
+                  }
+                  onPick={(release) =>
+                    onReleasesChange([...ids, release.releaseId])
+                  }
+                />
               ) : null}
             </>
           ) : null}

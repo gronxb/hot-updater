@@ -36,7 +36,7 @@ export async function listFailureReports(
       ...page.data.filter(
         (event) =>
           event.type === "UPDATE_FAILED" &&
-          event.platform === input.platform &&
+          (input.platform === "all" || event.platform === input.platform) &&
           event.channel === input.channel &&
           (input.releaseId === undefined ||
             (event.failure?.stage !== "check" &&

@@ -7,6 +7,7 @@ import { FailureReports } from "@/components/features/insights/FailureReports";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
+import { InsightsScope } from "@/components/features/insights/InsightsScope";
 import { UpdateFailures } from "@/components/features/insights/UpdateFailures";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { requireConsoleFeature } from "@/lib/console-features-api";
@@ -16,6 +17,7 @@ import {
 } from "@/lib/insights-api";
 import {
   comparedBundleIds,
+  DEFAULT_INSIGHTS_CHANNEL,
   validateInsightsSearch,
 } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
@@ -37,9 +39,10 @@ function InsightsPage() {
   const retention = useInsightsRetention();
   const usageWindow = search.window ?? "24h";
   const bundleWindow = search.bundleWindow ?? "24h";
-  const channel = search.channel ?? search.healthChannel ?? "production";
+  const channel = search.channel ?? DEFAULT_INSIGHTS_CHANNEL;
+  const platform = search.platform ?? "all";
   const scope: AppUsageScope = {
-    platform: search.platform ?? "all",
+    platform,
     channel,
     appVersion: search.appVersion,
   };
@@ -47,7 +50,7 @@ function InsightsPage() {
     void navigate({ search: { ...search, window } });
   const input = { ...scope, window: usageWindow };
   const bundleInput = {
-    platform: search.healthPlatform ?? "ios",
+    platform,
     channel,
     window: bundleWindow,
     ...(search.releaseId === undefined ? {} : { releaseId: search.releaseId }),
@@ -59,7 +62,7 @@ function InsightsPage() {
   });
   const chart = search.healthChart ?? "adoption";
   const health = useReleaseHealth({
-    platform: bundleInput.platform,
+    platform,
     channel,
     window: bundleWindow,
     releaseIds: comparedBundleIds(search.bundles),
@@ -70,28 +73,38 @@ function InsightsPage() {
   return (
     <div className="flex h-svh min-h-0 flex-col">
       <InsightsPageHeader view="overview" overviewSearch={search} />
+      <InsightsControls
+        filters={{
+          channel,
+          platform,
+          appVersion: search.appVersion,
+          releaseId: search.releaseId,
+        }}
+        appVersions={query.data?.appVersions ?? []}
+        releases={health.candidates ?? []}
+        onFiltersChange={(change) => {
+          const next = { ...search, ...change };
+          void navigate({
+            search: {
+              ...next,
+              // Defaults stay out of the URL.
+              channel:
+                next.channel === DEFAULT_INSIGHTS_CHANNEL
+                  ? undefined
+                  : next.channel,
+              platform: next.platform === "all" ? undefined : next.platform,
+              // A release and bundles chosen in another channel or platform
+              // do not carry over; a new focus picks its own bundles.
+              ...("channel" in change || "platform" in change
+                ? { releaseId: change.releaseId, bundles: undefined }
+                : {}),
+              ...("releaseId" in change ? { bundles: undefined } : {}),
+            },
+          });
+        }}
+      />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 px-4 py-6 sm:p-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          <InsightsControls
-            key={JSON.stringify({ scope, bundleInput })}
-            scope={scope}
-            releaseScope={bundleInput}
-            appVersions={query.data?.appVersions ?? []}
-            onFiltersChange={({ scope, releaseScope }) =>
-              void navigate({
-                search: {
-                  ...search,
-                  ...scope,
-                  appVersion: scope.appVersion,
-                  healthPlatform: releaseScope.platform,
-                  healthChannel: undefined,
-                  releaseId: releaseScope.releaseId,
-                  // Bundles chosen in another scope do not carry over.
-                  bundles: undefined,
-                },
-              })
-            }
-          />
           {query.data?.truncated && !query.error ? (
             <Alert>
               <AlertTitle>Partial history</AlertTitle>
@@ -122,6 +135,16 @@ function InsightsPage() {
             onReleasesChange={(ids) =>
               void navigate({ search: { ...search, bundles: ids?.join(",") } })
             }
+            onShowAllPlatforms={() =>
+              void navigate({
+                search: {
+                  ...search,
+                  platform: undefined,
+                  releaseId: undefined,
+                  bundles: undefined,
+                },
+              })
+            }
             onWindowChange={(window) =>
               void navigate({
                 search: {
@@ -132,6 +155,15 @@ function InsightsPage() {
             }
           />
           <UpdateFailures
+            scope={
+              <InsightsScope
+                channel={channel}
+                platform={platform}
+                narrower={
+                  search.releaseId ? [`Release ${search.releaseId}`] : []
+                }
+              />
+            }
             query={failuresQuery}
             errors={
               failuresQuery.data ? (

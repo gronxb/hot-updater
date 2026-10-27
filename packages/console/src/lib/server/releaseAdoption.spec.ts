@@ -1,14 +1,34 @@
 // @vitest-environment node
-import type { ReleaseRow } from "@hot-updater/plugin-core";
+import type { HotUpdaterCoreApi, ReleaseRow } from "@hot-updater/plugin-core";
 import type { InsightsCountEventSeriesInput } from "@hot-updater/server/plugins";
 import { describe, expect, it, vi } from "vitest";
 
-import { crashRateOf, recommendsRollback } from "../release-adoption";
+import {
+  type AdoptionRelease,
+  crashRateOf,
+  defaultAdoptionReleases,
+  readBundleEventsInput,
+  recommendsRollback,
+} from "../release-adoption";
 import {
   getAdoptionRelease,
   getBundleEvents,
   listAdoptionReleases,
 } from "./releaseAdoption";
+
+// The scope's catalog no longer serves release-2: release-4 took its devices.
+const reachability = vi.hoisted(() => ({
+  served: new Set(["release-4", "release-android"]),
+}));
+vi.mock("./releaseReachability", () => ({
+  addReleaseReachability: vi.fn(
+    async (_core: unknown, releases: readonly ReleaseRow[]) =>
+      releases.map((release) => ({
+        ...release,
+        currentlyUnreachable: !reachability.served.has(release.id),
+      })),
+  ),
+}));
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -47,18 +67,29 @@ const releases = [
   row("release-3", 7 * DAY, { enabled: false }),
   row("release-2", 5 * DAY),
 ];
+const androidReleases = [
+  row("release-android", 6 * DAY, { platform: "android" }),
+];
+
+type ListInput = Parameters<HotUpdaterCoreApi["listReleases"]>[0];
 
 const coreOf = () => ({
   findChannelByName: vi.fn(async (name: string) =>
     name === "production" ? { id: "channel-production", name } : null,
   ),
-  listReleases: vi.fn(async ({ after }: { after?: string }) =>
-    after === undefined
-      ? releases
-      : releases.slice(
-          releases.findIndex((release) => release.id === after) + 1,
-        ),
-  ),
+  listReleases: vi.fn(async ({ filter, after }: ListInput) => {
+    const { platform, enabled } = filter as Extract<
+      typeof filter,
+      { kind: "channelPlatform" }
+    >;
+    const listed = (platform === "android" ? androidReleases : releases).filter(
+      (release) => !enabled || release.enabled,
+    );
+    return after === undefined
+      ? listed
+      : listed.slice(listed.findIndex((release) => release.id === after) + 1);
+  }),
+  getReleaseCatalogRow: vi.fn(async () => null),
   getRelease: vi.fn(async (id: string) =>
     id === "release-android"
       ? row(id, DAY, { platform: "android" })
@@ -67,38 +98,74 @@ const coreOf = () => ({
 });
 
 describe("Release health bundles", () => {
-  it("lists the newest bundle deployments with one read of the releases", async () => {
+  it("lists a platform's newest and newest enabled bundle deployments, marking the live ones", async () => {
     const core = coreOf();
     const listed = await listAdoptionReleases(core, {
       platform: "ios",
       channel: "production",
     });
-    expect(core.listReleases).toHaveBeenCalledExactlyOnceWith({
-      filter: {
-        kind: "channelPlatform",
-        channelId: "channel-production",
-        platform: "ios",
-      },
-      order: "desc",
-      limit: 10,
-    });
-    // A release without a bundle has nothing to apply.
+    expect(core.listReleases.mock.calls).toEqual(
+      [{}, { enabled: true }].map((enabled) => [
+        {
+          filter: {
+            kind: "channelPlatform",
+            channelId: "channel-production",
+            platform: "ios",
+            ...enabled,
+          },
+          order: "desc",
+          limit: 10,
+        },
+      ]),
+    );
+    // A release without a bundle has nothing to apply, and one listed by
+    // both reads shows once.
     expect(listed).toEqual([
       {
         releaseId: "release-4",
         bundleId: "bundle-release-4",
+        platform: "ios",
         deployedAtMs: 9 * DAY,
         targetAppVersion: "1.0.0",
         enabled: true,
+        live: true,
         revision: 2,
       },
-      expect.objectContaining({ releaseId: "release-3", enabled: false }),
-      expect.objectContaining({ releaseId: "release-2" }),
+      expect.objectContaining({
+        releaseId: "release-3",
+        enabled: false,
+        live: false,
+      }),
+      expect.objectContaining({ releaseId: "release-2", live: false }),
     ]);
+    // Only enabled bundles can be live, so only theirs are checked.
+    const { addReleaseReachability } = await import("./releaseReachability");
+    expect(
+      vi
+        .mocked(addReleaseReachability)
+        .mock.lastCall![1].map((release) => release.id),
+    ).toEqual(["release-4", "release-2"]);
     await expect(
       listAdoptionReleases(core, { platform: "ios", channel: "beta" }),
     ).resolves.toEqual([]);
-    expect(core.listReleases).toHaveBeenCalledOnce();
+    expect(core.listReleases).toHaveBeenCalledTimes(2);
+  });
+
+  it("lists both platforms together, newest first", async () => {
+    const core = coreOf();
+    const listed = await listAdoptionReleases(core, {
+      platform: "all",
+      channel: "production",
+    });
+    expect(core.listReleases).toHaveBeenCalledTimes(4);
+    expect(
+      listed.map(({ releaseId, platform }) => `${platform}:${releaseId}`),
+    ).toEqual([
+      "ios:release-4",
+      "ios:release-3",
+      "android:release-android",
+      "ios:release-2",
+    ]);
   });
 
   it("names one bundle of the scope, and finds the bundle deployed before it", async () => {
@@ -121,7 +188,26 @@ describe("Release health bundles", () => {
       withPrevious: true,
     });
     // Past the release without a bundle, the bundle before it.
-    expect(withPrevious.previous?.releaseId).toBe("release-3");
+    expect(withPrevious).toEqual({
+      release: expect.objectContaining({ releaseId: "release-4", live: true }),
+      previous: expect.objectContaining({
+        releaseId: "release-3",
+        live: false,
+      }),
+    });
+    // With both platforms, a release of either, and the one before it on
+    // its own platform.
+    await expect(
+      getAdoptionRelease(core, {
+        platform: "all",
+        channel: "production",
+        releaseId: "release-android",
+        withPrevious: true,
+      }),
+    ).resolves.toEqual({
+      release: expect.objectContaining({ platform: "android", live: true }),
+      previous: null,
+    });
     expect(core.listReleases).toHaveBeenCalledWith({
       filter: {
         kind: "channelPlatform",
@@ -143,6 +229,60 @@ describe("Release health bundles", () => {
           withPrevious: true,
         }),
       ).resolves.toEqual({ release: null, previous: null });
+  });
+});
+
+describe("Release health's default bundles", () => {
+  const label = (
+    releaseId: string,
+    platform: "ios" | "android",
+    live: boolean,
+  ): AdoptionRelease => ({
+    releaseId,
+    bundleId: `bundle-${releaseId}`,
+    platform,
+    deployedAtMs: 0,
+    targetAppVersion: null,
+    enabled: live,
+    live,
+    revision: 1,
+  });
+  // Newest first: two rolled back, then what devices get now.
+  const candidates = [
+    label("ios-disabled", "ios", false),
+    label("android-disabled", "android", false),
+    label("ios-live", "ios", true),
+    label("android-live", "android", true),
+    label("ios-live-older", "ios", true),
+  ];
+
+  it("compares what devices get now, never a newer bundle no device gets", () => {
+    expect(defaultAdoptionReleases(candidates, "ios")).toEqual([
+      "ios-live",
+      "ios-live-older",
+    ]);
+    // Both platforms: the newest live bundle of each.
+    expect(defaultAdoptionReleases(candidates, "all")).toEqual([
+      "ios-live",
+      "android-live",
+    ]);
+    // One platform without a live bundle leaves the other's alone.
+    expect(
+      defaultAdoptionReleases(
+        candidates.filter((release) => release.platform === "ios"),
+        "all",
+      ),
+    ).toEqual(["ios-live"]);
+  });
+
+  it("falls back to the newest when nothing is live", () => {
+    expect(
+      defaultAdoptionReleases(
+        candidates.filter((release) => !release.live),
+        "all",
+      ),
+    ).toEqual(["ios-disabled", "android-disabled"]);
+    expect(defaultAdoptionReleases([], "all")).toEqual([]);
   });
 });
 
@@ -272,6 +412,17 @@ describe("Release health counts", () => {
         type: "LAUNCHED",
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
+    // A bundle's counts are read on its own platform.
+    expect(() =>
+      readBundleEventsInput({
+        platform: "all" as "ios",
+        channel: "production",
+        window: "24h",
+        endMs: 10 * DAY,
+        bundleId: "bundle-1",
+        type: "LAUNCHED",
+      }),
+    ).toThrow("Choose a platform, channel, period, and bundle.");
     // Release health charts downloads, launches, and recoveries only.
     await expect(
       getBundleEvents(model, {
