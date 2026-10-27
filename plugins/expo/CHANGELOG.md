@@ -1,5 +1,14 @@
 # @hot-updater/expo
 
+## 1.1.3
+
+### Patch Changes
+
+- 16cfa7b: The Expo config plugin no longer leaves invalid Kotlin behind when it replaces an existing `getJSBundleFile()` override in `MainApplication.kt`. The override is now removed up to its matching closing brace, so a body with nested blocks such as `if`/`else` is removed whole instead of being cut at the first line that starts with `}`.
+- @hot-updater/cli-tools@1.1.3
+  - @hot-updater/bare@1.1.3
+  - @hot-updater/plugin-core@1.1.3
+
 ## 1.1.2
 
 ### Patch Changes

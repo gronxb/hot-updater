@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.1.3
+
+### Patch Changes
+
+- 84bffd7: `hot-updater doctor` now looks for `HotUpdater.bundleURL()` in `SceneDelegate` as well as `AppDelegate`, so apps that host React in a SceneDelegate are no longer reported as missing the iOS bundle provider.
+- bab7654: The iOS app version reader now treats `${MARKETING_VERSION}` in `Info.plist` or `project.pbxproj` as unresolved, like `$(MARKETING_VERSION)`. Xcode substitutes both forms. Before, such a project resolved no default target app version, so `deploy` without `-t` stopped, and interactive `deploy` prefilled `1.0.0`; it now reads the version from the next source.
+- @hot-updater/android-helper@1.1.3
+  - @hot-updater/apple-helper@1.1.3
+  - @hot-updater/bsdiff@1.1.3
+  - @hot-updater/cli-tools@1.1.3
+  - @hot-updater/console@1.1.3
+  - @hot-updater/protocol@1.1.3
+  - @hot-updater/server@1.1.3
+  - @hot-updater/plugin-core@1.1.3
+
 ## 1.1.2
 
 ### Patch Changes
