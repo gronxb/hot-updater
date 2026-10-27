@@ -1,5 +1,3 @@
-import type { ConfiguredDatabase } from "@hot-updater/plugin-core";
-
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { MissingInitInputsError } from "./initOptions";
 import { p } from "./prompts";
@@ -42,29 +40,6 @@ export type InitProviderDefinition<
   readonly inputs: TInputs;
   readonly label: string;
 };
-
-/**
- * What a managed provider's `./init` exports for `hot-updater doctor --fix`
- * when its database's schema ships as numbered migration files: applies the
- * files the database has not run, in order, and records each as the
- * provider's own tooling does, so a later init skips them. `skip` says why it
- * applied none; `unmanaged` marks a database the provider's init did not
- * create, which doctor migrates through the database's migrator when it has
- * one.
- */
-export type MigrateManagedDatabase = (options: {
-  readonly cwd: string;
-  /**
-   * hot-updater.config.ts's database: the one doctor checked, which the
-   * provider migrates, whatever `.env.hotupdater` holds.
-   */
-  readonly database: ConfiguredDatabase;
-  /** Prompts are off: a missing input is a skip that names its env key. */
-  readonly nonInteractive: boolean;
-}) => Promise<
-  | { readonly applied: readonly string[] }
-  | { readonly skip: string; readonly unmanaged?: true }
->;
 
 export const defineInitProvider = <
   const TInputs extends InitProviderInputsDefinition,

@@ -57,14 +57,14 @@ const pluginTablesFix = (database: EngineDatabase) => {
   const { createMigrator, generateSchema } = database as EngineDatabase &
     DatabaseTooling;
   const doctor =
-    "Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database.";
+    "Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it.";
   const serverProject =
     "Run `hot-updater db` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.";
   return createMigrator !== undefined
     ? `${doctor} In a server project, run \`hot-updater db migrate\`. ${serverProject}`
     : generateSchema !== undefined
-      ? `${doctor} On a database \`hot-updater init\` created, it applies the provider's migrations; for your own server, run \`hot-updater db generate\` and apply the file it writes. ${serverProject}`
-      : `${doctor} It applies the provider's migrations.`;
+      ? `${doctor} On a database \`hot-updater init\` created, that is init again with its saved inputs; for your own server, run \`hot-updater db generate\` and apply the file it writes. ${serverProject}`
+      : `${doctor} On a database \`hot-updater init\` created, that is init again with its saved inputs.`;
 };
 
 /**

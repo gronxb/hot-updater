@@ -13,16 +13,15 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { SchemaMigrationStatus } from "@/lib/schema-migration";
 
-export const DOCTOR_FIX_COMMAND = "npx hot-updater doctor --fix";
-
 export const DOCTOR_COMMAND = "npx hot-updater doctor";
 
 export const DOCTOR_GUIDE_URL = "https://hot-updater.dev/docs/guides/doctor";
 
 /**
  * What the console shows instead of a page while the schema fence refuses
- * its database: the settings a migration writes, and the command that runs
- * it. Every page reads through the fence, so one notice stands for all.
+ * its database: the settings a migration writes, and doctor, which names the
+ * command that runs it. Every page reads through the fence, so one notice
+ * stands for all.
  */
 export function SchemaMigrationRequired({
   status,
@@ -32,7 +31,7 @@ export function SchemaMigrationRequired({
   readonly onRetry: () => Promise<void>;
 }) {
   const [checking, setChecking] = useState(false);
-  const command = status.migratable ? DOCTOR_FIX_COMMAND : DOCTOR_COMMAND;
+  const command = DOCTOR_COMMAND;
   const configFile = (
     <code className="font-mono whitespace-nowrap">hot-updater.config.ts</code>
   );
@@ -67,7 +66,8 @@ export function SchemaMigrationRequired({
                 <EmptyDescription>
                   Its schema is older than this console's, so the console stops
                   before reading it. Run this where {configFile} names the
-                  database, then check again.
+                  database: it names the command that migrates it. Then check
+                  again.
                 </EmptyDescription>
               </>
             ) : (

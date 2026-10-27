@@ -9,25 +9,6 @@ export interface D1RestConfig {
   readonly cloudflareApiToken: string;
 }
 
-/**
- * The D1 database a `d1Database` reaches, which the provider's `./init`
- * reads to migrate the database hot-updater.config.ts names. A registered
- * symbol, so the init's own copy of this module reads the config's.
- */
-const D1_TARGET = Symbol.for("@hot-updater/cloudflare/d1-target");
-
-/** `database` with the D1 database it reaches, as `d1Database` marks it. */
-export const withD1Target = <T extends object>(
-  database: T,
-  config: D1RestConfig,
-) => Object.defineProperty(database, D1_TARGET, { value: config }) as T;
-
-/** The D1 database `database` reaches; undefined unless `d1Database` made it. */
-export const d1TargetOf = (database: unknown): D1RestConfig | undefined =>
-  typeof database === "object" && database !== null
-    ? (Reflect.get(database, D1_TARGET) as D1RestConfig | undefined)
-    : undefined;
-
 /** The REST API binds text: each value goes as JSON and is read back with `json_extract`. */
 const encode = ({ sql, params }: SqlStatement) => ({
   // A function, since `$'` in a replacement string means "the rest of the input".

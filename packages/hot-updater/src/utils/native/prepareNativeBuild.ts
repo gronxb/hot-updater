@@ -190,7 +190,7 @@ export async function prepareNativeBuild(
     // and an app with one reports the fingerprint strategy.
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.error(
-        "fingerprint.json exists, but updateStrategy is 'appVersion'. The native build would embed its fingerprint, and the app would report the fingerprint strategy. Delete fingerprint.json, or run `npx hot-updater doctor --fix`, then build again.",
+        "fingerprint.json exists, but updateStrategy is 'appVersion'. The native build would embed its fingerprint, and the app would report the fingerprint strategy. Delete fingerprint.json, then build again.",
       );
       return null;
     }

@@ -32,8 +32,7 @@ import {
   resolveVersionEndpoint,
 } from "./doctor";
 import { checkFingerprintJson } from "./doctor/fingerprint";
-import { applyDoctorFixes } from "./doctor/fix";
-import type { DoctorFix, NativeCheckIssue } from "./doctor/issues";
+import type { NativeCheckIssue } from "./doctor/issues";
 import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
@@ -49,11 +48,6 @@ vi.mock("../utils/version/getNativeAppVersion", () => ({
   getNativeAppVersion: vi.fn(async (platform: "ios" | "android") =>
     platform === "ios" ? "1.2.3" : "1.2.4",
   ),
-}));
-
-// The repairs write native files; doctor/fix.spec covers them.
-vi.mock("./doctor/fix", () => ({
-  applyDoctorFixes: vi.fn(async () => []),
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -90,7 +84,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockCheckFingerprintJson = vi.mocked(checkFingerprintJson);
-const mockApplyDoctorFixes = vi.mocked(applyDoctorFixes);
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
 
@@ -367,8 +360,7 @@ describe("infrastructure version helpers", () => {
 
     expect(status.needsUpdate).toBe(true);
     expect(createInfrastructureRemediation(status)).toMatchObject({
-      fixability: "blocked",
-      commands: expect.arrayContaining(["hot-updater agent infra upgrade"]),
+      commands: expect.arrayContaining(["npx hot-updater agent infra upgrade"]),
     });
   });
 
@@ -391,7 +383,6 @@ describe("infrastructure version helpers", () => {
     });
     expect(status.needsUpdate).toBeUndefined();
     expect(createInfrastructureRemediation(status)).toEqual({
-      fixability: "blocked",
       reason: expect.stringContaining("cannot be upgraded in place"),
       commands: ["hot-updater agent infra setup", "hot-updater init"],
     });
@@ -892,7 +883,6 @@ describe("doctor", () => {
           upgradeBlocked: true,
           updateReason: "Existing infrastructure does not declare generation 1",
           remediation: {
-            fixability: "blocked",
             commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
         },
@@ -928,7 +918,6 @@ describe("doctor", () => {
           updateReason:
             "v1 infrastructure marker not found at the existing endpoint",
           remediation: {
-            fixability: "blocked",
             commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
         },
@@ -993,7 +982,6 @@ describe("doctor", () => {
                   "The server runs a plugin whose client plugin insights the app does not add.",
                 resolution:
                   'Import { insights } from "@hot-updater/react-native" and pass insights() to HotUpdater.init({ plugins }).',
-                fixability: "auto",
               },
             ],
           },
@@ -1041,7 +1029,6 @@ describe("doctor", () => {
               ),
               resolution:
                 "Check that plugins in hot-updater.config.ts load, then rerun doctor.",
-              fixability: "blocked",
             },
           ],
         },
@@ -1115,9 +1102,6 @@ describe("doctor", () => {
           "MISSING_ANDROID_BUNDLE_PROVIDER",
         ]),
       );
-      expect(
-        result.details?.native?.issues.map((issue) => issue.fixability),
-      ).toEqual(expect.arrayContaining(["auto"]));
     }
   });
 
@@ -1401,7 +1385,6 @@ describe("doctor", () => {
       expect.objectContaining({
         code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
         type: "warning",
-        fixability: "blocked",
         message: expect.stringContaining(
           "remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
         ),
@@ -1639,7 +1622,6 @@ describe("doctor", () => {
             {
               platform: "project",
               code: "FINGERPRINT_JSON_UNUSED",
-              fixability: "auto",
               paths: ["fingerprint.json"],
             },
           ],
@@ -1706,9 +1688,6 @@ describe("doctor", () => {
       expect(
         result.details?.native?.issues.map((issue) => issue.resolution),
       ).toContain("Run `npx hot-updater fingerprint create`.");
-      expect(
-        result.details?.native?.issues.map((issue) => issue.fixability),
-      ).toEqual(["command"]);
       expect(
         result.details?.native?.issues.flatMap((issue) => issue.commands ?? []),
       ).toEqual(expect.arrayContaining(["npx hot-updater fingerprint create"]));
@@ -1849,18 +1828,9 @@ describe("doctor", () => {
     message: "The iOS fingerprint changed since fingerprint.json was created.",
     resolution:
       "Run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
-    fixability: "command",
     commands: ["npx hot-updater fingerprint create"],
     paths: ["fingerprint.json"],
     changes: { added: [], removed: [], changed: ["ios/App/AppDelegate.swift"] },
-  };
-
-  const fingerprintFix: DoctorFix = {
-    repair: "fingerprint",
-    codes: ["FINGERPRINT_JSON_STALE"],
-    status: "applied",
-    wrote: ["fingerprint.json", "ios/App/Info.plist"],
-    native: true,
   };
 
   it("shows each platform's app version in the native status", async () => {
@@ -1914,63 +1884,5 @@ describe("doctor", () => {
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
-  });
-
-  it("runs --fix's repairs, checks again, and lists every file they wrote", async () => {
-    await setUpNativeProject("fingerprint");
-    mockCheckFingerprintJson
-      .mockResolvedValueOnce([staleIos])
-      .mockResolvedValueOnce([]);
-    mockApplyDoctorFixes.mockResolvedValueOnce([fingerprintFix]);
-
-    const result = await doctor({ fix: true });
-
-    expect(mockApplyDoctorFixes).toHaveBeenCalledWith(
-      [staleIos],
-      expect.objectContaining({ cwd: expect.any(String) }),
-    );
-    expect(mockCheckFingerprintJson).toHaveBeenCalledTimes(2);
-    expect(result).toMatchObject({
-      success: true,
-      details: { fixes: [fingerprintFix], native: { issues: [] } },
-    });
-  });
-
-  it("runs no repair in scoped verification, even when asked to fix", async () => {
-    const result = await doctor({
-      fix: true,
-      scope: "scaffold",
-      infraDir: "/missing/infra",
-    });
-
-    expect(mockApplyDoctorFixes).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ details: { verification: {} } });
-    expect(result).not.toHaveProperty("details.fixes");
-  });
-
-  it("reports no fixes when --fix finds nothing to repair", async () => {
-    await setUpNativeProject("appVersion");
-
-    const result = await doctor({ fix: true });
-
-    expect(mockApplyDoctorFixes).toHaveBeenCalledWith([], expect.anything());
-    expect(result).toMatchObject({ success: true, details: { fixes: [] } });
-  });
-
-  it("ends by asking for a native rebuild when --fix wrote native files", async () => {
-    await setUpNativeProject("fingerprint");
-    mockCheckFingerprintJson
-      .mockResolvedValueOnce([staleIos])
-      .mockResolvedValueOnce([]);
-    mockApplyDoctorFixes.mockResolvedValueOnce([fingerprintFix]);
-
-    await handleDoctor({ fix: true });
-
-    expect(p.log.success).toHaveBeenCalledWith(
-      "Fixed: Recreate fingerprint.json and the native fingerprint hashes.",
-    );
-    expect(p.outro).toHaveBeenLastCalledWith(
-      "Rebuild the native app: doctor --fix changed its native files.",
-    );
   });
 });

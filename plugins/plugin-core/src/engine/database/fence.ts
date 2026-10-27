@@ -38,12 +38,12 @@ const stored = ({ key, expected, found }: SchemaSettingMismatch) =>
   `"${key}" is ${found === null ? "missing" : `"${found}"`}; expected "${expected}"`;
 
 /**
- * How to migrate a database the fence refused: doctor applies a managed
- * provider's migrations or the database's migrator, and names the steps of
- * one whose ORM or files create the tables.
+ * How to migrate a database the fence refused: doctor names the command for
+ * it, init again for a deployment init manages, or the database's own
+ * tooling in the server's project.
  */
 const MIGRATE_SCHEMA_FIX =
-  "Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database: it migrates the database, or names the steps it needs. In a server project, `hot-updater db migrate` migrates the database its server file names.";
+  "Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.";
 
 const settingMessage = (
   adapterName: string,

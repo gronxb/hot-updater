@@ -1,11 +1,4 @@
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -13,11 +6,14 @@ import path from "node:path";
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
-import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import {
+  createMigrator,
+  loadConfig,
+  readPackageUp,
+} from "@hot-updater/cli-tools";
 import { d1Database } from "@hot-updater/cloudflare";
 import {
   type AnyHotUpdaterPlugin,
-  type ConfiguredDatabase,
   createEngineDatabase,
   createMemoryAdapter,
   createSqlAdapter,
@@ -25,6 +21,7 @@ import {
   type DatabaseAdapter,
   migrateCoreSchema,
   SETTINGS_TABLE,
+  type ToolingDatabase,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
 import { pgliteExecutor } from "@hot-updater/test-utils/node";
@@ -62,9 +59,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   readPackageUp: vi.fn(),
 }));
 
-const CLOUDFLARE_PACKAGE = path.resolve(
+const D1_MIGRATIONS = path.resolve(
   import.meta.dirname,
-  "../../../../plugins/cloudflare",
+  "../../../../plugins/cloudflare/worker/migrations",
 );
 
 /** The plugins every managed server runs, as init writes them into the config. */
@@ -89,7 +86,7 @@ let cwd: string;
  * plugins, and `.env.hotupdater` records the provider init ran, when it did.
  */
 const project = async (
-  database: ConfiguredDatabase,
+  database: ToolingDatabase,
   provider: InitProvider | null,
 ) => {
   if (provider !== null) {
@@ -102,21 +99,17 @@ const project = async (
     packageJson: { devDependencies: { "hot-updater": "1.2.0" } },
     path: path.join(cwd, "package.json"),
   } as never);
-  // Doctor closes the database after each run; these specs read it across
-  // runs. Every property is kept, d1Database's D1 target among them.
-  const { dispose: _dispose, ...kept } = Object.getOwnPropertyDescriptors(
-    database,
-  ) as Record<string, PropertyDescriptor>;
-  const configured = Object.defineProperties({}, kept);
+  // Doctor closes the database after each run; these specs read it across runs.
+  const { dispose: _dispose, ...kept } = database;
   vi.mocked(loadConfig).mockResolvedValue({
-    database: configured,
+    database: kept,
     storage: createStorageAdapter({ name: "none", protocol: "none" }),
     plugins: managedPlugins(),
   } as never);
+  return kept;
 };
 
-const run = (options: { fix?: boolean; serverBaseUrl?: string } = {}) =>
-  doctor({ cwd, fetch: fetchVersion, nonInteractive: true, ...options });
+const run = () => doctor({ cwd, fetch: fetchVersion, serverBaseUrl: SERVER });
 
 /** Sets a settings row, as an earlier release's migration left it. */
 const storeSetting = async (
@@ -137,20 +130,36 @@ const storeSetting = async (
   ]);
 };
 
+/**
+ * What a provider's init writes into the database when it runs again: the
+ * migrator over the managed plugins, as `migratePostgres`, `migrateDynamoDB`,
+ * `migrateFirebaseDatabase` and `migrateCosmosDatabase` run it, which is also
+ * what `hot-updater db migrate` runs.
+ */
+const migrate = async (database: ToolingDatabase) => {
+  const migration = await createMigrator({
+    database,
+    plugins: managedPlugins(),
+  }).migrateToLatest({ updateSettings: true });
+  await migration.execute();
+};
+
 const PENDING = [{ key: "schema.core", expected: "1.2.0", found: "1.0.0" }];
 
 /**
- * Upgrades a 1.1.3 deployment as the 1.2.0 upgrade guide does, and checks
- * each doctor run on the way: doctor names the replay of init for both the
- * database and the server, `--fix` leaves the database alone while the
- * server of 1.1.3 still reads it, migrates it once the server runs 1.2.0,
- * and doctor then comes back clean.
+ * Upgrades a 1.1.3 deployment as doctor says: doctor names init with its
+ * saved inputs for both the database and the server; `runInitMigration` does
+ * what that init does to the database, then the server of 1.2.0 is deployed,
+ * and doctor comes back clean.
  */
-const upgrade = async (provider: InitProvider, migrated: readonly string[]) => {
+const upgrade = async (
+  provider: InitProvider,
+  runInitMigration: () => Promise<void>,
+) => {
   const command = initReplayCommand(provider);
   const { server } = INIT_PROVIDER_PACKAGES[provider];
 
-  await expect(run({ serverBaseUrl: SERVER })).resolves.toMatchObject({
+  await expect(run()).resolves.toMatchObject({
     success: false,
     details: {
       infrastructure: {
@@ -167,10 +176,7 @@ const upgrade = async (provider: InitProvider, migrated: readonly string[]) => {
             settings: PENDING,
             commands: [command],
             resolution: expect.stringContaining(
-              `Run \`${command}\`: it applies this migration and redeploys ${server} from this release in one run`,
-            ),
-            waitsForServer: expect.stringContaining(
-              `The server at ${SERVER} runs 1.1.3, which answers 503 once this database is migrated.`,
+              `Run \`${command}\`: it applies the migrations this release needs, then redeploys ${server} from it, back to back.`,
             ),
           },
         ],
@@ -178,49 +184,11 @@ const upgrade = async (provider: InitProvider, migrated: readonly string[]) => {
     },
   });
 
-  // Without the server's URL, doctor cannot see which release reads the database.
-  await expect(run({ fix: true })).resolves.toMatchObject({
-    success: false,
-    details: {
-      fixes: [
-        {
-          repair: "schema",
-          status: "skipped",
-          note: expect.stringContaining(
-            `doctor cannot see that ${server} runs 1.2.0+ without --server-base-url`,
-          ),
-        },
-      ],
-    },
-  });
-  await expect(
-    run({ fix: true, serverBaseUrl: SERVER }),
-  ).resolves.toMatchObject({
-    success: false,
-    details: {
-      fixes: [
-        {
-          repair: "schema",
-          status: "skipped",
-          note: expect.stringContaining(`Run \`${command}\``),
-        },
-      ],
-      schema: { settings: PENDING },
-    },
-  });
-
-  // The server of 1.2.0 is deployed, and answers 503 until the migration.
+  // What the named init does: the migration, then the server, back to back.
+  await runInitMigration();
   deployed = "1.2.0";
-  await expect(
-    run({ fix: true, serverBaseUrl: SERVER }),
-  ).resolves.toMatchObject({
-    success: true,
-    details: {
-      fixes: [{ repair: "schema", status: "applied", wrote: migrated }],
-    },
-  });
 
-  const clean = await run({ serverBaseUrl: SERVER });
+  const clean = await run();
   expect(clean).toMatchObject({
     success: true,
     details: {
@@ -282,6 +250,24 @@ const d1Api = (db: DatabaseSync): Promise<Server> => {
   );
 };
 
+/**
+ * `wrangler d1 migrations apply`, which init runs again: each migration file
+ * `d1_migrations` does not record, in order, recorded by name.
+ */
+const wranglerMigrationsApply = async (db: DatabaseSync) => {
+  const ran = new Set(
+    db
+      .prepare("SELECT name FROM d1_migrations")
+      .all()
+      .map(({ name }) => String(name)),
+  );
+  for (const name of (await readdir(D1_MIGRATIONS)).sort()) {
+    if (!name.endsWith(".sql") || ran.has(name)) continue;
+    db.exec(await readFile(path.join(D1_MIGRATIONS, name), "utf8"));
+    db.prepare("INSERT INTO d1_migrations (name) VALUES (?)").run(name);
+  }
+};
+
 /** The schema SQLite keeps for Hot Updater's tables and indexes, by name. */
 const sqliteSchema = (db: DatabaseSync) =>
   db
@@ -312,17 +298,16 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     await rm(cwd, { recursive: true, force: true });
   });
 
-  it("migrates a managed D1 database with the Worker's 0002 migration once the Worker runs 1.2.0", async () => {
+  it("names init for a managed D1 database, whose Worker migrations bring it to 1.2.0", async () => {
     // What 1.1.3's managed init left: wrangler's record of the one migration
     // that release shipped, and its tables.
     const sqlite = new DatabaseSync(":memory:");
-    const migrations = path.join(CLOUDFLARE_PACKAGE, "worker", "migrations");
     sqlite.exec(
       "CREATE TABLE d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)",
     );
     sqlite.exec(
       await readFile(
-        path.join(migrations, "0001_hot-updater_1.0.0.sql"),
+        path.join(D1_MIGRATIONS, "0001_hot-updater_1.0.0.sql"),
         "utf8",
       ),
     );
@@ -343,14 +328,6 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
         "CLOUDFLARE_BASE_URL",
         `http://127.0.0.1:${(api.address() as AddressInfo).port}`,
       );
-      // The provider's init loads from the app's node_modules.
-      await mkdir(path.join(cwd, "node_modules", "@hot-updater"), {
-        recursive: true,
-      });
-      await symlink(
-        CLOUDFLARE_PACKAGE,
-        path.join(cwd, "node_modules", "@hot-updater", "cloudflare"),
-      );
       const config = {
         accountId: "account",
         databaseId: "database",
@@ -358,7 +335,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       };
       await project(d1Database(config), "cloudflare");
 
-      await upgrade("cloudflare", ["migration 0002_hot-updater_1.2.0.sql"]);
+      await upgrade("cloudflare", () => wranglerMigrationsApply(sqlite));
 
       // The upgraded database is what this release's init creates: every
       // table, column, and index, native_builds' among them, and every
@@ -400,19 +377,19 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     }
   });
 
-  it("migrates a managed Vercel PostgreSQL database once the Function runs 1.2.0", async () => {
+  it("names init for a managed Vercel PostgreSQL database, whose migrator brings it to 1.2.0", async () => {
     const pglite = new PGlite();
     const adapter = createSqlAdapter({ executor: pgliteExecutor(pglite) });
     // 1.1.3's schema: core 1.0.0, before the native build registry.
     await migrateCoreSchema(adapter, "postgres", managedPlugins());
     await pglite.exec('DROP TABLE "native_builds"');
     await storeSetting(adapter, "schema.core", "1.0.0");
-    await project(
+    const database = await project(
       createEngineDatabase({ name: "postgres", adapter }),
       "vercel",
     );
 
-    await upgrade("vercel", ["schema.core 1.2.0"]);
+    await upgrade("vercel", () => migrate(database));
 
     // What this release's init creates on an empty database.
     const fresh = new PGlite();
@@ -452,177 +429,101 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
   });
 
   it.each<InitProvider>(["aws", "firebase", "azure"])(
-    "writes the settings rows of a managed %s database once its server runs 1.2.0",
+    "names init for a managed %s database, whose migrator writes its settings rows",
     async (provider) => {
       const adapter = createMemoryAdapter();
       const name = INIT_PROVIDER_PACKAGES[provider].database;
       await migrateCoreSchema(adapter, name, managedPlugins());
       await storeSetting(adapter, "schema.core", "1.0.0");
-      await project(createEngineDatabase({ name, adapter }), provider);
+      const database = await project(
+        createEngineDatabase({ name, adapter }),
+        provider,
+      );
 
-      await upgrade(provider, ["schema.core 1.2.0"]);
+      await upgrade(provider, () => migrate(database));
 
       const [core] = await adapter.get(SETTINGS_TABLE, [["schema.core"]]);
       expect(core).toMatchObject({ value: "1.2.0" });
     },
   );
 
-  it("lets a release candidate's CLI migrate once the server runs that release candidate", async () => {
-    versions.cli = "1.2.0-rc.1";
-    versions.server = "1.2.0-rc.1";
-    const adapter = createMemoryAdapter();
-    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
-    await storeSetting(adapter, "schema.core", "1.0.0");
-    await project(createEngineDatabase({ name: "dynamoDB", adapter }), "aws");
-
-    await expect(
-      run({ fix: true, serverBaseUrl: SERVER }),
-    ).resolves.toMatchObject({
-      success: false,
-      details: {
-        infrastructure: { requiredVersion: "1.2.0-rc.1", needsUpdate: true },
-        fixes: [{ repair: "schema", status: "skipped" }],
-      },
-    });
-
-    deployed = "1.2.0-rc.1";
-    await expect(
-      run({ fix: true, serverBaseUrl: SERVER }),
-    ).resolves.toMatchObject({
-      success: true,
-      details: {
-        infrastructure: { needsUpdate: false },
-        fixes: [{ repair: "schema", status: "applied" }],
-      },
-    });
-  });
-
-  it("names the version endpoint it could not read", async () => {
-    const adapter = createMemoryAdapter();
-    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
-    await storeSetting(adapter, "schema.core", "1.0.0");
-    await project(createEngineDatabase({ name: "dynamoDB", adapter }), "aws");
-    fetchVersion.mockResolvedValueOnce(new Response("", { status: 502 }));
-
-    await expect(
-      run({ fix: true, serverBaseUrl: SERVER }),
-    ).resolves.toMatchObject({
-      details: {
-        fixes: [
-          {
-            repair: "schema",
-            status: "skipped",
-            note: expect.stringContaining(
-              `doctor could not see at ${SERVER}/version that the Lambda@Edge function with its IAM role policy runs 1.2.0+ (Version endpoint returned 502)`,
-            ),
-          },
-        ],
-      },
-    });
-  });
-
-  it("pushes the Supabase migrations once the Edge Function runs 1.2.0", async () => {
+  it("names init for a managed Supabase project", async () => {
     const adapter = createMemoryAdapter();
     await migrateCoreSchema(adapter, "supabaseDatabase", managedPlugins());
     await storeSetting(adapter, "schema.core", "1.0.0");
-    const migrateDatabase = vi.fn(async () => {
-      // What `supabase db push` of 0002 does on this database.
-      await migrateCoreSchema(adapter, "supabaseDatabase", managedPlugins());
-      return { applied: ["0002_hot-updater_1.2.0.sql"] };
-    });
-    vi.spyOn(INIT_PROVIDER_PACKAGES.supabase, "load").mockResolvedValue({
-      migrateDatabase,
-    } as never);
     await project(
       createEngineDatabase({ name: "supabaseDatabase", adapter }),
       "supabase",
     );
 
-    await upgrade("supabase", ["migration 0002_hot-updater_1.2.0.sql"]);
-    expect(migrateDatabase).toHaveBeenCalledOnce();
+    // What `supabase db push` of 0002 does on this database.
+    await upgrade("supabase", () =>
+      migrateCoreSchema(adapter, "supabaseDatabase", managedPlugins()),
+    );
   });
 
-  describe("a server of the project's own", () => {
-    const ownServer = async () => {
-      const adapter = createMemoryAdapter();
-      await migrateCoreSchema(adapter, "kysely", managedPlugins());
-      await storeSetting(adapter, "schema.core", "1.0.0");
-      // A project whose init record names a provider whose database it left.
-      await project(
-        createEngineDatabase({ name: "kysely", adapter }),
-        "cloudflare",
-      );
-      return adapter;
-    };
+  it("accepts the server of a release candidate's CLI at that release candidate", async () => {
+    versions.cli = "1.2.0-rc.1";
+    versions.server = "1.2.0-rc.1";
+    deployed = "1.2.0-rc.1";
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await project(createEngineDatabase({ name: "dynamoDB", adapter }), "aws");
 
-    it("migrates with --fix, and says to deploy the server with the migration", async () => {
-      await ownServer();
+    await expect(run()).resolves.toMatchObject({
+      success: true,
+      details: {
+        infrastructure: { requiredVersion: "1.2.0-rc.1", needsUpdate: false },
+      },
+    });
+    deployed = "1.1.3";
+    await expect(run()).resolves.toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          needsUpdate: true,
+          remediation: { commands: [initReplayCommand("aws")] },
+        },
+      },
+    });
+  });
 
-      await expect(run()).resolves.toMatchObject({
-        details: {
-          schema: {
-            issues: [
-              {
-                code: "SCHEMA_MIGRATION_PENDING",
-                commands: ["npx hot-updater doctor --fix"],
-                resolution:
-                  "Run `npx hot-updater doctor --fix` to create the missing tables and write the settings rows. A server of an earlier release answers 503 once the database is migrated, and a server of this release answers 503 until it is: migrate it as you deploy the server from this release.",
-              },
+  it("names db migrate for a server of the project's own, and passes once it ran and the server is deployed", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "kysely", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    // A project whose init record names a provider whose database it left.
+    const database = await project(
+      createEngineDatabase({ name: "kysely", adapter }),
+      "cloudflare",
+    );
+
+    await expect(run()).resolves.toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          needsUpdate: true,
+          remediation: {
+            commands: [
+              "npx hot-updater db migrate <server file>",
+              "npx hot-updater db generate <server file>",
+              "npx hot-updater agent infra upgrade",
             ],
           },
         },
-      });
-      await expect(run({ fix: true })).resolves.toMatchObject({
-        success: true,
-        details: {
-          fixes: [
-            { repair: "schema", status: "applied", wrote: PENDING_WROTE },
-          ],
-        },
-      });
-    });
-
-    it("leaves the database alone while the server it is shown runs an earlier release", async () => {
-      await ownServer();
-
-      await expect(
-        run({ fix: true, serverBaseUrl: SERVER }),
-      ).resolves.toMatchObject({
-        success: false,
-        details: {
-          infrastructure: {
-            needsUpdate: true,
-            remediation: {
-              commands: [
-                "npx hot-updater db migrate",
-                "npx hot-updater db generate",
-                "hot-updater agent infra upgrade",
-              ],
-            },
-          },
-          fixes: [
+        schema: {
+          issues: [
             {
-              repair: "schema",
-              status: "skipped",
-              note: `The server at ${SERVER} runs 1.1.3, which answers 503 once this database is migrated. Deploy the server from @hot-updater/server 1.2.0+ first, then rerun \`npx hot-updater doctor --fix --server-base-url ${SERVER}\`, or run \`npx hot-updater db migrate\` in the server's project as it deploys.`,
+              code: "SCHEMA_MIGRATION_PENDING",
+              commands: ["npx hot-updater db migrate <server file>"],
             },
           ],
         },
-      });
-
-      deployed = "1.2.0";
-      await expect(
-        run({ fix: true, serverBaseUrl: SERVER }),
-      ).resolves.toMatchObject({
-        success: true,
-        details: {
-          fixes: [
-            { repair: "schema", status: "applied", wrote: PENDING_WROTE },
-          ],
-        },
-      });
+      },
     });
+
+    await migrate(database);
+    deployed = "1.2.0";
+    await expect(run()).resolves.toMatchObject({ success: true });
   });
 });
-
-const PENDING_WROTE = ["schema.core 1.2.0"];

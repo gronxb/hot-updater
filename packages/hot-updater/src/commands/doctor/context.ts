@@ -1,4 +1,4 @@
-import { loadConfig, nonInteractiveReason } from "@hot-updater/cli-tools";
+import { loadConfig } from "@hot-updater/cli-tools";
 import { isRemoteDatabase } from "@hot-updater/plugin-core";
 
 import { generateFingerprints } from "../../utils/fingerprint";
@@ -8,15 +8,12 @@ import { type ManagedDeployment, readManagedDeployment } from "./managed";
 type Fingerprints = Awaited<ReturnType<typeof generateFingerprints>>;
 
 /**
- * What one doctor run shares between its checks, its repairs, and the
- * checks after them. The server is loaded once and closed once: the config
- * opens its database once, so closing it before a later check would leave
- * that check a closed database.
+ * What one doctor run shares between its checks. The server is loaded once
+ * and closed once: the config opens its database once, so closing it before
+ * a later check would leave that check a closed database.
  */
 export interface DoctorContext {
   readonly cwd: string;
-  /** Repairs never prompt: `--json`, or no terminal to answer in. */
-  readonly nonInteractive: boolean;
   /** The server hot-updater.config.ts describes; null when it names no database. */
   server(): Promise<LoadedServer | null>;
   /**
@@ -25,19 +22,13 @@ export interface DoctorContext {
    * config does not load.
    */
   managed(): Promise<ManagedDeployment | null>;
-  /**
-   * The project's fingerprints, computed once: a repair writes only
-   * fingerprint.json and native hash entries, which are no fingerprint input.
-   */
+  /** The project's fingerprints, computed once for every check that reads them. */
   fingerprints(): Promise<Fingerprints>;
   /** Closes the server, if the run loaded it. */
   dispose(): Promise<void>;
 }
 
-export const createDoctorContext = (
-  cwd: string,
-  nonInteractive = nonInteractiveReason() !== undefined,
-): DoctorContext => {
+export const createDoctorContext = (cwd: string): DoctorContext => {
   let server: Promise<LoadedServer | null> | undefined;
   let fingerprints: Promise<Fingerprints> | undefined;
   let managed: Promise<ManagedDeployment | null> | undefined;
@@ -47,7 +38,6 @@ export const createDoctorContext = (
     ));
   return {
     cwd,
-    nonInteractive,
     server: loadedServer,
     managed: () =>
       (managed ??= loadedServer().then(

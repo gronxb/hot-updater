@@ -82,12 +82,12 @@ process.
 When the database has not run a migration its schema or a configured plugin
 needs, such as after an upgrade or after adding a plugin to `plugins`, the
 Console shows a migration notice instead of its pages, with the settings the
-migration writes. Run
-[`npx hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema)
-where `hot-updater.config.ts` names the database, then select **Check again**. A
+migration writes, and points to
+[`npx hot-updater doctor`](/docs/guides/doctor#check-the-database-schema).
+Run it where `hot-updater.config.ts` names the database: it names the command
+that migrates it. Run that command, then select **Check again**. For a
 database that a newer Hot Updater migrated, or one Hot Updater can't migrate in
-place, gets a notice that points to `npx hot-updater doctor` instead, which
-explains what it needs.
+place, doctor explains what it needs instead.
 
 ## Security model
 
@@ -154,8 +154,9 @@ the Bundle and review its policy before retrying; do not remove the revision
 check just to make a retry succeed.
 
 For existing Catalog projection problems, run
-[`doctor`](/docs/guides/doctor#check-release-catalogs), and `doctor --fix` to
-rebuild the stale catalogs it reports.
+[`doctor`](/docs/guides/doctor#check-release-catalogs). A stale catalog is
+recompiled by the next release change in its scope, such as a deploy or
+`bundle update`.
 
 ### Advanced artifact diagnostics
 

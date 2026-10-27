@@ -723,7 +723,7 @@ const deployPlatform = async ({
   } else {
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.warn(
-        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, or run \`npx hot-updater doctor --fix\`, then rebuild.`,
+        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, then rebuild the apps.`,
       );
     }
     const defaultTargetAppVersion = options.targetAppVersion

@@ -13,10 +13,9 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 /**
  * The partitions the managed server's items use: each table's rows of core
  * and its plugins, and its index items after `#`, the log and lease tables
- * of batched aggregates and the settings rows included. `hot-updater doctor
- * --fix` writes a new table's settings rows but does not put this policy, so
- * a table the Lambda reads that an existing deployment's policy lacks reaches
- * it when init runs again.
+ * of batched aggregates and the settings rows included. A table a later
+ * release adds reaches an existing deployment's policy when init runs again,
+ * which writes the table's settings rows and puts this policy.
  */
 export const dynamoDBLeadingKeys = (): string[] =>
   [

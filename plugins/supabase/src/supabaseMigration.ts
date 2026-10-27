@@ -9,7 +9,6 @@ import {
   type SupabaseDatabaseConfig,
 } from "./supabaseDatabase";
 import { supabaseSchemaSql } from "./supabaseSchema";
-import { withSupabaseTarget } from "./supabaseTarget";
 
 /**
  * Hot Updater's database on Supabase, with the migration `hot-updater db
@@ -19,24 +18,17 @@ import { withSupabaseTarget } from "./supabaseTarget";
  */
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
-): ToolingDatabase =>
-  withSupabaseTarget(
-    {
-      ...engineDatabase(config),
-      generateSchema: ((version, _name, target = coreTarget) => {
-        if (version !== "latest" && version !== coreSettings["schema.core"]) {
-          throw new Error(`Invalid version ${version}`);
-        }
-        // Supabase applies migrations in the order of their timestamps.
-        const timestamp = new Date()
-          .toISOString()
-          .replace(/\D/g, "")
-          .slice(0, 14);
-        return {
-          code: supabaseSchemaSql(target),
-          path: `supabase/migrations/${timestamp}_hot-updater.sql`,
-        };
-      }) satisfies SchemaGenerator,
-    },
-    config,
-  );
+): ToolingDatabase => ({
+  ...engineDatabase(config),
+  generateSchema: ((version, _name, target = coreTarget) => {
+    if (version !== "latest" && version !== coreSettings["schema.core"]) {
+      throw new Error(`Invalid version ${version}`);
+    }
+    // Supabase applies migrations in the order of their timestamps.
+    const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+    return {
+      code: supabaseSchemaSql(target),
+      path: `supabase/migrations/${timestamp}_hot-updater.sql`,
+    };
+  }) satisfies SchemaGenerator,
+});

@@ -32,7 +32,6 @@ interface ServerVersionResponse {
 }
 
 export interface InfrastructureRemediation {
-  fixability: "blocked";
   reason: string;
   commands: string[];
 }
@@ -85,7 +84,6 @@ export const createInfrastructureRemediation = ({
 } = {}): InfrastructureRemediation => {
   if (upgradeBlocked) {
     return {
-      fixability: "blocked",
       reason:
         "Hot Updater v0 infrastructure cannot be upgraded in place. Generate a parallel v1 setup with hot-updater agent infra setup, or use init interactively, and ship the new endpoint in a new native build.",
       commands: ["hot-updater agent infra setup", "hot-updater init"],
@@ -93,20 +91,18 @@ export const createInfrastructureRemediation = ({
   }
   if (managed !== null) {
     return {
-      fixability: "blocked",
-      reason: `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, and doctor --fix does not deploy servers.`,
+      reason: `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.`,
       commands: [managed.command],
     };
   }
   const target =
     requiredVersion === undefined ? "of this release" : `${requiredVersion}+`;
   return {
-    fixability: "blocked",
-    reason: `Deploy the server from @hot-updater/server ${target} and migrate its database as it deploys: npx hot-updater db migrate in the server's project, or, for Drizzle and Prisma, npx hot-updater db generate, the ORM's migration, then db migrate. A server of an earlier release answers 503 once the database is migrated. An agent-managed deployment gets versioned upgrade instructions from hot-updater agent infra upgrade.`,
+    reason: `Deploy the server from @hot-updater/server ${target} and migrate its database as it deploys: npx hot-updater db migrate <server file> in the server's project, or, for Drizzle, Prisma, D1 and Supabase, npx hot-updater db generate <server file> and the database's tooling first. A server of an earlier release answers 503 once the database is migrated. A deployment from hot-updater agent infra gets versioned upgrade instructions from hot-updater agent infra upgrade.`,
     commands: [
-      "npx hot-updater db migrate",
-      "npx hot-updater db generate",
-      "hot-updater agent infra upgrade",
+      "npx hot-updater db migrate <server file>",
+      "npx hot-updater db generate <server file>",
+      "npx hot-updater agent infra upgrade",
     ],
   };
 };

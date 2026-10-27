@@ -164,7 +164,7 @@ export async function validateSigningConfig(
         message:
           "The iOS public key does not match the configured bundle signer",
         resolution:
-          "Export the configured public key, then rebuild and release the iOS app before deploying.",
+          "Run `npx hot-updater keys export-public`, then rebuild and release the iOS app before deploying. Apps already installed keep the previous key and reject bundles signed with the configured one.",
       });
     }
     if (
@@ -180,7 +180,7 @@ export async function validateSigningConfig(
         message:
           "The Android public key does not match the configured bundle signer",
         resolution:
-          "Export the configured public key, then rebuild and release the Android app before deploying.",
+          "Run `npx hot-updater keys export-public`, then rebuild and release the Android app before deploying. Apps already installed keep the previous key and reject bundles signed with the configured one.",
       });
     }
   } else {

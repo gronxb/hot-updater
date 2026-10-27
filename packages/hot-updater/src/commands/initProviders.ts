@@ -3,7 +3,6 @@ import { createRequire } from "node:module";
 import {
   type InitProviderDefinition,
   InitError,
-  type MigrateManagedDatabase,
   type RunInitOptions,
 } from "@hot-updater/cli-tools";
 
@@ -13,12 +12,6 @@ import { packageJsonData } from "../packageJson";
 export type InitProviderModule = {
   readonly initProvider: InitProviderDefinition;
   readonly runInit: (options: RunInitOptions) => Promise<void>;
-  /**
-   * Applies the provider's migration files its database has not run, for
-   * `hot-updater doctor --fix`: what a managed D1 or Supabase database needs
-   * after an upgrade.
-   */
-  readonly migrateDatabase?: MigrateManagedDatabase;
 };
 
 type InitProviderPackage = {

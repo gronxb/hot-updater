@@ -49,7 +49,7 @@ const SHIPPED: Readonly<Record<string, string>> = {
  * The migration the next release ships, regenerated with
  * HOT_UPDATER_UPDATE_SQL=1 after the managed schema changes: what the
  * shipped migrations do not create yet, then every settings row. `hot-updater
- * doctor --fix` applies it to a database an earlier release initialized.
+ * init` applies it to a database an earlier release initialized.
  */
 const LATEST = "0002_hot-updater_1.2.0.sql";
 

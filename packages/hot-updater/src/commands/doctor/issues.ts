@@ -1,7 +1,6 @@
 import type { FingerprintChanges } from "../../utils/fingerprint/diff";
 import type { SigningConfigIssue } from "../../utils/signing/validateSigningConfig";
 
-export type DoctorFixability = "auto" | "command" | "blocked";
 export type NativePlatform = "ios" | "android";
 
 export interface NativeCheckIssue {
@@ -25,7 +24,6 @@ export interface NativeCheckIssue {
     | SigningConfigIssue["code"];
   message: string;
   resolution: string;
-  fixability: DoctorFixability;
   commands?: string[];
   paths?: string[];
   /** FINGERPRINT_JSON_STALE: the sources that changed since fingerprint.json. */
@@ -44,7 +42,6 @@ export interface ReleaseCatalogIssue {
   scopeKey?: string;
   message: string;
   resolution: string;
-  fixability: DoctorFixability;
   commands?: string[];
 }
 
@@ -69,25 +66,6 @@ export interface ReleaseCatalogStatus {
   issues: ReleaseCatalogIssue[];
 }
 
-/** A finding about the server's artifact records. */
-export interface ArtifactIssue {
-  type: "error" | "warning";
-  code: "UNREFERENCED_ARTIFACTS" | "ARTIFACTS_UNCHECKED";
-  /** UNREFERENCED_ARTIFACTS: the artifact records no release uses. */
-  artifactIds?: string[];
-  message: string;
-  resolution: string;
-  fixability: DoctorFixability;
-  commands?: string[];
-}
-
-/** The server's artifact records against the releases that use them. */
-export interface ArtifactStatus {
-  /** The artifact records no release uses, by ID. */
-  unreferenced: string[];
-  issues: ArtifactIssue[];
-}
-
 /** A schema setting the server's fence found missing or different. */
 export interface SchemaSetting {
   readonly key: string;
@@ -105,15 +83,8 @@ export interface SchemaIssue {
     | "PLUGIN_SCHEMA_CHANGED";
   /** SCHEMA_MIGRATION_PENDING: the settings a migration writes. */
   settings?: SchemaSetting[];
-  /**
-   * SCHEMA_MIGRATION_PENDING: why `--fix` does not migrate, and what to run.
-   * The migration moves settings a running server of an earlier release
-   * passes on, and doctor does not see that server at this release.
-   */
-  waitsForServer?: string;
   message: string;
   resolution: string;
-  fixability: DoctorFixability;
   commands?: string[];
 }
 
@@ -123,36 +94,3 @@ export interface SchemaStatus {
   settings: SchemaSetting[];
   issues: SchemaIssue[];
 }
-
-/** An issue a repair can name. */
-export type DoctorIssueCode =
-  | NativeCheckIssue["code"]
-  | ReleaseCatalogIssue["code"]
-  | ArtifactIssue["code"]
-  | SchemaIssue["code"];
-
-/** A repair `doctor --fix` ran, with everything it wrote. */
-export interface DoctorFix {
-  readonly repair:
-    | "schema"
-    | "fingerprint"
-    | "fingerprint-engine"
-    | "unused-fingerprint"
-    | "public-key"
-    | "orphan-public-key"
-    | "release-catalogs"
-    | "unreferenced-artifacts";
-  /** The issue codes it repairs. */
-  readonly codes: readonly DoctorIssueCode[];
-  readonly status: "applied" | "skipped" | "failed";
-  /** The files it wrote, or the catalogs and artifact records it changed. */
-  readonly wrote: readonly string[];
-  /** It wrote native files, which only a native rebuild picks up. */
-  readonly native: boolean;
-  /** Why it was skipped, how it failed, or what to know after it applied. */
-  readonly note?: string;
-}
-
-/** Whether a repair wrote native files, which only a native rebuild picks up. */
-export const fixesWroteNativeFiles = (fixes: readonly DoctorFix[]): boolean =>
-  fixes.some(({ native, status }) => native && status === "applied");
