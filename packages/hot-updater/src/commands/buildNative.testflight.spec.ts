@@ -127,6 +127,8 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
   rememberTrackedBuild: vi.fn(async () => {}),
 }));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  issueMinBundleId: vi.fn(async () => "019a0000-0000-7000-8000-000000000000"),
+  isNativeBuildConflict: () => false,
   // The tracking preflight passes: its own specs cover what it checks.
   preflightNativeBuildRegistration: vi.fn(async () => {
     events.push("preflight");

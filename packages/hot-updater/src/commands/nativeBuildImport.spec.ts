@@ -241,6 +241,54 @@ describe("native-build import", () => {
     ).resolves.toMatchObject({ min_bundle_id: MIN_BUNDLE_ID });
   });
 
+  it.each([
+    [
+      "an .aab",
+      "app-release.aab",
+      "android",
+      (bytes: (name: string) => Buffer) =>
+        aab({ "base/dex/classes.dex": bytes("classes.dex") }),
+    ],
+    [
+      "an .ipa",
+      "App.ipa",
+      "ios",
+      (bytes: (name: string) => Buffer) => ({
+        "Payload/App.app/Info.plist": fixture("Info.plist"),
+        "Payload/App.app/App": bytes("App"),
+        "Payload/App.app/main.jsbundle": BUILT_IN,
+      }),
+    ],
+  ] as const)(
+    "imports %s an earlier CLI built, whose MIN_BUNDLE_ID has a platform byte and random bits",
+    async (_kind, name, platform, files) => {
+      // Apps in the field carry the MIN_BUNDLE_ID an earlier `native-build`
+      // issued: any UUIDv7 is one.
+      const earlier = `019a2b3c-4d5e-7000-8000-${platform === "ios" ? "01" : "02"}a1b2c3d4e5`;
+      /** The fixture with `earlier` compiled in instead. */
+      const withEarlier = (fixtureName: string) => {
+        const bytes = Buffer.from(fixture(fixtureName));
+        const at = bytes.indexOf(MIN_BUNDLE_ID);
+        expect(at).toBeGreaterThan(-1);
+        bytes.write(earlier, at, "ascii");
+        return bytes;
+      };
+      if (platform === "ios") {
+        loadConfig.mockResolvedValue(config({ updateStrategy: "appVersion" }));
+      }
+      const file = await writeArtifact(dir, name, files(withEarlier));
+
+      await handleNativeBuildImport(file, { json: true });
+
+      expect(process.exitCode).toBeUndefined();
+      expect(printedJson(stdout).nativeBuild).toMatchObject({
+        platform,
+        min_bundle_id: earlier,
+      });
+      await expect(harness.core.getBundle(earlier)).resolves.not.toBeNull();
+    },
+  );
+
   it("imports a debuggable release build, whose SDK still reports its built-in bundle", async () => {
     // A release variant made debuggable compiles the SDK's release code,
     // as the E2E builds do; a debug variant packs no bundle to import.

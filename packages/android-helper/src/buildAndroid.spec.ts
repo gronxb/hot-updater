@@ -105,12 +105,12 @@ describe("buildAndroid", () => {
     expect(JSON.stringify(args)).not.toContain("secret");
   });
 
-  it("issues an Android MIN_BUNDLE_ID without one, as callers before it did", async () => {
+  it("issues a MIN_BUNDLE_ID with zero random bits without one, as the Gradle task does", async () => {
     await buildAndroid({ schemeConfig: scheme() });
 
     const [{ args }] = vi.mocked(runGradle).mock.calls[0]!;
     expect(args.extraParams?.[0]).toMatch(
-      /^-PMIN_BUNDLE_ID=[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-02[0-9a-f]{10}$/,
+      /^-PMIN_BUNDLE_ID=[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000$/,
     );
   });
 

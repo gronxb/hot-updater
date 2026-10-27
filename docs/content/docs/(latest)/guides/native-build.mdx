@@ -255,7 +255,7 @@ or to `--output-path`, and prints the artifact and its values:
 ◆  Built Android bare
     Artifact:      /path/to/app/.hot-updater/output/build/android/release/app-release.aab
     Kind:          aab
-    Min bundle ID: 019a0f8e-7c41-7000-8000-02c5f1a9e3b7
+    Min bundle ID: 019a0f8e-7c41-7000-8000-000000000000
     Fingerprint:   4f1c0d6b2e9a…
     Channel:       production
 ```
@@ -263,9 +263,14 @@ or to `--output-path`, and prints the artifact and its values:
 A Debug build reports the nil UUID as its min bundle ID, as its native SDK
 does: an Android variant or iOS configuration whose name ends in `Debug`.
 
-Every build gets its own min bundle ID: an iOS and an Android build never
-share one, and two builds of one platform get different IDs even when they
-start in the same millisecond.
+A release build's min bundle ID is the UUIDv7 of the millisecond it started,
+with zero random bits, as the native SDK's build step makes it, so OTAs
+deployed before the build are older than its built-in bundle and those
+deployed after it are newer. Bundle IDs share one space across platforms:
+when the registry already holds a bundle at that ID, the build steps it 1 ms
+forward. Two builds that start in the same millisecond, such as an iOS and an
+Android job of one CI run, can still get the same ID, and the second one to
+finish is refused when it is tracked. Build it again for a new ID.
 
 Install a simulator `.app` with
 `xcrun simctl install booted <path-to-app>`, and an `.apk` with

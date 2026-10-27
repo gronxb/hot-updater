@@ -305,11 +305,11 @@ describe("buildIos", () => {
     expect(credentials.resolve).not.toHaveBeenCalled();
   });
 
-  it("issues an iOS MIN_BUNDLE_ID without one, as callers before it did", async () => {
+  it("issues a MIN_BUNDLE_ID with zero random bits without one, as the podspec script phase does", async () => {
     await buildIos({ schemeConfig: scheme({ simulator: true }) });
 
     expect(vi.mocked(buildXcodeProject).mock.calls[0]![0].minBundleId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-01[0-9a-f]{10}$/,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000$/,
     );
   });
 });

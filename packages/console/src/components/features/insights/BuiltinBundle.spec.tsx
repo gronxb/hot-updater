@@ -42,7 +42,7 @@ describe("EventBundleTransition", () => {
     ["iOS", "019a0000-0000-7000-8000-01a1b2c3d4e5"],
     ["Android", "019a0000-0000-7000-8000-02a1b2c3d4e5"],
   ])(
-    "marks a built-in bundle of a CLI %s build by its ID when the report names no minBundleId",
+    "marks a built-in bundle of an earlier CLI %s build, with a platform byte, by its ID when the report names no minBundleId",
     (_platform, bundleId) => {
       render(
         <EventBundleTransition

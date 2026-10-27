@@ -8,7 +8,6 @@ import { pipeline } from "stream/promises";
 import { archiveAppBundle } from "@hot-updater/apple-helper";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
-  DatabaseConstraintError,
   type HotUpdaterCoreApi,
   type NativeBuildRow,
   type NativeBuildScope,
@@ -32,7 +31,10 @@ import {
 import { ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
-import { registerNativeBuild } from "../utils/native/registerNativeBuild";
+import {
+  isNativeBuildConflict,
+  registerNativeBuild,
+} from "../utils/native/registerNativeBuild";
 import { printBanner } from "../utils/printBanner";
 import { safeDispose } from "./release";
 
@@ -46,15 +48,6 @@ export interface NativeBuildImportOptions {
    */
   readonly channel?: string;
 }
-
-/**
- * A registration the registry refused because its build or built-in bundle
- * exists: core's constraint error, or a self-hosted server's 409.
- */
-const isConflict = (error: unknown) =>
-  (error instanceof DatabaseConstraintError &&
-    (error.reason === "unique" || error.reason === "exists")) ||
-  (error as { status?: unknown } | null)?.status === 409;
 
 /** How many native builds one read of the registry takes. */
 const LIST_PAGE = 100;
@@ -422,7 +415,7 @@ export const handleNativeBuildImport = async (
     } catch (error) {
       // Another import won the write: the same build is imported, and
       // another is refused, as the check before would have.
-      if (!isConflict(error)) throw error;
+      if (!isNativeBuildConflict(error)) throw error;
       const after = await registeredAs();
       if (after === undefined) throw error;
       return settle(after);
