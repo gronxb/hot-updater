@@ -39,6 +39,27 @@ const choose = async (option: string) => {
 };
 
 describe("NativeBuildsPage", () => {
+  it("shows the CLI command that imports a build made elsewhere, and uploads nothing", async () => {
+    render(<NativeBuildsPage onSearchChange={vi.fn()} search={{}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Import a build" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain(
+      "npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>",
+    );
+    // The merged CLI's channel option, and its guide.
+    expect(dialog.textContent).toContain("--channel");
+    expect(screen.getByRole("link", { name: /Import guide/ })).toHaveProperty(
+      "href",
+      "https://hot-updater.dev/docs/guides/native-build#import-a-build-made-elsewhere",
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy the import command" }),
+    ).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
   it("filters by a channel named all, apart from all channels", async () => {
     const onSearchChange = vi.fn();
     render(<NativeBuildsPage onSearchChange={onSearchChange} search={{}} />);

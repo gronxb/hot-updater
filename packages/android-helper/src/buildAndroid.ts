@@ -29,6 +29,8 @@ export const buildAndroid = async ({
     appVersion: string | null;
     /** undefined when the artifact's channel cannot be read exactly. */
     channel?: string | null;
+    /** The manifest's `versionCode`. */
+    buildNumber: string | null;
   };
 }> => {
   const androidProjectPath = path.join(getCwd(), "android");

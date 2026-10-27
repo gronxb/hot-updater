@@ -312,6 +312,7 @@ const isNativeBuildRegistration = (
   (value.fingerprintHash === null) !== (value.appVersion === null) &&
   isTextOrNull(value.gitCommitHash) &&
   isTextOrNull(value.buildKey) &&
+  (value.buildNumber === undefined || isTextOrNull(value.buildNumber)) &&
   isRecord(value.artifact) &&
   typeof value.artifact.kind === "string" &&
   NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&
@@ -595,6 +596,34 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
 
   // An unknown ID answers 200 with the not_found result, so a 404 means a
   // server without the route.
+  // An unknown ID answers 200 with null data, so a 404 means a server
+  // without the route.
+  recordNativeBuildSubmission: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (
+      !isRecord(input) ||
+      (input.destination !== "testflight" &&
+        input.destination !== "play-internal") ||
+      !isText(input.version)
+    ) {
+      throw new HandlerBadRequestError(
+        "A native build submission needs destination (testflight or play-internal) and version.",
+      );
+    }
+    const submission = {
+      destination: input.destination,
+      version: input.version,
+    } as const;
+    return json({
+      data: await refusingInvalid(() =>
+        core.recordNativeBuildSubmission(
+          requireRouteParam(params, "id"),
+          submission,
+        ),
+      ),
+    });
+  }),
+
   deleteNativeBuild: onCore(async (core, _request, params) =>
     json({
       data: await core.deleteNativeBuild(requireRouteParam(params, "id")),
@@ -674,6 +703,11 @@ export const ADMIN_ROUTES: readonly {
   { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
   { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
   { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
+  {
+    method: "POST",
+    path: "/native-builds/:id/submission",
+    handler: "recordNativeBuildSubmission",
+  },
   {
     method: "DELETE",
     path: "/native-builds/:id",

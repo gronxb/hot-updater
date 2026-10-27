@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { createInProcessCoreApi } from "./inProcess.testFixtures";
+import { NativeBuildInputError } from "./nativeBuilds";
 
 const buildId = (n: number) =>
   `01900000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -403,6 +404,98 @@ describe("the native build registry", () => {
       deleted: false,
       reason: "not_found",
     });
+  });
+
+  it("records a store submission on the build's row, which every read returns", async () => {
+    const core = setup();
+    const ios = await core.registerNativeBuild(registration(1));
+    const android = await core.registerNativeBuild(
+      registration(2, {
+        platform: "android",
+        artifact: {
+          kind: "aab",
+          storageUri: "storage://app.aab",
+          byteSize: 1,
+        },
+      }),
+    );
+    // A registration records no submission.
+    expect(ios).toMatchObject({
+      submitted_to: null,
+      submitted_at_ms: null,
+      submitted_version: null,
+    });
+
+    const recorded = await core.recordNativeBuildSubmission(ios.id, {
+      destination: "testflight",
+      version: "1.7.0 (66)",
+    });
+    await core.recordNativeBuildSubmission(android.id, {
+      destination: "play-internal",
+      version: "1.7.0 (66)",
+    });
+
+    expect(recorded).toEqual({
+      ...ios,
+      submitted_to: "testflight",
+      submitted_at_ms: expect.any(Number),
+      submitted_version: "1.7.0 (66)",
+    });
+    expect(recorded!.submitted_at_ms!).toBeGreaterThan(ios.created_at_ms);
+    await expect(core.getNativeBuild(ios.id)).resolves.toEqual(recorded);
+    await expect(
+      core.listNativeBuilds({ limit: 10, order: "desc" }),
+    ).resolves.toMatchObject([
+      { id: android.id, submitted_to: "play-internal" },
+      { id: ios.id, submitted_to: "testflight" },
+    ]);
+  });
+
+  it("stores the build number the artifact reports, and none for a registration without one", async () => {
+    const core = setup();
+    const numbered = await core.registerNativeBuild(
+      registration(1, { buildNumber: "66" }),
+    );
+    // A CLI that predates build numbers leaves the field out.
+    const { buildNumber: _none, ...older } = registration(2);
+    const unnumbered = await core.registerNativeBuild(older);
+
+    expect(numbered.build_number).toBe("66");
+    expect(unnumbered.build_number).toBeNull();
+    await expect(core.getNativeBuild(numbered.id)).resolves.toMatchObject({
+      build_number: "66",
+    });
+    await expect(
+      core.registerNativeBuild(registration(3, { buildNumber: " " })),
+    ).rejects.toThrow("buildNumber must be the artifact's build number");
+  });
+
+  it("refuses a submission to another platform's store or without a version, and answers null for an unknown build", async () => {
+    const core = setup();
+    const ios = await core.registerNativeBuild(registration(1));
+
+    await expect(
+      core.recordNativeBuildSubmission(ios.id, {
+        destination: "play-internal",
+        version: "1.7.0 (66)",
+      }),
+    ).rejects.toThrow(
+      "an ios build is submitted to testflight, not play-internal",
+    );
+    await expect(
+      core.recordNativeBuildSubmission(ios.id, {
+        destination: "testflight",
+        version: " ",
+      }),
+    ).rejects.toThrow(NativeBuildInputError);
+    await expect(
+      core.recordNativeBuildSubmission(buildId(9), {
+        destination: "testflight",
+        version: "1.7.0 (66)",
+      }),
+    ).resolves.toBeNull();
+    // Nothing was written.
+    await expect(core.getNativeBuild(ios.id)).resolves.toEqual(ios);
   });
 
   it("ensures the channel again when it is deleted between ensuring it and the registration", async () => {

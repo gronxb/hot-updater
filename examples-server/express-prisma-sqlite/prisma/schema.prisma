@@ -126,6 +126,10 @@ model native_builds {
   git_commit_hash String?
   created_at_ms BigInt
   build_key String?
+  build_number String?
+  submitted_to String?
+  submitted_at_ms BigInt?
+  submitted_version String?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([scope_key, id], map: "native_builds_byScope")

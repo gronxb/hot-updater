@@ -158,7 +158,7 @@ export function ServedNowCard({
                       <TableCell className="py-3 whitespace-normal">
                         <div className="flex min-w-0 flex-col gap-1">
                           <Link
-                            className="truncate font-mono text-xs underline-offset-4 hover:underline"
+                            className="font-mono text-xs [overflow-wrap:anywhere] underline-offset-4 hover:underline"
                             search={{ releaseId: release.releaseId }}
                             title={bundleId}
                             to="/"
@@ -167,7 +167,7 @@ export function ServedNowCard({
                             {bundleId}
                           </Link>
                           {release.message ? (
-                            <span className="truncate text-xs text-muted-foreground">
+                            <span className="text-xs text-muted-foreground">
                               {release.message}
                             </span>
                           ) : null}

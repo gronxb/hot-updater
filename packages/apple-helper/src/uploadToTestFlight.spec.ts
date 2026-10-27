@@ -38,6 +38,7 @@ import {
   createAppStoreConnectToken,
   findTestFlightBuild,
   resolveTestFlightUploadKey,
+  TestFlightBuildExistsError,
   uploadToTestFlight,
 } from "./uploadToTestFlight";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
@@ -257,6 +258,9 @@ describe("uploadToTestFlight", () => {
       state: "COMPLETE",
       testFlightUrl:
         "https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      // The .ipa's own version and build number, which TestFlight lists.
+      shortVersion: "1.2.0",
+      bundleVersion: "42",
     });
     const sent = requests.map(({ method, url }) => `${method} ${url}`);
     // The parts go out at once, so they finish in either order.
@@ -582,6 +586,44 @@ describe("uploadToTestFlight", () => {
     expect(
       requests.filter((request) => request.url === `${API}/v1/buildUploads`),
     ).toHaveLength(2);
+  });
+
+  it("refuses a build number App Store Connect already has with a typed error, uploading nothing", async () => {
+    const routes = successRoutes();
+    // App Store Connect's answer to a create whose version and build number
+    // it already has, as its JSON:API error document.
+    routes[`POST ${API}/v1/buildUploads`] = {
+      status: 409,
+      json: {
+        errors: [
+          {
+            id: "8f0e5a5e-2f6b-4c69-9f6c-1b2c3d4e5f60",
+            status: "409",
+            code: "ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE",
+            title:
+              "The provided entity includes an attribute with a value that has already been used",
+            detail:
+              "The bundle version must be higher than the previously uploaded version: '42'.",
+            source: { pointer: "/data/attributes/cfBundleVersion" },
+          },
+        ],
+      },
+    };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    const failure = uploadToTestFlight({
+      ipaPath,
+      apiKey: apiKey(),
+      fetch,
+      pollIntervalMs: 0,
+    });
+
+    await expect(failure).rejects.toBeInstanceOf(TestFlightBuildExistsError);
+    await expect(failure).rejects.toMatchObject({
+      shortVersion: "1.2.0",
+      bundleVersion: "42",
+    });
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
   });
 
   it("takes no reservation it cannot show is its own after an unanswered create", async () => {

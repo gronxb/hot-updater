@@ -116,9 +116,10 @@ describe("registerNativeBuild", () => {
     await fs.promises.writeFile(artifactPath, "apk bytes");
 
     const buildKey = `nbk1:${"d".repeat(64)}`;
-    const row = await registerNativeBuild(android({ artifactPath }), {
-      buildKey,
-    });
+    const row = await registerNativeBuild(
+      { ...android({ artifactPath }), buildNumber: "66" },
+      { buildKey },
+    );
 
     expect(loadConfig).toHaveBeenCalledWith(null);
 
@@ -135,6 +136,8 @@ describe("registerNativeBuild", () => {
       byte_size: "apk bytes".length,
       git_commit_hash: "abc123",
       build_key: buildKey,
+      // The build number the artifact reports, as the build read it.
+      build_number: "66",
     });
     await expect(
       harness.core.findNativeBuild(

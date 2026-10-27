@@ -42,7 +42,12 @@ export const buildIos = async ({
   buildDirectory: string;
   buildArtifactPath: string;
   /** What the built app reports, from its Info.plist. */
-  builtApp?: { appVersion: string | null; channel: string | null };
+  builtApp?: {
+    appVersion: string | null;
+    channel: string | null;
+    /** The app's `CFBundleVersion`. */
+    buildNumber: string | null;
+  };
 }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");

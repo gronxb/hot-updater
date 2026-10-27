@@ -230,6 +230,8 @@ export const readBuiltApp = async ({
       appVersion: string | null;
       /** undefined when the artifact's channel cannot be read exactly. */
       channel?: string | null;
+      /** The manifest's `versionCode`. */
+      buildNumber: string | null;
     }
   | undefined
 > => {
@@ -276,7 +278,12 @@ export const readBuiltApp = async ({
         "aapt2 printed the artifact's versionName or com.hotupdater.CHANNEL in a form that cannot be read exactly, so the build reports the project files' value for it.",
       );
     }
-    return { appVersion: appVersion ?? null, channel };
+    const versionCode = parseManifestVersionCode(xmltree);
+    return {
+      appVersion: appVersion ?? null,
+      channel,
+      buildNumber: versionCode === null ? null : String(versionCode),
+    };
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }

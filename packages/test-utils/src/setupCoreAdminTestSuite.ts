@@ -227,6 +227,7 @@ export const setupCoreAdminTestSuite = (options: {
             minBundleId: builtIn.id,
             gitCommitHash: null,
             buildKey,
+            buildNumber: suffix,
             artifact: {
               kind: "ipa",
               storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
@@ -273,6 +274,8 @@ export const setupCoreAdminTestSuite = (options: {
       // and a build registered without one matches none.
       expect(keyedBuild.build_key).toBe(keyed);
       expect(newest.build_key).toBeNull();
+      // The build number the registration sends is stored with the build.
+      expect(newest.build_number).toBe("61");
       expect(
         (
           await adminJson(
@@ -324,6 +327,43 @@ export const setupCoreAdminTestSuite = (options: {
       expect((await ofChannel(other.id, "limit=10")).data).toEqual([]);
       await adminJson(`/channels/${other.id}`, jsonRequest("DELETE"));
       expect((await ofChannel(other.id, "limit=10")).data).toEqual([]);
+      // A store submission is recorded on the row, and read back with it.
+      const submitted = (await adminJson(
+        `/native-builds/${newest.id}/submission`,
+        jsonRequest("POST", {
+          destination: "testflight",
+          version: "1.0.0 (7)",
+        }),
+      )) as { data: NativeBuildRow };
+      expect(submitted.data).toMatchObject({
+        id: newest.id,
+        submitted_to: "testflight",
+        submitted_version: "1.0.0 (7)",
+      });
+      expect((await adminJson(`/native-builds/${newest.id}`)).data).toEqual(
+        submitted.data,
+      );
+      expect(
+        (
+          await adminJson(
+            `/native-builds/${bundleRow("863").id}/submission`,
+            jsonRequest("POST", {
+              destination: "testflight",
+              version: "1.0.0 (7)",
+            }),
+          )
+        ).data,
+      ).toBeNull();
+      // An iOS build goes to TestFlight, not Google Play.
+      const wrongStore = await admin(
+        `/native-builds/${newest.id}/submission`,
+        jsonRequest("POST", {
+          destination: "play-internal",
+          version: "1.0.0 (7)",
+        }),
+      );
+      expect(wrongStore.status).toBe(400);
+      await wrongStore.text();
       expect(again.status).toBe(409);
       expect(await again.json()).toMatchObject({ code: "NATIVE_BUILD_EXISTS" });
       expect(refusedDelete.status).toBe(409);

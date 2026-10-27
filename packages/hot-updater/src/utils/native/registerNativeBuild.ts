@@ -308,6 +308,7 @@ export const registerNativeBuild = async (
           ? ((await getLatestGitCommit())?.id() ?? null)
           : gitCommitHash,
       buildKey,
+      buildNumber: build.buildNumber ?? null,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,

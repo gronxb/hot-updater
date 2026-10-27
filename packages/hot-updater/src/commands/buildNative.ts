@@ -5,6 +5,8 @@ import {
   type EnrichedNativeBuildAndroidScheme,
   findPlayInternalRelease,
   assertPlaySigned,
+  PlayVersionCodeUsedError,
+  readBuiltApp,
   readBuiltPackageName,
   readBuiltVersionCode,
   resolvePlayUploadServiceAccount,
@@ -16,6 +18,7 @@ import {
   type EnrichedNativeBuildIosScheme,
   findTestFlightBuild,
   installPodsIfNeeded,
+  TestFlightBuildExistsError,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
@@ -35,6 +38,8 @@ import {
 import type {
   BuildAdapter,
   NativeBuildOptions,
+  NativeBuildRow,
+  NativeBuildSubmissionDestination,
   Platform,
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
@@ -64,6 +69,10 @@ import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import {
+  recordNativeBuildSubmission,
+  storeVersionLabel,
+} from "../utils/native/nativeBuildSubmission";
 import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 import {
   type NativeBuildCache,
@@ -341,7 +350,7 @@ const buildNativeInternal = async ({
         if (dryRun) trackingSkipped = "dry-run";
         // A build reused from storage is tracked already; one reused from
         // this machine is tracked with the key it was cached under.
-        const registered =
+        let registered =
           trackingSkipped !== null
             ? null
             : reused?.source === "storage"
@@ -352,43 +361,76 @@ const buildNativeInternal = async ({
         }
         // A reused build may be in the store already, which takes a build
         // number once: it is not submitted again.
-        let alreadySubmitted = false;
+        // A store takes a build number once: a build it already has is not
+        // uploaded again. The tracked build's record says so first; a
+        // reused build without one is looked up in the store; and the
+        // store's own refusal of the build number says so last.
+        let existingSubmission: ExistingSubmission | null =
+          upload && !dryRun && registered?.submitted_to === upload
+            ? {
+                destination: upload,
+                version: registered.submitted_version,
+                submittedAtMs: registered.submitted_at_ms,
+                source: "recorded",
+              }
+            : null;
+        if (existingSubmission) logAlreadySubmitted(existingSubmission);
         const apiKey = dryRun ? undefined : ascApiKey;
-        if (apiKey && reused) {
+        if (apiKey && reused && !existingSubmission) {
           const existing = await reportUploadFailure(() =>
             findTestFlightBuild({ ipaPath: result.artifactPath, apiKey }),
           );
           if (existing.found) {
-            alreadySubmitted = true;
-            p.log.info(
-              ui.line([
-                `Build ${existing.bundleVersion} of version ${existing.shortVersion} is already on`,
-                ui.platform("TestFlight"),
-                ui.path(existing.testFlightUrl),
-              ]),
-            );
+            existingSubmission = {
+              destination: "testflight",
+              version: storeVersionLabel(
+                existing.shortVersion,
+                existing.bundleVersion,
+              ),
+              submittedAtMs: null,
+              source: "store",
+            };
+            // The store matched the version and build number, not this
+            // artifact: nothing is recorded, as for a refused upload.
+            logAlreadySubmitted(existingSubmission, existing.testFlightUrl);
           }
         }
-        if (apiKey && !alreadySubmitted) {
-          const { state, testFlightUrl } = await reportUploadFailure(
-            () =>
-              uploadToTestFlight({
-                ipaPath: result.artifactPath,
-                apiKey,
-              }),
-            `The build stays at ${result.artifactPath}.`,
+        if (apiKey && !existingSubmission) {
+          const uploaded = await storeRefusal(
+            reportUploadFailure(
+              () =>
+                uploadToTestFlight({
+                  ipaPath: result.artifactPath,
+                  apiKey,
+                }),
+              `The build stays at ${result.artifactPath}.`,
+            ),
+            (cause) =>
+              cause instanceof TestFlightBuildExistsError
+                ? storeVersionLabel(cause.shortVersion, cause.bundleVersion)
+                : undefined,
+            "testflight",
           );
-          if (state === "COMPLETE") {
+          if ("refused" in uploaded) {
+            existingSubmission = uploaded.refused;
+          } else if (uploaded.state === "COMPLETE") {
             p.log.success(
               ui.line([
                 "Uploaded to",
                 ui.platform("TestFlight"),
-                ui.path(testFlightUrl),
+                ui.path(uploaded.testFlightUrl),
               ]),
+            );
+            // Recorded once App Store Connect accepted the build. A build
+            // still processing stays unrecorded: a later run that finds it
+            // can't tell it is this artifact.
+            registered = await recordSubmission(registered, "testflight", () =>
+              storeVersionLabel(uploaded.shortVersion, uploaded.bundleVersion),
             );
           }
         }
-        const playServiceAccount = dryRun ? undefined : serviceAccount;
+        const playServiceAccount =
+          dryRun || existingSubmission ? undefined : serviceAccount;
         if (playServiceAccount) {
           // The artifact's, with the suffixes flavors and build types add.
           const androidProjectPath = path.join(getCwd(), "android");
@@ -397,6 +439,11 @@ const buildNativeInternal = async ({
               artifactPath: result.artifactPath,
               androidProjectPath,
             })) ?? androidSchemeConfig!.applicationId;
+          const playVersionLabel = async (versionCode: string | number) =>
+            storeVersionLabel(
+              await readVersionName(result, androidProjectPath),
+              versionCode,
+            );
           if (reused) {
             const versionCode = await readBuiltVersionCode({
               artifactPath: result.artifactPath,
@@ -412,46 +459,77 @@ const buildNativeInternal = async ({
                 }),
               ))
             ) {
-              alreadySubmitted = true;
-              p.log.info(
-                ui.line([
-                  `Version code ${versionCode} is already on`,
-                  ui.platform("Google Play internal testing"),
-                ]),
-              );
+              existingSubmission = {
+                destination: "play-internal",
+                version: await playVersionLabel(versionCode),
+                submittedAtMs: null,
+                source: "store",
+              };
+              // Matched by version code, not this artifact: not recorded.
+              logAlreadySubmitted(existingSubmission);
             }
           }
-          if (!alreadySubmitted) {
+          if (!existingSubmission) {
             // Google Play refuses a debug-signed .aab after the upload.
             await reportUploadFailure(
               () => assertPlaySigned(result.artifactPath),
               `The build stays at ${result.artifactPath}.`,
             );
-            const { versionCode, status } = await reportUploadFailure(
-              async () =>
-                uploadToPlay({
-                  aabPath: result.artifactPath,
-                  packageName,
-                  serviceAccount: playServiceAccount,
-                }),
-              [
-                serviceAccountIssued
-                  ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
+            const versionCodeOfArtifact = async () =>
+              result.buildNumber ??
+              (await readBuiltVersionCode({
+                artifactPath: result.artifactPath,
+                androidProjectPath,
+              })) ??
+              null;
+            const uploaded = await storeRefusal(
+              reportUploadFailure(
+                async () =>
+                  uploadToPlay({
+                    aabPath: result.artifactPath,
+                    packageName,
+                    serviceAccount: playServiceAccount,
+                  }),
+                [
+                  serviceAccountIssued
+                    ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
+                    : undefined,
+                  `The build stays at ${result.artifactPath}.`,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+              ),
+              // The version code is read only once Google Play refused it.
+              (cause) =>
+                cause instanceof PlayVersionCodeUsedError
+                  ? versionCodeOfArtifact().then((code) =>
+                      code === null ? null : playVersionLabel(code),
+                    )
                   : undefined,
-                `The build stays at ${result.artifactPath}.`,
-              ]
-                .filter(Boolean)
-                .join("\n"),
+              "play-internal",
             );
-            p.log.success(
-              ui.line([
-                status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
-                ui.platform("Google Play internal testing"),
-                ui.muted(`version code ${versionCode}`),
-              ]),
-            );
+            if ("refused" in uploaded) {
+              existingSubmission = uploaded.refused;
+            } else {
+              const { versionCode, status } = uploaded;
+              p.log.success(
+                ui.line([
+                  status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
+                  ui.platform("Google Play internal testing"),
+                  ui.muted(`version code ${versionCode}`),
+                ]),
+              );
+              // Google Play took the bundle on the internal track, as a draft
+              // release when the app is not published yet.
+              registered = await recordSubmission(
+                registered,
+                "play-internal",
+                () => playVersionLabel(versionCode),
+              );
+            }
           }
         }
+        const alreadySubmitted = existingSubmission !== null;
         if (dryRun) {
           p.log.message(summarizeDryRun(result, upload, reused));
         }
@@ -470,6 +548,8 @@ const buildNativeInternal = async ({
                     : alreadySubmitted
                       ? "already-submitted"
                       : null,
+                // The store's build that kept this one from uploading.
+                existing: existingSubmission,
               },
               cache: cache?.report ?? {
                 hit: null,
@@ -624,6 +704,116 @@ const prepareTracking = async ({
     );
   }
   return null;
+};
+
+/**
+ * A build the store already has, which kept this run from uploading: from
+ * the tracked build's record (with its time), the store's lookup of a
+ * reused build, or the store's refusal of the build number.
+ */
+interface ExistingSubmission {
+  readonly destination: NativeBuildSubmissionDestination;
+  /** The store's label of the build, such as `1.7.0 (66)`. */
+  readonly version: string | null;
+  /** When Hot Updater recorded it, or null when the store said so. */
+  readonly submittedAtMs: number | null;
+  readonly source: "recorded" | "store";
+}
+
+const STORE_NAMES = {
+  testflight: "TestFlight",
+  "play-internal": "Google Play internal testing",
+} as const;
+
+/** `2026-10-27 04:02 UTC`. */
+const formatUtc = (ms: number) =>
+  `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+/**
+ * Says the store already has the build, which this run doesn't upload
+ * again: a store takes each build number once.
+ */
+const logAlreadySubmitted = (existing: ExistingSubmission, url?: string) =>
+  p.log.info(
+    [
+      `Already on ${STORE_NAMES[existing.destination]}`,
+      existing.submittedAtMs === null
+        ? ""
+        : ` since ${formatUtc(existing.submittedAtMs)}`,
+      existing.version === null ? "" : ` as ${existing.version}`,
+      `. Bump the build number to upload a new build.`,
+      url ? ` ${url}` : "",
+    ].join(""),
+  );
+
+/**
+ * The upload's result, or the build the store already has when it refused
+ * the build number, from this or another upload: the run then skips the
+ * upload as for a build it already submitted, and records nothing, since
+ * the store's build may not be this artifact.
+ */
+const storeRefusal = async <T>(
+  upload: Promise<T>,
+  labelOf: (cause: unknown) => Promise<string | null> | string | undefined,
+  destination: NativeBuildSubmissionDestination,
+): Promise<T | { readonly refused: ExistingSubmission }> => {
+  try {
+    return await upload;
+  } catch (error) {
+    const cause = error instanceof NativeBuildFailure ? error.cause : error;
+    const label = labelOf(cause);
+    if (label === undefined) throw error;
+    const refused: ExistingSubmission = {
+      destination,
+      version: await label,
+      submittedAtMs: null,
+      source: "store",
+    };
+    logAlreadySubmitted(refused);
+    return { refused };
+  }
+};
+
+/**
+ * The version name the built `.apk` or `.aab` reports, or its scheme's app
+ * version, or null when neither can be read: aapt2 reads the artifact.
+ */
+const readVersionName = async (
+  result: NativeBuildResult,
+  androidProjectPath: string,
+): Promise<string | null> =>
+  (
+    await readBuiltApp({
+      artifactPath: result.artifactPath,
+      androidProjectPath,
+    })
+  )?.appVersion ?? result.appVersion;
+
+/**
+ * Records on the tracked build that the store took this run's upload of
+ * it. An untracked build, such as a Debug one, records nothing. A failed
+ * record fails the command, since the Console would not show the
+ * submission; the store keeps the build, and a rerun skips its upload.
+ */
+const recordSubmission = async (
+  build: NativeBuildRow | null,
+  destination: NativeBuildSubmissionDestination,
+  /** The store's label of the build, read only for a tracked build. */
+  readVersion: () => string | Promise<string>,
+): Promise<NativeBuildRow | null> => {
+  if (!build) return build;
+  const version = await readVersion();
+  try {
+    return await recordNativeBuildSubmission(build, destination, version);
+  } catch (error) {
+    throw new NativeBuildFailure(
+      [
+        `${destination === "testflight" ? "TestFlight" : "Google Play"} has build ${version}, but recording it on native build ${build.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        "The store keeps the build: a run with the same inputs reuses it and skips the upload.",
+      ].join("\n"),
+      { cause: error },
+    );
+  }
 };
 
 /**

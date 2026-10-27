@@ -26,6 +26,7 @@ import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
 import {
   createServiceAccountAssertion,
   findPlayInternalRelease,
+  PlayVersionCodeUsedError,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "./uploadToPlay";
@@ -472,6 +473,41 @@ describe("uploadToPlay", () => {
       false,
     );
   });
+
+  it.each([
+    // Google's error document for an APK or bundle whose version code a
+    // release of the app already has.
+    "APK specifies a version code that has already been used.",
+    "Version code 42 has already been used.",
+  ])(
+    "refuses a version code Google Play already has with a typed error: %s",
+    async (message) => {
+      const routes = successRoutes();
+      routes[`PUT ${LOCATION}`] = {
+        status: 403,
+        json: {
+          error: {
+            code: 403,
+            message,
+            errors: [
+              {
+                message,
+                domain: "androidpublisher",
+                reason: "apkUpgradeVersionConflict",
+              },
+            ],
+            status: "PERMISSION_DENIED",
+          },
+        },
+      };
+      routes[`DELETE ${EDIT}`] = { status: 204 };
+      const { fetch } = createRecordingFetch(routes);
+
+      await expect(upload(fetch)).rejects.toBeInstanceOf(
+        PlayVersionCodeUsedError,
+      );
+    },
+  );
 
   it("names the permission a service account without access needs", async () => {
     const routes = successRoutes();

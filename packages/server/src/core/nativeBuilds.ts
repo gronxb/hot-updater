@@ -53,7 +53,26 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   git_commit_hash: (row.git_commit_hash ?? null) as string | null,
   created_at_ms: row.created_at_ms as number,
   build_key: (row.build_key ?? null) as string | null,
+  build_number: (row.build_number ?? null) as string | null,
+  submitted_to: (row.submitted_to ?? null) as NativeBuildRow["submitted_to"],
+  submitted_at_ms: (row.submitted_at_ms ?? null) as number | null,
+  submitted_version: (row.submitted_version ?? null) as string | null,
 });
+
+/** The store track each platform's builds are submitted to. */
+const SUBMISSION_DESTINATIONS = {
+  android: "play-internal",
+  ios: "testflight",
+} as const satisfies Record<
+  NativeBuildRow["platform"],
+  NonNullable<NativeBuildRow["submitted_to"]>
+>;
+
+/** `native_builds.build_number`'s bound in core's schema. */
+const BUILD_NUMBER_MAX_LENGTH = 64;
+
+/** `native_builds.submitted_version`'s bound in core's schema. */
+const SUBMITTED_VERSION_MAX_LENGTH = 255;
 
 /**
  * A native build scope's key: the Release Catalog scope key of a
@@ -107,6 +126,7 @@ const problemOf = ({
   appVersion,
   gitCommitHash,
   buildKey,
+  buildNumber,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -130,6 +150,14 @@ const problemOf = ({
   if (buildKey !== null && !BUILD_KEY.test(buildKey)) {
     return "buildKey must be nbk1: and a SHA-256, or null";
   }
+  if (
+    buildNumber !== undefined &&
+    buildNumber !== null &&
+    (buildNumber.trim().length === 0 ||
+      buildNumber.length > BUILD_NUMBER_MAX_LENGTH)
+  ) {
+    return `buildNumber must be the artifact's build number, up to ${BUILD_NUMBER_MAX_LENGTH} characters, or null`;
+  }
   const kinds: readonly string[] = ARTIFACT_KINDS[platform];
   if (!kinds.includes(artifact.kind)) {
     return `artifact.kind of an ${platform} build must be ${kinds.join(" or ")}`;
@@ -151,6 +179,7 @@ export const createNativeBuildApi = (
   | "findNativeBuild"
   | "listNativeBuilds"
   | "deleteNativeBuild"
+  | "recordNativeBuildSubmission"
 > => ({
   async registerNativeBuild(registration) {
     const problem = problemOf(registration);
@@ -175,6 +204,10 @@ export const createNativeBuildApi = (
       git_commit_hash: registration.gitCommitHash,
       created_at_ms: now(),
       build_key: registration.buildKey,
+      build_number: registration.buildNumber ?? null,
+      submitted_to: null,
+      submitted_at_ms: null,
+      submitted_version: null,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.
@@ -242,6 +275,34 @@ export const createNativeBuildApi = (
             limit: 1,
           });
     return rows[0] === undefined ? null : pick(rows[0]);
+  },
+
+  async recordNativeBuildSubmission(id, { destination, version }) {
+    if (
+      version.trim().length === 0 ||
+      version.length > SUBMITTED_VERSION_MAX_LENGTH
+    ) {
+      throw new NativeBuildInputError(
+        `Invalid native build submission: version must be the store's label of the build, up to ${SUBMITTED_VERSION_MAX_LENGTH} characters.`,
+      );
+    }
+    return db.transaction(async (tx) => {
+      const row = await tx.findOne("native_builds", { id });
+      if (row === null) return null;
+      const build = pick(row);
+      if (SUBMISSION_DESTINATIONS[build.platform] !== destination) {
+        throw new NativeBuildInputError(
+          `Invalid native build submission: an ${build.platform} build is submitted to ${SUBMISSION_DESTINATIONS[build.platform]}, not ${destination}.`,
+        );
+      }
+      const set = {
+        submitted_to: destination,
+        submitted_at_ms: now(),
+        submitted_version: version,
+      };
+      tx.update("native_builds", row, set);
+      return { ...build, ...set };
+    });
   },
 
   async deleteNativeBuild(id) {
