@@ -388,8 +388,9 @@ checks that the artifact can serve as a patch base, and refuses, saying why:
   app whose version holds no `major.minor.patch` a device compares;
 - a channel given as a resource reference (`@string/...`) rather than a
   literal, as `channel set` and the Expo plugin write it;
-- an app ID that no `nativeBuild` scheme's `bundleIdentifier` or
-  `applicationId` declares, when your schemes declare them;
+- an app ID that no `nativeBuild` scheme's `bundleIdentifier`, or
+  `applicationId` (by default its `packageName`), declares, when your schemes
+  declare them;
 - a build already registered: the registry takes a min bundle ID once, and the
   CLI names the native build that has it.
 

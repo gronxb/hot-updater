@@ -86,8 +86,9 @@ const declaredAppIds = (
       ? Object.values(config.nativeBuild.ios).map(
           (scheme) => scheme?.bundleIdentifier,
         )
-      : Object.values(config.nativeBuild.android).map(
-          (scheme) => scheme?.applicationId,
+      : // A scheme's application ID defaults to its package name.
+        Object.values(config.nativeBuild.android).map(
+          (scheme) => scheme?.applicationId ?? scheme?.packageName,
         );
   return [...new Set(ids.filter((id): id is string => Boolean(id)))];
 };
