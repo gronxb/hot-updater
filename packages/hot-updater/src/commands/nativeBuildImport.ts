@@ -1,8 +1,11 @@
+import { createHash } from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 
+import { archiveAppBundle } from "@hot-updater/apple-helper";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
   DatabaseConstraintError,
@@ -10,9 +13,11 @@ import {
   type NativeBuildRow,
   type NativeBuildScope,
 } from "@hot-updater/plugin-core";
+import { encodeChannelKey } from "@hot-updater/protocol";
 import {
   alreadyImportedProblem,
   blobSource,
+  type ByteSource,
   checkNativeArtifact,
   NativeArtifactError,
   openZipEntry,
@@ -25,7 +30,7 @@ import {
 
 import { ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
-import { loadServer } from "../utils/loadServer";
+import { type LoadedServer, loadServer } from "../utils/loadServer";
 import { registerNativeBuild } from "../utils/native/registerNativeBuild";
 import { printBanner } from "../utils/printBanner";
 import { safeDispose } from "./release";
@@ -34,6 +39,11 @@ export interface NativeBuildImportOptions {
   /** Reads and checks the artifact, and records nothing. */
   readonly dryRun?: boolean;
   readonly json?: boolean;
+  /**
+   * The channel the app reports, when it isn't the one the artifact
+   * compiled in: one its code sets, or one it switches to at runtime.
+   */
+  readonly channel?: string;
 }
 
 /**
@@ -98,6 +108,7 @@ const describeArtifact = (
   byteSize: number,
   info: NativeArtifactInfo,
   updateStrategy: "fingerprint" | "appVersion",
+  channel: string | undefined,
 ) => {
   const text = (value: NativeArtifactInfo["channel"]) =>
     value === null ? null : typeof value === "string" ? value : "unreadable";
@@ -111,9 +122,11 @@ const describeArtifact = (
     ui.kv("Build number", info.buildNumber ?? ui.muted("none")),
     ui.kv(
       "Channel",
-      info.channel === null
-        ? `${ui.channel("production")} ${ui.muted("(none compiled in)")}`
-        : ui.channel(text(info.channel)),
+      channel !== undefined
+        ? `${ui.channel(channel)} ${ui.muted(`(--channel; compiled in: ${text(info.channel) ?? "none"})`)}`
+        : info.channel === null
+          ? `${ui.channel("production")} ${ui.muted("(none compiled in)")}`
+          : ui.channel(text(info.channel)),
     ),
     ui.kv(
       "Min bundle ID",
@@ -144,44 +157,150 @@ const describeArtifact = (
 };
 
 /**
- * Imports a store artifact built elsewhere (EAS, Xcode Cloud, Fastlane, an
- * older build): an `.ipa`, `.aab` or `.apk`. It reads what the artifact
- * compiled in (platform, app version, channel, MIN_BUNDLE_ID, fingerprint)
- * and its built-in bundle, refuses an artifact that can't serve as a patch
- * base, then uploads the artifact and the built-in bundle and registers
- * them as `native-build ios|android` does after a build, so OTAs deployed
- * after it patch from its built-in bundle. With `--dry-run` it reads and
- * checks, and records nothing.
+ * Whether the registered `row` is `build`, imported again: the same scope,
+ * and a built-in bundle whose file is the artifact's, byte for byte, by the
+ * SHA-256 its manifest records.
+ */
+const isSameBuild = async (
+  { core, storage }: Pick<LoadedServer, "core" | "storage">,
+  row: NativeBuildRow,
+  build: ImportableNativeBuild,
+  source: ByteSource,
+): Promise<boolean> => {
+  if (
+    row.platform !== build.platform ||
+    row.channel_id !== `channel:${encodeChannelKey(build.channel)}` ||
+    row.fingerprint_hash !== build.fingerprintHash ||
+    row.app_version !== build.appVersion ||
+    storage.get === undefined
+  ) {
+    return false;
+  }
+  const detail = await core.getBundle(build.minBundleId);
+  if (detail === null) return false;
+  const { response } = await storage.get({
+    storageUri: detail.bundle.manifest_storage_uri,
+  });
+  if (response === null || !response.ok) return false;
+  const manifest = (await response.json()) as {
+    assets?: Record<string, { fileHash?: unknown }>;
+  };
+  const registered =
+    manifest.assets?.[`index.${build.platform}.bundle`]?.fileHash;
+  return (
+    typeof registered === "string" &&
+    registered === (await hashBuiltInBundle(source, build))
+  );
+};
+
+/** The SHA-256 of the built-in bundle the check found in the artifact. */
+const hashBuiltInBundle = async (
+  source: ByteSource,
+  build: ImportableNativeBuild,
+) => {
+  const entry = (await readZipDirectory(source)).find(
+    ({ name }) => name === build.builtInBundlePath,
+  );
+  if (entry === undefined) return null;
+  const hash = createHash("sha256");
+  const reader = (await openZipEntry(source, entry)).getReader();
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    hash.update(next.value);
+  }
+  return hash.digest("hex");
+};
+
+/**
+ * Imports an artifact built elsewhere (EAS, Xcode Cloud, Fastlane, an older
+ * build): an `.ipa`, `.aab` or `.apk`, or a simulator `.app` (the directory
+ * or its `.app.zip`). It reads what the artifact compiled in (platform, app
+ * version, channel, MIN_BUNDLE_ID, fingerprint) and its built-in bundle,
+ * refuses an artifact that can't serve as a patch base, then uploads the
+ * artifact and the built-in bundle and registers them as `native-build
+ * ios|android` does after a build, so OTAs deployed after it patch from its
+ * built-in bundle. `--channel` names the channel the app reports when its
+ * code sets one, or it switches to one at runtime.
+ *
+ * Importing the same build again changes nothing and succeeds, reporting
+ * the registered build (`alreadyImported`), so a CI job can run again; an
+ * artifact whose MIN_BUNDLE_ID is registered with another built-in bundle
+ * or scope is refused. With `--dry-run` it reads and checks, and records
+ * nothing.
  */
 export const handleNativeBuildImport = async (
   file: string,
   options: NativeBuildImportOptions,
 ) => {
   if (!options.json) printBanner();
+  const dryRun = options.dryRun ?? false;
+  let warnings: readonly NativeArtifactProblem[] = [];
   const fail = (
     problems: readonly NativeArtifactProblem[],
     artifact: NativeArtifactInfo | null,
   ) => {
     if (options.json) {
       console.log(
-        JSON.stringify({
-          ok: false,
-          dryRun: options.dryRun ?? false,
-          artifact,
-          problems,
-        }),
+        JSON.stringify({ ok: false, dryRun, artifact, problems, warnings }),
       );
     } else {
       for (const problem of problems) p.log.error(problem.message);
     }
     process.exitCode = 1;
   };
-  try {
-    const artifactPath = path.resolve(file);
-    const stat = await fs.promises.stat(artifactPath).catch(() => null);
-    if (stat === null || !stat.isFile()) {
-      throw new Error(`${file} is not a file.`);
+  const succeed = (
+    artifact: NativeArtifactInfo,
+    build: ImportableNativeBuild,
+    nativeBuild: NativeBuildRow | null,
+    alreadyImported: boolean,
+  ) => {
+    if (options.json) {
+      console.log(
+        JSON.stringify({
+          ok: true,
+          dryRun,
+          alreadyImported,
+          artifact,
+          build,
+          nativeBuild,
+          warnings,
+        }),
+      );
+    } else if (alreadyImported) {
+      p.log.info(
+        ui.line([
+          "Already imported as native build",
+          ui.id(nativeBuild!.id),
+          ui.muted("(the same built-in bundle and scope): nothing to do."),
+        ]),
+      );
+    } else if (dryRun) {
+      p.log.info(
+        "Dry run: the artifact can be imported, and nothing was recorded.",
+      );
+    } else {
+      p.log.info(
+        "OTAs deployed from now on to its channel and target patch from its built-in bundle.",
+      );
     }
+  };
+  let workDir: string | undefined;
+  try {
+    const given = path.resolve(file);
+    const stat = await fs.promises.stat(given).catch(() => null);
+    let artifactPath: string;
+    if (stat?.isDirectory() && given.endsWith(".app")) {
+      // A simulator `.app` is read and stored as one zip archive.
+      workDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "hot-updater-native-build-import-"),
+      );
+      artifactPath = path.join(workDir, `${path.basename(given)}.zip`);
+      await archiveAppBundle({ appPath: given, outputPath: artifactPath });
+    } else if (stat?.isFile()) {
+      artifactPath = given;
+    } else {
+      throw new Error(`${file} is not a file or a simulator .app.`);
+    }
+    const byteSize = (await fs.promises.stat(artifactPath)).size;
     const config = await loadConfig(null);
     const source = blobSource(await fs.openAsBlob(artifactPath));
     let info: NativeArtifactInfo;
@@ -195,13 +314,26 @@ export const handleNativeBuildImport = async (
     }
     if (!options.json) {
       p.log.message(
-        describeArtifact(file, stat.size, info, config.updateStrategy),
+        describeArtifact(
+          file,
+          byteSize,
+          info,
+          config.updateStrategy,
+          options.channel,
+        ),
       );
     }
     const check = checkNativeArtifact(info, {
       updateStrategy: config.updateStrategy,
       appIds: declaredAppIds(config, info.platform),
+      ...(options.channel === undefined ? {} : { channel: options.channel }),
     });
+    warnings = check.warnings;
+    for (const warning of warnings) {
+      // Under --json, stdout stays the JSON line.
+      if (options.json) console.error(warning.message);
+      else p.log.warn(warning.message);
+    }
     if (!check.ok) return fail(check.problems, info);
     const { build } = check;
     const scope: NativeBuildScope =
@@ -219,38 +351,49 @@ export const handleNativeBuildImport = async (
             appVersion: null,
           };
 
-    const server = await loadServer(config);
-    let registered: NativeBuildRow | null | undefined;
-    try {
-      registered = await findRegistered(server.core, scope, build.minBundleId);
-    } finally {
-      await safeDispose(server);
-    }
-    if (registered !== undefined) {
-      return fail(
-        [alreadyImportedProblem(build.minBundleId, registered?.id ?? null)],
-        info,
-      );
-    }
-
-    if (options.dryRun) {
-      if (options.json) {
-        console.log(
-          JSON.stringify({
-            ok: true,
-            dryRun: true,
-            artifact: info,
-            build,
-            nativeBuild: null,
-          }),
+    /**
+     * The registered build `build` is already, or a refusal of an artifact
+     * whose MIN_BUNDLE_ID is taken otherwise, or undefined when it is free.
+     */
+    const registeredAs = async (): Promise<
+      | { readonly nativeBuild: NativeBuildRow }
+      | { readonly problem: NativeArtifactProblem }
+      | undefined
+    > => {
+      const server = await loadServer(config);
+      try {
+        const registered = await findRegistered(
+          server.core,
+          scope,
+          build.minBundleId,
         );
-      } else {
-        p.log.info(
-          "Dry run: the artifact can be imported, and nothing was recorded.",
-        );
+        if (registered === undefined) return undefined;
+        if (
+          registered !== null &&
+          (await isSameBuild(server, registered, build, source))
+        ) {
+          return { nativeBuild: registered };
+        }
+        return {
+          problem: alreadyImportedProblem(
+            build.minBundleId,
+            registered?.id ?? null,
+          ),
+        };
+      } finally {
+        await safeDispose(server);
       }
-      return;
-    }
+    };
+    const settle = (
+      registered: NonNullable<Awaited<ReturnType<typeof registeredAs>>>,
+    ) =>
+      "nativeBuild" in registered
+        ? succeed(info, build, registered.nativeBuild, true)
+        : fail([registered.problem], info);
+
+    const before = await registeredAs();
+    if (before !== undefined) return settle(before);
+    if (dryRun) return succeed(info, build, null, false);
 
     let nativeBuild: NativeBuildRow;
     try {
@@ -274,42 +417,21 @@ export const handleNativeBuildImport = async (
         },
       );
     } catch (error) {
-      // Another import of the same build won the write: refuse it as one
-      // the check found, naming the build.
+      // Another import won the write: the same build is imported, and
+      // another is refused, as the check before would have.
       if (!isConflict(error)) throw error;
-      const server = await loadServer(config);
-      try {
-        registered = await findRegistered(
-          server.core,
-          scope,
-          build.minBundleId,
-        );
-      } finally {
-        await safeDispose(server);
-      }
-      return fail(
-        [alreadyImportedProblem(build.minBundleId, registered?.id ?? null)],
-        info,
-      );
+      const after = await registeredAs();
+      if (after === undefined) throw error;
+      return settle(after);
     }
-    if (options.json) {
-      console.log(
-        JSON.stringify({
-          ok: true,
-          dryRun: false,
-          artifact: info,
-          build,
-          nativeBuild,
-        }),
-      );
-    } else {
-      p.log.info(
-        "OTAs deployed from now on to its channel and target patch from its built-in bundle.",
-      );
-    }
+    succeed(info, build, nativeBuild, false);
   } catch (error) {
     p.log.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
+  } finally {
+    if (workDir !== undefined) {
+      await fs.promises.rm(workDir, { recursive: true, force: true });
+    }
   }
 };
 

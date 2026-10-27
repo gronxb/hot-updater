@@ -89,7 +89,9 @@ import {
 import {
   assertDependenciesInCheckout,
   NATIVE_BUILD_CHANNEL_PREFIX,
-  registerInstalledNativeBuild,
+  nativeBuildChannel,
+  parseNativeBuildImportOutput,
+  readArtifactMinBundleId,
 } from "./native-build-registration.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
@@ -122,10 +124,9 @@ const {
 } = await importPublished<typeof import("@hot-updater/protocol")>(
   "@hot-updater/protocol",
 );
-const { assertStorageOperations, createUUIDv7After, rowToBundle } =
-  await importPublished<typeof import("@hot-updater/plugin-core")>(
-    "@hot-updater/plugin-core",
-  );
+const { createUUIDv7After, rowToBundle } = await importPublished<
+  typeof import("@hot-updater/plugin-core")
+>("@hot-updater/plugin-core");
 const { assembleServer, loadConfig } = await importPublished<
   typeof import("@hot-updater/cli-tools")
 >("@hot-updater/cli-tools");
@@ -7499,10 +7500,16 @@ async function resetRemoteBundles() {
 }
 
 /**
- * Registers the installed app binary as a native build, as `hot-updater
- * native-build ios|android` tracks a release build, unless an earlier run of
- * the same binary did. Its channel is the binary's own, so this deletes the
- * releases a failed earlier run left there.
+ * Registers the installed app binary as a native build with the real CLI,
+ * `hot-updater native-build import <binary> --channel <its channel> --json`:
+ * the simulator `.app` or the `.apk` the run installed. The channel is the
+ * binary's own, which the scenario switches the app to at runtime, so
+ * `--channel` names it; the binary keeps compiling in its default channel,
+ * which the other scenarios run on. A binary an earlier run imported is
+ * reported as `alreadyImported`, and the job succeeds. The MIN_BUNDLE_ID is
+ * read from the binary's bytes here, apart from the CLI, and must be the
+ * one the CLI registered. Its channel is the binary's own, so this deletes
+ * the releases a failed earlier run left there.
  */
 async function registerNativeBuildFixture(input: { appVersion: string }) {
   await assertDependenciesInCheckout({
@@ -7516,36 +7523,66 @@ async function registerNativeBuildFixture(input: { appVersion: string }) {
     REPO_DIR,
     process.env,
   );
-  const nativeBuild = await withConfiguredDatabase(
-    async ({ core, storage }) => {
-      if (storage === undefined) {
-        throw new Error("The example's hot-updater.config.ts sets no storage.");
-      }
-      assertStorageOperations(storage, ["put"]);
-      const registered = await registerInstalledNativeBuild({
-        core,
-        storage,
-        platform,
-        artifactPath,
-        appVersion: input.appVersion,
-      });
-      await deleteChannelReleases({
-        core,
-        channels: [registered.channel],
-        platform,
-      });
-      return registered;
+  const minBundleId = await readArtifactMinBundleId(artifactPath, platform);
+  const channel = nativeBuildChannel(minBundleId);
+  const logPath = path.join(
+    fixtureSession.resultsDir,
+    `native-build-import-${channel}.log`,
+  );
+  const output = await runLoggedCommand(
+    "node",
+    [
+      HOT_UPDATER_CLI_PATH,
+      "native-build",
+      "import",
+      artifactPath,
+      "--channel",
+      channel,
+      "--json",
+    ],
+    {
+      allowFailure: true,
+      cwd: fixtureSession.exampleDir,
+      env: getHotUpdaterControlEnv(),
+      logPath,
     },
   );
-  logE2eFixture("native build registered", {
+  const result = parseNativeBuildImportOutput(output);
+  const nativeBuild = result.nativeBuild;
+  if (!result.ok || nativeBuild === null) {
+    throw new Error(
+      [
+        "hot-updater native-build import refused the installed binary:",
+        ...(result.problems ?? []).map(({ message }) => `- ${message}`),
+        `See ${path.relative(REPO_DIR, logPath)}`,
+      ].join("\n"),
+    );
+  }
+  if (nativeBuild.min_bundle_id !== minBundleId) {
+    throw new Error(
+      `hot-updater native-build import registered built-in bundle ${nativeBuild.min_bundle_id}, but ${artifactPath} compiled in ${minBundleId}.`,
+    );
+  }
+  if (nativeBuild.app_version !== input.appVersion) {
+    throw new Error(
+      `hot-updater native-build import registered app version ${nativeBuild.app_version}, but the scenario's build is ${input.appVersion}.`,
+    );
+  }
+  await withConfiguredDatabase(({ core }) =>
+    deleteChannelReleases({ core, channels: [channel], platform }),
+  );
+  logE2eFixture("native build imported", {
+    alreadyImported: result.alreadyImported === true,
     artifactPath,
-    ...nativeBuild,
+    channel,
+    minBundleId,
+    nativeBuildId: nativeBuild.id,
     platform,
   });
   return {
-    nativeBuildChannel: nativeBuild.channel,
-    nativeBuildMinBundleId: nativeBuild.minBundleId,
-    nativeBuildRegistered: nativeBuild.registered,
+    nativeBuildChannel: channel,
+    nativeBuildMinBundleId: minBundleId,
+    nativeBuildRegistered: result.alreadyImported !== true,
   };
 }
 

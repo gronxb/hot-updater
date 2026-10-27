@@ -205,12 +205,14 @@ export const registerNativeBuild = async (
       manifest,
     });
 
-    // A simulator `.app` is a directory: it is stored as one zip archive.
-    const artifactFile =
-      build.artifactKind === "app"
-        ? path.join(workDir, `${path.basename(build.artifactPath)}.zip`)
-        : build.artifactPath;
-    if (build.artifactKind === "app") {
+    // A simulator `.app` is a directory: it is stored as one zip archive,
+    // unless it is one already (an imported `.app.zip`).
+    const archive =
+      build.artifactKind === "app" && !build.artifactPath.endsWith(".zip");
+    const artifactFile = archive
+      ? path.join(workDir, `${path.basename(build.artifactPath)}.zip`)
+      : build.artifactPath;
+    if (archive) {
       await archiveAppBundle({
         appPath: build.artifactPath,
         outputPath: artifactFile,

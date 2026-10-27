@@ -63,6 +63,19 @@ runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
 
+## Store installs patched from the built-in bundle
+
+`store-install-patches-from-built-in`, `store-install-built-in-mismatch-downloads`
+and `bspatch-builtin-to-diff-ota` register the binary the run installed as a
+native build with the real CLI: `/e2e/jobs/register-native-build` runs
+`hot-updater native-build import <the installed .app or .apk> --channel
+e2e-native-build-<build time> --json` in the example. The channel is the
+binary's own, which the scenario switches the app to at runtime, so
+`--channel` names it, and the binary keeps its default channel for the other
+scenarios. The bot reuses a cached binary across jobs: importing it again
+reports `alreadyImported: true` and succeeds. The job reads the MIN_BUNDLE_ID
+from the binary's bytes itself and fails unless the CLI registered that one.
+
 ## Bundle signing
 
 Every deploy signs its bundle with the example's `keys/private-key.pem`, and

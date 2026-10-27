@@ -15,8 +15,12 @@ import {
   type ZipEntry,
 } from "./zip";
 
-/** The kinds of store artifact a build made elsewhere can be imported from. */
-export type NativeArtifactKind = "ipa" | "aab" | "apk";
+/**
+ * The kinds of artifact a build made elsewhere can be imported from: the
+ * store artifacts, and a simulator `.app` as one zip archive (`.app.zip`,
+ * the `.app` directory at its root, as Finder and `ditto` archive it).
+ */
+export type NativeArtifactKind = "ipa" | "aab" | "apk" | "app";
 
 /** A value the artifact holds as something import can't read exactly. */
 export interface UnreadableValue {
@@ -61,7 +65,7 @@ export interface NativeArtifactInfo {
 /** Where each kind of artifact packs its built-in bundle. */
 export const builtInBundlePathOf = (
   kind: NativeArtifactKind,
-  appDirectory = "Payload/<App>.app/",
+  appDirectory = kind === "app" ? "<App>.app/" : "Payload/<App>.app/",
 ): string =>
   kind === "aab"
     ? "base/assets/index.android.bundle"
@@ -73,6 +77,7 @@ export const builtInBundlePathOf = (
 export const nativeArtifactKindOf = (
   fileName: string,
 ): NativeArtifactKind | null => {
+  if (/\.app\.zip$/iu.test(fileName)) return "app";
   const extension = /\.([^./\\]+)$/u.exec(fileName)?.[1]?.toLowerCase();
   return extension === "ipa" || extension === "aab" || extension === "apk"
     ? extension
@@ -167,15 +172,20 @@ const stringValue = (value: unknown): string | null =>
 
 const readIos = async (
   source: ByteSource,
+  kind: "ipa" | "app",
   entries: readonly ZipEntry[],
 ): Promise<NativeArtifactInfo> => {
-  const plistEntry = entries.find(({ name }) =>
-    /^Payload\/[^/]+\.app\/Info\.plist$/u.test(name),
-  );
+  const infoPlist =
+    kind === "ipa"
+      ? /^Payload\/[^/]+\.app\/Info\.plist$/u
+      : /^[^/]+\.app\/Info\.plist$/u;
+  const plistEntry = entries.find(({ name }) => infoPlist.test(name));
   if (plistEntry === undefined) {
     throw new NativeArtifactError(
       "UNREADABLE",
-      "The .ipa has no Payload/<App>.app/Info.plist.",
+      kind === "ipa"
+        ? "The .ipa has no Payload/<App>.app/Info.plist."
+        : "The .app.zip has no <App>.app/Info.plist at its root.",
     );
   }
   const appDirectory = plistEntry.name.slice(0, -"Info.plist".length);
@@ -221,11 +231,11 @@ const readIos = async (
     }
   }
   const { minBundleIds, fingerprints } = candidatesOf(strings);
-  const bundle = byName.get(builtInBundlePathOf("ipa", appDirectory));
+  const bundle = byName.get(builtInBundlePathOf(kind, appDirectory));
   const channel = info["HOT_UPDATER_CHANNEL"];
   return {
     platform: "ios",
-    kind: "ipa",
+    kind,
     appId: stringValue(info["CFBundleIdentifier"]),
     appVersion: stringValue(info["CFBundleShortVersionString"]),
     buildNumber: stringValue(info["CFBundleVersion"]),
@@ -259,11 +269,11 @@ export const readNativeArtifact = async (
   if (kind === null) {
     throw new NativeArtifactError(
       "UNSUPPORTED_FILE",
-      `${fileName} is not an .ipa, .aab or .apk. Import the store artifact of a release build.`,
+      `${fileName} is not an .ipa, .aab, .apk or a simulator .app. Import the artifact of a release build.`,
     );
   }
   const entries = await readZipDirectory(source);
-  return kind === "ipa"
-    ? readIos(source, entries)
+  return kind === "ipa" || kind === "app"
+    ? readIos(source, kind, entries)
     : readAndroid(source, kind, entries);
 };

@@ -32,9 +32,16 @@ export interface ImportableNativeBuild {
   readonly builtInBundlePath: string;
 }
 
-export type NativeArtifactCheck =
+export type NativeArtifactCheck = (
   | { readonly ok: true; readonly build: ImportableNativeBuild }
-  | { readonly ok: false; readonly problems: readonly NativeArtifactProblem[] };
+  | { readonly ok: false; readonly problems: readonly NativeArtifactProblem[] }
+) & {
+  /**
+   * What may be wrong, but doesn't stop the import: an app ID that no
+   * `nativeBuild` scheme declares, which a scheme names only as a hint.
+   */
+  readonly warnings: readonly NativeArtifactProblem[];
+};
 
 /** The channel an app without a default channel reports. */
 const DEFAULT_CHANNEL = "production";
@@ -50,19 +57,27 @@ const isUnreadable = (value: unknown): value is UnreadableValue =>
  * one the project's update strategy can't place: no fingerprint under the
  * fingerprint strategy, or no app version a device compares under the
  * appVersion strategy. With `appIds`, the identifiers the project's
- * `nativeBuild` schemes build, it refuses another app's artifact.
+ * `nativeBuild` schemes name, it warns about an artifact of another app.
  */
 export const checkNativeArtifact = (
   info: NativeArtifactInfo,
   {
     updateStrategy,
     appIds = [],
+    channel: channelOverride,
   }: {
     readonly updateStrategy: "fingerprint" | "appVersion";
     readonly appIds?: readonly string[];
+    /**
+     * The channel the app reports, when it isn't the one the artifact
+     * compiled in: one its code sets, such as `HotUpdaterOptions(channel)`,
+     * or one it switches to at runtime.
+     */
+    readonly channel?: string;
   },
 ): NativeArtifactCheck => {
   const problems: NativeArtifactProblem[] = [];
+  const warnings: NativeArtifactProblem[] = [];
   const refuse = (code: NativeArtifactProblemCode, message: string) =>
     problems.push({ code, message });
 
@@ -119,10 +134,20 @@ export const checkNativeArtifact = (
   }
 
   let channel = DEFAULT_CHANNEL;
-  if (isUnreadable(info.channel)) {
+  if (channelOverride !== undefined) {
+    channel = channelOverride;
+    try {
+      encodeChannelKey(channel);
+    } catch (error) {
+      refuse(
+        "INVALID_SCOPE",
+        `The channel ${JSON.stringify(channel)} is no channel a release can target: ${error instanceof Error ? error.message : String(error)}.`,
+      );
+    }
+  } else if (isUnreadable(info.channel)) {
     refuse(
       "INVALID_SCOPE",
-      `${info.channel.unreadable}, so the channel its app reports can't be read.`,
+      `${info.channel.unreadable}, so the channel its app reports can't be read: name it instead.`,
     );
   } else if (info.channel !== null) {
     channel = info.channel;
@@ -141,17 +166,19 @@ export const checkNativeArtifact = (
     info.appId !== null &&
     !appIds.includes(info.appId)
   ) {
-    refuse(
-      "APP_ID_MISMATCH",
-      `The app is ${info.appId}, which no ${info.platform} scheme in nativeBuild builds (${appIds.join(", ")}): it is another app's build.`,
-    );
+    // A scheme's identifier picks a target; it may be stale, so it warns.
+    warnings.push({
+      code: "APP_ID_MISMATCH",
+      message: `The app is ${info.appId}, which no ${info.platform} scheme in nativeBuild names (${appIds.join(", ")}): check that it is this project's build.`,
+    });
   }
 
   if (problems.length > 0 || minBundleId === undefined) {
-    return { ok: false, problems };
+    return { ok: false, problems, warnings };
   }
   return {
     ok: true,
+    warnings,
     build: {
       platform: info.platform,
       kind: info.kind,

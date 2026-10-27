@@ -17,6 +17,7 @@ import {
 } from "./checkNativeArtifact";
 import {
   type NativeArtifactInfo,
+  nativeArtifactKindOf,
   readNativeArtifact,
 } from "./readNativeArtifact";
 import { openZipEntry, readZipDirectory } from "./zip";
@@ -311,6 +312,7 @@ describe("checkNativeArtifact", () => {
       checkNativeArtifact(info({}), { updateStrategy: "fingerprint" }),
     ).toEqual({
       ok: true,
+      warnings: [],
       build: {
         platform: "android",
         kind: "aab",
@@ -381,21 +383,43 @@ describe("checkNativeArtifact", () => {
     ).toBe(true);
   });
 
-  it("refuses another app's build when the schemes declare their app IDs", () => {
-    expect(
-      codes(
-        checkNativeArtifact(info({}), {
-          updateStrategy: "fingerprint",
-          appIds: ["com.example.other"],
-        }),
-      ),
-    ).toEqual(["APP_ID_MISMATCH"]);
+  it("warns about, and imports, another app ID than the schemes name", () => {
+    const other = checkNativeArtifact(info({}), {
+      updateStrategy: "fingerprint",
+      appIds: ["com.example.other"],
+    });
+    expect(other.ok).toBe(true);
+    expect(other.warnings.map(({ code }) => code)).toEqual(["APP_ID_MISMATCH"]);
     expect(
       checkNativeArtifact(info({}), {
         updateStrategy: "fingerprint",
         appIds: ["com.example.other", "com.example.app"],
-      }).ok,
-    ).toBe(true);
+      }).warnings,
+    ).toEqual([]);
+  });
+
+  it("registers under a channel it is given instead of the compiled-in one", () => {
+    expect(
+      checkNativeArtifact(
+        info({
+          channel: { unreadable: "The channel is a resource reference" },
+        }),
+        { updateStrategy: "fingerprint", channel: "beta-runtime" },
+      ),
+    ).toMatchObject({ ok: true, build: { channel: "beta-runtime" } });
+    expect(
+      codes(
+        checkNativeArtifact(info({}), {
+          updateStrategy: "fingerprint",
+          channel: " padded ",
+        }),
+      ),
+    ).toEqual(["INVALID_SCOPE"]);
+  });
+
+  it("names a simulator .app.zip an app", () => {
+    expect(nativeArtifactKindOf("App.app.zip")).toBe("app");
+    expect(nativeArtifactKindOf("App.zip")).toBeNull();
   });
 
   it("names every problem at once", () => {

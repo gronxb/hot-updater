@@ -3,15 +3,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { StoragePutInput } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createMemoryCore } from "../memory-core.ts";
 import {
   assertDependenciesInCheckout,
   nativeBuildChannel,
+  parseNativeBuildImportOutput,
   readArtifactMinBundleId,
-  registerInstalledNativeBuild,
 } from "./native-build-registration.ts";
 
 const MIN_BUNDLE_ID = "019a0b1c-2d3e-7000-8000-000000000000";
@@ -46,26 +44,8 @@ const createApk = async (bundle: string, kind: "apk" | "aab" = "apk") => {
   return path.join(root, `app.${kind}`);
 };
 
-const createStorage = () => {
-  const objects = new Map<string, Uint8Array>();
-  return {
-    objects,
-    storage: {
-      name: "memory",
-      protocol: "memory",
-      put: async ({ key, body }: StoragePutInput) => {
-        objects.set(
-          key,
-          new Uint8Array(await new Response(body).arrayBuffer()),
-        );
-        return { storageUri: `memory://bucket/${key}` };
-      },
-    },
-  };
-};
-
-describe("registering the installed E2E app as a native build", () => {
-  it("reads the MIN_BUNDLE_ID the build compiled in", async () => {
+describe("the installed E2E app's native build", () => {
+  it("reads the MIN_BUNDLE_ID the build compiled in, apart from the CLI", async () => {
     await expect(
       readArtifactMinBundleId(await createApk("bundle"), "android"),
     ).resolves.toBe(MIN_BUNDLE_ID);
@@ -74,81 +54,32 @@ describe("registering the installed E2E app as a native build", () => {
     ).resolves.toBe(MIN_BUNDLE_ID);
   });
 
-  it("registers an AAB as an aab artifact", async () => {
-    const { core } = createMemoryCore();
-    await registerInstalledNativeBuild({
-      core,
-      storage: createStorage().storage,
-      platform: "android",
-      artifactPath: await createApk("bundle", "aab"),
-      appVersion: "1.0",
-    });
-
-    await expect(
-      core.findNativeBuild({
-        platform: "android",
-        channel: nativeBuildChannel(MIN_BUNDLE_ID),
-        fingerprintHash: null,
-        appVersion: "1.0",
-      }),
-    ).resolves.toMatchObject({ artifact_kind: "aab" });
+  it("names the channel a binary registers under by its build time", () => {
+    expect(nativeBuildChannel(MIN_BUNDLE_ID)).toBe(
+      "e2e-native-build-019a0b1c2d3e",
+    );
   });
 
-  it("registers a binary once, under its own channel, and checks it after", async () => {
-    const { core } = createMemoryCore();
-    const { objects, storage } = createStorage();
-    const artifactPath = await createApk("built-in bundle bytes");
-    const register = () =>
-      registerInstalledNativeBuild({
-        core,
-        storage,
-        platform: "android",
-        artifactPath,
-        appVersion: "1.0",
-      });
-
-    await expect(register()).resolves.toMatchObject({
-      minBundleId: MIN_BUNDLE_ID,
-      channel: nativeBuildChannel(MIN_BUNDLE_ID),
-      registered: true,
-    });
-    const nativeBuild = await core.findNativeBuild({
-      platform: "android",
-      channel: nativeBuildChannel(MIN_BUNDLE_ID),
-      fingerprintHash: null,
-      appVersion: "1.0",
-    });
-    expect(nativeBuild).toMatchObject({
+  it("reads the JSON line native-build import --json ends its output with", () => {
+    const nativeBuild = {
+      id: "019a0000-0000-7000-8000-00000000b001",
       min_bundle_id: MIN_BUNDLE_ID,
-      artifact_kind: "apk",
-    });
-    // The built-in bundle as deploy stores a bundle, and the artifact.
-    expect([...objects.keys()].sort()).toEqual([
-      expect.stringMatching(/^assets\/sha256\/[0-9a-f]{2}\/[0-9a-f]{64}\.br$/),
-      `bundles/${MIN_BUNDLE_ID}/manifest.json`,
-      `native-builds/android/${nativeBuild!.id}/app.apk`,
-    ]);
-
-    // Another run of the same binary finds it registered.
-    await expect(register()).resolves.toMatchObject({ registered: false });
-    expect(objects.size).toBe(3);
-  });
-
-  it("refuses an ID registered with other bytes", async () => {
-    const { core } = createMemoryCore();
-    const { storage } = createStorage();
-    const register = async (bundle: string) =>
-      registerInstalledNativeBuild({
-        core,
-        storage,
-        platform: "android",
-        artifactPath: await createApk(bundle),
-        appVersion: "1.0",
-      });
-
-    await register("first bytes");
-    await expect(register("other bytes")).rejects.toThrow(
-      `Built-in bundle ${MIN_BUNDLE_ID} is registered with other bytes`,
+      channel_id: "channel:x",
+      app_version: "1.0",
+      artifact_kind: "app",
+    };
+    expect(
+      parseNativeBuildImportOutput(
+        [
+          "│  Native build artifact",
+          "◆  Registered native build 019a…",
+          JSON.stringify({ ok: true, alreadyImported: true, nativeBuild }),
+          "",
+        ].join("\n"),
+      ),
+    ).toEqual({ ok: true, alreadyImported: true, nativeBuild });
+    expect(() => parseNativeBuildImportOutput("■  failed\n")).toThrow(
+      "printed no JSON",
     );
   });
 });

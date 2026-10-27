@@ -271,7 +271,7 @@ describe("native-build import", () => {
     await expect(harness.core.getBundle(MIN_BUNDLE_ID)).resolves.toBeNull();
   });
 
-  it("refuses a build already registered, naming it, and uploads nothing", async () => {
+  it("imports the same build again as a success that changes nothing, as a rerun CI job does", async () => {
     const file = await writeArtifact(dir, "app-release.aab", aab());
     await handleNativeBuildImport(file, { json: true });
     const first = printedJson(stdout).nativeBuild;
@@ -280,16 +280,11 @@ describe("native-build import", () => {
 
     await handleNativeBuildImport(file, { json: true });
 
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBeUndefined();
     expect(printedJson(stdout)).toMatchObject({
-      ok: false,
-      problems: [
-        {
-          code: "ALREADY_IMPORTED",
-          nativeBuildId: first.id,
-          message: expect.stringContaining(`native build ${first.id}`),
-        },
-      ],
+      ok: true,
+      alreadyImported: true,
+      nativeBuild: { id: first.id, min_bundle_id: MIN_BUNDLE_ID },
     });
     expect([...storage.objects.keys()]).toEqual(stored);
     await expect(
@@ -297,7 +292,42 @@ describe("native-build import", () => {
     ).resolves.toHaveLength(1);
   });
 
-  it("names an already registered build that is not its scope's newest", async () => {
+  it("refuses another artifact whose MIN_BUNDLE_ID is registered, naming the build, and uploads nothing", async () => {
+    await handleNativeBuildImport(
+      await writeArtifact(dir, "app-release.aab", aab()),
+      { json: true },
+    );
+    const first = printedJson(stdout).nativeBuild;
+    const stored = [...storage.objects.keys()];
+    for (const [files, options] of [
+      // Other JavaScript under the same ID.
+      [
+        aab({ "base/assets/index.android.bundle": "console.log('other');" }),
+        {},
+      ],
+      // The same build on another channel.
+      [aab(), { channel: "staging" }],
+    ] as const) {
+      stdout.mockClear();
+      process.exitCode = undefined;
+      await handleNativeBuildImport(
+        await writeArtifact(dir, "other.aab", files),
+        { json: true, ...options },
+      );
+
+      expect(process.exitCode).toBe(1);
+      expect(printedJson(stdout).problems).toEqual([
+        {
+          code: "ALREADY_IMPORTED",
+          nativeBuildId: first.id,
+          message: expect.stringContaining(`native build ${first.id}`),
+        },
+      ]);
+    }
+    expect([...storage.objects.keys()]).toEqual(stored);
+  });
+
+  it("finds the same build when it is not its scope's newest", async () => {
     const file = await writeArtifact(dir, "app-release.aab", aab());
     await handleNativeBuildImport(file, { json: true });
     const first = printedJson(stdout).nativeBuild;
@@ -322,14 +352,14 @@ describe("native-build import", () => {
 
     await handleNativeBuildImport(file, { json: true });
 
-    expect(printedJson(stdout).problems).toEqual([
-      expect.objectContaining({
-        message: expect.stringContaining(`native build ${first.id}`),
-      }),
-    ]);
+    expect(printedJson(stdout)).toMatchObject({
+      ok: true,
+      alreadyImported: true,
+      nativeBuild: { id: first.id },
+    });
   });
 
-  it("refuses a build another import registers while it uploads", async () => {
+  it("settles a race with another import of the same build as already imported, deleting its own upload", async () => {
     const file = await writeArtifact(dir, "app-release.aab", aab());
     const register = harness.core.registerNativeBuild;
     let winner: string | undefined;
@@ -348,14 +378,12 @@ describe("native-build import", () => {
 
     await handleNativeBuildImport(file, { json: true });
 
-    expect(process.exitCode).toBe(1);
-    expect(printedJson(stdout).problems).toEqual([
-      {
-        code: "ALREADY_IMPORTED",
-        nativeBuildId: winner,
-        message: expect.stringContaining(`native build ${winner}`),
-      },
-    ]);
+    expect(process.exitCode).toBeUndefined();
+    expect(printedJson(stdout)).toMatchObject({
+      ok: true,
+      alreadyImported: true,
+      nativeBuild: { id: winner },
+    });
     // The losing upload's artifact is deleted.
     expect(
       [...storage.objects.keys()].filter((key) =>
@@ -363,6 +391,87 @@ describe("native-build import", () => {
       ),
     ).toEqual([]);
   });
+
+  it("registers under the channel --channel names, which the app reports at runtime", async () => {
+    const file = await writeArtifact(dir, "app-release.aab", aab());
+
+    await handleNativeBuildImport(file, {
+      json: true,
+      channel: "e2e-native-build-019a2b3c4d5e",
+    });
+
+    expect(printedJson(stdout).build).toMatchObject({
+      channel: "e2e-native-build-019a2b3c4d5e",
+    });
+    await expect(
+      harness.core.findNativeBuild({
+        platform: "android",
+        channel: "e2e-native-build-019a2b3c4d5e",
+        fingerprintHash: FINGERPRINT,
+        appVersion: null,
+      }),
+    ).resolves.toMatchObject({ min_bundle_id: MIN_BUNDLE_ID });
+  });
+
+  it("imports a simulator .app.zip, the .app at its root, as an app artifact", async () => {
+    loadConfig.mockResolvedValue(config({ updateStrategy: "appVersion" }));
+    const file = await writeArtifact(dir, "App.app.zip", {
+      "App.app/Info.plist": fixture("Info.plist"),
+      "App.app/App": fixture("App"),
+      "App.app/main.jsbundle": BUILT_IN,
+    });
+
+    await handleNativeBuildImport(file, { json: true });
+
+    const { nativeBuild } = printedJson(stdout);
+    expect(nativeBuild).toMatchObject({
+      platform: "ios",
+      artifact_kind: "app",
+      min_bundle_id: MIN_BUNDLE_ID,
+      app_version: "1.4.0",
+    });
+    // Stored as given, not archived again.
+    expect(
+      Buffer.compare(
+        storage.objects.get(`native-builds/ios/${nativeBuild.id}/App.app.zip`)!,
+        fs.readFileSync(file),
+      ),
+    ).toBe(0);
+  });
+
+  it.skipIf(process.platform !== "darwin")(
+    "imports a simulator .app directory, archived as ditto archives it",
+    async () => {
+      loadConfig.mockResolvedValue(config({ updateStrategy: "appVersion" }));
+      const app = path.join(dir, "App.app");
+      await fs.promises.mkdir(app);
+      await fs.promises.writeFile(
+        path.join(app, "Info.plist"),
+        fixture("Info.plist"),
+      );
+      await fs.promises.writeFile(path.join(app, "App"), fixture("App"));
+      await fs.promises.writeFile(path.join(app, "main.jsbundle"), BUILT_IN);
+
+      await handleNativeBuildImport(app, { json: true });
+
+      const { nativeBuild } = printedJson(stdout);
+      expect(nativeBuild).toMatchObject({
+        artifact_kind: "app",
+        min_bundle_id: MIN_BUNDLE_ID,
+      });
+      const zip = await JSZip.loadAsync(
+        storage.objects.get(`native-builds/ios/${nativeBuild.id}/App.app.zip`)!,
+      );
+      expect(
+        Buffer.compare(
+          Buffer.from(
+            await zip.file("App.app/main.jsbundle")!.async("uint8array"),
+          ),
+          BUILT_IN,
+        ),
+      ).toBe(0);
+    },
+  );
 
   it.each([
     [
@@ -401,7 +510,7 @@ describe("native-build import", () => {
     expect(loadServer).not.toHaveBeenCalled();
   });
 
-  it("refuses another app's build when the schemes declare their application IDs", async () => {
+  it("warns about another app ID than the schemes name, and imports it", async () => {
     loadConfig.mockResolvedValue(
       config({
         nativeBuild: {
@@ -413,15 +522,20 @@ describe("native-build import", () => {
         },
       }),
     );
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
     const file = await writeArtifact(dir, "app.aab", aab());
 
-    await handleNativeBuildImport(file, {});
+    await handleNativeBuildImport(file, { json: true });
 
-    expect(process.exitCode).toBe(1);
-    expect(log.error).toHaveBeenCalledWith(
+    expect(process.exitCode).toBeUndefined();
+    expect(printedJson(stdout)).toMatchObject({
+      ok: true,
+      warnings: [{ code: "APP_ID_MISMATCH" }],
+    });
+    expect(stderr).toHaveBeenCalledWith(
       expect.stringContaining("com.example.app"),
     );
-    expect(loadServer).not.toHaveBeenCalled();
+    stderr.mockRestore();
   });
 
   it("makes the imported built-in bundle the base an OTA deployed after it patches from", async () => {
