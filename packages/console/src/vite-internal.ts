@@ -205,6 +205,7 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "    console: {",
             "      gitUrl: config.console.gitUrl,",
             "      channelLinkPrefix: config.console.channelLinkPrefix,",
+            "      updateStrategy: config.updateStrategy,",
             "    },",
             "  };",
             "};",

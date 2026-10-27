@@ -123,6 +123,7 @@ describe("NativeBuildsTable", () => {
     const onChannel = vi.fn();
     render(
       <NativeBuildsTable
+        onImport={vi.fn()}
         builds={builds([row], { next: row.id })}
         channel={undefined}
         onChannel={onChannel}
@@ -165,6 +166,7 @@ describe("NativeBuildsTable", () => {
   it("gives an empty registry the command that registers a build", () => {
     render(
       <NativeBuildsTable
+        onImport={vi.fn()}
         builds={builds([])}
         channel={undefined}
         onChannel={vi.fn()}
@@ -186,6 +188,7 @@ describe("NativeBuildsTable", () => {
     const onChannel = vi.fn();
     render(
       <NativeBuildsTable
+        onImport={vi.fn()}
         builds={builds([])}
         channel="pr-131"
         onChannel={onChannel}
@@ -205,6 +208,7 @@ describe("NativeBuildsTable", () => {
     const onPage = vi.fn();
     render(
       <NativeBuildsTable
+        onImport={vi.fn()}
         builds={builds([])}
         channel={undefined}
         onChannel={vi.fn()}

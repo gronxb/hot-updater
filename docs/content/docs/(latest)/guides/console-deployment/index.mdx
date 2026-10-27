@@ -63,6 +63,9 @@ export default defineConsoleConfig({
   plugins: [apiKeys(), insights(), remoteConfig()],
   console: {
     gitUrl: "https://github.com/acme/app",
+    // The app's update strategy, which a native build imported on the
+    // Native builds page registers by.
+    updateStrategy: "appVersion",
   },
 });
 ```

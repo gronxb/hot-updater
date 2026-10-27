@@ -160,3 +160,6 @@ export const simulatorInstallCommand = (build: NativeBuildRow) => {
 /** The command that installs a downloaded APK on an Android device or emulator. */
 export const apkInstallCommand = (build: NativeBuildRow) =>
   `adb install -r ${shellQuote(nativeBuildFileName(build))}`;
+
+/** The console route a dropped store artifact is uploaded to. */
+export const NATIVE_BUILD_IMPORT_PATH = "/api/native-builds/import";

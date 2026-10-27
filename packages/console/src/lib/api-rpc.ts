@@ -6,6 +6,7 @@ import {
   rowToBundle,
 } from "@hot-updater/plugin-core";
 import { assertCanonicalChannelName } from "@hot-updater/protocol";
+import type { NativeArtifactInfo } from "@hot-updater/protocol/native-artifact";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";
@@ -344,4 +345,23 @@ export const getNativeBuildDownloadUrl = createServerFn({ method: "GET" })
       import("./server/nativeBuilds"),
     ]);
     return { url: await resolveNativeBuildDownloadUrl(data.id, deps) };
+  });
+
+/**
+ * Whether an artifact the browser read can be imported, before its upload:
+ * the strategy it registers by, the shared check, and whether its build is
+ * already registered. The upload checks the artifact itself again.
+ */
+export const checkNativeBuildImport = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .validator((input: NativeArtifactInfo) => {
+    if (typeof input !== "object" || input === null) {
+      throw new Error("The artifact's values are required.");
+    }
+    return input;
+  })
+  .handler(async ({ data }) => {
+    const [{ core, config }, { checkNativeBuildImport: check }] =
+      await Promise.all([prepare(), import("./server/nativeBuildImport")]);
+    return check(core, config.updateStrategy, data);
   });

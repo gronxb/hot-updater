@@ -441,6 +441,25 @@ Add `--dry-run` to read and check the artifact and record nothing, and
 `--json` to print what was read, and the registered build or the refusals, as
 JSON on the last line.
 
+### Import in the Console
+
+On the Console's **Native builds** page, choose **Import**, or drop the file
+anywhere on the page. The browser reads the artifact, without uploading it,
+and shows what it read and how the build will be found: by its fingerprint or
+by its app version. It refuses what the CLI refuses, with the same messages,
+and a build already registered links to that build's page. **Import build**
+uploads the file to the Console, which reads it again, checks it, stores the
+artifact and the built-in bundle, and registers the build, then opens the
+build's page.
+
+The Console registers by `updateStrategy` from `hot-updater.config.ts` when
+`hot-updater console` runs it. A [hosted Console](/docs/guides/console-deployment)
+takes `console.updateStrategy` from its configuration; without it, it uses
+the newest registered build's strategy, or, with none, the fingerprint
+strategy when the artifact compiled a fingerprint in. The upload goes
+through the Console's server, which takes files up to 2 GB; your storage's
+own size limit still applies. Import a larger build with the CLI.
+
 ## Reuse a build
 
 Each build computes a native build key, `nbk1:` and a SHA-256, of every input

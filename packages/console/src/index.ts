@@ -50,6 +50,13 @@ export type HotUpdaterConsoleConfig = Readonly<{
      * opens with `hotUpdater.openChannelLink`.
      */
     channelLinkPrefix?: string;
+    /**
+     * The app's update strategy, as `updateStrategy` in hot-updater.config.ts
+     * sets it, which a build imported on the Native builds page registers
+     * by. Without it, an import takes the newest registered build's, or,
+     * with none, whether the artifact compiled a fingerprint in.
+     */
+    updateStrategy?: "fingerprint" | "appVersion";
   };
 }>;
 

@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileUp,
   HardDriveDownload,
   RefreshCw,
 } from "lucide-react";
@@ -56,11 +57,13 @@ function EmptyRow({
   paged,
   onClearChannel,
   onNewest,
+  onImport,
 }: {
   readonly channel: string | undefined;
   readonly paged: boolean;
   readonly onClearChannel: () => void;
   readonly onNewest: () => void;
+  readonly onImport: () => void;
 }) {
   return (
     <TableRow>
@@ -109,8 +112,12 @@ function EmptyRow({
                   hot-updater native-build android
                 </code>{" "}
                 or <code className="font-mono text-xs">native-build ios</code>,
-                which tracks it here.
+                which tracks it here, or import a release build made elsewhere.
               </p>
+              <Button className="mt-1 min-h-11 sm:min-h-8" onClick={onImport}>
+                <FileUp data-icon="inline-start" />
+                Import a build
+              </Button>
               <a
                 className={buttonVariants({
                   className: "mt-1 min-h-11 sm:min-h-8",
@@ -276,6 +283,7 @@ export function NativeBuildsTable({
   paged,
   onChannel,
   onPage,
+  onImport,
 }: {
   readonly builds: {
     readonly data: NativeBuildListResult | undefined;
@@ -290,6 +298,8 @@ export function NativeBuildsTable({
   readonly paged: boolean;
   readonly onChannel: (channel: string | undefined) => void;
   readonly onPage: (page: { before?: string; after?: string }) => void;
+  /** Opens the import of a build made elsewhere. */
+  readonly onImport: () => void;
 }) {
   const rows = builds.data?.data;
   const { next, previous } = builds.data ?? {};
@@ -346,6 +356,7 @@ export function NativeBuildsTable({
             <EmptyRow
               channel={channel}
               onClearChannel={() => onChannel(undefined)}
+              onImport={onImport}
               onNewest={() => onPage({})}
               paged={paged}
             />

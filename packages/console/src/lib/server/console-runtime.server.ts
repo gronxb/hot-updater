@@ -19,6 +19,8 @@ export interface ResolvedConsoleConfig {
   readonly gitUrl?: string;
   /** The app's link prefix, which channel links start with. */
   readonly channelLinkPrefix?: string;
+  /** The app's update strategy, which an imported native build registers by. */
+  readonly updateStrategy?: "fingerprint" | "appVersion";
   /** The server's database, or its admin API. */
   readonly database: ConfiguredDatabase;
   /**
@@ -74,10 +76,11 @@ export const resolveConsoleConfig = async (
 
   const config = typeof source === "function" ? await source(request) : source;
   const { database, storage, plugins = [] } = config;
-  const { gitUrl, channelLinkPrefix } = config.console ?? {};
+  const { gitUrl, channelLinkPrefix, updateStrategy } = config.console ?? {};
   const consoleOptions = {
     ...(gitUrl === undefined ? {} : { gitUrl }),
     ...(channelLinkPrefix === undefined ? {} : { channelLinkPrefix }),
+    ...(updateStrategy === undefined ? {} : { updateStrategy }),
   };
   // A self-hosted server runs the plugins itself: core is its admin API.
   // The plugins are still checked as the server checks them, on a database

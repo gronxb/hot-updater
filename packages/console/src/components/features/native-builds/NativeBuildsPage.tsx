@@ -1,4 +1,5 @@
-import { HardDrive, RefreshCw } from "lucide-react";
+import { FileUp, HardDrive, RefreshCw } from "lucide-react";
+import { type DragEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import {
   useNativeBuildsQuery,
 } from "@/lib/api";
 
+import { ImportNativeBuildDialog } from "./ImportNativeBuildDialog";
 import { NativeBuildsTable } from "./NativeBuildsTable";
 
 /**
@@ -51,9 +53,55 @@ export function NativeBuildsPage({
       : [channel, ...channelNames];
   const filterBy = (next: string | undefined) =>
     onSearchChange(next === undefined ? {} : { channel: next });
+  // The import dialog, and a file dropped anywhere on the page.
+  const [importing, setImporting] = useState(false);
+  const [dropped, setDropped] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const openImport = (file: File | null) => {
+    setDropped(file);
+    setImporting(true);
+  };
+  const carriesFiles = (event: DragEvent) =>
+    event.dataTransfer.types.includes("Files");
 
   return (
-    <div className="flex h-svh min-h-0 flex-col">
+    <div
+      className="relative flex h-svh min-h-0 flex-col"
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setDragging(false);
+      }}
+      onDragOver={(event) => {
+        if (importing || !carriesFiles(event)) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDrop={(event) => {
+        if (importing || !carriesFiles(event)) return;
+        event.preventDefault();
+        setDragging(false);
+        const file = event.dataTransfer.files[0];
+        if (file) openImport(file);
+      }}
+    >
+      {dragging ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-background/80 text-sm font-medium backdrop-blur-sm"
+        >
+          <FileUp className="mr-2 size-4" />
+          Drop an .ipa, .aab or .apk to import it
+        </div>
+      ) : null}
+      {importing ? (
+        <ImportNativeBuildDialog
+          file={dropped}
+          onOpenChange={(open) => {
+            setImporting(open);
+            if (!open) setDropped(null);
+          }}
+          open
+        />
+      ) : null}
       <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-background px-3 py-3 sm:min-h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
         <SidebarTrigger className="-ml-1 size-11 lg:size-7" />
         <div className="flex items-center gap-1.5">
@@ -116,8 +164,17 @@ export function NativeBuildsPage({
               </SelectContent>
             </Select>
             <Button
+              className="ml-auto min-h-11 sm:min-h-7"
+              onClick={() => openImport(null)}
+              size="sm"
+              variant="outline"
+            >
+              <FileUp data-icon="inline-start" />
+              Import
+            </Button>
+            <Button
               aria-label="Refresh native builds"
-              className="ml-auto size-11 sm:size-7"
+              className="size-11 sm:size-7"
               disabled={builds.isLoading}
               onClick={() => void builds.refetch()}
               size="icon-sm"
@@ -137,6 +194,7 @@ export function NativeBuildsPage({
                   ...page,
                 })
               }
+              onImport={() => openImport(null)}
               paged={before !== undefined || after !== undefined}
             />
           </CardContent>
