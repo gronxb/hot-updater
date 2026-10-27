@@ -575,6 +575,46 @@ describe("computeNativeBuildKey", () => {
         write("build/out.o", "o");
       }, ios),
     ).toEqual({ changed: [], same: true });
+
+    // The example app's ignored files count in the app's own components,
+    // without this machine's Node.js path, object IDs, or credentials.
+    write(
+      ".gitignore",
+      `${fs.readFileSync(path.join(root, ".gitignore"))}apps/mobile/ios/App.xcodeproj/\n`,
+    );
+    write(
+      "apps/mobile/ios/App.xcodeproj/project.pbxproj",
+      xcodeProject(randomIds(), ["AppDelegate.swift"]),
+    );
+    write(".env", "API_TOKEN=first\nPUBLIC=1\n");
+    expect(
+      await changedBy(() => {
+        write(
+          "apps/mobile/ios/App.xcodeproj/project.pbxproj",
+          xcodeProject(randomIds(), ["AppDelegate.swift"]),
+        );
+        write(
+          "apps/mobile/ios/.xcode.env.local",
+          "export NODE_BINARY=/Users/other/.nvm/node\n",
+        );
+        write(".env", "API_TOKEN=second\nPUBLIC=1\n");
+      }, ios),
+    ).toEqual({ changed: [], same: true });
+    expect(
+      (
+        await changedBy(() => {
+          write(
+            "apps/mobile/ios/App.xcodeproj/project.pbxproj",
+            xcodeProject(randomIds(), ["AppDelegate.swift", "Extra.swift"]),
+          );
+          write(".env", "API_TOKEN=second\nPUBLIC=2\n");
+        }, ios)
+      ).changed,
+    ).toEqual([
+      "input:env-file:.env",
+      "input:file:apps/mobile/ios/App.xcodeproj/project.pbxproj",
+      "input:package:the-library@1.0.0",
+    ]);
   });
 
   it("changes with the native code a package keeps where autolinking says, not in ios/ or android/", async () => {

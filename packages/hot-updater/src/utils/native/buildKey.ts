@@ -905,6 +905,20 @@ const readPackages = async ({
             ignore: GENERATED_GLOBS,
           })
         ).map((file) => path.join(dir, file));
+  const inside = (dir: string, file: string) =>
+    file.startsWith(`${dir}${path.sep}`);
+  // The app's own files count in its components, its native projects' and
+  // `.env*` files without this machine's paths, IDs, or credentials, even
+  // when a package holds the app, as a library's example app is held by the
+  // library at the repository's root. A local module inside the app counts.
+  const localModules = [...linked.keys()].filter((dir) => inside(cwd, dir));
+  const isApps = (file: string) =>
+    inside(cwd, file) && !localModules.some((dir) => inside(dir, file));
+  // A `.env*` file's settings count without their credentials.
+  const fileDigest = async (file: string) =>
+    path.basename(file).startsWith(".env")
+      ? assignmentsDigest(parseDotenv(await fs.readFile(file, "utf8")), root)
+      : hashes.hash(file);
   await mapLimit([...linked.values()], 8, async (entry) => {
     // A package of the repository has its tracked files among the
     // repository's; one anywhere else counts by all its files.
@@ -930,8 +944,8 @@ const readPackages = async ({
         )
       ).flat(),
     ];
-    const unique = [...new Set(files)].sort();
-    const fileDigests = await mapLimit(unique, 16, (file) => hashes.hash(file));
+    const unique = [...new Set(files)].filter((file) => !isApps(file)).sort();
+    const fileDigests = await mapLimit(unique, 16, fileDigest);
     const label = `package:${entry.name}@${entry.version}`;
     digests.set(label, [
       ...(digests.get(label) ?? []),
