@@ -9,11 +9,24 @@ import { type ByteSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import { readDexStrings, readMachOStrings } from "./strings";
 import {
+  filterZipEntries,
+  findZipEntry,
   readZipDirectory,
   readZipEntry,
   readZipEntryRange,
   type ZipEntry,
+  type ZipReadBudget,
 } from "./zip";
+
+const MiB = 1024 * 1024;
+/** The most a manifest or an Info.plist holds. */
+const METADATA_BYTES = 16 * MiB;
+/** The most one dex file holds. */
+const DEX_BYTES = 256 * MiB;
+/** The most reading one artifact inflates, across every entry it reads. */
+const READ_BUDGET_BYTES = 2048 * MiB;
+/** How long reading one artifact may take. */
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 /**
  * The kinds of artifact a build made elsewhere can be imported from: the
@@ -117,9 +130,10 @@ const readAndroid = async (
   source: ByteSource,
   kind: "aab" | "apk",
   entries: readonly ZipEntry[],
+  budget: ZipReadBudget,
 ): Promise<NativeArtifactInfo> => {
-  const byName = new Map(entries.map((entry) => [entry.name, entry]));
-  const manifestEntry = byName.get(
+  const manifestEntry = findZipEntry(
+    entries,
     kind === "aab"
       ? "base/manifest/AndroidManifest.xml"
       : "AndroidManifest.xml",
@@ -130,23 +144,33 @@ const readAndroid = async (
       `The ${kind === "aab" ? ".aab has no base/manifest/AndroidManifest.xml" : ".apk has no AndroidManifest.xml"}.`,
     );
   }
-  const manifestBytes = await readZipEntry(source, manifestEntry);
+  const manifestBytes = await readZipEntry(
+    source,
+    manifestEntry,
+    METADATA_BYTES,
+    budget,
+  );
   const manifest = readAndroidManifest(
     kind === "aab"
       ? parseProtoManifest(manifestBytes)
       : parseBinaryManifest(manifestBytes),
   );
   const strings: string[] = [];
-  for (const entry of entries) {
-    const isDex =
-      kind === "aab"
-        ? /^base\/dex\/classes\d*\.dex$/u.test(entry.name)
-        : /^classes\d*\.dex$/u.test(entry.name);
-    if (!isDex) continue;
-    strings.push(...readDexStrings(await readZipEntry(source, entry), LENGTHS));
+  const dexes = filterZipEntries(entries, (name) =>
+    kind === "aab"
+      ? /^base\/dex\/classes\d*\.dex$/u.test(name)
+      : /^classes\d*\.dex$/u.test(name),
+  );
+  for (const entry of dexes) {
+    strings.push(
+      ...readDexStrings(
+        await readZipEntry(source, entry, DEX_BYTES, budget),
+        LENGTHS,
+      ),
+    );
   }
   const { minBundleIds, fingerprints } = candidatesOf(strings);
-  const bundle = byName.get(builtInBundlePathOf(kind));
+  const bundle = findZipEntry(entries, builtInBundlePathOf(kind));
   return {
     platform: "android",
     kind,
@@ -174,12 +198,13 @@ const readIos = async (
   source: ByteSource,
   kind: "ipa" | "app",
   entries: readonly ZipEntry[],
+  budget: ZipReadBudget,
 ): Promise<NativeArtifactInfo> => {
   const infoPlist =
     kind === "ipa"
       ? /^Payload\/[^/]+\.app\/Info\.plist$/u
       : /^[^/]+\.app\/Info\.plist$/u;
-  const plistEntry = entries.find(({ name }) => infoPlist.test(name));
+  const plistEntry = findZipEntry(entries, (name) => infoPlist.test(name));
   if (plistEntry === undefined) {
     throw new NativeArtifactError(
       "UNREADABLE",
@@ -189,7 +214,9 @@ const readIos = async (
     );
   }
   const appDirectory = plistEntry.name.slice(0, -"Info.plist".length);
-  const plist = parsePlist(await readZipEntry(source, plistEntry));
+  const plist = parsePlist(
+    await readZipEntry(source, plistEntry, METADATA_BYTES, budget),
+  );
   if (plist === null || typeof plist !== "object" || Array.isArray(plist)) {
     throw new NativeArtifactError(
       "UNREADABLE",
@@ -197,10 +224,9 @@ const readIos = async (
     );
   }
   const info = plist as Record<string, unknown>;
-  const byName = new Map(entries.map((entry) => [entry.name, entry]));
   const machO = (entry: ZipEntry) =>
     readMachOStrings(
-      (start, end) => readZipEntryRange(source, entry, start, end),
+      (start, end) => readZipEntryRange(source, entry, start, end, budget),
       LENGTHS,
     );
   // The SDK compiles MIN_BUNDLE_ID and the fingerprint into its own code:
@@ -208,7 +234,7 @@ const readIos = async (
   // then decides alone, whatever other code holds; else the app's
   // executable; else, under another framework's name, every framework,
   // whose candidates together must be one.
-  const frameworks = entries.filter(({ name }) => {
+  const frameworks = filterZipEntries(entries, (name) => {
     const match = new RegExp(
       `^${appDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}Frameworks/([^/]+)\\.framework/([^/]+)$`,
       "u",
@@ -220,7 +246,7 @@ const readIos = async (
   const executableEntry =
     executable === null
       ? undefined
-      : byName.get(`${appDirectory}${executable}`);
+      : findZipEntry(entries, `${appDirectory}${executable}`);
   let strings = sdk === undefined ? [] : await machO(sdk);
   if (!strings.some(isUUIDv7) && executableEntry !== undefined) {
     strings = await machO(executableEntry);
@@ -231,7 +257,7 @@ const readIos = async (
     }
   }
   const { minBundleIds, fingerprints } = candidatesOf(strings);
-  const bundle = byName.get(builtInBundlePathOf(kind, appDirectory));
+  const bundle = findZipEntry(entries, builtInBundlePathOf(kind, appDirectory));
   const channel = info["HOT_UPDATER_CHANNEL"];
   return {
     platform: "ios",
@@ -264,6 +290,7 @@ const readIos = async (
 export const readNativeArtifact = async (
   source: ByteSource,
   fileName: string,
+  { timeoutMs = DEFAULT_TIMEOUT_MS }: { readonly timeoutMs?: number } = {},
 ): Promise<NativeArtifactInfo> => {
   const kind = nativeArtifactKindOf(fileName);
   if (kind === null) {
@@ -272,8 +299,36 @@ export const readNativeArtifact = async (
       `${fileName} is not an .ipa, .aab, .apk or a simulator .app. Import the artifact of a release build.`,
     );
   }
-  const entries = await readZipDirectory(source);
-  return kind === "ipa" || kind === "app"
-    ? readIos(source, kind, entries)
-    : readAndroid(source, kind, entries);
+  // An upload is untrusted: every read counts against one budget and one
+  // deadline, and whatever a crafted file breaks is a refusal, not a crash.
+  const budget: ZipReadBudget = {
+    remaining: READ_BUDGET_BYTES,
+    deadline: Date.now() + timeoutMs,
+  };
+  const timed: ByteSource = {
+    size: source.size,
+    read(offset, length) {
+      if (Date.now() > budget.deadline) {
+        return Promise.reject(
+          new NativeArtifactError(
+            "UNREADABLE",
+            "Reading the artifact took too long.",
+          ),
+        );
+      }
+      return source.read(offset, length);
+    },
+  };
+  try {
+    const entries = await readZipDirectory(timed);
+    return await (kind === "ipa" || kind === "app"
+      ? readIos(timed, kind, entries, budget)
+      : readAndroid(timed, kind, entries, budget));
+  } catch (error) {
+    if (error instanceof NativeArtifactError) throw error;
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      `The artifact is malformed: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
 };

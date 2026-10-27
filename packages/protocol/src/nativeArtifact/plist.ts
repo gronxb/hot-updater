@@ -10,6 +10,9 @@ export type PlistValue =
   | PlistValue[]
   | { [key: string]: PlistValue };
 
+/** How deep a plist nests: an Info.plist nests a few levels. */
+const MAX_DEPTH = 64;
+
 const corrupt = () =>
   new NativeArtifactError("UNREADABLE", "The app's Info.plist is corrupt.");
 
@@ -37,7 +40,9 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
   const seen = new Set<number>();
 
   const parse = (ref: number): PlistValue => {
-    if (ref >= objectCount || seen.has(ref)) throw corrupt();
+    if (ref >= objectCount || seen.has(ref) || seen.size > MAX_DEPTH) {
+      throw corrupt();
+    }
     const offset = uintAt(bytes, tableOffset + ref * offsetSize, offsetSize);
     const marker = bytes[offset]!;
     const kind = marker >> 4;
@@ -97,7 +102,7 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
       case 0xd: {
         const [length, start] = lengthAt();
         seen.add(ref);
-        const dict: { [key: string]: PlistValue } = {};
+        const dict: { [key: string]: PlistValue } = Object.create(null);
         for (let i = 0; i < length; i += 1) {
           const key = parse(uintAt(bytes, start + i * refSize, refSize));
           const value = parse(
@@ -159,7 +164,9 @@ const parseXmlPlist = (text: string): PlistValue => {
     if (tokens[i++] !== close) throw corrupt();
     return decodeEntities(value);
   };
+  let depth = 0;
   const parseValue = (tag: string): PlistValue => {
+    if (depth > MAX_DEPTH) throw corrupt();
     const name = /^<\s*([\w]+)/u.exec(tag)?.[1];
     const empty = tag.endsWith("/>");
     switch (name) {
@@ -180,19 +187,23 @@ const parseXmlPlist = (text: string): PlistValue => {
       case "array": {
         const items: PlistValue[] = [];
         if (empty) return items;
+        depth += 1;
         for (let next = nextTag(); next !== "</array>"; next = nextTag()) {
           items.push(parseValue(next));
         }
+        depth -= 1;
         return items;
       }
       case "dict": {
-        const dict: { [key: string]: PlistValue } = {};
+        const dict: { [key: string]: PlistValue } = Object.create(null);
         if (empty) return dict;
+        depth += 1;
         for (let next = nextTag(); next !== "</dict>"; next = nextTag()) {
           if (next !== "<key>") throw corrupt();
           const key = textUntil("</key>");
           dict[key] = parseValue(nextTag());
         }
+        depth -= 1;
         return dict;
       }
       default:

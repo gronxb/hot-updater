@@ -12,9 +12,34 @@ const EOCD_SEARCH_LENGTH = 22 + 0xffff;
 /** How much compressed data one read takes. */
 const READ_CHUNK = 1024 * 1024;
 
+const MiB = 1024 * 1024;
+/**
+ * What an archive may hold before it is refused as no artifact: an upload is
+ * untrusted, so a crafted directory or entry (a zip bomb) stops here, not
+ * after filling memory.
+ */
+export const ZIP_LIMITS = {
+  /** The central directory. */
+  directoryBytes: 64 * MiB,
+  entries: 500_000,
+  /** An entry streamed out whole, such as the built-in bundle. */
+  entryBytes: 1024 * MiB,
+} as const;
+
+const UNIX_HOST = 3;
+const S_IFMT = 0o170000;
+const S_IFLNK = 0o120000;
+
 /** One file of a zip archive, from its central directory. */
 export interface ZipEntry {
   readonly name: string;
+  /**
+   * A name no artifact holds: absolute, with a `..` segment, a backslash or
+   * a NUL. No lookup matches it.
+   */
+  readonly unsafe: boolean;
+  /** A symbolic link, whose data is a path, not a file's bytes. */
+  readonly symlink: boolean;
   /** 0 stored, 8 deflated. */
   readonly method: number;
   readonly compressedSize: number;
@@ -72,12 +97,26 @@ export const readZipDirectory = async (
   source: ByteSource,
 ): Promise<ZipEntry[]> => {
   const { offset, size } = await centralDirectoryOf(source);
+  if (size > ZIP_LIMITS.directoryBytes) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      "The archive's directory is larger than any artifact's.",
+    );
+  }
   const directory = await source.read(offset, size);
   const data = view(directory);
   const decoder = new TextDecoder();
   const entries: ZipEntry[] = [];
   for (let i = 0; i + 46 <= directory.length; ) {
     if (data.getUint32(i, true) !== CENTRAL_HEADER_SIGNATURE) break;
+    if (entries.length >= ZIP_LIMITS.entries) {
+      throw new NativeArtifactError(
+        "UNREADABLE",
+        "The archive holds more entries than any artifact.",
+      );
+    }
+    const madeBy = data.getUint16(i + 4, true);
+    const externalAttributes = data.getUint32(i + 38, true);
     const method = data.getUint16(i + 10, true);
     let compressedSize = data.getUint32(i + 20, true);
     let uncompressedSize = data.getUint32(i + 24, true);
@@ -110,8 +149,18 @@ export const readZipDirectory = async (
       }
       j += 4 + length;
     }
+    const segments = name.split("/");
     entries.push({
       name,
+      unsafe:
+        name.startsWith("/") ||
+        /^[A-Za-z]:/u.test(name) ||
+        name.includes("\\") ||
+        name.includes("\0") ||
+        segments.includes(".."),
+      symlink:
+        madeBy >> 8 === UNIX_HOST &&
+        ((externalAttributes >>> 16) & S_IFMT) === S_IFLNK,
       method,
       compressedSize,
       uncompressedSize,
@@ -121,6 +170,61 @@ export const readZipDirectory = async (
   }
   return entries;
 };
+
+/**
+ * The one entry an artifact's reader takes by `name`: a symbolic link, or a
+ * name the archive holds twice, which could hand the reader other bytes
+ * than an installer reads, is refused. Unsafe names match nothing.
+ */
+export const findZipEntry = (
+  entries: readonly ZipEntry[],
+  match: string | ((name: string) => boolean),
+): ZipEntry | undefined => {
+  const test =
+    typeof match === "string" ? (name: string) => name === match : match;
+  const found = entries.filter(({ name, unsafe }) => !unsafe && test(name));
+  for (const entry of found) assertReadable(entry);
+  if (typeof match === "string" && found.length > 1) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      `The archive holds ${match} more than once.`,
+    );
+  }
+  return found[0];
+};
+
+/** Every safe entry `match` takes, each a file the reader may read. */
+export const filterZipEntries = (
+  entries: readonly ZipEntry[],
+  match: (name: string) => boolean,
+): ZipEntry[] => {
+  const found = entries.filter(({ name, unsafe }) => !unsafe && match(name));
+  for (const entry of found) assertReadable(entry);
+  return found;
+};
+
+const assertReadable = (entry: ZipEntry) => {
+  if (entry.symlink) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      `The archive's ${entry.name} is a symbolic link, not a file.`,
+    );
+  }
+};
+
+/** How much an artifact's reading may inflate in all, and by when. */
+export interface ZipReadBudget {
+  /** Uncompressed bytes left to inflate, across every read. */
+  remaining: number;
+  /** Date.now() past which reading stops. */
+  readonly deadline: number;
+}
+
+const tooLarge = (entry: ZipEntry, limit: number) =>
+  new NativeArtifactError(
+    "UNREADABLE",
+    `The archive's ${entry.name} is larger than ${Math.round(limit / MiB)} MB, more than any artifact's.`,
+  );
 
 /** Where an entry's data starts, past its local header. */
 const dataOffsetOf = async (source: ByteSource, entry: ZipEntry) => {
@@ -149,7 +253,21 @@ const dataOffsetOf = async (source: ByteSource, entry: ZipEntry) => {
 export const openZipEntry = async (
   source: ByteSource,
   entry: ZipEntry,
+  {
+    maxBytes = ZIP_LIMITS.entryBytes,
+  }: {
+    /** The most the entry may inflate to, whatever its header says. */
+    readonly maxBytes?: number;
+  } = {},
 ): Promise<ReadableStream<Uint8Array>> => {
+  assertReadable(entry);
+  if (entry.unsafe) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      `The archive's entry ${JSON.stringify(entry.name)} has a name no artifact holds.`,
+    );
+  }
+  if (entry.uncompressedSize > maxBytes) throw tooLarge(entry, maxBytes);
   if (entry.method !== 0 && entry.method !== 8) {
     throw new NativeArtifactError(
       "UNREADABLE",
@@ -182,14 +300,35 @@ export const openZipEntry = async (
       controller.enqueue(chunk);
     },
   });
-  return entry.method === 0
-    ? compressed
-    : compressed.pipeThrough(
-        new DecompressionStream("deflate-raw") as unknown as TransformStream<
-          Uint8Array,
-          Uint8Array
-        >,
-      );
+  const inflated =
+    entry.method === 0
+      ? compressed
+      : compressed.pipeThrough(
+          new DecompressionStream("deflate-raw") as unknown as TransformStream<
+            Uint8Array,
+            Uint8Array
+          >,
+        );
+  // An entry that inflates past the size its header declares is a bomb.
+  const limit = Math.min(entry.uncompressedSize, maxBytes);
+  let produced = 0;
+  return inflated.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        produced += chunk.byteLength;
+        if (produced > limit) {
+          controller.error(
+            new NativeArtifactError(
+              "UNREADABLE",
+              `The archive's ${entry.name} inflates past the size it declares.`,
+            ),
+          );
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
 };
 
 /**
@@ -202,8 +341,15 @@ export const readZipEntryRange = async (
   entry: ZipEntry,
   start: number,
   end: number,
+  budget?: ZipReadBudget,
 ): Promise<Uint8Array> => {
   const length = Math.max(0, Math.min(end, entry.uncompressedSize) - start);
+  if (budget !== undefined && start + length > budget.remaining) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      "The artifact inflates to more than any artifact's.",
+    );
+  }
   const out = new Uint8Array(length);
   if (length === 0) return out;
   const reader = (await openZipEntry(source, entry)).getReader();
@@ -211,8 +357,15 @@ export const readZipEntryRange = async (
   let written = 0;
   try {
     while (written < length) {
+      if (budget !== undefined && Date.now() > budget.deadline) {
+        throw new NativeArtifactError(
+          "UNREADABLE",
+          "Reading the artifact took too long.",
+        );
+      }
       const { done, value } = await reader.read();
       if (done) break;
+      if (budget !== undefined) budget.remaining -= value.byteLength;
       const from = Math.max(start - position, 0);
       const to = Math.min(start + length - position, value.byteLength);
       if (from < to) {
@@ -234,9 +387,13 @@ export const readZipEntryRange = async (
   return written === length ? out : out.subarray(0, written);
 };
 
-/** An entry's uncompressed bytes. */
+/** An entry's uncompressed bytes, refused past `maxBytes`. */
 export const readZipEntry = (
   source: ByteSource,
   entry: ZipEntry,
-): Promise<Uint8Array> =>
-  readZipEntryRange(source, entry, 0, entry.uncompressedSize);
+  maxBytes: number,
+  budget?: ZipReadBudget,
+): Promise<Uint8Array> => {
+  if (entry.uncompressedSize > maxBytes) throw tooLarge(entry, maxBytes);
+  return readZipEntryRange(source, entry, 0, entry.uncompressedSize, budget);
+};

@@ -19,6 +19,7 @@ import {
   blobSource,
   type ByteSource,
   checkNativeArtifact,
+  findZipEntry,
   NativeArtifactError,
   openZipEntry,
   readNativeArtifact,
@@ -198,8 +199,9 @@ const hashBuiltInBundle = async (
   source: ByteSource,
   build: ImportableNativeBuild,
 ) => {
-  const entry = (await readZipDirectory(source)).find(
-    ({ name }) => name === build.builtInBundlePath,
+  const entry = findZipEntry(
+    await readZipDirectory(source),
+    build.builtInBundlePath,
   );
   if (entry === undefined) return null;
   const hash = createHash("sha256");
@@ -441,8 +443,9 @@ const writeBuiltInBundle = async (
   build: ImportableNativeBuild,
   outputPath: string,
 ) => {
-  const entry = (await readZipDirectory(source)).find(
-    ({ name }) => name === build.builtInBundlePath,
+  const entry = findZipEntry(
+    await readZipDirectory(source),
+    build.builtInBundlePath,
   );
   if (entry === undefined) {
     throw new Error(`The artifact has no ${build.builtInBundlePath}.`);

@@ -27,7 +27,9 @@ export {
   type UnreadableValue,
 } from "./nativeArtifact/readNativeArtifact";
 export {
+  findZipEntry,
   openZipEntry,
   readZipDirectory,
+  ZIP_LIMITS,
   type ZipEntry,
 } from "./nativeArtifact/zip";
