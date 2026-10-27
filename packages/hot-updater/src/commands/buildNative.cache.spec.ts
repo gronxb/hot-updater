@@ -143,6 +143,8 @@ vi.mock("../utils/native/nativeBuildScope", () => ({
 }));
 const row = { id: "0190a1b2-c3d4-7000-8000-00000000b001" };
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  issueMinBundleId: vi.fn(async () => "019a0000-0000-7000-8000-000000000000"),
+  isNativeBuildConflict: () => false,
   preflightNativeBuildRegistration: vi.fn(async () => {}),
   registerNativeBuild: vi.fn(async () => {
     events.push("register");

@@ -30,7 +30,7 @@ import {
  */
 export const buildIos = async ({
   schemeConfig,
-  minBundleId = createMinBundleId("ios"),
+  minBundleId = createMinBundleId(),
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;

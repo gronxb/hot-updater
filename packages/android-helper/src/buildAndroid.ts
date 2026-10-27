@@ -13,7 +13,7 @@ import { readBuiltApp } from "./utils/readBuiltApp";
 
 export const buildAndroid = async ({
   schemeConfig,
-  minBundleId = createMinBundleId("android"),
+  minBundleId = createMinBundleId(),
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildAndroidScheme;

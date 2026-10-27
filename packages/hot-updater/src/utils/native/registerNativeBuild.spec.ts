@@ -18,6 +18,8 @@ import { loadServer } from "../loadServer";
 import { testServer } from "../testServer";
 import type { NativeBuildResult } from "./createNativeBuild";
 import {
+  isNativeBuildConflict,
+  issueMinBundleId,
   preflightNativeBuildRegistration,
   registerNativeBuild,
 } from "./registerNativeBuild";
@@ -293,6 +295,47 @@ describe("registerNativeBuild", () => {
     ).toEqual([]);
   });
 
+  it("refuses, as a conflict, a build of the other platform at a registered MIN_BUNDLE_ID, and keeps the registered one", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    const ipaPath = path.join(dir, "App.ipa");
+    await fs.promises.writeFile(ipaPath, "ipa bytes");
+    const registered = await registerNativeBuild(android({ artifactPath }), {
+      buildKey: null,
+    });
+    const before = await harness.core.getBundle(MIN_BUNDLE_ID);
+
+    // An iOS build that started in the same millisecond.
+    const error = await registerNativeBuild(
+      android({
+        platform: "ios",
+        scheme: "release",
+        artifactPath: ipaPath,
+        artifactKind: "ipa",
+      }),
+      {
+        buildKey: null,
+        writeBuiltInBundle: async (outputPath) => {
+          await fs.promises.mkdir(path.dirname(outputPath), {
+            recursive: true,
+          });
+          await fs.promises.writeFile(outputPath, "ios hermes bytecode");
+        },
+      },
+    ).catch((e: unknown) => e);
+
+    expect(isNativeBuildConflict(error)).toBe(true);
+    expect(await harness.core.getBundle(MIN_BUNDLE_ID)).toEqual(before);
+    expect(
+      (await harness.core.listNativeBuilds({ limit: 10 })).map(({ id }) => id),
+    ).toEqual([registered.id]);
+    expect(
+      [...storage.objects.keys()].filter((key) =>
+        key.startsWith("native-builds/ios/"),
+      ),
+    ).toEqual([]);
+  });
+
   it("keeps the artifact of a registration that committed although its write failed", async () => {
     const artifactPath = path.join(dir, "app-release.apk");
     await fs.promises.writeFile(artifactPath, "apk bytes");
@@ -447,5 +490,55 @@ describe("preflightNativeBuildRegistration", () => {
       "its readOnly storage: the storage adapter does not implement put.",
     );
     expect(find).not.toHaveBeenCalled();
+  });
+});
+
+describe("issueMinBundleId", () => {
+  const nowMs = 0x019a_0b1c_2d3e;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    harness.reset();
+    vi.mocked(loadConfig).mockResolvedValue({} as never);
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({
+        database: harness.database,
+        storage: memoryStorage().adapter,
+      }),
+    );
+  });
+
+  it("issues the build's millisecond with zero random bits, after one read, when no bundle has it", async () => {
+    const getBundle = vi.spyOn(harness.core, "getBundle");
+
+    await expect(issueMinBundleId(nowMs)).resolves.toBe(
+      "019a0b1c-2d3e-7000-8000-000000000000",
+    );
+    expect(getBundle).toHaveBeenCalledTimes(1);
+  });
+
+  it("steps 1 ms forward past each built-in bundle the registry holds", async () => {
+    const taken = new Set([
+      "019a0b1c-2d3e-7000-8000-000000000000",
+      "019a0b1c-2d3f-7000-8000-000000000000",
+    ]);
+    vi.spyOn(harness.core, "getBundle").mockImplementation(async (id) =>
+      taken.has(id) ? ({} as never) : null,
+    );
+
+    await expect(issueMinBundleId(nowMs)).resolves.toBe(
+      "019a0b1c-2d40-7000-8000-000000000000",
+    );
+  });
+
+  it("stops stepping after 10 ms, and leaves the registry to refuse a taken ID", async () => {
+    const getBundle = vi
+      .spyOn(harness.core, "getBundle")
+      .mockResolvedValue({} as never);
+
+    await expect(issueMinBundleId(nowMs)).resolves.toBe(
+      "019a0b1c-2d48-7000-8000-000000000000",
+    );
+    expect(getBundle).toHaveBeenCalledTimes(10);
   });
 });

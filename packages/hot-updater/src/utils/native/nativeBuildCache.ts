@@ -254,6 +254,12 @@ export interface NativeBuildCacheLookup {
    * built-in bundle is already registered.
    */
   readonly missingArtifact: NativeBuildRow | null;
+  /**
+   * Whether the slot's build with this key has a MIN_BUNDLE_ID the registry
+   * holds for another build, as one that started in the same millisecond
+   * registers first: it can't be tracked, so it is not reused either.
+   */
+  readonly takenMinBundleId: boolean;
 }
 
 /**
@@ -293,7 +299,12 @@ export const findCachedNativeBuild = async ({
         storageUri: nativeBuild.artifact_storage_uri,
       })) ?? { exists: false };
       if (!exists) {
-        return { hit: null, cached, missingArtifact: nativeBuild };
+        return {
+          hit: null,
+          cached,
+          missingArtifact: nativeBuild,
+          takenMinBundleId: false,
+        };
       }
       const result: NativeBuildResult =
         local && local.build.minBundleId === nativeBuild.min_bundle_id
@@ -324,12 +335,30 @@ export const findCachedNativeBuild = async ({
         hit: { source: "storage", nativeBuild, result },
         cached,
         missingArtifact: null,
+        takenMinBundleId: false,
+      };
+    }
+    if (local === null) {
+      return {
+        hit: null,
+        cached,
+        missingArtifact: null,
+        takenMinBundleId: false,
+      };
+    }
+    // No build the registry tracks has this key, so a bundle at the cached
+    // build's MIN_BUNDLE_ID is another build's built-in bundle.
+    if ((await server.core.getBundle(local.build.minBundleId)) !== null) {
+      return {
+        hit: null,
+        cached,
+        missingArtifact: null,
+        takenMinBundleId: true,
       };
     }
   } finally {
     await server.dispose();
   }
-  if (local === null) return { hit: null, cached, missingArtifact: null };
   return {
     hit: {
       source: "local",
@@ -338,5 +367,6 @@ export const findCachedNativeBuild = async ({
     },
     cached,
     missingArtifact: null,
+    takenMinBundleId: false,
   };
 };
