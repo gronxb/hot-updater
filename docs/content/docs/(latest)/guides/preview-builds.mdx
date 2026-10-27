@@ -14,9 +14,11 @@ point at any pull request's bundle without rebuilding:
 1. Build a native app with a shared default channel, such as `preview`,
    which Hot Updater tracks.
 2. Deploy each pull request's bundle to its own channel, such as `pr-12`.
-3. In the Console's **Preview** page, a tester installs the build, by QR code
-   on Android or with `xcrun simctl` on the iOS Simulator, then scans the
-   pull request's channel link.
+3. On the build's page in the Console's
+   [Native builds](/docs/guides/native-build#native-builds-in-the-console)
+   tab, a tester installs the build, by QR code on Android or with
+   `xcrun simctl` on the iOS Simulator, then opens the pull request's channel
+   link.
 4. The app opens the link with
    [`hotUpdater.openChannelLink()`](/docs/react-native-api/openChannelLink),
    which switches to the channel with
@@ -101,7 +103,7 @@ A link to the build's default channel leaves the pull request's channel.
   from Metro, so test channel links in a Release build.
 </Callout>
 
-## Show channel links in the Console
+## Make a channel link
 
 Set `console.channelLinkPrefix` to the prefix the app opens:
 
@@ -119,19 +121,10 @@ export default defineConfig({
 ```
 
 A [deployed Console](/docs/guides/console-deployment) takes the same option
-under `console` in its configuration.
+under `console` in its configuration, and serves the QR code of a channel's
+link that a pull request comment shows.
 
-The Console's **Preview** page then has two cards:
-
-- **Native builds** lists the tracked builds, newest first. **Install**
-  opens a build: an APK shows a QR code that downloads it, a Simulator app
-  shows its `xcrun simctl install` command, and every build has a download.
-  AAB and IPA builds install through Google Play and your iOS distribution.
-- **Channel link** shows the QR code of the channel you choose, a link that
-  opens it on the device that shows the page, and the `adb` and
-  `xcrun simctl openurl` commands that open it on an emulator or simulator.
-
-The CLI prints the same link from the project's config, with the `adb` and
+The CLI prints the link from the project's config, with the `adb` and
 `xcrun simctl openurl` commands that open it:
 
 ```package-install
@@ -140,21 +133,6 @@ npx hot-updater channel link pr-12
 
 Add `--json` to print `{ "channel", "link" }`, with a null `link` when the
 config sets no prefix.
-
-`/preview?build=<build id>` opens a build's install dialog, and
-`/preview?channel=<channel>` shows a channel's link, so a pull request
-comment can link to either. A bundle's detail sheet links to its channel's
-link too.
-
-A download goes through `/api/native-builds/<build id>/download`, which
-redirects to the storage's download URL each time, so the Console link never
-expires. The APK QR code holds the storage's download URL itself, so a phone
-downloads it without signing in to the Console. Storage doesn't say how long
-that URL lasts, so the open dialog reads a new one every 30 seconds; keep a
-storage's signed URL lifetime above that. A storage with no download URL
-serves the artifact only through the Console, which a phone that scans isn't
-signed in to, so the dialog shows no QR code: download the APK, or open the
-Console on the phone.
 
 ## Deploy a pull request's bundle
 

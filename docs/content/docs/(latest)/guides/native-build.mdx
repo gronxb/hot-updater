@@ -317,8 +317,8 @@ After the build, the CLI:
    that write fails, the CLI deletes the uploaded artifact again; the built-in
    bundle's files are left to `storage prune`.
 
-The Console's **Preview** page lists tracked builds and downloads them; see
-[Preview Builds](/docs/guides/preview-builds).
+The Console's **Native builds** page lists tracked builds; see
+[Native builds in the Console](#native-builds-in-the-console).
 
 A registered build is found by its platform, its default channel, and its
 fingerprint or, with the app version strategy, its exact app version: the
@@ -350,6 +350,37 @@ Every official storage adapter streams the artifact to storage except
 `standaloneStorage`, which reads it into memory to post it to your server. A
 Supabase project's Storage upload file size limit, 50 MB on the Free plan,
 caps the artifact size.
+
+## Native builds in the Console
+
+The Console's **Native builds** page lists the tracked builds, newest first,
+with each build's channel, its fingerprint or app version, its built-in
+bundle, and its commit. Pick a channel to list only the builds that embed it,
+such as `/native-builds?channel=pr-130` for a pull request's builds. A row
+opens the build's page, `/native-builds/<build id>`:
+
+- **Install**: an `.apk` shows a QR code of the artifact's storage URL, which
+  a phone opens without signing in to the Console, and the `adb install`
+  command. A simulator `.app` shows the `xcrun simctl install` command. An
+  `.aab` installs through Google Play or bundletool, and an `.ipa` through
+  Xcode, Apple Configurator, or [TestFlight](#upload-to-testflight). Every
+  build downloads through `/api/native-builds/<build id>/download`, which
+  answers with a fresh storage URL on each request, so the link never
+  expires. A browser that opens it without a Console session goes to the
+  build's page, which signs it in and comes back to the build.
+- **Built-in bundle**: the build's min bundle ID, the base its OTAs patch
+  from, how many bundles patch from it, and whether it is the newest build of
+  its scope. `deploy` patches from the newest build of a scope, so a
+  superseded build links to the build that replaced it.
+- **Served now**: the releases the update check offers an install of this
+  build now, newer than its built-in bundle, and whether each one's first OTA
+  downloads as a patch or as the full bundle.
+- **Patches from this build**: the bundles with a patch from its built-in
+  bundle, and each patch's size.
+
+A bundle's detail sheet links to the newest build of its release's scope, and
+says whether the bundle has a patch from it. Deleting a build stays with
+[`native-build delete`](#delete-a-build).
 
 ## Import a build made elsewhere
 

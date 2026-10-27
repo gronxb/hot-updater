@@ -4,7 +4,7 @@
     {
       "files": [
         "packages/console/src/components/features/insights/**/*.tsx",
-        "packages/console/src/components/features/preview/**/*.tsx",
+        "packages/console/src/components/features/native-builds/**/*.tsx",
         "packages/console/src/components/features/remote-config/**/*.tsx"
       ],
       "rules": {

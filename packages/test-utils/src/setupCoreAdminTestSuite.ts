@@ -300,6 +300,30 @@ export const setupCoreAdminTestSuite = (options: {
       expect(
         (await adminJson(`/native-builds/${bundleRow("863").id}`)).data,
       ).toBeNull();
+      // A channel's builds are this test's own registrations, newest first;
+      // another channel's list holds none of them.
+      const channelRow = (
+        (await adminJson(`/channels?name=${encodeURIComponent(channel)}`)) as {
+          data: ChannelRow;
+        }
+      ).data;
+      const ofChannel = (channelId: string, query = "") =>
+        adminJson(
+          `/native-builds?channelId=${encodeURIComponent(channelId)}&order=desc&${query}`,
+        ) as Promise<{ data: NativeBuildRow[]; next?: string }>;
+      const firstPage = await ofChannel(channelRow.id, "limit=1");
+      expect(firstPage).toEqual({ data: [newest], next: newest.id });
+      expect(
+        await ofChannel(channelRow.id, `limit=1&cursor=${newest.id}`),
+      ).toEqual({ data: [keyedBuild], next: keyedBuild.id });
+      expect((await ofChannel(channelRow.id, "limit=10")).data).toEqual([
+        newest,
+        keyedBuild,
+      ]);
+      const other = await api.ensureChannel(`native-other-${namespace}`);
+      expect((await ofChannel(other.id, "limit=10")).data).toEqual([]);
+      await adminJson(`/channels/${other.id}`, jsonRequest("DELETE"));
+      expect((await ofChannel(other.id, "limit=10")).data).toEqual([]);
       expect(again.status).toBe(409);
       expect(await again.json()).toMatchObject({ code: "NATIVE_BUILD_EXISTS" });
       expect(refusedDelete.status).toBe(409);

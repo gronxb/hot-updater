@@ -627,6 +627,31 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
   }),
   budget({
+    api: "native build list: all descending, limit rows",
+    read: ({ core }) => core.listNativeBuilds({ order: "desc", limit: 2 }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    check: (builds) =>
+      expect(builds.map(({ min_bundle_id }) => min_bundle_id)).toEqual(
+        ["012", "011"].map((suffix) => createBundleFixture(suffix).id),
+      ),
+  }),
+  budget({
+    api: "native build list of a channel: byChannel descending, limit rows",
+    read: ({ core, productionId }) =>
+      core.listNativeBuilds({
+        channelId: productionId,
+        order: "desc",
+        limit: 1,
+      }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (builds) =>
+      expect(builds).toMatchObject([
+        { min_bundle_id: createBundleFixture("012").id },
+      ]),
+  }),
+  budget({
     api: "channel by name: 1 read",
     read: ({ core }) => core.findChannelByName("staging"),
     adapter: reads(0, 0, 1, 1),

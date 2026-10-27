@@ -5,10 +5,12 @@ import {
   type ReleasePolicyPatch,
   rowToBundle,
 } from "@hot-updater/plugin-core";
+import { assertCanonicalChannelName } from "@hot-updater/protocol";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
+import { channelIdOf, releaseNativeBuildScope } from "./native-builds";
 import { withPublicBundleMutationErrors } from "./public-bundle-error";
 import { listReleases, readReleaseFilter } from "./server/listReleases";
 import { addReleaseReachability } from "./server/releaseReachability";
@@ -248,14 +250,25 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
     }
   });
 
+/** A channel name the list filters by, as its channel ID. */
+const channelIdFilter = (channel: unknown) => {
+  if (channel === undefined) return {};
+  if (typeof channel !== "string") throw new Error("channel must be a name.");
+  assertCanonicalChannelName(channel);
+  return { channelId: channelIdOf(channel) };
+};
+
 export const getNativeBuilds = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .validator(
     (
-      input: { before?: string; after?: string; limit?: number } | undefined,
+      input:
+        | { before?: string; after?: string; channel?: string; limit?: number }
+        | undefined,
     ) => ({
       ...(input?.before === undefined ? {} : { before: input.before }),
       ...(input?.after === undefined ? {} : { after: input.after }),
+      ...channelIdFilter(input?.channel),
       limit: pageLimit(input?.limit),
     }),
   )
@@ -267,10 +280,55 @@ export const getNativeBuilds = createServerFn({ method: "GET" })
     return listNativeBuilds(core, data);
   });
 
-export const getNativeBuild = createServerFn({ method: "GET" })
+/** A native build's page: the build, its built-in bundle, what it is served, and its patches. */
+export const getNativeBuildDetail = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .validator((input: { id: string }) => input)
-  .handler(async ({ data }) => (await prepare()).core.getNativeBuild(data.id));
+  .handler(async ({ data }) => {
+    const [{ core }, { getNativeBuildDetail: readNativeBuildDetail }] =
+      await Promise.all([prepare(), import("./server/nativeBuilds")]);
+    return readNativeBuildDetail(core, data.id);
+  });
+
+/** One page of the patches from a native build's built-in bundle. */
+export const getNativeBuildPatches = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator(
+    (input: { minBundleId: string; before?: string; after?: string }) => ({
+      minBundleId: input.minBundleId,
+      ...(input.before === undefined ? {} : { before: input.before }),
+      ...(input.after === undefined ? {} : { after: input.after }),
+    }),
+  )
+  .handler(async ({ data: { minBundleId, ...page } }) => {
+    const [{ core }, { listNativeBuildPatches, NATIVE_BUILD_PATCH_PAGE_SIZE }] =
+      await Promise.all([prepare(), import("./server/nativeBuilds")]);
+    return listNativeBuildPatches(core, minBundleId, {
+      ...page,
+      limit: NATIVE_BUILD_PATCH_PAGE_SIZE,
+    });
+  });
+
+/**
+ * The newest native build of a release's scope, which its patches start
+ * from: one read. A release of an app version range has no one build, and
+ * reads nothing.
+ */
+export const getReleaseNativeBuild = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator(
+    (input: {
+      platform: "ios" | "android";
+      channel: string;
+      fingerprintHash: string | null;
+      targetAppVersion: string | null;
+    }) => input,
+  )
+  .handler(async ({ data }) => {
+    const scope = releaseNativeBuildScope(data);
+    if (scope === null) return null;
+    return (await prepare()).core.findNativeBuild(scope);
+  });
 
 /**
  * The URL a phone downloads a build from without the console's sign-in, or

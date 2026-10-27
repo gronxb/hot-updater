@@ -253,7 +253,7 @@ describe("runAction preview", () => {
       },
     ]);
     expect(outputs["comment-body"]).toContain(
-      "[Install](https://console.example.com/preview?build=build-1) · built for this commit",
+      "[Download](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1) · built for this commit",
     );
   });
 
@@ -290,7 +290,7 @@ describe("runAction preview", () => {
       built: false,
     });
     expect(outputs["comment-body"]).toContain(
-      "[Install](https://console.example.com/preview?build=build-0) · reused",
+      "[Download](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0) · reused",
     );
   });
 
