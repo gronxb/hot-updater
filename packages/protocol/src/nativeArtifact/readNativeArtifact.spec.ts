@@ -194,11 +194,11 @@ describe("readNativeArtifact", () => {
     expect(info.minBundleIdCandidates).toEqual([MIN_BUNDLE_ID]);
   });
 
-  it("reads HotUpdater's dynamic framework when the executable holds no MIN_BUNDLE_ID", async () => {
+  it("reads HotUpdater's dynamic framework alone, whatever UUIDv7 the executable holds", async () => {
     const info = await read(
       ipa({
-        "Payload/App.app/App": "not a Mach-O binary",
-        "Payload/App.app/Frameworks/Other.framework/Other": "neither",
+        // The app's own code holds an unrelated UUIDv7.
+        "Payload/App.app/App": fixture("App-other"),
         "Payload/App.app/Frameworks/HotUpdater.framework/HotUpdater":
           fixture("App"),
         // A framework's resource is no framework binary.
@@ -208,6 +208,27 @@ describe("readNativeArtifact", () => {
       "App.ipa",
     );
     expect(info.minBundleIdCandidates).toEqual([MIN_BUNDLE_ID]);
+  });
+
+  it("reads every framework when neither HotUpdater's nor the executable holds one, and keeps them all", async () => {
+    const one = await read(
+      ipa({
+        "Payload/App.app/App": "not a Mach-O binary",
+        "Payload/App.app/Frameworks/Sdk.framework/Sdk": fixture("App"),
+      }),
+      "App.ipa",
+    );
+    expect(one.minBundleIdCandidates).toEqual([MIN_BUNDLE_ID]);
+    const two = await read(
+      ipa({
+        "Payload/App.app/App": "not a Mach-O binary",
+        "Payload/App.app/Frameworks/Sdk.framework/Sdk": fixture("App"),
+        "Payload/App.app/Frameworks/Other.framework/Other":
+          fixture("App-other"),
+      }),
+      "App.ipa",
+    );
+    expect(two.minBundleIdCandidates).toEqual([MIN_BUNDLE_ID, OTHER_UUID_V7]);
   });
 
   it("reads no built-in bundle from an artifact without one", async () => {

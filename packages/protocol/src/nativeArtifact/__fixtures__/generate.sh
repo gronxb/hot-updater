@@ -74,8 +74,9 @@ manifest debuggable 'android:debuggable="true">'
 manifest reference '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:value="@string/channel"/>'
 
-# Mach-O: an executable whose __cstring holds the literals, and a universal
-# binary whose x86_64 slice holds another UUIDv7, so arm64's is the one read.
+# Mach-O: an executable whose __cstring holds the literals, one holding
+# another UUIDv7, and a universal binary whose x86_64 slice holds another
+# UUIDv7, so arm64's is the one read.
 macho() {
   local arch=$1 min_bundle_id=$2 output=$3
   cat > "$tmp/app.c" <<EOF
@@ -89,6 +90,7 @@ EOF
   strip "$output"
 }
 macho arm64 "$MIN_BUNDLE_ID" App
+macho arm64 "$OTHER_UUID_V7" App-other
 macho x86_64 "$OTHER_UUID_V7" "$tmp/App-x86_64"
 lipo -create App "$tmp/App-x86_64" -output App-universal
 

@@ -193,34 +193,31 @@ const readIos = async (
       (start, end) => readZipEntryRange(source, entry, start, end),
       LENGTHS,
     );
-  // The SDK links into the app's executable, or, with dynamic frameworks,
-  // into its own: the executable is read first, and the frameworks only
-  // when it holds no MIN_BUNDLE_ID.
+  // The SDK compiles MIN_BUNDLE_ID and the fingerprint into its own code:
+  // HotUpdater's framework when the app links frameworks dynamically, which
+  // then decides alone, whatever other code holds; else the app's
+  // executable; else, under another framework's name, every framework,
+  // whose candidates together must be one.
+  const frameworks = entries.filter(({ name }) => {
+    const match = new RegExp(
+      `^${appDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}Frameworks/([^/]+)\\.framework/([^/]+)$`,
+      "u",
+    ).exec(name);
+    return match !== null && match[1] === match[2];
+  });
+  const sdk = frameworks.find(({ name }) => name.endsWith("/HotUpdater"));
   const executable = stringValue(info["CFBundleExecutable"]);
   const executableEntry =
     executable === null
       ? undefined
       : byName.get(`${appDirectory}${executable}`);
-  let strings =
-    executableEntry === undefined ? [] : await machO(executableEntry);
+  let strings = sdk === undefined ? [] : await machO(sdk);
+  if (!strings.some(isUUIDv7) && executableEntry !== undefined) {
+    strings = await machO(executableEntry);
+  }
   if (!strings.some(isUUIDv7)) {
-    const frameworks = entries.filter(({ name }) => {
-      const match = new RegExp(
-        `^${appDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}Frameworks/([^/]+)\\.framework/([^/]+)$`,
-        "u",
-      ).exec(name);
-      return match !== null && match[1] === match[2];
-    });
-    // HotUpdater's own framework first.
-    frameworks.sort(
-      (a, b) =>
-        Number(b.name.endsWith("/HotUpdater")) -
-        Number(a.name.endsWith("/HotUpdater")),
-    );
     for (const framework of frameworks) {
-      const found = await machO(framework);
-      strings = [...strings, ...found];
-      if (found.some(isUUIDv7)) break;
+      if (framework !== sdk) strings.push(...(await machO(framework)));
     }
   }
   const { minBundleIds, fingerprints } = candidatesOf(strings);
