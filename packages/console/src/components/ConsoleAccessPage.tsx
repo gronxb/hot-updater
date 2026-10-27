@@ -15,6 +15,19 @@ const providerLabel: Record<ConsoleAuthProvider, string> = {
   google: "Google",
 };
 
+/**
+ * Where sign-in returns to: the page that asked for it, as a path on this
+ * console, so a link to a build lands on that build. Anything that could
+ * leave the console, such as `//host` or `/\host`, returns to the root.
+ */
+export const signInCallbackURL = (location: {
+  readonly pathname: string;
+  readonly search: string;
+}): string => {
+  const target = `${location.pathname}${location.search}`;
+  return target.startsWith("/") && !/^\/[/\\]/.test(target) ? target : "/";
+};
+
 export function ConsoleAccessPage({
   access,
   providers,
@@ -29,7 +42,10 @@ export function ConsoleAccessPage({
     setError(null);
     try {
       const response = await fetch("/api/auth/sign-in/social", {
-        body: JSON.stringify({ callbackURL: "/", provider }),
+        body: JSON.stringify({
+          callbackURL: signInCallbackURL(window.location),
+          provider,
+        }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });

@@ -29,7 +29,7 @@ const ios = {
 } as const;
 
 describe("renderPreviewComment", () => {
-  it("lists each platform's install link and bundle, and the channel link's QR code", () => {
+  it("lists each platform's download and page links and bundle, and the channel link's QR code", () => {
     expect(
       renderPreviewComment({
         consoleUrl: "https://console.example.com/",
@@ -49,8 +49,8 @@ describe("renderPreviewComment", () => {
 
 | Platform | Native build | Fingerprint | Bundle |
 | --- | --- | --- | --- |
-| Android | [Install](https://console.example.com/preview?build=019a0000-0000-7000-8000-00000000b001) · built for this commit | \`8681de8b88a8\` | \`019a0000-0000-7000-8000-0000000000a1\` |
-| iOS Simulator | [Install](https://console.example.com/preview?build=019a0000-0000-7000-8000-00000000b002) · reused | \`ea472e223125\` | \`019a0000-0000-7000-8000-0000000000a2\` |
+| Android | [Download](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](https://console.example.com/native-builds/019a0000-0000-7000-8000-00000000b001) · built for this commit | \`8681de8b88a8\` | \`019a0000-0000-7000-8000-0000000000a1\` |
+| iOS Simulator | [Download](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-00000000b002/download) · [Details](https://console.example.com/native-builds/019a0000-0000-7000-8000-00000000b002) · reused | \`ea472e223125\` | \`019a0000-0000-7000-8000-0000000000a2\` |
 
 Preview builds embed the \`preview\` channel, and each pull request deploys to its own.
 
@@ -58,7 +58,7 @@ Scan the QR code with a device that has a preview build installed to open this p
 
 <img src="https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12" alt="QR code of myapp://hot-updater/channel/pr-12" width="180" height="180">
 
-\`myapp://hot-updater/channel/pr-12\` · [Open in the Console](https://console.example.com/preview?channel=pr-12)
+\`myapp://hot-updater/channel/pr-12\`
 
 <details>
 <summary>Open it on an emulator or simulator</summary>
@@ -103,9 +103,9 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
     expect(body).not.toContain("<img");
     expect(body).not.toContain("channel-qr");
     expect(body)
-      .toContain(`Open the link on a device that has a preview build installed to open this pull request's bundle, or scan its QR code in the Console:
+      .toContain(`Open the link on a device that has a preview build installed to open this pull request's bundle:
 
-\`myapp://hot-updater/channel/pr-12\` · [Open in the Console](https://console.internal.example.com/preview?channel=pr-12)
+\`myapp://hot-updater/channel/pr-12\`
 
 <details>
 <summary>Open it on an emulator or simulator</summary>
@@ -118,7 +118,7 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
 </details>`);
   });
 
-  it("points to the Console when no config sets a channel link prefix", () => {
+  it("names the config option when no config sets a channel link prefix", () => {
     const body = renderPreviewComment({
       consoleUrl: "https://example.com/console",
       channel: "pr-7",
@@ -132,10 +132,10 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
     expect(body).not.toContain("<img");
     expect(body).not.toContain("adb shell");
     expect(body).toContain(
-      "Open this pull request's bundle in a preview build from the [Console](https://example.com/console/preview?channel=pr-7). Set `console.channelLinkPrefix` to show its channel link here.",
+      "Set `console.channelLinkPrefix` to show the channel link that opens this pull request's bundle in a preview build.",
     );
     expect(body).toContain(
-      "[Install](https://example.com/console/preview?build=019a0000-0000-7000-8000-00000000b001)",
+      "[Download](https://example.com/console/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](https://example.com/console/native-builds/019a0000-0000-7000-8000-00000000b001)",
     );
   });
 

@@ -1,5 +1,4 @@
 import type {
-  NativeBuildRow,
   ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
@@ -14,11 +13,13 @@ import {
   getBundleChildren,
   getChannels,
   getConfig,
-  getNativeBuild,
+  getNativeBuildDetail,
   getNativeBuildDownloadUrl,
+  getNativeBuildPatches,
   getNativeBuilds,
   getRelease,
   getReleaseCatalogDiagnostics,
+  getReleaseNativeBuild,
   getReleases,
   preflightRelease as preflightReleaseApi,
   promoteRelease as promoteReleaseApi,
@@ -49,15 +50,31 @@ export const queryKeys = {
     list: (page: NativeBuildPage) => ["native-builds", page] as const,
   },
   nativeBuild: (id: string) => ["native-build", id] as const,
+  nativeBuildPatches: (minBundleId: string, page: KeysetPage) =>
+    ["native-build-patches", minBundleId, page] as const,
   nativeBuildDownloadUrl: (id: string) =>
     ["native-build-download-url", id] as const,
+  releaseNativeBuild: (release: ReleaseNativeBuildInput) =>
+    ["release-native-build", release] as const,
 };
 
-export type NativeBuildPage = {
-  /** Builds older than this id: the next page. */
+export type KeysetPage = {
+  /** Rows older than this key: the next page. */
   before?: string;
-  /** Builds newer than this id: the previous page. */
+  /** Rows newer than this key: the previous page. */
   after?: string;
+};
+
+export type NativeBuildPage = KeysetPage & {
+  /** Only the builds that embed this channel. */
+  channel?: string;
+};
+
+export type ReleaseNativeBuildInput = {
+  platform: "ios" | "android";
+  channel: string;
+  fingerprintHash: string | null;
+  targetAppVersion: string | null;
 };
 
 /**
@@ -160,17 +177,55 @@ export function useNativeBuildsQuery(page: NativeBuildPage) {
   });
 }
 
-/** One native build, read only when the list on screen doesn't hold it. */
-export function useNativeBuildQuery(
-  id: string,
-  initialData: NativeBuildRow | undefined,
-) {
+/**
+ * A native build's page in one round trip, or null for an unknown ID. The
+ * page reads it again when it opens, since its catalog and patches change
+ * with each deploy.
+ */
+export function useNativeBuildDetailQuery(id: string) {
   return useQuery({
     queryKey: queryKeys.nativeBuild(id),
-    queryFn: () => getNativeBuild({ data: { id } }),
+    queryFn: () => getNativeBuildDetail({ data: { id } }),
     enabled: id.length > 0,
-    initialData,
-    staleTime: Infinity,
+  });
+}
+
+/**
+ * A page of patches from a built-in bundle other than the newest, which the
+ * build's page already holds; kept on screen while the next one loads.
+ */
+export function useNativeBuildPatchesQuery(
+  minBundleId: string,
+  page: KeysetPage,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildPatches(minBundleId, page),
+    queryFn: () => getNativeBuildPatches({ data: { minBundleId, ...page } }),
+    enabled: enabled && minBundleId.length > 0,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+/**
+ * The newest native build of a release's scope, or none: read only for a
+ * release one build can serve, by its fingerprint or one exact app version.
+ */
+export function useReleaseNativeBuildQuery(
+  release: ReleaseNativeBuildInput | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.releaseNativeBuild(
+      release ?? {
+        platform: "ios",
+        channel: "",
+        fingerprintHash: null,
+        targetAppVersion: null,
+      },
+    ),
+    queryFn: () => getReleaseNativeBuild({ data: release! }),
+    enabled: release !== null,
+    staleTime: 60_000,
   });
 }
 

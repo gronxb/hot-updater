@@ -1,7 +1,14 @@
 import type {
   NativeBuildArtifactKind,
   NativeBuildRow,
+  NativeBuildScope,
 } from "@hot-updater/plugin-core";
+import {
+  canonicalizeAppVersion,
+  createReleaseCatalogScopeKey,
+  decodeChannelKey,
+  encodeChannelKey,
+} from "@hot-updater/protocol";
 
 import { shellQuote } from "./shell";
 
@@ -16,9 +23,96 @@ export const nativeBuildArtifacts: Record<
   ipa: { label: "IPA", installs: "registered iOS devices" },
 };
 
+/** A platform's name as the console shows it. */
+export const platformLabel = (platform: "ios" | "android") =>
+  platform === "ios" ? "iOS" : "Android";
+
 /** The console route that redirects to a build's artifact in storage. */
 export const nativeBuildDownloadPath = (id: string) =>
   `/api/native-builds/${encodeURIComponent(id)}/download`;
+
+/** The console page of one native build. */
+export const nativeBuildDetailPath = (id: string) =>
+  `/native-builds/${encodeURIComponent(id)}`;
+
+const CHANNEL_ID_PREFIX = "channel:";
+
+/** A channel row's ID, `channel:` and its channel key. */
+export const channelIdOf = (channel: string) =>
+  `${CHANNEL_ID_PREFIX}${encodeChannelKey(channel)}`;
+
+/** The name of the channel a build embeds, decoded from its channel ID: no read. */
+export const nativeBuildChannel = (build: Pick<NativeBuildRow, "channel_id">) =>
+  decodeChannelKey(build.channel_id.slice(CHANNEL_ID_PREFIX.length));
+
+/** The scope a build was registered in, as `findNativeBuild` takes it. */
+export const nativeBuildScope = (build: NativeBuildRow): NativeBuildScope =>
+  build.fingerprint_hash === null
+    ? {
+        platform: build.platform,
+        channel: nativeBuildChannel(build),
+        fingerprintHash: null,
+        appVersion: build.app_version ?? "",
+      }
+    : {
+        platform: build.platform,
+        channel: nativeBuildChannel(build),
+        fingerprintHash: build.fingerprint_hash,
+        appVersion: null,
+      };
+
+/**
+ * The Release Catalog scope whose releases an install of the build is
+ * offered. A fingerprint build's scope key is that catalog's own key; an
+ * app-version build's adds its exact app version, which the catalog of
+ * every app version leaves out.
+ */
+export const nativeBuildCatalogScopeKey = (build: NativeBuildRow): string => {
+  const channelKey = build.channel_id.slice(CHANNEL_ID_PREFIX.length);
+  return build.fingerprint_hash === null
+    ? createReleaseCatalogScopeKey({
+        channelKey,
+        platform: build.platform,
+        strategy: "APP_VERSION",
+      })
+    : createReleaseCatalogScopeKey({
+        channelKey,
+        fingerprintHash: build.fingerprint_hash,
+        platform: build.platform,
+        strategy: "FINGERPRINT",
+      });
+};
+
+/**
+ * The native build scope a release serves, or null when no one build has
+ * it: a release of an app version range, rather than one exact version,
+ * targets many builds.
+ */
+export const releaseNativeBuildScope = (release: {
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+  readonly fingerprintHash: string | null;
+  readonly targetAppVersion: string | null;
+}): NativeBuildScope | null => {
+  if (release.fingerprintHash !== null) {
+    return {
+      platform: release.platform,
+      channel: release.channel,
+      fingerprintHash: release.fingerprintHash,
+      appVersion: null,
+    };
+  }
+  const target = release.targetAppVersion;
+  if (target === null || canonicalizeAppVersion(target) !== target) {
+    return null;
+  }
+  return {
+    platform: release.platform,
+    channel: release.channel,
+    fingerprintHash: null,
+    appVersion: target,
+  };
+};
 
 /**
  * The artifact's file name, the last path segment of its storage URI, so a

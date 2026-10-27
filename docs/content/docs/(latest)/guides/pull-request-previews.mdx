@@ -35,7 +35,7 @@ Console's URL for the comment's links.
 
 - Deploy the Console and set `console.channelLinkPrefix` in its
   configuration, as
-  [Show channel links in the Console](/docs/guides/preview-builds#show-channel-links-in-the-console)
+  [Show channel links in the Console](/docs/guides/preview-builds#make-a-channel-link)
   describes. The pull request comment shows the QR code the Console serves
   for the channel at `/_hot-updater/preview/channel-qr?channel=<channel>`,
   which takes no sign-in, so GitHub can show it. It holds only the link.
@@ -278,11 +278,15 @@ builds stay tracked for the next pull request.
 
 ## The comment
 
-The comment has a row per platform: the **Install** link to the build's
-dialog on the Console's **Preview** page, whether this run built it or reused
-it, the fingerprint or app version, and the bundle's ID. An Android APK
-installs by the QR code the dialog shows, and a Simulator app with its
-`xcrun simctl install` command.
+The comment has a row per platform: the build's **Download** and
+**Details** links in the Console, whether this run built it or reused it, the
+fingerprint or app version, and the bundle's ID. **Details** opens the build's
+page on the Console's
+[Native builds](/docs/guides/native-build#native-builds-in-the-console) tab,
+where an Android APK installs by its QR code and a Simulator app with its
+`xcrun simctl install` command. **Download** fetches a fresh storage URL on
+each request, so it never expires; a phone without a Console session signs in
+first and comes back to the build.
 
 Below it, the QR code of the pull request's channel link opens the bundle in
 an installed preview build, with the link and the `adb` and
@@ -293,15 +297,15 @@ reach the Console, or the Console's config sets no `console.channelLinkPrefix`,
 it makes the link from `hot-updater.config.ts` with
 `hot-updater channel link <channel> --json`, and the comment shows the link
 and the commands without the QR code. The job's log says which happened.
-Without `console.channelLinkPrefix` in either config, the comment links to
-the Console's channel page instead.
+Without `console.channelLinkPrefix` in either config, the comment names the
+option instead.
 
 <Callout type="info">
   GitHub shows a comment's images through its image proxy, which fetches
   them from the internet. A private Console, such as one on a VPN or
   Tailscale, shows no QR code in the comment, even when the runner reaches
-  it. The link and the commands still open the bundle, and the Console's
-  **Preview** page shows the QR code on your network.
+  it. The link and the commands still open the bundle, and the build's
+  **Details** page shows the APK's QR code on your network.
 </Callout>
 
 The comment ends with "Preview by hot-updater". Set `credit: false` to leave

@@ -183,8 +183,13 @@ export interface HotUpdaterCoreApi {
     scope: NativeBuildScope,
     options?: { readonly buildKey?: string },
   ): Promise<NativeBuildRow | null>;
-  /** One page of native builds, by ID: oldest or newest first. */
-  listNativeBuilds(input: KeysetInput): Promise<NativeBuildRow[]>;
+  /**
+   * One page of native builds, by ID: oldest or newest first. With
+   * `channelId`, only the builds that embed that channel, also one read.
+   */
+  listNativeBuilds(
+    input: KeysetInput & { readonly channelId?: string },
+  ): Promise<NativeBuildRow[]>;
 
   /**
    * Writes each new bundle with its patches, and each release, with the next

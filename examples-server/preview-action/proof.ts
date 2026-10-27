@@ -149,7 +149,7 @@ const checkComment = (
   expected: { buildId: string; built: boolean; releaseId: string },
 ) => {
   const consoleUrl = env("PROOF_CONSOLE_URL").replace(/\/+$/, "");
-  const link = `[Install](${consoleUrl}/preview?build=${expected.buildId}) · ${expected.built ? "built for this commit" : "reused"}`;
+  const link = `[Download](${consoleUrl}/api/native-builds/${expected.buildId}/download) · [Details](${consoleUrl}/native-builds/${expected.buildId}) · ${expected.built ? "built for this commit" : "reused"}`;
   check(
     comment.includes(link),
     `the comment doesn't have ${link}:\n${comment}`,

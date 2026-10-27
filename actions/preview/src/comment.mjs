@@ -49,7 +49,26 @@ const platformLabel = (kind) =>
  * @param {Record<string, string>} query
  */
 export const consoleLink = (consoleUrl, path, query) =>
-  `${consoleUrl.replace(/\/+$/, "")}/${path}?${new URLSearchParams(query)}`;
+  `${consolePath(consoleUrl, path)}?${new URLSearchParams(query)}`;
+
+/**
+ * A path under the Console, whose URL may have a path of its own.
+ * @param {string} consoleUrl
+ * @param {string} path
+ */
+export const consolePath = (consoleUrl, path) =>
+  `${consoleUrl.replace(/\/+$/, "")}/${path}`;
+
+/**
+ * The Console's links of a native build: its download, which signs a phone
+ * in and fetches a fresh storage URL each time, and its page.
+ * @param {string} consoleUrl
+ * @param {string} id
+ */
+const nativeBuildLinks = (consoleUrl, id) => {
+  const encoded = encodeURIComponent(id);
+  return `[Download](${consolePath(consoleUrl, `api/native-builds/${encoded}/download`)}) · [Details](${consolePath(consoleUrl, `native-builds/${encoded}`)})`;
+};
 
 /** @param {string} text */
 const code = (text) => `\`${text}\``;
@@ -75,7 +94,7 @@ const footer = (notes, credit) => {
 
 /**
  * The comment of a pull request whose bundles were deployed: each
- * platform's native build, which the Console's Preview page installs, and
+ * platform's native build, with its Console download and page, and
  * the QR code of the channel link that switches an installed preview build
  * to the pull request's channel.
  *
@@ -111,7 +130,7 @@ export const renderPreviewComment = ({
   const rows = previews.map(({ target, nativeBuild, built, bundleId }) =>
     [
       platformLabel(nativeBuild.artifactKind),
-      `[Install](${consoleLink(consoleUrl, "preview", { build: nativeBuild.id })}) · ${built ? "built for this commit" : "reused"}`,
+      `${nativeBuildLinks(consoleUrl, nativeBuild.id)} · ${built ? "built for this commit" : "reused"}`,
       code(
         target.fingerprintHash === null
           ? String(target.appVersion)
@@ -120,11 +139,10 @@ export const renderPreviewComment = ({
       code(bundleId),
     ].join(" | "),
   );
-  const channelPage = consoleLink(consoleUrl, "preview", { channel });
   const open =
     channelLink === null
       ? [
-          `Open this pull request's bundle in a preview build from the [Console](${channelPage}). Set ${code("console.channelLinkPrefix")} to show its channel link here.`,
+          `Set ${code("console.channelLinkPrefix")} to show the channel link that opens this pull request's bundle in a preview build.`,
         ]
       : [
           ...(channelLink.qrCode
@@ -133,9 +151,9 @@ export const renderPreviewComment = ({
                 `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/preview/channel-qr", { channel }))}" alt="${escapeHtml(`QR code of ${channelLink.link}`)}" width="180" height="180">`,
               ]
             : [
-                `Open the link on a device that has a preview build installed to open this pull request's bundle, or scan its QR code in the Console:`,
+                `Open the link on a device that has a preview build installed to open this pull request's bundle:`,
               ]),
-          `${code(channelLink.link)} · [Open in the Console](${channelPage})`,
+          code(channelLink.link),
           [
             "<details>",
             "<summary>Open it on an emulator or simulator</summary>",
