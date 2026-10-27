@@ -67,8 +67,6 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getInstallId(): String
 
-    abstract fun getProcessLaunchId(): String
-
     abstract fun getStorageItem(key: String): String?
 
     abstract fun setStorageItem(

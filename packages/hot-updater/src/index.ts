@@ -62,11 +62,7 @@ import {
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import {
-  handleChannelDelete,
-  handleChannelLink,
-  handleSetChannel,
-} from "./commands/channel";
+import { handleChannelDelete, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
@@ -289,18 +285,13 @@ channelCommand
     "Delete a channel and its bundles, such as a closed pull request's",
   )
   .argument("<channel>", "the channel to delete")
+  .option(
+    "--native-builds",
+    "also delete the native builds that embed the channel, with their artifacts",
+  )
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleChannelDelete);
-
-channelCommand
-  .command("link")
-  .description(
-    "Print a channel's link, which switches a preview build to the channel, from console.channelLinkPrefix",
-  )
-  .argument("<channel>", "the channel to link")
-  .option("--json", "output the link as JSON")
-  .action(handleChannelLink);
 
 const nativeBuildCommand = program
   .command("native-build")

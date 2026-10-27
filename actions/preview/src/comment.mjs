@@ -16,7 +16,8 @@ const CREDIT = "Preview by [hot-updater](https://hot-updater.dev)";
  * @property {Platform} platform
  * @property {{ fingerprintHash: string | null, appVersion: string | null }} target
  *   What the native build was matched by.
- * @property {{ id: string, artifactKind: ArtifactKind }} nativeBuild
+ * @property {{ id: string, artifactKind: ArtifactKind, fileName: string }} nativeBuild
+ *   The tracked build, and its artifact's file name.
  * @property {boolean} built Whether this run built and registered the
  *   native build, rather than reusing a registered one.
  * @property {string} bundleId The bundle deployed to the pull request's channel.
@@ -93,29 +94,59 @@ const footer = (notes, credit) => {
 };
 
 /**
+ * How to install the downloaded artifacts on an emulator or simulator, or
+ * none when no build installs that way.
+ * @param {PlatformPreview[]} previews
+ */
+const installCommands = (previews) => {
+  const lines = previews.flatMap(
+    ({ nativeBuild: { artifactKind, fileName } }) =>
+      artifactKind === "apk"
+        ? [`adb install -r ${shellQuote(fileName)}`]
+        : artifactKind === "app"
+          ? [
+              `unzip -o ${shellQuote(fileName)} && xcrun simctl install booted ${shellQuote(fileName.replace(/\.zip$/, ""))}`,
+            ]
+          : [],
+  );
+  return lines.length === 0
+    ? []
+    : [
+        [
+          "<details>",
+          "<summary>Install on an emulator or simulator</summary>",
+          "",
+          "Download the build, then:",
+          "",
+          "```sh",
+          ...lines,
+          "```",
+          "",
+          "</details>",
+        ].join("\n"),
+      ];
+};
+
+/**
  * The comment of a pull request whose bundles were deployed: each
- * platform's native build, with its Console download and page, and
- * the QR code of the channel link that switches an installed preview build
- * to the pull request's channel.
+ * platform's native build, which embeds the pull request's channel, with
+ * its Console download and page, and the QR code of an APK's download.
  *
  * @param {object} input
  * @param {string} input.consoleUrl
  * @param {string} input.channel The pull request's channel.
- * @param {string} input.previewChannel The channel the native builds embed.
  * @param {PlatformPreview[]} input.previews
- * @param {{ link: string, qrCode: boolean } | null} input.channelLink The
- *   pull request's channel link, and whether the Console serves its QR code
- *   to the runner, or null when neither the Console nor the project's config
- *   sets `console.channelLinkPrefix`.
+ * @param {string[]} input.qrCodes The APK builds whose download QR code the
+ *   Console serves to the internet, which GitHub fetches a comment's images
+ *   from.
  * @param {string} input.headSha
  * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
  */
 export const renderPreviewComment = ({
   consoleUrl,
   channel,
-  previewChannel,
   previews,
-  channelLink,
+  qrCodes,
   headSha,
   credit,
 }) => {
@@ -139,33 +170,16 @@ export const renderPreviewComment = ({
       code(bundleId),
     ].join(" | "),
   );
-  const open =
-    channelLink === null
+  const qr = previews.flatMap(({ nativeBuild }) =>
+    qrCodes.includes(nativeBuild.id)
       ? [
-          `Set ${code("console.channelLinkPrefix")} to show the channel link that opens this pull request's bundle in a preview build.`,
+          `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/native-builds/qr", { build: nativeBuild.id }))}" alt="${escapeHtml(`QR code of the download of ${nativeBuild.fileName}`)}" width="180" height="180">`,
         ]
-      : [
-          ...(channelLink.qrCode
-            ? [
-                `Scan the QR code with a device that has a preview build installed to open this pull request's bundle, or open the link:`,
-                `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/preview/channel-qr", { channel }))}" alt="${escapeHtml(`QR code of ${channelLink.link}`)}" width="180" height="180">`,
-              ]
-            : [
-                `Open the link on a device that has a preview build installed to open this pull request's bundle:`,
-              ]),
-          code(channelLink.link),
-          [
-            "<details>",
-            "<summary>Open it on an emulator or simulator</summary>",
-            "",
-            "```sh",
-            `adb shell am start -a android.intent.action.VIEW -d ${shellQuote(shellQuote(channelLink.link))}`,
-            `xcrun simctl openurl booted ${shellQuote(channelLink.link)}`,
-            "```",
-            "",
-            "</details>",
-          ].join("\n"),
-        ];
+      : [],
+  );
+  const ipa = previews.some(
+    ({ nativeBuild }) => nativeBuild.artifactKind === "ipa",
+  );
   return [
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
@@ -174,36 +188,51 @@ export const renderPreviewComment = ({
       "| --- | --- | --- | --- |",
       ...rows.map((row) => `| ${row} |`),
     ].join("\n"),
-    `Preview builds embed the ${code(previewChannel)} channel, and each pull request deploys to its own.`,
-    ...open,
+    `This pull request's native builds embed the ${code(channel)} channel, so they open its bundle on their first launch.`,
+    ...(qr.length === 0
+      ? []
+      : [
+          "Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.",
+          qr.join(" "),
+        ]),
+    ...(ipa
+      ? [
+          `An IPA installs on registered devices; for testers, upload it to TestFlight with ${code("npx hot-updater testflight")}.`,
+        ]
+      : []),
+    ...installCommands(previews),
     ...footer([`Deployed ${code(headSha.slice(0, 7))}`], credit),
   ].join("\n\n");
 };
 
 /**
- * The comment of a closed pull request, once its channel is deleted: the
- * QR code and the bundles are gone.
+ * The comment of a closed pull request, once its channel is deleted: its
+ * bundles and native builds are gone.
  *
  * @param {object} input
  * @param {string} input.channel
- * @param {"deleted" | "kept" | "missing"} input.outcome `kept` when a native
- *   build embeds the channel, `missing` when it was already gone.
+ * @param {"deleted" | "kept" | "missing"} input.outcome `kept` when a bundle
+ *   or a build was added to the channel during the cleanup, `missing` when
+ *   it was already gone.
  * @param {number} input.deletedBundles
+ * @param {number} input.deletedNativeBuilds
  * @param {boolean} input.credit
  */
 export const renderClosedComment = ({
   channel,
   outcome,
   deletedBundles,
+  deletedNativeBuilds,
   credit,
 }) => {
   const bundles = `${deletedBundles} bundle${deletedBundles === 1 ? "" : "s"}`;
+  const builds = `${deletedNativeBuilds} native build${deletedNativeBuilds === 1 ? "" : "s"}`;
   return [
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
     {
-      deleted: `This pull request is closed: its channel ${code(channel)} and its ${bundles} are deleted.`,
-      kept: `This pull request is closed: its ${bundles} ${deletedBundles === 1 ? "is" : "are"} deleted, and its channel ${code(channel)} is kept, because a native build embeds it. Register preview builds on one shared channel, and deploy each pull request to its own.`,
+      deleted: `This pull request is closed: its channel ${code(channel)}, its ${bundles}, and its ${builds} are deleted.`,
+      kept: `This pull request is closed: its ${bundles} and its ${builds} are deleted, and its channel ${code(channel)} is kept, because a bundle or a build was added to it during the cleanup. Run the cleanup again.`,
       missing: `This pull request is closed, and its channel ${code(channel)} is already deleted.`,
     }[outcome],
     ...footer([], credit),

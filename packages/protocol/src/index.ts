@@ -1,7 +1,6 @@
 export * from "./appVersion";
 export * from "./baseURL";
 export * from "./bundleArtifacts";
-export * from "./channelLink";
 export * from "./clientPlugin";
 export * from "./createPluginHost";
 export * from "./releaseCatalog";

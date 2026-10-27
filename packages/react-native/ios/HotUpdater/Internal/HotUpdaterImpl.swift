@@ -924,15 +924,6 @@ private func hotUpdaterGetMinBundleId() -> String {
         return bundleStorage.getInstallId()
     }
 
-    /// A random id made once per app process, the same for every instance:
-    /// an in-place reload of React Native keeps it.
-    private static let processLaunchId = UUID().uuidString
-
-    @objc
-    public func getProcessLaunchId() -> String {
-        Self.processLaunchId
-    }
-
     // MARK: - Client Plugin Storage
 
     /**

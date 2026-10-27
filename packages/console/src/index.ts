@@ -43,13 +43,6 @@ export type HotUpdaterConsoleConfig = Readonly<{
   console?: {
     /** The Git repository whose commits the console links bundles to. */
     gitUrl?: string;
-    /**
-     * Where the app opens links: its URL scheme, such as `myapp://`, or a
-     * universal link's prefix. The console shows each channel's link,
-     * `<prefix>hot-updater/channel/<channel>`, as a QR code a preview build
-     * opens with `hotUpdater.openChannelLink`.
-     */
-    channelLinkPrefix?: string;
   };
 }>;
 

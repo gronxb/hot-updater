@@ -34,7 +34,6 @@ export default defineConfig({
   storage,
   database,
   plugins: [],
-  console: { channelLinkPrefix: "hotupdaterexample://" },
   fingerprint: {
     debug: true,
     extraSources: {

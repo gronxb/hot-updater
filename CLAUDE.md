@@ -156,11 +156,8 @@ npx hot-updater fingerprint create
 # Set the native default channel
 npx hot-updater channel set <channel>
 
-# Print a channel's link, from console.channelLinkPrefix
-npx hot-updater channel link <channel>
-
-# Delete a channel and its bundles, such as a closed pull request's
-npx hot-updater channel delete <channel> --yes
+# Delete a channel and its bundles, such as a closed pull request's; --native-builds deletes the builds that embed it too
+npx hot-updater channel delete <channel> --native-builds --yes
 
 # Build a release app, tracked in the config's database and storage
 npx hot-updater native-build android --scheme release
