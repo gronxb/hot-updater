@@ -38,8 +38,23 @@ import {
   initReplayCommand,
 } from "./initProviders";
 
-// The CLI of the release whose core schema is 1.2.0.
-vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.2.0" } }));
+/** The CLI's version and the server package it bundles: 1.2.0's, or its release candidate's. */
+const versions = vi.hoisted(() => ({ cli: "1.2.0", server: "1.2.0" }));
+
+vi.mock("../packageJson", () => ({
+  packageJsonData: {
+    get version() {
+      return versions.cli;
+    },
+  },
+}));
+
+vi.mock("@hot-updater/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/server")>()),
+  get HOT_UPDATER_SERVER_VERSION() {
+    return versions.server;
+  },
+}));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -286,6 +301,8 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     deployed = "1.1.3";
+    versions.cli = "1.2.0";
+    versions.server = "1.2.0";
     cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-upgrade-"));
   });
 
@@ -449,6 +466,60 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       expect(core).toMatchObject({ value: "1.2.0" });
     },
   );
+
+  it("lets a release candidate's CLI migrate once the server runs that release candidate", async () => {
+    versions.cli = "1.2.0-rc.1";
+    versions.server = "1.2.0-rc.1";
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(createEngineDatabase({ name: "dynamoDB", adapter }), "aws");
+
+    await expect(
+      run({ fix: true, serverBaseUrl: SERVER }),
+    ).resolves.toMatchObject({
+      success: false,
+      details: {
+        infrastructure: { requiredVersion: "1.2.0-rc.1", needsUpdate: true },
+        fixes: [{ repair: "schema", status: "skipped" }],
+      },
+    });
+
+    deployed = "1.2.0-rc.1";
+    await expect(
+      run({ fix: true, serverBaseUrl: SERVER }),
+    ).resolves.toMatchObject({
+      success: true,
+      details: {
+        infrastructure: { needsUpdate: false },
+        fixes: [{ repair: "schema", status: "applied" }],
+      },
+    });
+  });
+
+  it("names the version endpoint it could not read", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(createEngineDatabase({ name: "dynamoDB", adapter }), "aws");
+    fetchVersion.mockResolvedValueOnce(new Response("", { status: 502 }));
+
+    await expect(
+      run({ fix: true, serverBaseUrl: SERVER }),
+    ).resolves.toMatchObject({
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            status: "skipped",
+            note: expect.stringContaining(
+              `doctor could not see at ${SERVER}/version that the Lambda@Edge function with its IAM role policy runs 1.2.0+ (Version endpoint returned 502)`,
+            ),
+          },
+        ],
+      },
+    });
+  });
 
   it("pushes the Supabase migrations once the Edge Function runs 1.2.0", async () => {
     const adapter = createMemoryAdapter();

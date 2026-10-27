@@ -173,9 +173,9 @@ const waitsForServer = (
       return undefined;
     }
     const unseen =
-      infrastructure?.error === undefined
+      infrastructure === undefined
         ? `doctor cannot see that ${managed.server} runs ${required}+ without --server-base-url`
-        : `doctor could not read ${infrastructure.versionEndpoint} to see that ${managed.server} runs ${required}+ (${infrastructure.error})`;
+        : `doctor could not see at ${infrastructure.versionEndpoint} that ${managed.server} runs ${required}+${infrastructure.error === undefined ? "" : ` (${infrastructure.error})`}`;
     return `${behind ?? `${SERVER_ORDER}, and ${unseen}.`} Run \`${managed.command}\`: it applies this migration and redeploys ${managed.server} from this release in one run, so the 503 window is the deploy. Once ${managed.server} runs ${required}+, \`npx hot-updater doctor --fix --server-base-url <url>\` migrates the database instead.`;
   }
   if (behind === undefined) return undefined;
