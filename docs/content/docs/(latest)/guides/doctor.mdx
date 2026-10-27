@@ -300,10 +300,16 @@ back to back, with nothing in between:
 
 | Database                                                                                                     | What doctor names                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A deployment `hot-updater init` created: `.env.hotupdater` records the provider, and the config names its database | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`, which applies the release's migrations and then redeploys the server, so the 503 window is the deploy |
+| A deployment `hot-updater init` created: `.env.hotupdater` records the provider, and the config's database is the one init saved | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`, which applies the release's migrations and then redeploys the server, so the 503 window is the deploy |
 | Kysely, MongoDB, PostgreSQL, DynamoDB, Firestore, and Cosmos DB behind your own server                       | `npx hot-updater db migrate <server file>` in the server's project, as the server of the new release deploys                                                                      |
 | Drizzle, Prisma, and D1 behind your own server                                                               | `npx hot-updater db generate <server file>`, the migration it writes applied with the ORM or `wrangler d1 migrations apply`, then `npx hot-updater db migrate <server file>`     |
 | Supabase behind your own server                                                                              | `npx hot-updater db generate <server file>`, the migration it writes applied with `supabase db push`                                                                              |
+
+Doctor compares the resource the config's database reaches, such as its D1
+database ID or DynamoDB table, with the one init saved. When they differ, it
+names your own server's command instead, since init replays against the saved
+resources. When it cannot tell, such as for a Vercel database URL init saved
+only with consent, it names both, each with its condition.
 
 Init reports every input `.env.hotupdater` lacks, such as a credential it saved
 only with consent, before it changes a resource: set those in the environment

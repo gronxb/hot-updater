@@ -9,6 +9,33 @@ import pg, { type PoolConfig } from "pg";
 
 const { Pool } = pg;
 
+/**
+ * The resource this database reaches, without credentials, under the key
+ * `hot-updater doctor` reads to tell the database `hot-updater init` saved
+ * from another (a convention CLAUDE.md documents).
+ */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** The server and database a pool reaches: `postgres/<host>:<port>/<database>`. */
+const targetOf = ({
+  connectionString,
+  host,
+  port,
+  database,
+}: PoolConfig): string | undefined => {
+  if (connectionString !== undefined) {
+    try {
+      const url = new URL(connectionString);
+      return `postgres/${url.hostname}:${url.port || "5432"}/${decodeURIComponent(url.pathname.slice(1))}`;
+    } catch {
+      return undefined;
+    }
+  }
+  return host === undefined || database === undefined
+    ? undefined
+    : `postgres/${host}:${port ?? 5432}/${database}`;
+};
+
 export type PostgresConfig = PoolConfig & {
   readonly dialect?: Dialect;
 };
@@ -21,6 +48,7 @@ export type PostgresConfig = PoolConfig & {
  */
 export const postgres = (config: PostgresConfig): EngineDatabase => {
   const { dialect, ...poolConfig } = config;
+  const target = targetOf(poolConfig);
   const db = new Kysely<object>({
     dialect: dialect ?? new PostgresDialect({ pool: new Pool(poolConfig) }),
   });
@@ -29,6 +57,7 @@ export const postgres = (config: PostgresConfig): EngineDatabase => {
       name: "postgres",
       adapter: createSqlAdapter({ executor: kyselyExecutor(db, "postgresql") }),
     }),
+    ...(target === undefined ? {} : { [DATABASE_TARGET]: target }),
     dispose: () => db.destroy(),
   };
 };

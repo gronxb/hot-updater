@@ -72,12 +72,21 @@ const pendingResolution = (
   { database }: LoadedServer,
   managed: ManagedDeployment | null,
 ): { readonly resolution: string; readonly commands: string[] } => {
-  if (managed !== null) {
-    return {
-      resolution: `Run \`${managed.command}\`: it applies the migrations this release needs, then redeploys ${managed.server} from it, back to back. ${SERVER_ORDER}, so run nothing in between.`,
-      commands: [managed.command],
-    };
-  }
+  const own = ownServerResolution(database);
+  if (managed === null) return own;
+  const replay = `Run \`${managed.command}\`: it applies the migrations this release needs, then redeploys ${managed.server} from it, back to back. ${SERVER_ORDER}, so run nothing in between.`;
+  return managed.confirmed
+    ? { resolution: replay, commands: [managed.command] }
+    : {
+        resolution: `If this is the database \`hot-updater init\` saved in .env.hotupdater: ${replay} Otherwise, it is your own server's: ${own.resolution}`,
+        commands: [managed.command, ...own.commands],
+      };
+};
+
+/** What migrates the database of a server of the project's own, by its tooling. */
+const ownServerResolution = (
+  database: LoadedServer["database"],
+): { readonly resolution: string; readonly commands: string[] } => {
   const tooling = database as typeof database & {
     readonly createMigrator?: unknown;
     readonly generateSchema?: unknown;

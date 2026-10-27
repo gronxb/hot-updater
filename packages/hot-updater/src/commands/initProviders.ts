@@ -14,6 +14,24 @@ export type InitProviderModule = {
   readonly runInit: (options: RunInitOptions) => Promise<void>;
 };
 
+/** A value init saved in `.env.hotupdater`, or the environment's. */
+type SavedInput = (envKey: string) => string | undefined;
+
+/** `postgres/<host>:<port>/<database>`, as `postgres()` marks its target. */
+const postgresTarget = (url: string | undefined) => {
+  if (url === undefined) return undefined;
+  try {
+    const parsed = new URL(url);
+    return `postgres/${parsed.hostname}:${parsed.port || "5432"}/${decodeURIComponent(parsed.pathname.slice(1))}`;
+  } catch {
+    return undefined;
+  }
+};
+
+/** `<prefix>/<value>`, or undefined without the value. */
+const targetOf = (prefix: string, value: string | undefined) =>
+  value === undefined ? undefined : `${prefix}/${value}`;
+
 type InitProviderPackage = {
   /**
    * The `name` of the database the provider's init writes into
@@ -22,6 +40,12 @@ type InitProviderPackage = {
    * init manages.
    */
   readonly database: string;
+  /**
+   * The target, under `Symbol.for("@hot-updater/database-target")`, of the
+   * database init's saved inputs describe; undefined when they don't say.
+   * Doctor names init only for a configured database with this target.
+   */
+  readonly target: (read: SavedInput) => string | undefined;
   readonly devDependencies: readonly string[];
   /** The provider in init's prompt: its package's `initProvider.label`. */
   readonly label: string;
@@ -38,6 +62,8 @@ type InitProviderPackage = {
 export const INIT_PROVIDER_PACKAGES = {
   cloudflare: {
     database: "d1Database",
+    target: (read) =>
+      targetOf("d1", read("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID")),
     devDependencies: ["wrangler"],
     label: "Cloudflare D1 + R2 + Worker",
     load: (): Promise<InitProviderModule> =>
@@ -47,6 +73,8 @@ export const INIT_PROVIDER_PACKAGES = {
   },
   aws: {
     database: "dynamoDB",
+    target: (read) =>
+      targetOf("dynamodb", read("HOT_UPDATER_DYNAMODB_TABLE_NAME")),
     devDependencies: [],
     label: "AWS + Lambda@Edge",
     load: (): Promise<InitProviderModule> => import("@hot-updater/aws/init"),
@@ -55,6 +83,17 @@ export const INIT_PROVIDER_PACKAGES = {
   },
   supabase: {
     database: "supabaseDatabase",
+    target: (read) => {
+      const url = read("HOT_UPDATER_SUPABASE_URL");
+      const projectId = read("HOT_UPDATER_SUPABASE_PROJECT_ID");
+      try {
+        return url !== undefined
+          ? `supabase/${new URL(url).hostname}`
+          : targetOf("supabase", projectId && `${projectId}.supabase.co`);
+      } catch {
+        return undefined;
+      }
+    },
     devDependencies: [],
     label: "Supabase",
     load: (): Promise<InitProviderModule> =>
@@ -64,6 +103,12 @@ export const INIT_PROVIDER_PACKAGES = {
   },
   firebase: {
     database: "firebaseDatabase",
+    target: (read) =>
+      targetOf(
+        "firestore",
+        read("HOT_UPDATER_FIREBASE_PROJECT_ID") &&
+          `${read("HOT_UPDATER_FIREBASE_PROJECT_ID")}/${read("HOT_UPDATER_FIREBASE_DATABASE_ID") ?? "(default)"}`,
+      ),
     devDependencies: ["firebase-tools", "firebase-admin"],
     label: "Firebase",
     load: (): Promise<InitProviderModule> =>
@@ -73,6 +118,7 @@ export const INIT_PROVIDER_PACKAGES = {
   },
   vercel: {
     database: "postgres",
+    target: (read) => postgresTarget(read("HOT_UPDATER_VERCEL_DATABASE_URL")),
     devDependencies: ["vercel"],
     label: "Vercel Blob + Functions + Postgres",
     load: (): Promise<InitProviderModule> => import("@hot-updater/vercel/init"),
@@ -81,6 +127,12 @@ export const INIT_PROVIDER_PACKAGES = {
   },
   azure: {
     database: "cosmosDatabase",
+    target: (read) =>
+      targetOf(
+        "cosmos",
+        read("HOT_UPDATER_AZURE_COSMOS_ACCOUNT") &&
+          `${read("HOT_UPDATER_AZURE_COSMOS_ACCOUNT")}.documents.azure.com`,
+      ),
     devDependencies: [],
     label: "Azure Blob Storage + Functions + Cosmos DB",
     load: (): Promise<InitProviderModule> => import("@hot-updater/azure/init"),

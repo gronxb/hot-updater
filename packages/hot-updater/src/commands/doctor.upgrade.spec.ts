@@ -81,6 +81,52 @@ const fetchVersion = vi.fn<typeof fetch>(async () =>
 
 let cwd: string;
 
+/** The key every provider's database factory marks its resource under. */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/**
+ * Each provider's saved inputs that name its database, and the target its
+ * database factory marks for that database.
+ */
+const SAVED: Record<
+  InitProvider,
+  { readonly env: Record<string, string>; readonly target: string }
+> = {
+  cloudflare: {
+    env: { HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "database" },
+    target: "d1/database",
+  },
+  supabase: {
+    env: { HOT_UPDATER_SUPABASE_PROJECT_ID: "ref" },
+    target: "supabase/ref.supabase.co",
+  },
+  aws: {
+    env: { HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater" },
+    target: "dynamodb/hot-updater",
+  },
+  firebase: {
+    env: { HOT_UPDATER_FIREBASE_PROJECT_ID: "app" },
+    target: "firestore/app/(default)",
+  },
+  vercel: {
+    env: {
+      HOT_UPDATER_VERCEL_DATABASE_URL:
+        "postgres://user:secret@db.example.com:5432/app",
+    },
+    target: "postgres/db.example.com:5432/app",
+  },
+  azure: {
+    env: { HOT_UPDATER_AZURE_COSMOS_ACCOUNT: "account" },
+    target: "cosmos/account.documents.azure.com",
+  },
+};
+
+/** `database` marked as its provider's factory marks the database init saved. */
+const marked = <T extends object>(database: T, provider: InitProvider): T => ({
+  ...database,
+  [DATABASE_TARGET]: SAVED[provider].target,
+});
+
 /**
  * The app project: hot-updater.config.ts names `database` and the managed
  * plugins, and `.env.hotupdater` records the provider init ran, when it did.
@@ -88,11 +134,18 @@ let cwd: string;
 const project = async (
   database: ToolingDatabase,
   provider: InitProvider | null,
+  saved: Record<string, string> = provider === null ? {} : SAVED[provider].env,
 ) => {
   if (provider !== null) {
     await writeFile(
       path.join(cwd, ".env.hotupdater"),
-      `HOT_UPDATER_INIT_BUILD=bare\nHOT_UPDATER_INIT_PROVIDER=${provider}\n`,
+      Object.entries({
+        HOT_UPDATER_INIT_BUILD: "bare",
+        HOT_UPDATER_INIT_PROVIDER: provider,
+        ...saved,
+      })
+        .map(([key, value]) => `${key}=${value}\n`)
+        .join(""),
     );
   }
   vi.mocked(readPackageUp).mockResolvedValue({
@@ -385,7 +438,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     await pglite.exec('DROP TABLE "native_builds"');
     await storeSetting(adapter, "schema.core", "1.0.0");
     const database = await project(
-      createEngineDatabase({ name: "postgres", adapter }),
+      marked(createEngineDatabase({ name: "postgres", adapter }), "vercel"),
       "vercel",
     );
 
@@ -436,7 +489,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       await migrateCoreSchema(adapter, name, managedPlugins());
       await storeSetting(adapter, "schema.core", "1.0.0");
       const database = await project(
-        createEngineDatabase({ name, adapter }),
+        marked(createEngineDatabase({ name, adapter }), provider),
         provider,
       );
 
@@ -452,7 +505,10 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     await migrateCoreSchema(adapter, "supabaseDatabase", managedPlugins());
     await storeSetting(adapter, "schema.core", "1.0.0");
     await project(
-      createEngineDatabase({ name: "supabaseDatabase", adapter }),
+      marked(
+        createEngineDatabase({ name: "supabaseDatabase", adapter }),
+        "supabase",
+      ),
       "supabase",
     );
 
@@ -468,7 +524,10 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     deployed = "1.2.0-rc.1";
     const adapter = createMemoryAdapter();
     await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
-    await project(createEngineDatabase({ name: "dynamoDB", adapter }), "aws");
+    await project(
+      marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+      "aws",
+    );
 
     await expect(run()).resolves.toMatchObject({
       success: true,
@@ -483,6 +542,84 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
         infrastructure: {
           needsUpdate: true,
           remediation: { commands: [initReplayCommand("aws")] },
+        },
+      },
+    });
+  });
+
+  it("names db migrate when the config's database is another than the one init saved", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    // The config now reaches another table than the one init replays against.
+    const another: Record<symbol, string> = {
+      [DATABASE_TARGET]: "dynamodb/another-table",
+    };
+    await project(
+      { ...createEngineDatabase({ name: "dynamoDB", adapter }), ...another },
+      "aws",
+    );
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        infrastructure: {
+          remediation: {
+            commands: [
+              "npx hot-updater db migrate <server file>",
+              "npx hot-updater db generate <server file>",
+              "npx hot-updater agent infra upgrade",
+            ],
+          },
+        },
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              commands: ["npx hot-updater db migrate <server file>"],
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("names init only if the database is init's, when init saved nothing that names it", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "postgres", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    // Init saves the Vercel database URL only with consent.
+    await project(
+      marked(createEngineDatabase({ name: "postgres", adapter }), "vercel"),
+      "vercel",
+      {},
+    );
+
+    const command = initReplayCommand("vercel");
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        infrastructure: {
+          remediation: {
+            reason: expect.stringMatching(
+              /^If hot-updater.config.ts names the database hot-updater init saved in .env.hotupdater: Run /u,
+            ),
+            commands: [
+              command,
+              "npx hot-updater db migrate <server file>",
+              "npx hot-updater db generate <server file>",
+              "npx hot-updater agent infra upgrade",
+            ],
+          },
+        },
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              resolution: expect.stringContaining(
+                "Otherwise, it is your own server's: In the server's project, run",
+              ),
+              commands: [command, "npx hot-updater db migrate <server file>"],
+            },
+          ],
         },
       },
     });

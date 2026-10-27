@@ -84,6 +84,27 @@ export const migrateCosmosDatabase = (
 };
 
 /**
+ * The resource this database reaches, without credentials, under the key
+ * `hot-updater doctor` reads to tell the database `hot-updater init` saved
+ * from another (a convention CLAUDE.md documents).
+ */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** The account host a client reaches: its endpoint, or the connection string's. */
+const accountHostOf = ({
+  endpoint,
+  connectionString,
+}: CosmosDatabaseConfig) => {
+  const url =
+    endpoint ?? connectionString?.match(/AccountEndpoint=([^;]+)/iu)?.[1];
+  try {
+    return url === undefined ? undefined : new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Hot Updater's database in one Azure Cosmos DB for NoSQL container,
  * through the storage engine. Every item shares one logical partition, so a
  * write commits as one transactional batch; that partition holds at most
@@ -93,12 +114,14 @@ export const cosmosDatabase = (
   config: CosmosDatabaseConfig,
 ): EngineDatabase => {
   const { dispose, adapter } = adapterOf(config);
+  const host = accountHostOf(config);
   return {
     ...createEngineDatabase({
       name: "cosmosDatabase",
       adapter,
       aggregateBatching: config.aggregateBatching ?? {},
     }),
+    ...(host === undefined ? {} : { [DATABASE_TARGET]: `cosmos/${host}` }),
     async dispose() {
       await adapter.dispose?.();
       dispose();

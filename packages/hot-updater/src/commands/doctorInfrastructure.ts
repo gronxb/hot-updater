@@ -70,6 +70,8 @@ export interface ServerDeployment {
   readonly command: string;
   /** What that command deploys, such as "the Worker". */
   readonly server: string;
+  /** The configured database is the one init saved; else init holds only if it is. */
+  readonly confirmed: boolean;
 }
 
 export const createInfrastructureRemediation = ({
@@ -89,15 +91,9 @@ export const createInfrastructureRemediation = ({
       commands: ["hot-updater agent infra setup", "hot-updater init"],
     };
   }
-  if (managed !== null) {
-    return {
-      reason: `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.`,
-      commands: [managed.command],
-    };
-  }
   const target =
     requiredVersion === undefined ? "of this release" : `${requiredVersion}+`;
-  return {
+  const own = {
     reason: `Deploy the server from @hot-updater/server ${target} and migrate its database as it deploys: npx hot-updater db migrate <server file> in the server's project, or, for Drizzle, Prisma, D1 and Supabase, npx hot-updater db generate <server file> and the database's tooling first. A server of an earlier release answers 503 once the database is migrated. A deployment from hot-updater agent infra gets versioned upgrade instructions from hot-updater agent infra upgrade.`,
     commands: [
       "npx hot-updater db migrate <server file>",
@@ -105,6 +101,14 @@ export const createInfrastructureRemediation = ({
       "npx hot-updater agent infra upgrade",
     ],
   };
+  if (managed === null) return own;
+  const replay = `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.`;
+  return managed.confirmed
+    ? { reason: replay, commands: [managed.command] }
+    : {
+        reason: `If hot-updater.config.ts names the database hot-updater init saved in .env.hotupdater: ${replay} Otherwise: ${own.reason}`,
+        commands: [managed.command, ...own.commands],
+      };
 };
 
 export async function checkInfrastructureStatus({

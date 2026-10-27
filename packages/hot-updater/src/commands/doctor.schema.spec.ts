@@ -190,6 +190,7 @@ describe("doctor's schema check", () => {
 
   it("names init with its saved inputs for a database hot-updater init manages", async () => {
     vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "cloudflare");
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
     // A database the previous minor release's managed init created.
     await migrateCoreSchema(adapter, "d1Database", [
       insights(),
@@ -197,11 +198,14 @@ describe("doctor's schema check", () => {
       remoteConfig(),
     ]);
     await storeSetting("schema.core", "1.0.0");
-    serverProject(database("d1Database", { generateSchema: vi.fn() }), [
-      insights(),
-      apiKeys(),
-      remoteConfig(),
-    ]);
+    // The target d1Database marks for the database init saved.
+    const target: Record<symbol, string> = {
+      [Symbol.for("@hot-updater/database-target")]: "d1/database",
+    };
+    serverProject(
+      { ...database("d1Database", { generateSchema: vi.fn() }), ...target },
+      [insights(), apiKeys(), remoteConfig()],
+    );
 
     const command = initReplayCommand("cloudflare");
     await expect(doctor()).resolves.toMatchObject({
