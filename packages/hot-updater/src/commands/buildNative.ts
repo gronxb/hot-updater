@@ -387,17 +387,9 @@ const buildNativeInternal = async ({
               submittedAtMs: null,
               source: "store",
             };
+            // The store matched the version and build number, not this
+            // artifact: nothing is recorded, as for a refused upload.
             logAlreadySubmitted(existingSubmission, existing.testFlightUrl);
-            registered = await recordSubmission(
-              registered,
-              "testflight",
-              () =>
-                storeVersionLabel(
-                  existing.shortVersion,
-                  existing.bundleVersion,
-                ),
-              { onlyUnrecorded: true },
-            );
           }
         }
         if (apiKey && !existingSubmission) {
@@ -426,8 +418,9 @@ const buildNativeInternal = async ({
                 ui.path(uploaded.testFlightUrl),
               ]),
             );
-            // Recorded once App Store Connect accepted the build; a build
-            // still processing is recorded by the next run, which finds it.
+            // Recorded once App Store Connect accepted the build. A build
+            // still processing stays unrecorded: a later run that finds it
+            // can't tell it is this artifact.
             registered = await recordSubmission(registered, "testflight", () =>
               storeVersionLabel(uploaded.shortVersion, uploaded.bundleVersion),
             );
@@ -469,13 +462,8 @@ const buildNativeInternal = async ({
                 submittedAtMs: null,
                 source: "store",
               };
+              // Matched by version code, not this artifact: not recorded.
               logAlreadySubmitted(existingSubmission);
-              registered = await recordSubmission(
-                registered,
-                "play-internal",
-                () => playVersionLabel(versionCode),
-                { onlyUnrecorded: true },
-              );
             }
           }
           if (!existingSubmission) {
@@ -787,22 +775,18 @@ const readVersionName = async (
   )?.appVersion ?? result.appVersion;
 
 /**
- * Records on the tracked build that the store took it. An untracked build,
- * such as a Debug one, records nothing; `onlyUnrecorded` keeps a record a
- * run that uploaded the build made. A failed record fails the command,
- * since the Console would not show the submission: the store keeps the
- * build, and a run with the same inputs finds it there and records it.
+ * Records on the tracked build that the store took this run's upload of
+ * it. An untracked build, such as a Debug one, records nothing. A failed
+ * record fails the command, since the Console would not show the
+ * submission; the store keeps the build, and a rerun skips its upload.
  */
 const recordSubmission = async (
   build: NativeBuildRow | null,
   destination: NativeBuildSubmissionDestination,
   /** The store's label of the build, read only for a tracked build. */
   readVersion: () => string | Promise<string>,
-  { onlyUnrecorded = false }: { readonly onlyUnrecorded?: boolean } = {},
 ): Promise<NativeBuildRow | null> => {
-  if (!build || (onlyUnrecorded && build.submitted_to !== null)) {
-    return build;
-  }
+  if (!build) return build;
   const version = await readVersion();
   try {
     return await recordNativeBuildSubmission(build, destination, version);
@@ -810,7 +794,7 @@ const recordSubmission = async (
     throw new NativeBuildFailure(
       [
         `${destination === "testflight" ? "TestFlight" : "Google Play"} has build ${version}, but recording it on native build ${build.id} failed: ${error instanceof Error ? error.message : String(error)}`,
-        "Run the same command again: it reuses the build, finds it in the store, and records it.",
+        "The store keeps the build: a run with the same inputs reuses it and skips the upload.",
       ].join("\n"),
       { cause: error },
     );

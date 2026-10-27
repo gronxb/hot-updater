@@ -478,7 +478,8 @@ reused build is uploaded only when the store doesn't have it yet:
 - A reused build with no submission recorded is looked up in the store. An
   `.ipa` whose build number App Store Connect already has, or an `.aab` whose
   version code Google Play's internal track releases, is skipped the same
-  way, and recorded on the build.
+  way. Nothing is recorded: the store matched the build number, not the
+  artifact.
 - When the store refuses the build number anyway, because a build with that
   number came from another upload or tool, the CLI skips with the same line
   instead of the store's error, and records nothing, since the store's build
@@ -636,9 +637,9 @@ the CLI prints.
 Once App Store Connect accepts the build, the CLI records it on the tracked
 build, and the Console's [Native builds](#native-builds-in-the-console) tab
 shows it as on TestFlight with its version and build number, such as
-`1.7.0 (66)`. A build still processing is recorded by the next run with the
-same inputs, which finds it on TestFlight instead of uploading it again. A
-failed upload and `--dry-run` record nothing. A build number App Store Connect
+`1.7.0 (66)`. Only an upload the run made is recorded: a build App Store
+Connect is still processing after 30 minutes, a failed upload, and
+`--dry-run` record nothing. A build number App Store Connect
 already has, from this or another upload, is skipped with `Already on
 TestFlight as 1.7.0 (66). Bump the build number to upload a new build.`; see
 [Reuse a build](#reuse-a-build).

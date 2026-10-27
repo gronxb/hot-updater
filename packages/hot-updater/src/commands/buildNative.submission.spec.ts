@@ -344,7 +344,7 @@ describe("native-build ios --submit testflight", () => {
     expect(await stored()).toBeNull();
   });
 
-  it("records a reused build TestFlight already has, without uploading it again", async () => {
+  it("skips a reused build TestFlight already has, and records nothing: the store matched its number, not the artifact", async () => {
     reused = "local";
     vi.mocked(findTestFlightBuild).mockResolvedValueOnce({
       found: true,
@@ -359,11 +359,7 @@ describe("native-build ios --submit testflight", () => {
     });
 
     expect(uploadToTestFlight).not.toHaveBeenCalled();
-    expect(submission(await stored())).toEqual({
-      submitted_to: "testflight",
-      submitted_version: "1.7.0 (65)",
-      recorded: true,
-    });
+    expect(submission(await stored())).toEqual(NONE);
   });
 
   it("skips a reused build already submitted to TestFlight, with no store call, and succeeds", async () => {
@@ -527,7 +523,7 @@ describe("native-build android --submit play-internal", () => {
     expect(submission(await stored())).toEqual(NONE);
   });
 
-  it("records a reused build Google Play already has, without uploading it again", async () => {
+  it("skips a reused build Google Play already has, and records nothing: the store matched its version code, not the artifact", async () => {
     reused = "local";
     vi.mocked(findPlayInternalRelease).mockResolvedValueOnce(true);
 
@@ -537,10 +533,6 @@ describe("native-build android --submit play-internal", () => {
     });
 
     expect(uploadToPlay).not.toHaveBeenCalled();
-    expect(submission(await stored())).toEqual({
-      submitted_to: "play-internal",
-      submitted_version: "1.7.0 (66)",
-      recorded: true,
-    });
+    expect(submission(await stored())).toEqual(NONE);
   });
 });
