@@ -153,19 +153,21 @@ const checkComment = async (
   expected: { buildId: string; built: boolean; releaseId: string },
 ) => {
   const consoleUrl = env("PROOF_CONSOLE_URL").replace(/\/+$/, "");
-  // The APK's QR code, which the Console serves to the runner, holds the
-  // build's download under the Console's address: asked of the Console
-  // here, not taken from the action.
+  // The comment shows the APK's QR code exactly when the Console serves it
+  // to the runner under its own address, as the proof asks the Console here
+  // rather than the action: a public Console serves it, and a local one,
+  // whose per-run session guards every route, as this job's does, doesn't.
   const qr = `${consoleUrl}/_hot-updater/native-builds/qr?build=${expected.buildId}`;
-  check(
-    comment.includes(`<img src="${qr}"`),
-    `the comment doesn't show the QR code ${qr}:\n${comment}`,
-  );
   const response = await fetch(qr, { method: "HEAD" });
-  check(
+  const served =
+    response.ok &&
     response.headers.get("x-hot-updater-download-url") ===
-      `${consoleUrl}/api/native-builds/${expected.buildId}/download`,
-    `the QR code ${qr} holds ${response.headers.get("x-hot-updater-download-url")}`,
+      `${consoleUrl}/api/native-builds/${expected.buildId}/download`;
+  check(
+    comment.includes(`<img src="${qr}"`) === served,
+    served
+      ? `the Console serves the QR code ${qr}, but the comment doesn't show it:\n${comment}`
+      : `the Console answers ${response.status} to ${qr}, but the comment shows it:\n${comment}`,
   );
   check(
     !/hot-updater\/channel\/|openurl|am start/.test(comment),
