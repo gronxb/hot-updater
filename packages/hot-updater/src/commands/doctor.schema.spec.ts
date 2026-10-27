@@ -227,6 +227,47 @@ describe("doctor's schema check", () => {
     });
   });
 
+  it("does not name init for a plugin the managed server does not run, which init would drop from the config", async () => {
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "aws");
+    vi.stubEnv("HOT_UPDATER_DYNAMODB_TABLE_NAME", "hot-updater");
+    await migrateCoreSchema(adapter, "dynamoDB", [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
+    await storeSetting("schema.core", "1.0.0");
+    const target: Record<symbol, string> = {
+      [Symbol.for("@hot-updater/database-target")]: "dynamodb/hot-updater",
+    };
+    serverProject({ ...database("dynamoDB"), ...target }, [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      notes,
+    ]);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              settings: [
+                { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
+                { key: "schema.notes", expected: "1", found: null },
+              ],
+              resolution: expect.stringMatching(
+                /^schema\.notes belongs to a plugin the managed server does not run: `hot-updater init` deploys the Lambda@Edge function and its IAM role policy with only the official .* so it would drop it instead of creating its tables\. Remove it from plugins in hot-updater\.config\.ts and run doctor again, which then names init for the rest; or, if a server of your own runs it on this database: In the server's project, run/u,
+              ),
+              commands: [DB_MIGRATE],
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("names the database's own tooling when init's record names a provider whose database the config no longer uses", async () => {
     vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "aws");
     serverProject(

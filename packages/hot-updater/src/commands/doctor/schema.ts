@@ -71,9 +71,20 @@ const DB_GENERATE = "npx hot-updater db generate <server file>";
 const pendingResolution = (
   { database }: LoadedServer,
   managed: ManagedDeployment | null,
+  /** The pending settings of plugins that are not Hot Updater's own. */
+  foreign: readonly SchemaSetting[],
 ): { readonly resolution: string; readonly commands: string[] } => {
   const own = ownServerResolution(database);
   if (managed === null) return own;
+  if (foreign.length > 0) {
+    // Init deploys only the official plugins, and writes that list back
+    // into the config: replaying it drops these plugins.
+    const keys = foreign.map(({ key }) => key).join(", ");
+    return {
+      resolution: `${keys} ${foreign.length === 1 ? "belongs to a plugin" : "belong to plugins"} the managed server does not run: \`hot-updater init\` deploys ${managed.server} with only the official insights(), apiKeys() and remoteConfig(), and running it again sets the plugins in hot-updater.config.ts to those, so it would drop ${foreign.length === 1 ? "it" : "them"} instead of creating ${foreign.length === 1 ? "its" : "their"} tables. Remove ${foreign.length === 1 ? "it" : "them"} from plugins in hot-updater.config.ts and run doctor again, which then names init for the rest; or, if a server of your own runs ${foreign.length === 1 ? "it" : "them"} on this database: ${own.resolution}`,
+      commands: own.commands,
+    };
+  }
   const replay = `Run \`${managed.command}\`: it applies the migrations this release needs, then redeploys ${managed.server} from it, back to back. ${SERVER_ORDER}, so run nothing in between.`;
   return managed.confirmed
     ? { resolution: replay, commands: [managed.command] }
@@ -269,7 +280,11 @@ const schemaStatus = (
       type: "error",
       code: "SCHEMA_MIGRATION_PENDING",
       message: `The database has migrations to run before the server reads it: ${listed(pending)}.`,
-      ...pendingResolution(server, managed),
+      ...pendingResolution(
+        server,
+        managed,
+        pending.filter(({ key }) => !owned.has(key)),
+      ),
       settings: pending,
     });
   }

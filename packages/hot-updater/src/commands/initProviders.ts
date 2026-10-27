@@ -79,7 +79,7 @@ export const INIT_PROVIDER_PACKAGES = {
     label: "AWS + Lambda@Edge",
     load: (): Promise<InitProviderModule> => import("@hot-updater/aws/init"),
     packageName: "@hot-updater/aws",
-    server: "the Lambda@Edge function with its IAM role policy",
+    server: "the Lambda@Edge function and its IAM role policy",
   },
   supabase: {
     database: "supabaseDatabase",

@@ -314,9 +314,12 @@ only with consent, it names both, each with its condition.
 Init reports every input `.env.hotupdater` lacks, such as a credential it saved
 only with consent, before it changes a resource: set those in the environment
 for the run, or run `npx hot-updater init` and answer its prompts. Each
-provider's migrations create core's tables and the official plugins'; a plugin
-of your own on a managed database needs `hot-updater db generate` and the
-provider's tooling.
+provider's migrations create core's tables and the official plugins'. Init
+deploys only the official `insights()`, `apiKeys()` and `remoteConfig()`, and
+sets the config's `plugins` to them, so for a pending plugin of your own on a
+managed database doctor does not name init, which would drop it: remove the
+plugin from `plugins` and run doctor again, or, if a server of your own runs
+it, migrate it with `hot-updater db generate` and the provider's tooling.
 
 A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
 was migrated by a newer Hot Updater, and Hot Updater never moves a schema
