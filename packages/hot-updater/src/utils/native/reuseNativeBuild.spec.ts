@@ -40,9 +40,10 @@ const components = (
   files: Record<string, string>,
   env: Record<string, string> = {},
 ): NativeBuildKeyComponents => ({
-  engine: "hot-updater/native-build@1",
+  engine: "hot-updater/native-build@2",
   files,
   inputs: {},
+  autolinking: {},
   settings: {},
   signing: {},
   toolchain: {},

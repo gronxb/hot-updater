@@ -6,7 +6,12 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 
 import { parse as parsePbxproj } from "@bacons/xcode/json";
-import { CREDENTIAL_ENV_NAMES, maskSecretValues } from "@hot-updater/cli-tools";
+import {
+  autolinkingConfigCommand,
+  CREDENTIAL_ENV_NAMES,
+  maskSecretValues,
+  readReactNativeInterface,
+} from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fg from "fast-glob";
@@ -19,7 +24,7 @@ import type { NativeBuildArtifactKind } from "./createNativeBuild";
  * hashed or how, so every cached build misses once instead of matching a key
  * that means something else.
  */
-export const NATIVE_BUILD_KEY_ENGINE = "hot-updater/native-build@1";
+export const NATIVE_BUILD_KEY_ENGINE = "hot-updater/native-build@2";
 
 /** A native build key: the engine's prefix and a SHA-256. */
 export const NATIVE_BUILD_KEY_PATTERN = /^nbk1:[0-9a-f]{64}$/;
@@ -35,10 +40,17 @@ export interface NativeBuildKeyComponents {
   readonly files: Readonly<Record<string, string>>;
   /**
    * Inputs git ignores that the build reads: the native projects' ignored
-   * files, `.env*` files, the package manager's install state, and the
-   * native packages installed in node_modules. Name → SHA-256.
+   * files, `.env*` files, the package manager's install state, the native
+   * packages installed in node_modules and every package autolinking links,
+   * and the ignored files of the repository's packages. Name → SHA-256.
    */
   readonly inputs: Readonly<Record<string, string>>;
+  /**
+   * What autolinking links, as it prints it, without this machine's
+   * directories: `react-native`, React Native's config, and `expo-modules`,
+   * expo-modules-autolinking's. Name → SHA-256.
+   */
+  readonly autolinking: Readonly<Record<string, string>>;
   /** The scheme's settings and what the build embeds. */
   readonly settings: Readonly<Record<string, string>>;
   /** Who signs: certificate and key IDs, never a password or a key. */
@@ -92,6 +104,11 @@ export interface NativeBuildKeyInput {
   readonly signing: NativeBuildKeySigning;
   /** The Hot Updater CLI's version. */
   readonly hotUpdaterVersion: string;
+  /**
+   * The config's build adapter, such as `bare`, `rock`, or `expo`, whose
+   * native project's autolinking command lists what the build links.
+   */
+  readonly buildAdapter?: string;
   readonly env?: NodeJS.ProcessEnv;
   /** The build tools' versions; tests replace the real probes. */
   readonly readToolchain?: (
@@ -192,7 +209,13 @@ const ENV_PREFIXES = {
   ios: ["EXPO_PUBLIC_", "RCT_", "HOT_UPDATER_"],
   android: ["EXPO_PUBLIC_", "RCT_", "ORG_GRADLE_PROJECT_", "HOT_UPDATER_"],
 } as const satisfies Record<Platform, readonly string[]>;
-const ENV_NAMES = ["NODE_ENV", "BABEL_ENV", "ENVFILE"];
+const ENV_NAMES = [
+  "NODE_ENV",
+  "BABEL_ENV",
+  "ENVFILE",
+  // Expo's native templates link with React Native CLI when it is 1.
+  "EXPO_USE_COMMUNITY_AUTOLINKING",
+];
 
 /** The shell's own variables, which a script names but no build input sets. */
 const SYSTEM_ENV_NAMES = new Set([
@@ -585,18 +608,161 @@ const exists = (file: string) =>
   );
 
 /**
- * The native packages installed in node_modules: every dependency of the
- * app, and of its dependencies, that ships native code for the platform.
- * Autolinking links a subset of them; hashing each one's files, instead of
- * trusting its version, makes a local edit or a postinstall script rebuild.
- * Workspace packages are files of the repository already.
+ * The files git ignores under `dir`, absolute: each ignored file, and each
+ * file of an ignored directory, except what builds write and the CLI's own
+ * output. git lists an ignored directory that holds `dir` by itself.
  */
-const readNativePackages = async (
+const listIgnoredFiles = async (
+  dir: string,
+  root: string,
+  excluded: (relativePath: string) => boolean,
+): Promise<string[]> => {
+  const ignored = splitNul(
+    await git(root, [
+      "ls-files",
+      "-o",
+      "-i",
+      "--exclude-standard",
+      "--directory",
+      "-z",
+      "--",
+      toPosix(path.relative(root, dir)) || ".",
+    ]),
+  );
+  const counts = (absolute: string) => {
+    const fromRoot = toPosix(path.relative(root, absolute));
+    return !isGenerated(fromRoot) && !excluded(fromRoot);
+  };
+  const files: string[] = [];
+  for (const entry of ignored) {
+    const listed = path.join(root, entry);
+    const holdsDir = !path.relative(listed, dir).startsWith("..");
+    const absolute = holdsDir ? dir : listed;
+    if (!counts(absolute)) continue;
+    if (entry.endsWith("/")) {
+      for (const file of await fg("**/*", {
+        cwd: absolute,
+        dot: true,
+        onlyFiles: true,
+        followSymbolicLinks: false,
+        ignore: GENERATED_GLOBS,
+      })) {
+        const found = path.join(absolute, file);
+        if (counts(found)) files.push(found);
+      }
+    } else {
+      files.push(absolute);
+    }
+  }
+  return files.sort();
+};
+
+/** A package the build reads: where it is, and what else autolinking links of it. */
+interface LinkedPackage {
+  name: string;
+  version: string;
+  root: string;
+  /** Native folders and prebuilt files autolinking names outside `root`. */
+  extras: Set<string>;
+}
+
+/**
+ * What autolinking links, read with the command the build adapter's native
+ * project runs: each linked package, and the config it printed. A project
+ * whose autolinking can't run gets no key: a key without what the build
+ * links could match a build that links something else.
+ */
+const readAutolinking = async (
   cwd: string,
   platform: Platform,
   root: string,
-  hashes: FileHashes,
-): Promise<Record<string, string>> => {
+  buildAdapter: string | undefined,
+  env: NodeJS.ProcessEnv,
+): Promise<{
+  config: Record<string, string>;
+  packages: { name: string; root: string; extras: string[] }[];
+}> => {
+  let linked: Awaited<ReturnType<typeof readReactNativeInterface>>;
+  try {
+    const { command, args } = autolinkingConfigCommand(cwd, platform, {
+      buildAdapter,
+      env,
+    });
+    linked = await readReactNativeInterface({ cwd, command, args, platform });
+  } catch (error) {
+    const reason =
+      error instanceof Error ? firstLine(error.message) : String(error);
+    throw new Uncacheable(
+      `autolinking could not list the packages the build links (${maskSecretValues(machineIndependent(reason, root))})`,
+    );
+  }
+  const independent = (value: unknown): unknown =>
+    typeof value === "string"
+      ? machineIndependent(value, root)
+      : Array.isArray(value)
+        ? value.map(independent)
+        : value && typeof value === "object"
+          ? Object.fromEntries(
+              Object.entries(value).map(([name, entry]) => [
+                name,
+                independent(entry),
+              ]),
+            )
+          : value;
+  const config: Record<string, string> = {
+    "react-native": sha256(
+      stableStringify(independent(linked.autolinking?.reactNative ?? null)),
+    ),
+  };
+  if (linked.autolinking?.expoModules) {
+    config["expo-modules"] = sha256(
+      stableStringify(independent(linked.autolinking.expoModules)),
+    );
+  }
+  const packages = linked.dependencies.flatMap((dependency) =>
+    "root" in dependency
+      ? [
+          {
+            name: dependency.name,
+            root: dependency.root,
+            extras: [
+              ...(dependency.sourceDirs ?? []),
+              ...(dependency.files ?? []),
+            ],
+          },
+        ]
+      : [],
+  );
+  return { config, packages };
+};
+
+/**
+ * The packages the build reads, each keyed by its files: every dependency
+ * of the app, and of its dependencies, installed in node_modules that ships
+ * native code for the platform, every package autolinking links, wherever
+ * it is, with the native folders and prebuilt files it names, and every
+ * package of the repository the app depends on. An installed package counts
+ * by all its files, so a local edit or a postinstall script rebuilds; a
+ * package of the repository has its tracked files in the repository's, and
+ * counts by the files git ignores, such as generated codegen sources or a
+ * built `lib/` its entry points at. The other platform's folders and what
+ * builds write never count.
+ */
+const readPackages = async ({
+  cwd,
+  platform,
+  root,
+  hashes,
+  excluded,
+  autolinked,
+}: {
+  cwd: string;
+  platform: Platform;
+  root: string;
+  hashes: FileHashes;
+  excluded: (relativePath: string) => boolean;
+  autolinked: readonly { name: string; root: string; extras: string[] }[];
+}): Promise<Record<string, string>> => {
   type Manifest = {
     name?: string;
     version?: string;
@@ -636,10 +802,36 @@ const readNativePackages = async (
         (await exists(path.join(dir, "ios"))) ||
         (await exists(path.join(dir, "apple")))
       : await exists(path.join(dir, "android"));
+  const isInstalled = (dir: string) =>
+    toPosix(dir).split("/").includes("node_modules");
+  const inRepository = (dir: string) => {
+    const relative = path.relative(root, dir);
+    return (
+      relative !== "" &&
+      !relative.startsWith("..") &&
+      !path.isAbsolute(relative)
+    );
+  };
 
   const app = await readManifest(cwd);
-  const seen = new Set<string>();
-  const packages: Record<string, string> = {};
+  const seen = new Set<string>([cwd]);
+  const linked = new Map<string, LinkedPackage>();
+  const add = (
+    dir: string,
+    manifest: Manifest | null,
+    fallbackName: string,
+  ) => {
+    const known = linked.get(dir);
+    if (known) return known;
+    const entry: LinkedPackage = {
+      name: manifest?.name ?? fallbackName,
+      version: manifest?.version ?? "unknown",
+      root: dir,
+      extras: new Set(),
+    };
+    linked.set(dir, entry);
+    return entry;
+  };
   let queue: { from: string; names: string[] }[] = [
     {
       from: cwd,
@@ -672,31 +864,105 @@ const readNativePackages = async (
           ...manifest.optionalDependencies,
         }),
       });
-      const installed = toPosix(dir).split("/").includes("node_modules");
-      if (!installed || !(await isNative(dir))) return;
-      const files = (
-        await fg("**/*", {
-          cwd: dir,
-          dot: true,
-          onlyFiles: true,
-          followSymbolicLinks: false,
-          ignore: [
-            ...GENERATED_GLOBS,
-            ...otherPlatformDirs.map((other) => `${other}/**`),
-          ],
-        })
-      ).sort();
-      const digests = await mapLimit(files, 16, (file) =>
-        hashes.hash(path.join(dir, file)),
-      );
-      packages[
-        `package:${manifest.name ?? toPosix(path.relative(root, dir))}@${manifest.version ?? "unknown"}`
-      ] = sha256(
-        files.map((file, index) => `${file}\0${digests[index]}`).join("\n"),
-      );
+      if (isInstalled(dir) ? await isNative(dir) : inRepository(dir)) {
+        add(dir, manifest, toPosix(path.relative(root, dir)));
+      }
     });
   }
-  return packages;
+  for (const dependency of autolinked) {
+    const dir = await fs.realpath(dependency.root).catch(() => null);
+    if (dir === null) {
+      throw new Uncacheable(
+        `autolinking links ${dependency.name} from ${machineIndependent(dependency.root, root)}, which does not exist`,
+      );
+    }
+    if (dir === cwd) continue;
+    const entry = add(dir, await readManifest(dir), dependency.name);
+    for (const extra of dependency.extras) {
+      const real = await fs.realpath(extra).catch(() => null);
+      if (real === null) continue;
+      const relative = path.relative(dir, real);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        entry.extras.add(real);
+      }
+    }
+  }
+
+  // Two installs of one version, such as pnpm's for two peer dependency
+  // sets, count by where each is.
+  const digests = new Map<string, { where: string; digest: string }[]>();
+  const otherPlatform = (relative: string) =>
+    otherPlatformDirs.some(
+      (other) => relative === other || relative.startsWith(`${other}/`),
+    );
+  const allFiles = async (dir: string) =>
+    (await fs.stat(dir)).isFile()
+      ? [dir]
+      : (
+          await fg("**/*", {
+            cwd: dir,
+            dot: true,
+            onlyFiles: true,
+            followSymbolicLinks: false,
+            ignore: GENERATED_GLOBS,
+          })
+        ).map((file) => path.join(dir, file));
+  await mapLimit([...linked.values()], 8, async (entry) => {
+    // A package of the repository has its tracked files among the
+    // repository's; one anywhere else counts by all its files.
+    const own =
+      !isInstalled(entry.root) && inRepository(entry.root)
+        ? await listIgnoredFiles(entry.root, root, excluded)
+        : await allFiles(entry.root);
+    const files = [
+      ...own.filter(
+        (file) => !otherPlatform(toPosix(path.relative(entry.root, file))),
+      ),
+      ...(
+        await Promise.all(
+          [...entry.extras]
+            .sort()
+            .map(async (extra) =>
+              inRepository(extra) &&
+              !isInstalled(extra) &&
+              (await fs.stat(extra)).isDirectory()
+                ? listIgnoredFiles(extra, root, excluded)
+                : allFiles(extra),
+            ),
+        )
+      ).flat(),
+    ];
+    const unique = [...new Set(files)].sort();
+    const fileDigests = await mapLimit(unique, 16, (file) => hashes.hash(file));
+    const label = `package:${entry.name}@${entry.version}`;
+    digests.set(label, [
+      ...(digests.get(label) ?? []),
+      {
+        where: machineIndependent(entry.root, root),
+        digest: sha256(
+          unique
+            .map(
+              (file, index) =>
+                `${machineIndependent(file.startsWith(`${entry.root}${path.sep}`) ? toPosix(path.relative(entry.root, file)) : file, root)}\0${fileDigests[index]}`,
+            )
+            .join("\n"),
+        ),
+      },
+    ]);
+  });
+  return Object.fromEntries(
+    [...digests].map(([label, installs]) => [
+      label,
+      installs.length === 1
+        ? installs[0]!.digest
+        : sha256(
+            installs
+              .map(({ where, digest }) => `${where}\0${digest}`)
+              .sort()
+              .join("\n"),
+          ),
+    ]),
+  );
 };
 
 /**
@@ -740,38 +1006,11 @@ const readIgnoredInputs = async ({
     toPosix(path.relative(root, absolutePath));
 
   if (await exists(path.join(cwd, nativeDir))) {
-    const ignored = splitNul(
-      await git(cwd, [
-        "ls-files",
-        "-o",
-        "-i",
-        "--exclude-standard",
-        "--directory",
-        "-z",
-        "--",
-        nativeDir,
-      ]),
+    const files = await listIgnoredFiles(
+      path.join(cwd, nativeDir),
+      root,
+      excluded,
     );
-    const files: string[] = [];
-    for (const entry of ignored) {
-      const absolute = path.join(cwd, entry);
-      if (isGenerated(fromRoot(absolute)) || excluded(fromRoot(absolute))) {
-        continue;
-      }
-      if (entry.endsWith("/")) {
-        for (const file of await fg("**/*", {
-          cwd: absolute,
-          dot: true,
-          onlyFiles: true,
-          followSymbolicLinks: false,
-          ignore: GENERATED_GLOBS,
-        })) {
-          files.push(path.join(absolute, file));
-        }
-      } else {
-        files.push(absolute);
-      }
-    }
     nativeFiles.push(...files.map(fromRoot));
     // local.properties names the SDK by an absolute path; the SDK's
     // components are part of the toolchain. `pod install` writes this
@@ -779,7 +1018,7 @@ const readIgnoredInputs = async ({
     // React Native says never to commit: the file's other settings count.
     const localProperties = path.join(cwd, "android", "local.properties");
     const xcodeEnvLocal = path.join(cwd, "ios", ".xcode.env.local");
-    await mapLimit(files.sort(), 16, async (file) => {
+    await mapLimit(files, 16, async (file) => {
       if (file === localProperties || file === xcodeEnvLocal) return;
       inputs[`file:${fromRoot(file)}`] = file.endsWith(".pbxproj")
         ? await xcodeProjectDigest(file, hashes)
@@ -1444,10 +1683,27 @@ export const computeNativeBuildKey = async (
       root,
       env,
     );
-    const [ignored, nativePackages, settings, signing, env_, toolchain] =
+    const autolinking = readAutolinking(
+      realCwd,
+      platform,
+      root,
+      input.buildAdapter,
+      env,
+    );
+    const [ignored, packages, linked, settings, signing, env_, toolchain] =
       await Promise.all([
         ignoredInputs.then(({ inputs }) => inputs),
-        readNativePackages(realCwd, platform, root, hashes),
+        autolinking.then(({ packages: autolinked }) =>
+          readPackages({
+            cwd: realCwd,
+            platform,
+            root,
+            hashes,
+            excluded,
+            autolinked,
+          }),
+        ),
+        autolinking.then(({ config }) => config),
         readSettings({ ...input, cwd: realCwd }, root),
         readSigning(input),
         ignoredInputs.then(({ nativeFiles }) =>
@@ -1464,7 +1720,8 @@ export const computeNativeBuildKey = async (
     const components: NativeBuildKeyComponents = {
       engine: NATIVE_BUILD_KEY_ENGINE,
       files,
-      inputs: { ...ignored, ...nativePackages },
+      inputs: { ...ignored, ...packages },
+      autolinking: linked,
       settings,
       signing,
       toolchain: {
@@ -1512,6 +1769,7 @@ export const diffNativeBuildKeyComponents = (
   };
   compare("file", previous.files, next.files);
   compare("input", previous.inputs, next.inputs);
+  compare("autolinking", previous.autolinking, next.autolinking);
   compare("setting", previous.settings, next.settings);
   compare("signing", previous.signing, next.signing);
   compare("toolchain", previous.toolchain, next.toolchain);

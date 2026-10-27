@@ -5,10 +5,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  autolinkingConfigCommand,
   createInterfaceFingerprint,
   INTERFACE_FINGERPRINT_ENGINE,
   isCodegenSpecFile,
   type NativeInterface,
+  reactNativeConfigCommand,
   readReactNativeInterface,
 } from "./interfaceFingerprint";
 
@@ -630,6 +632,7 @@ describe("readReactNativeInterface", () => {
       runtime: "react-native@0.85.2",
       dependencies: [{ name: "both", root: "/both" }],
       settings: {},
+      autolinking: { reactNative: config, expoModules: null },
     });
   });
 
@@ -980,6 +983,125 @@ describe("readReactNativeInterface", () => {
       (await read("android", { "expo.jsEngine": "jsc" })).settings,
     ).toEqual({
       "expo.jsEngine": "jsc",
+    });
+  });
+});
+
+describe("reactNativeConfigCommand", () => {
+  let project: string;
+
+  const writeManifest = async (name: string, version: string) => {
+    const dir = path.join(project, "node_modules", name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name, version }),
+    );
+  };
+
+  beforeEach(async () => {
+    project = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-expo-fp-")),
+    );
+    await writeManifest("react-native", "0.76.0");
+    await writeManifest("expo", "52.0.0");
+  });
+
+  afterEach(async () => {
+    await fs.rm(project, { recursive: true, force: true });
+  });
+
+  const reactNativeCli = () => [
+    path.join(project, "node_modules/react-native/cli.js"),
+    "config",
+  ];
+
+  it("lists React Native packages with Expo's autolinking from 1.12", async () => {
+    await writeManifest("expo-modules-autolinking", "2.0.8");
+
+    expect(reactNativeConfigCommand(project, "ios", {})).toEqual([
+      path.join(
+        project,
+        "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      ),
+      "react-native-config",
+      "--platform",
+      "ios",
+      "--json",
+    ]);
+  });
+
+  it("uses React Native CLI before 1.12, such as SDK 50", async () => {
+    await writeManifest("expo-modules-autolinking", "1.10.3");
+
+    expect(reactNativeConfigCommand(project, "ios", {})).toEqual(
+      reactNativeCli(),
+    );
+  });
+
+  it("uses React Native CLI when EXPO_USE_COMMUNITY_AUTOLINKING=1", async () => {
+    await writeManifest("expo-modules-autolinking", "2.0.8");
+
+    expect(
+      reactNativeConfigCommand(project, "ios", {
+        EXPO_USE_COMMUNITY_AUTOLINKING: "1",
+      }),
+    ).toEqual(reactNativeCli());
+  });
+});
+
+describe("autolinkingConfigCommand", () => {
+  let project: string;
+
+  beforeEach(async () => {
+    project = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-autolinking-")),
+    );
+    for (const [name, version] of [
+      ["react-native", "0.85.0"],
+      ["expo", "54.0.0"],
+      ["expo-modules-autolinking", "3.0.0"],
+    ]) {
+      const dir = path.join(project, "node_modules", name!);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name, version }),
+      );
+    }
+  });
+
+  afterEach(async () => {
+    await fs.rm(project, { recursive: true, force: true });
+  });
+
+  it("runs what each build adapter's native project runs", () => {
+    expect(
+      autolinkingConfigCommand(project, "android", { buildAdapter: "rock" }),
+    ).toEqual({ command: "npx", args: ["rock", "config", "-p", "android"] });
+    expect(
+      autolinkingConfigCommand(project, "ios", { buildAdapter: "bare" }),
+    ).toEqual({
+      command: process.execPath,
+      args: [path.join(project, "node_modules/react-native/cli.js"), "config"],
+    });
+    expect(
+      autolinkingConfigCommand(project, "ios", {
+        buildAdapter: "expo",
+        env: {},
+      }),
+    ).toEqual({
+      command: process.execPath,
+      args: [
+        path.join(
+          project,
+          "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+        ),
+        "react-native-config",
+        "--platform",
+        "ios",
+        "--json",
+      ],
     });
   });
 });

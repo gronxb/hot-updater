@@ -149,6 +149,7 @@ export const reuseNativeBuild = async ({
   androidScheme,
   credentials,
   noCache,
+  buildAdapter,
 }: {
   platform: Platform;
   scheme: string;
@@ -160,6 +161,8 @@ export const reuseNativeBuild = async ({
   androidScheme?: EnrichedNativeBuildAndroidScheme;
   credentials: Pick<CredentialResolver, "resolve">;
   noCache: boolean;
+  /** The config's build adapter's name, whose autolinking the key reads. */
+  buildAdapter?: string;
 }): Promise<NativeBuildCache> => {
   const cwd = getCwd();
   const resolvedCacheDir =
@@ -187,6 +190,7 @@ export const reuseNativeBuild = async ({
       androidScheme,
     ),
     hotUpdaterVersion: version ?? "unknown",
+    buildAdapter,
   }).catch((error: unknown) => ({
     key: null,
     components: null,

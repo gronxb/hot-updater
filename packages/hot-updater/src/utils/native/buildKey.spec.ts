@@ -41,6 +41,7 @@ const input = (
   cacheDir: path.join(app, "node_modules", ".hot-updater"),
   signing: {},
   hotUpdaterVersion: "1.2.0",
+  buildAdapter: "bare",
   env: { GRADLE_USER_HOME: gradleHome },
   readToolchain: async () => toolchain,
   ...overrides,
@@ -120,6 +121,31 @@ const randomIds = () => {
   };
 };
 
+/**
+ * What autolinking links, as React Native CLI's `config` prints it: the
+ * fake CLI the fixture installs prints this file.
+ */
+const link = (dependencies: Record<string, unknown>) =>
+  write(
+    "apps/mobile/node_modules/react-native/config.json",
+    JSON.stringify({
+      root: app,
+      reactNativePath: path.join(app, "node_modules/react-native"),
+      dependencies,
+      project: {
+        ios: { sourceDir: path.join(app, "ios") },
+        android: { sourceDir: path.join(app, "android") },
+      },
+    }),
+  );
+
+/** A dependency as React Native CLI's `config` lists it. */
+const linked = (
+  name: string,
+  dir: string,
+  platforms: Record<string, unknown> = { ios: {}, android: {} },
+) => ({ [name]: { name, root: path.join(root, dir), platforms } });
+
 /** What changed between the key before and after `change`. */
 const changedBy = async (
   change: () => void | Promise<void>,
@@ -155,6 +181,8 @@ beforeEach(() => {
       ".xcode.env.local",
       "GoogleService-Info.plist",
       ".hot-updater/",
+      "lib/",
+      "vendor/",
       "",
     ].join("\n"),
   );
@@ -199,6 +227,31 @@ beforeEach(() => {
   );
   write("apps/mobile/node_modules/js-lib/index.js", "module.exports = 1;\n");
   write("apps/mobile/node_modules/.pnpm/lock.yaml", "lockfileVersion: '9.0'\n");
+  // React Native CLI, whose `config` prints what autolinking links.
+  write(
+    "apps/mobile/node_modules/react-native/package.json",
+    JSON.stringify({ name: "react-native", version: "0.88.0" }),
+  );
+  write(
+    "apps/mobile/node_modules/react-native/cli.js",
+    'const fs = require("fs"); const path = require("path"); process.stdout.write(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));\n',
+  );
+  link({
+    ...linked("native-lib", "apps/mobile/node_modules/native-lib", {
+      ios: {
+        podspecPath: path.join(
+          root,
+          "apps/mobile/node_modules/native-lib/native-lib.podspec",
+        ),
+      },
+      android: {
+        sourceDir: path.join(
+          root,
+          "apps/mobile/node_modules/native-lib/android",
+        ),
+      },
+    }),
+  });
 });
 
 afterEach(() => {
@@ -354,6 +407,396 @@ describe("computeNativeBuildKey", () => {
         )
       ).changed,
     ).toEqual(["input:package:native-lib@1.0.0"]);
+  });
+
+  it("changes with the ignored files of a package of the repository, but not with what builds write", async () => {
+    // A workspace package, linked into node_modules as pnpm links it.
+    write(
+      "packages/native-ws/package.json",
+      JSON.stringify({
+        name: "native-ws",
+        version: "1.0.0",
+        main: "lib/index.js",
+      }),
+    );
+    write("packages/native-ws/ios/Ws.m", "// ws\n");
+    write("packages/native-ws/lib/index.js", "module.exports = 1;\n");
+    write("packages/native-ws/android/lib/generated.kt", "class A\n");
+    write(
+      "apps/mobile/package.json",
+      JSON.stringify({
+        name: "mobile",
+        dependencies: {
+          "native-lib": "1.0.0",
+          "js-lib": "1.0.0",
+          "native-ws": "workspace:*",
+        },
+      }),
+    );
+    fs.symlinkSync(
+      path.join(root, "packages/native-ws"),
+      path.join(app, "node_modules/native-ws"),
+    );
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+    };
+
+    // The built lib/ its entry points at, which git ignores.
+    expect(
+      (
+        await changedBy(
+          () =>
+            write("packages/native-ws/lib/index.js", "module.exports = 2;\n"),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["input:package:native-ws@1.0.0"]);
+    // Generated sources, also ignored.
+    expect(
+      (
+        await changedBy(
+          () => write("packages/native-ws/lib/nitrogen/Spec.swift", "// 1\n"),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["input:package:native-ws@1.0.0"]);
+    // A tracked file counts as a file of the repository.
+    expect(
+      (
+        await changedBy(
+          () => write("packages/native-ws/ios/Ws.m", "// 2\n"),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["file:packages/native-ws/ios/Ws.m"]);
+    // What builds write, and the other platform's folder.
+    expect(
+      await changedBy(() => {
+        write("packages/native-ws/build/out.o", "o");
+        write("packages/native-ws/ios/build/Build.o", "o");
+        write("packages/native-ws/node_modules/dep/index.js", "1;\n");
+        write("packages/native-ws/android/lib/generated.kt", "class B\n");
+      }, ios),
+    ).toEqual({ changed: [], same: true });
+  });
+
+  it("changes with a package only autolinking links, wherever it is", async () => {
+    // Outside the dependency walk, in a folder git ignores, as an Expo
+    // `searchPaths` or a react-native.config.js `root` finds it.
+    write(
+      "vendor/extra-native/package.json",
+      JSON.stringify({ name: "extra-native", version: "2.0.0" }),
+    );
+    write("vendor/extra-native/ios/Extra.m", "// 1\n");
+    write("vendor/extra-native/extra-native.podspec", "\n");
+    // Outside the repository.
+    const outside = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "native-build-key-outside-")),
+    );
+    fs.mkdirSync(path.join(outside, "ios"));
+    fs.writeFileSync(
+      path.join(outside, "package.json"),
+      JSON.stringify({ name: "outside-native", version: "3.0.0" }),
+    );
+    fs.writeFileSync(path.join(outside, "ios/Outside.m"), "// 1\n");
+    link({
+      ...linked("extra-native", "vendor/extra-native"),
+      "outside-native": {
+        name: "outside-native",
+        root: outside,
+        platforms: { ios: {} },
+      },
+    });
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+    };
+    try {
+      expect(
+        (
+          await changedBy(
+            () => write("vendor/extra-native/ios/Extra.m", "// 2\n"),
+            ios,
+          )
+        ).changed,
+      ).toEqual(["input:package:extra-native@2.0.0"]);
+      expect(
+        (
+          await changedBy(
+            () =>
+              fs.writeFileSync(path.join(outside, "ios/Outside.m"), "// 2\n"),
+            ios,
+          )
+        ).changed,
+      ).toEqual(["input:package:outside-native@3.0.0"]);
+      expect(
+        await changedBy(() => {
+          write("vendor/extra-native/build/out.o", "o");
+          write("vendor/extra-native/ios/Pods/Manifest.lock", "x");
+          fs.mkdirSync(path.join(outside, "build"));
+          fs.writeFileSync(path.join(outside, "build/out.o"), "o");
+        }, ios),
+      ).toEqual({ changed: [], same: true });
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("changes with the native code a package keeps where autolinking says, not in ios/ or android/", async () => {
+    // No ios/, apple/, android/, or podspec at its root: the dependency
+    // walk alone takes it for JavaScript.
+    write(
+      "apps/mobile/node_modules/src-only/package.json",
+      JSON.stringify({ name: "src-only", version: "1.0.0" }),
+    );
+    write("apps/mobile/node_modules/src-only/native/SrcOnly.podspec", "\n");
+    write("apps/mobile/node_modules/src-only/native/SrcOnly.m", "// 1\n");
+    write(
+      "apps/mobile/node_modules/src-only/platform/droid/src/SrcOnly.kt",
+      "class A\n",
+    );
+    write(
+      "apps/mobile/package.json",
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { "native-lib": "1.0.0", "src-only": "1.0.0" },
+      }),
+    );
+    const before = await key({
+      platform: "ios",
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app",
+    });
+    expect(Object.keys(before.components.inputs)).not.toContain(
+      "package:src-only@1.0.0",
+    );
+
+    link({
+      ...linked("native-lib", "apps/mobile/node_modules/native-lib"),
+      ...linked("src-only", "apps/mobile/node_modules/src-only", {
+        ios: {
+          podspecPath: path.join(
+            root,
+            "apps/mobile/node_modules/src-only/native/SrcOnly.podspec",
+          ),
+        },
+        android: {
+          sourceDir: path.join(
+            root,
+            "apps/mobile/node_modules/src-only/platform/droid",
+          ),
+        },
+      }),
+    });
+    for (const [platform, file] of [
+      ["ios", "native/SrcOnly.m"],
+      ["android", "platform/droid/src/SrcOnly.kt"],
+    ] as const) {
+      const overrides =
+        platform === "ios"
+          ? {
+              platform,
+              schemeConfig: { configuration: "Release", simulator: true },
+              artifactKind: "app" as const,
+            }
+          : {};
+      expect(
+        (
+          await changedBy(
+            () => write(`apps/mobile/node_modules/src-only/${file}`, "changed"),
+            overrides,
+          )
+        ).changed,
+      ).toEqual(["input:package:src-only@1.0.0"]);
+    }
+  });
+
+  it("changes with either of two installs of one version", async () => {
+    // As pnpm installs one version for two sets of peer dependencies.
+    for (const variant of ["a", "b"]) {
+      const dir = `apps/mobile/node_modules/.pnpm/twin@1.0.0_${variant}/node_modules/twin`;
+      write(
+        `${dir}/package.json`,
+        JSON.stringify({ name: "twin", version: "1.0.0" }),
+      );
+      write(`${dir}/android/src/Twin.kt`, "class Twin\n");
+    }
+    link({
+      ...linked("native-lib", "apps/mobile/node_modules/native-lib"),
+      twin: {
+        name: "twin",
+        root: path.join(
+          app,
+          "node_modules/.pnpm/twin@1.0.0_a/node_modules/twin",
+        ),
+        platforms: { android: {} },
+      },
+      "twin-b": {
+        name: "twin",
+        root: path.join(
+          app,
+          "node_modules/.pnpm/twin@1.0.0_b/node_modules/twin",
+        ),
+        platforms: { android: {} },
+      },
+    });
+    for (const variant of ["a", "b"]) {
+      expect(
+        (
+          await changedBy(() =>
+            write(
+              `apps/mobile/node_modules/.pnpm/twin@1.0.0_${variant}/node_modules/twin/android/src/Twin.kt`,
+              `class Twin${variant}\n`,
+            ),
+          )
+        ).changed,
+      ).toEqual(["input:package:twin@1.0.0"]);
+    }
+  });
+
+  it("changes with how autolinking links, even when no file changed", async () => {
+    const config = (scriptPhases: unknown[]) =>
+      link(
+        linked("native-lib", "apps/mobile/node_modules/native-lib", {
+          ios: {
+            podspecPath: path.join(
+              root,
+              "apps/mobile/node_modules/native-lib/native-lib.podspec",
+            ),
+            scriptPhases,
+          },
+        }),
+      );
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+    };
+    config([]);
+    expect(
+      (
+        await changedBy(
+          () => config([{ name: "Generate", script: "echo generate" }]),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["autolinking:react-native"]);
+    // A package autolinking stops linking.
+    expect((await changedBy(() => link({}), ios)).changed).toEqual([
+      "autolinking:react-native",
+    ]);
+  });
+
+  it("reads Expo modules from expo-modules-autolinking", async () => {
+    const modules = path.join(app, "node_modules");
+    write(
+      "apps/mobile/node_modules/expo/package.json",
+      JSON.stringify({ name: "expo", version: "55.0.0" }),
+    );
+    write("apps/mobile/node_modules/expo/ios/Expo.m", "// expo\n");
+    write(
+      "apps/mobile/node_modules/expo-modules-autolinking/package.json",
+      JSON.stringify({ name: "expo-modules-autolinking", version: "3.0.0" }),
+    );
+    // Not a dependency of the app: the dependency walk doesn't reach it.
+    write(
+      "apps/mobile/node_modules/expo-thing/package.json",
+      JSON.stringify({ name: "expo-thing", version: "1.0.0" }),
+    );
+    write("apps/mobile/node_modules/expo-thing/ios/Thing.swift", "// 1\n");
+    const resolve = (swiftModuleNames: string[]) =>
+      write(
+        "apps/mobile/node_modules/expo-modules-autolinking/resolve.json",
+        JSON.stringify({
+          modules: [
+            {
+              packageName: "expo-thing",
+              packageVersion: "1.0.0",
+              pods: [
+                {
+                  podName: "Thing",
+                  podspecDir: path.join(modules, "expo-thing/ios"),
+                },
+              ],
+              swiftModuleNames,
+            },
+          ],
+        }),
+      );
+    resolve(["Thing"]);
+    write(
+      "apps/mobile/node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      [
+        'const fs = require("fs"); const path = require("path");',
+        "const [command, , platform] = process.argv.slice(2);",
+        'if (command === "resolve" && platform === "apple") process.stdout.write(fs.readFileSync(path.join(__dirname, "../resolve.json"), "utf8"));',
+        'else if (command === "react-native-config") process.stdout.write(fs.readFileSync(path.join(__dirname, "../../react-native/config.json"), "utf8"));',
+        "else process.exit(1);",
+        "",
+      ].join("\n"),
+    );
+    link(linked("expo", "apps/mobile/node_modules/expo"));
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+      buildAdapter: "expo",
+    };
+
+    const linkedKey = await key(ios);
+    expect(Object.keys(linkedKey.components.autolinking).sort()).toEqual([
+      "expo-modules",
+      "react-native",
+    ]);
+    expect(
+      (
+        await changedBy(
+          () =>
+            write(
+              "apps/mobile/node_modules/expo-thing/ios/Thing.swift",
+              "// 2\n",
+            ),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["input:package:expo-thing@1.0.0"]);
+    expect(
+      (await changedBy(() => resolve(["Thing", "ThingUI"]), ios)).changed,
+    ).toEqual(["autolinking:expo-modules"]);
+  });
+
+  it("computes the same key from a copy of the project in another directory", async () => {
+    const copy = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "native-build-key-copy-")),
+    );
+    try {
+      const original = await key();
+      fs.cpSync(root, copy, { recursive: true, verbatimSymlinks: true });
+      // React Native CLI prints the copy's absolute paths.
+      const config = path.join(
+        copy,
+        "apps/mobile/node_modules/react-native/config.json",
+      );
+      fs.writeFileSync(
+        config,
+        fs.readFileSync(config, "utf8").split(root).join(copy),
+      );
+      const copyApp = path.join(copy, "apps/mobile");
+      const copied = await key({
+        cwd: copyApp,
+        outputPath: path.join(copyApp, ".hot-updater", "output", "build"),
+        cacheDir: path.join(copyApp, "node_modules", ".hot-updater"),
+      });
+      expect(
+        diffNativeBuildKeyComponents(original.components, copied.components),
+      ).toEqual([]);
+      expect(copied.key).toBe(original.key);
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
   });
 
   it("changes with the environment the build reads, and with nothing else in it", async () => {
@@ -680,6 +1123,20 @@ describe("builds no key covers", () => {
     expect(await uncacheable()).toBe("the project is not in a git repository");
   });
 
+  it("refuses a project whose autolinking can't list what the build links", async () => {
+    write("apps/mobile/node_modules/react-native/cli.js", "process.exit(1);\n");
+    expect(await uncacheable()).toMatch(
+      /^autolinking could not list the packages the build links \(Command failed with exit code 1: /,
+    );
+    write(
+      "apps/mobile/node_modules/react-native/cli.js",
+      'console.log("not json");\n',
+    );
+    expect(await uncacheable()).toMatch(
+      /^autolinking could not list the packages the build links \(`\S+ <root>\/apps\/mobile\/node_modules\/react-native\/cli\.js config` printed no JSON configuration/,
+    );
+  });
+
   it("refuses pods without Podfile.lock", async () => {
     fs.rmSync(path.join(app, "ios/Podfile.lock"));
     expect(
@@ -923,6 +1380,7 @@ describe("diffNativeBuildKeyComponents", () => {
       engine: "e1",
       files: { "a.ts": "1" },
       inputs: {},
+      autolinking: { "react-native": "1" },
       settings: { channel: "production" },
       signing: {},
       toolchain: {},
@@ -932,9 +1390,10 @@ describe("diffNativeBuildKeyComponents", () => {
       diffNativeBuildKeyComponents(components, {
         ...components,
         files: { "b.ts": "1" },
+        autolinking: { "react-native": "2" },
         env: {},
       }),
-    ).toEqual(["file:a.ts", "file:b.ts", "env:A"]);
+    ).toEqual(["file:a.ts", "file:b.ts", "autolinking:react-native", "env:A"]);
     expect(
       diffNativeBuildKeyComponents(components, { ...components, engine: "e2" }),
     ).toEqual(["engine"]);
