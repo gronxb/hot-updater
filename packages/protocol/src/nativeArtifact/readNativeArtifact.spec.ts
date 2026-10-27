@@ -406,7 +406,11 @@ describe("checkNativeArtifact", () => {
   it("names the native build an artifact is already registered as", () => {
     expect(alreadyImportedProblem(MIN_BUNDLE_ID, "nb-1")).toEqual({
       code: "ALREADY_IMPORTED",
+      nativeBuildId: "nb-1",
       message: expect.stringContaining("native build nb-1"),
     });
+    expect(alreadyImportedProblem(MIN_BUNDLE_ID, null)).not.toHaveProperty(
+      "nativeBuildId",
+    );
   });
 });

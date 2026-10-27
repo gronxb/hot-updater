@@ -286,6 +286,7 @@ describe("native-build import", () => {
       problems: [
         {
           code: "ALREADY_IMPORTED",
+          nativeBuildId: first.id,
           message: expect.stringContaining(`native build ${first.id}`),
         },
       ],
@@ -351,6 +352,7 @@ describe("native-build import", () => {
     expect(printedJson(stdout).problems).toEqual([
       {
         code: "ALREADY_IMPORTED",
+        nativeBuildId: winner,
         message: expect.stringContaining(`native build ${winner}`),
       },
     ]);
@@ -405,7 +407,8 @@ describe("native-build import", () => {
         nativeBuild: {
           ios: {},
           android: {
-            release: { packageName: "com.other", applicationId: "com.other" },
+            // The application ID defaults to the package name.
+            release: { packageName: "com.other" },
           },
         },
       }),

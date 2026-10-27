@@ -12,6 +12,8 @@ import {
 export interface NativeArtifactProblem {
   readonly code: NativeArtifactProblemCode;
   readonly message: string;
+  /** With `ALREADY_IMPORTED`, the native build already registered. */
+  readonly nativeBuildId?: string;
 }
 
 /** What an importable artifact registers as: a native build and its scope. */
@@ -173,6 +175,7 @@ export const alreadyImportedProblem = (
   nativeBuildId: string | null,
 ): NativeArtifactProblem => ({
   code: "ALREADY_IMPORTED",
+  ...(nativeBuildId === null ? {} : { nativeBuildId }),
   message:
     nativeBuildId === null
       ? `The built-in bundle ${minBundleId} is already registered, as a bundle that is no native build's.`
