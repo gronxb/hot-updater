@@ -241,14 +241,6 @@ export interface Spec extends TurboModule {
   getInstallId: () => string;
 
   /**
-   * Gets a random id native creates once per app process: it stays the same
-   * across in-place reloads of React Native and changes with every launch.
-   * Native built from an earlier SDK has no such method; JavaScript checks
-   * for it.
-   */
-  getProcessLaunchId: () => string;
-
-  /**
    * Reads a value from the SDK's persistent key-value store, which native
    * keeps out of device backups. Returns null when the key has no value.
    */

@@ -9,7 +9,6 @@
     "../guides/native-build",
     "../guides/ci-native-build",
     "../guides/runtime-channel-switch",
-    "../guides/preview-builds",
     "../guides/pull-request-previews",
     "../guides/rollout-cohorts",
     "../guides/remote-config",

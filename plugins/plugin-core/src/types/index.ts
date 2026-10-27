@@ -606,14 +606,6 @@ export type ConfigInput = {
     gitUrl?: string;
 
     /**
-     * Where the app opens links: its URL scheme, such as `myapp://`, or a
-     * universal link's prefix, such as `https://example.com/`. The Console
-     * shows each channel's link, `<prefix>hot-updater/channel/<channel>`,
-     * as a QR code a preview build opens with `hotUpdater.openChannelLink`.
-     */
-    channelLinkPrefix?: string;
-
-    /**
      * Console port
      * @default 1422
      */

@@ -1,16 +1,17 @@
 name: hot-updater preview
 description: >-
-  Deploys a pull request's bundle to its own channel, builds a preview
-  native build, which Hot Updater tracks, only when the registry has none for
-  the project's fingerprint, and comments the install link and the channel's
-  QR code. When the pull request closes, it deletes the channel.
+  Deploys a pull request's bundle to its own channel, builds a native build
+  that embeds that channel, which Hot Updater tracks, only when the registry
+  has none for the project's fingerprint there, and comments the build's
+  download and the QR code of an APK's download. When the pull request
+  closes, it deletes the channel with its bundles and native builds.
 author: gronxb
 
 inputs:
   console-url:
     description: >-
-      The Console's URL, which the comment's install links and channel QR
-      code point at. The CLI reads its credentials through the config's
+      The Console's URL, which the comment's download links and QR code
+      point at. The CLI reads its credentials through the config's
       secrets adapter, the job's environment by default. A pull request from
       a fork, which gets no secrets, is skipped.
     required: true
@@ -21,11 +22,10 @@ inputs:
     description: The nativeBuild.android scheme of the preview build, such as a release APK.
   ios-scheme:
     description: The nativeBuild.ios scheme of the preview build, a simulator scheme by default.
-  preview-channel:
-    description: The channel preview native builds embed, shared by every pull request.
-    default: preview
   channel:
-    description: The pull request's channel (default pr-<number>).
+    description: >-
+      The pull request's channel, which its native builds embed and its
+      bundles deploy to (default pr-<number>).
   credit:
     description: Whether the comment ends with "Preview by hot-updater".
     default: "true"
@@ -76,7 +76,6 @@ runs:
         INPUT_PLATFORMS: ${{ inputs.platforms }}
         INPUT_ANDROID_SCHEME: ${{ inputs.android-scheme }}
         INPUT_IOS_SCHEME: ${{ inputs.ios-scheme }}
-        INPUT_PREVIEW_CHANNEL: ${{ inputs.preview-channel }}
         INPUT_CHANNEL: ${{ inputs.channel }}
         INPUT_CREDIT: ${{ inputs.credit }}
         INPUT_COMMENT: ${{ inputs.comment }}

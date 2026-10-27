@@ -2004,6 +2004,9 @@ importers:
       is-port-reachable:
         specifier: ^4.0.0
         version: 4.0.0
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       kysely:
         specifier: catalog:db
         version: 0.28.17
@@ -2037,6 +2040,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       verkit:
         specifier: 'catalog:'
         version: 0.4.0

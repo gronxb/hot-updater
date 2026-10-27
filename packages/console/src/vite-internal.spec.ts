@@ -167,9 +167,7 @@ describe("local console Vite modules", () => {
     expect(source).toContain("storage: config.storage,");
     expect(source).toContain("plugins: config.plugins,");
     expect(source).toContain("gitUrl: config.console.gitUrl,");
-    expect(source).toContain(
-      "channelLinkPrefix: config.console.channelLinkPrefix,",
-    );
+    expect(source).not.toContain("channelLinkPrefix");
     expect(source).toContain(
       "Set database in hot-updater.config.ts: the database your server runs on",
     );

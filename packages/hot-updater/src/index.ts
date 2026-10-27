@@ -62,11 +62,7 @@ import {
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import {
-  handleChannelDelete,
-  handleChannelLink,
-  handleSetChannel,
-} from "./commands/channel";
+import { handleChannelDelete, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
@@ -87,6 +83,7 @@ import {
   handleNativeBuildDelete,
   handleNativeBuildFind,
 } from "./commands/nativeBuild";
+import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,
@@ -288,18 +285,13 @@ channelCommand
     "Delete a channel and its bundles, such as a closed pull request's",
   )
   .argument("<channel>", "the channel to delete")
+  .option(
+    "--native-builds",
+    "also delete the native builds that embed the channel, with their artifacts",
+  )
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleChannelDelete);
-
-channelCommand
-  .command("link")
-  .description(
-    "Print a channel's link, which switches a preview build to the channel, from console.channelLinkPrefix",
-  )
-  .argument("<channel>", "the channel to link")
-  .option("--json", "output the link as JSON")
-  .action(handleChannelLink);
 
 const nativeBuildCommand = program
   .command("native-build")
@@ -337,6 +329,26 @@ nativeBuildCommand
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleNativeBuildDelete);
+
+nativeBuildCommand
+  .command("import")
+  .description(
+    "Track an .ipa, .aab, .apk or simulator .app built elsewhere, such as by EAS, Xcode Cloud or Fastlane, as an OTA patch base: OTAs deployed after it patch from its built-in bundle. Importing the same build again succeeds and changes nothing",
+  )
+  .argument(
+    "<file>",
+    "the release build's .ipa, .aab or .apk, or a simulator .app (or its .app.zip)",
+  )
+  .option(
+    "-c, --channel <channel>",
+    "the channel the app reports, when its code sets one or it switches to one at runtime (default: the channel the build compiled in)",
+  )
+  .option("--dry-run", "read and check the artifact, and record nothing")
+  .option(
+    "--json",
+    "print what was read, and the registered build or why it can't be imported, as JSON on the last line of the output",
+  )
+  .action(handleNativeBuildImport);
 
 nativeBuildCommand
   .command("ios")

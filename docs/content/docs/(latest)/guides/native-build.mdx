@@ -392,6 +392,77 @@ A bundle's detail sheet links to the newest build of its release's scope, and
 says whether the bundle has a patch from it. Deleting a build stays with
 [`native-build delete`](#delete-a-build).
 
+## Import a build made elsewhere
+
+A release build you didn't make with `native-build`, such as one from EAS,
+Xcode Cloud, Fastlane, or an earlier release, can serve as a patch base too.
+Import its store artifact, the `.ipa`, `.aab` or `.apk` you upload to a store,
+or a simulator `.app` (the directory, or its `.app.zip`):
+
+```package-install
+npx hot-updater native-build import ./app-release.aab
+```
+
+The CLI reads everything from the artifact, so it imports the build exactly as
+its app reports itself:
+
+| Value           | Where the CLI reads it                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| Platform        | The file's extension                                                                                  |
+| App version     | `CFBundleShortVersionString` in the app's `Info.plist`, or `versionName` in the manifest              |
+| Channel         | `HOT_UPDATER_CHANNEL`, or the `com.hotupdater.CHANNEL` meta-data; `production` without one            |
+| Min bundle ID   | The UUIDv7 string the native SDK's build step compiled into the app's code                            |
+| Fingerprint     | The SHA-256 string the build compiled into the app's code, with the fingerprint strategy              |
+| Built-in bundle | `main.jsbundle`, `assets/index.android.bundle`, or `base/assets/index.android.bundle`                 |
+
+The app's code is its dex files' string pool on Android, and on iOS the
+`__cstring` section of the app's executable, or of the `HotUpdater` framework
+when the app links frameworks dynamically. The CLI prints what it read, then
+checks that the artifact can serve as a patch base, and refuses, saying why:
+
+- an artifact without a built-in bundle, such as a Debug build, which loads
+  its JavaScript from Metro, or a build that renames its bundle;
+- an app built without `@hot-updater/react-native`, or with a version that
+  doesn't compile the min bundle ID in, so its code holds none, and one whose
+  code holds several UUIDv7 strings;
+- with the fingerprint strategy, an app whose code holds no fingerprint, such
+  as one built without `fingerprint.json`; with the app version strategy, an
+  app whose version holds no `major.minor.patch` a device compares;
+- a channel given as a resource reference (`@string/...`) rather than a
+  literal, as `channel set` and the Expo plugin write it, unless `--channel`
+  names it;
+- an artifact whose min bundle ID is registered with another built-in bundle
+  or scope: the registry takes a min bundle ID once, and the CLI names the
+  native build that has it.
+
+Importing the same build again, the same built-in bundle in the same scope,
+changes nothing and succeeds, printing the registered build, so a CI job can
+run again; `--json` reports it with `alreadyImported: true`. An app ID that no
+`nativeBuild` scheme's `bundleIdentifier`, or `applicationId` (by default its
+`packageName`), names gets a warning, since a scheme names its app only to
+pick a target.
+
+The channel is the one the build compiled in. When the app's code sets
+another, such as `HotUpdaterOptions(channel = "beta")` in a
+[brownfield app](/docs/guides/brownfield), or the app switches to one at
+runtime, name it with `--channel`; the build is then found by that channel.
+
+Whether a build is Debug can't be read from its artifact. A Debug build packs
+no JavaScript bundle, so it's refused; one that bundles its JavaScript anyway
+reports no built-in bundle at runtime, so its first OTA downloads the complete
+bundle. A release variant made debuggable (`android:debuggable`) still runs the
+SDK's release code, which reports its built-in bundle, so it's imported.
+
+The CLI then uploads the artifact and the built-in bundle and registers them as
+it does [after a build](#how-a-build-is-tracked), with no build key, so no
+`native-build` run reuses it, and no git commit, since it wasn't built from
+this checkout. OTAs deployed after it to its channel and fingerprint or app
+version patch from its built-in bundle.
+
+Add `--dry-run` to read and check the artifact and record nothing, and
+`--json` to print what was read, and the registered build or the refusals, as
+JSON on the last line.
+
 ## Reuse a build
 
 Each build computes a native build key, `nbk1:` and a SHA-256, of every input
@@ -762,6 +833,7 @@ with the stored service account.
 | `--no-cache`              | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build)) |
 | `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line |
 
-The commands of the registry, `native-build find` and `native-build delete`,
-are described in [Find a build](#find-a-build) and
-[Delete a build](#delete-a-build).
+The commands of the registry, `native-build find`, `native-build delete`,
+and `native-build import`, are described in [Find a build](#find-a-build),
+[Delete a build](#delete-a-build), and
+[Import a build made elsewhere](#import-a-build-made-elsewhere).

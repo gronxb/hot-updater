@@ -1,6 +1,9 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { ReleaseRow } from "@hot-updater/plugin-core";
-import { createChannelLink } from "@hot-updater/protocol";
+import {
+  assertStorageOperations,
+  type NativeBuildRow,
+  type ReleaseRow,
+} from "@hot-updater/plugin-core";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { loadServer } from "@/utils/loadServer";
@@ -38,80 +41,25 @@ export const handleSetChannel = async (channel: string) => {
   p.log.warn("Rebuild native app after changing channel.");
 };
 
-/**
- * `value` as one POSIX shell word: as it is when it holds only characters
- * no shell treats specially, else in single quotes. The Console's
- * `lib/shell.ts` quotes the commands it shows the same way.
- */
-const shellQuote = (value: string): string =>
-  /^[\w@%+=:,./-]+$/.test(value)
-    ? value
-    : `'${value.replaceAll("'", `'\\''`)}'`;
-
-/**
- * Prints a channel's link, `<console.channelLinkPrefix>hot-updater/channel/
- * <channel>`, the link the Console's QR code of the channel holds, with the
- * `adb` and `xcrun simctl openurl` commands that open it on an emulator or
- * simulator. It reads only the config. `--json` prints `{ channel, link }`,
- * with a null link when the config sets no prefix, and succeeds.
- */
-export const handleChannelLink = async (
-  channel: string,
-  options: { readonly json?: boolean },
-) => {
-  const config = await loadConfig(null);
-  const prefix = config.console?.channelLinkPrefix;
-  let link: string | null = null;
-  if (prefix !== undefined) {
-    try {
-      link = createChannelLink(prefix, channel);
-    } catch {
-      p.log.error(`${JSON.stringify(channel)} is not a channel name.`);
-      process.exitCode = 1;
-      return;
-    }
-  }
-  if (options.json) {
-    console.log(JSON.stringify({ channel, link }));
-    return;
-  }
-  if (link === null) {
-    p.log.error(
-      "hot-updater.config.ts sets no console.channelLinkPrefix, the prefix of the app's channel links, such as its URL scheme `myapp://`.",
-    );
-    process.exitCode = 1;
-    return;
-  }
-  console.log(
-    ui.block("Channel link", [
-      ui.kv("Channel", ui.channel(channel)),
-      ui.kv("Link", link),
-      ui.kv(
-        "Android",
-        ui.command(
-          `adb shell am start -a android.intent.action.VIEW -d ${shellQuote(shellQuote(link))}`,
-        ),
-      ),
-      ui.kv(
-        "iOS",
-        ui.command(`xcrun simctl openurl booted ${shellQuote(link)}`),
-      ),
-    ]),
-  );
-};
-
 const PAGE = 100;
 
 /**
- * Deletes a channel with its bundles, as when a pull request's preview
- * channel closes: each bundle is disabled and deleted, then the channel.
- * A missing channel deletes nothing and succeeds, so the cleanup can run
- * again. A native build that embeds the channel keeps it: its bundles are
- * deleted, the channel is not, and the command fails.
+ * Deletes a channel with its bundles, as when a pull request's channel
+ * closes: each bundle is disabled and deleted, then the channel. With
+ * `nativeBuilds`, the native builds that embed the channel go too, each
+ * with its built-in bundle and its artifact, as `native-build delete`
+ * deletes one. A missing channel deletes nothing and succeeds, so the
+ * cleanup can run again. Without `nativeBuilds`, a native build that embeds
+ * the channel keeps it: its bundles are deleted, the channel is not, and
+ * the command fails.
  */
 export const handleChannelDelete = (
   channel: string,
-  options: { readonly json?: boolean; readonly yes?: boolean },
+  options: {
+    readonly json?: boolean;
+    readonly yes?: boolean;
+    readonly nativeBuilds?: boolean;
+  },
 ) =>
   withPublicBundleErrors(async () => {
     if (!options.json) printBanner();
@@ -146,8 +94,31 @@ export const handleChannelDelete = (
         }
       }
 
+      const builds: NativeBuildRow[] = [];
+      let deleteArtifact: ((storageUri: string) => Promise<unknown>) | null =
+        null;
+      if (options.nativeBuilds) {
+        // Checked before anything is deleted, so no artifact is left behind.
+        const storage = server.storage;
+        assertStorageOperations(storage, ["delete"]);
+        deleteArtifact = (storageUri) => storage.delete({ storageUri });
+        for (let after: string | undefined; ; ) {
+          const page = await core.listNativeBuilds({
+            channelId: row.id,
+            limit: PAGE,
+            ...(after === undefined ? {} : { after }),
+          });
+          builds.push(...page);
+          if (page.length < PAGE) break;
+          after = page.at(-1)!.id;
+        }
+      }
+
+      const bundles = `${releases.length} bundle${releases.length === 1 ? "" : "s"}`;
       await confirmMutation(
-        `Delete the ${channel} channel and its ${releases.length} bundle${releases.length === 1 ? "" : "s"}?`,
+        options.nativeBuilds
+          ? `Delete the ${channel} channel, its ${bundles}, and its ${builds.length} native build${builds.length === 1 ? "" : "s"} with their artifacts?`
+          : `Delete the ${channel} channel and its ${bundles}?`,
         options.yes,
       );
       for (const release of releases) {
@@ -162,26 +133,64 @@ export const handleChannelDelete = (
         // promoted to another channel keeps its files.
         await core.deleteRelease({ releaseId: release.id });
       }
+      // Each build's row goes before its artifact, so no row is left naming
+      // a deleted artifact; an artifact whose delete fails stays, and the
+      // command says where.
+      const deletedNativeBuildIds: string[] = [];
+      const keptArtifacts: string[] = [];
+      for (const build of builds) {
+        const deleted = await core.deleteNativeBuild(build.id);
+        if (!deleted.deleted) continue;
+        deletedNativeBuildIds.push(build.id);
+        try {
+          await deleteArtifact?.(deleted.nativeBuild.artifact_storage_uri);
+        } catch (error) {
+          keptArtifacts.push(
+            `${deleted.nativeBuild.artifact_storage_uri}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       const result = await core.deleteChannel(row.id);
       const deletedBundleIds = releases.map(({ id }) => id);
 
       if (options.json) {
         console.log(
-          JSON.stringify({ channel, ...result, deletedBundleIds }, null, 2),
+          JSON.stringify(
+            {
+              channel,
+              ...result,
+              deletedBundleIds,
+              ...(options.nativeBuilds ? { deletedNativeBuildIds } : {}),
+            },
+            null,
+            2,
+          ),
         );
       } else {
         console.log(
           ui.block(result.deleted ? "Channel deleted" : "Bundles deleted", [
             ui.kv("Channel", ui.channel(channel)),
             ui.kv("Bundles", String(deletedBundleIds.length)),
+            ...(options.nativeBuilds
+              ? [ui.kv("Native builds", String(deletedNativeBuildIds.length))]
+              : []),
           ]),
         );
+      }
+      if (keptArtifacts.length > 0) {
+        // Under --json, stdout stays one JSON document; stderr says where.
+        const message = `The native builds are deleted, but these artifacts stay; delete them from storage:\n${keptArtifacts.join("\n")}`;
+        if (options.json) console.error(message);
+        else p.log.error(message);
+        process.exitCode = 1;
       }
       if (!result.deleted) {
         // Under --json, stdout stays one JSON document: it says why.
         if (!options.json) {
           p.log.error(
-            `The ${channel} channel is kept: a native build embeds it as its default channel, or a bundle was deployed to it meanwhile. A channel a native build embeds can't be deleted until \`hot-updater native-build delete <id>\` deletes the build, so register preview builds on one shared channel and deploy each pull request to its own.`,
+            options.nativeBuilds
+              ? `The ${channel} channel is kept: a bundle or a native build was added to it meanwhile. Run the command again.`
+              : `The ${channel} channel is kept: a native build embeds it as its default channel, or a bundle was deployed to it meanwhile. Run it again with --native-builds to delete the channel's native builds and their artifacts too.`,
           );
         }
         process.exitCode = 1;
