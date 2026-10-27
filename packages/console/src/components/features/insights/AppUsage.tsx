@@ -42,12 +42,16 @@ import {
   type InsightsRetentionDays,
   keepsTwelveMonths,
 } from "@/lib/insights-retention";
-import type { InsightsSearch } from "@/lib/insights-search";
+import {
+  DEFAULT_INSIGHTS_CHANNEL,
+  type InsightsSearch,
+} from "@/lib/insights-search";
 import type { AppUsageReport, UsageWindow } from "@/lib/insights-usage";
 
 import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { UsagePeriodSelector } from "./InsightsPeriodSelector";
+import { InsightsScope } from "./InsightsScope";
 import { ReportingDevicesSummary } from "./ReportingDevicesSummary";
 
 const dates = new Intl.DateTimeFormat("en", {
@@ -98,7 +102,16 @@ export function AppUsage({
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
       <Card aria-label="App usage" role="region" className="min-w-0 shadow-sm">
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-4">
-          <CardTitle>App usage</CardTitle>
+          <div className="flex min-w-0 flex-col gap-1">
+            <CardTitle>App usage</CardTitle>
+            <InsightsScope
+              channel={search.channel ?? DEFAULT_INSIGHTS_CHANNEL}
+              platform={search.platform ?? "all"}
+              narrower={
+                search.appVersion ? [`App version ${search.appVersion}`] : []
+              }
+            />
+          </div>
           <UsagePeriodSelector
             window={window}
             onWindowChange={onWindowChange}
