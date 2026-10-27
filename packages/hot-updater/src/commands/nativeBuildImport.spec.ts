@@ -198,7 +198,9 @@ describe("native-build import", () => {
     ).toBe(0);
     const manifest = JSON.parse(
       new TextDecoder().decode(
-        storage.objects.get(`bundles/${MIN_BUNDLE_ID}/manifest.json`),
+        storage.objects.get(
+          `bundles/${MIN_BUNDLE_ID}/${nativeBuild.id}/manifest.json`,
+        ),
       ),
     );
     const asset = manifest.assets["index.android.bundle"];
@@ -367,11 +369,23 @@ describe("native-build import", () => {
     let winner: string | undefined;
     vi.spyOn(harness.core, "registerNativeBuild").mockImplementationOnce(
       async (registration) => {
+        // The winner uploaded its own manifest, under its own ID.
+        const id = createUUIDv7();
+        const own = parseStorageUri(
+          registration.embeddedBundle.manifestStorageUri,
+          "mem",
+        ).key;
+        const winnerKey = `bundles/${MIN_BUNDLE_ID}/${id}/manifest.json`;
+        storage.objects.set(winnerKey, storage.objects.get(own)!);
         winner = (
           await register({
             ...registration,
-            id: createUUIDv7(),
+            id,
             artifact: { ...registration.artifact, storageUri: "mem://b/w" },
+            embeddedBundle: {
+              ...registration.embeddedBundle,
+              manifestStorageUri: `mem://b/${winnerKey}`,
+            },
           })
         ).id;
         return register(registration);
@@ -396,6 +410,61 @@ describe("native-build import", () => {
     const configs = loadServer.mock.calls.map(([loaded]) => loaded);
     expect(configs.length).toBeGreaterThanOrEqual(3);
     expect(new Set(configs).size).toBe(configs.length);
+  });
+
+  it("keeps the registered build's manifest when an import of another built-in bundle with its MIN_BUNDLE_ID races it", async () => {
+    loadConfig.mockImplementation(async () => config());
+    const winner = await writeArtifact(dir, "winner.aab", aab());
+    const loser = await writeArtifact(
+      dir,
+      "loser.aab",
+      aab({ "base/assets/index.android.bundle": "console.log('other');" }),
+    );
+    // Both pass the check; the winner registers after the loser's check and
+    // before its uploads, at the registry lookup that precedes them.
+    const find = harness.core.findNativeBuild;
+    let winnerRow: { id: string; min_bundle_id: string } | undefined;
+    vi.spyOn(harness.core, "findNativeBuild").mockImplementationOnce(
+      async (...args) => {
+        await handleNativeBuildImport(winner, { json: true });
+        winnerRow = printedJson(stdout).nativeBuild;
+        stdout.mockClear();
+        return find(...args);
+      },
+    );
+
+    await handleNativeBuildImport(loser, { json: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(printedJson(stdout).problems).toEqual([
+      expect.objectContaining({
+        code: "ALREADY_IMPORTED",
+        nativeBuildId: winnerRow!.id,
+      }),
+    ]);
+    // The registered manifest still lists the winner's bundle, whose hash
+    // the row records, so its patches still verify.
+    const detail = await harness.core.getBundle(MIN_BUNDLE_ID);
+    const manifestKey = parseStorageUri(
+      detail!.bundle.manifest_storage_uri,
+      "mem",
+    ).key;
+    const manifestBytes = storage.objects.get(manifestKey)!;
+    expect(sha256(manifestBytes)).toBe(detail!.bundle.manifest_file_hash);
+    expect(
+      JSON.parse(new TextDecoder().decode(manifestBytes)).assets[
+        "index.android.bundle"
+      ].fileHash,
+    ).toBe(sha256(BUILT_IN));
+    // Nothing of the loser's stays but the shared asset store.
+    expect(
+      [...storage.objects.keys()].filter(
+        (key) => key.startsWith("native-builds/") || key.startsWith("bundles/"),
+      ),
+    ).toEqual([
+      expect.stringContaining(winnerRow!.id),
+      expect.stringContaining(winnerRow!.id),
+    ]);
   });
 
   it("registers under the channel --channel names, which the app reports at runtime", async () => {

@@ -35,7 +35,21 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
   const objectCount = uintAt(bytes, trailer + 8, 8);
   const top = uintAt(bytes, trailer + 16, 8);
   const tableOffset = uintAt(bytes, trailer + 24, 8);
-  if (tableOffset + objectCount * offsetSize > trailer) throw corrupt();
+  // Every width and count is checked against the file before anything is
+  // allocated or iterated: a few crafted bytes can't declare a million
+  // references.
+  if (
+    offsetSize < 1 ||
+    offsetSize > 8 ||
+    refSize < 1 ||
+    refSize > 8 ||
+    objectCount < 1 ||
+    top >= objectCount ||
+    tableOffset < 8 ||
+    tableOffset + objectCount * offsetSize > trailer
+  ) {
+    throw corrupt();
+  }
   const data = view(bytes);
   const seen = new Set<number>();
   // Each object is parsed once: an array or a dictionary that references
@@ -56,42 +70,67 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
 
   const parseObject = (ref: number): PlistValue => {
     const offset = uintAt(bytes, tableOffset + ref * offsetSize, offsetSize);
+    // Objects lie between the header and the offset table.
+    if (offset < 8 || offset >= tableOffset) throw corrupt();
     const marker = bytes[offset]!;
     const kind = marker >> 4;
     const info = marker & 0x0f;
-    /** A length in the marker, or in the integer object after it. */
-    const lengthAt = (): [length: number, start: number] => {
-      if (info !== 0x0f) return [info, offset + 1];
-      const size = 1 << (bytes[offset + 1]! & 0x0f);
-      return [uintAt(bytes, offset + 2, size), offset + 2 + size];
+    /** `count` units of `unit` bytes from `start`, which must fit the objects. */
+    const fits = (start: number, count: number, unit: number) => {
+      if (start + count * unit > tableOffset) throw corrupt();
+    };
+    /**
+     * A length in the marker, or in the integer object after it, and where
+     * its `unit`-byte items start, all of which must fit the objects.
+     */
+    const lengthAt = (unit: number): [length: number, start: number] => {
+      let length = info;
+      let start = offset + 1;
+      if (info === 0x0f) {
+        const sizeMarker = bytes[offset + 1]!;
+        if (sizeMarker >> 4 !== 0x1 || (sizeMarker & 0x0f) > 3) {
+          throw corrupt();
+        }
+        const size = 1 << (sizeMarker & 0x0f);
+        fits(offset + 2, size, 1);
+        length = uintAt(bytes, offset + 2, size);
+        start = offset + 2 + size;
+      }
+      fits(start, length, unit);
+      return [length, start];
     };
     switch (kind) {
       case 0x0:
         return info === 0x09 ? true : info === 0x08 ? false : null;
       case 0x1: {
+        if (info > 3) throw corrupt();
         const size = 1 << info;
+        fits(offset + 1, size, 1);
         return size === 8
           ? Number(data.getBigInt64(offset + 1, false))
           : uintAt(bytes, offset + 1, size);
       }
       case 0x2:
+        if (info !== 2 && info !== 3) throw corrupt();
+        fits(offset + 1, 1 << info, 1);
         return info === 2
           ? data.getFloat32(offset + 1, false)
           : data.getFloat64(offset + 1, false);
       case 0x3:
+        fits(offset + 1, 8, 1);
         return data.getFloat64(offset + 1, false);
       case 0x4: {
-        const [length, start] = lengthAt();
+        const [length, start] = lengthAt(1);
         return bytes.slice(start, start + length);
       }
       case 0x5: {
-        const [length, start] = lengthAt();
+        const [length, start] = lengthAt(1);
         return new TextDecoder("latin1").decode(
           bytes.subarray(start, start + length),
         );
       }
       case 0x6: {
-        const [length, start] = lengthAt();
+        const [length, start] = lengthAt(2);
         let text = "";
         for (let i = 0; i < length; i += 1) {
           text += String.fromCharCode(data.getUint16(start + i * 2, false));
@@ -99,10 +138,12 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
         return text;
       }
       case 0x8:
+        if (info > 7) throw corrupt();
+        fits(offset + 1, info + 1, 1);
         return uintAt(bytes, offset + 1, info + 1);
       case 0xa:
       case 0xc: {
-        const [length, start] = lengthAt();
+        const [length, start] = lengthAt(refSize);
         seen.add(ref);
         const items: PlistValue[] = [];
         for (let i = 0; i < length; i += 1) {
@@ -112,7 +153,8 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
         return items;
       }
       case 0xd: {
-        const [length, start] = lengthAt();
+        // Keys, then values.
+        const [length, start] = lengthAt(2 * refSize);
         seen.add(ref);
         const dict: { [key: string]: PlistValue } = Object.create(null);
         for (let i = 0; i < length; i += 1) {

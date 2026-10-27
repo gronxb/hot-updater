@@ -39,10 +39,12 @@ import type { NativeBuildResult, NativeBuildTarget } from "./createNativeBuild";
 export const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
 
 /**
- * Deletes the artifact of a registration that failed, which no `storage
- * prune` reclaims. A registration that committed although its write failed,
- * or that cannot be checked, keeps it. The built-in bundle's manifest and
- * file stay for `storage prune`.
+ * Deletes the artifact and the manifest of a registration that failed: both
+ * are its own (the manifest sits under the registration's ID), and no
+ * `storage prune` reclaims them while another build registered the same
+ * built-in bundle. A registration that committed although its write failed,
+ * or that cannot be checked, keeps them. The built-in bundle's file is
+ * content-addressed and shared; it stays for `storage prune`.
  */
 const removeUnregisteredArtifact = async (
   { core, storage }: Pick<LoadedServer, "core" | "storage">,
@@ -54,6 +56,9 @@ const removeUnregisteredArtifact = async (
     const committed = await core.getNativeBuild(registration.id);
     if (committed !== null || storage.delete === undefined) return;
     await storage.delete({ storageUri: registration.artifact.storageUri });
+    await storage.delete({
+      storageUri: registration.embeddedBundle.manifestStorageUri,
+    });
   } catch {
     p.log.warn(
       `The native build was not registered, and its artifact stays at ${registration.artifact.storageUri}.`,
@@ -220,9 +225,12 @@ export const registerNativeBuild = async (
     }
 
     p.log.info(`Uploading the native build to ${storage.name}`);
+    // The manifest's key names this registration: two imports of the same
+    // MIN_BUNDLE_ID upload before the registry takes one, so a shared key
+    // would let the refused one overwrite the registered build's manifest.
     const manifestUpload = await putStorageFile(
       storage,
-      createBundleStorageKey(build.minBundleId),
+      createBundleStorageKey(build.minBundleId, id),
       manifestPath,
     );
     const assetBaseStorageUri = createStorageRootUriWithPath(

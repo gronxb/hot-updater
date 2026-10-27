@@ -147,11 +147,11 @@ describe("registerNativeBuild", () => {
     ).resolves.toEqual(row);
 
     // The built-in bundle: a manifest listing only the JavaScript bundle at
-    // an OTA bundle's asset path, and the file in the shared asset root.
+    // an OTA bundle's asset path, under this registration's own key, and
+    // the file in the shared asset root.
+    const manifestKey = `bundles/${MIN_BUNDLE_ID}/${row.id}/manifest.json`;
     const manifest = JSON.parse(
-      new TextDecoder().decode(
-        storage.objects.get(`bundles/${MIN_BUNDLE_ID}/manifest.json`),
-      ),
+      new TextDecoder().decode(storage.objects.get(manifestKey)),
     );
     expect(manifest).toEqual({
       bundleId: MIN_BUNDLE_ID,
@@ -168,7 +168,7 @@ describe("registerNativeBuild", () => {
     expect([...storage.objects.keys()].sort()).toEqual(
       [
         `assets/sha256/${downloadFileHash.slice(0, 2)}/${downloadFileHash}.br`,
-        `bundles/${MIN_BUNDLE_ID}/manifest.json`,
+        manifestKey,
         `native-builds/android/${row.id}/app-release.apk`,
       ].sort(),
     );
@@ -176,7 +176,7 @@ describe("registerNativeBuild", () => {
       bundle: {
         platform: "android",
         git_commit_hash: "abc123",
-        manifest_storage_uri: `mem://b/bundles/${MIN_BUNDLE_ID}/manifest.json`,
+        manifest_storage_uri: `mem://b/${manifestKey}`,
         asset_base_storage_uri: "mem://b/assets",
       },
     });
@@ -214,7 +214,7 @@ describe("registerNativeBuild", () => {
       artifact_storage_uri: `mem://b/native-builds/ios/${row.id}/App.app.zip`,
     });
     expect(
-      storage.objects.get(`bundles/${MIN_BUNDLE_ID}/manifest.json`),
+      storage.objects.get(`bundles/${MIN_BUNDLE_ID}/${row.id}/manifest.json`),
     ).toBeDefined();
     await expect(harness.core.getBundle(MIN_BUNDLE_ID)).resolves.toMatchObject({
       bundle: { metadata: { app_version: "1.2.0" } },
@@ -255,15 +255,16 @@ describe("registerNativeBuild", () => {
     await expect(
       registerNativeBuild(android({ artifactPath }), { buildKey: null }),
     ).rejects.toThrow("connection lost");
-    // The built-in bundle's files stay for `storage prune`.
+    // Its own artifact and manifest go; the shared, content-addressed
+    // bundle file stays for `storage prune`.
     expect(
-      [...storage.objects.keys()].filter((key) =>
-        key.startsWith("native-builds/"),
+      [...storage.objects.keys()].filter(
+        (key) => key.startsWith("native-builds/") || key.startsWith("bundles/"),
       ),
     ).toEqual([]);
-    expect(storage.objects.has(`bundles/${MIN_BUNDLE_ID}/manifest.json`)).toBe(
-      true,
-    );
+    expect(
+      [...storage.objects.keys()].some((key) => key.startsWith("assets/")),
+    ).toBe(true);
   });
 
   it("deletes its artifact when another registration of the same built-in bundle wins", async () => {

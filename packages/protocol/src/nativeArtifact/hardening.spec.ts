@@ -301,6 +301,70 @@ describe("reading an untrusted artifact", () => {
     expect(value).toBe("x");
   });
 
+  it("refuses a binary plist whose references don't fit the file, before allocating them", () => {
+    /**
+     * A bplist00 of `objects`, the last the top, with 1-byte offsets and
+     * the trailer's reference width `refSize`.
+     */
+    const bplist = (objects: readonly number[][], refSize: number) => {
+      const body: number[] = [...new TextEncoder().encode("bplist00")];
+      const offsets: number[] = [];
+      for (const object of objects) {
+        offsets.push(body.length);
+        body.push(...object);
+      }
+      const tableOffset = body.length;
+      body.push(...offsets);
+      const be64 = (value: number) =>
+        Array.from({ length: 8 }, (_, i) => (i === 7 ? value : 0));
+      body.push(
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        refSize,
+        ...be64(objects.length),
+        ...be64(objects.length - 1),
+        ...be64(tableOffset),
+      );
+      return new Uint8Array(body);
+    };
+    // Codex's repro: 49 bytes, refSize 0, an array declaring 1,000,000
+    // references to a null object.
+    const repro = bplist([[0x00], [0xaf, 0x12, 0x00, 0x0f, 0x42, 0x40]], 0);
+    expect(repro.byteLength).toBe(49);
+    expect(() => parsePlist(repro)).toThrow(NativeArtifactError);
+    for (const bad of [
+      // A valid width, but a million references the file doesn't hold.
+      bplist([[0x00], [0xaf, 0x12, 0x00, 0x0f, 0x42, 0x40]], 1),
+      // A dictionary declaring more key and value references than fit.
+      bplist([[0x00], [0xd5, 0x00, 0x00]], 1),
+      // A string longer than the file.
+      bplist([[0x5f, 0x12, 0x7f, 0xff, 0xff, 0xff]], 1),
+      // A reference width past 8 bytes.
+      bplist([[0x00], [0xa1, 0x00]], 9),
+      // An integer of 2^15 bytes.
+      bplist([[0x1f]], 1),
+    ]) {
+      expect(() => parsePlist(bad)).toThrow(NativeArtifactError);
+    }
+    // A well-formed one still parses.
+    expect(
+      parsePlist(
+        bplist(
+          [
+            [0x51, 0x78],
+            [0xa2, 0x00, 0x00],
+          ],
+          1,
+        ),
+      ),
+    ).toEqual(["x", "x"]);
+  });
+
   it("refuses an archive it can't read in time", async () => {
     expect(
       await refusal(
