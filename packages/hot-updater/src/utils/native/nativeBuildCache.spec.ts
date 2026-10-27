@@ -64,9 +64,10 @@ const BUILD_ID = "019a0000-0000-7000-8000-0000000000b1";
 const components = (
   files: Record<string, string> = { "src/App.tsx": "a" },
 ): NativeBuildKeyComponents => ({
-  engine: "hot-updater/native-build@1",
+  engine: "hot-updater/native-build@2",
   files,
   inputs: {},
+  autolinking: {},
   settings: { channel: "production" },
   signing: {},
   toolchain: {},

@@ -316,6 +316,7 @@ const buildNativeInternal = async ({
                 androidScheme: androidSchemeConfig,
                 credentials,
                 noCache: !useCache,
+                buildAdapter: buildAdapter.name,
               });
         const reused = cache?.hit ?? null;
         const result = reused
