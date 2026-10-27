@@ -22,6 +22,13 @@ export type InitProviderModule = {
 };
 
 type InitProviderPackage = {
+  /**
+   * The `name` of the database the provider's init writes into
+   * hot-updater.config.ts: doctor reads a config whose database has it, in a
+   * project whose `.env.hotupdater` records this provider, as the deployment
+   * init manages.
+   */
+  readonly database: string;
   readonly devDependencies: readonly string[];
   /** The provider in init's prompt: its package's `initProvider.label`. */
   readonly label: string;
@@ -31,51 +38,73 @@ type InitProviderPackage = {
    */
   readonly load: () => Promise<InitProviderModule>;
   readonly packageName: string;
+  /** What init deploys and reconciles beside the database, for doctor's output. */
+  readonly server: string;
 };
 
 export const INIT_PROVIDER_PACKAGES = {
   cloudflare: {
+    database: "d1Database",
     devDependencies: ["wrangler"],
     label: "Cloudflare D1 + R2 + Worker",
     load: (): Promise<InitProviderModule> =>
       import("@hot-updater/cloudflare/init"),
     packageName: "@hot-updater/cloudflare",
+    server: "the Worker",
   },
   aws: {
+    database: "dynamoDB",
     devDependencies: [],
     label: "AWS + Lambda@Edge",
     load: (): Promise<InitProviderModule> => import("@hot-updater/aws/init"),
     packageName: "@hot-updater/aws",
+    server: "the Lambda@Edge function with its IAM role policy",
   },
   supabase: {
+    database: "supabaseDatabase",
     devDependencies: [],
     label: "Supabase",
     load: (): Promise<InitProviderModule> =>
       import("@hot-updater/supabase/init"),
     packageName: "@hot-updater/supabase",
+    server: "the Edge Function",
   },
   firebase: {
+    database: "firebaseDatabase",
     devDependencies: ["firebase-tools", "firebase-admin"],
     label: "Firebase",
     load: (): Promise<InitProviderModule> =>
       import("@hot-updater/firebase/init"),
     packageName: "@hot-updater/firebase",
+    server: "the Cloud Function",
   },
   vercel: {
+    database: "postgres",
     devDependencies: ["vercel"],
     label: "Vercel Blob + Functions + Postgres",
     load: (): Promise<InitProviderModule> => import("@hot-updater/vercel/init"),
     packageName: "@hot-updater/vercel",
+    server: "the Vercel Function",
   },
   azure: {
+    database: "cosmosDatabase",
     devDependencies: [],
     label: "Azure Blob Storage + Functions + Cosmos DB",
     load: (): Promise<InitProviderModule> => import("@hot-updater/azure/init"),
     packageName: "@hot-updater/azure",
+    server: "the Function App",
   },
 } as const satisfies Record<string, InitProviderPackage>;
 
 export type InitProvider = keyof typeof INIT_PROVIDER_PACKAGES;
+
+/** Init saves the build adapter and provider it ran in `.env.hotupdater`, for replay. */
+export const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
+export const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
+
+/** Init again with the inputs it saved: what reconciles a managed deployment. */
+export const initReplayCommand = (provider: InitProvider) =>
+  `npx hot-updater init --provider ${provider} --from-env-file .env.hotupdater`;
 
 export const isInitProvider = (
   value: string | undefined,

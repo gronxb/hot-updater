@@ -356,9 +356,21 @@ plugin they do not cover needs `hot-updater db generate`. A D1 database that ini
 project that init did not create is left alone, and `--fix` names `hot-updater
 db generate`. With `--json`, or without a terminal, `--fix` never prompts: a
 missing input, such as the Supabase database password, skips the repair and
-names its environment variable. Run `--fix` before you redeploy a managed
-server whose schema changed: the new server answers 503 until its database is
-migrated.
+names its environment variable.
+
+A server of an earlier release answers 503 once its database is migrated, and
+a server of the new release answers 503 until it is, so the migration and the
+server deploy run back to back. When `.env.hotupdater` records the provider
+`hot-updater init` ran (`HOT_UPDATER_INIT_PROVIDER`) and the config still names
+that provider's database, the server is init's to redeploy:
+`SCHEMA_MIGRATION_PENDING` names
+`npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`,
+which migrates the database and redeploys the server in one run, and `--fix`
+skips the migration, with that command in `waitsForServer`, unless
+`--server-base-url` shows the server already at the release the migration
+needs. For a server of your own, `--fix` migrates unless `--server-base-url`
+shows that server at an earlier release; deploy it first, or run
+`hot-updater db migrate` in the server's project as it deploys.
 
 A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
 was migrated by a newer Hot Updater, and `--fix` never moves a schema back.
@@ -435,14 +447,21 @@ doctor after installation.
 
 ## Update Outdated Infrastructure
 
-If your server is outdated, `doctor` prints:
+With `--server-base-url`, doctor reads the server's `/version`. If the server
+is older than the release this CLI needs, it prints the required version, why,
+and the command that upgrades it:
 
 ```txt
-Infrastructure update required. Deploy server infrastructure version x.x.x or newer.
+Infrastructure update required: 1.2.0+
+Reason: Core schema 1.2.0: the native build registry table and the tables of the official plugins added beside it
+Run npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater: it applies the database migrations of this release and redeploys the Worker from it in one run, so the 503 window is the deploy. …
 ```
 
-For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`, `vercel`, `azure`), choose your
-upgrade workflow. If the app/server is still on v0, follow
+For a deployment `hot-updater init` created (`aws`, `cloudflare`, `supabase`,
+`firebase`, `vercel`, `azure`), the command is init with the inputs it saved
+in `.env.hotupdater`. It applies the release's migrations and redeploys the
+server back to back, as the release's upgrade file describes; doctor does not
+deploy servers. If the app/server is still on v0, follow
 [Move from v0 to v1](/docs/guides/upgrade-to-v1) before applying templates.
 
 <Tabs items={["AI agent", "Terminal"]}>
@@ -463,31 +482,28 @@ See [Agent Infrastructure](/docs/guides/agent-infrastructure#upgrade-an-existing
   </Tab>
   <Tab value="Terminal">
 
-Install the compatible package set for the desired release first. Extract that
-release's templates for your provider, for example:
+Install the compatible package set for the desired release first, then run
+init with the inputs it saved and verify the server:
 
 ```package-install
-npx hot-updater infra scaffold --provider cloudflare
-```
-
-Read the returned `upgrades/README.md` and relevant version files, including
-intermediate releases, for compatibility and migration order. Apply the required
-steps, then use interactive init to deploy to the compatible existing resources:
-
-```package-install
-npx hot-updater init
+npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater
 npx hot-updater doctor --server-base-url https://updates.example.com
 ```
 
-Use the actual server URL for verification. Preserve existing data, keys and
-customizations, and follow any resource separation required by the upgrade files.
+Init reports every input `.env.hotupdater` lacks, such as a credential it saved
+only with consent, before it changes a resource; set those in the environment
+for the run, or run `npx hot-updater init` and answer its prompts. Use the
+actual server URL for verification. Each release's upgrade file, which
+`npx hot-updater infra scaffold --provider <provider>` writes to
+`upgrades/<version>.md`, says what the release changes on each provider.
 
   </Tab>
 </Tabs>
 
 For a **self-hosted server using `createHotUpdater`**, update all Hot Updater
-packages together, including `@hot-updater/server`, apply the relevant migrations,
-then redeploy your server and verify it with doctor.
+packages together, including `@hot-updater/server`, and run
+`hot-updater db migrate` in the server's project as the server deploys, then
+verify it with doctor.
 
 ## Options
 

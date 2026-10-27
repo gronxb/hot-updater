@@ -37,13 +37,6 @@ export interface InfrastructureRemediation {
   commands: string[];
 }
 
-const INFRASTRUCTURE_RECOVERY_COMMANDS = [
-  "hot-updater agent infra upgrade",
-  "hot-updater init",
-  "hot-updater db migrate",
-  "hot-updater db generate",
-] as const;
-
 export function resolveVersionEndpoint(serverBaseUrl: string): string {
   const url = new URL(serverBaseUrl.trim());
   const pathname = url.pathname.replace(/\/+$/, "");
@@ -72,10 +65,23 @@ const getCatalogMode = (
   return {};
 };
 
+/** What deploys a server of this release, beside migrating its database. */
+export interface ServerDeployment {
+  /** Init again with the inputs it saved, for a deployment init manages. */
+  readonly command: string;
+  /** What that command deploys, such as "the Worker". */
+  readonly server: string;
+}
+
 export const createInfrastructureRemediation = ({
   upgradeBlocked = false,
+  requiredVersion,
+  managed = null,
 }: {
   upgradeBlocked?: boolean;
+  requiredVersion?: string;
+  /** The deployment `hot-updater init` manages; null for a server of the project's own. */
+  managed?: ServerDeployment | null;
 } = {}): InfrastructureRemediation => {
   if (upgradeBlocked) {
     return {
@@ -85,11 +91,23 @@ export const createInfrastructureRemediation = ({
       commands: ["hot-updater agent infra setup", "hot-updater init"],
     };
   }
+  if (managed !== null) {
+    return {
+      fixability: "blocked",
+      reason: `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, and doctor --fix does not deploy servers.`,
+      commands: [managed.command],
+    };
+  }
+  const target =
+    requiredVersion === undefined ? "of this release" : `${requiredVersion}+`;
   return {
     fixability: "blocked",
-    reason:
-      "Generate versioned upgrade instructions with hot-updater agent infra upgrade. Applying them needs provider access; use init for interactive managed setup or db commands for custom servers.",
-    commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
+    reason: `Deploy the server from @hot-updater/server ${target} and migrate its database as it deploys: npx hot-updater db migrate in the server's project, or, for Drizzle and Prisma, npx hot-updater db generate, the ORM's migration, then db migrate. A server of an earlier release answers 503 once the database is migrated. An agent-managed deployment gets versioned upgrade instructions from hot-updater agent infra upgrade.`,
+    commands: [
+      "npx hot-updater db migrate",
+      "npx hot-updater db generate",
+      "hot-updater agent infra upgrade",
+    ],
   };
 };
 

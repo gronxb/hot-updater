@@ -1,10 +1,16 @@
 import { createMigrator } from "@hot-updater/cli-tools";
 import { isRemoteDatabase } from "@hot-updater/plugin-core";
 
+import { packageJsonData } from "../../packageJson";
 import type { LoadedServer } from "../../utils/loadServer";
+import {
+  getRequiredUpdateTarget,
+  type InfrastructureStatus,
+} from "../doctorInfrastructure";
 import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
 import type { DoctorContext } from "./context";
 import type { SchemaIssue, SchemaSetting, SchemaStatus } from "./issues";
+import type { ManagedDeployment } from "./managed";
 
 const DOCTOR_FIX = "npx hot-updater doctor --fix";
 
@@ -111,6 +117,7 @@ const pendingResolution = (server: LoadedServer) => {
  */
 export const checkSchema = async (
   context: DoctorContext,
+  infrastructure?: InfrastructureStatus,
 ): Promise<SchemaStatus | undefined> => {
   let server: LoadedServer | null;
   try {
@@ -125,8 +132,54 @@ export const checkSchema = async (
     return undefined;
   } catch (error) {
     if (!isSchemaMigrationRequired(error)) return undefined;
-    return schemaStatus(server, error, await v0VersionOf(server, error));
+    return schemaStatus(server, error, await v0VersionOf(server, error), {
+      managed: await context.managed(),
+      infrastructure,
+    });
   }
+};
+
+/** The server that reads the database, as far as this doctor run sees it. */
+interface ServerReading {
+  /** The deployment init manages, whose server init redeploys. */
+  readonly managed: ManagedDeployment | null;
+  /** The server at `--server-base-url`, when doctor was given one. */
+  readonly infrastructure: InfrastructureStatus | undefined;
+}
+
+/** That a server must change with the migration, and the order that keeps its downtime short. */
+const SERVER_ORDER =
+  "A server of an earlier release answers 503 once the database is migrated, and a server of this release answers 503 until it is";
+
+/**
+ * Why `--fix` leaves a migration to another command, and what to run: the
+ * migration moves settings a running server of an earlier release passes on,
+ * and doctor does not see that server at this release. Undefined when it may
+ * migrate: nothing a running server reads changes, or `--server-base-url`
+ * shows the server at this release.
+ */
+const waitsForServer = (
+  pending: readonly SchemaSetting[],
+  { managed, infrastructure }: ServerReading,
+): string | undefined => {
+  if (!pending.some(({ found }) => found !== null)) return undefined;
+  const required = getRequiredUpdateTarget(packageJsonData.version).version;
+  const behind =
+    infrastructure?.needsUpdate === true && infrastructure.serverVersion
+      ? `The server at ${infrastructure.baseUrl} runs ${infrastructure.serverVersion}, which answers 503 once this database is migrated.`
+      : undefined;
+  if (managed !== null) {
+    if (infrastructure?.needsUpdate === false && !infrastructure.error) {
+      return undefined;
+    }
+    const unseen =
+      infrastructure?.error === undefined
+        ? `doctor cannot see that ${managed.server} runs ${required}+ without --server-base-url`
+        : `doctor could not read ${infrastructure.versionEndpoint} to see that ${managed.server} runs ${required}+ (${infrastructure.error})`;
+    return `${behind ?? `${SERVER_ORDER}, and ${unseen}.`} Run \`${managed.command}\`: it applies this migration and redeploys ${managed.server} from this release in one run, so the 503 window is the deploy. Once ${managed.server} runs ${required}+, \`npx hot-updater doctor --fix --server-base-url <url>\` migrates the database instead.`;
+  }
+  if (behind === undefined) return undefined;
+  return `${behind} Deploy the server from @hot-updater/server ${required}+ first, then rerun \`npx hot-updater doctor --fix --server-base-url ${infrastructure!.baseUrl}\`, or run \`npx hot-updater db migrate\` in the server's project as it deploys.`;
 };
 
 /**
@@ -160,6 +213,7 @@ const schemaStatus = (
   server: LoadedServer,
   { message, settings, currentVersion: fenced }: SchemaMigrationRequired,
   v0Version: string | undefined,
+  reading: ServerReading,
 ): SchemaStatus => {
   const currentVersion = fenced ?? v0Version;
   const issues: SchemaIssue[] = [];
@@ -247,17 +301,31 @@ const schemaStatus = (
     newer.length === 0 &&
     changed.length === 0
   ) {
+    const waits = waitsForServer(pending, reading);
+    const { managed, infrastructure } = reading;
+    // A self-hosted server doctor was not shown: its deploy is the user's.
+    const unseen =
+      managed === null &&
+      infrastructure?.needsUpdate !== false &&
+      pending.some(({ found }) => found !== null);
     issues.push({
       type: "error",
       code: "SCHEMA_MIGRATION_PENDING",
       message: `The database has migrations to run before the server reads it: ${listed(pending)}.`,
-      resolution: pendingResolution(server),
+      resolution:
+        waits ??
+        (unseen
+          ? `${pendingResolution(server)} ${SERVER_ORDER}: migrate it as you deploy the server from this release.`
+          : pendingResolution(server)),
       settings: pending,
       fixability: "command",
       commands:
-        migrationPath(server) === "orm"
-          ? ["npx hot-updater db generate", "npx hot-updater db migrate"]
-          : [DOCTOR_FIX],
+        waits !== undefined && managed !== null
+          ? [managed.command]
+          : migrationPath(server) === "orm"
+            ? ["npx hot-updater db generate", "npx hot-updater db migrate"]
+            : [DOCTOR_FIX],
+      ...(waits === undefined ? {} : { waitsForServer: waits }),
     });
   }
   return { settings: [...settings], issues };

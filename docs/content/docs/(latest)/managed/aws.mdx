@@ -317,7 +317,19 @@ to your React Native version and rebuild the native app after changing it.
 
 ## Upgrade infrastructure
 
-With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+Rerun init with the inputs it saved in `.env.hotupdater`, the command
+[`hot-updater doctor`](/docs/guides/doctor#update-outdated-infrastructure)
+names for an outdated server:
+
+```package-install
+npx hot-updater init --provider aws --from-env-file .env.hotupdater
+```
+
+It applies the release's database migrations, then redeploys the Lambda@Edge function with its IAM role policy
+from the installed `@hot-updater/aws`, back to back: after a release whose schema changed, the server answers
+503 only while it deploys. With the
+[Hot Updater skill](/docs/guides/ai-agents) attached, you can also ask your
+agent:
 
 ```text
 $hot-updater Upgrade this project's existing AWS server infrastructure.

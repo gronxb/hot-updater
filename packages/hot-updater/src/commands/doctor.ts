@@ -822,6 +822,8 @@ async function checkProject(
       ) {
         details.infrastructure.remediation = createInfrastructureRemediation({
           upgradeBlocked: details.infrastructure.upgradeBlocked,
+          requiredVersion: details.infrastructure.requiredVersion,
+          managed: await context.managed(),
         });
       }
     }
@@ -840,7 +842,7 @@ async function checkProject(
 
     // The server's data reads through the fence, so it is checked once the
     // schema passes.
-    const schema = await checkSchema(context);
+    const schema = await checkSchema(context, details.infrastructure);
     if (schema) {
       details.schema = schema;
     } else {
@@ -1182,6 +1184,7 @@ export const handleDoctor = async ({
     }
 
     if (infrastructure.remediation) {
+      p.log.info(infrastructure.remediation.reason);
       const recoveryLines = infrastructure.remediation.commands.map(
         (command, index) =>
           ui.kv(

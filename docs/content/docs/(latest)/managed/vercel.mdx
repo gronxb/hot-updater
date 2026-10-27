@@ -228,9 +228,19 @@ to your React Native version and rebuild the native app after changing it.
 
 ## Upgrade infrastructure
 
-Rerun `hot-updater init` with the saved inputs: it migrates the database and
-redeploys the Function from the installed `@hot-updater/vercel`. With the
-[Hot Updater skill](/docs/guides/ai-agents) attached, you can also ask your agent:
+Rerun init with the inputs it saved in `.env.hotupdater`, the command
+[`hot-updater doctor`](/docs/guides/doctor#update-outdated-infrastructure)
+names for an outdated server:
+
+```package-install
+npx hot-updater init --provider vercel --from-env-file .env.hotupdater
+```
+
+It applies the release's database migrations, then redeploys the Function
+from the installed `@hot-updater/vercel`, back to back: after a release whose schema changed, the server answers
+503 only while it deploys. With the
+[Hot Updater skill](/docs/guides/ai-agents) attached, you can also ask your
+agent:
 
 ```text
 $hot-updater Upgrade this project's existing Vercel server infrastructure.

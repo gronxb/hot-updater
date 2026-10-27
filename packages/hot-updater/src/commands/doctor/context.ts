@@ -1,7 +1,9 @@
 import { loadConfig, nonInteractiveReason } from "@hot-updater/cli-tools";
+import { isRemoteDatabase } from "@hot-updater/plugin-core";
 
 import { generateFingerprints } from "../../utils/fingerprint";
 import { type LoadedServer, loadServer } from "../../utils/loadServer";
+import { type ManagedDeployment, readManagedDeployment } from "./managed";
 
 type Fingerprints = Awaited<ReturnType<typeof generateFingerprints>>;
 
@@ -18,6 +20,12 @@ export interface DoctorContext {
   /** The server hot-updater.config.ts describes; null when it names no database. */
   server(): Promise<LoadedServer | null>;
   /**
+   * The deployment `hot-updater init` manages for this project, whose server
+   * init redeploys; null for a server of the project's own, or when the
+   * config does not load.
+   */
+  managed(): Promise<ManagedDeployment | null>;
+  /**
    * The project's fingerprints, computed once: a repair writes only
    * fingerprint.json and native hash entries, which are no fingerprint input.
    */
@@ -32,12 +40,22 @@ export const createDoctorContext = (
 ): DoctorContext => {
   let server: Promise<LoadedServer | null> | undefined;
   let fingerprints: Promise<Fingerprints> | undefined;
+  let managed: Promise<ManagedDeployment | null> | undefined;
+  const loadedServer = () =>
+    (server ??= loadConfig(null).then((config) =>
+      config.database === undefined ? null : loadServer(config),
+    ));
   return {
     cwd,
     nonInteractive,
-    server: () =>
-      (server ??= loadConfig(null).then((config) =>
-        config.database === undefined ? null : loadServer(config),
+    server: loadedServer,
+    managed: () =>
+      (managed ??= loadedServer().then(
+        (loaded) =>
+          loaded === null || isRemoteDatabase(loaded.database)
+            ? null
+            : readManagedDeployment(cwd, loaded.database.name),
+        () => null,
       )),
     fingerprints: () => (fingerprints ??= generateFingerprints()),
     dispose: async () => {

@@ -27,6 +27,7 @@ interface RepairedIssue {
   readonly scopeKey?: string;
   readonly artifactIds?: readonly string[];
   readonly settings?: readonly SchemaSetting[];
+  readonly waitsForServer?: string;
 }
 
 /** What a repair wrote, and whether native files were among it; or why it wrote nothing. */
@@ -87,6 +88,9 @@ const REPAIRS: readonly {
     codes: ["SCHEMA_MIGRATION_PENDING"],
     writesNativeFiles: false,
     run: async (issues, context) => {
+      // A server of an earlier release would answer 503 from the migration on.
+      const waits = issues.find(({ waitsForServer }) => waitsForServer);
+      if (waits?.waitsForServer) return { skip: waits.waitsForServer };
       const result = await migrateServerSchema(
         context,
         issues.flatMap(({ settings }) => settings ?? []),

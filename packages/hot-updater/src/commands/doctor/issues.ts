@@ -105,6 +105,12 @@ export interface SchemaIssue {
     | "PLUGIN_SCHEMA_CHANGED";
   /** SCHEMA_MIGRATION_PENDING: the settings a migration writes. */
   settings?: SchemaSetting[];
+  /**
+   * SCHEMA_MIGRATION_PENDING: why `--fix` does not migrate, and what to run.
+   * The migration moves settings a running server of an earlier release
+   * passes on, and doctor does not see that server at this release.
+   */
+  waitsForServer?: string;
   message: string;
   resolution: string;
   fixability: DoctorFixability;

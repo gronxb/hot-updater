@@ -55,6 +55,7 @@ const context = (): DoctorContext => ({
   cwd: "/project",
   nonInteractive: true,
   server: vi.fn(async () => ({ core }) as never),
+  managed: vi.fn(async () => null),
   fingerprints: vi.fn(async () => fingerprints),
   dispose: vi.fn(async () => {}),
 });
