@@ -7,9 +7,15 @@ import {
   archiveAppBundle,
   extractBuiltInBundle as extractIosBuiltInBundle,
 } from "@hot-updater/apple-helper";
-import { loadConfig, p, putStorageFile } from "@hot-updater/cli-tools";
+import {
+  createMinBundleId,
+  loadConfig,
+  p,
+  putStorageFile,
+} from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
+  DatabaseConstraintError,
   createBundleStorageKey,
   createStorageRootUriWithPath,
   createUUIDv7,
@@ -37,6 +43,48 @@ import type { NativeBuildResult, NativeBuildTarget } from "./createNativeBuild";
 
 /** Where a native build's artifact is stored, under the config's storage. */
 export const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
+
+/**
+ * How many milliseconds past the build's a MIN_BUNDLE_ID steps while the
+ * registry holds a bundle at it.
+ */
+const MIN_BUNDLE_ID_STEPS = 10;
+
+/**
+ * A registration the registry refused because its build or its built-in
+ * bundle exists: core's constraint error, or a self-hosted server's 409.
+ */
+export const isNativeBuildConflict = (error: unknown): boolean =>
+  (error instanceof DatabaseConstraintError &&
+    (error.reason === "unique" || error.reason === "exists")) ||
+  (error as { status?: unknown } | null)?.status === 409;
+
+/**
+ * Issues the MIN_BUNDLE_ID of a build about to start, the zero-random-bit
+ * UUIDv7 of its millisecond (`createMinBundleId`). Bundle IDs share one
+ * space across platforms, so a bundle the registry already holds at that ID,
+ * such as the built-in bundle of a build that started in the same
+ * millisecond, steps it 1 ms forward, with one read of the config's server
+ * per step. Builds that start together register nothing before they finish,
+ * so this read can't see each other: the registry, which takes a built-in
+ * bundle's ID once, refuses the second registration.
+ */
+export const issueMinBundleId = async (nowMs = Date.now()): Promise<string> => {
+  const server = await loadServer(await loadConfig(null));
+  try {
+    let id = createMinBundleId(nowMs);
+    for (
+      let step = 1;
+      step <= MIN_BUNDLE_ID_STEPS && (await server.core.getBundle(id)) !== null;
+      step += 1
+    ) {
+      id = createMinBundleId(nowMs + step);
+    }
+    return id;
+  } finally {
+    await server.dispose();
+  }
+};
 
 /**
  * Deletes the artifact and the manifest of a registration that failed: both

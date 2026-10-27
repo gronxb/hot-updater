@@ -21,8 +21,8 @@ let storageRow: NativeBuildRow | null = null;
 let platform: Platform = "ios";
 
 const minBundleId = {
-  ios: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
-  android: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+  ios: "0190a1b2-c3d4-7000-8000-000000000000",
+  android: "0190a1b2-c3d5-7000-8000-000000000000",
 } as const;
 
 const buildResult = () =>
@@ -188,6 +188,8 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
 }));
 /** Tracks the build in the test's core, as the CLI's registration does. */
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  issueMinBundleId: vi.fn(async () => buildResult().minBundleId),
+  isNativeBuildConflict: () => false,
   preflightNativeBuildRegistration: vi.fn(async () => {}),
   registerNativeBuild: vi.fn(async () => {
     const build = buildResult();

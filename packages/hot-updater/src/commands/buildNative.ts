@@ -56,6 +56,8 @@ import {
   prepareNativeBuild,
 } from "@/utils/native/prepareNativeBuild";
 import {
+  isNativeBuildConflict,
+  issueMinBundleId,
   preflightNativeBuildRegistration,
   registerNativeBuild,
 } from "@/utils/native/registerNativeBuild";
@@ -342,6 +344,7 @@ const buildNativeInternal = async ({
                 ? { ...iosSchemeConfig!, installPods: false }
                 : iosSchemeConfig,
               credentials,
+              tracked: trackingSkipped === null,
             });
         if (!reused) await cache?.remember(result, null);
         if (dryRun) trackingSkipped = "dry-run";
@@ -574,6 +577,8 @@ const buildNativeInternal = async ({
 /**
  * Builds the app: issues the build's MIN_BUNDLE_ID, runs the platform's
  * build and the adapter's postbuild, and copies the output to `outputPath`.
+ * A build that will be tracked, as a dry run's cached build may be later,
+ * issues it past the bundles the registry holds (`issueMinBundleId`).
  */
 const buildNow = async ({
   platform,
@@ -585,6 +590,7 @@ const buildNow = async ({
   androidSchemeConfig,
   iosSchemeConfig,
   credentials,
+  tracked,
 }: {
   platform: Platform;
   platformName: string;
@@ -595,8 +601,17 @@ const buildNow = async ({
   androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
   iosSchemeConfig?: EnrichedNativeBuildIosScheme;
   credentials: CredentialResolver;
+  tracked: boolean;
 }): Promise<NativeBuildResult> => {
-  const minBundleId = createMinBundleId(platform);
+  let minBundleId: string;
+  try {
+    minBundleId = tracked ? await issueMinBundleId() : createMinBundleId();
+  } catch (error) {
+    throw new NativeBuildFailure(
+      `Hot Updater tracks every native build, and can't reach its native build registry: ${error instanceof Error ? error.message : String(error)}\nNothing was built. Check the database in hot-updater.config.ts, and its credentials.`,
+      { cause: error },
+    );
+  }
 
   p.log.info(
     ui.line([
@@ -815,7 +830,9 @@ const trackBuild = async (
   } catch (error) {
     throw new NativeBuildFailure(
       [
-        `Tracking the native build failed: ${error instanceof Error ? error.message : String(error)}`,
+        isNativeBuildConflict(error)
+          ? `Tracking the native build failed: another native build registered its built-in bundle ${result.minBundleId} first, as a build that started in the same millisecond does. Build it again: the build issues a new MIN_BUNDLE_ID.`
+          : `Tracking the native build failed: ${error instanceof Error ? error.message : String(error)}`,
         `The build stays at ${result.artifactPath}${upload ? `, and was not submitted to ${upload === "testflight" ? "TestFlight" : "Google Play"}` : ""}.`,
       ].join("\n"),
       { cause: error },
