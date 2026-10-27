@@ -100,8 +100,10 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
     case "aab":
       return isSubmitted(build) ? (
         <p className="text-xs text-muted-foreground">
-          On Google Play internal testing as <SubmittedVersion build={build} />:
-          testers install it from Google Play.
+          Submitted to Google Play internal testing as{" "}
+          <SubmittedVersion build={build} />. Testers install it from Google
+          Play once its release is rolled out; on an app Play Console hasn't
+          published, the release is a draft you roll out in Play Console.
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">

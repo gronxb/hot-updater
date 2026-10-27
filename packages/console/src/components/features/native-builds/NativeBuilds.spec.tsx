@@ -368,8 +368,13 @@ describe("a submitted build's page", () => {
     );
 
     expect(
-      screen.getByText(/On Google Play internal testing as/).textContent,
+      screen.getByText(/Submitted to Google Play internal testing as/)
+        .textContent,
     ).toContain("1.7.0 (66)");
+    // A draft release isn't installable yet, so nothing says it is.
+    expect(screen.getByText(/Submitted to Google Play/).textContent).toContain(
+      "once its release is rolled out",
+    );
   });
 });
 
