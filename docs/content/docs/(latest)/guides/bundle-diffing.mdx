@@ -157,7 +157,9 @@ This means devices currently on `OTA A` or `OTA B` can download a small patch to
 outside the selected patch bases download the complete new Hermes bundle file.
 
 Deploy also adds one patch base beyond `maxBaseBundles`: the built-in bundle of
-the newest native build [registered](/docs/guides/native-build#how-a-build-is-tracked)
+the newest native build [registered](/docs/guides/native-build#how-a-build-is-tracked),
+by `native-build` or by
+[importing a build made elsewhere](/docs/guides/native-build#import-a-build-made-elsewhere),
 for the deploy's channel and platform, with the same fingerprint or, with the
 App Version strategy, the exact app version the build compiled in. Devices that
 run that build with no OTA installed, such as a fresh store install, then

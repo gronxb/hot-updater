@@ -12,6 +12,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./native-artifact": {
+      "import": "./dist/native-artifact.mjs",
+      "require": "./dist/native-artifact.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -44,6 +48,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "jszip": "^3.10.1",
     "verkit": "catalog:"
   },
   "inlinedDependencies": {

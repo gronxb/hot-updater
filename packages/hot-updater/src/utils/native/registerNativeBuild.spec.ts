@@ -266,6 +266,32 @@ describe("registerNativeBuild", () => {
     );
   });
 
+  it("deletes its artifact when another registration of the same built-in bundle wins", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    const register = harness.core.registerNativeBuild;
+    vi.spyOn(harness.core, "registerNativeBuild").mockImplementationOnce(
+      async (registration) => {
+        // Another import of the same artifact writes first.
+        await register({
+          ...registration,
+          id: "01ff0000-0000-7000-8000-000000000002",
+          artifact: { ...registration.artifact, storageUri: "mem://b/other" },
+        });
+        return register(registration);
+      },
+    );
+
+    await expect(
+      registerNativeBuild(android({ artifactPath }), { buildKey: null }),
+    ).rejects.toThrow();
+    expect(
+      [...storage.objects.keys()].filter((key) =>
+        key.startsWith("native-builds/"),
+      ),
+    ).toEqual([]);
+  });
+
   it("keeps the artifact of a registration that committed although its write failed", async () => {
     const artifactPath = path.join(dir, "app-release.apk");
     await fs.promises.writeFile(artifactPath, "apk bytes");

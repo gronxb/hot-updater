@@ -33,7 +33,7 @@ import {
 import { getFileHashFromFile } from "../getFileHash";
 import { getLatestGitCommit } from "../git";
 import { type LoadedServer, loadServer } from "../loadServer";
-import type { NativeBuildResult } from "./createNativeBuild";
+import type { NativeBuildResult, NativeBuildTarget } from "./createNativeBuild";
 
 /** Where a native build's artifact is stored, under the config's storage. */
 export const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
@@ -49,8 +49,9 @@ const removeUnregisteredArtifact = async (
   registration: NativeBuildRegistration,
 ) => {
   try {
-    // Only this registration writes its built-in bundle's row.
-    const committed = await core.getBundle(registration.minBundleId);
+    // Its own row, by its own ID: another import of the same artifact may
+    // have written the built-in bundle's row.
+    const committed = await core.getNativeBuild(registration.id);
     if (committed !== null || storage.delete === undefined) return;
     await storage.delete({ storageUri: registration.artifact.storageUri });
   } catch {
@@ -124,8 +125,25 @@ export const preflightNativeBuildRegistration = async (
  * finds it by, or null for a build no key covers.
  */
 export const registerNativeBuild = async (
-  build: NativeBuildResult,
-  { buildKey }: { readonly buildKey: string | null },
+  build: NativeBuildTarget &
+    Omit<NativeBuildResult, "scheme" | keyof NativeBuildTarget>,
+  {
+    buildKey,
+    gitCommitHash,
+    writeBuiltInBundle,
+  }: {
+    readonly buildKey: string | null;
+    /**
+     * The commit the build was made from: this checkout's latest by
+     * default, and null for a build imported from elsewhere.
+     */
+    readonly gitCommitHash?: string | null;
+    /**
+     * Writes the built-in bundle to `outputPath`: by default the platform
+     * helper extracts it from the artifact.
+     */
+    readonly writeBuiltInBundle?: (outputPath: string) => Promise<void>;
+  },
 ): Promise<NativeBuildRow> => {
   if (build.minBundleId === NIL_UUID) {
     throw new Error(
@@ -160,14 +178,18 @@ export const registerNativeBuild = async (
     const assetPath = `index.${build.platform}.bundle`;
     const bundleDir = path.join(workDir, "bundle");
     const builtInBundlePath = path.join(bundleDir, assetPath);
-    await (
-      build.platform === "android"
-        ? extractAndroidBuiltInBundle
-        : extractIosBuiltInBundle
-    )({
-      artifactPath: build.artifactPath,
-      outputPath: builtInBundlePath,
-    });
+    if (writeBuiltInBundle !== undefined) {
+      await writeBuiltInBundle(builtInBundlePath);
+    } else {
+      await (
+        build.platform === "android"
+          ? extractAndroidBuiltInBundle
+          : extractIosBuiltInBundle
+      )({
+        artifactPath: build.artifactPath,
+        outputPath: builtInBundlePath,
+      });
+    }
     const targetFiles = [{ path: builtInBundlePath, name: assetPath }];
     const manifest = await createBundleManifest({
       bundleId: build.minBundleId,
@@ -223,7 +245,10 @@ export const registerNativeBuild = async (
       ...scope,
       id,
       minBundleId: build.minBundleId,
-      gitCommitHash: (await getLatestGitCommit())?.id() ?? null,
+      gitCommitHash:
+        gitCommitHash === undefined
+          ? ((await getLatestGitCommit())?.id() ?? null)
+          : gitCommitHash,
       buildKey,
       artifact: {
         kind: build.artifactKind,

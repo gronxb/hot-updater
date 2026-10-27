@@ -87,6 +87,7 @@ import {
   handleNativeBuildDelete,
   handleNativeBuildFind,
 } from "./commands/nativeBuild";
+import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,
@@ -337,6 +338,19 @@ nativeBuildCommand
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleNativeBuildDelete);
+
+nativeBuildCommand
+  .command("import")
+  .description(
+    "Track an .ipa, .aab or .apk built elsewhere, such as by EAS, Xcode Cloud or Fastlane, as an OTA patch base: OTAs deployed after it patch from its built-in bundle",
+  )
+  .argument("<file>", "the release build's .ipa, .aab or .apk")
+  .option("--dry-run", "read and check the artifact, and record nothing")
+  .option(
+    "--json",
+    "print what was read, and the registered build or why it can't be imported, as JSON on the last line of the output",
+  )
+  .action(handleNativeBuildImport);
 
 nativeBuildCommand
   .command("ios")
