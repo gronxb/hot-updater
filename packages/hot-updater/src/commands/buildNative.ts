@@ -5,6 +5,7 @@ import {
   type EnrichedNativeBuildAndroidScheme,
   findPlayInternalRelease,
   assertPlaySigned,
+  readBuiltApp,
   readBuiltPackageName,
   readBuiltVersionCode,
   resolvePlayUploadServiceAccount,
@@ -35,6 +36,8 @@ import {
 import type {
   BuildAdapter,
   NativeBuildOptions,
+  NativeBuildRow,
+  NativeBuildSubmissionDestination,
   Platform,
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
@@ -62,6 +65,10 @@ import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import {
+  recordNativeBuildSubmission,
+  storeVersionLabel,
+} from "../utils/native/nativeBuildSubmission";
 import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
 import {
   type NativeBuildCache,
@@ -338,7 +345,7 @@ const buildNativeInternal = async ({
         if (dryRun) trackingSkipped = "dry-run";
         // A build reused from storage is tracked already; one reused from
         // this machine is tracked with the key it was cached under.
-        const registered =
+        let registered =
           trackingSkipped !== null
             ? null
             : reused?.source === "storage"
@@ -364,17 +371,28 @@ const buildNativeInternal = async ({
                 ui.path(existing.testFlightUrl),
               ]),
             );
+            registered = await recordSubmission(
+              registered,
+              "testflight",
+              () =>
+                storeVersionLabel(
+                  existing.shortVersion,
+                  existing.bundleVersion,
+                ),
+              { onlyUnrecorded: true },
+            );
           }
         }
         if (apiKey && !alreadySubmitted) {
-          const { state, testFlightUrl } = await reportUploadFailure(
-            () =>
-              uploadToTestFlight({
-                ipaPath: result.artifactPath,
-                apiKey,
-              }),
-            `The build stays at ${result.artifactPath}.`,
-          );
+          const { state, testFlightUrl, shortVersion, bundleVersion } =
+            await reportUploadFailure(
+              () =>
+                uploadToTestFlight({
+                  ipaPath: result.artifactPath,
+                  apiKey,
+                }),
+              `The build stays at ${result.artifactPath}.`,
+            );
           if (state === "COMPLETE") {
             p.log.success(
               ui.line([
@@ -382,6 +400,11 @@ const buildNativeInternal = async ({
                 ui.platform("TestFlight"),
                 ui.path(testFlightUrl),
               ]),
+            );
+            // Recorded once App Store Connect accepted the build; a build
+            // still processing is recorded by the next run, which finds it.
+            registered = await recordSubmission(registered, "testflight", () =>
+              storeVersionLabel(shortVersion, bundleVersion),
             );
           }
         }
@@ -416,6 +439,16 @@ const buildNativeInternal = async ({
                   ui.platform("Google Play internal testing"),
                 ]),
               );
+              registered = await recordSubmission(
+                registered,
+                "play-internal",
+                async () =>
+                  storeVersionLabel(
+                    await readVersionName(result, androidProjectPath),
+                    versionCode,
+                  ),
+                { onlyUnrecorded: true },
+              );
             }
           }
           if (!alreadySubmitted) {
@@ -446,6 +479,17 @@ const buildNativeInternal = async ({
                 ui.platform("Google Play internal testing"),
                 ui.muted(`version code ${versionCode}`),
               ]),
+            );
+            // Google Play took the bundle on the internal track, as a draft
+            // release when the app is not published yet.
+            registered = await recordSubmission(
+              registered,
+              "play-internal",
+              async () =>
+                storeVersionLabel(
+                  await readVersionName(result, androidProjectPath),
+                  versionCode,
+                ),
             );
           }
         }
@@ -609,6 +653,52 @@ const prepareTracking = async ({
     );
   }
   return null;
+};
+
+/**
+ * The version name the built `.apk` or `.aab` reports, or its scheme's app
+ * version, or null when neither can be read: aapt2 reads the artifact.
+ */
+const readVersionName = async (
+  result: NativeBuildResult,
+  androidProjectPath: string,
+): Promise<string | null> =>
+  (
+    await readBuiltApp({
+      artifactPath: result.artifactPath,
+      androidProjectPath,
+    })
+  )?.appVersion ?? result.appVersion;
+
+/**
+ * Records on the tracked build that the store took it. An untracked build,
+ * such as a Debug one, records nothing; `onlyUnrecorded` keeps a record a
+ * run that uploaded the build made. A failed record fails the command,
+ * since the Console would not show the submission: the store keeps the
+ * build, and a run with the same inputs finds it there and records it.
+ */
+const recordSubmission = async (
+  build: NativeBuildRow | null,
+  destination: NativeBuildSubmissionDestination,
+  /** The store's label of the build, read only for a tracked build. */
+  readVersion: () => string | Promise<string>,
+  { onlyUnrecorded = false }: { readonly onlyUnrecorded?: boolean } = {},
+): Promise<NativeBuildRow | null> => {
+  if (!build || (onlyUnrecorded && build.submitted_to !== null)) {
+    return build;
+  }
+  const version = await readVersion();
+  try {
+    return await recordNativeBuildSubmission(build, destination, version);
+  } catch (error) {
+    throw new NativeBuildFailure(
+      [
+        `${destination === "testflight" ? "TestFlight" : "Google Play"} has build ${version}, but recording it on native build ${build.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        "Run the same command again: it reuses the build, finds it in the store, and records it.",
+      ].join("\n"),
+      { cause: error },
+    );
+  }
 };
 
 /**

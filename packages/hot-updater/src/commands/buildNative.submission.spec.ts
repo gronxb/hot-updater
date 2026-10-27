@@ -1,0 +1,412 @@
+import type { NativeBuildRow, Platform } from "@hot-updater/plugin-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { testServer } from "../utils/testServer";
+import { createDatabaseHarness } from "./database.testFixtures";
+
+/**
+ * A build submitted to a store is recorded on its tracked row, which these
+ * tests read back from a real core: only after the store accepted the
+ * upload or already had the build, never on a dry run or a failed upload.
+ */
+const databaseHarness = createDatabaseHarness();
+
+const ascApiKey = { keyPath: "/tmp/AuthKey.p8", keyId: "K", issuerId: "I" };
+const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
+
+/** The cached build a run reuses, when a test sets one. */
+let reused: "local" | null = null;
+let platform: Platform = "ios";
+
+const minBundleId = {
+  ios: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+  android: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+} as const;
+
+const buildResult = () =>
+  platform === "ios"
+    ? {
+        platform: "ios" as const,
+        scheme: "release",
+        minBundleId: minBundleId.ios,
+        channel: "production",
+        fingerprintHash: "fp",
+        appVersion: null,
+        artifactPath: "/out/export/App.ipa",
+        artifactKind: "ipa" as const,
+      }
+    : {
+        platform: "android" as const,
+        scheme: "release",
+        minBundleId: minBundleId.android,
+        channel: "production",
+        fingerprintHash: "fp",
+        appVersion: null,
+        artifactPath: "/out/app-release.aab",
+        artifactKind: "aab" as const,
+      };
+
+vi.mock("@hot-updater/apple-helper", () => ({
+  assertTestFlightExportOptions: vi.fn(async () => {}),
+  buildIos: vi.fn(),
+  installPodsIfNeeded: vi.fn(async () => {}),
+  resolveTestFlightUploadKey: vi.fn(() => ({
+    kind: "asc-api-key",
+    name: "asc-api-key",
+  })),
+  findTestFlightBuild: vi.fn(async () => ({ found: false })),
+  uploadToTestFlight: vi.fn(async () => ({
+    appId: "123",
+    buildUploadId: "upload-1",
+    state: "COMPLETE",
+    testFlightUrl: "https://appstoreconnect.apple.com/apps/123/testflight/ios",
+    shortVersion: "1.7.0",
+    bundleVersion: "66",
+  })),
+}));
+vi.mock("@hot-updater/android-helper", () => ({
+  assertPlaySigned: vi.fn(async () => {}),
+  buildAndroid: vi.fn(),
+  findPlayInternalRelease: vi.fn(async () => false),
+  readBuiltApp: vi.fn(async () => ({ appVersion: "1.7.0", channel: null })),
+  readBuiltPackageName: vi.fn(async () => "com.example.app"),
+  readBuiltVersionCode: vi.fn(async () => 66),
+  resolvePlayUploadServiceAccount: vi.fn(() => ({
+    kind: "play-service-account",
+    name: "play-service-account",
+  })),
+  uploadToPlay: vi.fn(async () => ({ versionCode: 66, status: "completed" })),
+}));
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  getCwd: () => "/project",
+  loadConfig: vi.fn(async () => ({})),
+  p: {
+    log: {
+      info: vi.fn(),
+      success: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      message: vi.fn(),
+    },
+  },
+  withCredentialResolver: vi.fn(async (run) =>
+    run({
+      resolve: vi.fn(async (request: { kind: string }) =>
+        request.kind === "asc-api-key" ? ascApiKey : serviceAccount,
+      ),
+      dispose: vi.fn(),
+    }),
+  ),
+}));
+vi.mock("../utils/native/ascApiKey", () => ({
+  ensureAscApiKey: vi.fn(async () => ({ status: "stored" })),
+}));
+vi.mock("../utils/native/playServiceAccount", () => ({
+  ensurePlayServiceAccount: vi.fn(async () => ({ status: "stored" })),
+}));
+vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
+vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
+vi.mock("@/utils/native/prepareNativeBuild", () => ({
+  prepareNativeBuild: vi.fn(async (options) => {
+    await options.beforePrebuild?.(
+      platform === "ios"
+        ? {
+            scheme: "release",
+            iosScheme: {
+              configuration: "Release",
+              bundleIdentifier: "com.example.app",
+            },
+          }
+        : {
+            scheme: "release",
+            androidScheme: { packageName: "com.example.app" },
+          },
+    );
+    return {
+      buildAdapter: { name: "bare" },
+      config: { cacheDir: null },
+      outputPath: "/out",
+      scheme: "release",
+      target: { fingerprintHash: "fp", appVersion: null },
+      ...(platform === "ios"
+        ? {
+            iosSchemeConfig: {
+              configuration: "Release",
+              signing: { ascApiKey: "secret:asc-api-key" },
+            },
+          }
+        : {
+            androidSchemeConfig: {
+              aab: true,
+              variant: "release",
+              applicationId: "com.example.app",
+              signing: { serviceAccount: "secret:play-service-account" },
+            },
+          }),
+    };
+  }),
+}));
+vi.mock("@/utils/native/createNativeBuild", () => ({
+  createNativeBuild: vi.fn(async () => buildResult()),
+}));
+vi.mock("../utils/native/nativeBuildScope", () => ({
+  resolveNativeBuildScope: vi.fn(async () => ({
+    platform,
+    channel: "production",
+    fingerprintHash: "fp",
+    appVersion: null,
+  })),
+}));
+vi.mock("../utils/native/reuseNativeBuild", () => ({
+  reuseNativeBuild: vi.fn(async () => ({
+    key: { key: null, components: null, uncacheable: "it is a test" },
+    slot: null,
+    hit:
+      reused === "local"
+        ? { source: "local", nativeBuildId: null, result: buildResult() }
+        : null,
+    report: { hit: reused, key: null, uncacheable: null, changed: [] },
+    remember: vi.fn(async () => {}),
+  })),
+  rememberTrackedBuild: vi.fn(async () => {}),
+}));
+/** Tracks the build in the test's core, as the CLI's registration does. */
+vi.mock("@/utils/native/registerNativeBuild", () => ({
+  preflightNativeBuildRegistration: vi.fn(async () => {}),
+  registerNativeBuild: vi.fn(async () => {
+    const build = buildResult();
+    return databaseHarness.core.registerNativeBuild({
+      id: build.platform === "ios" ? nativeBuildId.ios : nativeBuildId.android,
+      platform: build.platform,
+      channel: build.channel,
+      fingerprintHash: "fp",
+      appVersion: null,
+      minBundleId: build.minBundleId,
+      gitCommitHash: null,
+      buildKey: null,
+      artifact: {
+        kind: build.artifactKind,
+        storageUri: `storage://native-builds/${build.platform}/app`,
+        byteSize: 1,
+      },
+      embeddedBundle: {
+        manifestStorageUri: "storage://bundles/manifest.json",
+        manifestFileHash: "manifest-hash",
+        assetBaseStorageUri: "storage://assets",
+      },
+    });
+  }),
+}));
+// The record goes to the test's core, as `loadServer` gives it the config's.
+vi.mock("../utils/loadServer", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/loadServer")>()),
+  loadServer: vi.fn(async () =>
+    testServer({ database: databaseHarness.database }),
+  ),
+}));
+
+const nativeBuildId = {
+  ios: "0190a1b2-c3d4-7000-8000-0000000000e1",
+  android: "0190a1b2-c3d4-7000-8000-0000000000e2",
+} as const;
+
+import {
+  findPlayInternalRelease,
+  readBuiltApp,
+  uploadToPlay,
+} from "@hot-updater/android-helper";
+import {
+  findTestFlightBuild,
+  uploadToTestFlight,
+} from "@hot-updater/apple-helper";
+
+import { handleNativeBuildCreate } from "./buildNative";
+
+const stored = (): Promise<NativeBuildRow | null> =>
+  databaseHarness.core.getNativeBuild(nativeBuildId[platform]);
+
+const submission = (row: NativeBuildRow | null) => ({
+  submitted_to: row?.submitted_to,
+  submitted_version: row?.submitted_version,
+  recorded: typeof row?.submitted_at_ms === "number",
+});
+
+const NONE = { submitted_to: null, submitted_version: null, recorded: false };
+
+const mockExit = () =>
+  vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("exit");
+  }) as never);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  databaseHarness.reset();
+  reused = null;
+  platform = "ios";
+});
+
+describe("native-build ios --submit testflight", () => {
+  it("records TestFlight and the build's version and number once App Store Connect accepted it", async () => {
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+
+    expect(submission(await stored())).toEqual({
+      submitted_to: "testflight",
+      submitted_version: "1.7.0 (66)",
+      recorded: true,
+    });
+  });
+
+  it("records nothing for a build App Store Connect is still processing", async () => {
+    vi.mocked(uploadToTestFlight).mockResolvedValueOnce({
+      appId: "123",
+      buildUploadId: "upload-1",
+      state: "PROCESSING",
+      testFlightUrl: "https://asc",
+      shortVersion: "1.7.0",
+      bundleVersion: "66",
+    });
+
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+
+    expect(submission(await stored())).toEqual(NONE);
+  });
+
+  it("records nothing when the upload fails", async () => {
+    vi.mocked(uploadToTestFlight).mockRejectedValueOnce(
+      new Error("App Store Connect refused the build"),
+    );
+    const exit = mockExit();
+
+    await expect(
+      handleNativeBuildCreate("ios", {
+        scheme: "release",
+        submit: "testflight",
+      }),
+    ).rejects.toThrow("exit");
+
+    exit.mockRestore();
+    // The build is tracked, and no store took it.
+    expect(await stored()).not.toBeNull();
+    expect(submission(await stored())).toEqual(NONE);
+  });
+
+  it("writes nothing on a dry run, and uploads nothing", async () => {
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+      dryRun: true,
+    });
+
+    expect(uploadToTestFlight).not.toHaveBeenCalled();
+    expect(await stored()).toBeNull();
+  });
+
+  it("records a reused build TestFlight already has, without uploading it again", async () => {
+    reused = "local";
+    vi.mocked(findTestFlightBuild).mockResolvedValueOnce({
+      found: true,
+      shortVersion: "1.7.0",
+      bundleVersion: "65",
+      testFlightUrl: "https://asc",
+    } as never);
+
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+
+    expect(uploadToTestFlight).not.toHaveBeenCalled();
+    expect(submission(await stored())).toEqual({
+      submitted_to: "testflight",
+      submitted_version: "1.7.0 (65)",
+      recorded: true,
+    });
+  });
+
+  it("records nothing without --submit", async () => {
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+
+    expect(submission(await stored())).toEqual(NONE);
+  });
+});
+
+describe("native-build android --submit play-internal", () => {
+  beforeEach(() => {
+    platform = "android";
+  });
+
+  it.each(["completed", "draft"] as const)(
+    "records Play internal and the version name and code for a %s release",
+    async (status) => {
+      vi.mocked(uploadToPlay).mockResolvedValueOnce({
+        versionCode: 66,
+        status,
+      });
+
+      await handleNativeBuildCreate("android", {
+        scheme: "release",
+        submit: "play-internal",
+      });
+
+      expect(submission(await stored())).toEqual({
+        submitted_to: "play-internal",
+        submitted_version: "1.7.0 (66)",
+        recorded: true,
+      });
+    },
+  );
+
+  it("labels the build by its version code alone when the artifact's version name can't be read", async () => {
+    vi.mocked(readBuiltApp).mockResolvedValueOnce(undefined);
+
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit: "play-internal",
+    });
+
+    expect(submission(await stored())).toMatchObject({
+      submitted_version: "66",
+    });
+  });
+
+  it("records nothing when Google Play refuses the upload", async () => {
+    vi.mocked(uploadToPlay).mockRejectedValueOnce(
+      new Error("Google Play already has this version code"),
+    );
+    const exit = mockExit();
+
+    await expect(
+      handleNativeBuildCreate("android", {
+        scheme: "release",
+        submit: "play-internal",
+      }),
+    ).rejects.toThrow("exit");
+
+    exit.mockRestore();
+    expect(submission(await stored())).toEqual(NONE);
+  });
+
+  it("records a reused build Google Play already has, without uploading it again", async () => {
+    reused = "local";
+    vi.mocked(findPlayInternalRelease).mockResolvedValueOnce(true);
+
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit: "play-internal",
+    });
+
+    expect(uploadToPlay).not.toHaveBeenCalled();
+    expect(submission(await stored())).toEqual({
+      submitted_to: "play-internal",
+      submitted_version: "1.7.0 (66)",
+      recorded: true,
+    });
+  });
+});

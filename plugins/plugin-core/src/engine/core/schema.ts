@@ -168,7 +168,9 @@ const channels = defineTable(
  * refused deletion through `byChannel`. `build_key` is the native build key
  * of every input the artifact was built from (`nbk1:` and a SHA-256), which
  * a build with the same inputs reuses it by; a build registered without
- * one is never reused.
+ * one is never reused. `submitted_to`, `submitted_at_ms` and
+ * `submitted_version` record the store track a build went to, when, and
+ * the store's label of the build; they stay null for a build no store took.
  */
 const nativeBuilds = defineTable(
   {
@@ -193,6 +195,9 @@ const nativeBuilds = defineTable(
     git_commit_hash: { type: "string", maxLength: 255, required: false },
     created_at_ms: { type: "integer" },
     build_key: { type: "string", maxLength: 69, ascii: true, required: false },
+    submitted_to: { type: "string", maxLength: 16, required: false },
+    submitted_at_ms: { type: "integer", required: false },
+    submitted_version: { type: "string", maxLength: 255, required: false },
   },
   {
     key: ["id"],

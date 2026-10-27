@@ -217,6 +217,49 @@ describe("createStandaloneCoreApi", () => {
     await expect(core.getNativeBuild("build-2")).resolves.toBeNull();
   });
 
+  it("records a native build's store submission, and asks for an upgrade on a server without the route", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      version(2),
+      http.post(
+        `${BASE_URL}/native-builds/:id/submission`,
+        async ({ params, request }) => {
+          bodies.push(await request.json());
+          return params.id === "build-1"
+            ? HttpResponse.json({
+                data: { id: "build-1", submitted_to: "testflight" },
+              })
+            : HttpResponse.json({ data: null });
+        },
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const submission = {
+      destination: "testflight",
+      version: "1.7.0 (66)",
+    } as const;
+
+    await expect(
+      core.recordNativeBuildSubmission("build-1", submission),
+    ).resolves.toEqual({ id: "build-1", submitted_to: "testflight" });
+    await expect(
+      core.recordNativeBuildSubmission("build-2", submission),
+    ).resolves.toBeNull();
+    expect(bodies).toEqual([submission, submission]);
+
+    server.use(
+      http.post(
+        `${BASE_URL}/native-builds/:id/submission`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(
+      core.recordNativeBuildSubmission("build-1", submission),
+    ).rejects.toThrow(
+      `The server at ${BASE_URL} has no native build submission route`,
+    );
+  });
+
   it("lists a channel's native builds with the channel in the query", async () => {
     const queries: Record<string, string>[] = [];
     server.use(

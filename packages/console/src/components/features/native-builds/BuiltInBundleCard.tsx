@@ -13,6 +13,7 @@ import {
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
+import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
 function Row({
   label,
@@ -124,6 +125,11 @@ export function BuiltInBundleCard({
               />
             </span>
           </Row>
+          {isSubmitted(build) ? (
+            <Row label="Store">
+              <StoreSubmissionBadge build={build} withTime />
+            </Row>
+          ) : null}
           <Row label="Commit">
             <CommitLink hash={build.git_commit_hash} />
           </Row>

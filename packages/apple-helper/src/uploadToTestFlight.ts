@@ -458,6 +458,10 @@ export interface UploadToTestFlightResult {
   state: "COMPLETE" | "PROCESSING";
   /** The app's TestFlight page, where the build appears once processed. */
   testFlightUrl: string;
+  /** The build's version, its `CFBundleShortVersionString`. */
+  shortVersion: string;
+  /** The build's number, its `CFBundleVersion`, which TestFlight lists it by. */
+  bundleVersion: string;
 }
 
 /** An App Store Connect API request, which answers its JSON or throws. */
@@ -863,6 +867,8 @@ export const uploadToTestFlight = async ({
           buildUploadId,
           state: "PROCESSING",
           testFlightUrl,
+          shortVersion: info.shortVersion,
+          bundleVersion: info.bundleVersion,
         };
       }
       // A rate-limited read waits as long as App Store Connect asks.
@@ -886,7 +892,14 @@ export const uploadToTestFlight = async ({
         ].join("\n"),
       );
     }
-    return { appId: app.id, buildUploadId, state: "COMPLETE", testFlightUrl };
+    return {
+      appId: app.id,
+      buildUploadId,
+      state: "COMPLETE",
+      testFlightUrl,
+      shortVersion: info.shortVersion,
+      bundleVersion: info.bundleVersion,
+    };
   }
 };
 

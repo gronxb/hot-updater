@@ -15,6 +15,7 @@ import {
 } from "@/lib/native-builds";
 
 import { CopyableText } from "./CopyableText";
+import { isSubmitted } from "./StoreSubmission";
 
 /** A phone scans the storage URL, which needs no console sign-in. */
 function ApkQrCode({ build }: { readonly build: NativeBuildRow }) {
@@ -59,6 +60,15 @@ function ApkQrCode({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
+/** The store's label of a submitted build. */
+function SubmittedVersion({ build }: { readonly build: NativeBuildRow }) {
+  return (
+    <span className="font-mono text-foreground" translate="no">
+      {build.submitted_version ?? "this build"}
+    </span>
+  );
+}
+
 /** How the artifact installs, beside its download. */
 function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
   switch (build.artifact_kind) {
@@ -88,14 +98,24 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
         </div>
       );
     case "aab":
-      return (
+      return isSubmitted(build) ? (
+        <p className="text-xs text-muted-foreground">
+          On Google Play internal testing as <SubmittedVersion build={build} />:
+          testers install it from Google Play.
+        </p>
+      ) : (
         <p className="text-xs text-muted-foreground">
           An AAB installs through Google Play or bundletool, not from a
           download.
         </p>
       );
     case "ipa":
-      return (
+      return isSubmitted(build) ? (
+        <p className="text-xs text-muted-foreground">
+          On TestFlight as <SubmittedVersion build={build} />: testers install
+          it from TestFlight.
+        </p>
+      ) : (
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
             An IPA installs on registered devices through Xcode or Apple

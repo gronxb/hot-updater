@@ -73,6 +73,9 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   git_commit_hash: "abcdef1234567",
   created_at_ms: 0,
   build_key: null,
+  submitted_to: null,
+  submitted_at_ms: null,
+  submitted_version: null,
   ...overrides,
 });
 
@@ -160,6 +163,34 @@ describe("NativeBuildsTable", () => {
       params: { buildId: row.id },
     });
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
+  });
+
+  it("marks a build a store took with its track and the store's label, from the row alone", () => {
+    const submitted = build({
+      id: id(5),
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      submitted_to: "testflight",
+      submitted_at_ms: Date.now() - 3 * 86_400_000,
+      submitted_version: "1.7.0 (66)",
+    });
+    render(
+      <NativeBuildsTable
+        builds={builds([submitted, build()])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const [, submittedRow, plainRow] = screen.getAllByRole("row");
+    expect(submittedRow!.textContent).toContain("TestFlight");
+    expect(submittedRow!.textContent).toContain("1.7.0 (66)");
+    expect(submittedRow!.textContent).toContain("3 days ago");
+    // A build no store took shows no store.
+    expect(plainRow!.textContent).not.toMatch(/TestFlight|Play internal/);
   });
 
   it("gives an empty registry the command that registers a build", () => {
@@ -287,6 +318,58 @@ describe("InstallCard", () => {
     expect(screen.queryByRole("img")).toBeNull();
     expect(downloadUrlQuery).not.toHaveBeenCalled();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
+  });
+});
+
+describe("a submitted build's page", () => {
+  it("says where the store has it instead of how to upload it", () => {
+    const ipa = build({
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      submitted_to: "testflight",
+      submitted_at_ms: Date.now(),
+      submitted_version: "1.7.0 (66)",
+    });
+    render(
+      <>
+        <InstallCard build={ipa} />
+        <BuiltInBundleCard
+          detail={detail({ build: ipa, newestInScope: ipa })}
+        />
+      </>,
+    );
+
+    expect(screen.getByText(/On TestFlight as/).textContent).toContain(
+      "1.7.0 (66)",
+    );
+    expect(screen.queryByText("npx hot-updater testflight")).toBeNull();
+    expect(screen.getByText("Store")).toBeTruthy();
+  });
+
+  it("shows no store line for a build no store took", () => {
+    render(<BuiltInBundleCard detail={detail()} />);
+
+    expect(screen.queryByText("Store")).toBeNull();
+  });
+
+  it("names Google Play for a submitted AAB", () => {
+    render(
+      <InstallCard
+        build={build({
+          artifact_kind: "aab",
+          artifact_storage_uri:
+            "r2://bucket/native-builds/android/019a/app.aab",
+          submitted_to: "play-internal",
+          submitted_at_ms: Date.now(),
+          submitted_version: "1.7.0 (66)",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(/On Google Play internal testing as/).textContent,
+    ).toContain("1.7.0 (66)");
   });
 });
 

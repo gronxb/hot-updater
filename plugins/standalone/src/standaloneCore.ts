@@ -390,6 +390,13 @@ export const createStandaloneCoreApi = (
         body: registration,
         requiredRoute: "native build",
       }))!,
+    // An unknown ID answers 200 with null data; a 404 means a server
+    // without the route.
+    recordNativeBuildSubmission: (id, submission) =>
+      call<NativeBuildRow>("POST", `/native-builds/${encode(id)}/submission`, {
+        body: submission,
+        requiredRoute: "native build submission",
+      }),
     deleteNativeBuild: async (id) =>
       (await call<NativeBuildDeleteResult>(
         "DELETE",

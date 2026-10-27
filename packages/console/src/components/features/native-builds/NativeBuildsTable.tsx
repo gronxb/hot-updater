@@ -45,6 +45,7 @@ import {
 import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
+import { StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/native-build#register-a-build";
@@ -199,6 +200,7 @@ function BuildRow({
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatByteSize(build.byte_size)}
             </span>
+            <StoreSubmissionBadge build={build} withTime />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span>{target.label}</span>

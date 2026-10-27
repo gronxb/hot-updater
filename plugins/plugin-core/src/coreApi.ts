@@ -18,6 +18,7 @@ import type {
   NativeBuildArtifactKind,
   NativeBuildDeleteResult,
   NativeBuildRow,
+  NativeBuildSubmissionDestination,
   Platform,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -243,6 +244,19 @@ export interface HotUpdaterCoreApi {
   registerNativeBuild(
     registration: NativeBuildRegistration,
   ): Promise<NativeBuildRow>;
+  /**
+   * Records that a store took a native build: the track and the store's
+   * label of the build, with the time of the record. One read and one write;
+   * the CLI calls it after the store accepted the upload, or found the build
+   * already there. Null for an unknown ID.
+   */
+  recordNativeBuildSubmission(
+    id: string,
+    submission: {
+      readonly destination: NativeBuildSubmissionDestination;
+      readonly version: string;
+    },
+  ): Promise<NativeBuildRow | null>;
   /**
    * Deletes a native build and its built-in bundle's row in one transaction,
    * with the patches from that bundle: an installed build then downloads

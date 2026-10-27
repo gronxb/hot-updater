@@ -257,6 +257,9 @@ describe("uploadToTestFlight", () => {
       state: "COMPLETE",
       testFlightUrl:
         "https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      // The .ipa's own version and build number, which TestFlight lists.
+      shortVersion: "1.2.0",
+      bundleVersion: "42",
     });
     const sent = requests.map(({ method, url }) => `${method} ${url}`);
     // The parts go out at once, so they finish in either order.

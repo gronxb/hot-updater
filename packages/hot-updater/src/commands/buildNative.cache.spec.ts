@@ -149,6 +149,14 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
     return row;
   }),
 }));
+// Recording a store submission: buildNative.submission.spec.ts covers it
+// over a real core.
+vi.mock("../utils/native/nativeBuildSubmission", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../utils/native/nativeBuildSubmission")
+  >()),
+  recordNativeBuildSubmission: vi.fn(async (build) => build),
+}));
 vi.mock("../utils/native/reuseNativeBuild", () => ({
   reuseNativeBuild: vi.fn(),
   rememberTrackedBuild: vi.fn(async () => {

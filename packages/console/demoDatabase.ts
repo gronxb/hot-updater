@@ -830,6 +830,17 @@ for (const build of demoNativeBuilds) {
   }
 }
 
+// The production IPA went to TestFlight and the AAB to Google Play's
+// internal track, which the CLI records once the store took each.
+await core.recordNativeBuildSubmission(nativeBuildId(21), {
+  destination: "testflight",
+  version: "1.4.2 (142)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(22), {
+  destination: "play-internal",
+  version: "1.3.0 (130)",
+});
+
 // Oldest first, one deploy each, so a patch's base is stored before it.
 const releaseIdByBundle = new Map<string, string>();
 for (const deployment of [...bundles].sort((left, right) =>
