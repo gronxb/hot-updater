@@ -54,10 +54,6 @@ still be reused from the device; changed files download in full.
 `bundle delete` reports the artifact deletion, and its `--json` output names
 the artifact in `deletedArtifactId`.
 
-`hot-updater doctor` reports artifact records no bundle uses as
-`UNREFERENCED_ARTIFACTS`, and `doctor --fix` deletes them so the prune below can
-reclaim their files.
-
 A delete removes database records only. Bundle files, patch objects, and shared
 assets remain until a reference-aware prune confirms that no remaining record
 uses them.

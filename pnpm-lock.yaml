@@ -1941,6 +1941,9 @@ importers:
       '@dotenvx/dotenvx':
         specifier: 2.38.2
         version: 2.38.2
+      '@electric-sql/pglite':
+        specifier: catalog:db
+        version: 0.4.1
       '@google-cloud/kms':
         specifier: 6.0.0
         version: 6.0.0

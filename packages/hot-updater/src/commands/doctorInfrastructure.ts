@@ -1,3 +1,4 @@
+import { foreignPluginsNote, type ManagedDeployment } from "./doctor/managed";
 import {
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
@@ -32,17 +33,9 @@ interface ServerVersionResponse {
 }
 
 export interface InfrastructureRemediation {
-  fixability: "blocked";
   reason: string;
   commands: string[];
 }
-
-const INFRASTRUCTURE_RECOVERY_COMMANDS = [
-  "hot-updater agent infra upgrade",
-  "hot-updater init",
-  "hot-updater db migrate",
-  "hot-updater db generate",
-] as const;
 
 export function resolveVersionEndpoint(serverBaseUrl: string): string {
   const url = new URL(serverBaseUrl.trim());
@@ -72,25 +65,63 @@ const getCatalogMode = (
   return {};
 };
 
+/** What deploys a server of this release, beside migrating its database. */
+export type ServerDeployment = Pick<
+  ManagedDeployment,
+  "command" | "server" | "confirmed" | "foreignPlugins"
+>;
+
 export const createInfrastructureRemediation = ({
   upgradeBlocked = false,
+  requiredVersion,
+  managed = null,
+  schemaBlockers = [],
 }: {
   upgradeBlocked?: boolean;
+  requiredVersion?: string;
+  /** The deployment `hot-updater init` manages; null for a server of the project's own. */
+  managed?: ServerDeployment | null;
+  /**
+   * The schema issues that block a migration, such as SCHEMA_NEWER_THAN_CLI:
+   * an upgrade would write this release's settings over them.
+   */
+  schemaBlockers?: readonly string[];
 } = {}): InfrastructureRemediation => {
   if (upgradeBlocked) {
     return {
-      fixability: "blocked",
       reason:
         "Hot Updater v0 infrastructure cannot be upgraded in place. Generate a parallel v1 setup with hot-updater agent infra setup, or use init interactively, and ship the new endpoint in a new native build.",
       commands: ["hot-updater agent infra setup", "hot-updater init"],
     };
   }
-  return {
-    fixability: "blocked",
-    reason:
-      "Generate versioned upgrade instructions with hot-updater agent infra upgrade. Applying them needs provider access; use init for interactive managed setup or db commands for custom servers.",
-    commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
+  if (schemaBlockers.length > 0) {
+    return {
+      reason: `Resolve ${schemaBlockers.join(", ")} first, as the schema check says: upgrading the server migrates its database, which would write this release's settings over the ones doctor reports.`,
+      commands: [],
+    };
+  }
+  const target =
+    requiredVersion === undefined ? "of this release" : `${requiredVersion}+`;
+  const own = {
+    reason: `Deploy the server from @hot-updater/server ${target} and migrate its database as it deploys: npx hot-updater db migrate <server file> in the server's project, or, for Drizzle, Prisma, D1 and Supabase, npx hot-updater db generate <server file> and the database's tooling first. A server of an earlier release answers 503 once the database is migrated. A deployment from hot-updater agent infra gets versioned upgrade instructions from hot-updater agent infra upgrade.`,
+    commands: [
+      "npx hot-updater db migrate <server file>",
+      "npx hot-updater db generate <server file>",
+      "npx hot-updater agent infra upgrade",
+    ],
   };
+  if (managed === null) return own;
+  const foreign = foreignPluginsNote(managed);
+  if (foreign !== undefined) {
+    return { reason: `${foreign} ${own.reason}`, commands: own.commands };
+  }
+  const replay = `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.`;
+  return managed.confirmed
+    ? { reason: replay, commands: [managed.command] }
+    : {
+        reason: `If hot-updater.config.ts names the database hot-updater init saved in .env.hotupdater: ${replay} Otherwise: ${own.reason}`,
+        commands: [managed.command, ...own.commands],
+      };
 };
 
 export async function checkInfrastructureStatus({

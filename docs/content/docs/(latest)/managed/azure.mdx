@@ -251,7 +251,19 @@ to your React Native version and rebuild the native app after changing it.
 
 ## Upgrade infrastructure
 
-With the [Hot Updater skill](/docs/guides/ai-agents) attached, ask your agent:
+Rerun init with the inputs it saved in `.env.hotupdater`, the command
+[`hot-updater doctor`](/docs/guides/doctor#update-outdated-infrastructure)
+names for an outdated server:
+
+```package-install
+npx hot-updater init --provider azure --from-env-file .env.hotupdater
+```
+
+It applies the release's database migrations, then redeploys the Function App
+from the installed `@hot-updater/azure`, back to back: after a release whose schema changed, the server answers
+503 only while it deploys. With the
+[Hot Updater skill](/docs/guides/ai-agents) attached, you can also ask your
+agent:
 
 ```text
 $hot-updater Upgrade this project's existing Azure server infrastructure.
@@ -259,8 +271,7 @@ $hot-updater Upgrade this project's existing Azure server infrastructure.
 
 The agent discovers the existing deployment, uses `hot-updater agent infra upgrade`,
 and reads the applicable version files before changing resources. It applies pending
-changes and verifies the server with doctor. Rerunning `hot-updater init` with
-the saved inputs also migrates the database and redeploys the Function. See
+changes and verifies the server with doctor. See
 [Upgrade an existing server](/docs/guides/agent-infrastructure#upgrade-an-existing-server)
 for the workflow or [Doctor](/docs/guides/doctor#update-outdated-infrastructure)
 for terminal instructions.

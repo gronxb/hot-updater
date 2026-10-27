@@ -192,7 +192,7 @@ export const createStandaloneCoreApi = (
       // The server's schema fence answers 503 until its database is migrated.
       throw new StandaloneDatabaseError(
         "request-failed",
-        `The server at ${config.baseUrl} answered ${method} ${path} with 503: its database is not ready. If it needs migrations, run \`hot-updater db migrate\` in the server's project, or \`npx hot-updater doctor --fix\` where a hot-updater.config.ts names the server's database.`,
+        `The server at ${config.baseUrl} answered ${method} ${path} with 503: its database is not ready. If it needs migrations, run \`hot-updater db migrate\` in the server's project as you deploy it.`,
         503,
       );
     }

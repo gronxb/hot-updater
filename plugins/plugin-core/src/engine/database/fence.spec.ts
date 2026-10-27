@@ -105,7 +105,7 @@ describe("schema fence", () => {
     ).rejects.toMatchObject({
       plugins: [],
       message:
-        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database: it migrates the database, or names the steps it needs. In a server project, `hot-updater db migrate` migrates the database its server file names.',
+        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.',
     });
   });
 
@@ -165,7 +165,7 @@ describe("schema fence", () => {
       ],
       plugins: ["insights", "notes"],
       message:
-        'Hot Updater schema settings for memory are not migrated: "schema.core" is "0.9.0"; expected "1.0.0", and "schema.insights" is missing; expected "1", and "schema.notes" is missing; expected "2". Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database: it migrates the database, or names the steps it needs. In a server project, `hot-updater db migrate` migrates the database its server file names.',
+        'Hot Updater schema settings for memory are not migrated: "schema.core" is "0.9.0"; expected "1.0.0", and "schema.insights" is missing; expected "1", and "schema.notes" is missing; expected "2". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.',
     });
     // A refusal costs the one read, as core's alone did.
     expect(calls.gets).toBe(1);

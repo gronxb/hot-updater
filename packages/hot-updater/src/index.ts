@@ -228,19 +228,6 @@ program
   .option("--channel <channel>", "catalog channel to verify")
   .option("--app-version <version>", "app-version catalog target")
   .option("--fingerprint <hash>", "fingerprint catalog target")
-  .addOption(
-    new Option(
-      "--fix",
-      "run the repairs doctor can do itself, name every file they write, and check again",
-    ).conflicts([
-      "scope",
-      "infraDir",
-      "platform",
-      "channel",
-      "appVersion",
-      "fingerprint",
-    ]),
-  )
   .option("--json", "output machine-readable doctor result")
   .action(handleDoctor);
 

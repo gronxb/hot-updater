@@ -16,9 +16,9 @@ export interface SchemaMigrationStatus {
   /** The plugins whose tables a migration has yet to create or change. */
   readonly plugins: readonly string[];
   /**
-   * Whether `hot-updater doctor --fix` migrates it: every setting is missing
-   * or older. False for a database a newer release migrated, a different
-   * storage layout, or a v0 database, which doctor reports and never moves.
+   * Whether a migration moves it forward: every setting is missing or older.
+   * False for a database a newer release migrated, a different storage
+   * layout, or a v0 database, which doctor reports and nothing moves.
    */
   readonly migratable: boolean;
 }
@@ -39,7 +39,7 @@ const compareVersions = (left: string, right: string): number => {
 const OFFICIAL = Symbol.for("@hot-updater/server/official-plugin");
 
 /**
- * Whether `doctor --fix` moves a setting forward: a missing one, or an older
+ * Whether a migration moves a setting forward: a missing one, or an older
  * version of core's or of one of Hot Updater's own plugins. Another plugin's
  * changed tables need its own migration.
  */

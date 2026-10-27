@@ -38,7 +38,7 @@ To run the app on a device, emulator or simulator, install the artifact, as
   [default channel](/docs/guides/channel-management).
 - With the fingerprint strategy, the build updates `fingerprint.json` before
   it compiles. With the app version strategy, delete any `fingerprint.json` first
-  (`hot-updater doctor --fix` does), or the app reports the fingerprint
+  (`hot-updater doctor` reports one), or the app reports the fingerprint
   strategy.
 
 ## Configure schemes
@@ -331,8 +331,8 @@ newest build of that scope.
 
 The built-in bundle is not an OTA update. No Release publishes it, so no
 device downloads it, and no update check changes. The bundle totals leave it
-out, a release of it and its deletion are refused, `hot-updater doctor --fix`
-keeps it, and `storage prune` keeps its files and the artifact. It is deleted
+out, a release of it and its deletion are refused, and `storage prune` keeps
+its files and the artifact. It is deleted
 with its build; see [Delete a build](#delete-a-build).
 
 `hot-updater deploy` uses it as a Hermes patch base: it adds the built-in

@@ -40,9 +40,10 @@ The same schema ships as the Worker's numbered migrations in
 core and of the managed Worker's plugins, Insights, API keys, and Remote
 Config, and the `_hu_write` table that batch writes use, and each writes the
 schema settings rows last. A release whose schema changed adds the next
-migration, and
-[`hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema)
-applies the ones a managed database has not run.
+migration, and running `hot-updater init` again with its saved inputs applies
+the ones a managed database has not run, then redeploys the Worker;
+[`hot-updater doctor`](/docs/guides/doctor#check-the-database-schema) names
+that command.
 
 A Worker that runs other
 [plugins](/docs/custom/server-plugins#create-the-plugins-tables)

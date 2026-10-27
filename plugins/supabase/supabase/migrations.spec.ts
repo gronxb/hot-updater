@@ -61,7 +61,7 @@ const SHIPPED: Readonly<Record<string, string>> = {
  * HOT_UPDATER_UPDATE_SQL=1 after the managed schema changes: what the
  * shipped migrations do not create yet, with the apply RPC and its grants
  * again when it names a new table, then every settings row. `hot-updater
- * doctor --fix` applies it to a project an earlier release initialized.
+ * init` applies it to a project an earlier release initialized.
  */
 const LATEST = "0002_hot-updater_1.2.0.sql";
 
@@ -322,7 +322,7 @@ describe("Supabase schema", () => {
     try {
       // Its tables come from migration files, which the fix names.
       await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database. On a database `hot-updater init` created, it applies the provider\'s migrations; for your own server, run `hot-updater db generate` and apply the file it writes.',
+        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. On a database `hot-updater init` created, that is init again with its saved inputs; for your own server, run `hot-updater db generate` and apply the file it writes.',
       );
       await db.exec(
         `RESET ROLE; ${migration.code} GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;`,

@@ -37,11 +37,7 @@ import {
   checkFingerprintJson,
   checkUnusedFingerprintJson,
 } from "./doctor/fingerprint";
-import { applyDoctorFixes } from "./doctor/fix";
 import {
-  type ArtifactStatus,
-  type DoctorFix,
-  fixesWroteNativeFiles,
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
@@ -106,8 +102,6 @@ interface LocalFingerprint {
 
 interface DoctorDetails {
   verification?: DoctorVerification;
-  /** What `--fix` repaired, with every file it wrote; checks ran again after it. */
-  fixes?: DoctorFix[];
   // Version related
   hotUpdaterVersion?: string;
   versionMismatches?: VersionMismatch[];
@@ -117,8 +111,6 @@ interface DoctorDetails {
   schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
-  /** The server's artifact records against the releases that use them. */
-  artifacts?: ArtifactStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -139,16 +131,11 @@ interface DoctorOptions extends VerificationOptions {
   cwd?: string;
   serverBaseUrl?: string;
   fetch?: typeof fetch;
-  /** Runs every repair doctor can do itself, then checks again. */
-  fix?: boolean;
-  /** Repairs never prompt, as for `--json`; by default when stdin is no terminal. */
-  nonInteractive?: boolean;
 }
 
 interface HandleDoctorOptions extends VerificationOptions {
   serverBaseUrl?: string;
   json?: boolean;
-  fix?: boolean;
 }
 
 const FINGERPRINT_RECOVERY_COMMANDS = [
@@ -342,7 +329,6 @@ const checkIosNativeStatus = async ({
       message: "iOS Info.plist files were not found.",
       resolution:
         "Check platform.ios.infoPlistPaths in hot-updater.config.ts or run iOS prebuild first.",
-      fixability: "auto",
       paths: configuredPaths,
     });
   }
@@ -363,7 +349,6 @@ const checkIosNativeStatus = async ({
       message: "iOS AppDelegate or SceneDelegate file was not found.",
       resolution:
         "Add HotUpdater.bundleURL() to the app's iOS bundleURL provider.",
-      fixability: "auto",
     });
   } else {
     const matchedFile = await findFirstMatchingFile({
@@ -385,7 +370,6 @@ const checkIosNativeStatus = async ({
           "iOS AppDelegate/SceneDelegate does not use HotUpdater.bundleURL().",
         resolution:
           "Replace the release JS bundle URL provider with HotUpdater.bundleURL().",
-        fixability: "auto",
         paths: appDelegateFiles,
       });
     }
@@ -435,7 +419,6 @@ const checkAndroidNativeStatus = async ({
       message: "Android native config files were not found.",
       resolution:
         "Check platform.android.androidManifestPaths in hot-updater.config.ts or run Android prebuild first.",
-      fixability: "auto",
       paths: configuredManifestPaths,
     });
   }
@@ -456,7 +439,6 @@ const checkAndroidNativeStatus = async ({
       message: "Android MainApplication file was not found.",
       resolution:
         "Add HotUpdater.getJSBundleFile(applicationContext) to the Android host configuration.",
-      fixability: "auto",
     });
   } else {
     const matchedFile = await findFirstMatchingFile({
@@ -477,7 +459,6 @@ const checkAndroidNativeStatus = async ({
           "Android MainApplication does not use HotUpdater.getJSBundleFile().",
         resolution:
           "Pass HotUpdater.getJSBundleFile(applicationContext) to React Native's JS bundle provider.",
-        fixability: "auto",
         paths: mainApplicationFiles,
       });
     }
@@ -504,7 +485,6 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
       code: issue.code,
       message: issue.message,
       resolution: issue.resolution,
-      fixability: "auto",
     };
   }
 
@@ -514,7 +494,6 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
     code: issue.code,
     message: issue.message,
     resolution: issue.resolution,
-    fixability: "command",
     commands:
       issue.code === "ORPHAN_PUBLIC_KEY"
         ? [...REMOVE_PUBLIC_KEY_COMMANDS]
@@ -554,7 +533,6 @@ const readSigningPublicKey = async (
           }`,
           resolution:
             "Run doctor where the signer's credentials are set, such as HOT_UPDATER_SIGNING_TOKEN for remoteSigning, to check the native public keys.",
-          fixability: "blocked",
         },
       ],
     };
@@ -653,7 +631,6 @@ async function checkNativeStatus({
       code: "MISSING_FINGERPRINT_JSON",
       message: "fingerprint.json is missing for fingerprint update strategy.",
       resolution: "Run `npx hot-updater fingerprint create`.",
-      fixability: "command",
       commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: ["fingerprint.json"],
     });
@@ -668,21 +645,17 @@ async function checkNativeStatus({
   };
 }
 
-/**
- * The server's release catalogs and artifact records, when
- * hot-updater.config.ts names a database.
- */
-async function checkServer(context: DoctorContext): Promise<{
-  releaseCatalogs?: ReleaseCatalogStatus;
-  artifacts?: ArtifactStatus;
-}> {
+/** The server's release catalogs, when hot-updater.config.ts names a database. */
+async function checkServer(
+  context: DoctorContext,
+): Promise<ReleaseCatalogStatus | undefined> {
   let server: Awaited<ReturnType<DoctorContext["server"]>>;
   try {
     server = await context.server();
   } catch (error) {
-    return { releaseCatalogs: releaseCatalogsUnchecked(error) };
+    return releaseCatalogsUnchecked(error);
   }
-  return server === null ? {} : await checkServerData(server.core);
+  return server === null ? undefined : await checkServerData(server.core);
 }
 
 /**
@@ -714,7 +687,6 @@ async function checkClientPlugins({
         message: `Could not read the plugins in hot-updater.config.ts to check the app's client plugins: ${error instanceof Error ? error.message : String(error)}`,
         resolution:
           "Check that plugins in hot-updater.config.ts load, then rerun doctor.",
-        fixability: "blocked",
       },
     ];
   }
@@ -724,7 +696,6 @@ async function checkClientPlugins({
     code: "MISSING_CLIENT_PLUGIN",
     message: `The server runs a plugin whose client plugin ${name} the app does not add.`,
     resolution: `Import { ${name} } from "${module}" and pass ${name}() to HotUpdater.init({ plugins }).`,
-    fixability: "auto",
   }));
 }
 
@@ -814,16 +785,6 @@ async function checkProject(
         fetchImpl,
         requiredTarget,
       });
-
-      if (
-        details.infrastructure.error !== undefined ||
-        details.infrastructure.needsUpdate === true ||
-        details.infrastructure.upgradeBlocked === true
-      ) {
-        details.infrastructure.remediation = createInfrastructureRemediation({
-          upgradeBlocked: details.infrastructure.upgradeBlocked,
-        });
-      }
     }
 
     if (hasReactNativePackage) {
@@ -844,9 +805,29 @@ async function checkProject(
     if (schema) {
       details.schema = schema;
     } else {
-      const { releaseCatalogs, artifacts } = await checkServer(context);
+      const releaseCatalogs = await checkServer(context);
       if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
-      if (artifacts) details.artifacts = artifacts;
+    }
+
+    // Named once the schema is known: an upgrade migrates the database.
+    if (
+      details.infrastructure &&
+      (details.infrastructure.error !== undefined ||
+        details.infrastructure.needsUpdate === true ||
+        details.infrastructure.upgradeBlocked === true)
+    ) {
+      details.infrastructure.remediation = createInfrastructureRemediation({
+        upgradeBlocked: details.infrastructure.upgradeBlocked,
+        requiredVersion: details.infrastructure.requiredVersion,
+        managed: await context.managed(),
+        schemaBlockers: [
+          ...new Set(
+            (schema?.issues ?? [])
+              .filter(({ code }) => code !== "SCHEMA_MIGRATION_PENDING")
+              .map(({ code }) => code),
+          ),
+        ],
+      });
     }
 
     // Add version mismatches if any
@@ -864,7 +845,6 @@ async function checkProject(
     const hasServerDataIssue = [
       ...(details.schema?.issues ?? []),
       ...(details.releaseCatalogs?.issues ?? []),
-      ...(details.artifacts?.issues ?? []),
     ].some((issue) => issue.type === "error");
     const hasIssues =
       versionMismatches.length > 0 ||
@@ -887,12 +867,7 @@ async function checkProject(
       };
     }
 
-    if (
-      details.native ||
-      details.schema ||
-      details.releaseCatalogs ||
-      details.artifacts
-    ) {
+    if (details.native || details.schema || details.releaseCatalogs) {
       return {
         success: true,
         details,
@@ -926,52 +901,9 @@ export async function doctor(
   options: DoctorOptions = {},
 ): Promise<true | DoctorResult> {
   // One server and one fingerprint for the whole run, closed once at its end.
-  const context = createDoctorContext(
-    options.cwd ?? getCwd(),
-    options.nonInteractive,
-  );
+  const context = createDoctorContext(options.cwd ?? getCwd());
   try {
-    const result = await checkProject(options, context);
-    // Scoped verification never repairs: the CLI refuses --fix with its
-    // options, and a caller that passes both gets the verification alone.
-    if (!options.fix || hasVerificationOptions(options)) return result;
-
-    // --fix runs the repairs the first checks call for, then checks again,
-    // so the result describes the project after them.
-    const before = normalizeDoctorResult(result);
-    if (before.error !== undefined) return before;
-    const fixes = await applyDoctorFixes(
-      [
-        ...(before.details?.schema?.issues ?? []),
-        ...(before.details?.native?.issues ?? []),
-        ...(before.details?.releaseCatalogs?.issues ?? []),
-        ...(before.details?.artifacts?.issues ?? []),
-      ],
-      context,
-    );
-    let after = fixes.some(({ status }) => status === "applied")
-      ? normalizeDoctorResult(await checkProject(options, context))
-      : before;
-    // The server's data is checked only once the schema passes, so a
-    // migration can reveal repairs the first checks could not see.
-    if (
-      fixes.some(
-        ({ repair, status }) => repair === "schema" && status === "applied",
-      )
-    ) {
-      const revealed = await applyDoctorFixes(
-        [
-          ...(after.details?.releaseCatalogs?.issues ?? []),
-          ...(after.details?.artifacts?.issues ?? []),
-        ],
-        context,
-      );
-      if (revealed.some(({ status }) => status === "applied")) {
-        after = normalizeDoctorResult(await checkProject(options, context));
-      }
-      fixes.push(...revealed);
-    }
-    return { ...after, details: { ...after.details, fixes } };
+    return await checkProject(options, context);
   } finally {
     await context.dispose();
   }
@@ -1008,74 +940,15 @@ const promptServerBaseUrl = async () => {
   return trimmed ? trimmed : undefined;
 };
 
-const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
-  schema: "Migrate the server's database to this hot-updater's schema",
-  fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
-  "fingerprint-engine": "Record the changed fingerprint engine's hashes",
-  "unused-fingerprint":
-    "Delete the fingerprint.json the update strategy does not use",
-  "public-key": "Write the configured public key into the native files",
-  "orphan-public-key": "Remove the public key from the native files",
-  "release-catalogs": "Rebuild the stale release catalogs from their releases",
-  "unreferenced-artifacts": "Delete the artifact records no release uses",
-};
-
-/** What each repair's writes are, in its output. */
-const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
-  schema: "Applied",
-  fingerprint: "Path",
-  "fingerprint-engine": "Path",
-  "unused-fingerprint": "Path",
-  "public-key": "Path",
-  "orphan-public-key": "Path",
-  "release-catalogs": "Catalog",
-  "unreferenced-artifacts": "Artifact",
-};
-
-const REBUILD_NATIVE_APP =
-  "Rebuild the native app: doctor --fix changed its native files.";
-
-/** What `--fix` did: each repair, every file it wrote, or why it did not. */
-const printFixes = (fixes: readonly DoctorFix[]) => {
-  if (fixes.length === 0) {
-    p.log.info("--fix found nothing it can repair.");
-    return;
-  }
-  for (const fix of fixes) {
-    const description = FIX_DESCRIPTIONS[fix.repair];
-    if (fix.status === "applied") {
-      p.log.success(`Fixed: ${description}.`);
-      p.log.message(
-        ui.block(
-          "Wrote",
-          fix.wrote.map((written) =>
-            WROTE_LABELS[fix.repair] === "Path"
-              ? ui.kv("Path", ui.path(written))
-              : ui.kv(WROTE_LABELS[fix.repair], written),
-          ),
-        ),
-      );
-      if (fix.note) p.log.warn(fix.note);
-    } else if (fix.status === "skipped") {
-      p.log.warn(`Skipped: ${description}. ${fix.note ?? ""}`.trim());
-    } else {
-      p.log.error(`Failed: ${description}. ${fix.note ?? ""}`.trim());
-    }
-  }
-};
-
 export const handleDoctor = async ({
   serverBaseUrl,
   json = false,
-  fix = false,
   ...verificationOptions
 }: HandleDoctorOptions = {}) => {
   if (json) {
     const result = normalizeDoctorResult(
       await doctor({
         serverBaseUrl,
-        fix,
-        nonInteractive: true,
         ...verificationOptions,
       }),
     );
@@ -1093,7 +966,6 @@ export const handleDoctor = async ({
     : (serverBaseUrl ?? (await promptServerBaseUrl()));
   const result = await doctor({
     serverBaseUrl: resolvedServerBaseUrl,
-    fix,
     ...verificationOptions,
   });
 
@@ -1113,9 +985,7 @@ export const handleDoctor = async ({
 
   // Handle issues with details
   const { details } = result;
-  let shouldExitWithFailure = !result.success;
-
-  if (details?.fixes) printFixes(details.fixes);
+  const shouldExitWithFailure = !result.success;
 
   if (details?.verification) {
     const { scope, checks, notChecked } = details.verification;
@@ -1182,6 +1052,7 @@ export const handleDoctor = async ({
     }
 
     if (infrastructure.remediation) {
+      p.log.info(infrastructure.remediation.reason);
       const recoveryLines = infrastructure.remediation.commands.map(
         (command, index) =>
           ui.kv(
@@ -1297,16 +1168,6 @@ export const handleDoctor = async ({
     }
   }
 
-  for (const issue of details?.artifacts?.issues ?? []) {
-    if (issue.type === "error") {
-      p.log.error(issue.message);
-    } else {
-      p.log.warn(issue.message);
-    }
-    if (issue.artifactIds) p.log.info(issue.artifactIds.join(", "));
-    p.log.info(issue.resolution);
-  }
-
   if (details?.versionMismatches && details.versionMismatches.length > 0) {
     p.log.warn("Version mismatches found:");
 
@@ -1318,13 +1179,8 @@ export const handleDoctor = async ({
     }
   }
 
-  // Whenever --fix wrote native files, the last line says to rebuild.
-  const rebuildNativeApp = fixesWroteNativeFiles(details?.fixes ?? []);
-  if (shouldExitWithFailure) {
-    if (rebuildNativeApp) p.log.warn(REBUILD_NATIVE_APP);
-    process.exit(1);
-  }
+  if (shouldExitWithFailure) process.exit(1);
 
   p.log.success("All checks passed.");
-  p.outro(rebuildNativeApp ? REBUILD_NATIVE_APP : "Doctor complete.");
+  p.outro("Doctor complete.");
 };

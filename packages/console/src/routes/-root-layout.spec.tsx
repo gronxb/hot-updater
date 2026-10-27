@@ -141,7 +141,7 @@ describe("RootLayout", () => {
       await screen.findByText("The database needs a migration"),
     ).toBeInstanceOf(HTMLElement);
     expect(screen.queryByText("Current route")).toBeNull();
-    expect(screen.getByText("npx hot-updater doctor --fix")).toBeInstanceOf(
+    expect(screen.getByText("npx hot-updater doctor")).toBeInstanceOf(
       HTMLElement,
     );
     expect(screen.getByText("schema.remoteConfig")).toBeInstanceOf(HTMLElement);
@@ -159,7 +159,7 @@ describe("RootLayout", () => {
     );
   });
 
-  it("sends a database a newer release migrated to doctor, without --fix", async () => {
+  it("sends a database a newer release migrated to doctor", async () => {
     // Given
     vi.mocked(getSchemaMigrationRpc).mockResolvedValue({
       ...status,

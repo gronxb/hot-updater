@@ -51,6 +51,16 @@ export const migrateDynamoDB = (
 };
 
 /**
+ * The resource this database reaches, without credentials, under the key
+ * `hot-updater doctor` reads to tell the database `hot-updater init` saved
+ * from another (a convention CLAUDE.md documents).
+ */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** `target` under {@link DATABASE_TARGET}, to spread into the database. */
+const marked = (target: string) => ({ [DATABASE_TARGET]: target });
+
+/**
  * Hot Updater's database on one DynamoDB table, through the storage engine.
  * With a distribution, it gives core the CloudFront invalidation core runs
  * after a write that changes what the update-check routes answer.
@@ -65,6 +75,7 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
       onCachedRoutesChange: cloudFront?.invalidate,
       aggregateBatching: config.aggregateBatching ?? {},
     }),
+    ...marked(`dynamodb/${config.tableName}`),
     async dispose() {
       await adapter.dispose?.();
       client.destroy();

@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import path from "path";
 
 import {
@@ -11,7 +10,6 @@ import {
   getCwd,
   link,
   makeEnv,
-  type MigrateManagedDatabase,
   p,
   printAppSetup,
   provisionClientCredential,
@@ -24,8 +22,6 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
-import { applyD1Migrations } from "../src/d1Migrations";
-import { d1RestRunner, d1TargetOf } from "../src/d1Rest";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -711,46 +707,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     )}`,
   );
   p.log.success("Done! 🎉");
-};
-
-/**
- * `hot-updater doctor --fix` on the managed D1 database: runs the Worker's
- * migrations that the database hot-updater.config.ts names has not run,
- * through the REST API with the config's D1 API token, and records each in
- * `d1_migrations`, as `wrangler d1 migrations apply` does when init runs
- * again.
- */
-export const migrateDatabase: MigrateManagedDatabase = async ({
-  cwd,
-  database,
-}) => {
-  const target = d1TargetOf(database);
-  if (target === undefined) {
-    return {
-      skip: "hot-updater.config.ts's database is not d1Database from @hot-updater/cloudflare.",
-    };
-  }
-  const migrationsPath = path.join(
-    path.dirname(
-      require.resolve("@hot-updater/cloudflare/package.json", {
-        paths: [cwd],
-      }),
-    ),
-    "worker",
-    "migrations",
-  );
-  const names = (await fs.readdir(migrationsPath)).filter((name) =>
-    name.endsWith(".sql"),
-  );
-  return applyD1Migrations(
-    d1RestRunner(target),
-    await Promise.all(
-      names.map(async (name) => ({
-        name,
-        sql: await fs.readFile(path.join(migrationsPath, name), "utf8"),
-      })),
-    ),
-  );
 };
 
 // What init asks for and checks before `runInit`.

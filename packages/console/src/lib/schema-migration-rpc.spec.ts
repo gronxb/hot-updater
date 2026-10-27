@@ -51,7 +51,9 @@ describe("getSchemaMigrationRpc", () => {
     });
 
     await expect(getSchemaMigrationRpc()).resolves.toEqual({
-      message: expect.stringContaining("npx hot-updater doctor --fix"),
+      message: expect.stringContaining(
+        "npx hot-updater doctor` in the project",
+      ),
       settings: [{ key: "schema.insights", expected: "1.0.0", found: null }],
       plugins: ["insights"],
       migratable: true,

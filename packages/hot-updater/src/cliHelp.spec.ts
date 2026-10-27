@@ -132,11 +132,11 @@ describe("CLI commands", () => {
     },
   );
 
-  it("repairs with doctor --fix, which scoped verification refuses", () => {
-    expect(help("doctor")).toContain("--fix");
-    const scoped = run("doctor", "--fix", "--scope", "scaffold");
-    expect(scoped.status).toBe(1);
-    expect(scoped.stderr).toContain("cannot be used with");
+  it("reports with doctor, which has no --fix", () => {
+    expect(help("doctor")).not.toContain("--fix");
+    const fix = run("doctor", "--fix");
+    expect(fix.status).toBe(1);
+    expect(fix.stderr).toContain("unknown option '--fix'");
   });
 
   it("reads the configured signing key in keys export-public, with no --input", () => {

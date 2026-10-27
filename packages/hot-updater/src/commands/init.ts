@@ -22,6 +22,8 @@ import { printBanner } from "@/utils/printBanner";
 
 import {
   assertInstalledInitProvider,
+  INIT_BUILD_ENV_KEY,
+  INIT_PROVIDER_ENV_KEY,
   INIT_PROVIDER_NAMES,
   INIT_PROVIDER_PACKAGES,
   type InitProvider,
@@ -29,8 +31,6 @@ import {
   loadInitProvider,
 } from "./initProviders";
 
-const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
-const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
 const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo"] as const;
 
 const REQUIRED_PACKAGES = {
