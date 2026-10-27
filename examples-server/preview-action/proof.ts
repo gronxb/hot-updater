@@ -10,9 +10,10 @@
  * (no native build: build, register, deploy), reused after the second (the
  * same native fingerprint: deploy only), rebuilt after a native input
  * changed (build again), closed after the cleanup. Each reads
- * PROOF_CHANNEL, the pull request's channel, PROOF_PREVIEW_CHANNEL,
- * PROOF_PLATFORM, PROOF_COMMENT, the comment the run rendered, and
- * PROOF_STATE, a file that carries what one stage saw to the next.
+ * PROOF_CHANNEL, the pull request's channel, which its native builds embed,
+ * PROOF_PLATFORM, PROOF_COMMENT, the comment the run rendered,
+ * PROOF_CONSOLE_URL, and PROOF_STATE, a file that carries what one stage saw
+ * to the next.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -44,6 +45,7 @@ interface NativeBuild {
   id: string;
   channel: string;
   fingerprint_hash: string | null;
+  min_bundle_id: string;
   artifact_storage_uri: string;
   byte_size: string;
 }
@@ -57,6 +59,8 @@ interface Release {
 
 interface State {
   firstBuildId?: string;
+  /** Every native build's built-in bundle, which its deletion takes along. */
+  builtInBundleIds?: string[];
   firstFingerprint?: string | null;
   channelId?: string;
   releaseIds?: string[];
@@ -70,7 +74,7 @@ const check = (ok: boolean, message: string) => {
 const nativeBuilds = async (db: pg.Pool, platform: string) =>
   (
     await db.query<NativeBuild>(
-      `select nb.id, c.name as channel, nb.fingerprint_hash,
+      `select nb.id, c.name as channel, nb.fingerprint_hash, nb.min_bundle_id,
               nb.artifact_storage_uri, nb.byte_size
          from native_builds nb join channels c on c.id = nb.channel_id
         where nb.platform = $1 order by nb.id`,
@@ -144,11 +148,29 @@ const checkRelease = (release: Release | undefined, build: NativeBuild) => {
   );
 };
 
-const checkComment = (
+const checkComment = async (
   comment: string,
   expected: { buildId: string; built: boolean; releaseId: string },
 ) => {
   const consoleUrl = env("PROOF_CONSOLE_URL").replace(/\/+$/, "");
+  // The APK's QR code, which the Console serves to the runner, holds the
+  // build's download under the Console's address: asked of the Console
+  // here, not taken from the action.
+  const qr = `${consoleUrl}/_hot-updater/native-builds/qr?build=${expected.buildId}`;
+  check(
+    comment.includes(`<img src="${qr}"`),
+    `the comment doesn't show the QR code ${qr}:\n${comment}`,
+  );
+  const response = await fetch(qr, { method: "HEAD" });
+  check(
+    response.headers.get("x-hot-updater-download-url") ===
+      `${consoleUrl}/api/native-builds/${expected.buildId}/download`,
+    `the QR code ${qr} holds ${response.headers.get("x-hot-updater-download-url")}`,
+  );
+  check(
+    !/hot-updater\/channel\/|openurl|am start/.test(comment),
+    `the comment has a channel link:\n${comment}`,
+  );
   const link = `[Download](${consoleUrl}/api/native-builds/${expected.buildId}/download) · [Details](${consoleUrl}/native-builds/${expected.buildId}) · ${expected.built ? "built for this commit" : "reused"}`;
   check(
     comment.includes(link),
@@ -171,7 +193,6 @@ if (stage === "create-bucket") {
 
 const platform = process.env["PROOF_PLATFORM"] ?? "android";
 const channel = env("PROOF_CHANNEL");
-const previewChannel = env("PROOF_PREVIEW_CHANNEL");
 const statePath = env("PROOF_STATE");
 const state: State = existsSync(statePath)
   ? JSON.parse(readFileSync(statePath, "utf8"))
@@ -192,14 +213,14 @@ try {
       const [build] = builds;
       if (!build) break;
       check(
-        build.channel === previewChannel,
-        `the native build embeds ${build.channel}, not ${previewChannel}`,
+        build.channel === channel,
+        `the native build embeds ${build.channel}, not the pull request's ${channel}`,
       );
       check(artifacts.length === 1, `${artifacts.length} artifacts, not 1`);
       checkArtifact(build, artifacts);
       check(onChannel.length === 1, `${onChannel.length} releases, not 1`);
       checkRelease(newestRelease, build);
-      checkComment(comment, {
+      await checkComment(comment, {
         buildId: build.id,
         built: true,
         releaseId: newestRelease?.id ?? "",
@@ -221,7 +242,7 @@ try {
         "no new release on the pull request's channel",
       );
       if (builds[0]) checkRelease(newestRelease, builds[0]);
-      checkComment(comment, {
+      await checkComment(comment, {
         buildId: state.firstBuildId ?? "",
         built: false,
         releaseId: newestRelease?.id ?? "",
@@ -242,11 +263,15 @@ try {
         build.fingerprint_hash !== state.firstFingerprint,
         `the second build has the first build's fingerprint ${build.fingerprint_hash}`,
       );
+      check(
+        build.channel === channel,
+        `the native build embeds ${build.channel}, not the pull request's ${channel}`,
+      );
       check(artifacts.length === 2, `${artifacts.length} artifacts, not 2`);
       checkArtifact(build, artifacts);
       check(onChannel.length === 3, `${onChannel.length} releases, not 3`);
       checkRelease(newestRelease, build);
-      checkComment(comment, {
+      await checkComment(comment, {
         buildId: build.id,
         built: true,
         releaseId: newestRelease?.id ?? "",
@@ -254,7 +279,8 @@ try {
       break;
     }
     case "closed": {
-      // The channel and its bundles are gone; the preview builds stay.
+      // The channel, its bundles, and both of its native builds with their
+      // artifacts are gone.
       const channels = (
         await db.query<{ id: string; name: string }>(
           "select id, name from channels",
@@ -264,10 +290,6 @@ try {
         !channels.some(({ name }) => name === channel),
         `the ${channel} channel is still there`,
       );
-      check(
-        channels.some(({ name }) => name === previewChannel),
-        `the ${previewChannel} channel is gone`,
-      );
       const left = (
         await db.query(
           "select id from releases where channel_id = $1 or id = any($2)",
@@ -275,12 +297,22 @@ try {
         )
       ).rows;
       check(left.length === 0, `${left.length} of the channel's releases left`);
-      check(builds.length === 2, `${builds.length} native builds, not 2`);
+      check(builds.length === 0, `${builds.length} native builds left`);
+      check(artifacts.length === 0, `${artifacts.length} artifacts left`);
+      const bundleRows = (
+        await db.query("select id from bundles where id = any($1)", [
+          state.builtInBundleIds ?? [],
+        ])
+      ).rows;
+      check(
+        bundleRows.length === 0,
+        `${bundleRows.length} built-in bundles left`,
+      );
       check(
         comment.includes(
-          `its channel \`${channel}\` and its ${state.releaseIds?.length} bundles are deleted.`,
+          `its channel \`${channel}\`, its ${state.releaseIds?.length} bundles, and its 2 native builds are deleted.`,
         ),
-        `the comment doesn't say the channel and its ${state.releaseIds?.length} bundles are deleted:\n${comment}`,
+        `the comment doesn't say the channel, its ${state.releaseIds?.length} bundles, and its 2 native builds are deleted:\n${comment}`,
       );
       break;
     }
@@ -290,6 +322,7 @@ try {
 
   if (stage !== "closed") {
     state.releaseIds = onChannel.map(({ id }) => id);
+    state.builtInBundleIds = builds.map(({ min_bundle_id }) => min_bundle_id);
     state.channelId = (
       await db.query<{ id: string }>(
         "select id from channels where name = $1",

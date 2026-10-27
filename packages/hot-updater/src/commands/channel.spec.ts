@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import { type Bundle, createStorageAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
@@ -189,7 +189,128 @@ describe("handleChannelDelete", () => {
     process.exitCode = undefined;
     await handleChannelDelete("pr-12", { yes: true });
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("a native build embeds it"),
+      expect.stringContaining("Run it again with --native-builds"),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  const registerBuild = (n: number, channel: string, fingerprint: string) =>
+    databaseHarness.core.registerNativeBuild({
+      id: `01900000-0000-7000-8000-0000000002${String(n).padStart(2, "0")}`,
+      platform: "android",
+      channel,
+      fingerprintHash: fingerprint,
+      appVersion: null,
+      minBundleId: `01900000-0000-7000-8000-0000000001${String(n).padStart(2, "0")}`,
+      gitCommitHash: null,
+      buildKey: null,
+      artifact: {
+        kind: "apk",
+        storageUri: `storage://native-builds/android/${n}/app.apk`,
+        byteSize: 10,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `storage://artifacts/1${n}/manifest.json`,
+        manifestFileHash: `manifest-hash-1${n}`,
+        assetBaseStorageUri: "storage://assets",
+      },
+    });
+
+  it("with --native-builds, deletes each build that embeds the channel and its artifact, then the channel", async () => {
+    await deploy("1", "pr-12", "android");
+    // A fingerprint that changed during the pull request leaves two builds.
+    const first = await registerBuild(1, "pr-12", "fingerprint-a");
+    const second = await registerBuild(2, "pr-12", "fingerprint-b");
+    const other = await registerBuild(3, "pr-13", "fingerprint-a");
+    const deleteObject = vi.fn(async (_input: { storageUri: string }) => ({
+      deleted: true as const,
+    }));
+    loadServer.mockResolvedValue(
+      testServer({
+        database: databaseHarness.database,
+        storage: createStorageAdapter({
+          name: "test",
+          protocol: "storage",
+          delete: deleteObject,
+        }),
+      }),
+    );
+    const { handleChannelDelete } = await import("./channel");
+
+    await handleChannelDelete("pr-12", {
+      json: true,
+      yes: true,
+      nativeBuilds: true,
+    });
+
+    expect(output()).toMatchObject({ channel: "pr-12", deleted: true });
+    expect([...output().deletedNativeBuildIds].sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+    // The artifacts of the test's own two builds, and nothing else.
+    expect(
+      deleteObject.mock.calls.map(([input]) => input.storageUri).sort(),
+    ).toEqual([first.artifact_storage_uri, second.artifact_storage_uri].sort());
+    await expect(
+      databaseHarness.core.findChannelByName("pr-12"),
+    ).resolves.toBeNull();
+    await expect(
+      databaseHarness.core.getNativeBuild(first.id),
+    ).resolves.toBeNull();
+    await expect(
+      databaseHarness.core.getNativeBuild(other.id),
+    ).resolves.toEqual(other);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("with --native-builds, deletes nothing when the storage can't delete artifacts", async () => {
+    await deploy("1", "pr-12", "android");
+    const build = await registerBuild(1, "pr-12", "fingerprint-a");
+    const { handleChannelDelete } = await import("./channel");
+
+    await expect(
+      handleChannelDelete("pr-12", {
+        json: true,
+        yes: true,
+        nativeBuilds: true,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      databaseHarness.core.getNativeBuild(build.id),
+    ).resolves.toEqual(build);
+    expect(await databaseHarness.releases()).toHaveLength(1);
+  });
+
+  it("says when an artifact stays, after deleting the build and the channel", async () => {
+    const build = await registerBuild(1, "pr-12", "fingerprint-a");
+    loadServer.mockResolvedValue(
+      testServer({
+        database: databaseHarness.database,
+        storage: createStorageAdapter({
+          name: "test",
+          protocol: "storage",
+          delete: async () => {
+            throw new Error("access denied");
+          },
+        }),
+      }),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { handleChannelDelete } = await import("./channel");
+
+    await handleChannelDelete("pr-12", {
+      json: true,
+      yes: true,
+      nativeBuilds: true,
+    });
+
+    expect(output()).toMatchObject({
+      deleted: true,
+      deletedNativeBuildIds: [build.id],
+    });
+    expect(String(errors.mock.calls[0]?.[0])).toContain(
+      `${build.artifact_storage_uri}: access denied`,
     );
     expect(process.exitCode).toBe(1);
   });
@@ -216,114 +337,6 @@ describe("handleChannelDelete", () => {
       }),
     );
     expect(output()).toMatchObject({ deleted: true });
-  });
-});
-
-describe("handleChannelLink", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    process.exitCode = undefined;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    process.exitCode = undefined;
-  });
-
-  const printed = () =>
-    vi
-      .mocked(console.log)
-      .mock.calls.map(([line]) => String(line))
-      .join("\n");
-
-  it("prints the link console.channelLinkPrefix makes, as JSON", async () => {
-    loadConfig.mockResolvedValue({
-      console: { channelLinkPrefix: "https://example.com/app" },
-    });
-    const { handleChannelLink } = await import("./channel");
-
-    await handleChannelLink("pr-12", { json: true });
-
-    expect(output()).toEqual({
-      channel: "pr-12",
-      link: "https://example.com/app/hot-updater/channel/pr-12",
-    });
-    expect(loadServer).not.toHaveBeenCalled();
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  it("prints a null link without a prefix under --json, and succeeds", async () => {
-    loadConfig.mockResolvedValue({});
-    const { handleChannelLink } = await import("./channel");
-
-    await handleChannelLink("pr-12", { json: true });
-
-    expect(output()).toEqual({ channel: "pr-12", link: null });
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  it("prints the link with the commands that open it on an emulator or simulator", async () => {
-    loadConfig.mockResolvedValue({
-      console: { channelLinkPrefix: "myapp://" },
-    });
-    const { handleChannelLink } = await import("./channel");
-
-    await handleChannelLink("pr-12", {});
-
-    const text = printed();
-    expect(text).toContain("myapp://hot-updater/channel/pr-12");
-    expect(text).toContain(
-      "adb shell am start -a android.intent.action.VIEW -d myapp://hot-updater/channel/pr-12",
-    );
-    expect(text).toContain(
-      "xcrun simctl openurl booted myapp://hot-updater/channel/pr-12",
-    );
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  it("quotes a link the shell would read otherwise", async () => {
-    loadConfig.mockResolvedValue({
-      console: { channelLinkPrefix: "https://example.com/?app=1&x=" },
-    });
-    const { handleChannelLink } = await import("./channel");
-
-    await handleChannelLink("pr-12", {});
-
-    const text = printed();
-    // adb shell parses the link again on the device, so it's quoted twice.
-    expect(text).toContain(
-      String.raw`-d ''\''https://example.com/?app=1&x=/hot-updater/channel/pr-12'\'''`,
-    );
-    expect(text).toContain(
-      "xcrun simctl openurl booted 'https://example.com/?app=1&x=/hot-updater/channel/pr-12'",
-    );
-  });
-
-  it("fails without a prefix, naming the option", async () => {
-    loadConfig.mockResolvedValue({});
-    const { handleChannelLink } = await import("./channel");
-
-    await handleChannelLink("pr-12", {});
-
-    expect(console.log).not.toHaveBeenCalled();
-    expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("console.channelLinkPrefix"),
-    );
-    expect(process.exitCode).toBe(1);
-  });
-
-  it("fails for a name that is not a channel name", async () => {
-    loadConfig.mockResolvedValue({
-      console: { channelLinkPrefix: "myapp://" },
-    });
-    const { handleChannelLink } = await import("./channel");
-
-    await handleChannelLink(" pr-12", { json: true });
-
-    expect(console.log).not.toHaveBeenCalled();
-    expect(log.error).toHaveBeenCalledWith('" pr-12" is not a channel name.');
-    expect(process.exitCode).toBe(1);
   });
 });
 

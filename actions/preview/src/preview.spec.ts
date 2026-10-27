@@ -29,6 +29,25 @@ type Build = {
   kind: string;
 };
 
+/** Where a build's artifact is stored, as `native-build` uploads it. */
+const artifactUri = (build: Build) =>
+  `s3://bucket/native-builds/${build.platform}/${build.id}/${build.kind === "apk" ? "app-release.apk" : "App.app.zip"}`;
+
+/**
+ * The Console's QR code route, as a public Console answers the runner: the
+ * download URL under the Console's own address.
+ */
+const consoleFetch = async (input: string | URL | Request) => {
+  const url = new URL(String(input));
+  const build = url.searchParams.get("build")!;
+  return new Response(null, {
+    status: 200,
+    headers: {
+      "x-hot-updater-download-url": `${url.origin}/api/native-builds/${build}/download`,
+    },
+  });
+};
+
 /**
  * The project's CLI over a registry and a channel's bundles, as the commands
  * the action runs answer: `native-build <platform>` tracks a build of the project's
@@ -41,13 +60,13 @@ const fakeCli = ({
   builtTarget,
   builtDebug = false,
   buildFails = false,
-  configChannelLink = null,
   channelDelete = {
     code: 0,
     json: {
       channel: "pr-12",
       deleted: true,
       deletedBundleIds: ["b1", "b2"],
+      deletedNativeBuildIds: ["build-1"],
     } as Record<string, unknown>,
   },
 }: {
@@ -61,8 +80,6 @@ const fakeCli = ({
   builtDebug?: boolean;
   /** Whether `native-build <platform>` fails, as a failed native build exits. */
   buildFails?: boolean;
-  /** The link `channel link` makes from hot-updater.config.ts, if any. */
-  configChannelLink?: string | null;
   channelDelete?: { code: number; json: Record<string, unknown> };
 } = {}) => {
   const calls: string[] = [];
@@ -104,7 +121,11 @@ const fakeCli = ({
         stdout: `loading config\n${JSON.stringify(
           {
             ...scope,
-            nativeBuild: found && { id: found.id, artifact_kind: found.kind },
+            nativeBuild: found && {
+              id: found.id,
+              artifact_kind: found.kind,
+              artifact_storage_uri: artifactUri(found),
+            },
           },
           null,
           2,
@@ -133,7 +154,11 @@ const fakeCli = ({
           },
           nativeBuild: builtDebug
             ? null
-            : { id: build.id, artifact_kind: build.kind },
+            : {
+                id: build.id,
+                artifact_kind: build.kind,
+                artifact_storage_uri: artifactUri(build),
+              },
           registration: { skipped: builtDebug ? "debug" : null },
         })}\n`,
       };
@@ -161,12 +186,6 @@ const fakeCli = ({
         }));
       return { code: 0, stdout: JSON.stringify(rows, null, 2) };
     }
-    if (command === "channel" && sub === "link") {
-      return {
-        code: 0,
-        stdout: `loading config\n${JSON.stringify({ channel: args[2], link: configChannelLink })}\n`,
-      };
-    }
     if (command === "channel" && sub === "delete") {
       return {
         code: channelDelete.code,
@@ -189,15 +208,7 @@ const deps = (
   const value = {
     cli,
     buildLogs: vi.fn((_since: number): string[] => []),
-    fetch: vi.fn(
-      async () =>
-        new Response(null, {
-          status: 200,
-          headers: {
-            "x-hot-updater-channel-link": "myapp://hot-updater/channel/pr-12",
-          },
-        }),
-    ) as unknown as typeof fetch,
+    fetch: vi.fn(consoleFetch) as unknown as typeof fetch,
     github: null,
     setOutput: (name: string, output: string) => {
       outputs[name] = output;
@@ -237,8 +248,8 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toEqual([
-      "channel set preview",
-      "native-build find -p android -c preview -s releaseApk --json",
+      "channel set pr-12",
+      "native-build find -p android -c pr-12 -s releaseApk --json",
       "native-build android --scheme releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
@@ -247,7 +258,11 @@ describe("runAction preview", () => {
       {
         platform: "android",
         target: { fingerprintHash: "fp-a", appVersion: null },
-        nativeBuild: { id: "build-1", artifactKind: "apk" },
+        nativeBuild: {
+          id: "build-1",
+          artifactKind: "apk",
+          fileName: "app-release.apk",
+        },
         built: true,
         bundleId: "bundle-2",
       },
@@ -257,13 +272,13 @@ describe("runAction preview", () => {
     );
   });
 
-  it("deploys only the bundle when a native build has the project's fingerprint on the preview channel", async () => {
+  it("deploys only the bundle when a native build has the project's fingerprint on the pull request's channel", async () => {
     const fake = fakeCli({
       builds: [
         {
           id: "build-0",
           platform: "android",
-          channel: "preview",
+          channel: "pr-12",
           fingerprintHash: "fp-a",
           appVersion: null,
           kind: "apk",
@@ -275,8 +290,8 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toEqual([
-      "channel set preview",
-      "native-build find -p android -c preview -s releaseApk --json",
+      "channel set pr-12",
+      "native-build find -p android -c pr-12 -s releaseApk --json",
       // fingerprint.json may be older than the project.
       "fingerprint create",
       "deploy -p android -c pr-12 -m #12 Fix the header",
@@ -295,8 +310,9 @@ describe("runAction preview", () => {
   });
 
   it.each([
-    ["another fingerprint", { channel: "preview", fingerprintHash: "fp-b" }],
-    ["another channel", { channel: "production", fingerprintHash: "fp-a" }],
+    ["another fingerprint", { channel: "pr-12", fingerprintHash: "fp-b" }],
+    // Another pull request's build embeds that pull request's channel.
+    ["another channel", { channel: "pr-11", fingerprintHash: "fp-a" }],
   ])("builds again when the registered build has %s", async (_, build) => {
     const fake = fakeCli({
       builds: [
@@ -325,7 +341,7 @@ describe("runAction preview", () => {
         {
           id: "build-0",
           platform: "android",
-          channel: "preview",
+          channel: "pr-12",
           fingerprintHash: null,
           appVersion: "1.4.0",
           kind: "apk",
@@ -337,8 +353,8 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toEqual([
-      "channel set preview",
-      "native-build find -p android -c preview -s releaseApk --json",
+      "channel set pr-12",
+      "native-build find -p android -c pr-12 -s releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header -t 1.4.0",
       "bundle list -c pr-12 -p android --limit 1 --json",
     ]);
@@ -363,12 +379,13 @@ describe("runAction preview", () => {
     });
   });
 
-  it("fails without deploying when the build embeds another channel than the preview channel", async () => {
+  it("fails without deploying when the build embeds another channel than the pull request's", async () => {
+    // An Expo project whose config plugin ignores the job's PREVIEW_CHANNEL.
     const fake = fakeCli({ builtChannel: "production" });
     const { deps: d } = deps(fake.cli);
 
     await expect(runAction(d, env(), event)).rejects.toThrow(
-      "native-build android built a native build that embeds the production channel, not preview.",
+      "native-build android built a native build that embeds the production channel, not pr-12.",
     );
     expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
   });
@@ -389,7 +406,7 @@ describe("runAction preview", () => {
         {
           id: "build-0",
           platform: "android",
-          channel: "preview",
+          channel: "pr-12",
           fingerprintHash: "fp-a",
           appVersion: null,
           kind: "apk",
@@ -427,7 +444,7 @@ describe("runAction preview", () => {
         {
           id: "build-0",
           platform: "android",
-          channel: "preview",
+          channel: "pr-12",
           fingerprintHash: null,
           appVersion: "1.4.0",
           kind: "apk",
@@ -474,111 +491,85 @@ describe("runAction preview", () => {
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");
   });
 
-  it("shows the Console's QR code without reading the config", async () => {
-    const fake = fakeCli({
-      configChannelLink: "other://hot-updater/channel/pr-12",
-    });
+  it("shows the Console's QR code of an APK's download, which the runner checked", async () => {
+    const fake = fakeCli();
     const { deps: d, outputs } = deps(fake.cli);
 
-    await runAction(d, env(), event);
+    await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
 
+    // Only the APK has a QR code: a simulator app installs on a computer.
+    expect(d.fetch).toHaveBeenCalledTimes(1);
     expect(d.fetch).toHaveBeenCalledWith(
-      "https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12",
+      "https://console.example.com/_hot-updater/native-builds/qr?build=build-1",
       { method: "HEAD" },
     );
-    expect(fake.calls).not.toContain("channel link pr-12 --json");
-    expect(outputs["comment-body"]).toContain(
-      '<img src="https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12"',
+    const body = outputs["comment-body"]!;
+    expect(body).toContain(
+      '<img src="https://console.example.com/_hot-updater/native-builds/qr?build=build-1"',
     );
-    expect(outputs["comment-body"]).toContain(
-      "`myapp://hot-updater/channel/pr-12`",
+    expect(body).not.toContain("qr?build=build-2");
+    expect(body).toContain("adb install -r app-release.apk");
+    expect(body).toContain(
+      "unzip -o App.app.zip && xcrun simctl install booted App.app",
     );
     expect(d.log.notice).not.toHaveBeenCalled();
   });
 
-  it("takes the link from the config, without a QR code, when the Console is unreachable", async () => {
-    const fake = fakeCli({
-      configChannelLink: "myapp://hot-updater/channel/pr-12",
-    });
-    const { deps: d, outputs } = deps(fake.cli, {
-      fetch: vi.fn(async () => {
+  it.each([
+    [
+      "is unreachable",
+      async () => {
         throw new TypeError("fetch failed");
-      }) as unknown as typeof fetch,
-    });
+      },
+      "The Console is unreachable from the runner (fetch failed), as a private Console is, so the comment links the APK's download without a QR code.",
+    ],
+    [
+      "answers an error",
+      async () => new Response("", { status: 404 }),
+      "The Console answered 404 to https://console.example.com/_hot-updater/native-builds/qr?build=build-1, so the comment links the APK's download without a QR code.",
+    ],
+    [
+      // A Console behind a proxy that sees another address than the runner.
+      "holds another address",
+      async () =>
+        new Response(null, {
+          headers: {
+            "x-hot-updater-download-url":
+              "http://10.0.0.2:3000/api/native-builds/build-1/download",
+          },
+        }),
+      "The Console's QR code at https://console.example.com/_hot-updater/native-builds/qr?build=build-1 holds http://10.0.0.2:3000/api/native-builds/build-1/download, not https://console.example.com/api/native-builds/build-1/download, so the comment links the APK's download without a QR code.",
+    ],
+  ])(
+    "links the download without a QR code when the Console %s",
+    async (_, answer, notice) => {
+      const fake = fakeCli();
+      const { deps: d, outputs } = deps(fake.cli, {
+        fetch: vi.fn(answer) as unknown as typeof fetch,
+      });
 
-    await runAction(d, env(), event);
+      await runAction(d, env(), event);
 
-    expect(fake.calls).toContain("channel link pr-12 --json");
-    const body = outputs["comment-body"]!;
-    expect(body).not.toContain("<img");
-    expect(body).toContain("`myapp://hot-updater/channel/pr-12`");
-    expect(body).toContain(
-      "xcrun simctl openurl booted myapp://hot-updater/channel/pr-12",
-    );
-    expect(body).toContain(
-      "adb shell am start -a android.intent.action.VIEW -d myapp://hot-updater/channel/pr-12",
-    );
-    expect(d.log.notice).toHaveBeenCalledWith(
-      "The Console is unreachable from the runner (fetch failed), as a private Console is, so the comment shows the channel link from hot-updater.config.ts without a QR code.",
-    );
-  });
+      const body = outputs["comment-body"]!;
+      expect(body).not.toContain("<img");
+      expect(body).toContain(
+        "[Download](https://console.example.com/api/native-builds/build-1/download)",
+      );
+      expect(d.log.notice).toHaveBeenCalledWith(notice);
+    },
+  );
 
-  it("says neither sets a prefix when the Console is unreachable and the config has none", async () => {
+  it("shows no channel link anywhere", async () => {
     const fake = fakeCli();
-    const { deps: d, outputs } = deps(fake.cli, {
-      fetch: vi.fn(async () => {
-        throw new TypeError("fetch failed");
-      }) as unknown as typeof fetch,
-    });
+    const { deps: d, outputs } = deps(fake.cli);
 
-    await runAction(d, env(), event);
+    await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
 
-    const body = outputs["comment-body"]!;
-    expect(body).not.toContain("<img");
-    expect(body).not.toContain("adb shell");
-    expect(body).toContain("Set `console.channelLinkPrefix`");
-    expect(d.log.notice).toHaveBeenCalledWith(
-      "The Console is unreachable from the runner (fetch failed), as a private Console is, and hot-updater.config.ts sets no console.channelLinkPrefix, so the comment has no channel link: set it to the prefix of the app's channel links.",
+    expect(outputs["comment-body"]).not.toMatch(
+      /hot-updater\/channel\/|openurl|am start|channelLinkPrefix/,
     );
-  });
-
-  it("takes the link from the config when the Console serves no QR code", async () => {
-    const fake = fakeCli({
-      configChannelLink: "myapp://hot-updater/channel/pr-12",
-    });
-    const { deps: d, outputs } = deps(fake.cli, {
-      fetch: vi.fn(
-        async () => new Response("no prefix", { status: 404 }),
-      ) as unknown as typeof fetch,
-    });
-
-    await runAction(d, env(), event);
-
-    const body = outputs["comment-body"]!;
-    expect(body).not.toContain("<img");
-    expect(body).toContain("`myapp://hot-updater/channel/pr-12`");
-    expect(d.log.notice).toHaveBeenCalledWith(
-      "The Console answered 404 to https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12, as when its config sets no console.channelLinkPrefix, so the comment shows the channel link from hot-updater.config.ts without a QR code.",
-    );
-  });
-
-  it("says neither sets a prefix when the Console serves no QR code and the config has none", async () => {
-    const fake = fakeCli();
-    const { deps: d, outputs } = deps(fake.cli, {
-      fetch: vi.fn(
-        // A Console that answers without the link header.
-        async () => new Response(null, { status: 200 }),
-      ) as unknown as typeof fetch,
-    });
-
-    await runAction(d, env(), event);
-
-    expect(outputs["comment-body"]).not.toContain("<img");
-    expect(outputs["comment-body"]).toContain(
-      "Set `console.channelLinkPrefix`",
-    );
-    expect(d.log.notice).toHaveBeenCalledWith(
-      "The Console answered 200 to https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12 without a channel link, and hot-updater.config.ts sets no console.channelLinkPrefix, so the comment has no channel link: set it to the prefix of the app's channel links.",
+    expect(fake.calls.some((call) => call.startsWith("channel link"))).toBe(
+      false,
     );
   });
 
@@ -651,9 +642,11 @@ describe("runAction cleanup", () => {
 
     await runAction(d, env({ INPUT_COMMENT: "true" }), closed);
 
-    expect(fake.calls).toEqual(["channel delete pr-12 --yes --json"]);
+    expect(fake.calls).toEqual([
+      "channel delete pr-12 --native-builds --yes --json",
+    ]);
     expect(outputs["comment-body"]).toContain(
-      "its channel `pr-12` and its 2 bundles are deleted.",
+      "its channel `pr-12`, its 2 bundles, and its 1 native build are deleted.",
     );
     expect(github.fetch).toHaveBeenLastCalledWith(
       "https://api.github.com/repos/o/r/issues/comments/9",
@@ -694,20 +687,25 @@ describe("runAction cleanup", () => {
     ).toEqual(["GET", "GET"]);
   });
 
-  it("fails when a native build embeds the channel, after saying so", async () => {
+  it("fails when the channel is kept, after saying so", async () => {
     const fake = fakeCli({
       channelDelete: {
         code: 1,
-        json: { channel: "pr-12", deleted: false, deletedBundleIds: ["b1"] },
+        json: {
+          channel: "pr-12",
+          deleted: false,
+          deletedBundleIds: ["b1"],
+          deletedNativeBuildIds: ["build-1", "build-2"],
+        },
       },
     });
     const { deps: d, outputs } = deps(fake.cli);
 
     await expect(runAction(d, env(), closed)).rejects.toThrow(
-      "The pr-12 channel is kept: a native build embeds it.",
+      "The pr-12 channel is kept: a bundle or a native build was added to it while the cleanup ran.",
     );
     expect(outputs["comment-body"]).toContain(
-      "is kept, because a native build embeds it",
+      "its 1 bundle and its 2 native builds are deleted, and its channel `pr-12` is kept",
     );
   });
 
@@ -726,17 +724,18 @@ describe("runAction cleanup", () => {
 
     await runAction(d, env({ INPUT_MODE: "cleanup" }), event);
 
-    expect(fake.calls).toEqual(["channel delete pr-12 --yes --json"]);
+    expect(fake.calls).toEqual([
+      "channel delete pr-12 --native-builds --yes --json",
+    ]);
   });
 });
 
 describe("parseInputs", () => {
-  it("defaults to Android, the preview channel, and the pull request's own channel", () => {
+  it("defaults to Android and the pull request's own channel", () => {
     expect(parseInputs(env(), event)).toEqual({
       consoleUrl: "https://console.example.com",
       platforms: ["android"],
       schemes: { android: "releaseApk", ios: "simulator" },
-      previewChannel: "preview",
       channel: "pr-12",
       credit: true,
       comment: false,
@@ -751,10 +750,6 @@ describe("parseInputs", () => {
     [{ INPUT_CREDIT: "no" }, "credit must be true or false."],
     [{ INPUT_MODE: "deploy" }, "mode must be auto, preview, or cleanup."],
     [{ INPUT_ANDROID_SCHEME: "" }, "android-scheme is required"],
-    [
-      { INPUT_CHANNEL: "preview" },
-      "channel and preview-channel are both preview",
-    ],
   ])("refuses %j", (overrides, message) => {
     expect(() => parseInputs(env(overrides), event)).toThrow(message);
   });

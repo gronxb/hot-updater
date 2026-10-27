@@ -532,8 +532,6 @@ class HotUpdaterModule internal constructor(
 
     override fun getInstallId(): String = getInstance().getInstallId()
 
-    override fun getProcessLaunchId(): String = HotUpdaterImpl.processLaunchId
-
     override fun getStorageItem(key: String): String? = getInstance().getStorageItem(key)
 
     override fun setStorageItem(

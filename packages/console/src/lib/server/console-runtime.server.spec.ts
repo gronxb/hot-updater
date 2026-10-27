@@ -50,7 +50,6 @@ describe("Console config resolution", () => {
         plugins,
         console: {
           gitUrl: "https://github.com/example/app",
-          channelLinkPrefix: "example://",
         },
       };
       const source = vi.fn(async () => config);
@@ -60,7 +59,6 @@ describe("Console config resolution", () => {
 
       expect(resolved).toMatchObject({
         gitUrl: "https://github.com/example/app",
-        channelLinkPrefix: "example://",
         database,
         storage,
         plugins,
@@ -92,7 +90,6 @@ describe("Console config resolution", () => {
     expect(resolved.plugins).toEqual([]);
     expect(resolved.api).toEqual({});
     expect(resolved).not.toHaveProperty("gitUrl");
-    expect(resolved).not.toHaveProperty("channelLinkPrefix");
   });
 
   it("refuses the plugins the server refuses", async () => {

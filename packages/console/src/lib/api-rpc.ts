@@ -144,12 +144,7 @@ export const getConfig = createServerFn()
   .handler(async () => {
     try {
       const { config } = await prepare();
-      return {
-        console: {
-          gitUrl: config.gitUrl,
-          channelLinkPrefix: config.channelLinkPrefix,
-        },
-      };
+      return { console: { gitUrl: config.gitUrl } };
     } catch (error) {
       console.error("Error during config retrieval:", error);
       throw error;

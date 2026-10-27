@@ -1163,11 +1163,6 @@ RCT_EXPORT_MODULE();
     return [impl getInstallId];
 }
 
-- (NSString *)getProcessLaunchId {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getProcessLaunchId];
-}
-
 - (NSString * _Nullable)getStorageItem:(NSString *)key {
     HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getStorageItem:key];
@@ -1356,11 +1351,6 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getInstallId) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return [impl getInstallId];
-}
-
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getProcessLaunchId) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getProcessLaunchId];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getStorageItem:(NSString *)key) {

@@ -18,7 +18,6 @@ import { Route as RemoteConfigRouteImport } from './routes/remote-config'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as NativeBuildsBuildIdRouteImport } from './routes/native-builds_.$buildId'
 import { Route as HotUpdaterNativeBuildsQrRouteImport } from './routes/[_]hot-updater/native-builds/qr'
-import { Route as HotUpdaterPreviewChannelQrRouteImport } from './routes/[_]hot-updater/preview/channel-qr'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
 import { Route as ApiNativeBuildsBuildIdDownloadRouteImport } from './routes/api/native-builds/$buildId/download'
@@ -69,12 +68,6 @@ const HotUpdaterNativeBuildsQrRoute =
     path: '/_hot-updater/native-builds/qr',
     getParentRoute: () => rootRouteImport,
   } as any)
-const HotUpdaterPreviewChannelQrRoute =
-  HotUpdaterPreviewChannelQrRouteImport.update({
-    id: '/_hot-updater/preview/channel-qr',
-    path: '/_hot-updater/preview/channel-qr',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -103,7 +96,6 @@ export interface FileRoutesByFullPath {
   '/insights/distribution': typeof InsightsDistributionRoute
   '/native-builds/$buildId': typeof NativeBuildsBuildIdRoute
   '/_hot-updater/native-builds/qr': typeof HotUpdaterNativeBuildsQrRoute
-  '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
@@ -118,7 +110,6 @@ export interface FileRoutesByTo {
   '/insights/distribution': typeof InsightsDistributionRoute
   '/native-builds/$buildId': typeof NativeBuildsBuildIdRoute
   '/_hot-updater/native-builds/qr': typeof HotUpdaterNativeBuildsQrRoute
-  '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
@@ -134,7 +125,6 @@ export interface FileRoutesById {
   '/insights_/distribution': typeof InsightsDistributionRoute
   '/native-builds_/$buildId': typeof NativeBuildsBuildIdRoute
   '/_hot-updater/native-builds/qr': typeof HotUpdaterNativeBuildsQrRoute
-  '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
@@ -151,7 +141,6 @@ export interface FileRouteTypes {
     | '/insights/distribution'
     | '/native-builds/$buildId'
     | '/_hot-updater/native-builds/qr'
-    | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
@@ -166,7 +155,6 @@ export interface FileRouteTypes {
     | '/insights/distribution'
     | '/native-builds/$buildId'
     | '/_hot-updater/native-builds/qr'
-    | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
@@ -181,7 +169,6 @@ export interface FileRouteTypes {
     | '/insights_/distribution'
     | '/native-builds_/$buildId'
     | '/_hot-updater/native-builds/qr'
-    | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
@@ -197,7 +184,6 @@ export interface RootRouteChildren {
   InsightsDistributionRoute: typeof InsightsDistributionRoute
   NativeBuildsBuildIdRoute: typeof NativeBuildsBuildIdRoute
   HotUpdaterNativeBuildsQrRoute: typeof HotUpdaterNativeBuildsQrRoute
-  HotUpdaterPreviewChannelQrRoute: typeof HotUpdaterPreviewChannelQrRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
   ApiNativeBuildsBuildIdDownloadRoute: typeof ApiNativeBuildsBuildIdDownloadRoute
@@ -268,13 +254,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HotUpdaterNativeBuildsQrRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_hot-updater/preview/channel-qr': {
-      id: '/_hot-updater/preview/channel-qr'
-      path: '/_hot-updater/preview/channel-qr'
-      fullPath: '/_hot-updater/preview/channel-qr'
-      preLoaderRoute: typeof HotUpdaterPreviewChannelQrRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -309,7 +288,6 @@ const rootRouteChildren: RootRouteChildren = {
   InsightsDistributionRoute: InsightsDistributionRoute,
   NativeBuildsBuildIdRoute: NativeBuildsBuildIdRoute,
   HotUpdaterNativeBuildsQrRoute: HotUpdaterNativeBuildsQrRoute,
-  HotUpdaterPreviewChannelQrRoute: HotUpdaterPreviewChannelQrRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
   ApiNativeBuildsBuildIdDownloadRoute: ApiNativeBuildsBuildIdDownloadRoute,

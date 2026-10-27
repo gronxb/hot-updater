@@ -51,10 +51,7 @@ vi.mock("./checkForUpdate", () => ({
 
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
-  claimLaunchURL: vi.fn(() => true),
-  releaseLaunchURL: vi.fn(),
   clearCrashHistory: vi.fn(),
-  startRuntime: vi.fn(),
   getAppVersion: mocks.getAppVersion,
   getBaseURL: vi.fn(() => null),
   getBundleId: mocks.getBundleId,

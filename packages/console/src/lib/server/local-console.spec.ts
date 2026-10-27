@@ -186,7 +186,8 @@ describe("guardLocalConsoleRequest", () => {
   });
 
   it("asks for the session on the /_hot-updater/ routes too", () => {
-    const path = "/_hot-updater/preview/channel-qr?channel=pr-1";
+    const path =
+      "/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-00000000b001";
     expect(
       guardLocalConsoleRequest(request(`http://localhost:1422${path}`), OPTIONS)
         ?.status,

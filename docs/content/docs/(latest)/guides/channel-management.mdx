@@ -189,22 +189,9 @@ npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 Replace `<channel>` with your target channel name, for example `dev`, `staging`,
 or `production`.
 
-## Print a Channel's Link
-
-A preview build opens a channel's link to switch to it. Print the link that
-`console.channelLinkPrefix` makes, with the commands that open it on an
-emulator or simulator:
-
-```package-install
-npx hot-updater channel link <channel>
-```
-
-See [Preview Builds](/docs/guides/preview-builds#make-a-channel-link).
-
 ## Delete a Channel
 
-Delete a channel with its bundles, such as a closed pull request's preview
-channel:
+Delete a channel with its bundles, such as a closed pull request's channel:
 
 ```package-install
 npx hot-updater channel delete <channel>
@@ -212,10 +199,17 @@ npx hot-updater channel delete <channel>
 
 The command disables and deletes each bundle in the channel, then the
 channel. Add `--yes` to skip the confirmation in CI. A channel a native build
-embeds as its default channel is kept until
+embeds as its default channel is kept, unless `--native-builds` deletes those
+builds too, each with its built-in bundle and its artifact in storage, as
 [`hot-updater native-build delete`](/docs/guides/native-build#delete-a-build)
-deletes the build. See
-[Preview Builds](/docs/guides/preview-builds#clean-up-a-closed-pull-request).
+deletes one:
+
+```package-install
+npx hot-updater channel delete <channel> --native-builds --yes
+```
+
+[Pull Request Previews](/docs/guides/pull-request-previews) cleans up a
+closed pull request this way.
 
 ## Check the Current Channel
 
