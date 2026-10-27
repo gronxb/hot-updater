@@ -64,7 +64,7 @@ export function NativeBuildsPage({
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <Card className="mx-auto w-full max-w-6xl overflow-hidden shadow-sm">
-          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+          <div className="flex items-center gap-2 border-b px-4 py-3">
             <Select
               items={[
                 { label: "All channels", value: ALL_CHANNELS },
@@ -83,7 +83,7 @@ export function NativeBuildsPage({
             >
               <SelectTrigger
                 aria-label="Channel"
-                className="h-11 w-full text-xs sm:h-8 sm:w-48"
+                className="h-11 min-w-0 flex-1 text-xs sm:h-8 sm:w-48 sm:flex-none"
               >
                 <SelectValue />
               </SelectTrigger>
