@@ -2,11 +2,45 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { INFRA_BUILDS } from "../infra/scaffold";
-import { INIT_PROVIDER_NAMES, type InitProvider } from "../initProviders";
+import {
+  INIT_PROVIDER_NAMES,
+  INIT_PROVIDER_PACKAGES,
+  type InitProvider,
+} from "../initProviders";
 import { isObject } from "./checks";
 
 /** Where `agent infra setup|upgrade` writes a scaffold unless given `--output`. */
 const SCAFFOLD_ROOT = "hot-updater-infra";
+
+/**
+ * The init inputs each provider's scaffold resources stand for, by resource:
+ * what gives the database target, as `INIT_PROVIDER_PACKAGES[provider].target`
+ * derives it. Vercel's record names no database, so its target is unknown.
+ */
+const TARGET_RESOURCES: Record<InitProvider, Record<string, string>> = {
+  cloudflare: { HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "d1DatabaseId" },
+  supabase: { HOT_UPDATER_SUPABASE_PROJECT_ID: "projectId" },
+  aws: { HOT_UPDATER_DYNAMODB_TABLE_NAME: "tableName" },
+  firebase: {
+    HOT_UPDATER_FIREBASE_PROJECT_ID: "projectId",
+    HOT_UPDATER_FIREBASE_DATABASE_ID: "databaseId",
+  },
+  vercel: {},
+  azure: { HOT_UPDATER_AZURE_COSMOS_ACCOUNT: "cosmosAccount" },
+};
+
+/** The database target a deployment record's resources describe, if they say. */
+const targetOf = (
+  provider: InitProvider,
+  resources: unknown,
+): string | undefined => {
+  if (!isObject(resources)) return undefined;
+  return INIT_PROVIDER_PACKAGES[provider].target((envKey) => {
+    const resource = TARGET_RESOURCES[provider][envKey];
+    const value = resource === undefined ? undefined : resources[resource];
+    return typeof value === "string" && value ? value : undefined;
+  });
+};
 
 /** A deployment an agent infrastructure scaffold records. */
 export interface ScaffoldDeployment {
@@ -16,6 +50,8 @@ export interface ScaffoldDeployment {
   readonly build: (typeof INFRA_BUILDS)[number];
   /** The server's base URL deployment.json records; null before a deploy. */
   readonly baseUrl: string | null;
+  /** The database target its resources describe, as the database marks it. */
+  readonly target: string | undefined;
 }
 
 const readJson = async (file: string): Promise<unknown> => {
@@ -68,6 +104,7 @@ export const findScaffoldDeployments = async (
         provider,
         build: manifest["build"] as ScaffoldDeployment["build"],
         baseUrl: typeof baseUrl === "string" && baseUrl ? baseUrl : null,
+        target: targetOf(provider, record["resources"]),
       });
     }
   }
@@ -95,15 +132,22 @@ export interface ScaffoldUpgrade {
 
 /**
  * The scaffold upgrade for `provider`'s deployment, when the default
- * scaffold output records one it deployed: a server's base URL. A scaffold
- * generated but not deployed records none, and is no deployment.
+ * scaffold output records one it deployed, a server's base URL, on the
+ * configured database. A scaffold generated but not deployed records no
+ * base URL, and one of another database is not this deployment.
  */
 export const scaffoldUpgradeFor = (
   deployments: readonly ScaffoldDeployment[],
   provider: InitProvider,
+  /** The configured database's target: a scaffold keeps it only if it records the same. */
+  target: string | undefined,
 ): ScaffoldUpgrade | null => {
+  if (target === undefined) return null;
   const matches = deployments.filter(
-    (record) => record.provider === provider && record.baseUrl !== null,
+    (record) =>
+      record.provider === provider &&
+      record.baseUrl !== null &&
+      record.target === target,
   );
   if (matches.length === 0) return null;
   // Directory names say nothing about which build is current, so the build

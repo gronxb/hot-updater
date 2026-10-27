@@ -329,7 +329,9 @@ instead, such as CI's variables or a file the config loads, the command names
 values too.
 
 When an agent infrastructure scaffold in `hot-updater-infra/<provider>/` keeps
-the deployment, doctor names `npx hot-updater agent infra upgrade --provider
+the deployment, that is, its `deployment.json` records a deployed server on the
+database the config names, and the config lists only the official plugins, the
+scaffold's server runs, doctor names `npx hot-updater agent infra upgrade --provider
 <provider> --build <build>` instead of init: apply the new scaffold as its
 `upgrades/README.md` says, uploading the new server version and previewing it,
 then migrating the database and deploying that version back to back. Running

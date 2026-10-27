@@ -14,6 +14,12 @@ import {
 
 type Fingerprints = Awaited<ReturnType<typeof generateFingerprints>>;
 
+/** The resource a database reaches, as its factory marks it (CLAUDE.md). */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** The brand Hot Updater's own plugin factories set, read as the server reads it. */
+const OFFICIAL = Symbol.for("@hot-updater/server/official-plugin");
+
 /**
  * What one doctor run shares between its checks. The server is loaded once
  * and closed once: the config opens its database once, so closing it before
@@ -68,9 +74,20 @@ export const createDoctorContext = (cwd: string): DoctorContext => {
       const loaded = await loadedServer().catch(() => null);
       if (loaded === null || isRemoteDatabase(loaded.database)) return null;
       const provider = providerOfDatabase(loaded.database.name);
-      return provider === undefined
-        ? null
-        : scaffoldUpgradeFor(await scaffoldRecords(), provider);
+      // The scaffold's server runs only the official plugins: a config with
+      // another keeps its own server's path, as for init.
+      if (
+        provider === undefined ||
+        loaded.plugins.some((plugin) => Reflect.get(plugin, OFFICIAL) !== true)
+      ) {
+        return null;
+      }
+      const target: unknown = Reflect.get(loaded.database, DATABASE_TARGET);
+      return scaffoldUpgradeFor(
+        await scaffoldRecords(),
+        provider,
+        typeof target === "string" ? target : undefined,
+      );
     },
     fingerprints: () => (fingerprints ??= generateFingerprints()),
     dispose: async () => {

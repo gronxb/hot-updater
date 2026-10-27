@@ -26,6 +26,7 @@ import {
   createSqlAdapter,
   createStorageAdapter,
   type DatabaseAdapter,
+  definePlugin,
   migrateCoreSchema,
   SETTINGS_TABLE,
   type ToolingDatabase,
@@ -171,6 +172,16 @@ const project = async (
 
 const run = () => doctor({ cwd, fetch: fetchVersion, serverBaseUrl: SERVER });
 
+/** Each provider's scaffold resources for the database SAVED names. */
+const SCAFFOLD_RESOURCES: Record<InitProvider, Record<string, string>> = {
+  cloudflare: { d1DatabaseId: "database" },
+  supabase: { projectId: "ref" },
+  aws: { tableName: "hot-updater" },
+  firebase: { projectId: "app" },
+  vercel: {},
+  azure: { cosmosAccount: "account" },
+};
+
 /**
  * The deployment record an agent infrastructure scaffold keeps in the CLI's
  * default output, `hot-updater-infra/<provider>/<name>`.
@@ -180,6 +191,7 @@ const scaffold = async (
   name: string,
   baseUrl: string | null,
   build = "bare",
+  resources: Record<string, string> = SCAFFOLD_RESOURCES[provider],
 ) => {
   const dir = path.join(cwd, "hot-updater-infra", provider, name);
   await mkdir(dir, { recursive: true });
@@ -198,6 +210,7 @@ const scaffold = async (
     JSON.stringify({
       schemaVersion: 1,
       provider,
+      resources,
       baseUrl,
       pendingStep: null,
       verifiedSteps: [],
@@ -816,6 +829,73 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
         schema: { issues: [{ commands: [initReplayCommand("cloudflare")] }] },
         infrastructure: {
           remediation: { commands: [initReplayCommand("cloudflare")] },
+        },
+      },
+    });
+  });
+
+  it("keeps naming init beside a scaffold of another database", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER, "bare", {
+      d1DatabaseId: "another-database",
+    });
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: { issues: [{ commands: [initReplayCommand("cloudflare")] }] },
+      },
+    });
+  });
+
+  it("does not name a scaffold's upgrade while the config lists a plugin of its own", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    // A server plugin of the project's own, which the scaffold's server lacks.
+    const custom = definePlugin({
+      id: "custom",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+    });
+    const config = await loadConfig(null);
+    vi.mocked(loadConfig).mockResolvedValue({
+      ...config,
+      plugins: [...managedPlugins(), custom],
+    } as never);
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER);
+
+    const result = await run();
+    expect(JSON.stringify(result)).not.toContain(
+      "kept with the agent infrastructure scaffold",
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      "agent infra upgrade --provider cloudflare",
+    );
+    expect(result).toMatchObject({
+      details: {
+        infrastructure: {
+          remediation: {
+            reason: expect.stringContaining(
+              "lists a plugin the managed server does not run (custom)",
+            ),
+          },
         },
       },
     });
