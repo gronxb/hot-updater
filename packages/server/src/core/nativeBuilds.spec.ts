@@ -471,6 +471,59 @@ describe("the native build registry", () => {
     });
     expect(second.map(({ id }) => id)).toEqual([buildId(1)]);
   });
+
+  it("lists only the builds that embed a channel, a page at a time", async () => {
+    const core = setup();
+    const onChannel = { pr: [1, 3, 4], production: [2, 5] } as const;
+    for (const n of [1, 2, 3, 4, 5]) {
+      await core.registerNativeBuild(
+        registration(n, {
+          channel: onChannel.pr.includes(n as 1 | 3 | 4)
+            ? "pr-130"
+            : "production",
+        }),
+      );
+    }
+    const prId = `channel:${encodeChannelKey("pr-130")}`;
+
+    const first = await core.listNativeBuilds({
+      channelId: prId,
+      limit: 2,
+      order: "desc",
+    });
+    const second = await core.listNativeBuilds({
+      channelId: prId,
+      limit: 2,
+      order: "desc",
+      after: first.at(-1)!.id,
+    });
+    const production = await core.listNativeBuilds({
+      channelId: productionId,
+      limit: 10,
+    });
+
+    // The channel's own registrations, newest first; none from production.
+    expect([...first, ...second].map(({ id }) => id)).toEqual(
+      [...onChannel.pr].reverse().map(buildId),
+    );
+    expect(production.map(({ id }) => id)).toEqual(
+      onChannel.production.map(buildId),
+    );
+    // A channel no build embeds, or no channel at all, lists none.
+    await expect(
+      core.listNativeBuilds({
+        channelId: `channel:${encodeChannelKey("pr-999")}`,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await core.ensureChannel("staging");
+    await expect(
+      core.listNativeBuilds({
+        channelId: `channel:${encodeChannelKey("staging")}`,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+  });
 });
 
 describe("a built-in bundle row and released SDKs", () => {

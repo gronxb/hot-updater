@@ -257,14 +257,22 @@ export const createNativeBuildApi = (
     });
   },
 
-  async listNativeBuilds(input: KeysetInput) {
-    const page = await db.findMany("native_builds", {
-      index: "all",
-      where: {},
-      order: input.order ?? "asc",
-      limit: input.limit,
-      ...after(input),
-    });
-    return page.rows.map(pick);
+  async listNativeBuilds(input: KeysetInput & { channelId?: string }) {
+    const page = { order: input.order ?? "asc", limit: input.limit };
+    const { rows } =
+      input.channelId === undefined
+        ? await db.findMany("native_builds", {
+            index: "all",
+            where: {},
+            ...page,
+            ...after(input),
+          })
+        : await db.findMany("native_builds", {
+            index: "byChannel",
+            where: { channel_id: input.channelId },
+            ...page,
+            ...after(input),
+          });
+    return rows.map(pick);
   },
 });

@@ -580,8 +580,17 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
   ),
 
   listNativeBuilds: onCore(async (core, request) => {
-    const input = keyset(new URL(request.url));
-    return page(await core.listNativeBuilds(input), input, ({ id }) => id);
+    const url = new URL(request.url);
+    const input = keyset(url);
+    const channelId = url.searchParams.get("channelId");
+    return page(
+      await core.listNativeBuilds({
+        ...input,
+        ...(channelId === null ? {} : { channelId }),
+      }),
+      input,
+      ({ id }) => id,
+    );
   }),
 
   // An unknown ID answers 200 with the not_found result, so a 404 means a

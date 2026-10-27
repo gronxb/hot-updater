@@ -311,8 +311,11 @@ export const createStandaloneCoreApi = (
     // A server without the native build routes holds no native builds: its
     // schema fence refuses a database whose schema has them. So its 404
     // lists none, which keeps doctor working against it.
-    listNativeBuilds: (input) =>
-      list<NativeBuildRow>("/native-builds", keysetParams(input)),
+    listNativeBuilds: ({ channelId, ...input }) =>
+      list<NativeBuildRow>("/native-builds", {
+        ...keysetParams(input),
+        ...(channelId === undefined ? {} : { channelId }),
+      }),
 
     deploy: async (deployments) =>
       (await call<ReleaseCatalogMutationResult[]>("POST", "/releases", {

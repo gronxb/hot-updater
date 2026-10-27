@@ -1,0 +1,151 @@
+import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import { AlertTriangle, Download } from "lucide-react";
+
+import { QrCode } from "@/components/QrCode";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
+import {
+  apkInstallCommand,
+  nativeBuildDownloadPath,
+  nativeBuildFileName,
+  simulatorInstallCommand,
+} from "@/lib/native-builds";
+
+import { CopyableText } from "./CopyableText";
+
+/** A phone scans the storage URL, which needs no console sign-in. */
+function ApkQrCode({ build }: { readonly build: NativeBuildRow }) {
+  const downloadUrl = useNativeBuildDownloadUrlQuery(build.id, true);
+  const url = downloadUrl.data?.url;
+
+  // A storage without download URLs serves the build only through the
+  // console, which a phone that scans isn't signed in to.
+  if (url === null) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        This storage gives no download link a phone can open without signing in,
+        so there is no QR code. Download the APK, or open this page on the phone
+        signed in to the console.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {url === undefined ? (
+        downloadUrl.isError ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>The download link couldn't be created</AlertTitle>
+            <AlertDescription>{downloadUrl.error.message}</AlertDescription>
+          </Alert>
+        ) : (
+          <Skeleton className="size-48" />
+        )
+      ) : (
+        <QrCode
+          className="size-48"
+          label={`Download ${nativeBuildFileName(build)}`}
+          value={url}
+        />
+      )}
+      <p className="max-w-56 text-center text-xs text-muted-foreground">
+        Scan with an Android phone's camera, then open the APK to install it.
+      </p>
+    </div>
+  );
+}
+
+/** How the artifact installs, beside its download. */
+function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
+  switch (build.artifact_kind) {
+    case "apk":
+      return (
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            On an emulator or a phone over USB, download the APK and install it:
+          </p>
+          <CopyableText
+            label="the install command"
+            value={apkInstallCommand(build)}
+          />
+        </div>
+      );
+    case "app":
+      return (
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            A simulator build runs only in the iOS Simulator. Download the
+            archive, then install it on the booted simulator:
+          </p>
+          <CopyableText
+            label="the install command"
+            value={simulatorInstallCommand(build)}
+          />
+        </div>
+      );
+    case "aab":
+      return (
+        <p className="text-xs text-muted-foreground">
+          An AAB installs through Google Play or bundletool, not from a
+          download.
+        </p>
+      );
+    case "ipa":
+      return (
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            An IPA installs on registered devices through Xcode or Apple
+            Configurator. For testers, upload it to TestFlight:
+          </p>
+          <CopyableText
+            label="the TestFlight command"
+            value="npx hot-updater testflight"
+          />
+        </div>
+      );
+  }
+}
+
+/**
+ * Installs one native build: an APK by QR code or `adb`, a simulator app
+ * with `xcrun simctl`, and every artifact by download.
+ */
+export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
+  const fileName = nativeBuildFileName(build);
+  return (
+    <Card className="overflow-hidden shadow-sm">
+      <CardHeader className="border-b px-4 py-3">
+        <CardTitle className="text-sm">
+          <h2>Install</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent
+        className={
+          build.artifact_kind === "apk"
+            ? "grid gap-6 p-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:p-6"
+            : "p-4 sm:p-6"
+        }
+      >
+        {build.artifact_kind === "apk" ? <ApkQrCode build={build} /> : null}
+        <div className="flex min-w-0 flex-col gap-4">
+          <InstallSteps build={build} />
+          <a
+            className={buttonVariants({
+              className: "min-h-11 w-full min-w-0 sm:min-h-8 sm:w-fit",
+              variant: build.artifact_kind === "apk" ? "outline" : "default",
+            })}
+            download
+            href={nativeBuildDownloadPath(build.id)}
+          >
+            <Download data-icon="inline-start" />
+            <span className="truncate">Download {fileName}</span>
+          </a>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,0 +1,406 @@
+import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import { encodeChannelKey } from "@hot-updater/protocol";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type {
+  NativeBuildDetail,
+  NativeBuildPatchPage,
+} from "@/lib/server/nativeBuilds";
+
+import { BuiltInBundleCard } from "./BuiltInBundleCard";
+import { InstallCard } from "./InstallCard";
+import { NativeBuildsTable } from "./NativeBuildsTable";
+import { PatchesCard } from "./PatchesCard";
+import { firstDownloadOf, ServedNowCard } from "./ServedNowCard";
+
+const { downloadUrlQuery, patchesQuery, navigate } = vi.hoisted(() => ({
+  downloadUrlQuery: vi.fn(),
+  patchesQuery: vi.fn(),
+  navigate: vi.fn(),
+}));
+
+vi.mock("@/lib/api", () => ({
+  useConfigQuery: () => ({ data: { console: {} } }),
+  useNativeBuildDownloadUrlQuery: downloadUrlQuery,
+  useNativeBuildPatchesQuery: patchesQuery,
+}));
+
+/** A router link as its URL: the path with its params, then its search. */
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    children,
+    to,
+    params,
+    search,
+    ...props
+  }: {
+    children: ReactNode;
+    to: string;
+    params?: Record<string, string>;
+    search?: Record<string, string>;
+  }) => {
+    const path = Object.entries(params ?? {}).reduce(
+      (url, [key, value]) => url.replace(`$${key}`, value),
+      to,
+    );
+    const query = new URLSearchParams(search ?? {}).toString();
+    return (
+      <a {...props} href={query === "" ? path : `${path}?${query}`}>
+        {children}
+      </a>
+    );
+  },
+  useNavigate: () => navigate,
+}));
+
+const id = (n: number) =>
+  `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+
+const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
+  id: id(1),
+  scope_key: "scope",
+  platform: "android",
+  channel_id: `channel:${encodeChannelKey("pr-130")}`,
+  fingerprint_hash: "1a2b3c4d5e6f7a8b9c0d",
+  app_version: null,
+  min_bundle_id: id(2),
+  artifact_kind: "apk",
+  artifact_storage_uri:
+    "r2://bucket/native-builds/android/019a/app-release.apk",
+  byte_size: 52_428_800,
+  git_commit_hash: "abcdef1234567",
+  created_at_ms: 0,
+  build_key: null,
+  ...overrides,
+});
+
+const patchPage = (
+  bundleIds: readonly string[],
+  next?: string,
+): NativeBuildPatchPage => ({
+  data: bundleIds.map((bundleId) => ({ bundleId, byteSize: 40_960 })),
+  ...(next === undefined ? {} : { next }),
+});
+
+const detail = (
+  overrides: Partial<NativeBuildDetail> = {},
+): NativeBuildDetail => {
+  const row = overrides.build ?? build();
+  return {
+    build: row,
+    channel: "pr-130",
+    catalogScopeKey: "v1:fingerprint:android:cHItMTMw:1a2b3c4d5e6f7a8b9c0d",
+    builtInBundle: { childCount: 2 },
+    newestInScope: row,
+    servedNow: [],
+    patches: patchPage([]),
+    ...overrides,
+  };
+};
+
+/** Text no part of the Native Builds pages may show: channel links are gone. */
+const CHANNEL_LINK_TEXT =
+  /Channel link|openurl|channelLinkPrefix|hot-updater\/channel\//;
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe("NativeBuildsTable", () => {
+  const builds = (data: readonly NativeBuildRow[], page = {}) => ({
+    data: { data, ...page },
+    isError: false,
+    isLoading: false,
+    isPlaceholderData: false,
+    refetch: vi.fn(),
+  });
+
+  it("lists each build with its decoded channel and built-in bundle, and opens its page", () => {
+    const row = build();
+    const onChannel = vi.fn();
+    render(
+      <NativeBuildsTable
+        builds={builds([row], { next: row.id })}
+        channel={undefined}
+        onChannel={onChannel}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Android APK" })).toHaveProperty(
+      "href",
+      expect.stringContaining(`/native-builds/${row.id}`),
+    );
+    expect(screen.getByTitle(row.min_bundle_id).textContent).toBe(
+      "019a0000-0000-7000-8…0002",
+    );
+    expect(screen.getByText("50.0 MB")).toBeTruthy();
+    // The channel comes from the ID, with no channel read.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show the builds that embed pr-130",
+      }),
+    );
+    expect(onChannel).toHaveBeenCalledWith("pr-130");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", { name: "Download app-release.apk" }),
+    ).toHaveProperty(
+      "href",
+      expect.stringContaining(`/api/native-builds/${row.id}/download`),
+    );
+
+    fireEvent.click(screen.getByText("Fingerprint"));
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/native-builds/$buildId",
+      params: { buildId: row.id },
+    });
+    expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
+  });
+
+  it("gives an empty registry the command that registers a build", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(screen.getByText("No native builds")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Native build guide/ }),
+    ).toHaveProperty(
+      "href",
+      "https://hot-updater.dev/docs/guides/native-build#register-a-build",
+    );
+  });
+
+  it("leads an empty channel back to every channel's builds", () => {
+    const onChannel = vi.fn();
+    render(
+      <NativeBuildsTable
+        builds={builds([])}
+        channel="pr-131"
+        onChannel={onChannel}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(screen.getByText(/No native build embeds/).textContent).toContain(
+      "pr-131",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show all channels" }));
+    expect(onChannel).toHaveBeenCalledWith(undefined);
+  });
+
+  it("leads an empty older page back to the newest builds", () => {
+    const onPage = vi.fn();
+    render(
+      <NativeBuildsTable
+        builds={builds([])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={onPage}
+        paged
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the newest builds" }),
+    );
+    expect(onPage).toHaveBeenCalledWith({});
+  });
+});
+
+describe("InstallCard", () => {
+  it("shows an APK's storage URL as a QR code and downloads through the console", () => {
+    const row = build();
+    downloadUrlQuery.mockReturnValue({
+      data: { url: "https://r2.example.com/app-release.apk?sig=1" },
+    });
+    render(<InstallCard build={row} />);
+
+    expect(
+      screen.getByRole("img", { name: "Download app-release.apk" }),
+    ).toBeTruthy();
+    expect(downloadUrlQuery).toHaveBeenCalledWith(row.id, true);
+    expect(screen.getByText("adb install -r app-release.apk")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Download app-release.apk/ }),
+    ).toHaveProperty(
+      "href",
+      expect.stringContaining(`/api/native-builds/${row.id}/download`),
+    );
+    expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
+  });
+
+  it("shows no QR code when the storage has no download URL a phone can open", () => {
+    downloadUrlQuery.mockReturnValue({ data: { url: null } });
+    render(<InstallCard build={build()} />);
+
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText(/there is no QR code/)).toBeTruthy();
+  });
+
+  it("gives a simulator app its install command, with no QR code and no download URL read", () => {
+    render(
+      <InstallCard
+        build={build({
+          platform: "ios",
+          artifact_kind: "app",
+          artifact_storage_uri:
+            "r2://bucket/native-builds/ios/019a/HotUpdaterExample.app.zip",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(downloadUrlQuery).not.toHaveBeenCalled();
+  });
+
+  it("points an IPA's testers to TestFlight, with no QR code", () => {
+    render(
+      <InstallCard
+        build={build({
+          platform: "ios",
+          artifact_kind: "ipa",
+          artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/upload it to TestFlight/)).toBeTruthy();
+    expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(downloadUrlQuery).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
+  });
+});
+
+describe("BuiltInBundleCard", () => {
+  it("shows the built-in bundle, its patch count, and that new deploys patch from it", () => {
+    render(<BuiltInBundleCard detail={detail()} />);
+
+    expect(screen.getByText(id(2))).toBeTruthy();
+    expect(screen.getByText("2 bundles")).toBeTruthy();
+    expect(screen.getByText("Current baseline.")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Show the builds that embed pr-130" }),
+    ).toHaveProperty(
+      "href",
+      expect.stringContaining("/native-builds?channel=pr-130"),
+    );
+  });
+
+  it("links a superseded build to the build new deploys patch from", () => {
+    const newer = build({ id: id(9), min_bundle_id: id(10) });
+    render(<BuiltInBundleCard detail={detail({ newestInScope: newer })} />);
+
+    expect(screen.queryByText("Current baseline.")).toBeNull();
+    expect(screen.getByText("Superseded")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Android APK/ })).toHaveProperty(
+      "href",
+      expect.stringContaining(`/native-builds/${id(9)}`),
+    );
+  });
+});
+
+describe("ServedNowCard", () => {
+  const release = (bundleId: string, releaseId: string) => ({
+    releaseId,
+    kind: "BUNDLE" as const,
+    bundleId,
+    rolloutCohortCount: 1000,
+    targetCohorts: [],
+    shouldForceUpdate: false,
+    message: `Release of ${bundleId}`,
+  });
+
+  it("says how each served bundle's first OTA downloads on this build", () => {
+    render(
+      <ServedNowCard
+        detail={detail({
+          servedNow: [release(id(20), id(120)), release(id(19), id(119))],
+          patches: patchPage([id(20)]),
+        })}
+      />,
+    );
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0]!.textContent).toContain("Patch");
+    expect(rows[0]!.textContent).toContain("40.0 KB");
+    expect(rows[1]!.textContent).toContain("Full bundle");
+    expect(screen.getByRole("link", { name: id(20) })).toHaveProperty(
+      "href",
+      expect.stringContaining(`/?releaseId=${id(120)}`),
+    );
+    expect(
+      screen.getByRole("link", { name: /All releases in this scope/ }),
+    ).toHaveProperty("href", expect.stringContaining("scopeKey="));
+  });
+
+  it("offers the scope's releases when the build is served nothing", () => {
+    render(<ServedNowCard detail={detail()} />);
+
+    expect(screen.getByText("No OTA for this build yet")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "All releases in this scope" }),
+    ).toBeTruthy();
+  });
+});
+
+describe("firstDownloadOf", () => {
+  it("is exact down to the patch page's oldest, and unknown past a full page", () => {
+    const full = patchPage([id(30), id(25)], id(25));
+    expect(firstDownloadOf(full, id(30))).toEqual({
+      kind: "patch",
+      byteSize: 40_960,
+    });
+    // Newer than the page's oldest and not in it: no patch exists.
+    expect(firstDownloadOf(full, id(27))).toEqual({ kind: "full" });
+    expect(firstDownloadOf(full, id(21))).toEqual({ kind: "unknown" });
+    // A page that isn't full holds every patch.
+    expect(firstDownloadOf(patchPage([id(25)]), id(21))).toEqual({
+      kind: "full",
+    });
+  });
+});
+
+describe("PatchesCard", () => {
+  it("lists the newest page it came with and reads no other", () => {
+    patchesQuery.mockReturnValue({ data: undefined });
+    render(
+      <PatchesCard
+        detail={detail({ patches: patchPage([id(40)], id(40)) })}
+        onPage={vi.fn()}
+        page={{}}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: id(40) })).toHaveProperty(
+      "href",
+      expect.stringContaining(`/?bundleId=${id(40)}`),
+    );
+    expect(patchesQuery).toHaveBeenCalledWith(id(2), {}, false);
+  });
+
+  it("says what adds a patch when there is none", () => {
+    patchesQuery.mockReturnValue({ data: undefined });
+    render(<PatchesCard detail={detail()} onPage={vi.fn()} page={{}} />);
+
+    expect(screen.getByText("No patches from this build")).toBeTruthy();
+  });
+});

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOut, MonitorSmartphone, Moon, Package, Sun } from "lucide-react";
+import { LogOut, HardDrive, Moon, Package, Sun } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
@@ -59,10 +59,15 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
       ),
     },
     {
-      label: "Preview",
-      icon: <MonitorSmartphone />,
-      active: currentPath === "/preview",
-      link: <Link to="/preview" onClick={closeMobileSidebar} search={{}} />,
+      label: "Native builds",
+      icon: <HardDrive />,
+      // A build's page keeps its list's item active.
+      active:
+        currentPath === "/native-builds" ||
+        currentPath.startsWith("/native-builds/"),
+      link: (
+        <Link to="/native-builds" onClick={closeMobileSidebar} search={{}} />
+      ),
     },
     // Each feature that is on adds its item, as the feature registry lists it.
     ...featureUi.flatMap(({ features, label, navigation }) =>

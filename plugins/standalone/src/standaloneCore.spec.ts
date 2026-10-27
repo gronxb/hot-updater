@@ -217,6 +217,39 @@ describe("createStandaloneCoreApi", () => {
     await expect(core.getNativeBuild("build-2")).resolves.toBeNull();
   });
 
+  it("lists a channel's native builds with the channel in the query", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds`, ({ request }) => {
+        queries.push(
+          Object.fromEntries(new URL(request.url).searchParams.entries()),
+        );
+        return HttpResponse.json({ data: [{ id: "build-1" }] });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.listNativeBuilds({
+        channelId: "channel:pr-130",
+        order: "desc",
+        after: "build-2",
+        limit: 20,
+      }),
+    ).resolves.toEqual([{ id: "build-1" }]);
+    await core.listNativeBuilds({ limit: 5 });
+    expect(queries).toEqual([
+      {
+        channelId: "channel:pr-130",
+        order: "desc",
+        cursor: "build-2",
+        limit: "20",
+      },
+      { limit: "5" },
+    ]);
+  });
+
   it("finds a native build by scope, and reads a scope without one as null", async () => {
     const queries: Record<string, string>[] = [];
     server.use(

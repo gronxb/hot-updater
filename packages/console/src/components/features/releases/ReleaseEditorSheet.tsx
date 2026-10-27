@@ -9,7 +9,6 @@ import {
   isValidCohort,
   normalizeCohortValue,
 } from "@hot-updater/protocol";
-import { Link } from "@tanstack/react-router";
 import { AlertTriangle, Download, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +18,7 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { ReleaseSections } from "@/components/features/FeatureSlots";
+import { ReleaseNativeBuildLink } from "@/components/features/native-builds/ReleaseNativeBuildLink";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -386,16 +386,14 @@ export function ReleaseEditorSheet({
                   <span className="text-xs text-foreground" translate="no">
                     {channelName}
                   </span>
-                  {channelName ? (
-                    <Link
-                      className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                      search={{ channel: channelName }}
-                      to="/preview"
-                    >
-                      Channel link
-                    </Link>
-                  ) : null}
                 </div>
+                {channelName ? (
+                  <ReleaseNativeBuildLink
+                    bundle={bundle}
+                    channel={channelName}
+                    release={release}
+                  />
+                ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-muted-foreground">
                     Platform

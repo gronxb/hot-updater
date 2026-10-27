@@ -13,7 +13,7 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
-import { ConsoleAccessPage } from "./ConsoleAccessPage";
+import { ConsoleAccessPage, signInCallbackURL } from "./ConsoleAccessPage";
 
 afterEach(() => {
   cleanup();
@@ -110,5 +110,57 @@ describe("ConsoleAccessPage", () => {
       headers: { "content-type": "application/json" },
       method: "POST",
     });
+  });
+
+  it("returns from sign-in to the page that asked for it", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/native-builds/019a0000-0000-7000-8000-00000000b001?patchesBefore=x",
+    );
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) =>
+        new Response(JSON.stringify({}), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ConsoleAccessPage
+        access={{ status: "unauthenticated" }}
+        providers={["github"]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue with GitHub" }),
+    );
+
+    await screen.findByRole("alert");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1].body))).toEqual({
+      callbackURL:
+        "/native-builds/019a0000-0000-7000-8000-00000000b001?patchesBefore=x",
+      provider: "github",
+    });
+    window.history.replaceState(null, "", "/");
+  });
+});
+
+describe("signInCallbackURL", () => {
+  it("keeps a path on this console", () => {
+    expect(
+      signInCallbackURL({ pathname: "/native-builds/b1", search: "?a=1" }),
+    ).toBe("/native-builds/b1?a=1");
+    expect(signInCallbackURL({ pathname: "/", search: "" })).toBe("/");
+  });
+
+  it("returns to the root for anything that could leave the console", () => {
+    for (const pathname of [
+      "//evil.example/native-builds",
+      "/\\evil.example",
+      "https://evil.example/",
+      "evil.example",
+      "",
+    ]) {
+      expect(signInCallbackURL({ pathname, search: "" })).toBe("/");
+    }
   });
 });
