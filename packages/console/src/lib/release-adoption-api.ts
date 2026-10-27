@@ -4,10 +4,11 @@ import { insightsPeriodEnd, recoveryWindows } from "./insights-recovery";
 import type { InsightsWindow } from "./insights-rpc";
 import type { HealthChart } from "./insights-search";
 import {
-  DEFAULT_ADOPTION_RELEASES,
   type AdoptionRelease,
   type BundleEventType,
   type BundleEventsSeries,
+  defaultAdoptionReleases,
+  type HealthPlatform,
   MAX_ADOPTION_RELEASES,
 } from "./release-adoption";
 import {
@@ -39,7 +40,10 @@ export type ReleaseHealthState = {
     readonly durationMs: number;
     readonly intervalMs: number;
   };
-  /** The newest bundle deployments, newest first; undefined while loading. */
+  /**
+   * The newest bundle deployments and the newest enabled ones, newest
+   * first; undefined while loading.
+   */
   readonly candidates: readonly AdoptionRelease[] | undefined;
   /** The compared bundles; undefined until they are known. */
   readonly releases: readonly ComparedBundle[] | undefined;
@@ -64,10 +68,10 @@ export function useReleaseHealth({
   focusReleaseId,
   chart,
 }: {
-  readonly platform: "ios" | "android";
+  readonly platform: HealthPlatform;
   readonly channel: string;
   readonly window: InsightsWindow;
-  /** Chosen bundles; undefined, the focus and its previous, or the newest. */
+  /** Chosen bundles; undefined, the focus and its previous, or the live ones. */
   readonly releaseIds: readonly string[] | undefined;
   readonly focusReleaseId: string | undefined;
   readonly chart: HealthChart;
@@ -83,23 +87,14 @@ export function useReleaseHealth({
     staleTime: 5 * 60_000,
   });
   const candidates = candidatesQuery.data;
-  const focusIndex =
-    focusReleaseId === undefined || candidates === undefined
-      ? -1
-      : candidates.findIndex((release) => release.releaseId === focusReleaseId);
-  // A focus among the newest has its previous bundle there too, unless it is
-  // the oldest of them.
+  // A focus and the bundle deployed before it on its platform.
   const focusQuery = useQuery({
     queryKey: ["insights", "adoption-release", scope, focusReleaseId, true],
     queryFn: () =>
       getAdoptionReleaseRpc({
         data: { ...scope, releaseId: focusReleaseId!, withPrevious: true },
       }),
-    enabled:
-      releaseIds === undefined &&
-      focusReleaseId !== undefined &&
-      candidates !== undefined &&
-      (focusIndex === -1 || focusIndex === candidates.length - 1),
+    enabled: releaseIds === undefined && focusReleaseId !== undefined,
     staleTime: Number.POSITIVE_INFINITY,
   });
   const known = new Map<string, AdoptionRelease>();
@@ -110,28 +105,24 @@ export function useReleaseHealth({
     ...(candidates ?? []),
   ])
     known.set(release.releaseId, release);
-  const newest = (list: readonly AdoptionRelease[]) =>
-    list
-      .slice(0, DEFAULT_ADOPTION_RELEASES)
-      .map((release) => release.releaseId);
+  const live = (list: readonly AdoptionRelease[]) =>
+    defaultAdoptionReleases(list, platform);
   const chosen: readonly string[] | undefined =
     releaseIds !== undefined
       ? releaseIds.slice(0, MAX_ADOPTION_RELEASES)
       : candidates === undefined
         ? undefined
         : focusReleaseId === undefined
-          ? newest(candidates)
-          : focusIndex !== -1 && focusIndex < candidates.length - 1
-            ? [focusReleaseId, candidates[focusIndex + 1]!.releaseId]
-            : focusQuery.data === undefined
-              ? undefined
-              : focusQuery.data.release === null
-                ? // A focus that is no bundle of this scope: the newest.
-                  newest(candidates)
-                : [
-                    focusQuery.data.release.releaseId,
-                    focusQuery.data.previous?.releaseId,
-                  ].filter((id) => id !== undefined);
+          ? live(candidates)
+          : focusQuery.data === undefined
+            ? undefined
+            : focusQuery.data.release === null
+              ? // A focus that is no bundle of this scope: the live ones.
+                live(candidates)
+              : [
+                  focusQuery.data.release.releaseId,
+                  focusQuery.data.previous?.releaseId,
+                ].filter((id) => id !== undefined);
   // A chosen bundle the newest leave out, as from a copied link.
   const unknown = (chosen ?? []).filter(
     (releaseId) => !known.has(releaseId) && releaseId !== focusReleaseId,
@@ -159,7 +150,8 @@ export function useReleaseHealth({
   const seriesQueries = useQueries({
     queries: reads.map(({ release, type }) => {
       const data = {
-        ...scope,
+        platform: release.platform,
+        channel,
         window,
         endMs,
         bundleId: release.bundleId,

@@ -8,6 +8,7 @@ import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
 import {
   ADOPTION_CANDIDATES,
   type AdoptionRelease,
+  type HealthPlatform,
   type AdoptionReleaseInput,
   type AdoptionReleaseResult,
   type AdoptionReleasesInput,
@@ -17,31 +18,55 @@ import {
   readAdoptionReleasesInput,
   readBundleEventsInput,
 } from "../release-adoption";
+import { addReleaseReachability } from "./releaseReachability";
 
 type ReleaseReads = Pick<
   HotUpdaterCoreApi,
-  "findChannelByName" | "getRelease" | "listReleases"
+  "findChannelByName" | "getRelease" | "getReleaseCatalogRow" | "listReleases"
 >;
 
 /** Rows read past a focused release to find the bundle before it. */
 const PREVIOUS_ROWS = 4;
 
-const labelOf = (release: ReleaseRow): AdoptionRelease => ({
-  releaseId: release.id,
-  bundleId: release.bundle_id!,
-  deployedAtMs: release.created_at_ms,
-  targetAppVersion: release.target_app_version,
-  enabled: release.enabled,
-  revision: release.revision,
-});
-
-// A release without a bundle has nothing to apply.
-const bundles = (releases: readonly ReleaseRow[]) =>
-  releases.filter((release) => release.bundle_id).map(labelOf);
+const platformsOf = (platform: HealthPlatform) =>
+  platform === "all" ? (["ios", "android"] as const) : [platform];
 
 /**
- * The newest bundle deployments of a channel and platform, newest first: one
- * read of the channel and one of its newest releases.
+ * Labels the releases that have a bundle, a release without one having
+ * nothing to apply. A bundle is live when its scope's catalog still serves
+ * it: one catalog read per scope of the enabled ones.
+ */
+const labelled = async (
+  core: Pick<ReleaseReads, "getReleaseCatalogRow">,
+  releases: readonly ReleaseRow[],
+): Promise<AdoptionRelease[]> => {
+  const bundles = releases.filter((release) => release.bundle_id);
+  const live = new Set(
+    (
+      await addReleaseReachability(
+        core,
+        bundles.filter((release) => release.enabled),
+      )
+    )
+      .filter((release) => !release.currentlyUnreachable)
+      .map((release) => release.id),
+  );
+  return bundles.map((release) => ({
+    releaseId: release.id,
+    bundleId: release.bundle_id!,
+    platform: release.platform,
+    deployedAtMs: release.created_at_ms,
+    targetAppVersion: release.target_app_version,
+    enabled: release.enabled,
+    live: live.has(release.id),
+    revision: release.revision,
+  }));
+};
+
+/**
+ * A channel's newest bundle deployments, of one platform or both, newest
+ * first: per platform, its newest releases and its newest enabled ones, so
+ * a live bundle older than the newest still shows.
  */
 export async function listAdoptionReleases(
   core: ReleaseReads,
@@ -50,18 +75,37 @@ export async function listAdoptionReleases(
   const { platform, channel } = readAdoptionReleasesInput(input);
   const row = await core.findChannelByName(channel);
   if (row === null) return [];
-  return bundles(
-    await core.listReleases({
-      filter: { kind: "channelPlatform", channelId: row.id, platform },
-      order: "desc",
-      limit: ADOPTION_CANDIDATES,
-    }),
+  const lists = await Promise.all(
+    platformsOf(platform).flatMap((each) =>
+      [{}, { enabled: true }].map((enabled) =>
+        core.listReleases({
+          filter: {
+            kind: "channelPlatform",
+            channelId: row.id,
+            platform: each,
+            ...enabled,
+          },
+          order: "desc",
+          limit: ADOPTION_CANDIDATES,
+        }),
+      ),
+    ),
+  );
+  const releases = new Map(
+    lists.flat().map((release) => [release.id, release]),
+  );
+  return labelled(
+    core,
+    [...releases.values()].sort(
+      (left, right) => right.created_at_ms - left.created_at_ms,
+    ),
   );
 }
 
 /**
- * One bundle deployment of the channel and platform, for a focus the newest
- * ones leave out, and with `withPrevious` the bundle deployed before it.
+ * One bundle deployment of the channel, for a focus the newest ones leave
+ * out, and with `withPrevious` the bundle deployed before it on its
+ * platform.
  */
 export async function getAdoptionRelease(
   core: ReleaseReads,
@@ -77,19 +121,24 @@ export async function getAdoptionRelease(
     row === null ||
     release === null ||
     !release.bundle_id ||
-    release.platform !== platform ||
+    (platform !== "all" && release.platform !== platform) ||
     release.channel_id !== row.id
   )
     return withPrevious ? { release: null, previous: null } : { release: null };
-  if (!withPrevious) return { release: labelOf(release) };
+  if (!withPrevious) return { release: (await labelled(core, [release]))[0]! };
   // Newest first, `after` a release lists older ones.
   const older = await core.listReleases({
-    filter: { kind: "channelPlatform", channelId: row.id, platform },
+    filter: {
+      kind: "channelPlatform",
+      channelId: row.id,
+      platform: release.platform,
+    },
     order: "desc",
     after: release.id,
     limit: PREVIOUS_ROWS,
   });
-  return { release: labelOf(release), previous: bundles(older)[0] ?? null };
+  const [label, previous] = await labelled(core, [release, ...older]);
+  return { release: label!, previous: previous ?? null };
 }
 
 /**

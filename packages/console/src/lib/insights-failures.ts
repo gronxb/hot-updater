@@ -10,7 +10,8 @@ import type { InsightsEventRow } from "./insights-view";
 export type { InsightsFailureBreakdown };
 
 export type UpdateFailuresInput = {
-  readonly platform: "ios" | "android";
+  /** One platform's failures, or both platforms' together. */
+  readonly platform: "all" | "ios" | "android";
   readonly channel: string;
   /** A release's failures; the channel's without it. */
   readonly releaseId?: string;
@@ -34,7 +35,9 @@ export function readUpdateFailuresInput(
 ): UpdateFailuresInput {
   if (
     !input ||
-    (input.platform !== "ios" && input.platform !== "android") ||
+    (input.platform !== "all" &&
+      input.platform !== "ios" &&
+      input.platform !== "android") ||
     typeof input.channel !== "string" ||
     !input.channel.trim() ||
     input.channel.length > 1_024 ||

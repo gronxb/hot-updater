@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 
-import { getUpdateFailuresReport } from "./updateFailures";
+import { getUpdateFailuresReport, mergeUpdateFailures } from "./updateFailures";
 
 const HOUR = 3_600_000;
 const failures = {
@@ -91,5 +91,115 @@ describe("update failures report", () => {
         { platform: "ios", channel: "production" },
       ),
     ).rejects.toThrow("Choose a platform, channel, and time window.");
+  });
+
+  it("reads both platforms, one read each, as one report", async () => {
+    const ios = {
+      ...failures,
+      coverage: { kind: "complete" as const, sinceMs: 2 * HOUR },
+      checks: { failures: 1, failedInstallations: 1, activeInstallations: 40 },
+      breakdown: [
+        {
+          stage: "download",
+          reason: "network",
+          events: 2,
+          details: [
+            {
+              resource: "bundle",
+              httpStatus: null,
+              originCode: null,
+              transport: "fetch",
+              events: 2,
+            },
+          ],
+        },
+      ],
+    };
+    const android = {
+      ...failures,
+      measuredAtMs: 90,
+      failedUpdates: 5,
+      coverage: { kind: "complete" as const, sinceMs: 3 * HOUR },
+      checks: { failures: 2, failedInstallations: 2, activeInstallations: 60 },
+      breakdown: [
+        {
+          stage: "apply",
+          reason: "disk",
+          events: 3,
+          details: [],
+        },
+        {
+          stage: "download",
+          reason: "network",
+          events: 2,
+          details: [
+            {
+              resource: "bundle",
+              httpStatus: null,
+              originCode: null,
+              transport: "fetch",
+              events: 1,
+            },
+            {
+              resource: "patch",
+              httpStatus: 404,
+              originCode: null,
+              transport: "fetch",
+              events: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const getUpdateFailures = vi.fn(
+      async ({ platform }: { platform: "ios" | "android" }) =>
+        platform === "ios" ? ios : android,
+    );
+    const report = await getUpdateFailuresReport(
+      { getUpdateFailures },
+      { platform: "all", channel: "production", window: "24h" },
+      30 * HOUR + 5,
+    );
+    expect(getUpdateFailures.mock.calls.map(([input]) => input)).toEqual(
+      ["ios", "android"].map((platform) => ({
+        platform,
+        channel: "production",
+        timeRange: { start: 7 * HOUR, end: 31 * HOUR },
+      })),
+    );
+    expect(report).toEqual({
+      // Complete from where both are.
+      coverage: { kind: "complete", sinceMs: 3 * HOUR },
+      measuredAtMs: 90,
+      failedUpdates: 7,
+      failedInstallations: 4,
+      downloads: 16,
+      patchDownloads: 6,
+      patchFallbacks: 2,
+      checks: { failures: 3, failedInstallations: 3, activeInstallations: 100 },
+      breakdown: [
+        {
+          stage: "download",
+          reason: "network",
+          events: 4,
+          details: [
+            expect.objectContaining({ resource: "bundle", events: 3 }),
+            expect.objectContaining({ resource: "patch", events: 1 }),
+          ],
+        },
+        { stage: "apply", reason: "disk", events: 3, details: [] },
+      ],
+      startMs: 7 * HOUR,
+      endMs: 31 * HOUR,
+    });
+  });
+
+  it("calls a merged period partial when either platform's is", () => {
+    expect(
+      mergeUpdateFailures([
+        failures,
+        { ...failures, coverage: { kind: "partial", sinceMs: null } },
+      ]).coverage,
+    ).toEqual({ kind: "partial", sinceMs: null });
   });
 });
