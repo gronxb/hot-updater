@@ -10,10 +10,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import {
-  HashValueDisplay,
-  shortenIdentifier,
-} from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import {
@@ -47,6 +43,7 @@ import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 import { CommitLink } from "./CommitLink";
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
+import { ShortHash } from "./ShortHash";
 import { StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
@@ -166,7 +163,7 @@ function LoadingRows() {
       <TableCell className="hidden md:table-cell">
         <Skeleton className="h-5 w-20" />
       </TableCell>
-      <TableCell className="hidden lg:table-cell">
+      <TableCell className="hidden xl:table-cell">
         <Skeleton className="h-3.5 w-28" />
       </TableCell>
       <TableCell className="hidden xl:table-cell">
@@ -225,10 +222,17 @@ function BuildRow({
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span>{target.label}</span>
-            <HashValueDisplay
-              maxLength={target.label === "App version" ? 24 : 12}
-              value={target.value}
-            />
+            {build.fingerprint_hash === null ? (
+              <span className="font-mono text-foreground" translate="no">
+                {target.value}
+              </span>
+            ) : (
+              <ShortHash
+                label="fingerprint"
+                length={12}
+                value={build.fingerprint_hash}
+              />
+            )}
             {!build.build_number ? null : (
               <span className="tabular-nums" translate="no">
                 · build {build.build_number}
@@ -237,35 +241,45 @@ function BuildRow({
             <span className="md:hidden" translate="no">
               · {channel}
             </span>
+            {build.git_commit_hash === null ? null : (
+              <span className="inline-flex items-center gap-1 xl:hidden">
+                · commit <CommitLink hash={build.git_commit_hash} />
+              </span>
+            )}
+          </div>
+          {/* Below xl the column hides, so the whole ID shows here. */}
+          <div className="text-xs text-muted-foreground xl:hidden">
+            Built-in bundle{" "}
+            <span
+              className="font-mono [overflow-wrap:anywhere] text-foreground"
+              translate="no"
+            >
+              {build.min_bundle_id}
+            </span>
           </div>
         </div>
       </TableCell>
       <TableCell className="hidden md:table-cell">
         <button
           aria-label={`Show the builds that embed ${channel}`}
-          className="max-w-full rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           onClick={(event) => {
             event.stopPropagation();
             onChannel(channel);
           }}
           type="button"
         >
-          <Badge
-            className="max-w-full truncate"
-            translate="no"
-            variant="outline"
-          >
+          <Badge className="whitespace-nowrap" translate="no" variant="outline">
             {channel}
           </Badge>
         </button>
       </TableCell>
-      <TableCell className="hidden lg:table-cell">
+      <TableCell className="hidden xl:table-cell">
         <span
           className="font-mono text-xs text-muted-foreground"
-          title={build.min_bundle_id}
           translate="no"
         >
-          {shortenIdentifier(build.min_bundle_id, 24)}
+          {build.min_bundle_id}
         </span>
       </TableCell>
       <TableCell className="hidden xl:table-cell">
@@ -348,21 +362,17 @@ export function NativeBuildsTable({
 
   return (
     <>
-      <Table
-        aria-busy={builds.isPlaceholderData}
-        aria-label="Native builds"
-        className="table-fixed"
-      >
+      <Table aria-busy={builds.isPlaceholderData} aria-label="Native builds">
         <TableHeader>
           <TableRow>
             <TableHead>Build</TableHead>
-            <TableHead className="hidden w-32 md:table-cell">Channel</TableHead>
-            <TableHead className="hidden w-56 lg:table-cell">
+            <TableHead className="hidden md:table-cell">Channel</TableHead>
+            <TableHead className="hidden xl:table-cell">
               Built-in bundle
             </TableHead>
-            <TableHead className="hidden w-24 xl:table-cell">Commit</TableHead>
-            <TableHead className="hidden w-32 sm:table-cell">Created</TableHead>
-            <TableHead className="w-32 text-right">
+            <TableHead className="hidden xl:table-cell">Commit</TableHead>
+            <TableHead className="hidden sm:table-cell">Created</TableHead>
+            <TableHead className="text-right">
               <span className="sr-only">Actions</span>
             </TableHead>
           </TableRow>

@@ -2,7 +2,7 @@ import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   NativeBuildDetail,
@@ -139,8 +139,17 @@ describe("NativeBuildsTable", () => {
       "href",
       expect.stringContaining(`/native-builds/${row.id}`),
     );
-    expect(screen.getByTitle(row.min_bundle_id).textContent).toBe(
-      "019a0000-0000-7000-8…0002",
+    // The whole built-in bundle ID, in its column and, for narrow widths,
+    // under the build: never cut.
+    expect(screen.getAllByText(row.min_bundle_id)).toHaveLength(2);
+    expect(document.body.textContent).not.toContain("…");
+    // The commit as git shows it, the fingerprint by its prefix; the full
+    // values on hover.
+    expect(screen.getAllByTitle("abcdef1234567")[0]!.textContent).toBe(
+      "abcdef1",
+    );
+    expect(screen.getByTitle(row.fingerprint_hash!).textContent).toBe(
+      "1a2b3c4d5e6f",
     );
     expect(screen.getByText("50.0 MB")).toBeTruthy();
     // The channel comes from the ID, with no channel read.
@@ -299,15 +308,70 @@ describe("InstallCard", () => {
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
   });
 
+  it.each([
+    [
+      "apk",
+      "android",
+      "app-release.apk",
+      /Scan with an Android phone's camera, then open the APK/,
+    ],
+    [
+      "ipa",
+      "ios",
+      "App.ipa",
+      /Scan to download the \.ipa\. It installs only on devices its signing profile allows/,
+    ],
+    [
+      "aab",
+      "android",
+      "app-release.aab",
+      /Scan to download the \.aab\. It installs through Google Play or bundletool/,
+    ],
+    [
+      "app",
+      "ios",
+      "HotUpdaterExample.app.zip",
+      /Scan to download the \.app\.zip on a Mac/,
+    ],
+  ] as const)(
+    "shows the download QR code of an %s, with what scanning it gets",
+    (kind, platform, file, caption) => {
+      const row = build({
+        platform,
+        artifact_kind: kind,
+        artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
+      });
+      downloadUrlQuery.mockReturnValue({
+        data: { url: `https://r2.example.com/${file}?sig=1` },
+      });
+      render(<InstallCard build={row} />);
+
+      expect(
+        screen.getByRole("img", { name: `Download ${file}` }),
+      ).toBeTruthy();
+      expect(downloadUrlQuery).toHaveBeenCalledWith(row.id, true);
+      expect(screen.getByText(caption)).toBeTruthy();
+    },
+  );
+
   it("shows no QR code when the storage has no download URL a phone can open", () => {
     downloadUrlQuery.mockReturnValue({ data: { url: null } });
-    render(<InstallCard build={build()} />);
+    render(
+      <InstallCard
+        build={build({
+          platform: "ios",
+          artifact_kind: "ipa",
+          artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+        })}
+      />,
+    );
 
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByText(/there is no QR code/)).toBeTruthy();
   });
 
-  it("gives a simulator app its install command, with no QR code and no download URL read", () => {
+  it("keeps a simulator app's install command beside its QR code", () => {
+    downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/app.zip" } });
     render(
       <InstallCard
         build={build({
@@ -324,11 +388,10 @@ describe("InstallCard", () => {
         "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
       ),
     ).toBeTruthy();
-    expect(screen.queryByRole("img")).toBeNull();
-    expect(downloadUrlQuery).not.toHaveBeenCalled();
   });
 
-  it("points an IPA's testers to TestFlight, with no QR code", () => {
+  it("keeps an IPA's TestFlight command beside its QR code", () => {
+    downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/App.ipa" } });
     render(
       <InstallCard
         build={build({
@@ -341,13 +404,15 @@ describe("InstallCard", () => {
 
     expect(screen.getByText(/upload it to TestFlight/)).toBeTruthy();
     expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
-    expect(screen.queryByRole("img")).toBeNull();
-    expect(downloadUrlQuery).not.toHaveBeenCalled();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
   });
 });
 
 describe("a submitted build's page", () => {
+  beforeEach(() => {
+    downloadUrlQuery.mockReturnValue({ data: undefined, isError: false });
+  });
+
   it("says where the store has it instead of how to upload it", () => {
     const ipa = build({
       platform: "ios",

@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CircleCheck, History } from "lucide-react";
 
-import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +12,7 @@ import {
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
+import { ShortHash } from "./ShortHash";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
 function Row({
@@ -119,10 +119,17 @@ export function BuiltInBundleCard({
               <span className="text-xs text-muted-foreground">
                 · {target.label}
               </span>
-              <HashValueDisplay
-                maxLength={target.label === "App version" ? 24 : 12}
-                value={target.value}
-              />
+              {build.fingerprint_hash === null ? (
+                <span className="font-mono text-xs" translate="no">
+                  {target.value}
+                </span>
+              ) : (
+                <ShortHash
+                  label="fingerprint"
+                  length={12}
+                  value={build.fingerprint_hash}
+                />
+              )}
             </span>
           </Row>
           {!build.build_number ? null : (

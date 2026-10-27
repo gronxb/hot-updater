@@ -2,7 +2,6 @@ import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 
-import { shortenIdentifier } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useReleaseNativeBuildQuery } from "@/lib/api";
@@ -53,14 +52,14 @@ export function ReleaseNativeBuildLink({
       ) : build ? (
         <>
           <Link
-            className="inline-flex items-center gap-0.5 text-xs text-foreground underline-offset-4 hover:underline"
+            className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-foreground underline-offset-4 hover:underline"
             params={{ buildId: build.id }}
             to="/native-builds/$buildId"
           >
             {platformLabel(build.platform)}{" "}
             {nativeBuildArtifacts[build.artifact_kind].label} ·{" "}
             <span className="font-mono" translate="no">
-              {shortenIdentifier(build.min_bundle_id, 20)}
+              {build.min_bundle_id}
             </span>
             <ArrowUpRight aria-hidden="true" className="size-3" />
           </Link>

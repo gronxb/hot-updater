@@ -163,9 +163,9 @@ export function PatchesCard({
             <TableBody>
               {patches.data.map((patch) => (
                 <TableRow key={patch.bundleId}>
-                  <TableCell className="py-3">
+                  <TableCell className="py-3 whitespace-normal">
                     <Link
-                      className="block truncate font-mono text-xs underline-offset-4 hover:underline"
+                      className="block font-mono text-xs [overflow-wrap:anywhere] underline-offset-4 hover:underline"
                       search={{ bundleId: patch.bundleId }}
                       title={patch.bundleId}
                       to="/"

@@ -84,7 +84,7 @@ export function NativeBuildDetailPage({
               className="size-3.5 shrink-0 text-muted-foreground"
               platform={detail.build.platform}
             />
-            <span className="truncate">
+            <span className="min-w-0 [overflow-wrap:anywhere]">
               {platformLabel(detail.build.platform)}{" "}
               {nativeBuildArtifacts[detail.build.artifact_kind].label} ·{" "}
               <span translate="no">{detail.channel}</span>
