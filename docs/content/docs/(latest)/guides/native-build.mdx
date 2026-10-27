@@ -13,13 +13,13 @@ recorded with your server, where they serve as a patch base, a preview build,
 and a Console install link. Each build compiles in the values that select its
 OTA updates, and prints them with the artifact:
 
-| Value         | What the build compiles in                                                                          |
-| ------------- | --------------------------------------------------------------------------------------------------- |
-| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                           |
-| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)   |
-| Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint) |
-| App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version) |
-| Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                     |
+| Value         | What the build compiles in                                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                                                                                 |
+| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)                                                         |
+| Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint)                                                       |
+| App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version)                                                       |
+| Channel       | The [default channel](/docs/guides/channel-management): what `channel set` wrote, or in an Expo project the `@hot-updater/expo` config plugin's `channel` |
 
 The build reads the app version and channel from the artifact it built, so
 the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
@@ -396,8 +396,20 @@ iOS scheme with `installPods: true`, after `pod install`, so the key holds the
   files except what builds write (`build`, `Pods` but its `Manifest.lock`,
   `.gradle`, `.cxx`), a generated Xcode project by its structure, whatever
   object IDs `pod install` gives it,
-  `.env*` files, the package manager's install state, and the files of each
-  native package installed in `node_modules`;
+  `.env*` files, the package manager's install state, the files of each
+  native package installed in `node_modules`, and the ignored files of each
+  package of the repository the app depends on, such as generated codegen
+  sources or a built `lib/`;
+- what autolinking links, asked with the command the native project runs:
+  React Native CLI's `config` (`rock config` with Rock, and
+  `expo-modules-autolinking react-native-config` in an Expo app), and
+  `expo-modules-autolinking resolve` for the Expo modules. The config it
+  prints counts without this machine's directories, so linking a package,
+  dropping one, or changing a `sourceDir`, podspec, or script phase rebuilds;
+  and each linked package counts file by file, wherever autolinking finds it
+  and wherever its native code is: all its files in `node_modules` or outside
+  the repository, its ignored files in the repository, never what builds
+  write or the other platform's folder;
 - the scheme's settings and the files it names, such as `xcconfig` and
   `exportOptionsPlist`, the artifact's kind, the channel, and the fingerprint
   or app version;
@@ -441,7 +453,8 @@ With the key, the CLI looks for a build to reuse before it builds:
 This machine keeps the newest build of each platform and scheme in
 `<cacheDir>/native-build/<platform>/<scheme>`, which the next build replaces;
 `cacheDir: null` turns that copy off. A build whose inputs no key can cover
-always builds, and says why: a Debug build, a project outside git, pods
+always builds, and says why: a Debug build, a project outside git,
+autolinking that can't run, pods
 without `ios/Podfile.lock` on a scheme that doesn't set `installPods`, Swift packages without `Package.resolved`, a
 dynamic Gradle dependency version (`1.+`) without a `gradle.lockfile`, a file
 that reads environment variables by a computed name, an export method that
