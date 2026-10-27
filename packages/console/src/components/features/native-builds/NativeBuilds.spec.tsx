@@ -2,7 +2,7 @@ import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   NativeBuildDetail,
@@ -73,6 +73,10 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   git_commit_hash: "abcdef1234567",
   created_at_ms: 0,
   build_key: null,
+  build_number: null,
+  submitted_to: null,
+  submitted_at_ms: null,
+  submitted_version: null,
   ...overrides,
 });
 
@@ -118,6 +122,33 @@ describe("NativeBuildsTable", () => {
     refetch: vi.fn(),
   });
 
+  it.each([
+    [
+      "zero random bits, as builds issue it",
+      "019a1b2c-3d4e-7000-8000-000000000000",
+    ],
+    [
+      "an earlier CLI's iOS platform byte",
+      "019a1b2c-3d4e-7000-8000-01a1b2c3d4e5",
+    ],
+    [
+      "an earlier CLI's Android platform byte",
+      "019a1b2c-3d4e-7000-8000-02a1b2c3d4e5",
+    ],
+  ])("shows a built-in bundle ID with %s in full", (_form, minBundleId) => {
+    const row = build({ min_bundle_id: minBundleId });
+    render(
+      <NativeBuildsTable
+        builds={builds([row])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+    expect(screen.getAllByText(minBundleId)).toHaveLength(2);
+  });
+
   it("lists each build with its decoded channel and built-in bundle, and opens its page", () => {
     const row = build();
     const onChannel = vi.fn();
@@ -135,8 +166,17 @@ describe("NativeBuildsTable", () => {
       "href",
       expect.stringContaining(`/native-builds/${row.id}`),
     );
-    expect(screen.getByTitle(row.min_bundle_id).textContent).toBe(
-      "019a0000-0000-7000-8…0002",
+    // The whole built-in bundle ID, in its column and, for narrow widths,
+    // under the build: never cut.
+    expect(screen.getAllByText(row.min_bundle_id)).toHaveLength(2);
+    expect(document.body.textContent).not.toContain("…");
+    // The commit as git shows it, the fingerprint by its prefix; the full
+    // values on hover.
+    expect(screen.getAllByTitle("abcdef1234567")[0]!.textContent).toBe(
+      "abcdef1",
+    );
+    expect(screen.getByTitle(row.fingerprint_hash!).textContent).toBe(
+      "1a2b3c4d5e6f",
     );
     expect(screen.getByText("50.0 MB")).toBeTruthy();
     // The channel comes from the ID, with no channel read.
@@ -162,6 +202,49 @@ describe("NativeBuildsTable", () => {
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
   });
 
+  it("shows the build number the artifact reports, from the row", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build({ build_number: "66" })])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(screen.getAllByRole("row")[1]!.textContent).toContain("build 66");
+  });
+
+  it("marks a build a store took with its track and the store's label, from the row alone", () => {
+    const submitted = build({
+      id: id(5),
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      submitted_to: "testflight",
+      submitted_at_ms: Date.now() - 3 * 86_400_000,
+      submitted_version: "1.7.0 (66)",
+    });
+    render(
+      <NativeBuildsTable
+        builds={builds([submitted, build()])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const [, submittedRow, plainRow] = screen.getAllByRole("row");
+    expect(plainRow!.textContent).not.toContain("build ");
+    expect(submittedRow!.textContent).toContain("TestFlight");
+    expect(submittedRow!.textContent).toContain("1.7.0 (66)");
+    expect(submittedRow!.textContent).toContain("3 days ago");
+    // A build no store took shows no store.
+    expect(plainRow!.textContent).not.toMatch(/TestFlight|Play internal/);
+  });
+
   it("gives an empty registry the command that registers a build", () => {
     render(
       <NativeBuildsTable
@@ -174,6 +257,16 @@ describe("NativeBuildsTable", () => {
     );
 
     expect(screen.getByText("No native builds")).toBeTruthy();
+    // A build made elsewhere is tracked with the CLI, not uploaded here.
+    expect(
+      screen.getByText(
+        "npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Import guide/ })).toHaveProperty(
+      "href",
+      "https://hot-updater.dev/docs/guides/native-build#import-a-build-made-elsewhere",
+    );
     expect(
       screen.getByRole("link", { name: /Native build guide/ }),
     ).toHaveProperty(
@@ -242,15 +335,70 @@ describe("InstallCard", () => {
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
   });
 
+  it.each([
+    [
+      "apk",
+      "android",
+      "app-release.apk",
+      /Scan with an Android phone's camera, then open the APK/,
+    ],
+    [
+      "ipa",
+      "ios",
+      "App.ipa",
+      /Scan to download the \.ipa\. It installs only on devices its signing profile allows/,
+    ],
+    [
+      "aab",
+      "android",
+      "app-release.aab",
+      /Scan to download the \.aab\. It installs through Google Play or bundletool/,
+    ],
+    [
+      "app",
+      "ios",
+      "HotUpdaterExample.app.zip",
+      /Scan to download the \.app\.zip on a Mac/,
+    ],
+  ] as const)(
+    "shows the download QR code of an %s, with what scanning it gets",
+    (kind, platform, file, caption) => {
+      const row = build({
+        platform,
+        artifact_kind: kind,
+        artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
+      });
+      downloadUrlQuery.mockReturnValue({
+        data: { url: `https://r2.example.com/${file}?sig=1` },
+      });
+      render(<InstallCard build={row} />);
+
+      expect(
+        screen.getByRole("img", { name: `Download ${file}` }),
+      ).toBeTruthy();
+      expect(downloadUrlQuery).toHaveBeenCalledWith(row.id, true);
+      expect(screen.getByText(caption)).toBeTruthy();
+    },
+  );
+
   it("shows no QR code when the storage has no download URL a phone can open", () => {
     downloadUrlQuery.mockReturnValue({ data: { url: null } });
-    render(<InstallCard build={build()} />);
+    render(
+      <InstallCard
+        build={build({
+          platform: "ios",
+          artifact_kind: "ipa",
+          artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+        })}
+      />,
+    );
 
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByText(/there is no QR code/)).toBeTruthy();
   });
 
-  it("gives a simulator app its install command, with no QR code and no download URL read", () => {
+  it("keeps a simulator app's install command beside its QR code", () => {
+    downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/app.zip" } });
     render(
       <InstallCard
         build={build({
@@ -267,11 +415,10 @@ describe("InstallCard", () => {
         "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
       ),
     ).toBeTruthy();
-    expect(screen.queryByRole("img")).toBeNull();
-    expect(downloadUrlQuery).not.toHaveBeenCalled();
   });
 
-  it("points an IPA's testers to TestFlight, with no QR code", () => {
+  it("keeps an IPA's TestFlight command beside its QR code", () => {
+    downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/App.ipa" } });
     render(
       <InstallCard
         build={build({
@@ -284,9 +431,68 @@ describe("InstallCard", () => {
 
     expect(screen.getByText(/upload it to TestFlight/)).toBeTruthy();
     expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
-    expect(screen.queryByRole("img")).toBeNull();
-    expect(downloadUrlQuery).not.toHaveBeenCalled();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
+  });
+});
+
+describe("a submitted build's page", () => {
+  beforeEach(() => {
+    downloadUrlQuery.mockReturnValue({ data: undefined, isError: false });
+  });
+
+  it("says where the store has it instead of how to upload it", () => {
+    const ipa = build({
+      platform: "ios",
+      artifact_kind: "ipa",
+      artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      submitted_to: "testflight",
+      submitted_at_ms: Date.now(),
+      submitted_version: "1.7.0 (66)",
+    });
+    render(
+      <>
+        <InstallCard build={ipa} />
+        <BuiltInBundleCard
+          detail={detail({ build: ipa, newestInScope: ipa })}
+        />
+      </>,
+    );
+
+    expect(screen.getByText(/On TestFlight as/).textContent).toContain(
+      "1.7.0 (66)",
+    );
+    expect(screen.queryByText("npx hot-updater testflight")).toBeNull();
+    expect(screen.getByText("Store")).toBeTruthy();
+  });
+
+  it("shows no store line for a build no store took", () => {
+    render(<BuiltInBundleCard detail={detail()} />);
+
+    expect(screen.queryByText("Store")).toBeNull();
+  });
+
+  it("names Google Play for a submitted AAB", () => {
+    render(
+      <InstallCard
+        build={build({
+          artifact_kind: "aab",
+          artifact_storage_uri:
+            "r2://bucket/native-builds/android/019a/app.aab",
+          submitted_to: "play-internal",
+          submitted_at_ms: Date.now(),
+          submitted_version: "1.7.0 (66)",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Submitted to Google Play internal testing as/)
+        .textContent,
+    ).toContain("1.7.0 (66)");
+    // A draft release isn't installable yet, so nothing says it is.
+    expect(screen.getByText(/Submitted to Google Play/).textContent).toContain(
+      "once its release is rolled out",
+    );
   });
 });
 

@@ -41,6 +41,7 @@ import { requireConsoleFeature } from "@/lib/console-features-api";
 import { useInsightsRetention } from "@/lib/insights-api";
 import { keepsTwelveMonths } from "@/lib/insights-retention";
 import {
+  DEFAULT_INSIGHTS_CHANNEL,
   validateDistributionSearch,
   validateInsightsSearch,
 } from "@/lib/insights-search";
@@ -85,7 +86,7 @@ function DistributionPage() {
   const navigate = Route.useNavigate();
   const input = {
     platform: search.platform ?? "all",
-    channel: search.channel ?? "production",
+    channel: search.channel ?? DEFAULT_INSIGHTS_CHANNEL,
     appVersion: search.appVersion,
     window: search.window ?? "24h",
   };

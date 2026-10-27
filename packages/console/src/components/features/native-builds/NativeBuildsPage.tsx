@@ -17,6 +17,7 @@ import {
   useNativeBuildsQuery,
 } from "@/lib/api";
 
+import { ImportBuildDialog } from "./ImportBuild";
 import { NativeBuildsTable } from "./NativeBuildsTable";
 
 /**
@@ -115,9 +116,12 @@ export function NativeBuildsPage({
                 </SelectGroup>
               </SelectContent>
             </Select>
+            <div className="ml-auto">
+              <ImportBuildDialog />
+            </div>
             <Button
               aria-label="Refresh native builds"
-              className="ml-auto size-11 sm:size-7"
+              className="size-11 sm:size-7"
               disabled={builds.isLoading}
               onClick={() => void builds.refetch()}
               size="icon-sm"

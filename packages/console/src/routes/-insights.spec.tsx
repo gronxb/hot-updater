@@ -93,16 +93,33 @@ const reportFor = (input: AppUsageInput): AppUsageReport => {
   };
 };
 const HOUR = 3_600_000;
-const release = (releaseId: string, deployedAtMs: number) => ({
+const release = (
+  releaseId: string,
+  deployedAtMs: number,
+  overrides: {
+    platform?: "ios" | "android";
+    enabled?: boolean;
+    live?: boolean;
+  } = {},
+) => ({
   releaseId,
   bundleId: `bundle-${releaseId}`,
+  platform: "ios" as const,
   deployedAtMs,
   targetAppVersion: "1.0.0",
   enabled: true,
+  live: true,
   revision: 1,
+  ...overrides,
 });
 type EventsCall = {
-  data: { bundleId: string; type: string; window: string; endMs: number };
+  data: {
+    platform: string;
+    bundleId: string;
+    type: string;
+    window: string;
+    endMs: number;
+  };
 };
 /** Release health's reads so far, as "bundle type window". */
 const eventReads = () =>
@@ -111,10 +128,13 @@ const eventReads = () =>
     return `${data.bundleId} ${data.type} ${data.window}`;
   });
 function renderPage() {
+  // Newest first: a rolled-back iOS bundle, then what devices get now, and
+  // an older iOS bundle the newer one took every device from.
   mocks.releases.mockResolvedValue([
-    release("release-new", 10 * HOUR),
+    release("release-new", 10 * HOUR, { enabled: false, live: false }),
     release("release-old", 2 * HOUR),
-    release("release-oldest", HOUR),
+    release("release-android", (3 * HOUR) / 2, { platform: "android" }),
+    release("release-oldest", HOUR, { live: false }),
   ]);
   mocks.release.mockResolvedValue({
     release: release("release-a", HOUR / 2),
@@ -152,7 +172,7 @@ async function selectOption(label: string, option: string) {
 }
 
 describe("Insights dashboard", () => {
-  it("keeps reporting periods independent while applying one filter form to both panels", async () => {
+  it("keeps reporting periods independent while each filter applies to every panel as it changes", async () => {
     mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
       reportFor(data),
     );
@@ -171,7 +191,7 @@ describe("Insights dashboard", () => {
     expect(
       screen.getAllByRole("tab", { name: "24 hours", selected: true }),
     ).toHaveLength(2);
-    expect(eventReads()).toContain("bundle-release-new LAUNCHED 24h");
+    expect(eventReads()).toContain("bundle-release-old LAUNCHED 24h");
     fireEvent.click(
       within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
@@ -179,7 +199,7 @@ describe("Insights dashboard", () => {
       ),
     );
     await waitFor(() =>
-      expect(eventReads()).toContain("bundle-release-new LAUNCHED 7d"),
+      expect(eventReads()).toContain("bundle-release-old LAUNCHED 7d"),
     );
     expect(mocks.usage).toHaveBeenCalledTimes(1);
     expect(
@@ -216,12 +236,21 @@ describe("Insights dashboard", () => {
         .getByRole("progressbar", { name: "2.0.0 share" })
         .getAttribute("aria-valuetext"),
     ).toContain("30 installations");
-    const previousEventCalls = mocks.events.mock.calls.length;
-    const previousCalls = mocks.usage.mock.calls.length;
-    await selectOption("Usage platform", "Android");
+    // Nothing narrowed yet: every report reads production, both platforms.
+    expect(screen.queryByRole("button", { name: "Reset filters" })).toBeNull();
+    await selectOption("Platform", "Android");
+    await waitFor(() =>
+      expect(mocks.usage).toHaveBeenLastCalledWith({
+        data: { platform: "android", channel: "production", window: "30d" },
+      }),
+    );
     await selectOption("App version", "1.0.0");
-    act(() => screen.getByLabelText("Channel").focus());
-    fireEvent.input(screen.getByLabelText("Channel"), {
+    fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search channels",
+    });
+    act(() => search.focus());
+    fireEvent.input(search, {
       inputType: "insertText",
       target: { value: "bet" },
     });
@@ -230,13 +259,6 @@ describe("Insights dashboard", () => {
       fireEvent.pointerDown(beta);
       fireEvent.click(beta);
     });
-    await selectOption("Health platform", "Android");
-    fireEvent.change(screen.getByLabelText("Release ID (optional)"), {
-      target: { value: "release-a" },
-    });
-    expect(mocks.usage).toHaveBeenCalledTimes(previousCalls);
-    expect(mocks.events).toHaveBeenCalledTimes(previousEventCalls);
-    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     await waitFor(() =>
       expect(mocks.usage).toHaveBeenLastCalledWith({
         data: {
@@ -247,13 +269,27 @@ describe("Insights dashboard", () => {
         },
       }),
     );
+    // Each report names what it reads.
+    expect(
+      within(screen.getByRole("region", { name: "Release health" })).getByText(
+        "beta",
+      ),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const focus = await screen.findByRole("option", {
+      name: /release-old ?Deployed/,
+    });
+    await act(async () => {
+      fireEvent.pointerDown(focus);
+      fireEvent.click(focus);
+    });
     // The Release ID focuses Release health on it and the bundle before it.
     await waitFor(() =>
       expect(mocks.release).toHaveBeenCalledWith({
         data: {
           platform: "android",
           channel: "beta",
-          releaseId: "release-a",
+          releaseId: "release-old",
           withPrevious: true,
         },
       }),
@@ -286,6 +322,16 @@ describe("Insights dashboard", () => {
     expect(
       screen.queryByRole("form", { name: "Release health filters" }),
     ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      search: expect.objectContaining({
+        channel: undefined,
+        platform: undefined,
+        appVersion: undefined,
+        releaseId: undefined,
+        bundles: undefined,
+      }),
+    });
   }, 15_000);
 
   it("recovers from a failed query and distinguishes empty and partially read history", async () => {
@@ -344,7 +390,7 @@ describe("Insights dashboard", () => {
     ).toBe("5 installations, 100.0%");
   });
 
-  it("follows the newest two bundles, reading each count once across the charts", async () => {
+  it("follows the live bundle of each platform, reading each count once across the charts", async () => {
     mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
       reportFor(data),
     );
@@ -356,16 +402,26 @@ describe("Insights dashboard", () => {
       expect(within(table).getAllByRole("row")).toHaveLength(3),
     );
     expect(mocks.releases).toHaveBeenCalledExactlyOnceWith({
-      data: { platform: "ios", channel: "production" },
+      data: { platform: "all", channel: "production" },
     });
-    // Adoption reads each bundle's downloads and launches, over the same
+    // Not the newest, rolled-back bundle: the live one of each platform,
+    // each read on its own platform, downloads and launches over the same
     // hours.
     expect(eventReads().sort()).toEqual([
-      "bundle-release-new DOWNLOADED 24h",
-      "bundle-release-new LAUNCHED 24h",
+      "bundle-release-android DOWNLOADED 24h",
+      "bundle-release-android LAUNCHED 24h",
       "bundle-release-old DOWNLOADED 24h",
       "bundle-release-old LAUNCHED 24h",
     ]);
+    expect(
+      new Set(
+        mocks.events.mock.calls.map(
+          ([{ data }]) => `${data.bundleId} ${data.platform}`,
+        ),
+      ),
+    ).toEqual(
+      new Set(["bundle-release-old ios", "bundle-release-android android"]),
+    );
     expect(
       new Set(mocks.events.mock.calls.map(([{ data }]) => data.endMs)).size,
     ).toBe(1);
@@ -377,19 +433,28 @@ describe("Insights dashboard", () => {
     });
     await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
     expect(eventReads().slice(4).sort()).toEqual([
-      "bundle-release-new RECOVERED 24h",
+      "bundle-release-android RECOVERED 24h",
       "bundle-release-old RECOVERED 24h",
     ]);
 
     // Adding a bundle reads only it; the bundle list is not read again.
-    await selectOption(
-      "Add a bundle",
-      "release-oldest Deployed Jan 1, 01:00 UTC",
-    );
+    const add = screen.getByRole("combobox", { name: "Add a bundle" });
+    act(() => add.focus());
+    fireEvent.input(add, {
+      inputType: "insertText",
+      target: { value: "oldest" },
+    });
+    const oldest = await screen.findByRole("option", {
+      name: /release-oldest/,
+    });
+    await act(async () => {
+      fireEvent.pointerDown(oldest);
+      fireEvent.click(oldest);
+    });
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       search: {
         healthChart: "crashes",
-        bundles: "release-new,release-old,release-oldest",
+        bundles: "release-old,release-android,release-oldest",
       },
     });
     await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(8));

@@ -122,6 +122,10 @@ export const native_builds = pgTable("native_builds", {
   "git_commit_hash": column("varchar(255) COLLATE \"C\"")("git_commit_hash"),
   "created_at_ms": column("bigint")("created_at_ms").notNull(),
   "build_key": column("varchar(69) COLLATE \"C\"")("build_key"),
+  "build_number": column("varchar(64) COLLATE \"C\"")("build_number"),
+  "submitted_to": column("varchar(16) COLLATE \"C\"")("submitted_to"),
+  "submitted_at_ms": column("bigint")("submitted_at_ms"),
+  "submitted_version": column("varchar(255) COLLATE \"C\"")("submitted_version"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),

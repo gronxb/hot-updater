@@ -905,6 +905,23 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (result) => expect(result).toEqual({ deleted: true }),
   }),
   budget({
+    api: "native build submission: the build and 1 write",
+    read: ({ core }) =>
+      core.recordNativeBuildSubmission(createBundleFixture("8012").id, {
+        destination: "testflight",
+        version: "1.0.0 (12)",
+      }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    writes: 1,
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+        submitted_to: "testflight",
+        submitted_version: "1.0.0 (12)",
+      }),
+  }),
+  budget({
     api: "native build delete: the build, its built-in bundle, and 1 write",
     // Two point reads; the built-in bundle's counters say no patch names it,
     // so its delete reads no patches.

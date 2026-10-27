@@ -2,6 +2,7 @@ export { buildAndroid } from "./buildAndroid";
 export {
   findPlayInternalRelease,
   assertPlaySigned,
+  PlayVersionCodeUsedError,
   resolvePlayUploadServiceAccount,
   type UploadToPlayResult,
   uploadToPlay,
@@ -10,6 +11,7 @@ export type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuild
 export { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 export { extractBuiltInBundle } from "./utils/extractBuiltInBundle";
 export {
+  readBuiltApp,
   readBuiltPackageName,
   readBuiltVersionCode,
 } from "./utils/readBuiltApp";

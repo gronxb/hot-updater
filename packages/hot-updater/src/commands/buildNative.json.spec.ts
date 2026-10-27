@@ -94,7 +94,7 @@ describe("native-build ios|android --json", () => {
       build,
       nativeBuild: row,
       registration: { skipped: null },
-      submission: { destination: null, skipped: null },
+      submission: { destination: null, skipped: null, existing: null },
       cache: {
         hit: null,
         key: null,

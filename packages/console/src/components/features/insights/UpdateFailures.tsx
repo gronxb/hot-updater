@@ -324,10 +324,13 @@ function FailuresReport({
  */
 export function UpdateFailures({
   errors,
+  scope,
   query,
   onRefresh,
 }: {
   readonly errors?: ReactNode;
+  /** What the report reads, under its title. */
+  readonly scope?: ReactNode;
   readonly query: {
     readonly data: UpdateFailuresReport | undefined;
     readonly error: Error | null;
@@ -341,7 +344,10 @@ export function UpdateFailures({
       <Card className="min-w-0 overflow-hidden shadow-sm">
         <CardHeader className="flex flex-col gap-1.5 p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <CardTitle>Update failures</CardTitle>
+            <div className="flex min-w-0 flex-col gap-1">
+              <CardTitle>Update failures</CardTitle>
+              {scope}
+            </div>
             <Button
               aria-label="Refresh update failures"
               variant="ghost"

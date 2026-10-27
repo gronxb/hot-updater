@@ -373,6 +373,11 @@ opens the build's page, `/native-builds/<build id>`:
   answers with a fresh storage URL on each request, so the link never
   expires. A browser that opens it without a Console session goes to the
   build's page, which signs it in and comes back to the build.
+- **Build number**: the `CFBundleVersion` or `versionCode` the artifact
+  reports, which the list shows as `build 66` too.
+- **Store**: for a build `testflight` or `google-play upload` submitted, the
+  store track and the store's version and build number, with when it was
+  submitted. The list marks those builds too.
 - **Built-in bundle**: the build's min bundle ID, the base its OTAs patch
   from, how many bundles patch from it, and whether it is the newest build of
   its scope. `deploy` patches from the newest build of a scope, so a
@@ -382,6 +387,13 @@ opens the build's page, `/native-builds/<build id>`:
   downloads as a patch or as the full bundle.
 - **Patches from this build**: the bundles with a patch from its built-in
   bundle, and each patch's size.
+
+**Import a build**, beside the refresh button and in an empty list, shows
+the command that tracks a build made elsewhere, such as by EAS, Xcode Cloud
+or Fastlane,
+`npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>`,
+and links [Import a build made elsewhere](#import-a-build-made-elsewhere).
+The Console uploads nothing; the CLI reads the artifact where it is.
 
 A bundle's detail sheet links to the newest build of its release's scope, and
 says whether the bundle has a patch from it. Deleting a build stays with
@@ -405,6 +417,7 @@ its app reports itself:
 | --------------- | ----------------------------------------------------------------------------------------------------- |
 | Platform        | The file's extension                                                                                  |
 | App version     | `CFBundleShortVersionString` in the app's `Info.plist`, or `versionName` in the manifest              |
+| Build number    | `CFBundleVersion` in the app's `Info.plist`, or `versionCode` in the manifest                         |
 | Channel         | `HOT_UPDATER_CHANNEL`, or the `com.hotupdater.CHANNEL` meta-data; `production` without one            |
 | Min bundle ID   | The UUIDv7 string the native SDK's build step compiled into the app's code                            |
 | Fingerprint     | The SHA-256 string the build compiled into the app's code, with the fingerprint strategy              |
@@ -538,11 +551,31 @@ signs for a list of devices, or a provisioning profile not installed on this
 machine. `--no-cache` builds anyway, after a change outside the project no key
 covers, and still tracks the build with its key.
 
-With `--submit`, a reused build is submitted only when the store doesn't have
-it yet: an `.ipa` whose build number of its version App Store Connect already
-has, or an `.aab` whose version code Google Play's internal track releases, is
-reported and skipped. With `--json`, the last line has `cache: { hit, key,
-uncacheable, changed }`: `hit` is `storage`, `local`, or null.
+A reused build has the same build number (`CFBundleVersion` or
+`versionCode`), and App Store Connect and Google Play take each build number
+once. So with `--submit`, as in `testflight` and `google-play upload`, a
+reused build is uploaded only when the store doesn't have it yet:
+
+- A tracked build already submitted to that store is skipped without asking
+  the store:
+  `Already on TestFlight since 2026-10-27 04:02 UTC as 1.7.0 (66). Bump the build number to upload a new build.`
+- A reused build with no submission recorded is looked up in the store. An
+  `.ipa` whose build number App Store Connect already has, or an `.aab` whose
+  version code Google Play's internal track releases, is skipped the same
+  way. Nothing is recorded: the store matched the build number, not the
+  artifact.
+- When the store refuses the build number anyway, because a build with that
+  number came from another upload or tool, the CLI skips with the same line
+  instead of the store's error, and records nothing, since the store's build
+  may be another artifact.
+
+Each skip exits 0, so rerunning a CI job that already submitted its build
+succeeds. With `--json`, the last line has `submission: { destination,
+skipped: "already-submitted", existing }`, where `existing` has the
+`destination`, the store's `version` label, `submittedAtMs` (null when the
+store said so), and `source` (`recorded` or `store`). Bump the build number
+to upload a new build. With `--json`, the last line also has `cache: { hit,
+key, uncacheable, changed }`: `hit` is `storage`, `local`, or null.
 
 Preview jobs keep finding builds by scope with
 [`native-build find`](#find-a-build), whatever their key.
@@ -685,6 +718,16 @@ stays at its output path. A build that App Store Connect is still processing
 after 30 minutes appears in TestFlight once processing finishes, at the URL
 the CLI prints.
 
+Once App Store Connect accepts the build, the CLI records it on the tracked
+build, and the Console's [Native builds](#native-builds-in-the-console) tab
+shows it as on TestFlight with its version and build number, such as
+`1.7.0 (66)`. Only an upload the run made is recorded: a build App Store
+Connect is still processing after 30 minutes, a failed upload, and
+`--dry-run` record nothing. A build number App Store Connect
+already has, from this or another upload, is skipped with `Already on
+TestFlight as 1.7.0 (66). Bump the build number to upload a new build.`; see
+[Reuse a build](#reuse-a-build).
+
 ## Upload to Google Play
 
 `google-play upload` builds the `.aab`, tracks it, and releases it to Google
@@ -774,7 +817,13 @@ you upload. On an app Play Console has not published yet, Google Play takes
 only draft releases, so the internal release is a draft that you roll out in
 Play Console. When the app's state requires it, the CLI commits without
 sending the changes for review, and you send them for review in Play Console.
-When an upload fails, the build stays at its output path.
+When an upload fails, the build stays at its output path, and nothing is
+recorded. Once Google Play takes the bundle, the CLI records it on the tracked
+build, and the Console's [Native builds](#native-builds-in-the-console) tab
+shows it as on Play internal with its version name and code, such as
+`1.7.0 (66)`. A version code Google Play already has is skipped with
+`Already on Google Play internal testing as 1.7.0 (66). Bump the build number to upload a new build.`;
+see [Reuse a build](#reuse-a-build).
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
 with the stored service account.
 

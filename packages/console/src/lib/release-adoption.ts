@@ -6,28 +6,37 @@ import type { InsightsWindow } from "./insights-rpc";
  * Each is a read of its counts over the period, and four hues stay apart.
  */
 export const MAX_ADOPTION_RELEASES = 4;
-/** Bundles Release health compares when none are chosen: the newest two. */
+/**
+ * Bundles Release health compares when none are chosen: the two newest live
+ * ones of one platform, or the newest live one of each.
+ */
 export const DEFAULT_ADOPTION_RELEASES = 2;
-/** Bundle deployments Release health offers to add. */
+/** Bundle deployments of each platform Release health offers to add. */
 export const ADOPTION_CANDIDATES = 10;
 /** A crash rate at which Release health recommends rolling a bundle back. */
 export const CRASH_RATE_THRESHOLD = 0.05;
 /** Attempts below which a crash rate is too noisy to recommend anything. */
 export const CRASH_MIN_ATTEMPTS = 20;
 
+/** Release health's platforms: one, or both side by side. */
+export type HealthPlatform = "all" | "ios" | "android";
+
 /** A deployed bundle, as Release health labels and rolls it back. */
 export type AdoptionRelease = {
   readonly releaseId: string;
   readonly bundleId: string;
+  readonly platform: "ios" | "android";
   readonly deployedAtMs: number;
   readonly targetAppVersion: string | null;
   readonly enabled: boolean;
+  /** Whether a device can get it now: its scope's catalog still serves it. */
+  readonly live: boolean;
   readonly revision: number;
 };
 
-/** A channel and platform's newest bundle deployments. */
+/** A channel's newest bundle deployments, of one platform or both. */
 export type AdoptionReleasesInput = {
-  readonly platform: "ios" | "android";
+  readonly platform: HealthPlatform;
   readonly channel: string;
 };
 
@@ -51,7 +60,10 @@ export type AdoptionReleaseResult = {
 export type BundleEventType = "DOWNLOADED" | "LAUNCHED" | "RECOVERED";
 
 /** One bundle's reports of one type over the period that ends at `endMs`. */
-export type BundleEventsInput = AdoptionReleasesInput & {
+export type BundleEventsInput = {
+  /** The bundle's own platform. */
+  readonly platform: "ios" | "android";
+  readonly channel: string;
   readonly window: InsightsWindow;
   /** The end of an hour; every bundle of one chart reads the same one. */
   readonly endMs: number;
@@ -90,7 +102,9 @@ export function readAdoptionReleasesInput(
 ): AdoptionReleasesInput {
   if (
     !input ||
-    (input.platform !== "ios" && input.platform !== "android") ||
+    (input.platform !== "all" &&
+      input.platform !== "ios" &&
+      input.platform !== "android") ||
     !isText(input.channel)
   )
     invalid();
@@ -117,8 +131,9 @@ export function readAdoptionReleaseInput(
 export function readBundleEventsInput(
   input: BundleEventsInput,
 ): BundleEventsInput {
-  const scope = readAdoptionReleasesInput(input);
+  const { platform, channel } = readAdoptionReleasesInput(input);
   if (
+    platform === "all" ||
     !Object.hasOwn(recoveryWindows, input.window) ||
     typeof input.endMs !== "number" ||
     !Number.isSafeInteger(input.endMs) ||
@@ -131,7 +146,8 @@ export function readBundleEventsInput(
   )
     invalid();
   return {
-    ...scope,
+    platform: platform as BundleEventsInput["platform"],
+    channel,
     window: input.window,
     endMs: input.endMs,
     bundleId: input.bundleId,
@@ -147,6 +163,27 @@ export function readBundleEventsInput(
 export const crashRateOf = (launched: number, recovered: number) => {
   const attempts = launched + recovered;
   return { attempts, rate: attempts === 0 ? 0 : recovered / attempts };
+};
+
+/**
+ * The bundles Release health compares when none are chosen, from the
+ * candidates newest first: the two newest live bundles of one platform, or
+ * the newest live one of each; without any live one, the newest two.
+ */
+export const defaultAdoptionReleases = (
+  candidates: readonly AdoptionRelease[],
+  platform: HealthPlatform,
+): readonly string[] => {
+  const live = (
+    platform === "all" ? (["ios", "android"] as const) : [platform]
+  ).flatMap((each) =>
+    candidates
+      .filter((release) => release.platform === each && release.live)
+      .slice(0, platform === "all" ? 1 : DEFAULT_ADOPTION_RELEASES),
+  );
+  return (live.length > 0 ? live : candidates)
+    .slice(0, DEFAULT_ADOPTION_RELEASES)
+    .map((release) => release.releaseId);
 };
 
 /** Whether a bundle's crashes call for rolling it back. */

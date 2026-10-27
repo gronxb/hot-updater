@@ -6,6 +6,7 @@ const events: string[] = [];
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
 vi.mock("@hot-updater/android-helper", () => ({
+  PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
   assertPlaySigned: vi.fn(async () => {
     events.push("check signer");
   }),

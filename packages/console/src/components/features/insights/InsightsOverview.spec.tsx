@@ -45,15 +45,18 @@ const release = (
 ): AdoptionRelease => ({
   releaseId,
   bundleId: `bundle-${releaseId}`,
+  platform: "ios",
   deployedAtMs,
   targetAppVersion: "1.2.0",
   enabled: true,
+  live: true,
   revision: 3,
   ...overrides,
 });
 const newest = release("release-b", 20 * HOUR + 15 * 60_000);
 const previous = release("release-a", 2 * HOUR);
-const oldest = release("release-old", HOUR);
+// Enabled, but a newer bundle took every device it targets.
+const oldest = release("release-old", HOUR, { live: false });
 
 /** Counts of one type per hour of the period [6h, 30h). */
 const seriesOf = (
@@ -187,9 +190,11 @@ describe("Release health", () => {
         .map((header) => header.textContent),
     ).toEqual(["Bundle", "Downloaded", "Launched", "Remove"]);
     expect(rows()).toEqual([
-      "release-bDeployed Jan 1, 20:15 UTC · 1.2.04030",
-      "release-aDeployed Jan 1, 02:00 UTC · 1.2.0014",
+      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.04030",
+      "release-aiOS Deployed Jan 1, 02:00 UTC · 1.2.0014",
     ]);
+    // The card names what it reads.
+    expect(screen.getByText("production")).toBeDefined();
     expect(
       screen.queryByRole("columnheader", { name: "Update failures" }),
     ).toBeNull();
@@ -208,7 +213,9 @@ describe("Release health", () => {
         "Installations downloading (dashed) and launching (solid) each bundle per interval",
       ),
     ).toBeDefined();
-    expect(rows()).toEqual(["release-bDeployed Jan 1, 20:15 UTC · 1.2.0400"]);
+    expect(rows()).toEqual([
+      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.0400",
+    ]);
 
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
@@ -226,10 +233,14 @@ describe("Release health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove release-b" }));
     expect(onReleasesChange).toHaveBeenLastCalledWith(["release-a"]);
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Add a bundle" }));
+    const add = screen.getByRole("combobox", { name: "Add a bundle" });
+    act(() => add.focus());
+    fireEvent.input(add, { inputType: "insertText", target: { value: "old" } });
+    // Searched by ID, and named with its platform, target, and state.
     const option = await screen.findByRole("option", {
-      name: "release-old Deployed Jan 1, 01:00 UTC",
+      name: /^iOS ?release-old ?Deployed Jan 1, 01:00 UTC · 1\.2\.0 · Unreachable$/,
     });
+    expect(screen.getByText("Not live")).toBeDefined();
     await act(async () => {
       fireEvent.pointerDown(option);
       fireEvent.click(option);
@@ -239,9 +250,9 @@ describe("Release health", () => {
       "release-a",
       "release-old",
     ]);
-    // The newest bundles need no reset.
+    // The live bundles need no reset.
     expect(
-      screen.queryByRole("button", { name: "Show the newest 2" }),
+      screen.queryByRole("button", { name: "Show live bundles" }),
     ).toBeNull();
 
     rerender(
@@ -252,7 +263,7 @@ describe("Release health", () => {
         />
       </QueryClientProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Show the newest 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show live bundles" }));
     expect(onReleasesChange).toHaveBeenLastCalledWith(undefined);
   });
 
@@ -263,7 +274,8 @@ describe("Release health", () => {
     }));
     renderCard({ health: { releases: [...bundles, ...more] } });
     const add = screen.getByRole("combobox", { name: "Add a bundle" });
-    expect(add.textContent).toContain("Up to 4 bundles");
+    expect(add.getAttribute("placeholder")).toBe("Up to 4 bundles");
+    expect(add.hasAttribute("disabled")).toBe(true);
   });
 
   it("charts crashes and their rate, and calls for no rollback below 20 attempts", () => {
@@ -295,8 +307,8 @@ describe("Release health", () => {
         .map((header) => header.textContent),
     ).toEqual(["Bundle", "Crashed", "Crash rate", "Remove"]);
     expect(rows()).toEqual([
-      "release-bDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
-      "release-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
+      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.0111.1%",
+      "release-aiOS Deployed Jan 1, 02:00 UTC · 1.2.000.0%",
     ]);
     expect(screen.queryByRole("button", { name: "Roll back" })).toBeNull();
     // A crash count is a number, with no details to open.
@@ -304,7 +316,9 @@ describe("Release health", () => {
   });
 
   it("recommends rolling back a bundle that crashes for 5% of 20 attempts, and disables it", async () => {
+    const onReleasesChange = vi.fn();
     renderCard({
+      onReleasesChange,
       chart: "crashes",
       health: {
         releases: [
@@ -348,6 +362,8 @@ describe("Release health", () => {
     };
     expect(mutations.preflight).toHaveBeenCalledWith(disable);
     await waitFor(() => expect(mutations.update).toHaveBeenCalledWith(disable));
+    // Disabled, it is no longer live: the compared bundles stay as they were.
+    expect(onReleasesChange).toHaveBeenCalledWith(["release-b", "release-a"]);
   });
 
   it("offers a longer period when no installation downloaded or launched the bundles, and says when nothing crashed", () => {
@@ -375,12 +391,21 @@ describe("Release health", () => {
       health: { releases: undefined, candidates: undefined },
     });
     expect(screen.getByLabelText("Loading release health")).toBeDefined();
+    const onShowAllPlatforms = vi.fn();
     rerender(
       <QueryClientProvider client={new QueryClient()}>
-        <Card health={{ releases: [], candidates: [] }} />
+        <Card
+          health={{ releases: [], candidates: [] }}
+          onShowAllPlatforms={onShowAllPlatforms}
+        />
       </QueryClientProvider>,
     );
-    expect(screen.getByText("No bundles deployed here yet")).toBeDefined();
+    // It names the filters, and widens the platform in one step.
+    expect(
+      screen.getByText("No bundles deployed to production · iOS"),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Show all platforms" }));
+    expect(onShowAllPlatforms).toHaveBeenCalledOnce();
   });
 
   it("keeps the period and refresh in the card header", () => {

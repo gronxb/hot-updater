@@ -72,8 +72,8 @@ describe("release Insights sections", () => {
       "http://console",
     ).searchParams;
     expect(Object.fromEntries(search)).toEqual({
-      healthPlatform: "ios",
-      healthChannel: "production",
+      platform: "ios",
+      channel: "production",
       releaseId,
       bundleWindow: "24h",
       healthChart: "adoption",

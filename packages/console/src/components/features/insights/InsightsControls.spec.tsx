@@ -1,16 +1,64 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   cleanup,
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { AdoptionRelease } from "@/lib/release-adoption";
 
 import { InsightsControls } from "./InsightsControls";
 
-const mocks = vi.hoisted(() => ({ channels: vi.fn() }));
+const mocks = vi.hoisted(() => ({ channels: vi.fn(), release: vi.fn() }));
 vi.mock("@/lib/api", () => ({ useChannelsQuery: mocks.channels }));
+vi.mock("@/lib/release-adoption-rpc", () => ({
+  getAdoptionReleaseRpc: mocks.release,
+}));
+
+const release = (
+  releaseId: string,
+  overrides: Partial<AdoptionRelease> = {},
+): AdoptionRelease => ({
+  releaseId,
+  bundleId: `bundle-${releaseId}`,
+  platform: "ios",
+  deployedAtMs: 0,
+  targetAppVersion: "1.6.x",
+  enabled: true,
+  live: true,
+  revision: 1,
+  ...overrides,
+});
+
+const renderControls = (
+  props: Partial<ComponentProps<typeof InsightsControls>> = {},
+) => {
+  const onFiltersChange = vi.fn();
+  const view = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <InsightsControls
+        filters={{ channel: "production", platform: "all" }}
+        appVersions={["1.0.0", "2.0.0"]}
+        releases={[]}
+        onFiltersChange={onFiltersChange}
+        {...props}
+      />
+    </QueryClientProvider>,
+  );
+  return { ...view, onFiltersChange };
+};
+
+const choose = async (option: HTMLElement) => {
+  await act(async () => {
+    fireEvent.pointerDown(option);
+    fireEvent.click(option);
+  });
+};
 
 describe("InsightsControls", () => {
   afterEach(cleanup);
@@ -20,75 +68,162 @@ describe("InsightsControls", () => {
     });
   });
 
-  it("submits one explicit filter set without querying on each input change", async () => {
-    const onFiltersChange = vi.fn();
-    render(
-      <InsightsControls
-        appVersions={["1.0.0", "2.0.0"]}
-        scope={{ platform: "ios", channel: "production" }}
-        releaseScope={{ platform: "ios", channel: "production" }}
-        onFiltersChange={onFiltersChange}
-      />,
-    );
-    fireEvent.click(screen.getByRole("combobox", { name: "Usage platform" }));
-    const android = await screen.findByRole("option", { name: "Android" });
-    await act(async () => {
-      fireEvent.pointerDown(android);
-      fireEvent.click(android);
+  it("applies each filter as it changes, with no Apply step", async () => {
+    const { onFiltersChange } = renderControls();
+    expect(screen.queryByRole("button", { name: /Apply/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Platform" }));
+    await choose(await screen.findByRole("option", { name: "Android" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ platform: "android" });
+
+    fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search channels",
     });
-    act(() => screen.getByLabelText("Channel").focus());
-    fireEvent.input(screen.getByLabelText("Channel"), {
+    act(() => search.focus());
+    fireEvent.input(search, {
       inputType: "insertText",
       target: { value: "bet" },
     });
     const beta = await screen.findByRole("option", { name: "beta" });
     expect(screen.queryByRole("option", { name: "production" })).toBeNull();
-    await act(async () => {
-      fireEvent.pointerDown(beta);
-      fireEvent.click(beta);
+    await choose(beta);
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ channel: "beta" });
+
+    fireEvent.click(screen.getByRole("combobox", { name: "App version" }));
+    await choose(await screen.findByRole("option", { name: "2.0.0" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ appVersion: "2.0.0" });
+  });
+
+  it("marks only the narrowed filters, clears each one, and resets them all", () => {
+    const { onFiltersChange, rerender } = renderControls();
+    // The defaults are plain, with nothing to clear or reset.
+    expect(
+      screen
+        .getByRole("combobox", { name: "Platform" })
+        .getAttribute("data-active"),
+    ).toBe("false");
+    expect(screen.queryByRole("button", { name: /^Clear/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reset filters" })).toBeNull();
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InsightsControls
+          filters={{
+            channel: "beta",
+            platform: "ios",
+            appVersion: "2.0.0",
+          }}
+          appVersions={["1.0.0", "2.0.0"]}
+          releases={[]}
+          onFiltersChange={onFiltersChange}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen
+        .getByRole("combobox", { name: "Platform" })
+        .getAttribute("data-active"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("combobox", { name: /^Channel/ })
+        .getAttribute("data-active"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Clear platform" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ platform: "all" });
+    fireEvent.click(screen.getByRole("button", { name: "Clear app version" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      appVersion: undefined,
     });
-    fireEvent.click(screen.getByRole("combobox", { name: "Health platform" }));
-    const releaseAndroid = await screen.findByRole("option", {
-      name: "Android",
+    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      channel: "production",
+      platform: "all",
+      appVersion: undefined,
+      releaseId: undefined,
     });
-    await act(async () => {
-      fireEvent.pointerDown(releaseAndroid);
-      fireEvent.click(releaseAndroid);
+  });
+
+  it("focuses a release picked from the channel's live bundles first", async () => {
+    const { onFiltersChange } = renderControls({
+      releases: [
+        release("01a16ed8-85df-749f-8f9e-0e22532a5d87", {
+          enabled: false,
+          live: false,
+          targetAppVersion: "1.6.2",
+        }),
+        release("01a13d86-86f7-7830-952d-21238207019f"),
+      ],
     });
-    fireEvent.change(screen.getByLabelText("Release ID (optional)"), {
-      target: { value: " release-a " },
-    });
-    expect(onFiltersChange).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
-    expect(onFiltersChange).toHaveBeenCalledWith({
-      scope: { platform: "android", channel: "beta" },
-      releaseScope: {
-        platform: "android",
-        channel: "beta",
-        releaseId: "release-a",
-      },
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
     });
     expect(
-      screen.getAllByRole("form", { name: "Insights filters" }),
-    ).toHaveLength(1);
+      within(screen.getByRole("listbox"))
+        .getAllByRole("group")
+        .map((group) => group.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Live.*01a13d86/),
+      expect.stringMatching(/^Not live.*01a16ed8.*Disabled/),
+    ]);
+    act(() => search.focus());
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: "1.6.x" },
+    });
+    await choose(await screen.findByRole("option", { name: /01a13d86/ }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      releaseId: "01a13d86-86f7-7830-952d-21238207019f",
+    });
+  });
+
+  it("looks up a pasted release ID the list leaves out, in the filters' scope", async () => {
+    const pasted = "01a0f000-0000-7000-8000-000000000001";
+    mocks.release.mockImplementation(async ({ data }) => ({
+      release:
+        data.releaseId === pasted
+          ? release(pasted, {
+              platform: "android",
+              enabled: false,
+              live: false,
+            })
+          : null,
+    }));
+    const { onFiltersChange } = renderControls({
+      releases: [release("01a13d86-86f7-7830-952d-21238207019f")],
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
+    });
+    act(() => search.focus());
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: "01a0f000-0000-7000-8000-000000000002" },
+    });
+    expect(
+      await screen.findByText(
+        "No bundle with this ID in production · All platforms.",
+      ),
+    ).toBeDefined();
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: ` ${pasted.toUpperCase()} ` },
+    });
+    await choose(await screen.findByRole("option", { name: /01a0f000/ }));
+    expect(mocks.release).toHaveBeenLastCalledWith({
+      data: { channel: "production", platform: "all", releaseId: pasted },
+    });
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: pasted });
   });
 
   it("lets the user retry an unavailable channel list", async () => {
     const refetch = vi.fn();
     mocks.channels.mockReturnValue({ isError: true, refetch });
-    render(
-      <InsightsControls
-        appVersions={["1.0.0", "2.0.0"]}
-        scope={{ platform: "ios", channel: "production" }}
-        releaseScope={{ platform: "ios", channel: "production" }}
-        onFiltersChange={vi.fn()}
-      />,
-    );
-    act(() => screen.getByLabelText("Channel").focus());
-    fireEvent.input(screen.getByLabelText("Channel"), {
-      inputType: "insertText",
-      target: { value: "beta" },
-    });
+    renderControls();
+    fireEvent.click(screen.getByRole("combobox", { name: /^Channel/ }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Retry channels" }),
     );
