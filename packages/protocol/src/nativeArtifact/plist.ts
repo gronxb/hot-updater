@@ -54,24 +54,32 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
   const seen = new Set<number>();
   // Each object is parsed once: an array or a dictionary that references
   // another object many times shares it, so a crafted plist can't expand
-  // exponentially.
+  // exponentially. Objects are keyed by offset: distinct references can
+  // name one offset.
   const parsed = new Map<number, PlistValue>();
-
-  const parse = (ref: number): PlistValue => {
-    const done = parsed.get(ref);
-    if (done !== undefined) return done;
-    if (ref >= objectCount || seen.has(ref) || seen.size > MAX_DEPTH) {
-      throw corrupt();
-    }
-    const value = parseObject(ref);
-    parsed.set(ref, value);
-    return value;
+  // What parsing allocates in all, items and bytes: an object's own data is
+  // counted once, so a real plist stays under its size, while objects at
+  // overlapping offsets can't multiply it.
+  let budget = 2 * bytes.byteLength + 4096;
+  const spend = (units: number) => {
+    budget -= units;
+    if (budget < 0) throw corrupt();
   };
 
-  const parseObject = (ref: number): PlistValue => {
+  const parse = (ref: number): PlistValue => {
+    if (ref >= objectCount) throw corrupt();
     const offset = uintAt(bytes, tableOffset + ref * offsetSize, offsetSize);
     // Objects lie between the header and the offset table.
     if (offset < 8 || offset >= tableOffset) throw corrupt();
+    const done = parsed.get(offset);
+    if (done !== undefined) return done;
+    if (seen.has(offset) || seen.size > MAX_DEPTH) throw corrupt();
+    const value = parseObject(offset);
+    parsed.set(offset, value);
+    return value;
+  };
+
+  const parseObject = (offset: number): PlistValue => {
     const marker = bytes[offset]!;
     const kind = marker >> 4;
     const info = marker & 0x0f;
@@ -97,6 +105,7 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
         start = offset + 2 + size;
       }
       fits(start, length, unit);
+      spend(length + 1);
       return [length, start];
     };
     switch (kind) {
@@ -144,18 +153,18 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
       case 0xa:
       case 0xc: {
         const [length, start] = lengthAt(refSize);
-        seen.add(ref);
+        seen.add(offset);
         const items: PlistValue[] = [];
         for (let i = 0; i < length; i += 1) {
           items.push(parse(uintAt(bytes, start + i * refSize, refSize)));
         }
-        seen.delete(ref);
+        seen.delete(offset);
         return items;
       }
       case 0xd: {
         // Keys, then values.
         const [length, start] = lengthAt(2 * refSize);
-        seen.add(ref);
+        seen.add(offset);
         const dict: { [key: string]: PlistValue } = Object.create(null);
         for (let i = 0; i < length; i += 1) {
           const key = parse(uintAt(bytes, start + i * refSize, refSize));
@@ -165,7 +174,7 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
           if (typeof key !== "string") throw corrupt();
           dict[key] = value;
         }
-        seen.delete(ref);
+        seen.delete(offset);
         return dict;
       }
       default:

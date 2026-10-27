@@ -590,6 +590,76 @@ describe("reading an untrusted artifact", () => {
     ]);
   });
 
+  it("parses a binary plist object once per offset, within one budget", () => {
+    /**
+     * A bplist00 of raw `objects` bytes at the given offsets: `table` lists
+     * each reference's offset into `objects` (which may alias), the last
+     * reference the top, with 2-byte offsets and references.
+     */
+    const bplist = (objects: number[], table: readonly number[]) => {
+      const be = (value: number, width: number) =>
+        Array.from(
+          { length: width },
+          (_, i) => Math.floor(value / 256 ** (width - 1 - i)) % 256,
+        );
+      const tableOffset = 8 + objects.length;
+      return new Uint8Array([
+        ...new TextEncoder().encode("bplist00"),
+        ...objects,
+        ...table.flatMap((offset) => be(8 + offset, 2)),
+        // 6 unused bytes, then 2-byte offsets and references.
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        2,
+        ...be(table.length, 8),
+        ...be(table.length - 1, 8),
+        ...be(tableOffset, 8),
+      ]);
+    };
+    // Codex's repro: ref 0 is null; refs 1..1024 all name one 4,096-item
+    // array of ref 0; the top is an array of refs 1..1024.
+    const aliases = 1024;
+    const items = 4096;
+    const inner = [0xaf, 0x11, items >> 8, items & 0xff];
+    for (let i = 0; i < items; i += 1) inner.push(0, 0);
+    const innerOffset = 1;
+    const top = [0xaf, 0x11, aliases >> 8, aliases & 0xff];
+    for (let i = 1; i <= aliases; i += 1) top.push(i >> 8, i & 0xff);
+    const topOffset = innerOffset + inner.length;
+    const repro = bplist(
+      [0x00, ...inner, ...top],
+      [0, ...Array.from({ length: aliases }, () => innerOffset), topOffset],
+    );
+    expect(repro.byteLength).toBeLessThan(13_000);
+    const parsed = parsePlist(repro) as unknown[][];
+    expect(parsed).toHaveLength(aliases);
+    // One array, shared by every reference to its offset.
+    expect(parsed[aliases - 1]).toBe(parsed[0]);
+    expect(parsed[0]).toHaveLength(items);
+
+    // Objects at overlapping offsets: 3,000 14-character strings, each
+    // starting one byte after the last, decode to more than the file holds.
+    const count = 3000;
+    const run = Array.from({ length: count + 14 }, () => 0x5e);
+    const strings = bplist(
+      [
+        ...run,
+        0xaf,
+        0x11,
+        count >> 8,
+        count & 0xff,
+        ...Array.from({ length: count }, (_, i) => [i >> 8, i & 0xff]).flat(),
+      ],
+      [...Array.from({ length: count }, (_, i) => i), run.length],
+    );
+    expect(() => parsePlist(strings)).toThrow(NativeArtifactError);
+  });
+
   it("refuses an archive it can't read in time", async () => {
     expect(
       await refusal(
