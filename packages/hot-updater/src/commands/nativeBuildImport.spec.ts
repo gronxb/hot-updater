@@ -294,6 +294,55 @@ describe("native-build import", () => {
     ).resolves.toHaveLength(1);
   });
 
+  // The fixtures' generate.sh writes CFBundleVersion 42 and versionCode 42.
+  it("records the build number an .ipa reports, its CFBundleVersion", async () => {
+    loadConfig.mockResolvedValue(config({ updateStrategy: "appVersion" }));
+    const file = await writeArtifact(dir, "App.ipa", {
+      "Payload/App.app/Info.plist": fixture("Info.plist"),
+      "Payload/App.app/App": fixture("App"),
+      "Payload/App.app/main.jsbundle": BUILT_IN,
+    });
+
+    await handleNativeBuildImport(file, { json: true });
+
+    const { nativeBuild } = printedJson(stdout);
+    await expect(
+      harness.core.getNativeBuild(nativeBuild.id),
+    ).resolves.toMatchObject({ artifact_kind: "ipa", build_number: "42" });
+  });
+
+  it("records the build number an .apk reports, its versionCode", async () => {
+    const file = await writeArtifact(dir, "app-release.apk", {
+      "AndroidManifest.xml": fixture("release.axml"),
+      "classes.dex": fixture("classes.dex"),
+      "assets/index.android.bundle": BUILT_IN,
+    });
+
+    await handleNativeBuildImport(file, { json: true });
+
+    expect(process.exitCode).toBeUndefined();
+    const { nativeBuild } = printedJson(stdout);
+    await expect(
+      harness.core.getNativeBuild(nativeBuild.id),
+    ).resolves.toMatchObject({ artifact_kind: "apk", build_number: "42" });
+  });
+
+  it("leaves the stored row as it was when the same build is imported again", async () => {
+    const file = await writeArtifact(dir, "app-release.aab", aab());
+    await handleNativeBuildImport(file, { json: true });
+    const { nativeBuild } = printedJson(stdout);
+    const before = await harness.core.getNativeBuild(nativeBuild.id);
+    stdout.mockClear();
+
+    await handleNativeBuildImport(file, { json: true });
+
+    expect(printedJson(stdout)).toMatchObject({ alreadyImported: true });
+    expect(before).toMatchObject({ build_number: "42" });
+    await expect(harness.core.getNativeBuild(nativeBuild.id)).resolves.toEqual(
+      before,
+    );
+  });
+
   it("refuses another artifact whose MIN_BUNDLE_ID is registered, naming the build, and uploads nothing", async () => {
     await handleNativeBuildImport(
       await writeArtifact(dir, "app-release.aab", aab()),

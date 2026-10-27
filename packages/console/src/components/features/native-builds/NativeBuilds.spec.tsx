@@ -224,9 +224,13 @@ describe("NativeBuildsTable", () => {
     // A build made elsewhere is tracked with the CLI, not uploaded here.
     expect(
       screen.getByText(
-        "npx hot-updater native-build import <path-to-.ipa|.aab|.apk>",
+        "npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>",
       ),
     ).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Import guide/ })).toHaveProperty(
+      "href",
+      "https://hot-updater.dev/docs/guides/native-build#import-a-build-made-elsewhere",
+    );
     expect(
       screen.getByRole("link", { name: /Native build guide/ }),
     ).toHaveProperty(

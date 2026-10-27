@@ -46,7 +46,7 @@ import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
 import { CopyableText } from "./CopyableText";
-import { IMPORT_COMMAND } from "./ImportBuild";
+import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
 import { StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
@@ -131,6 +131,18 @@ function EmptyRow({
                 target="_blank"
               >
                 Native build guide
+                <ArrowUpRight data-icon="inline-end" />
+              </a>
+              <a
+                className={buttonVariants({
+                  className: "min-h-11 sm:min-h-8",
+                  variant: "outline",
+                })}
+                href={IMPORT_GUIDE_URL}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Import guide
                 <ArrowUpRight data-icon="inline-end" />
               </a>
             </>

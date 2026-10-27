@@ -410,6 +410,9 @@ export const handleNativeBuildImport = async (
             : { fingerprintHash: build.fingerprintHash, appVersion: null }),
           artifactPath,
           artifactKind: build.kind,
+          // Read from the artifact, as a build's own is: its
+          // CFBundleVersion or versionCode.
+          buildNumber: build.buildNumber,
         },
         {
           buildKey: null,

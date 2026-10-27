@@ -385,7 +385,9 @@ opens the build's page, `/native-builds/<build id>`:
 
 **Import a build**, beside the refresh button and in an empty list, shows
 the command that tracks a build made elsewhere, such as by EAS, Xcode Cloud
-or Fastlane: `npx hot-updater native-build import <path-to-.ipa|.aab|.apk>`.
+or Fastlane,
+`npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>`,
+and links [Import a build made elsewhere](#import-a-build-made-elsewhere).
 The Console uploads nothing; the CLI reads the artifact where it is.
 
 A bundle's detail sheet links to the newest build of its release's scope, and
@@ -410,6 +412,7 @@ its app reports itself:
 | --------------- | ----------------------------------------------------------------------------------------------------- |
 | Platform        | The file's extension                                                                                  |
 | App version     | `CFBundleShortVersionString` in the app's `Info.plist`, or `versionName` in the manifest              |
+| Build number    | `CFBundleVersion` in the app's `Info.plist`, or `versionCode` in the manifest                         |
 | Channel         | `HOT_UPDATER_CHANNEL`, or the `com.hotupdater.CHANNEL` meta-data; `production` without one            |
 | Min bundle ID   | The UUIDv7 string the native SDK's build step compiled into the app's code                            |
 | Fingerprint     | The SHA-256 string the build compiled into the app's code, with the fingerprint strategy              |
