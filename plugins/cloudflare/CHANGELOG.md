@@ -1,5 +1,14 @@
 # @hot-updater/cloudflare
 
+## 1.1.4
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.4
+  - @hot-updater/protocol@1.1.4
+  - @hot-updater/server@1.1.4
+  - @hot-updater/plugin-core@1.1.4
+
 ## 1.1.3
 
 ### Patch Changes
