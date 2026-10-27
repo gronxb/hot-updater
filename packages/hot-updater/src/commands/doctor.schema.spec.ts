@@ -258,7 +258,48 @@ describe("doctor's schema check", () => {
                 { key: "schema.notes", expected: "1", found: null },
               ],
               resolution: expect.stringMatching(
-                /^schema\.notes belongs to a plugin the managed server does not run: `hot-updater init` deploys the Lambda@Edge function and its IAM role policy with only the official .* so it would drop it instead of creating its tables\. Remove it from plugins in hot-updater\.config\.ts and run doctor again, which then names init for the rest; or, if a server of your own runs it on this database: In the server's project, run/u,
+                /^hot-updater\.config\.ts lists a plugin the managed server does not run \(notes\): `hot-updater init` deploys the Lambda@Edge function and its IAM role policy with only the official .* so it would drop it\. Remove it from plugins and run doctor again, which then names init; or, if a server of your own runs it on this database: In the server's project, run/u,
+              ),
+              commands: [DB_MIGRATE],
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("does not name init while the config lists a plugin of its own whose tables exist", async () => {
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "aws");
+    vi.stubEnv("HOT_UPDATER_DYNAMODB_TABLE_NAME", "hot-updater");
+    // Only core is behind: the plugin's tables were created before.
+    await migrateCoreSchema(adapter, "dynamoDB", [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      notes,
+    ]);
+    await storeSetting("schema.core", "1.0.0");
+    const target: Record<symbol, string> = {
+      [Symbol.for("@hot-updater/database-target")]: "dynamodb/hot-updater",
+    };
+    serverProject({ ...database("dynamoDB"), ...target }, [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      notes,
+    ]);
+
+    await expect(doctor()).resolves.toMatchObject({
+      details: {
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              settings: [
+                { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
+              ],
+              resolution: expect.stringContaining(
+                "lists a plugin the managed server does not run (notes)",
               ),
               commands: [DB_MIGRATE],
             },

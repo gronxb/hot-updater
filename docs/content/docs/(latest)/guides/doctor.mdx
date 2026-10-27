@@ -316,10 +316,13 @@ only with consent, before it changes a resource: set those in the environment
 for the run, or run `npx hot-updater init` and answer its prompts. Each
 provider's migrations create core's tables and the official plugins'. Init
 deploys only the official `insights()`, `apiKeys()` and `remoteConfig()`, and
-sets the config's `plugins` to them, so for a pending plugin of your own on a
-managed database doctor does not name init, which would drop it: remove the
-plugin from `plugins` and run doctor again, or, if a server of your own runs
-it, migrate it with `hot-updater db generate` and the provider's tooling.
+sets the config's `plugins` to them, so while the config lists a plugin of your
+own, doctor does not name init, which would drop it: remove the plugin from
+`plugins` and run doctor again, or, if a server of your own runs it, migrate
+the database as your own server's. While the schema is `SCHEMA_NEWER_THAN_CLI`,
+`SCHEMA_NOT_MIGRATABLE` or `PLUGIN_SCHEMA_CHANGED`, an outdated server's
+remediation names no command either: upgrading it would migrate the database
+over those settings.
 
 A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
 was migrated by a newer Hot Updater, and Hot Updater never moves a schema

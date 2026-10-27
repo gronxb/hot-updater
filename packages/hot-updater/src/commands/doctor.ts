@@ -785,18 +785,6 @@ async function checkProject(
         fetchImpl,
         requiredTarget,
       });
-
-      if (
-        details.infrastructure.error !== undefined ||
-        details.infrastructure.needsUpdate === true ||
-        details.infrastructure.upgradeBlocked === true
-      ) {
-        details.infrastructure.remediation = createInfrastructureRemediation({
-          upgradeBlocked: details.infrastructure.upgradeBlocked,
-          requiredVersion: details.infrastructure.requiredVersion,
-          managed: await context.managed(),
-        });
-      }
     }
 
     if (hasReactNativePackage) {
@@ -819,6 +807,27 @@ async function checkProject(
     } else {
       const releaseCatalogs = await checkServer(context);
       if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
+    }
+
+    // Named once the schema is known: an upgrade migrates the database.
+    if (
+      details.infrastructure &&
+      (details.infrastructure.error !== undefined ||
+        details.infrastructure.needsUpdate === true ||
+        details.infrastructure.upgradeBlocked === true)
+    ) {
+      details.infrastructure.remediation = createInfrastructureRemediation({
+        upgradeBlocked: details.infrastructure.upgradeBlocked,
+        requiredVersion: details.infrastructure.requiredVersion,
+        managed: await context.managed(),
+        schemaBlockers: [
+          ...new Set(
+            (schema?.issues ?? [])
+              .filter(({ code }) => code !== "SCHEMA_MIGRATION_PENDING")
+              .map(({ code }) => code),
+          ),
+        ],
+      });
     }
 
     // Add version mismatches if any

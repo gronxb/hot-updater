@@ -44,7 +44,7 @@ export const createDoctorContext = (cwd: string): DoctorContext => {
         (loaded) =>
           loaded === null || isRemoteDatabase(loaded.database)
             ? null
-            : readManagedDeployment(cwd, loaded.database),
+            : readManagedDeployment(cwd, loaded.database, loaded.plugins),
         () => null,
       )),
     fingerprints: () => (fingerprints ??= generateFingerprints()),

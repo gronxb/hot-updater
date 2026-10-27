@@ -4,7 +4,7 @@ import { isRemoteDatabase } from "@hot-updater/plugin-core";
 import type { LoadedServer } from "../../utils/loadServer";
 import type { DoctorContext } from "./context";
 import type { SchemaIssue, SchemaSetting, SchemaStatus } from "./issues";
-import type { ManagedDeployment } from "./managed";
+import { foreignPluginsNote, type ManagedDeployment } from "./managed";
 
 /** The fence's error, by name: it may come from another copy of plugin-core. */
 interface SchemaMigrationRequired {
@@ -71,17 +71,13 @@ const DB_GENERATE = "npx hot-updater db generate <server file>";
 const pendingResolution = (
   { database }: LoadedServer,
   managed: ManagedDeployment | null,
-  /** The pending settings of plugins that are not Hot Updater's own. */
-  foreign: readonly SchemaSetting[],
 ): { readonly resolution: string; readonly commands: string[] } => {
   const own = ownServerResolution(database);
   if (managed === null) return own;
-  if (foreign.length > 0) {
-    // Init deploys only the official plugins, and writes that list back
-    // into the config: replaying it drops these plugins.
-    const keys = foreign.map(({ key }) => key).join(", ");
+  const foreign = foreignPluginsNote(managed);
+  if (foreign !== undefined) {
     return {
-      resolution: `${keys} ${foreign.length === 1 ? "belongs to a plugin" : "belong to plugins"} the managed server does not run: \`hot-updater init\` deploys ${managed.server} with only the official insights(), apiKeys() and remoteConfig(), and running it again sets the plugins in hot-updater.config.ts to those, so it would drop ${foreign.length === 1 ? "it" : "them"} instead of creating ${foreign.length === 1 ? "its" : "their"} tables. Remove ${foreign.length === 1 ? "it" : "them"} from plugins in hot-updater.config.ts and run doctor again, which then names init for the rest; or, if a server of your own runs ${foreign.length === 1 ? "it" : "them"} on this database: ${own.resolution}`,
+      resolution: `${foreign} ${own.resolution}`,
       commands: own.commands,
     };
   }
@@ -280,11 +276,7 @@ const schemaStatus = (
       type: "error",
       code: "SCHEMA_MIGRATION_PENDING",
       message: `The database has migrations to run before the server reads it: ${listed(pending)}.`,
-      ...pendingResolution(
-        server,
-        managed,
-        pending.filter(({ key }) => !owned.has(key)),
-      ),
+      ...pendingResolution(server, managed),
       settings: pending,
     });
   }

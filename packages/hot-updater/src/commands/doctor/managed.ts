@@ -2,7 +2,10 @@ import {
   getHotUpdaterEnvValue,
   readLoadedHotUpdaterEnv,
 } from "@hot-updater/cli-tools";
-import type { ConfiguredDatabase } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  ConfiguredDatabase,
+} from "@hot-updater/plugin-core";
 
 import {
   INIT_PROVIDER_ENV_KEY,
@@ -17,6 +20,9 @@ import {
  * every provider package (a convention CLAUDE.md documents).
  */
 const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** The brand Hot Updater's own plugin factories set, read as the server reads it. */
+const OFFICIAL = Symbol.for("@hot-updater/server/official-plugin");
 
 /**
  * A deployment `hot-updater init` created and reconciles: the provider
@@ -34,6 +40,12 @@ export interface ManagedDeployment {
    * init saved only with consent: init's command then holds only if it is.
    */
   readonly confirmed: boolean;
+  /**
+   * The plugins hot-updater.config.ts lists that are not Hot Updater's own.
+   * The managed server runs only the official ones, and init writes that
+   * list back into the config, so replaying it would drop these.
+   */
+  readonly foreignPlugins: readonly string[];
 }
 
 /**
@@ -47,6 +59,7 @@ export interface ManagedDeployment {
 export const readManagedDeployment = async (
   cwd: string,
   database: ConfiguredDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[],
 ): Promise<ManagedDeployment | null> => {
   const env = await readLoadedHotUpdaterEnv(cwd).catch(() => ({}));
   const read = (envKey: string) => getHotUpdaterEnvValue(env, envKey);
@@ -63,5 +76,24 @@ export const readManagedDeployment = async (
     server,
     command: initReplayCommand(provider),
     confirmed: known,
+    foreignPlugins: plugins.flatMap((plugin) =>
+      Reflect.get(plugin, OFFICIAL) === true ? [] : [plugin.id],
+    ),
   };
+};
+
+/**
+ * Why init's command does not apply while the config lists plugins the
+ * managed server does not run, and what to do instead; undefined when it
+ * lists none.
+ */
+export const foreignPluginsNote = ({
+  foreignPlugins,
+  server,
+}: Pick<ManagedDeployment, "foreignPlugins" | "server">):
+  | string
+  | undefined => {
+  if (foreignPlugins.length === 0) return undefined;
+  const one = foreignPlugins.length === 1;
+  return `hot-updater.config.ts lists ${one ? "a plugin" : "plugins"} the managed server does not run (${foreignPlugins.join(", ")}): \`hot-updater init\` deploys ${server} with only the official insights(), apiKeys() and remoteConfig(), and running it again sets the plugins in hot-updater.config.ts to those, so it would drop ${one ? "it" : "them"}. Remove ${one ? "it" : "them"} from plugins and run doctor again, which then names init; or, if a server of your own runs ${one ? "it" : "them"} on this database:`;
 };

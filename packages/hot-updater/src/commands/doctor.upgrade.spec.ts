@@ -547,6 +547,32 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     });
   });
 
+  it("names no upgrade while the database's schema is newer than this CLI's", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await storeSetting(adapter, "schema.core", "9.0.0");
+    await project(
+      marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+      "aws",
+    );
+
+    await expect(run()).resolves.toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          needsUpdate: true,
+          remediation: {
+            reason: expect.stringMatching(
+              /^Resolve SCHEMA_NEWER_THAN_CLI first/u,
+            ),
+            commands: [],
+          },
+        },
+        schema: { issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }] },
+      },
+    });
+  });
+
   it("names db migrate when the config's database is another than the one init saved", async () => {
     const adapter = createMemoryAdapter();
     await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());

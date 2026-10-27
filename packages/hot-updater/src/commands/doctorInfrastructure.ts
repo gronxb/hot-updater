@@ -1,3 +1,4 @@
+import { foreignPluginsNote, type ManagedDeployment } from "./doctor/managed";
 import {
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
@@ -65,30 +66,38 @@ const getCatalogMode = (
 };
 
 /** What deploys a server of this release, beside migrating its database. */
-export interface ServerDeployment {
-  /** Init again with the inputs it saved, for a deployment init manages. */
-  readonly command: string;
-  /** What that command deploys, such as "the Worker". */
-  readonly server: string;
-  /** The configured database is the one init saved; else init holds only if it is. */
-  readonly confirmed: boolean;
-}
+export type ServerDeployment = Pick<
+  ManagedDeployment,
+  "command" | "server" | "confirmed" | "foreignPlugins"
+>;
 
 export const createInfrastructureRemediation = ({
   upgradeBlocked = false,
   requiredVersion,
   managed = null,
+  schemaBlockers = [],
 }: {
   upgradeBlocked?: boolean;
   requiredVersion?: string;
   /** The deployment `hot-updater init` manages; null for a server of the project's own. */
   managed?: ServerDeployment | null;
+  /**
+   * The schema issues that block a migration, such as SCHEMA_NEWER_THAN_CLI:
+   * an upgrade would write this release's settings over them.
+   */
+  schemaBlockers?: readonly string[];
 } = {}): InfrastructureRemediation => {
   if (upgradeBlocked) {
     return {
       reason:
         "Hot Updater v0 infrastructure cannot be upgraded in place. Generate a parallel v1 setup with hot-updater agent infra setup, or use init interactively, and ship the new endpoint in a new native build.",
       commands: ["hot-updater agent infra setup", "hot-updater init"],
+    };
+  }
+  if (schemaBlockers.length > 0) {
+    return {
+      reason: `Resolve ${schemaBlockers.join(", ")} first, as the schema check says: upgrading the server migrates its database, which would write this release's settings over the ones doctor reports.`,
+      commands: [],
     };
   }
   const target =
@@ -102,6 +111,10 @@ export const createInfrastructureRemediation = ({
     ],
   };
   if (managed === null) return own;
+  const foreign = foreignPluginsNote(managed);
+  if (foreign !== undefined) {
+    return { reason: `${foreign} ${own.reason}`, commands: own.commands };
+  }
   const replay = `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.`;
   return managed.confirmed
     ? { reason: replay, commands: [managed.command] }
