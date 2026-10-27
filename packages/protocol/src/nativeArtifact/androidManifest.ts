@@ -44,17 +44,41 @@ const TYPE_INT_DEC = 0x10;
 const TYPE_INT_HEX = 0x11;
 const TYPE_INT_BOOLEAN = 0x12;
 
-/** A `ResStringPool` chunk's strings. */
-const readStringPool = (bytes: Uint8Array, start: number): string[] => {
+/**
+ * How many bytes a manifest's strings decode to in all. A pool's offsets can
+ * point many indexes, or overlapping ranges, at one long string, so the
+ * manifest's own size bounds nothing.
+ */
+const DECODED_STRING_BYTES = 16 * 1024 * 1024;
+
+/**
+ * A `ResStringPool` chunk's strings, decoded when an index is read: each
+ * offset once, against one budget, within the chunk.
+ */
+const readStringPool = (
+  bytes: Uint8Array,
+  start: number,
+  size: number,
+): ((index: number) => string) => {
   const data = view(bytes);
+  const end = start + size;
+  if (size < 28) throw corrupt();
   const count = data.getUint32(start + 8, true);
   const flags = data.getUint32(start + 16, true);
   const stringsStart = start + data.getUint32(start + 20, true);
+  if (start + 28 + count * 4 > end || stringsStart > end) throw corrupt();
   const utf8 = (flags & UTF8_FLAG) !== 0;
   const decoder = new TextDecoder(utf8 ? "utf-8" : "utf-16le");
-  const strings: string[] = [];
-  for (let i = 0; i < count; i += 1) {
-    let at = stringsStart + data.getUint32(start + 28 + i * 4, true);
+  const decoded = new Map<number, string>();
+  let budget = DECODED_STRING_BYTES;
+  return (index) => {
+    if (index === NO_INDEX || index >= count) return "";
+    const offset = data.getUint32(start + 28 + index * 4, true);
+    const known = decoded.get(offset);
+    if (known !== undefined) return known;
+    let at = stringsStart + offset;
+    let byteLength: number;
+    if (at + 4 > end) throw corrupt();
     if (utf8) {
       // The UTF-16 length, then the UTF-8 length, each one or two bytes.
       at += bytes[at]! & 0x80 ? 2 : 1;
@@ -65,7 +89,7 @@ const readStringPool = (bytes: Uint8Array, start: number): string[] => {
       } else {
         at += 1;
       }
-      strings.push(decoder.decode(bytes.subarray(at, at + length)));
+      byteLength = length;
     } else {
       let length = data.getUint16(at, true);
       if (length & 0x8000) {
@@ -74,19 +98,22 @@ const readStringPool = (bytes: Uint8Array, start: number): string[] => {
       } else {
         at += 2;
       }
-      strings.push(decoder.decode(bytes.subarray(at, at + length * 2)));
+      byteLength = length * 2;
     }
-  }
-  return strings;
+    budget -= byteLength;
+    if (at + byteLength > end || budget < 0) throw corrupt();
+    const text = decoder.decode(bytes.subarray(at, at + byteLength));
+    decoded.set(offset, text);
+    return text;
+  };
 };
 
-/** An `.apk`'s AndroidManifest.xml, in Android's binary XML format. */
 export const parseBinaryManifest = (bytes: Uint8Array): ManifestElement => {
   const data = view(bytes);
   if (bytes.byteLength < 8 || data.getUint16(0, true) !== RES_XML_TYPE) {
     throw corrupt();
   }
-  let strings: string[] = [];
+  let stringAt: (index: number) => string = () => "";
   let resourceIds: number[] = [];
   const stack: {
     name: string;
@@ -94,8 +121,6 @@ export const parseBinaryManifest = (bytes: Uint8Array): ManifestElement => {
     children: ManifestElement[];
   }[] = [];
   let root: ManifestElement | null = null;
-  const stringAt = (index: number) =>
-    index === NO_INDEX ? "" : (strings[index] ?? "");
 
   for (let at = data.getUint16(2, true); at + 8 <= bytes.byteLength; ) {
     const type = data.getUint16(at, true);
@@ -103,7 +128,7 @@ export const parseBinaryManifest = (bytes: Uint8Array): ManifestElement => {
     const size = data.getUint32(at + 4, true);
     if (size < 8 || at + size > bytes.byteLength) throw corrupt();
     if (type === RES_STRING_POOL_TYPE) {
-      strings = readStringPool(bytes, at);
+      stringAt = readStringPool(bytes, at, size);
     } else if (type === RES_XML_RESOURCE_MAP_TYPE) {
       resourceIds = [];
       for (let i = at + headerSize; i + 4 <= at + size; i += 4) {

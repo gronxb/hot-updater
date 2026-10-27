@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
+import { parseBinaryManifest } from "./androidManifest";
 import { bytesSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import { readNativeArtifact } from "./readNativeArtifact";
@@ -363,6 +364,102 @@ describe("reading an untrusted artifact", () => {
         ),
       ),
     ).toEqual(["x", "x"]);
+  });
+
+  it("decodes a binary manifest's strings once per offset, within one budget", () => {
+    /**
+     * A binary XML document: a UTF-16 string pool of `offsets` into
+     * `words`, then a `<manifest>` element whose attribute i is named by
+     * string i and has it as its value.
+     */
+    const axml = (offsets: readonly number[], words: Uint16Array) => {
+      const u16 = (value: number) => [value & 0xff, value >> 8];
+      const u32 = (value: number) => [
+        value & 0xff,
+        (value >> 8) & 0xff,
+        (value >> 16) & 0xff,
+        (value >>> 24) & 0xff,
+      ];
+      const stringsStart = 28 + offsets.length * 4;
+      const poolSize = stringsStart + words.byteLength;
+      const pool = [
+        ...u16(0x0001),
+        ...u16(28),
+        ...u32(poolSize),
+        ...u32(offsets.length),
+        ...u32(0),
+        ...u32(0),
+        ...u32(stringsStart),
+        ...u32(0),
+        ...offsets.flatMap(u32),
+        ...new Uint8Array(words.buffer),
+      ];
+      const attributes = offsets.flatMap((_, i) => [
+        ...u32(0xffffffff),
+        ...u32(i),
+        ...u32(i),
+        ...u16(8),
+        0,
+        0x03,
+        ...u32(i),
+      ]);
+      const start = [
+        ...u16(0x0102),
+        ...u16(16),
+        ...u32(16 + 20 + attributes.length),
+        ...u32(1),
+        ...u32(0xffffffff),
+        ...u32(0xffffffff),
+        ...u32(0),
+        ...u16(20),
+        ...u16(20),
+        ...u16(offsets.length),
+        ...u16(0),
+        ...u16(0),
+        ...u16(0),
+        ...attributes,
+      ];
+      const end = [
+        ...u16(0x0103),
+        ...u16(16),
+        ...u32(24),
+        ...u32(1),
+        ...u32(0xffffffff),
+        ...u32(0xffffffff),
+        ...u32(0),
+      ];
+      const body = [...pool, ...start, ...end];
+      return new Uint8Array([
+        ...u16(0x0003),
+        ...u16(8),
+        ...u32(8 + body.length),
+        ...body,
+      ]);
+    };
+    // 3,000 offsets into a run of 0x7000 words: each lands on a length of
+    // 28,672 characters, so decoding every one apart is 172 MB from a
+    // 192 KB manifest.
+    const run = new Uint16Array(60_000).fill(0x7000);
+    const overlapping = axml(
+      Array.from({ length: 3000 }, (_, k) => k * 2),
+      run,
+    );
+    expect(overlapping.byteLength).toBeLessThan(200_000);
+    expect(() => parseBinaryManifest(overlapping)).toThrow(NativeArtifactError);
+
+    // 3,000 indexes of one long string: decoded once, and shared.
+    const long = new Uint16Array(1 + 20_000 + 1);
+    long[0] = 20_000;
+    long.fill(0x61, 1, 20_001);
+    const shared = parseBinaryManifest(
+      axml(
+        Array.from({ length: 3000 }, () => 0),
+        long,
+      ),
+    );
+    expect(shared.attributes).toHaveLength(3000);
+    expect(shared.attributes[0]!.name).toHaveLength(20_000);
+    expect(shared.attributes[2999]!.name).toBe(shared.attributes[0]!.name);
   });
 
   it("refuses an archive it can't read in time", async () => {
