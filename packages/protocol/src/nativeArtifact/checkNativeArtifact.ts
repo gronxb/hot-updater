@@ -8,7 +8,7 @@ import {
   type UnreadableValue,
 } from "./readNativeArtifact";
 
-/** Why an artifact can't be imported, as the CLI and the Console say it. */
+/** Why an artifact can't be imported, as `native-build import` says it. */
 export interface NativeArtifactProblem {
   readonly code: NativeArtifactProblemCode;
   readonly message: string;
@@ -147,7 +147,7 @@ export const checkNativeArtifact = (
   } else if (isUnreadable(info.channel)) {
     refuse(
       "INVALID_SCOPE",
-      `${info.channel.unreadable}, so the channel its app reports can't be read: name it instead.`,
+      `${info.channel.unreadable}, so the channel its app reports can't be read: name it with --channel.`,
     );
   } else if (info.channel !== null) {
     channel = info.channel;

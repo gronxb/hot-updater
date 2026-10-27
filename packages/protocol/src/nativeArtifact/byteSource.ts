@@ -1,7 +1,7 @@
 /**
  * Random access to an artifact's bytes, so a reader takes only the parts it
  * needs of a file of hundreds of megabytes: a file on disk (Node's
- * `fs.openAsBlob`), a browser `File`, or bytes in memory.
+ * `fs.openAsBlob`), or bytes in memory.
  */
 export interface ByteSource {
   /** The artifact's length in bytes. */
@@ -10,7 +10,7 @@ export interface ByteSource {
   read(offset: number, length: number): Promise<Uint8Array>;
 }
 
-/** A `Blob`, such as a browser `File` or Node's `fs.openAsBlob`, read by slices. */
+/** A `Blob`, such as Node's `fs.openAsBlob`, read by slices. */
 export const blobSource = (blob: Blob): ByteSource => ({
   size: blob.size,
   async read(offset, length) {
@@ -43,8 +43,8 @@ export class NativeArtifactError extends Error {
 }
 
 /**
- * What can keep an artifact from being imported as a native build. The CLI
- * and the Console refuse by these codes with the same messages.
+ * What can keep an artifact from being imported as a native build: the
+ * codes `native-build import --json` reports.
  */
 export type NativeArtifactProblemCode =
   | "UNSUPPORTED_FILE"

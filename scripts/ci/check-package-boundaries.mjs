@@ -12,8 +12,8 @@
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
  * - @hot-updater/protocol has no dependencies, and exports its root and
- *   `./native-artifact`, the store artifact reader the CLI and the Console
- *   share, which no app imports;
+ *   `./native-artifact`, the artifact reader of `native-build import`, which
+ *   no app imports;
  * - @hot-updater/react-native exports only its root, and neither it nor the
  *   packages it pulls in (dependencies, optional dependencies, and peers that
  *   are not optional) depend on @hot-updater/plugin-core or
@@ -526,7 +526,7 @@ if (
 ) {
   fail(
     "protocol-exports",
-    "@hot-updater/react-native imports @hot-updater/protocol/native-artifact, the store artifact reader the CLI and the Console share; an app imports protocol's root only.",
+    "@hot-updater/react-native imports @hot-updater/protocol/native-artifact, the artifact reader of `native-build import`; an app imports protocol's root only.",
   );
 }
 
