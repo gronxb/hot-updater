@@ -32,6 +32,9 @@ const providers = [
   "azure",
 ] as const;
 const builds = ["bare", "rock", "expo"] as const;
+const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+const oxfmt = path.join(repoRoot, "node_modules/.bin/oxfmt");
+const oxfmtConfig = path.join(repoRoot, ".oxfmtrc.json");
 /** Providers whose credential script runs the server's migrator. */
 const migrates = (provider: string) =>
   provider === "firebase" || provider === "vercel" || provider === "azure";
@@ -305,6 +308,27 @@ describe("published agent infrastructure commands", () => {
       operation: "upgrade",
     });
     expect(upgrade.data.instructions).toMatch(/upgrades\/README\.md$/);
+  });
+
+  it("writes upgrade files a project's formatter keeps as generated", () => {
+    const { output } = run(
+      "upgrade",
+      "--provider",
+      "cloudflare",
+      "--build",
+      "bare",
+    ).data;
+    // A project's oxfmt checks the scaffold it keeps, whose manifest pins
+    // these files' hashes: they must already be formatted.
+    const check = spawnSync(
+      oxfmt,
+      ["--check", "--config", oxfmtConfig, path.join(output, "upgrades")],
+      { cwd, encoding: "utf8" },
+    );
+    expect(check.stdout + check.stderr).toContain(
+      "All matched files use the correct format.",
+    );
+    expect(check.status).toBe(0);
   });
 
   it("rejects occupied, mismatched and incomplete outputs without overwriting them", async () => {

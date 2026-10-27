@@ -5,8 +5,8 @@
   "keywords": [],
   "license": "MIT",
   "scripts": {
-    "lint:fix": "oxfmt --write \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" \"actions/**/*.{ts,mjs}\" && oxlint --fix --fix-suggestions --fix-dangerously packages plugins docs actions",
-    "lint": "oxfmt --check \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" \"actions/**/*.{ts,mjs}\" && oxlint packages plugins docs actions && node scripts/ci/check-package-boundaries.mjs",
+    "lint:fix": "oxfmt --write \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" \"actions/**/*.{ts,mjs}\" \"packages/hot-updater/infrastructure-upgrades/*.md\" && oxlint --fix --fix-suggestions --fix-dangerously packages plugins docs actions",
+    "lint": "oxfmt --check \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" \"actions/**/*.{ts,mjs}\" \"packages/hot-updater/infrastructure-upgrades/*.md\" && oxlint packages plugins docs actions && node scripts/ci/check-package-boundaries.mjs",
     "lint:design": "pnpm dlx oxlint@1.80.0 --config .oxlintrc.shadcn.json packages/console/src",
     "clear": "rimraf --glob **/dist .nx",
     "test": "vitest run --project=\"unit:*\"",
