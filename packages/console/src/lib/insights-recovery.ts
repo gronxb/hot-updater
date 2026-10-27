@@ -8,6 +8,11 @@ export type RecoveryInput = {
   readonly releaseId?: string;
 };
 
+/** The Insights page's Release health and Update failures scope: one platform or both. */
+export type ReleaseHealthInput = Omit<RecoveryInput, "platform"> & {
+  readonly platform: "all" | "ios" | "android";
+};
+
 export const recoveryWindows = {
   "24h": { durationMs: 86_400_000, intervalMs: 3_600_000 },
   "7d": { durationMs: 7 * 86_400_000, intervalMs: 6 * 3_600_000 },

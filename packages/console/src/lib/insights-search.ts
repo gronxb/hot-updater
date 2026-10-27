@@ -17,42 +17,38 @@ const readHealthChart = (value: unknown): HealthChart | undefined =>
 const readUsageWindow = (value: unknown): UsageWindow | undefined =>
   value === "12m" ? value : readWindow(value);
 
+/** The channel Insights reads when none is chosen: the SDK's and the CLI's default. */
+export const DEFAULT_INSIGHTS_CHANNEL = "production";
+
 export type InsightsSearch = {
+  /** Every report's platform; both when omitted. */
   platform?: AppUsageScope["platform"];
+  /** Every report's channel; production when omitted. */
   channel?: string;
   appVersion?: string;
   window?: UsageWindow;
   bundleWindow?: InsightsWindow;
-  healthPlatform?: "ios" | "android";
-  healthChannel?: string;
   releaseId?: string;
   healthChart?: HealthChart;
   /**
    * Release health's compared bundles, comma-separated release IDs; omitted,
-   * the focused release and the one before it, or the newest two.
+   * the focused release and the one before it, or the live ones.
    */
   bundles?: string;
 };
+
+const readPlatform = (value: unknown) =>
+  value === "all" || value === "ios" || value === "android" ? value : undefined;
 
 export function validateInsightsSearch(
   search: Record<string, unknown>,
 ): InsightsSearch {
   return {
-    platform:
-      search.platform === "all" ||
-      search.platform === "ios" ||
-      search.platform === "android"
-        ? search.platform
-        : undefined,
+    platform: readPlatform(search.platform),
     channel: readText(search.channel),
     appVersion: readText(search.appVersion),
     window: readUsageWindow(search.window),
     bundleWindow: readWindow(search.bundleWindow),
-    healthPlatform:
-      search.healthPlatform === "ios" || search.healthPlatform === "android"
-        ? search.healthPlatform
-        : undefined,
-    healthChannel: readText(search.healthChannel),
     releaseId: readText(search.releaseId),
     healthChart: readHealthChart(search.healthChart),
     bundles: readText(search.bundles),

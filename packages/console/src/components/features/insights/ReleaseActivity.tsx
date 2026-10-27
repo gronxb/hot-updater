@@ -140,8 +140,8 @@ export function BundleMovementSummary({
           className="min-w-0 rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           to="/insights"
           search={{
-            healthPlatform: input.platform,
-            healthChannel: input.channel,
+            platform: input.platform,
+            channel: input.channel,
             releaseId: input.releaseId,
             bundleWindow: adoptionWindow(input.releaseId),
           }}
@@ -241,8 +241,8 @@ export function BundleInsightsSummary({
           className={buttonVariants({ variant: "outline", size: "sm" })}
           to="/insights"
           search={{
-            healthPlatform: input.platform,
-            healthChannel: input.channel,
+            platform: input.platform,
+            channel: input.channel,
             releaseId: input.releaseId,
             bundleWindow: adoptionWindow(input.releaseId),
             healthChart: "adoption",

@@ -52,6 +52,10 @@ describe("failure report investigation", () => {
         .data,
     ).toEqual([event]);
     expect((await listFailureReports(reads, input)).data).toHaveLength(3);
+    // Both platforms: the Android failure too, still one channel's.
+    expect(
+      (await listFailureReports(reads, { ...input, platform: "all" })).data,
+    ).toHaveLength(4);
     expect(listEvents).toHaveBeenCalledWith({
       sinceMs: 13 * DAY,
       beforeReceivedAtMs: 20 * DAY,
