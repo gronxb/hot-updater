@@ -126,6 +126,20 @@ const literalOf = (
   };
 };
 
+/**
+ * The channel an Android app reports from its `com.hotupdater.CHANNEL`
+ * meta-data, as the SDK reads it (`NativeConfigUtils`): the value as a
+ * string, and none when it is empty, which the SDK reports as `production`.
+ */
+const androidChannelOf = (
+  value: ManifestValue | undefined,
+): string | UnreadableValue | null => {
+  if (value === undefined) return null;
+  if (value.type === "boolean") return String(value.value);
+  const channel = literalOf(value, "The com.hotupdater.CHANNEL meta-data");
+  return channel === "" ? null : channel;
+};
+
 const readAndroid = async (
   source: ByteSource,
   kind: "aab" | "apk",
@@ -178,10 +192,7 @@ const readAndroid = async (
     appVersion: literalOf(manifest.versionName, "versionName"),
     buildNumber:
       manifest.versionCode === null ? null : String(manifest.versionCode),
-    channel: literalOf(
-      manifest.metaData.get("com.hotupdater.CHANNEL"),
-      "The com.hotupdater.CHANNEL meta-data",
-    ),
+    channel: androidChannelOf(manifest.metaData.get("com.hotupdater.CHANNEL")),
     minBundleIdCandidates: minBundleIds,
     fingerprintCandidates: fingerprints,
     builtInBundle:

@@ -73,6 +73,8 @@ manifest release '>
 manifest debuggable 'android:debuggable="true">'
 manifest reference '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:value="@string/channel"/>'
+manifest empty '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value=""/>'
 manifest resource '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:resource="@string/channel"/>'
 

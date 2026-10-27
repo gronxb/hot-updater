@@ -133,6 +133,20 @@ describe("readNativeArtifact", () => {
   );
 
   it.each([
+    ["apk", apk({ "AndroidManifest.xml": fixture("empty.axml") })],
+    ["aab", aab({ "base/manifest/AndroidManifest.xml": fixture("empty.pb") })],
+  ] as const)(
+    "reads an empty channel meta-data in an .%s as none, which the SDK reports as production",
+    async (kind, files) => {
+      const info = await read(files, `app.${kind}`);
+      expect(info.channel).toBeNull();
+      expect(
+        checkNativeArtifact(info, { updateStrategy: "fingerprint" }),
+      ).toMatchObject({ ok: true, build: { channel: "production" } });
+    },
+  );
+
+  it.each([
     ["apk", apk({ "AndroidManifest.xml": fixture("reference.axml") })],
     [
       "aab",
