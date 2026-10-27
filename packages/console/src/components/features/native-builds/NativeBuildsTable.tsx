@@ -45,6 +45,8 @@ import {
 import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
+import { CopyableText } from "./CopyableText";
+import { IMPORT_COMMAND } from "./ImportBuild";
 import { StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
@@ -110,8 +112,14 @@ function EmptyRow({
                   hot-updater native-build android
                 </code>{" "}
                 or <code className="font-mono text-xs">native-build ios</code>,
-                which tracks it here.
+                which tracks it here, or import one built elsewhere:
               </p>
+              <div className="w-full text-left">
+                <CopyableText
+                  label="the import command"
+                  value={IMPORT_COMMAND}
+                />
+              </div>
               <a
                 className={buttonVariants({
                   className: "mt-1 min-h-11 sm:min-h-8",

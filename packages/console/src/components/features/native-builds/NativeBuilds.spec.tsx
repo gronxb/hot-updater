@@ -221,6 +221,12 @@ describe("NativeBuildsTable", () => {
     );
 
     expect(screen.getByText("No native builds")).toBeTruthy();
+    // A build made elsewhere is tracked with the CLI, not uploaded here.
+    expect(
+      screen.getByText(
+        "npx hot-updater native-build import <path-to-.ipa|.aab|.apk>",
+      ),
+    ).toBeTruthy();
     expect(
       screen.getByRole("link", { name: /Native build guide/ }),
     ).toHaveProperty(

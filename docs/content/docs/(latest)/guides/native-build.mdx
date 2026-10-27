@@ -383,6 +383,11 @@ opens the build's page, `/native-builds/<build id>`:
 - **Patches from this build**: the bundles with a patch from its built-in
   bundle, and each patch's size.
 
+**Import a build**, beside the refresh button and in an empty list, shows
+the command that tracks a build made elsewhere, such as by EAS, Xcode Cloud
+or Fastlane: `npx hot-updater native-build import <path-to-.ipa|.aab|.apk>`.
+The Console uploads nothing; the CLI reads the artifact where it is.
+
 A bundle's detail sheet links to the newest build of its release's scope, and
 says whether the bundle has a patch from it. Deleting a build stays with
 [`native-build delete`](#delete-a-build).
