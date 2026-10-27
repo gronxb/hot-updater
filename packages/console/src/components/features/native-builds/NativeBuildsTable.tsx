@@ -118,6 +118,7 @@ function EmptyRow({
                 <CopyableText
                   label="the import command"
                   value={IMPORT_COMMAND}
+                  wrap
                 />
               </div>
               <a

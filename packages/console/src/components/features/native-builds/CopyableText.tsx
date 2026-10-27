@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 export function CopyableText({
   label,
   value,
+  wrap = false,
 }: {
   /** What the copy button copies, such as "the install command". */
   readonly label: string;
   readonly value: string;
+  /** Whether a long value wraps instead of scrolling, so all of it shows. */
+  readonly wrap?: boolean;
 }) {
   const copy = async () => {
     try {
@@ -22,7 +25,13 @@ export function CopyableText({
   };
   return (
     <div className="flex w-full min-w-0 items-center gap-2 rounded-md border bg-muted/40 py-1 pr-1 pl-3">
-      <code className="min-w-0 flex-1 overflow-x-auto text-left font-mono text-xs whitespace-nowrap">
+      <code
+        className={
+          wrap
+            ? "min-w-0 flex-1 text-left font-mono text-xs break-all whitespace-pre-wrap"
+            : "min-w-0 flex-1 overflow-x-auto text-left font-mono text-xs whitespace-nowrap"
+        }
+      >
         {value}
       </code>
       <Button

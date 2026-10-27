@@ -34,7 +34,7 @@ export function ImportBuildSteps() {
         Xcode Cloud or Fastlane, so the OTAs you deploy after it patch from its
         built-in bundle. Run in the app's project:
       </p>
-      <CopyableText label="the import command" value={IMPORT_COMMAND} />
+      <CopyableText label="the import command" value={IMPORT_COMMAND} wrap />
     </div>
   );
 }
