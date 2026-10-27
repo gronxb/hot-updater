@@ -37,8 +37,12 @@ export const readDexStrings = (
     throw new NativeArtifactError("UNREADABLE", "A dex file is corrupt.");
   }
   const strings: string[] = [];
+  // Each string once: crafted IDs can all point at one string.
+  const read = new Set<number>();
   for (let i = 0; i < count; i += 1) {
     let offset = data.getUint32(idsOffset + i * 4, true);
+    if (read.has(offset)) continue;
+    read.add(offset);
     // The UTF-16 length as ULEB128, then MUTF-8 bytes and a NUL. An ASCII
     // string's byte length is its UTF-16 length.
     let utf16Length = 0;

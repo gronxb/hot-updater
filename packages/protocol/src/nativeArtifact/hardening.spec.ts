@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
-import { parseBinaryManifest } from "./androidManifest";
+import { parseBinaryManifest, parseProtoManifest } from "./androidManifest";
 import { bytesSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import { readNativeArtifact } from "./readNativeArtifact";
+import { readDexStrings } from "./strings";
 import { findZipEntry, openZipEntry, readZipDirectory } from "./zip";
 
 // An upload is untrusted: what a crafted artifact breaks must be a refusal
@@ -460,6 +461,133 @@ describe("reading an untrusted artifact", () => {
     expect(shared.attributes).toHaveLength(3000);
     expect(shared.attributes[0]!.name).toHaveLength(20_000);
     expect(shared.attributes[2999]!.name).toBe(shared.attributes[0]!.name);
+  });
+
+  it("refuses a binary manifest's attribute records that don't fit their element, and deep nesting", () => {
+    const u16 = (value: number) => [value & 0xff, value >> 8];
+    const u32 = (value: number) => [
+      value & 0xff,
+      (value >> 8) & 0xff,
+      (value >> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    ];
+    /** One string, "a", then `elements`. */
+    const axml = (elements: number[]) => {
+      const pool = [
+        ...u16(0x0001),
+        ...u16(28),
+        ...u32(28 + 4 + 8),
+        ...u32(1),
+        ...u32(0),
+        ...u32(0),
+        ...u32(32),
+        ...u32(0),
+        ...u32(0),
+        ...u16(1),
+        ...u16(0x61),
+        ...u16(0),
+        ...u16(0),
+      ];
+      const body = [...pool, ...elements];
+      return new Uint8Array([
+        ...u16(0x0003),
+        ...u16(8),
+        ...u32(8 + body.length),
+        ...body,
+      ]);
+    };
+    /** A start element whose attributes are `count` records of `size` bytes, none present. */
+    const start = (size: number, count: number) => [
+      ...u16(0x0102),
+      ...u16(16),
+      ...u32(36),
+      ...u32(1),
+      ...u32(0xffffffff),
+      ...u32(0xffffffff),
+      ...u32(0),
+      ...u16(20),
+      ...u16(size),
+      ...u16(count),
+      ...u16(0),
+      ...u16(0),
+      ...u16(0),
+    ];
+    const end = [
+      ...u16(0x0103),
+      ...u16(16),
+      ...u32(24),
+      ...u32(1),
+      ...u32(0xffffffff),
+      ...u32(0xffffffff),
+      ...u32(0),
+    ];
+    // Codex's repro: 20 elements of 65,535 zero-byte attributes, about 1 KB.
+    const zeroSized = axml(
+      Array.from({ length: 20 }, () => [...start(0, 65_535), ...end]).flat(),
+    );
+    expect(zeroSized.byteLength).toBeLessThan(1300);
+    expect(() => parseBinaryManifest(zeroSized)).toThrow(NativeArtifactError);
+    // Whole records the chunk doesn't hold.
+    expect(() => parseBinaryManifest(axml([...start(20, 3), ...end]))).toThrow(
+      NativeArtifactError,
+    );
+    // An element with no attributes still parses.
+    expect(parseBinaryManifest(axml([...start(20, 0), ...end]))).toMatchObject({
+      name: "a",
+      attributes: [],
+    });
+    // 100 nested elements.
+    expect(() =>
+      parseBinaryManifest(
+        axml([
+          ...Array.from({ length: 100 }, () => start(20, 0)).flat(),
+          ...Array.from({ length: 100 }, () => end).flat(),
+        ]),
+      ),
+    ).toThrow(NativeArtifactError);
+  });
+
+  it("refuses a proto manifest nested deeper than any manifest", () => {
+    /** A length-delimited protobuf field. */
+    const field = (number: number, bytes: number[]) => {
+      const length: number[] = [];
+      let value = bytes.length;
+      do {
+        length.push((value & 0x7f) | (value > 0x7f ? 0x80 : 0));
+        value >>>= 7;
+      } while (value > 0);
+      return [(number << 3) | 2, ...length, ...bytes];
+    };
+    // XmlNode { element: XmlElement { name: "a", child: XmlNode { ... } } }
+    let node: number[] = field(1, field(3, [0x61]));
+    for (let depth = 0; depth < 100; depth += 1) {
+      node = field(1, [...field(3, [0x61]), ...field(5, node)]);
+    }
+    expect(() => parseProtoManifest(new Uint8Array(node))).toThrow(
+      NativeArtifactError,
+    );
+  });
+
+  it("reads a dex string many IDs point at once", () => {
+    // 1,000,000 string IDs, all at one 36-character literal.
+    const ids = 1_000_000;
+    const stringOffset = 0x70 + ids * 4;
+    const dex = new Uint8Array(stringOffset + 1 + 36 + 1);
+    const data = new DataView(dex.buffer);
+    dex.set(new TextEncoder().encode("dex\n035\0"));
+    data.setUint32(0x38, ids, true);
+    data.setUint32(0x3c, 0x70, true);
+    for (let i = 0; i < ids; i += 1) {
+      data.setUint32(0x70 + i * 4, stringOffset, true);
+    }
+    dex[stringOffset] = 36;
+    dex.set(
+      new TextEncoder().encode("019a2b3c-4d5e-7000-8000-000000000000"),
+      stringOffset + 1,
+    );
+    expect(readDexStrings(dex, new Set([36]))).toEqual([
+      "019a2b3c-4d5e-7000-8000-000000000000",
+    ]);
   });
 
   it("refuses an archive it can't read in time", async () => {

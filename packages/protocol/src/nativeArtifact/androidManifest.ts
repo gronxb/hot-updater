@@ -38,6 +38,12 @@ const RES_XML_RESOURCE_MAP_TYPE = 0x0180;
 const UTF8_FLAG = 0x100;
 const NO_INDEX = 0xffffffff;
 
+/** A `ResXMLTree_attrExt`, and a `ResXMLTree_attribute`, in bytes. */
+const ELEMENT_EXT_BYTES = 20;
+const ATTRIBUTE_BYTES = 20;
+/** How deep a manifest's elements nest: an AndroidManifest.xml, a few levels. */
+const MAX_ELEMENT_DEPTH = 64;
+
 const TYPE_REFERENCE = 0x01;
 const TYPE_STRING = 0x03;
 const TYPE_INT_DEC = 0x10;
@@ -136,10 +142,22 @@ export const parseBinaryManifest = (bytes: Uint8Array): ManifestElement => {
       }
     } else if (type === RES_XML_START_ELEMENT_TYPE) {
       const ext = at + headerSize;
-      const name = stringAt(data.getUint32(ext + 4, true));
       const attributeStart = data.getUint16(ext + 8, true);
       const attributeSize = data.getUint16(ext + 10, true);
       const attributeCount = data.getUint16(ext + 12, true);
+      // Every attribute is a whole record inside its element's chunk: a
+      // crafted size of 0 can't read one record 65,535 times.
+      if (
+        headerSize < 16 ||
+        ext + ELEMENT_EXT_BYTES > at + size ||
+        attributeStart < ELEMENT_EXT_BYTES ||
+        attributeSize < ATTRIBUTE_BYTES ||
+        ext + attributeStart + attributeCount * attributeSize > at + size ||
+        stack.length >= MAX_ELEMENT_DEPTH
+      ) {
+        throw corrupt();
+      }
+      const name = stringAt(data.getUint32(ext + 4, true));
       const attributes: ManifestAttribute[] = [];
       for (let i = 0; i < attributeCount; i += 1) {
         const attr = ext + attributeStart + i * attributeSize;
@@ -275,7 +293,8 @@ const protoItemValue = (
 };
 
 /** An `XmlElement` of aapt2's Resources.proto. */
-const protoElement = (bytes: Uint8Array): ManifestElement => {
+const protoElement = (bytes: Uint8Array, depth = 0): ManifestElement => {
+  if (depth >= MAX_ELEMENT_DEPTH) throw corrupt();
   const fields = readMessage(bytes);
   const attributes = bytesOf(fields, 4).map((attribute): ManifestAttribute => {
     const attr = readMessage(attribute);
@@ -292,7 +311,7 @@ const protoElement = (bytes: Uint8Array): ManifestElement => {
   });
   const children = bytesOf(fields, 5).flatMap((node) => {
     const [element] = bytesOf(readMessage(node), 1);
-    return element === undefined ? [] : [protoElement(element)];
+    return element === undefined ? [] : [protoElement(element, depth + 1)];
   });
   return { name: stringOf(fields, 3), attributes, children };
 };
