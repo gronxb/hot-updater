@@ -804,13 +804,11 @@ const readPackages = async ({
       : await exists(path.join(dir, "android"));
   const isInstalled = (dir: string) =>
     toPosix(dir).split("/").includes("node_modules");
+  // The repository's root counts too: a library's example app links the
+  // library at the root.
   const inRepository = (dir: string) => {
     const relative = path.relative(root, dir);
-    return (
-      relative !== "" &&
-      !relative.startsWith("..") &&
-      !path.isAbsolute(relative)
-    );
+    return !relative.startsWith("..") && !path.isAbsolute(relative);
   };
 
   const app = await readManifest(cwd);

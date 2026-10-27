@@ -545,6 +545,38 @@ describe("computeNativeBuildKey", () => {
     }
   });
 
+  it("keys a library at the repository's root, as its example app links it, by its ignored files", async () => {
+    write(
+      "package.json",
+      JSON.stringify({ name: "the-library", version: "1.0.0" }),
+    );
+    write("the-library.podspec", "\n");
+    link(linked("the-library", "."));
+    const ios = {
+      platform: "ios" as const,
+      schemeConfig: { configuration: "Release", simulator: true },
+      artifactKind: "app" as const,
+      // An output and a cache outside .hot-updater, which never count.
+      outputPath: path.join(root, "out"),
+      cacheDir: path.join(root, "cache"),
+    };
+    expect(
+      (
+        await changedBy(
+          () => write("lib/index.js", "module.exports = 2;\n"),
+          ios,
+        )
+      ).changed,
+    ).toEqual(["input:package:the-library@1.0.0"]);
+    expect(
+      await changedBy(() => {
+        write("out/App.app/App", "binary");
+        write("cache/native-build/ios/entry/meta.json", "{}");
+        write("build/out.o", "o");
+      }, ios),
+    ).toEqual({ changed: [], same: true });
+  });
+
   it("changes with the native code a package keeps where autolinking says, not in ios/ or android/", async () => {
     // No ios/, apple/, android/, or podspec at its root: the dependency
     // walk alone takes it for JavaScript.
