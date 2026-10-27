@@ -242,6 +242,15 @@ npx hot-updater doctor --server-base-url https://updates.example.com
 https://updates.example.com/version
 ```
 
+Without `--server-base-url`, doctor checks the server an
+[agent infrastructure scaffold](/docs/guides/agent-infrastructure) records in
+the CLI's default output, `hot-updater-infra/<provider>/<scaffold>/deployment.json`,
+and names that file in `details.infrastructure.recordedIn`. When no scaffold
+there records a server, or they record more than one, doctor does not guess: it
+reports `details.infrastructureUnchecked`, a warning that the server's version
+was not checked, with the command that checks it. A scaffold written elsewhere
+with `--output` is verified with `--scope infrastructure --infra-dir <dir>`.
+
 A passing version check confirms the server meets the installed CLI's
 infrastructure requirement. It does not verify a client key, artifact download
 or native update application. Complete the [OTA test](/docs/get-started/test-ota)
@@ -310,6 +319,22 @@ database ID or DynamoDB table, with the one init saved. When they differ, it
 names your own server's command instead, since init replays against the saved
 resources. When it cannot tell, such as for a Vercel database URL init saved
 only with consent, it names both, each with its condition.
+
+Doctor reads init's saved inputs from the environment first, as init does. The
+command names `--from-env-file .env.hotupdater` only when that file holds
+`HOT_UPDATER_INIT_PROVIDER`, `HOT_UPDATER_INIT_BUILD` and each input doctor
+compared, with the values doctor read. When any came from the environment
+instead, such as CI's variables or a file the config loads, the command names
+`--build` and `--from-env-file <env file>`, and says that init needs those
+values too.
+
+When an agent infrastructure scaffold in `hot-updater-infra/<provider>/` keeps
+the deployment, doctor names `npx hot-updater agent infra upgrade --provider
+<provider> --build <build>` instead of init: apply the new scaffold as its
+`upgrades/README.md` says, uploading the new server version and previewing it,
+then migrating the database and deploying that version back to back. Running
+init again would deploy at once, without that preview, and leave the scaffold
+behind.
 
 Init reports every input `.env.hotupdater` lacks, such as a credential it saved
 only with consent, before it changes a resource: set those in the environment

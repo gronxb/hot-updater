@@ -20,7 +20,6 @@ import { apiKeys, insights, remoteConfig } from "../plugins";
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
 import { doctor } from "./doctor";
-import { initReplayCommand } from "./initProviders";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
@@ -188,8 +187,11 @@ describe("doctor's schema check", () => {
     await expect(doctor()).resolves.not.toHaveProperty("details.schema");
   });
 
-  it("names init with its saved inputs for a database hot-updater init manages", async () => {
+  it("names init with its saved inputs, from the environment, for a database hot-updater init manages", async () => {
+    // The project keeps init's record where the config loads it, not in
+    // .env.hotupdater.
     vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "cloudflare");
+    vi.stubEnv("HOT_UPDATER_INIT_BUILD", "expo");
     vi.stubEnv("HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID", "database");
     // A database the previous minor release's managed init created.
     await migrateCoreSchema(adapter, "d1Database", [
@@ -207,7 +209,8 @@ describe("doctor's schema check", () => {
       [insights(), apiKeys(), remoteConfig()],
     );
 
-    const command = initReplayCommand("cloudflare");
+    const command =
+      "npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>";
     await expect(doctor()).resolves.toMatchObject({
       success: false,
       details: {
@@ -218,7 +221,7 @@ describe("doctor's schema check", () => {
               settings: [
                 { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
               ],
-              resolution: `Run \`${command}\`: it applies the migrations this release needs, then redeploys the Worker from it, back to back. ${ORDER}, so run nothing in between.`,
+              resolution: `Run \`${command}\`: it applies the migrations this release needs, then redeploys the Worker from it, back to back. ${ORDER}, so run nothing in between. Doctor read init's saved inputs (HOT_UPDATER_INIT_PROVIDER and the rest) from the environment, not from .env.hotupdater, so init needs them as well: pass the file that holds them to --from-env-file, or export them in the shell that runs it.`,
               commands: [command],
             },
           ],

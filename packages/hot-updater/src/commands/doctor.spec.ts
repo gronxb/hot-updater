@@ -82,6 +82,20 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   readPackageUp: vi.fn(),
 }));
 
+/**
+ * A healthy project's result when doctor was given no server URL and no
+ * agent scaffold records one: it says the server's version went unchecked.
+ */
+const HEALTHY_WITHOUT_SERVER = {
+  success: true,
+  details: {
+    infrastructureUnchecked: {
+      message: expect.stringContaining("The server's version was not checked"),
+      commands: ["npx hot-updater doctor --server-base-url <url>"],
+    },
+  },
+};
+
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockCheckFingerprintJson = vi.mocked(checkFingerprintJson);
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
@@ -446,7 +460,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("prints machine-readable JSON without prompting", async () => {
@@ -462,8 +477,8 @@ describe("doctor", () => {
 
     await handleDoctor({ json: true });
 
-    expect(logSpy).toHaveBeenCalledWith(
-      JSON.stringify({ success: true }, null, 2),
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject(
+      HEALTHY_WITHOUT_SERVER,
     );
     expect(p.text).not.toHaveBeenCalled();
     logSpy.mockRestore();
@@ -517,7 +532,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("should return true for a healthy setup", async () => {
@@ -536,7 +552,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("should return true for a healthy setup", async () => {
@@ -558,6 +575,9 @@ describe("doctor", () => {
     expect(result).toEqual({
       details: {
         hotUpdaterVersion: "^0.18.2",
+        infrastructureUnchecked: expect.objectContaining({
+          commands: ["npx hot-updater doctor --server-base-url <url>"],
+        }),
         installedHotUpdaterPackages: [
           "@hot-updater/protocol",
           "@hot-updater/react-native",
@@ -596,7 +616,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("should return an error if package.json is not found", async () => {
@@ -646,6 +667,9 @@ describe("doctor", () => {
       success: false,
       details: {
         hotUpdaterVersion: "^1.0.0",
+        infrastructureUnchecked: expect.objectContaining({
+          commands: ["npx hot-updater doctor --server-base-url <url>"],
+        }),
         packageJsonPath: "/mock/cwd/package.json",
         installedHotUpdaterPackages: [
           "@hot-updater/protocol",
@@ -679,7 +703,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("should not report package mismatches for patch differences", async () => {
@@ -694,7 +719,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("should accept independently released packages in the same prerelease", async () => {
@@ -711,7 +737,8 @@ describe("doctor", () => {
     });
 
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
   });
 
   it("should handle empty dependencies and devDependencies", async () => {
@@ -724,7 +751,8 @@ describe("doctor", () => {
       path: "/mock/cwd/package.json",
     });
     const result = await doctor();
-    expect(result).toBe(true);
+    expect(result).toMatchObject(HEALTHY_WITHOUT_SERVER);
+    expect(result).not.toHaveProperty("details.versionMismatches");
 
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
@@ -735,7 +763,7 @@ describe("doctor", () => {
       path: "/mock/cwd/package.json",
     });
     const result2 = await doctor();
-    expect(result2).toBe(true);
+    expect(result2).toMatchObject(HEALTHY_WITHOUT_SERVER);
 
     mockReadPackageUp.mockResolvedValue({
       packageJson: {},

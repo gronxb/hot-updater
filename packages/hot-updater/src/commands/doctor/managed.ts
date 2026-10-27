@@ -8,6 +8,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import {
+  INIT_BUILD_ENV_KEY,
   INIT_PROVIDER_ENV_KEY,
   INIT_PROVIDER_PACKAGES,
   type InitProvider,
@@ -35,6 +36,12 @@ export interface ManagedDeployment {
   /** Init again with the inputs it saved, which migrates and redeploys. */
   readonly command: string;
   /**
+   * Where doctor read init's saved inputs: `.env.hotupdater`, which the
+   * command names, or the environment, such as a file the config loads or
+   * CI's variables, which the command then needs as well.
+   */
+  readonly source: "file" | "environment";
+  /**
    * The configured database is the one init's saved inputs describe. False
    * when one side does not say which resource it is, such as a database URL
    * init saved only with consent: init's command then holds only if it is.
@@ -61,26 +68,59 @@ export const readManagedDeployment = async (
   database: ConfiguredDatabase,
   plugins: readonly AnyHotUpdaterPlugin[],
 ): Promise<ManagedDeployment | null> => {
-  const env = await readLoadedHotUpdaterEnv(cwd).catch(() => ({}));
-  const read = (envKey: string) => getHotUpdaterEnvValue(env, envKey);
+  const file: Readonly<Record<string, string>> = await readLoadedHotUpdaterEnv(
+    cwd,
+  ).catch(() => ({}));
+  // Every input doctor reads, with the value it used: the environment's
+  // first, as init reads them.
+  const used = new Map<string, string | undefined>();
+  const read = (envKey: string) => {
+    const value = getHotUpdaterEnvValue(file, envKey);
+    used.set(envKey, value);
+    return value;
+  };
   const provider = read(INIT_PROVIDER_ENV_KEY);
   if (!isInitProvider(provider)) return null;
+  const build = read(INIT_BUILD_ENV_KEY);
   const { database: name, server, target } = INIT_PROVIDER_PACKAGES[provider];
   if (database.name !== name) return null;
   const configured: unknown = Reflect.get(database, DATABASE_TARGET);
   const saved = target(read);
   const known = typeof configured === "string" && saved !== undefined;
   if (known && configured !== saved) return null;
+  // `--from-env-file .env.hotupdater` replays these inputs only when the
+  // file holds each of them, as doctor read them.
+  const fromFile =
+    build !== undefined &&
+    [...used].every(
+      ([envKey, value]) =>
+        value === undefined ||
+        (Object.hasOwn(file, envKey) && file[envKey]!.trim() === value),
+    );
   return {
     provider,
     server,
-    command: initReplayCommand(provider),
+    command: fromFile
+      ? initReplayCommand(provider)
+      : `npx hot-updater init --provider ${provider} --build ${build ?? "<build>"} --from-env-file <env file>`,
+    source: fromFile ? "file" : "environment",
     confirmed: known,
     foreignPlugins: plugins.flatMap((plugin) =>
       Reflect.get(plugin, OFFICIAL) === true ? [] : [plugin.id],
     ),
   };
 };
+
+/**
+ * What init's command needs when doctor read init's saved inputs from the
+ * environment rather than `.env.hotupdater`; empty otherwise.
+ */
+export const replaySourceNote = ({
+  source,
+}: Pick<ManagedDeployment, "source">): string =>
+  source === "file"
+    ? ""
+    : ` Doctor read init's saved inputs (${INIT_PROVIDER_ENV_KEY} and the rest) from the environment, not from .env.hotupdater, so init needs them as well: pass the file that holds them to --from-env-file, or export them in the shell that runs it.`;
 
 /**
  * Why init's command does not apply while the config lists plugins the

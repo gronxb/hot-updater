@@ -43,6 +43,10 @@ import {
   type ReleaseCatalogStatus,
   type SchemaStatus,
 } from "./doctor/issues";
+import {
+  findScaffoldDeployments,
+  recordedBaseUrls,
+} from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
@@ -105,7 +109,16 @@ interface DoctorDetails {
   // Version related
   hotUpdaterVersion?: string;
   versionMismatches?: VersionMismatch[];
-  infrastructure?: InfrastructureStatus;
+  infrastructure?: InfrastructureStatus & {
+    /** The scaffold deployment record the server's URL came from, without --server-base-url. */
+    recordedIn?: string;
+  };
+  /** The server's version was not checked: no URL was given or recorded. */
+  infrastructureUnchecked?: {
+    message: string;
+    resolution: string;
+    commands: string[];
+  };
   native?: NativeStatus;
   /** The schema the server's fence checks, when it does not pass. */
   schema?: SchemaStatus;
@@ -778,13 +791,40 @@ async function checkProject(
       installedHotUpdaterPackages: hotUpdaterPackages,
     };
 
-    if (serverBaseUrl) {
+    // Without --server-base-url, the server an agent scaffold records.
+    const records = serverBaseUrl ? [] : await context.scaffolds();
+    const recorded = recordedBaseUrls(records);
+    const baseUrl =
+      serverBaseUrl ?? (recorded.length === 1 ? recorded[0] : undefined);
+    if (baseUrl) {
       const requiredTarget = getRequiredUpdateTarget(packageJsonData.version);
-      details.infrastructure = await checkInfrastructureStatus({
-        serverBaseUrl,
-        fetchImpl,
-        requiredTarget,
-      });
+      details.infrastructure = {
+        ...(await checkInfrastructureStatus({
+          serverBaseUrl: baseUrl,
+          fetchImpl,
+          requiredTarget,
+        })),
+        ...(serverBaseUrl
+          ? {}
+          : {
+              recordedIn: path.join(
+                records.find(
+                  (record) => record.baseUrl?.replace(/\/+$/u, "") === baseUrl,
+                )!.dir,
+                "deployment.json",
+              ),
+            }),
+      };
+    } else {
+      details.infrastructureUnchecked = {
+        message:
+          recorded.length === 0
+            ? "The server's version was not checked: doctor was given no --server-base-url, and no agent infrastructure scaffold in hot-updater-infra/ records the server."
+            : `The server's version was not checked: the agent infrastructure scaffolds in hot-updater-infra/ record more than one server (${recorded.join(", ")}).`,
+        resolution:
+          "Run doctor with --server-base-url and the baseURL the app passes to HotUpdater.init, to check that the server runs the release this CLI needs.",
+        commands: ["npx hot-updater doctor --server-base-url <url>"],
+      };
     }
 
     if (hasReactNativePackage) {
@@ -820,6 +860,7 @@ async function checkProject(
         upgradeBlocked: details.infrastructure.upgradeBlocked,
         requiredVersion: details.infrastructure.requiredVersion,
         managed: await context.managed(),
+        scaffold: await context.scaffoldUpgrade(),
         schemaBlockers: [
           ...new Set(
             (schema?.issues ?? [])
@@ -867,7 +908,12 @@ async function checkProject(
       };
     }
 
-    if (details.native || details.schema || details.releaseCatalogs) {
+    if (
+      details.native ||
+      details.schema ||
+      details.releaseCatalogs ||
+      details.infrastructureUnchecked
+    ) {
       return {
         success: true,
         details,
@@ -961,9 +1007,13 @@ export const handleDoctor = async ({
 
   p.intro("Hot Updater doctor");
 
-  const resolvedServerBaseUrl = hasVerificationOptions(verificationOptions)
-    ? serverBaseUrl
-    : (serverBaseUrl ?? (await promptServerBaseUrl()));
+  // A server an agent scaffold records is checked without asking.
+  const resolvedServerBaseUrl =
+    hasVerificationOptions(verificationOptions) ||
+    serverBaseUrl !== undefined ||
+    recordedBaseUrls(await findScaffoldDeployments(getCwd())).length === 1
+      ? serverBaseUrl
+      : await promptServerBaseUrl();
   const result = await doctor({
     serverBaseUrl: resolvedServerBaseUrl,
     ...verificationOptions,
@@ -1012,9 +1062,17 @@ export const handleDoctor = async ({
     );
   }
 
+  if (details?.infrastructureUnchecked) {
+    p.log.warn(details.infrastructureUnchecked.message);
+    p.log.info(details.infrastructureUnchecked.resolution);
+  }
+
   if (details?.infrastructure) {
     const infrastructure = details.infrastructure;
     const lines = [ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint))];
+    if (infrastructure.recordedIn) {
+      lines.push(ui.kv("Recorded in", ui.path(infrastructure.recordedIn)));
+    }
 
     if (infrastructure.serverVersion) {
       lines.push(ui.kv("Server", ui.version(infrastructure.serverVersion)));

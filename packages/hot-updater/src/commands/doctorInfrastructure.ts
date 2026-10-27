@@ -1,4 +1,12 @@
-import { foreignPluginsNote, type ManagedDeployment } from "./doctor/managed";
+import {
+  foreignPluginsNote,
+  type ManagedDeployment,
+  replaySourceNote,
+} from "./doctor/managed";
+import {
+  type ScaffoldUpgrade,
+  scaffoldUpgradeNote,
+} from "./doctor/scaffoldRecords";
 import {
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
@@ -68,7 +76,7 @@ const getCatalogMode = (
 /** What deploys a server of this release, beside migrating its database. */
 export type ServerDeployment = Pick<
   ManagedDeployment,
-  "command" | "server" | "confirmed" | "foreignPlugins"
+  "command" | "server" | "confirmed" | "foreignPlugins" | "source"
 >;
 
 export const createInfrastructureRemediation = ({
@@ -76,6 +84,7 @@ export const createInfrastructureRemediation = ({
   requiredVersion,
   managed = null,
   schemaBlockers = [],
+  scaffold = null,
 }: {
   upgradeBlocked?: boolean;
   requiredVersion?: string;
@@ -86,6 +95,8 @@ export const createInfrastructureRemediation = ({
    * an upgrade would write this release's settings over them.
    */
   schemaBlockers?: readonly string[];
+  /** The agent infrastructure scaffold that keeps the deployment, which takes init's place. */
+  scaffold?: ScaffoldUpgrade | null;
 } = {}): InfrastructureRemediation => {
   if (upgradeBlocked) {
     return {
@@ -98,6 +109,12 @@ export const createInfrastructureRemediation = ({
     return {
       reason: `Resolve ${schemaBlockers.join(", ")} first, as the schema check says: upgrading the server migrates its database, which would write this release's settings over the ones doctor reports.`,
       commands: [],
+    };
+  }
+  if (scaffold !== null) {
+    return {
+      reason: `${scaffoldUpgradeNote(scaffold)} A server of an earlier release answers 503 once the database is migrated.`,
+      commands: scaffold.command === null ? [] : [scaffold.command],
     };
   }
   const target =
@@ -115,7 +132,7 @@ export const createInfrastructureRemediation = ({
   if (foreign !== undefined) {
     return { reason: `${foreign} ${own.reason}`, commands: own.commands };
   }
-  const replay = `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.`;
+  const replay = `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.${replaySourceNote(managed)}`;
   return managed.confirmed
     ? { reason: replay, commands: [managed.command] }
     : {
