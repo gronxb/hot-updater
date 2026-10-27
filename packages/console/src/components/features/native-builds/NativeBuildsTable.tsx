@@ -208,6 +208,11 @@ function BuildRow({
               maxLength={target.label === "App version" ? 24 : 12}
               value={target.value}
             />
+            {!build.build_number ? null : (
+              <span className="tabular-nums" translate="no">
+                · build {build.build_number}
+              </span>
+            )}
             <span className="md:hidden" translate="no">
               · {channel}
             </span>

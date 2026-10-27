@@ -16,6 +16,7 @@ const ascApiKey = {
 };
 
 vi.mock("@hot-updater/apple-helper", () => ({
+  TestFlightBuildExistsError: class TestFlightBuildExistsError extends Error {},
   assertTestFlightExportOptions: vi.fn(async () => {
     events.push("check export options");
   }),

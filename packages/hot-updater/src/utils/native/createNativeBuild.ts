@@ -33,6 +33,12 @@ export type NativeBuildResult = NativeBuildTarget & {
   channel: string;
   artifactPath: string;
   artifactKind: NativeBuildArtifactKind;
+  /**
+   * The build number the artifact reports, its `CFBundleVersion` or
+   * `versionCode`: null when it can't be read, and absent from a build
+   * cached before it was recorded.
+   */
+  buildNumber?: string | null;
 };
 
 const ARTIFACT_KINDS: Record<string, NativeBuildArtifactKind> = {
@@ -80,6 +86,8 @@ export const createNativeBuild = async ({
      */
     builtApp?: {
       appVersion: string | null;
+      /** The artifact's `CFBundleVersion` or `versionCode`. */
+      buildNumber?: string | null;
       /**
        * null for none, which the native SDK reports as `production`, and
        * undefined when the artifact's cannot be read exactly.
@@ -131,5 +139,8 @@ export const createNativeBuild = async ({
       path.relative(buildDirectory, buildArtifactPath),
     ),
     artifactKind,
+    ...(builtApp?.buildNumber === undefined
+      ? {}
+      : { buildNumber: builtApp.buildNumber }),
   };
 };

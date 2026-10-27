@@ -12,6 +12,7 @@ const ascApiKey = {
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
 vi.mock("@hot-updater/apple-helper", () => ({
+  TestFlightBuildExistsError: class TestFlightBuildExistsError extends Error {},
   assertTestFlightExportOptions: vi.fn(async () => {}),
   buildIos: vi.fn(),
   installPodsIfNeeded: vi.fn(async () => {
@@ -36,6 +37,8 @@ vi.mock("@hot-updater/apple-helper", () => ({
   }),
 }));
 vi.mock("@hot-updater/android-helper", () => ({
+  PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
+  readBuiltApp: vi.fn(async () => undefined),
   buildAndroid: vi.fn(),
   findPlayInternalRelease: vi.fn(async () => {
     events.push("find on Play");

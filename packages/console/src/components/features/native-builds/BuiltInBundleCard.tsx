@@ -125,6 +125,13 @@ export function BuiltInBundleCard({
               />
             </span>
           </Row>
+          {!build.build_number ? null : (
+            <Row label="Build number">
+              <span className="font-mono text-xs tabular-nums" translate="no">
+                {build.build_number}
+              </span>
+            </Row>
+          )}
           {isSubmitted(build) ? (
             <Row label="Store">
               <StoreSubmissionBadge build={build} withTime />

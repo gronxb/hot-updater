@@ -12,6 +12,7 @@ export {
   assertTestFlightExportOptions,
   findTestFlightBuild,
   resolveTestFlightUploadKey,
+  TestFlightBuildExistsError,
   type UploadToTestFlightResult,
   uploadToTestFlight,
 } from "./uploadToTestFlight";

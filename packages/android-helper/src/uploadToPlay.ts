@@ -144,6 +144,22 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Google Play refused the upload: it already has a bundle or APK with the
+ * `.aab`'s version code, from this or another upload, and takes each version
+ * code once.
+ */
+export class PlayVersionCodeUsedError extends Error {
+  override readonly name = "PlayVersionCodeUsedError";
+
+  constructor(options?: ErrorOptions) {
+    super(
+      "Google Play already has this .aab's version code. Raise versionCode for every build you upload.",
+      options,
+    );
+  }
+}
+
+/**
  * What Google's message means for the user, for the failures a release to
  * a track runs into.
  */
@@ -165,10 +181,7 @@ const explain = (error: unknown, packageName: string): unknown => {
     );
   }
   if (/version code .*(already been used|already used)/i.test(apiMessage)) {
-    return new Error(
-      `Google Play already has this .aab's version code. Raise versionCode for every build you upload.`,
-      { cause: error },
-    );
+    return new PlayVersionCodeUsedError({ cause: error });
   }
   return error;
 };

@@ -451,6 +451,25 @@ describe("the native build registry", () => {
     ]);
   });
 
+  it("stores the build number the artifact reports, and none for a registration without one", async () => {
+    const core = setup();
+    const numbered = await core.registerNativeBuild(
+      registration(1, { buildNumber: "66" }),
+    );
+    // A CLI that predates build numbers leaves the field out.
+    const { buildNumber: _none, ...older } = registration(2);
+    const unnumbered = await core.registerNativeBuild(older);
+
+    expect(numbered.build_number).toBe("66");
+    expect(unnumbered.build_number).toBeNull();
+    await expect(core.getNativeBuild(numbered.id)).resolves.toMatchObject({
+      build_number: "66",
+    });
+    await expect(
+      core.registerNativeBuild(registration(3, { buildNumber: " " })),
+    ).rejects.toThrow("buildNumber must be the artifact's build number");
+  });
+
   it("refuses a submission to another platform's store or without a version, and answers null for an unknown build", async () => {
     const core = setup();
     const ios = await core.registerNativeBuild(registration(1));

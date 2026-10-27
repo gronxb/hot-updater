@@ -269,6 +269,8 @@ describe("the native build cache", () => {
         appVersion: "1.0.0",
         artifactPath: path.join(outputPath, "app-release.apk"),
         artifactKind: "apk",
+        // The tracked build's own, which a store takes once.
+        buildNumber: row.build_number,
       },
     });
     expect(await fs.promises.readFile(hit!.result.artifactPath, "utf8")).toBe(

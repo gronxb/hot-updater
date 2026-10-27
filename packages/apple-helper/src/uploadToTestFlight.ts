@@ -67,6 +67,26 @@ interface BuildUploadState {
   readonly infos?: readonly StateDetail[];
 }
 
+/**
+ * App Store Connect refused the upload: it already has a build with the
+ * `.ipa`'s version and build number, from this or another upload, and takes
+ * each build number once per version.
+ */
+export class TestFlightBuildExistsError extends Error {
+  override readonly name = "TestFlightBuildExistsError";
+
+  constructor(
+    readonly shortVersion: string,
+    readonly bundleVersion: string,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `App Store Connect already has build ${bundleVersion} of version ${shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
+      options,
+    );
+  }
+}
+
 /** An App Store Connect API request that failed, with the errors it answered. */
 export class AppStoreConnectError extends Error {
   readonly status: number;
@@ -678,10 +698,17 @@ export const uploadToTestFlight = async ({
         error.status === 409 &&
         error.errors.some((apiError) => apiError.code === DUPLICATE_ERROR_CODE)
       ) {
-        throw new Error(
-          unanswered
-            ? `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}, which a request of this upload it did not answer may have reserved. Upload with a new build number (CFBundleVersion).`
-            : `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
+        // A reservation this upload's own unanswered request may have
+        // made is no build in TestFlight: that one stays a failure.
+        if (unanswered) {
+          throw new Error(
+            `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}, which a request of this upload it did not answer may have reserved. Upload with a new build number (CFBundleVersion).`,
+            { cause: error },
+          );
+        }
+        throw new TestFlightBuildExistsError(
+          info.shortVersion,
+          info.bundleVersion,
           { cause: error },
         );
       }

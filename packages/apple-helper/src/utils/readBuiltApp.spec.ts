@@ -28,6 +28,7 @@ beforeEach(async () => {
   );
   await writeInfoPlist(appPath, {
     CFBundleShortVersionString: "2.0.0",
+    CFBundleVersion: "66",
     HOT_UPDATER_CHANNEL: "beta",
   });
 });
@@ -37,10 +38,11 @@ afterEach(async () => {
 });
 
 describe.runIf(process.platform === "darwin")("readBuiltApp", () => {
-  it("reads the app version and channel from the app's Info.plist", async () => {
+  it("reads the app version, build number and channel from the app's Info.plist", async () => {
     await expect(readBuiltApp(appPath)).resolves.toEqual({
       appVersion: "2.0.0",
       channel: "beta",
+      buildNumber: "66",
     });
   });
 

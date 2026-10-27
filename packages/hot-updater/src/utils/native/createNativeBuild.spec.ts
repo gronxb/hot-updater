@@ -119,7 +119,7 @@ describe("createNativeBuild", () => {
       buildAdapter: buildAdapter([]),
       builder: async () => ({
         ...built,
-        builtApp: { appVersion: "2.0.0", channel: "beta" },
+        builtApp: { appVersion: "2.0.0", channel: "beta", buildNumber: "66" },
       }),
     });
 
@@ -127,6 +127,8 @@ describe("createNativeBuild", () => {
       appVersion: "2.0.0",
       fingerprintHash: null,
       channel: "beta",
+      // The artifact's build number, which a store takes once.
+      buildNumber: "66",
     });
     expect(readChannel).not.toHaveBeenCalled();
   });

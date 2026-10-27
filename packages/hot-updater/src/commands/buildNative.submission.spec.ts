@@ -15,7 +15,9 @@ const ascApiKey = { keyPath: "/tmp/AuthKey.p8", keyId: "K", issuerId: "I" };
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
 /** The cached build a run reuses, when a test sets one. */
-let reused: "local" | null = null;
+let reused: "local" | "storage" | null = null;
+/** The tracked build a storage hit reuses. */
+let storageRow: NativeBuildRow | null = null;
 let platform: Platform = "ios";
 
 const minBundleId = {
@@ -46,7 +48,11 @@ const buildResult = () =>
         artifactKind: "aab" as const,
       };
 
-vi.mock("@hot-updater/apple-helper", () => ({
+vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
+  // The store's own refusal, as the upload throws it.
+  TestFlightBuildExistsError: (
+    await importOriginal<typeof import("@hot-updater/apple-helper")>()
+  ).TestFlightBuildExistsError,
   assertTestFlightExportOptions: vi.fn(async () => {}),
   buildIos: vi.fn(),
   installPodsIfNeeded: vi.fn(async () => {}),
@@ -64,7 +70,10 @@ vi.mock("@hot-updater/apple-helper", () => ({
     bundleVersion: "66",
   })),
 }));
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  PlayVersionCodeUsedError: (
+    await importOriginal<typeof import("@hot-updater/android-helper")>()
+  ).PlayVersionCodeUsedError,
   assertPlaySigned: vi.fn(async () => {}),
   buildAndroid: vi.fn(),
   findPlayInternalRelease: vi.fn(async () => false),
@@ -165,7 +174,13 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
     hit:
       reused === "local"
         ? { source: "local", nativeBuildId: null, result: buildResult() }
-        : null,
+        : reused === "storage"
+          ? {
+              source: "storage",
+              nativeBuild: storageRow,
+              result: buildResult(),
+            }
+          : null,
     report: { hit: reused, key: null, uncacheable: null, changed: [] },
     remember: vi.fn(async () => {}),
   })),
@@ -243,8 +258,29 @@ beforeEach(() => {
   vi.clearAllMocks();
   databaseHarness.reset();
   reused = null;
+  storageRow = null;
   platform = "ios";
 });
+
+/** Tracks the build as an earlier run did, submitted to `destination`. */
+const trackSubmitted = async (
+  destination: "testflight" | "play-internal",
+  version: string,
+) => {
+  const { registerNativeBuild } =
+    await import("@/utils/native/registerNativeBuild");
+  const row = (await registerNativeBuild(buildResult() as never, {
+    buildKey: null,
+  })) as NativeBuildRow;
+  return (await databaseHarness.core.recordNativeBuildSubmission(row.id, {
+    destination,
+    version,
+  }))!;
+};
+
+/** The last line `--json` printed. */
+const lastJson = (log: { mock: { calls: unknown[][] } }) =>
+  JSON.parse(String(log.mock.calls.at(-1)?.[0]));
 
 describe("native-build ios --submit testflight", () => {
   it("records TestFlight and the build's version and number once App Store Connect accepted it", async () => {
@@ -330,6 +366,71 @@ describe("native-build ios --submit testflight", () => {
     });
   });
 
+  it("skips a reused build already submitted to TestFlight, with no store call, and succeeds", async () => {
+    storageRow = await trackSubmitted("testflight", "1.7.0 (66)");
+    reused = "storage";
+    const { p } = await import("@hot-updater/cli-tools");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+      json: true,
+    });
+
+    const printed = lastJson(log);
+    log.mockRestore();
+    expect(findTestFlightBuild).not.toHaveBeenCalled();
+    expect(uploadToTestFlight).not.toHaveBeenCalled();
+    const since = new Date(storageRow.submitted_at_ms!)
+      .toISOString()
+      .slice(0, 16)
+      .replace("T", " ");
+    expect(p.log.info).toHaveBeenCalledWith(
+      `Already on TestFlight since ${since} UTC as 1.7.0 (66). Bump the build number to upload a new build.`,
+    );
+    expect(printed.submission).toEqual({
+      destination: "testflight",
+      skipped: "already-submitted",
+      existing: {
+        destination: "testflight",
+        version: "1.7.0 (66)",
+        submittedAtMs: storageRow.submitted_at_ms,
+        source: "recorded",
+      },
+    });
+    // The record stays the first upload's.
+    expect(await stored()).toEqual(storageRow);
+  });
+
+  it("skips, records nothing, and succeeds when App Store Connect already has the build number", async () => {
+    const { TestFlightBuildExistsError } =
+      await import("@hot-updater/apple-helper");
+    vi.mocked(uploadToTestFlight).mockRejectedValueOnce(
+      new TestFlightBuildExistsError("1.7.0", "66"),
+    );
+    const { p } = await import("@hot-updater/cli-tools");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+      json: true,
+    });
+
+    const printed = lastJson(log);
+    log.mockRestore();
+    expect(p.log.info).toHaveBeenCalledWith(
+      "Already on TestFlight as 1.7.0 (66). Bump the build number to upload a new build.",
+    );
+    expect(printed.submission).toMatchObject({
+      skipped: "already-submitted",
+      existing: { version: "1.7.0 (66)", source: "store", submittedAtMs: null },
+    });
+    // The store's build may be another artifact: nothing is recorded.
+    expect(submission(await stored())).toEqual(NONE);
+  });
+
   it("records nothing without --submit", async () => {
     await handleNativeBuildCreate("ios", { scheme: "release" });
 
@@ -390,6 +491,39 @@ describe("native-build android --submit play-internal", () => {
     ).rejects.toThrow("exit");
 
     exit.mockRestore();
+    expect(submission(await stored())).toEqual(NONE);
+  });
+
+  it("skips a reused build already submitted to Google Play, without asking the store", async () => {
+    storageRow = await trackSubmitted("play-internal", "1.7.0 (66)");
+    reused = "storage";
+
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit: "play-internal",
+    });
+
+    expect(findPlayInternalRelease).not.toHaveBeenCalled();
+    expect(uploadToPlay).not.toHaveBeenCalled();
+    expect(await stored()).toEqual(storageRow);
+  });
+
+  it("skips, records nothing, and succeeds when Google Play already has the version code", async () => {
+    const { PlayVersionCodeUsedError } =
+      await import("@hot-updater/android-helper");
+    vi.mocked(uploadToPlay).mockRejectedValueOnce(
+      new PlayVersionCodeUsedError(),
+    );
+    const { p } = await import("@hot-updater/cli-tools");
+
+    await handleNativeBuildCreate("android", {
+      scheme: "release",
+      submit: "play-internal",
+    });
+
+    expect(p.log.info).toHaveBeenCalledWith(
+      "Already on Google Play internal testing as 1.7.0 (66). Bump the build number to upload a new build.",
+    );
     expect(submission(await stored())).toEqual(NONE);
   });
 

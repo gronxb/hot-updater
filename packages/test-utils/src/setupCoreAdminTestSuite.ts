@@ -227,6 +227,7 @@ export const setupCoreAdminTestSuite = (options: {
             minBundleId: builtIn.id,
             gitCommitHash: null,
             buildKey,
+            buildNumber: suffix,
             artifact: {
               kind: "ipa",
               storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
@@ -273,6 +274,8 @@ export const setupCoreAdminTestSuite = (options: {
       // and a build registered without one matches none.
       expect(keyedBuild.build_key).toBe(keyed);
       expect(newest.build_key).toBeNull();
+      // The build number the registration sends is stored with the build.
+      expect(newest.build_number).toBe("61");
       expect(
         (
           await adminJson(

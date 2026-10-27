@@ -225,6 +225,7 @@ export const registerNativeBuild = async (
       minBundleId: build.minBundleId,
       gitCommitHash: (await getLatestGitCommit())?.id() ?? null,
       buildKey,
+      buildNumber: build.buildNumber ?? null,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,

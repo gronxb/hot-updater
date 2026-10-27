@@ -73,6 +73,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   git_commit_hash: "abcdef1234567",
   created_at_ms: 0,
   build_key: null,
+  build_number: null,
   submitted_to: null,
   submitted_at_ms: null,
   submitted_version: null,
@@ -165,6 +166,20 @@ describe("NativeBuildsTable", () => {
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
   });
 
+  it("shows the build number the artifact reports, from the row", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build({ build_number: "66" })])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(screen.getAllByRole("row")[1]!.textContent).toContain("build 66");
+  });
+
   it("marks a build a store took with its track and the store's label, from the row alone", () => {
     const submitted = build({
       id: id(5),
@@ -186,6 +201,7 @@ describe("NativeBuildsTable", () => {
     );
 
     const [, submittedRow, plainRow] = screen.getAllByRole("row");
+    expect(plainRow!.textContent).not.toContain("build ");
     expect(submittedRow!.textContent).toContain("TestFlight");
     expect(submittedRow!.textContent).toContain("1.7.0 (66)");
     expect(submittedRow!.textContent).toContain("3 days ago");

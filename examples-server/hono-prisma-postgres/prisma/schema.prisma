@@ -119,6 +119,7 @@ model native_builds {
   git_commit_hash String? @db.VarChar(255)
   created_at_ms BigInt
   build_key String? @db.VarChar(69)
+  build_number String? @db.VarChar(64)
   submitted_to String? @db.VarChar(16)
   submitted_at_ms BigInt?
   submitted_version String? @db.VarChar(255)

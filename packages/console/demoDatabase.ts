@@ -796,6 +796,7 @@ for (const build of demoNativeBuilds) {
     minBundleId: build.minBundleId,
     gitCommitHash: build.gitCommitHash,
     buildKey: null,
+    buildNumber: String(100 + build.n),
     artifact: {
       kind: build.kind,
       storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,
@@ -834,11 +835,11 @@ for (const build of demoNativeBuilds) {
 // internal track, which the CLI records once the store took each.
 await core.recordNativeBuildSubmission(nativeBuildId(21), {
   destination: "testflight",
-  version: "1.4.2 (142)",
+  version: "1.4.2 (121)",
 });
 await core.recordNativeBuildSubmission(nativeBuildId(22), {
   destination: "play-internal",
-  version: "1.3.0 (130)",
+  version: "1.3.0 (122)",
 });
 
 // Oldest first, one deploy each, so a patch's base is stored before it.

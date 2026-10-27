@@ -122,6 +122,7 @@ export const native_builds = sqliteTable("native_builds", {
   "git_commit_hash": column("TEXT")("git_commit_hash"),
   "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
   "build_key": column("TEXT")("build_key"),
+  "build_number": column("TEXT")("build_number"),
   "submitted_to": column("TEXT")("submitted_to"),
   "submitted_at_ms": column("INTEGER")("submitted_at_ms"),
   "submitted_version": column("TEXT")("submitted_version"),

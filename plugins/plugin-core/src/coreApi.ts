@@ -107,6 +107,11 @@ export type NativeBuildRegistration = NativeBuildScope & {
    * for a build whose inputs no key covers, which is never reused.
    */
   readonly buildKey: string | null;
+  /**
+   * The build number the artifact reports, its `CFBundleVersion` or
+   * `versionCode`, or null (or left out) when it can't be read.
+   */
+  readonly buildNumber?: string | null;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;
