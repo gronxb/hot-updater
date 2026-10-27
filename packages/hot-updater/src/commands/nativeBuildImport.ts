@@ -362,7 +362,8 @@ export const handleNativeBuildImport = async (
       | { readonly problem: NativeArtifactProblem }
       | undefined
     > => {
-      const server = await loadServer(config);
+      // A fresh server each time: disposing one closes its database.
+      const server = await loadServer(await loadConfig(null));
       try {
         const registered = await findRegistered(
           server.core,

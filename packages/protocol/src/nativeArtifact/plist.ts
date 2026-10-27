@@ -38,11 +38,23 @@ const parseBinaryPlist = (bytes: Uint8Array): PlistValue => {
   if (tableOffset + objectCount * offsetSize > trailer) throw corrupt();
   const data = view(bytes);
   const seen = new Set<number>();
+  // Each object is parsed once: an array or a dictionary that references
+  // another object many times shares it, so a crafted plist can't expand
+  // exponentially.
+  const parsed = new Map<number, PlistValue>();
 
   const parse = (ref: number): PlistValue => {
+    const done = parsed.get(ref);
+    if (done !== undefined) return done;
     if (ref >= objectCount || seen.has(ref) || seen.size > MAX_DEPTH) {
       throw corrupt();
     }
+    const value = parseObject(ref);
+    parsed.set(ref, value);
+    return value;
+  };
+
+  const parseObject = (ref: number): PlistValue => {
     const offset = uintAt(bytes, tableOffset + ref * offsetSize, offsetSize);
     const marker = bytes[offset]!;
     const kind = marker >> 4;

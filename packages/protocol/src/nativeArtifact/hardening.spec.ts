@@ -6,6 +6,7 @@ import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
 import { bytesSource, NativeArtifactError } from "./byteSource";
+import { parsePlist } from "./plist";
 import { readNativeArtifact } from "./readNativeArtifact";
 import { findZipEntry, openZipEntry, readZipDirectory } from "./zip";
 
@@ -255,6 +256,49 @@ describe("reading an untrusted artifact", () => {
         ),
       );
     }
+  });
+
+  it("parses a binary plist whose arrays share one object once, not exponentially", () => {
+    // Object 0 is a string; object i is an array of object i - 1, twice.
+    // Expanded as a tree, 40 levels would hold 2^40 strings.
+    const levels = 40;
+    const objects: number[][] = [[0x51, 0x78]];
+    for (let i = 1; i <= levels; i += 1) objects.push([0xa2, i - 1, i - 1]);
+    const body: number[] = [...new TextEncoder().encode("bplist00")];
+    const offsets: number[] = [];
+    for (const object of objects) {
+      offsets.push(body.length);
+      body.push(...object);
+    }
+    const tableOffset = body.length;
+    for (const offset of offsets) body.push(offset);
+    const be64 = (value: number) =>
+      Array.from({ length: 8 }, (_, i) => (i === 7 ? value : 0));
+    // The trailer: 6 unused bytes, 1-byte offsets and references, then the
+    // object count, the top object and the offset table's offset.
+    body.push(
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      ...be64(objects.length),
+      ...be64(levels),
+      ...be64(tableOffset),
+    );
+
+    let value = parsePlist(new Uint8Array(body));
+    for (let i = 0; i < levels; i += 1) {
+      expect(Array.isArray(value)).toBe(true);
+      const [first, second] = value as unknown[];
+      // The same object, shared.
+      expect(first).toBe(second);
+      value = first as typeof value;
+    }
+    expect(value).toBe("x");
   });
 
   it("refuses an archive it can't read in time", async () => {

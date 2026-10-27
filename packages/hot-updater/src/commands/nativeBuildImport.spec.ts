@@ -360,6 +360,8 @@ describe("native-build import", () => {
   });
 
   it("settles a race with another import of the same build as already imported, deleting its own upload", async () => {
+    // Each server gets its own config: disposing one closes its database.
+    loadConfig.mockImplementation(async () => config());
     const file = await writeArtifact(dir, "app-release.aab", aab());
     const register = harness.core.registerNativeBuild;
     let winner: string | undefined;
@@ -390,6 +392,10 @@ describe("native-build import", () => {
         key.startsWith("native-builds/"),
       ),
     ).toEqual([]);
+    // No lookup reuses the database of a server disposed before it.
+    const configs = loadServer.mock.calls.map(([loaded]) => loaded);
+    expect(configs.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(configs).size).toBe(configs.length);
   });
 
   it("registers under the channel --channel names, which the app reports at runtime", async () => {
