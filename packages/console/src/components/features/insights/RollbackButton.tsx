@@ -33,11 +33,14 @@ export function RollbackButton({
   rate,
   crashes,
   attempts,
+  onRolledBack,
 }: {
   readonly release: AdoptionRelease;
   readonly rate: number;
   readonly crashes: number;
   readonly attempts: number;
+  /** Runs once the release is disabled, before the bundle list reloads. */
+  readonly onRolledBack?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +59,7 @@ export function RollbackButton({
     try {
       await preflight.mutateAsync(input);
       await update.mutateAsync(input);
+      onRolledBack?.();
       await queryClient.invalidateQueries({
         queryKey: ["insights", "adoption-releases"],
       });

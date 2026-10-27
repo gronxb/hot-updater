@@ -14,10 +14,12 @@ export const getUpdateFailuresRpc = createServerFn({ method: "GET" })
         import("./server/updateFailures"),
         import("./server/runtime.server"),
       ]);
-    const { runtime } = await prepareConfig();
+    const { runtime, core } = await prepareConfig();
     return getUpdateFailuresReport(
       await requireFeature(runtime, "insights"),
       data,
+      Date.now(),
+      core,
     );
   });
 

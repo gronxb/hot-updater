@@ -14,8 +14,11 @@ import type { AdoptionRelease } from "@/lib/release-adoption";
 
 import { InsightsControls } from "./InsightsControls";
 
-const mocks = vi.hoisted(() => ({ channels: vi.fn() }));
+const mocks = vi.hoisted(() => ({ channels: vi.fn(), release: vi.fn() }));
 vi.mock("@/lib/api", () => ({ useChannelsQuery: mocks.channels }));
+vi.mock("@/lib/release-adoption-rpc", () => ({
+  getAdoptionReleaseRpc: mocks.release,
+}));
 
 const release = (
   releaseId: string,
@@ -174,6 +177,46 @@ describe("InsightsControls", () => {
     expect(onFiltersChange).toHaveBeenLastCalledWith({
       releaseId: "01a13d86-86f7-7830-952d-21238207019f",
     });
+  });
+
+  it("looks up a pasted release ID the list leaves out, in the filters' scope", async () => {
+    const pasted = "01a0f000-0000-7000-8000-000000000001";
+    mocks.release.mockImplementation(async ({ data }) => ({
+      release:
+        data.releaseId === pasted
+          ? release(pasted, {
+              platform: "android",
+              enabled: false,
+              live: false,
+            })
+          : null,
+    }));
+    const { onFiltersChange } = renderControls({
+      releases: [release("01a13d86-86f7-7830-952d-21238207019f")],
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: /^Release/ }));
+    const search = await screen.findByRole("combobox", {
+      name: "Search releases",
+    });
+    act(() => search.focus());
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: "01a0f000-0000-7000-8000-000000000002" },
+    });
+    expect(
+      await screen.findByText(
+        "No bundle with this ID in production · All platforms.",
+      ),
+    ).toBeDefined();
+    fireEvent.input(search, {
+      inputType: "insertText",
+      target: { value: ` ${pasted.toUpperCase()} ` },
+    });
+    await choose(await screen.findByRole("option", { name: /01a0f000/ }));
+    expect(mocks.release).toHaveBeenLastCalledWith({
+      data: { channel: "production", platform: "all", releaseId: pasted },
+    });
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ releaseId: pasted });
   });
 
   it("lets the user retry an unavailable channel list", async () => {

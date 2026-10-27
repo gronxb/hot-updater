@@ -441,6 +441,13 @@ export function InsightsOverview({
                       rate={bundle.rate}
                       crashes={bundle.crashes}
                       attempts={bundle.attempts}
+                      // The live bundles no longer include it once it is
+                      // disabled: keep comparing the same ones.
+                      onRolledBack={
+                        health.isDefault
+                          ? () => onReleasesChange(ids)
+                          : undefined
+                      }
                     />
                   </AlertDescription>
                 </Alert>
@@ -513,13 +520,6 @@ export function InsightsOverview({
                             </svg>
                             <div className="flex min-w-0 flex-col">
                               <span className="flex min-w-0 items-center gap-2">
-                                <PlatformIcon
-                                  platform={release.platform}
-                                  className="size-3.5 shrink-0"
-                                />
-                                <span className="sr-only">
-                                  {platformLabel(release.platform)}
-                                </span>
                                 <BundleIdDisplay
                                   bundleId={release.releaseId}
                                   className="min-w-0"
@@ -529,6 +529,13 @@ export function InsightsOverview({
                                 )}
                               </span>
                               <span className="text-xs break-words text-muted-foreground">
+                                <PlatformIcon
+                                  platform={release.platform}
+                                  className="mr-1 inline size-3 align-[-1px]"
+                                />
+                                <span className="sr-only">
+                                  {platformLabel(release.platform)}{" "}
+                                </span>
                                 Deployed{" "}
                                 {formatDeployedAt(release.deployedAtMs)}
                                 {release.targetAppVersion

@@ -190,8 +190,8 @@ describe("Release health", () => {
         .map((header) => header.textContent),
     ).toEqual(["Bundle", "Downloaded", "Launched", "Remove"]);
     expect(rows()).toEqual([
-      "iOSrelease-bDeployed Jan 1, 20:15 UTC · 1.2.04030",
-      "iOSrelease-aDeployed Jan 1, 02:00 UTC · 1.2.0014",
+      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.04030",
+      "release-aiOS Deployed Jan 1, 02:00 UTC · 1.2.0014",
     ]);
     // The card names what it reads.
     expect(screen.getByText("production")).toBeDefined();
@@ -214,7 +214,7 @@ describe("Release health", () => {
       ),
     ).toBeDefined();
     expect(rows()).toEqual([
-      "iOSrelease-bDeployed Jan 1, 20:15 UTC · 1.2.0400",
+      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.0400",
     ]);
 
     view.rerender(
@@ -307,8 +307,8 @@ describe("Release health", () => {
         .map((header) => header.textContent),
     ).toEqual(["Bundle", "Crashed", "Crash rate", "Remove"]);
     expect(rows()).toEqual([
-      "iOSrelease-bDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
-      "iOSrelease-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
+      "release-biOS Deployed Jan 1, 20:15 UTC · 1.2.0111.1%",
+      "release-aiOS Deployed Jan 1, 02:00 UTC · 1.2.000.0%",
     ]);
     expect(screen.queryByRole("button", { name: "Roll back" })).toBeNull();
     // A crash count is a number, with no details to open.
@@ -316,7 +316,9 @@ describe("Release health", () => {
   });
 
   it("recommends rolling back a bundle that crashes for 5% of 20 attempts, and disables it", async () => {
+    const onReleasesChange = vi.fn();
     renderCard({
+      onReleasesChange,
       chart: "crashes",
       health: {
         releases: [
@@ -360,6 +362,8 @@ describe("Release health", () => {
     };
     expect(mutations.preflight).toHaveBeenCalledWith(disable);
     await waitFor(() => expect(mutations.update).toHaveBeenCalledWith(disable));
+    // Disabled, it is no longer live: the compared bundles stay as they were.
+    expect(onReleasesChange).toHaveBeenCalledWith(["release-b", "release-a"]);
   });
 
   it("offers a longer period when no installation downloaded or launched the bundles, and says when nothing crashed", () => {
