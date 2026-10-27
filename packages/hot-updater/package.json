@@ -99,6 +99,7 @@
     "fast-glob": "3.3.3",
     "fast-xml-parser": "5.7.2",
     "is-port-reachable": "^4.0.0",
+    "jszip": "^3.10.1",
     "kysely": "catalog:db",
     "libsodium-wrappers": "0.8.4",
     "open": "^10.1.0",

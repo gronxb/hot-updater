@@ -43,6 +43,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - the device-side contract between a host and its extensions: `defineClientPlugin` and the reference host `createPluginHost`.
 
   It runs anywhere: Hermes, Node, Workers, Deno.
+  - Its one subpath, `./native-artifact`, reads an artifact built elsewhere (`.ipa`, `.aab`, `.apk`, simulator `.app.zip`) as untrusted input and checks whether it can be imported as a native build, for the CLI's `native-build import`. No app imports it, so an app's bundle never carries it.
 
 - `@hot-updater/plugin-core` is the public kit for third-party adapter and server plugin authors, like `@better-auth/core` or `@nuxt/kit`.
   - Its root holds only what the docs teach or what an adapter implements, each name with the reason in its JSDoc.

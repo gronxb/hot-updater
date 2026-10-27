@@ -11,7 +11,9 @@
  * - no package has an export whose key names `internal` or test code, and no
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
- * - @hot-updater/protocol has no dependencies;
+ * - @hot-updater/protocol has no dependencies, and exports its root and
+ *   `./native-artifact`, the artifact reader of `native-build import`, which
+ *   no app imports;
  * - @hot-updater/react-native exports only its root, and neither it nor the
  *   packages it pulls in (dependencies, optional dependencies, and peers that
  *   are not optional) depend on @hot-updater/plugin-core or
@@ -184,8 +186,7 @@ if (cli) {
 }
 
 /** Export keys that name test code. */
-const TEST_EXPORT =
-  /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
+const TEST_EXPORT = /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
 
 // No internal or test exports, in any workspace package.
 for (const pkg of packages) {
@@ -205,9 +206,25 @@ for (const pkg of packages) {
   }
 }
 
+/**
+ * Protocol's exports: its root, which apps import, and the store artifact
+ * reader, a subpath so an app's JavaScript bundle never carries it.
+ */
+const PROTOCOL_EXPORTS = [".", "./native-artifact", "./package.json"];
+
 // Protocol stands alone.
 const protocol = byName.get("@hot-updater/protocol");
 if (protocol) {
+  const keys = exportKeys(protocol);
+  if (
+    keys.length !== PROTOCOL_EXPORTS.length ||
+    !PROTOCOL_EXPORTS.every((key) => keys.includes(key))
+  ) {
+    fail(
+      "protocol-exports",
+      `@hot-updater/protocol exports ${keys.join(", ")}; it exports ${PROTOCOL_EXPORTS.join(", ")}.`,
+    );
+  }
   for (const field of [
     "dependencies",
     "peerDependencies",
@@ -238,7 +255,9 @@ const installed = (/** @type {Package} */ pkg) => {
 // React Native: its root only, and no server code through what it pulls in.
 const reactNative = byName.get("@hot-updater/react-native");
 if (reactNative) {
-  const keys = exportKeys(reactNative).filter((key) => key !== "./package.json");
+  const keys = exportKeys(reactNative).filter(
+    (key) => key !== "./package.json",
+  );
   if (keys.length !== 1 || keys[0] !== ".") {
     fail(
       "react-native-root",
@@ -497,6 +516,18 @@ for (const pkg of [...packages, ...OUTSIDE]) {
       }
     }
   }
+}
+
+// The store artifact reader is tooling's: an app's bundle never carries it.
+if (
+  importers
+    .get("@hot-updater/protocol ./native-artifact")
+    ?.has("@hot-updater/react-native")
+) {
+  fail(
+    "protocol-exports",
+    "@hot-updater/react-native imports @hot-updater/protocol/native-artifact, the artifact reader of `native-build import`; an app imports protocol's root only.",
+  );
 }
 
 // An export exists for its users, not for test-utils alone.

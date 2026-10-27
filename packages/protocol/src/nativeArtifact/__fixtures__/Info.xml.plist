@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>App</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.example.app</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.4.0</string>
+  <key>CFBundleVersion</key>
+  <string>42</string>
+  <key>HOT_UPDATER_CHANNEL</key>
+  <string>beta &amp; gamma</string>
+  <key>UIRequiredDeviceCapabilities</key>
+  <array><string>arm64</string></array>
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+</dict>
+</plist>

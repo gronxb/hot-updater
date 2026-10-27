@@ -33,26 +33,32 @@ import {
 import { getFileHashFromFile } from "../getFileHash";
 import { getLatestGitCommit } from "../git";
 import { type LoadedServer, loadServer } from "../loadServer";
-import type { NativeBuildResult } from "./createNativeBuild";
+import type { NativeBuildResult, NativeBuildTarget } from "./createNativeBuild";
 
 /** Where a native build's artifact is stored, under the config's storage. */
 export const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
 
 /**
- * Deletes the artifact of a registration that failed, which no `storage
- * prune` reclaims. A registration that committed although its write failed,
- * or that cannot be checked, keeps it. The built-in bundle's manifest and
- * file stay for `storage prune`.
+ * Deletes the artifact and the manifest of a registration that failed: both
+ * are its own (the manifest sits under the registration's ID), and no
+ * `storage prune` reclaims them while another build registered the same
+ * built-in bundle. A registration that committed although its write failed,
+ * or that cannot be checked, keeps them. The built-in bundle's file is
+ * content-addressed and shared; it stays for `storage prune`.
  */
 const removeUnregisteredArtifact = async (
   { core, storage }: Pick<LoadedServer, "core" | "storage">,
   registration: NativeBuildRegistration,
 ) => {
   try {
-    // Only this registration writes its built-in bundle's row.
-    const committed = await core.getBundle(registration.minBundleId);
+    // Its own row, by its own ID: another import of the same artifact may
+    // have written the built-in bundle's row.
+    const committed = await core.getNativeBuild(registration.id);
     if (committed !== null || storage.delete === undefined) return;
     await storage.delete({ storageUri: registration.artifact.storageUri });
+    await storage.delete({
+      storageUri: registration.embeddedBundle.manifestStorageUri,
+    });
   } catch {
     p.log.warn(
       `The native build was not registered, and its artifact stays at ${registration.artifact.storageUri}.`,
@@ -124,8 +130,25 @@ export const preflightNativeBuildRegistration = async (
  * finds it by, or null for a build no key covers.
  */
 export const registerNativeBuild = async (
-  build: NativeBuildResult,
-  { buildKey }: { readonly buildKey: string | null },
+  build: NativeBuildTarget &
+    Omit<NativeBuildResult, "scheme" | keyof NativeBuildTarget>,
+  {
+    buildKey,
+    gitCommitHash,
+    writeBuiltInBundle,
+  }: {
+    readonly buildKey: string | null;
+    /**
+     * The commit the build was made from: this checkout's latest by
+     * default, and null for a build imported from elsewhere.
+     */
+    readonly gitCommitHash?: string | null;
+    /**
+     * Writes the built-in bundle to `outputPath`: by default the platform
+     * helper extracts it from the artifact.
+     */
+    readonly writeBuiltInBundle?: (outputPath: string) => Promise<void>;
+  },
 ): Promise<NativeBuildRow> => {
   if (build.minBundleId === NIL_UUID) {
     throw new Error(
@@ -160,14 +183,18 @@ export const registerNativeBuild = async (
     const assetPath = `index.${build.platform}.bundle`;
     const bundleDir = path.join(workDir, "bundle");
     const builtInBundlePath = path.join(bundleDir, assetPath);
-    await (
-      build.platform === "android"
-        ? extractAndroidBuiltInBundle
-        : extractIosBuiltInBundle
-    )({
-      artifactPath: build.artifactPath,
-      outputPath: builtInBundlePath,
-    });
+    if (writeBuiltInBundle !== undefined) {
+      await writeBuiltInBundle(builtInBundlePath);
+    } else {
+      await (
+        build.platform === "android"
+          ? extractAndroidBuiltInBundle
+          : extractIosBuiltInBundle
+      )({
+        artifactPath: build.artifactPath,
+        outputPath: builtInBundlePath,
+      });
+    }
     const targetFiles = [{ path: builtInBundlePath, name: assetPath }];
     const manifest = await createBundleManifest({
       bundleId: build.minBundleId,
@@ -183,12 +210,14 @@ export const registerNativeBuild = async (
       manifest,
     });
 
-    // A simulator `.app` is a directory: it is stored as one zip archive.
-    const artifactFile =
-      build.artifactKind === "app"
-        ? path.join(workDir, `${path.basename(build.artifactPath)}.zip`)
-        : build.artifactPath;
-    if (build.artifactKind === "app") {
+    // A simulator `.app` is a directory: it is stored as one zip archive,
+    // unless it is one already (an imported `.app.zip`).
+    const archive =
+      build.artifactKind === "app" && !build.artifactPath.endsWith(".zip");
+    const artifactFile = archive
+      ? path.join(workDir, `${path.basename(build.artifactPath)}.zip`)
+      : build.artifactPath;
+    if (archive) {
       await archiveAppBundle({
         appPath: build.artifactPath,
         outputPath: artifactFile,
@@ -196,9 +225,12 @@ export const registerNativeBuild = async (
     }
 
     p.log.info(`Uploading the native build to ${storage.name}`);
+    // The manifest's key names this registration: two imports of the same
+    // MIN_BUNDLE_ID upload before the registry takes one, so a shared key
+    // would let the refused one overwrite the registered build's manifest.
     const manifestUpload = await putStorageFile(
       storage,
-      createBundleStorageKey(build.minBundleId),
+      createBundleStorageKey(build.minBundleId, id),
       manifestPath,
     );
     const assetBaseStorageUri = createStorageRootUriWithPath(
@@ -223,7 +255,10 @@ export const registerNativeBuild = async (
       ...scope,
       id,
       minBundleId: build.minBundleId,
-      gitCommitHash: (await getLatestGitCommit())?.id() ?? null,
+      gitCommitHash:
+        gitCommitHash === undefined
+          ? ((await getLatestGitCommit())?.id() ?? null)
+          : gitCommitHash,
       buildKey,
       artifact: {
         kind: build.artifactKind,
