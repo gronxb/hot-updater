@@ -2,9 +2,10 @@
 
 import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 import {
+  consoleLink,
+  consolePath,
   renderClosedComment,
   renderPreviewComment,
-  consoleLink,
 } from "./comment.mjs";
 import { findComment, updateComment, upsertComment } from "./github.mjs";
 
@@ -19,8 +20,8 @@ export { parseJsonOutput };
  * @property {Platform[]} platforms
  * @property {Partial<Record<Platform, string>>} schemes The `nativeBuild`
  *   scheme each platform builds.
- * @property {string} previewChannel The channel preview builds embed.
- * @property {string} channel The pull request's channel.
+ * @property {string} channel The pull request's channel, which its native
+ *   builds embed and its bundles deploy to.
  * @property {boolean} credit
  * @property {boolean} comment Whether to write the pull request comment.
  * @property {"preview" | "cleanup"} mode
@@ -49,7 +50,12 @@ export { parseJsonOutput };
  * @property {string} channel
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
- * @property {{ id: string, artifact_kind: import("./comment.mjs").ArtifactKind } | null} nativeBuild
+ * @property {NativeBuildRow | null} nativeBuild
+ *
+ * @typedef {object} NativeBuildRow The fields of a tracked build the action reads.
+ * @property {string} id
+ * @property {import("./comment.mjs").ArtifactKind} artifact_kind
+ * @property {string} artifact_storage_uri
  */
 
 const PLATFORMS = /** @type {const} */ (["android", "ios"]);
@@ -103,13 +109,7 @@ export const parseInputs = (env, event) => {
     if (scheme !== "") schemes[platform] = scheme;
   }
 
-  const previewChannel = input("PREVIEW_CHANNEL") || "preview";
   const channel = input("CHANNEL") || `pr-${event.number}`;
-  if (channel === previewChannel) {
-    throw new Error(
-      `channel and preview-channel are both ${channel}: deploy each pull request to its own channel, since a channel a native build embeds can't be deleted.`,
-    );
-  }
 
   const resolvedMode =
     mode === "auto"
@@ -131,7 +131,6 @@ export const parseInputs = (env, event) => {
     consoleUrl,
     platforms,
     schemes,
-    previewChannel,
     channel,
     credit: flag("CREDIT", true),
     comment: flag("COMMENT", true),
@@ -164,7 +163,7 @@ const findNativeBuild = async (deps, inputs, platform) =>
       "-p",
       platform,
       "-c",
-      inputs.previewChannel,
+      inputs.channel,
       "-s",
       /** @type {string} */ (inputs.schemes[platform]),
       "--json",
@@ -183,14 +182,29 @@ const describeTarget = (scope) =>
  *
  * @typedef {object} NativeBuildJson
  * @property {{ channel: string, fingerprintHash: string | null, appVersion: string | null }} build
- * @property {{ id: string, artifact_kind: import("./comment.mjs").ArtifactKind } | null} nativeBuild
+ * @property {NativeBuildRow | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} [registration]
  */
 
 /**
+ * The artifact's file name: the last path segment of its storage URI.
+ * @param {string} storageUri
+ */
+const artifactFileName = (storageUri) => {
+  const segment = storageUri.split(/[?#]/, 1)[0]?.split("/").at(-1) ?? "";
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
+/**
  * Deploys one platform's bundle to the pull request's channel, after
- * building and registering a native build when the registry has none for
- * the project's fingerprint, or app version, on the preview channel.
+ * building and registering a native build that embeds the channel when the
+ * registry has none for the project's fingerprint, or app version, there.
+ * The build's default channel is the pull request's, so its first update
+ * check finds the pull request's bundle.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
@@ -205,12 +219,12 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     fingerprintHash: found.fingerprintHash,
     appVersion: found.appVersion,
   };
-  /** @type {{ id: string, artifactKind: import("./comment.mjs").ArtifactKind }} */
+  /** @type {PlatformPreview["nativeBuild"]} */
   let nativeBuild;
   const built = found.nativeBuild === null;
   if (found.nativeBuild === null) {
     deps.log.info(
-      `No ${platform} native build on ${inputs.previewChannel} has ${describeTarget(found)}: building one.`,
+      `No ${platform} native build on ${inputs.channel} has ${describeTarget(found)}: building one.`,
     );
     const scheme = /** @type {string} */ (inputs.schemes[platform]);
     const since = Date.now();
@@ -227,9 +241,9 @@ const previewPlatform = async (deps, inputs, event, platform) => {
         throw error;
       })
     );
-    if (registered.build.channel !== inputs.previewChannel) {
+    if (registered.build.channel !== inputs.channel) {
       throw new Error(
-        `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${inputs.previewChannel}. An Expo project sets it in the @hot-updater/expo config plugin.`,
+        `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${inputs.channel}. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to ${inputs.channel}.`,
       );
     }
     if (registered.nativeBuild === null) {
@@ -247,6 +261,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     nativeBuild = {
       id: registered.nativeBuild.id,
       artifactKind: registered.nativeBuild.artifact_kind,
+      fileName: artifactFileName(registered.nativeBuild.artifact_storage_uri),
     };
   } else {
     deps.log.info(
@@ -255,6 +270,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     nativeBuild = {
       id: found.nativeBuild.id,
       artifactKind: found.nativeBuild.artifact_kind,
+      fileName: artifactFileName(found.nativeBuild.artifact_storage_uri),
     };
     // A committed fingerprint.json can be older than the project, which
     // deploy refuses; the build would have rewritten it.
@@ -308,47 +324,39 @@ const previewPlatform = async (deps, inputs, event, platform) => {
 };
 
 /**
- * The pull request's channel link, from the Console, which serves its QR
- * code, or else from the project's config, without a QR code: a private
- * Console, such as one on a VPN, is out of the runner's reach. Null when
- * neither sets `console.channelLinkPrefix`.
+ * Whether the comment can show the Console's QR code of an APK's download:
+ * GitHub fetches a comment's images from the internet, so the runner checks
+ * that the Console answers with the download URL under its own address. A
+ * private Console, such as one on a VPN, is out of reach, and the comment
+ * keeps only the links.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
- * @returns {Promise<{ link: string, qrCode: boolean } | null>}
+ * @param {string} id
  */
-const readChannelLink = async (deps, inputs) => {
-  const url = consoleLink(
+const servesDownloadQr = async (deps, inputs, id) => {
+  const url = consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
+    build: id,
+  });
+  const expected = consolePath(
     inputs.consoleUrl,
-    "_hot-updater/preview/channel-qr",
-    {
-      channel: inputs.channel,
-    },
+    `api/native-builds/${encodeURIComponent(id)}/download`,
   );
-  /** Why the Console gave no link, for the notice. */
   let cause;
   try {
     const response = await deps.fetch(url, { method: "HEAD" });
-    const link = response.headers.get("x-hot-updater-channel-link");
-    if (response.ok && link) return { link, qrCode: true };
-    cause =
-      response.status === 404
-        ? `The Console answered 404 to ${url}, as when its config sets no console.channelLinkPrefix`
-        : `The Console answered ${response.status} to ${url} without a channel link`;
+    const downloadUrl = response.headers.get("x-hot-updater-download-url");
+    if (response.ok && downloadUrl === expected) return true;
+    cause = response.ok
+      ? `The Console's QR code at ${url} holds ${downloadUrl}, not ${expected}`
+      : `The Console answered ${response.status} to ${url}`;
   } catch (error) {
     cause = `The Console is unreachable from the runner (${error instanceof Error ? error.message : String(error)}), as a private Console is`;
   }
-  // The link the Console would make: `channel link` reads the same option
-  // from hot-updater.config.ts and makes it as the Console does.
-  const { link } = /** @type {{ link: string | null }} */ (
-    await json(deps, ["channel", "link", inputs.channel, "--json"])
-  );
   deps.log.notice(
-    link === null
-      ? `${cause}, and hot-updater.config.ts sets no console.channelLinkPrefix, so the comment has no channel link: set it to the prefix of the app's channel links.`
-      : `${cause}, so the comment shows the channel link from hot-updater.config.ts without a QR code.`,
+    `${cause}, so the comment links the APK's download without a QR code.`,
   );
-  return link === null ? null : { link, qrCode: false };
+  return false;
 };
 
 /**
@@ -357,9 +365,9 @@ const readChannelLink = async (deps, inputs) => {
  * @param {PullRequestEvent} event
  */
 export const runPreview = async (deps, inputs, event) => {
-  // Preview builds embed the shared preview channel, and each pull request
-  // deploys to its own, so closing one deletes its channel.
-  await deps.cli(["channel", "set", inputs.previewChannel]);
+  // The pull request's native builds embed its channel, so their first
+  // update check finds its bundle.
+  await deps.cli(["channel", "set", inputs.channel]);
   /** @type {PlatformPreview[]} */
   const previews = [];
   for (const platform of inputs.platforms) {
@@ -369,12 +377,21 @@ export const runPreview = async (deps, inputs, event) => {
       ),
     );
   }
+  /** @type {string[]} */
+  const qrCodes = [];
+  for (const { nativeBuild } of previews) {
+    if (
+      nativeBuild.artifactKind === "apk" &&
+      (await servesDownloadQr(deps, inputs, nativeBuild.id))
+    ) {
+      qrCodes.push(nativeBuild.id);
+    }
+  }
   const body = renderPreviewComment({
     consoleUrl: inputs.consoleUrl,
     channel: inputs.channel,
-    previewChannel: inputs.previewChannel,
     previews,
-    channelLink: await readChannelLink(deps, inputs),
+    qrCodes,
     headSha: event.headSha,
     credit: inputs.credit,
   });
@@ -387,19 +404,27 @@ export const runPreview = async (deps, inputs, event) => {
 };
 
 /**
- * Deletes the closed pull request's channel and its bundles, and says so in
- * its comment. It fails when a native build embeds the channel, which keeps
- * it.
+ * Deletes the closed pull request's channel with its bundles and the native
+ * builds that embed it, each with its artifact, and says so in its comment.
+ * It fails when the channel is kept, as when a bundle or a build is added to
+ * it meanwhile.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  */
 export const runCleanup = async (deps, inputs, event) => {
-  const args = ["channel", "delete", inputs.channel, "--yes", "--json"];
+  const args = [
+    "channel",
+    "delete",
+    inputs.channel,
+    "--native-builds",
+    "--yes",
+    "--json",
+  ];
   const { code, stdout } = await deps.cli(args, { capture: true });
   const result =
-    /** @type {{ deleted: boolean, reason?: string, deletedBundleIds?: string[] }} */ (
+    /** @type {{ deleted: boolean, reason?: string, deletedBundleIds?: string[], deletedNativeBuildIds?: string[] }} */ (
       parseJsonOutput(stdout)
     );
   const outcome =
@@ -415,6 +440,7 @@ export const runCleanup = async (deps, inputs, event) => {
     channel: inputs.channel,
     outcome,
     deletedBundles: result.deletedBundleIds?.length ?? 0,
+    deletedNativeBuilds: result.deletedNativeBuildIds?.length ?? 0,
     credit: inputs.credit,
   });
   deps.setOutput("comment-body", body);
@@ -425,7 +451,7 @@ export const runCleanup = async (deps, inputs, event) => {
   }
   if (outcome === "kept") {
     throw new Error(
-      `The ${inputs.channel} channel is kept: a native build embeds it. Register preview builds on ${inputs.previewChannel} and deploy each pull request to its own channel.`,
+      `The ${inputs.channel} channel is kept: a bundle or a native build was added to it while the cleanup ran. Run the cleanup again.`,
     );
   }
   return { outcome, body };

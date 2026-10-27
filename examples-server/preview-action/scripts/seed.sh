@@ -6,7 +6,7 @@
 # 2. `db migrate` creates core's tables;
 # 3. a release keystore and a bundle signing key pair are generated, and the
 #    preview build pins the public key;
-# 4. the Console starts, for the comment's install links and QR codes.
+# 4. the Console starts, for the comment's download links and QR codes.
 #
 # Every credential the action's CLI reads is a job variable, which the CLI
 # reads as the config sets no secrets adapter: the keystore as one JSON
@@ -65,12 +65,12 @@ rm "$key_dir/release.jks"
   echo $! >"$log_dir/console.pid"
 )
 for _ in $(seq 60); do
-  if curl -s -o /dev/null "$console_url/_hot-updater/preview/channel-qr?channel=preview"; then
+  if curl -s -o /dev/null "$console_url/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-000000000001"; then
     break
   fi
   sleep 1
 done
-curl -s -o /dev/null "$console_url/_hot-updater/preview/channel-qr?channel=preview"
+curl -s -o /dev/null "$console_url/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-000000000001"
 
 echo "HOT_UPDATER_ANDROID_KEYSTORE=$keystore"
 echo "PREVIEW_SIGNING_KEY_PATH=$key_dir/keys/private-key.pem"

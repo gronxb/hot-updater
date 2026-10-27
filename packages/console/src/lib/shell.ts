@@ -7,11 +7,3 @@ export const shellQuote = (value: string): string =>
   /^[\w@%+=:,./-]+$/.test(value)
     ? value
     : `'${value.replaceAll("'", `'\\''`)}'`;
-
-/** Opens `link` on an Android emulator; `adb shell` parses it again on the device. */
-export const androidOpenLinkCommand = (link: string) =>
-  `adb shell am start -a android.intent.action.VIEW -d ${shellQuote(shellQuote(link))}`;
-
-/** Opens `link` on the booted iOS Simulator. */
-export const iosOpenLinkCommand = (link: string) =>
-  `xcrun simctl openurl booted ${shellQuote(link)}`;

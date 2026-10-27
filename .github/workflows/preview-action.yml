@@ -10,7 +10,7 @@ on:
       - "packages/hot-updater/src/commands/nativeBuild.ts"
       - "packages/hot-updater/src/commands/buildNative.ts"
       - "packages/hot-updater/src/utils/native/**"
-      - "packages/console/src/lib/server/channelLinkQr.ts"
+      - "packages/console/src/lib/server/nativeBuildQr.ts"
       - ".github/workflows/preview-action.yml"
 
 name: Preview Action
@@ -23,15 +23,16 @@ concurrency:
   cancel-in-progress: true
 
 # The preview action (actions/preview) on examples/v0.85.0's Android release
-# APK, against Postgres, MinIO, and a Console started in the job. The action
-# gets only the Console's URL, for the comment's links: the config sets no
+# APK, against Postgres, MinIO, and a Console started in the job. The native
+# builds embed the pull request's channel. The action gets only the Console's
+# URL, for the comment's links and the APK's download QR code: the config sets no
 # secrets adapter, so the CLI reads every credential from the job's
 # environment, the keystore as one JSON value, and signs bundles with a local
 # key. It comments nothing: each proof step reads Postgres and MinIO itself
 # and checks the comment the run rendered against them. The runs, in order:
 # no native build (build and register), the same fingerprint (deploy only),
 # a changed native input (build again), and the closed pull request's
-# cleanup. iOS Simulator builds are checked on macOS outside CI.
+# cleanup, which deletes both native builds with their artifacts. iOS Simulator builds are checked on macOS outside CI.
 jobs:
   android:
     name: Preview action (Android)
@@ -39,7 +40,6 @@ jobs:
     timeout-minutes: 90
     env:
       PROOF_CHANNEL: pr-${{ github.event.pull_request.number }}
-      PROOF_PREVIEW_CHANNEL: preview
       PROOF_PLATFORM: android
       PROOF_STATE: /tmp/preview-proof-state.json
       # pnpm links the workspace CLI's bin only when its dist exists at

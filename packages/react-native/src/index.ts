@@ -1,14 +1,10 @@
-import { parseChannelLink } from "@hot-updater/protocol";
-
 import { createLaunchReporter, type LaunchReporter } from "./appReady";
 import {
   type CheckForUpdateOptions,
   checkForUpdate,
-  isChannelLeave,
   reportUpdateError,
 } from "./checkForUpdate";
 import type { ClientPluginApis, HotUpdaterClientPlugin } from "./clientPlugin";
-import { HotUpdaterError } from "./error";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import type { HotUpdaterInitOptions } from "./init.types";
 import {
@@ -34,9 +30,6 @@ import {
   resetChannel,
   setCohort,
   stageBundle,
-  startRuntime,
-  claimLaunchURL,
-  releaseLaunchURL,
   type UpdateParams,
 } from "./native";
 import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
@@ -321,49 +314,6 @@ const nativeMethods = {
   clearCrashHistory,
 };
 
-/** How `hotUpdater.openChannelLink` checks the channel a link names. */
-export interface ChannelLinkOptions extends Pick<
-  CheckForUpdateOptions,
-  "requestHeaders" | "requestTimeout"
-> {
-  /** The update strategy the app's update checks use. */
-  updateStrategy: CheckForUpdateOptions["updateStrategy"];
-  /**
-   * The build-time default channels whose builds open channel links, such
-   * as `["preview"]`. A build with another default channel, such as a
-   * production build, ignores every link, whatever bundle it runs: an OTA
-   * update cannot change the default channel a binary embeds.
-   */
-  defaultChannels: readonly string[];
-  /**
-   * Set for the URL `Linking.getInitialURL()` returns. React Native returns
-   * the app's launch URL again after an in-place reload, as iOS reloads, so
-   * an app process opens its launch link once: later calls resolve with
-   * `ALREADY_OPENED`. Leave it unset for the URLs of `Linking`'s `url`
-   * events, which the app opens while it runs.
-   */
-  initial?: boolean;
-}
-
-/**
- * What `hotUpdater.openChannelLink` did with a URL. When it switches, the
- * app reloads into the channel's bundle before the result is read.
- */
-export type ChannelLinkResult =
-  /** The URL is no channel link: route it as the app routes other links. */
-  | { readonly status: "NOT_CHANNEL_LINK" }
-  /** This build's default channel is not in `defaultChannels`. */
-  | { readonly status: "IGNORED"; readonly channel: string }
-  /** The channel has no bundle for this build, so nothing changed. */
-  | { readonly status: "NO_UPDATE"; readonly channel: string }
-  /** The channel's bundle is installed, and the app reloads into it. */
-  | { readonly status: "SWITCHED"; readonly channel: string }
-  /**
-   * The app process already opened this launch link, which React Native
-   * returned again after a reload, so nothing changed.
-   */
-  | { readonly status: "ALREADY_OPENED"; readonly channel: string };
-
 /** What an instance's own methods use: its server, settings, and launch. */
 interface InstanceConfig {
   readonly client: HotUpdaterHttpClient;
@@ -498,94 +448,6 @@ const createConfiguredMethods = (config: InstanceConfig) => {
     },
 
     /**
-     * Opens a channel link, `<scheme>://hot-updater/channel/<channel>`,
-     * such as the QR code the Console shows for a pull request's channel:
-     * it checks the channel with `checkForUpdate({ channel })`, installs its
-     * bundle with `updateBundle()`, and reloads. A device already switched
-     * to another channel calls `resetChannel()` first, and a link to the
-     * build's default channel leaves the switch. Only builds whose default
-     * channel is in `defaultChannels` open links, so production builds
-     * ignore them. Pass every URL the app opens: any other URL resolves
-     * with `NOT_CHANNEL_LINK`.
-     *
-     * @example
-     * ```ts
-     * Linking.addEventListener("url", ({ url }) => {
-     *   hotUpdater
-     *     .openChannelLink(url, {
-     *       updateStrategy: "fingerprint",
-     *       defaultChannels: ["preview"],
-     *     })
-     *     // A failed check or download rejects.
-     *     .catch((error) => console.warn("Couldn't open the channel", error));
-     * });
-     * ```
-     */
-    openChannelLink: async (
-      url: string,
-      { defaultChannels, initial = false, ...options }: ChannelLinkOptions,
-    ): Promise<ChannelLinkResult> => {
-      const channel = parseChannelLink(url);
-      if (channel === null) return { status: "NOT_CHANNEL_LINK" };
-      if (initial && !claimLaunchURL(url)) {
-        return { status: "ALREADY_OPENED", channel };
-      }
-      // A launch link that failed to open, or whose update could not be
-      // applied, opens again on a retry. An error path that reloads gives it
-      // back first: on iOS the reload replaces this runtime.
-      const unclaim = () => {
-        if (initial) releaseLaunchURL(url);
-      };
-      try {
-        const defaultChannel = getDefaultChannel();
-        if (!defaultChannels.includes(defaultChannel)) {
-          return { status: "IGNORED", channel };
-        }
-        // A switched device checks another channel only from its default one.
-        const reset = isChannelSwitched() && getChannel() !== channel;
-        if (reset && !(await nativeMethods.resetChannel())) {
-          throw new HotUpdaterError(
-            `Could not leave the "${getChannel()}" channel to open "${channel}".`,
-          );
-        }
-        let switched = false;
-        let changed = false;
-        try {
-          // `checkForUpdate` reports a failed check as no update, through
-          // `onError`: keep its error, so a failed check rejects instead.
-          let checkError: unknown;
-          const updateInfo = await check({
-            ...options,
-            ...(channel === defaultChannel ? {} : { channel }),
-            onError: (error) => {
-              checkError ??= error;
-              config.onError?.(error);
-            },
-          });
-          if (checkError !== undefined) throw checkError;
-          changed = updateInfo !== null && (await updateInfo.updateBundle());
-          if (updateInfo !== null && !changed) unclaim();
-          // Leaving a switched channel that holds nothing for this build any
-          // more selects nothing in it; any other applied selection switches.
-          switched =
-            changed && !(updateInfo !== null && isChannelLeave(updateInfo));
-        } catch (error) {
-          unclaim();
-          // The reset already left the channel the running bundle came from:
-          // start the restored bundle before reporting the failure.
-          if (reset) await reload();
-          throw error;
-        }
-        // After a reset without an update, this starts the restored bundle.
-        if (changed || reset) await reload();
-        return { status: switched ? "SWITCHED" : "NO_UPDATE", channel };
-      } catch (error) {
-        unclaim();
-        throw error;
-      }
-    },
-
-    /**
      * Wraps the app's root: when it mounts, it checks for an update with
      * this instance's configuration, downloads one, and reloads for a
      * forced update. A `fallbackComponent` replaces the root until the
@@ -656,7 +518,6 @@ export const HotUpdater = {
       onNotifyAppReady,
     } = options;
     if (!baseURL) throw createMissingNetworkConfigError();
-    startRuntime();
 
     const host = createAppPluginHost();
     const launch = createLaunchReporter(host);
