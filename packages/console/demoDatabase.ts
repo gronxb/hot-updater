@@ -677,7 +677,9 @@ const { core } = seeding;
 // Native builds, registered before the deploys so their built-in bundles are
 // stored before the patches from them: a superseded pair on one scope, each
 // artifact kind, a pull request's builds on both platforms, and enough older
-// pull request builds to page.
+// pull request builds to page. Their MIN_BUNDLE_IDs take both forms an app
+// in the field has: zero random bits, as builds issue them, and an earlier
+// CLI's platform byte (`01` iOS, `02` Android) and random bits.
 type DemoNativeBuild = {
   readonly n: number;
   readonly platform: "ios" | "android";
@@ -707,7 +709,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
       platform: "android",
       channel: `pr-${110 + index}`,
       target: { fingerprint: `fp-android-pr-${110 + index}` },
-      minBundleId: `019f6200-0000-7000-8000-${String(index + 1).padStart(12, "0")}`,
+      minBundleId: `019f6200-${(index + 1).toString(16).padStart(4, "0")}-7000-8000-000000000000`,
       kind: "apk",
       gitCommitHash: `a${String(index).padStart(2, "0")}c4e19`,
     }),
@@ -717,7 +719,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "staging",
     target: { fingerprint: "fp-android-camera-v2" },
-    minBundleId: "01971f4e-0000-7000-8000-0000000000a1",
+    minBundleId: "01971f4e-0000-7000-8000-02a1b2c3d4e5",
     kind: "apk",
     gitCommitHash: "1d3e5f7a",
     patchTargets: [androidStagingVisionBase],
@@ -727,7 +729,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "production",
     target: { appVersion: "1.4.2" },
-    minBundleId: "01971f0f-0000-7000-8000-0000000000a3",
+    minBundleId: "01971f0f-0000-7000-8000-01c4d2e8a7f3",
     kind: "ipa",
     gitCommitHash: "9c12ab40",
     patchTargets: [iosProdCorePatchA, iosProdCorePatchB],
@@ -737,7 +739,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "production",
     target: { appVersion: "1.3.0" },
-    minBundleId: "01971f2f-0000-7000-8000-0000000000a6",
+    minBundleId: "01971f2f-0000-7000-8000-000000000000",
     kind: "aab",
     gitCommitHash: "51b0e2d9",
     patchTargets: [androidProdPatchA],
@@ -747,7 +749,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "dev",
     target: { appVersion: "1.6.0" },
-    minBundleId: "01971f5f-0000-7000-8000-0000000000a4",
+    minBundleId: "01971f5f-0000-7000-8000-000000000000",
     kind: "app",
     gitCommitHash: "c7d8e9f0",
   },
@@ -756,7 +758,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "staging",
     target: { fingerprint: "fp-android-camera-v2" },
-    minBundleId: "01971f4f-0000-7000-8000-0000000000a2",
+    minBundleId: "01971f4f-0000-7000-8000-029e7b3c1d5a",
     kind: "apk",
     gitCommitHash: "20be7311",
     patchTargets: [androidStagingVisionPatchA, androidStagingVisionPatchB],
@@ -766,7 +768,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "android",
     channel: "pr-130",
     target: { fingerprint: "fp-android-pr-130" },
-    minBundleId: "019f6300-0000-7000-8000-0000000000a5",
+    minBundleId: "019f6300-00a5-7000-8000-000000000000",
     kind: "apk",
     gitCommitHash: "e4f1a2b3",
   },
@@ -775,7 +777,7 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     platform: "ios",
     channel: "pr-130",
     target: { fingerprint: "fp-ios-pr-130" },
-    minBundleId: "019f6300-0000-7000-8000-0000000000a7",
+    minBundleId: "019f6300-00a7-7000-8000-000000000000",
     kind: "app",
     gitCommitHash: "e4f1a2b3",
   },

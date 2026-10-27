@@ -122,6 +122,33 @@ describe("NativeBuildsTable", () => {
     refetch: vi.fn(),
   });
 
+  it.each([
+    [
+      "zero random bits, as builds issue it",
+      "019a1b2c-3d4e-7000-8000-000000000000",
+    ],
+    [
+      "an earlier CLI's iOS platform byte",
+      "019a1b2c-3d4e-7000-8000-01a1b2c3d4e5",
+    ],
+    [
+      "an earlier CLI's Android platform byte",
+      "019a1b2c-3d4e-7000-8000-02a1b2c3d4e5",
+    ],
+  ])("shows a built-in bundle ID with %s in full", (_form, minBundleId) => {
+    const row = build({ min_bundle_id: minBundleId });
+    render(
+      <NativeBuildsTable
+        builds={builds([row])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+    expect(screen.getAllByText(minBundleId)).toHaveLength(2);
+  });
+
   it("lists each build with its decoded channel and built-in bundle, and opens its page", () => {
     const row = build();
     const onChannel = vi.fn();
