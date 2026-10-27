@@ -4,12 +4,13 @@ import path from "path";
 import { getCwd, p } from "@hot-updater/cli-tools";
 
 /**
- * Checks if the project is using Expo CNG (Continuous Native Generation).
- * Returns true if expo package is installed and app.json or app.config.{js,mjs,ts,mts,cjs,cts} file exists.
+ * The Expo config file of a project that uses Expo CNG (Continuous Native
+ * Generation): `app.json` with an `expo` key, or `app.config.{js,mjs,ts,mts,cjs,cts}`,
+ * in a project with the expo package installed. Null otherwise.
  */
-export function isExpoCNG(cwd = getCwd()): boolean {
+export function expoConfigFile(cwd = getCwd()): string | null {
   if (!isExpo(cwd)) {
-    return false;
+    return null;
   }
 
   // Check app.json
@@ -19,7 +20,7 @@ export function isExpoCNG(cwd = getCwd()): boolean {
       const appJsonContent = fs.readFileSync(appJsonPath, "utf-8");
       const appJson = JSON.parse(appJsonContent);
       if (appJson.expo) {
-        return true;
+        return "app.json";
       }
     } catch {
       // Invalid JSON, continue checking
@@ -28,10 +29,18 @@ export function isExpoCNG(cwd = getCwd()): boolean {
 
   // Check app.config.{js,mjs,ts,mts,cjs,cts} files
   const configExtensions = ["js", "mjs", "cjs", "ts", "mts", "cts"];
-  return configExtensions.some((ext) => {
-    const configPath = path.join(cwd, `app.config.${ext}`);
-    return fs.existsSync(configPath);
-  });
+  const extension = configExtensions.find((ext) =>
+    fs.existsSync(path.join(cwd, `app.config.${ext}`)),
+  );
+  return extension === undefined ? null : `app.config.${extension}`;
+}
+
+/**
+ * Checks if the project is using Expo CNG (Continuous Native Generation).
+ * Returns true if expo package is installed and app.json or app.config.{js,mjs,ts,mts,cjs,cts} file exists.
+ */
+export function isExpoCNG(cwd = getCwd()): boolean {
+  return expoConfigFile(cwd) !== null;
 }
 
 export function isExpo(projectPath = getCwd()): boolean {

@@ -62,7 +62,7 @@ describe("native build download route", () => {
     expect(downloadNativeBuildMock).toHaveBeenCalledWith(BUILD, deps);
   });
 
-  it("sends a browser without a session to the build's page, under the console's path", async () => {
+  it("sends a browser without a session to the build's page, to sign in and come back to the download, under the console's path", async () => {
     const navigations: Record<string, string>[] = [
       { "sec-fetch-mode": "navigate" },
       { accept: "text/html,application/xhtml+xml" },
@@ -76,16 +76,23 @@ describe("native build download route", () => {
 
       expect(response.status).toBe(302);
       const location = response.headers.get("location")!;
-      // Relative to the route, so it never leaves the console.
-      expect(new URL(location, url).href).toBe(
-        `https://console.example.com/native-builds/${BUILD}`,
-      );
-      expect(
-        new URL(
-          location,
-          `https://example.com/console/api/native-builds/${BUILD}/download`,
-        ).href,
-      ).toBe(`https://example.com/console/native-builds/${BUILD}`);
+      // Relative to the route, so it never leaves the console, and the
+      // page's returnTo, relative to the page, is this download.
+      for (const download of [
+        url,
+        `https://example.com/console/api/native-builds/${BUILD}/download`,
+      ]) {
+        const page = new URL(location, download);
+        expect(`${page.origin}${page.pathname}`).toBe(
+          download.replace(
+            `/api/native-builds/${BUILD}/download`,
+            `/native-builds/${BUILD}`,
+          ),
+        );
+        expect(new URL(page.searchParams.get("returnTo")!, page).href).toBe(
+          download,
+        );
+      }
       expect(response.headers.get("cache-control")).toBe("no-store");
     }
     expect(downloadNativeBuildMock).not.toHaveBeenCalled();

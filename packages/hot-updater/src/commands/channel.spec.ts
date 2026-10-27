@@ -38,7 +38,7 @@ vi.mock("@/utils/loadServer", async () => ({
   loadServer,
 }));
 
-vi.mock("@/utils/expoDetection", () => ({ warnIfExpoCNG: vi.fn() }));
+vi.mock("@/utils/expoDetection", () => ({ expoConfigFile: vi.fn(() => null) }));
 vi.mock("@/utils/setChannel", () => ({ setChannel: vi.fn() }));
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 

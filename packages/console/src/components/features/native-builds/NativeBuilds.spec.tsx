@@ -381,6 +381,73 @@ describe("InstallCard", () => {
     },
   );
 
+  // Each fact once per card, counted over the card's text: the QR code's
+  // caption says it, and the steps beside it don't say it again.
+  it.each([
+    ["apk", "android", "app-release.apk", {}, [/camera/g, /USB/g]],
+    ["aab", "android", "app-release.aab", {}, [/bundletool/g, /Google Play/g]],
+    [
+      "aab",
+      "android",
+      "app-release.aab",
+      {
+        submitted_to: "play-internal",
+        submitted_at_ms: 0,
+        submitted_version: "1.7.0 (66)",
+      },
+      [/bundletool/g, /rolled out/g],
+    ],
+    [
+      "ipa",
+      "ios",
+      "App.ipa",
+      {},
+      [/TestFlight/g, /devices/g, /Apple Configurator/g],
+    ],
+    [
+      "ipa",
+      "ios",
+      "App.ipa",
+      {
+        submitted_to: "testflight",
+        submitted_at_ms: 0,
+        submitted_version: "1.7.0 (66)",
+      },
+      [/testers/g, /devices/g],
+    ],
+    [
+      "app",
+      "ios",
+      "HotUpdaterExample.app.zip",
+      {},
+      [/simulator/gi, /on a Mac/g, /download/gi],
+    ],
+  ] as const)(
+    "says each thing about installing an %s once",
+    (kind, platform, file, submission, facts) => {
+      downloadUrlQuery.mockReturnValue({
+        data: { url: `https://r2.example.com/${file}?sig=1` },
+      });
+      const { container } = render(
+        <InstallCard
+          build={build({
+            platform,
+            artifact_kind: kind,
+            artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
+            ...submission,
+          })}
+        />,
+      );
+      // The download button names the file; the rest is the card's copy.
+      const copy = [...container.querySelectorAll("p")]
+        .map((paragraph) => paragraph.textContent)
+        .join(" ");
+      for (const fact of facts) {
+        expect(copy.match(fact), String(fact)).toHaveLength(1);
+      }
+    },
+  );
+
   it("shows no QR code when the storage has no download URL a phone can open", () => {
     downloadUrlQuery.mockReturnValue({ data: { url: null } });
     render(
@@ -429,7 +496,7 @@ describe("InstallCard", () => {
       />,
     );
 
-    expect(screen.getByText(/upload it to TestFlight/)).toBeTruthy();
+    expect(screen.getByText(/For testers:/)).toBeTruthy();
     expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
   });

@@ -5,7 +5,7 @@ import {
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
+import { expoConfigFile } from "@/utils/expoDetection";
 import { loadServer } from "@/utils/loadServer";
 import { setChannel } from "@/utils/setChannel";
 
@@ -14,31 +14,61 @@ import { printBanner } from "../utils/printBanner";
 import { withPublicBundleErrors } from "../utils/publicBundleError";
 import { confirmMutation, safeDispose } from "./release";
 
+const NATIVE_CHANNEL_FILES = [
+  { platform: "android", name: "Android", file: "AndroidManifest.xml" },
+  { platform: "ios", name: "iOS", file: "Info.plist" },
+] as const;
+
+/**
+ * Writes the default channel into the native files, and says per platform
+ * whether it wrote any. In an Expo CNG project the build takes the channel
+ * from the `@hot-updater/expo` plugin's `channel` option, which
+ * `expo prebuild` writes into the native files, so it shows that option set
+ * to this channel.
+ */
 export const handleSetChannel = async (channel: string) => {
-  warnIfExpoCNG();
-  const { paths: androidPaths } = await setChannel("android", channel);
-  p.log.success(ui.line(["Set", ui.platform("Android"), ui.channel(channel)]));
-  if (androidPaths.length > 0) {
+  const expoConfig = expoConfigFile();
+  let written = false;
+  for (const { platform, name, file } of NATIVE_CHANNEL_FILES) {
+    const { paths } = await setChannel(platform, channel);
+    if (paths.length === 0) {
+      p.log.info(
+        ui.line([
+          "No",
+          file,
+          "found:",
+          "nothing was written for",
+          `${ui.platform(name)}.`,
+        ]),
+      );
+      continue;
+    }
+    written = true;
+    p.log.success(ui.line(["Set", ui.platform(name), ui.channel(channel)]));
     p.log.message(
       ui.block(
-        "Android paths",
-        androidPaths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
+        `${name} paths`,
+        paths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
       ),
     );
   }
 
-  const { paths: iosPaths } = await setChannel("ios", channel);
-  p.log.success(ui.line(["Set", ui.platform("iOS"), ui.channel(channel)]));
-  if (iosPaths.length > 0) {
-    p.log.message(
-      ui.block(
-        "iOS paths",
-        iosPaths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
-      ),
+  if (expoConfig !== null) {
+    const option =
+      expoConfig === "app.json"
+        ? `"plugins": [["@hot-updater/expo", { "channel": ${JSON.stringify(channel)} }]]`
+        : `plugins: [["@hot-updater/expo", { channel: ${JSON.stringify(channel)} }]]`;
+    p.log.info(
+      [
+        `This Expo project's builds take the channel from the @hot-updater/expo plugin's \`channel\` option in ${expoConfig}, which \`expo prebuild\` writes into the native files${written ? ", replacing what was written here" : ""}. Set it there:`,
+        `  ${option}`,
+      ].join("\n"),
     );
   }
 
-  p.log.warn("Rebuild native app after changing channel.");
+  if (written) {
+    p.log.warn("Rebuild native app after changing channel.");
+  }
 };
 
 const PAGE = 100;
