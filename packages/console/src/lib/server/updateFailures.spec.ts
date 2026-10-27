@@ -194,6 +194,26 @@ describe("update failures report", () => {
     });
   });
 
+  it("reads a release's failures on its own platform only", async () => {
+    const getUpdateFailures = vi.fn(async () => failures);
+    const getRelease = vi.fn(async () => ({ platform: "android" as const }));
+    await getUpdateFailuresReport(
+      { getUpdateFailures },
+      {
+        platform: "all",
+        channel: "production",
+        releaseId: "release-1",
+        window: "24h",
+      },
+      30 * HOUR + 5,
+      { getRelease } as never,
+    );
+    expect(getRelease).toHaveBeenCalledExactlyOnceWith("release-1");
+    expect(getUpdateFailures).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ platform: "android", releaseId: "release-1" }),
+    );
+  });
+
   it("calls a merged period partial when either platform's is", () => {
     expect(
       mergeUpdateFailures([

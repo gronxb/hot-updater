@@ -1,3 +1,4 @@
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import type {
   InsightsReads,
   InsightsUpdateFailures,
@@ -107,11 +108,16 @@ export function mergeUpdateFailures(
   };
 }
 
-/** A release's or a channel's update failures over a period that ends with the current hour. */
+/**
+ * A release's or a channel's update failures over a period that ends with
+ * the current hour. Both platforms read each and merge, except a release's,
+ * which reads only the platform it was deployed to.
+ */
 export async function getUpdateFailuresReport(
   reads: Pick<InsightsReads, "getUpdateFailures">,
   input: UpdateFailuresInput,
   now = Date.now(),
+  releases?: Pick<HotUpdaterCoreApi, "getRelease">,
 ): Promise<UpdateFailuresReport> {
   readUpdateFailuresInput(input);
   const end = insightsPeriodEnd(now);
@@ -126,14 +132,21 @@ export async function getUpdateFailuresReport(
     channel: input.channel,
     ...(input.releaseId === undefined ? {} : { releaseId: input.releaseId }),
   };
+  const release =
+    input.platform === "all" && input.releaseId !== undefined && releases
+      ? await releases.getRelease(input.releaseId)
+      : null;
+  const platforms =
+    input.platform !== "all"
+      ? [input.platform]
+      : release
+        ? [release.platform]
+        : (["ios", "android"] as const);
   // Both platforms: one read of each, merged.
   const read = async (range: typeof timeRange) =>
     mergeUpdateFailures(
       await Promise.all(
-        (input.platform === "all"
-          ? (["ios", "android"] as const)
-          : [input.platform]
-        ).map((platform) =>
+        platforms.map((platform) =>
           reads.getUpdateFailures({
             ...scope,
             platform,
