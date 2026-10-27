@@ -179,6 +179,7 @@ const scaffold = async (
   provider: InitProvider,
   name: string,
   baseUrl: string | null,
+  build = "bare",
 ) => {
   const dir = path.join(cwd, "hot-updater-infra", provider, name);
   await mkdir(dir, { recursive: true });
@@ -188,7 +189,7 @@ const scaffold = async (
       schemaVersion: 1,
       provider,
       operation: "upgrade",
-      build: "bare",
+      build,
       files: {},
     }),
   );
@@ -794,6 +795,54 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain("hot-updater init --provider");
+  });
+
+  it("keeps naming init beside a scaffold that was generated but never deployed", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    // A fresh scaffold records no server yet.
+    await scaffold("cloudflare", "setup-bare-1.2.0", null);
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: { issues: [{ commands: [initReplayCommand("cloudflare")] }] },
+        infrastructure: {
+          remediation: { commands: [initReplayCommand("cloudflare")] },
+        },
+      },
+    });
+  });
+
+  it("names no build when the scaffolds of one deployment record different ones", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.2.0", SERVER, "bare");
+    await scaffold("cloudflare", "upgrade-expo-1.1.3", SERVER, "expo");
+
+    const command =
+      "npx hot-updater agent infra upgrade --provider cloudflare --build <build>";
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: { issues: [{ commands: [command] }] },
+        infrastructure: { remediation: { commands: [command] } },
+      },
+    });
   });
 
   it("names db migrate when the config's database is another than the one init saved", async () => {

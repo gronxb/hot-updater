@@ -95,21 +95,26 @@ export interface ScaffoldUpgrade {
 
 /**
  * The scaffold upgrade for `provider`'s deployment, when the default
- * scaffold output records one; null when it records none.
+ * scaffold output records one it deployed: a server's base URL. A scaffold
+ * generated but not deployed records none, and is no deployment.
  */
 export const scaffoldUpgradeFor = (
   deployments: readonly ScaffoldDeployment[],
   provider: InitProvider,
 ): ScaffoldUpgrade | null => {
-  const matches = deployments.filter((record) => record.provider === provider);
-  const latest = matches.at(-1);
-  if (latest === undefined) return null;
+  const matches = deployments.filter(
+    (record) => record.provider === provider && record.baseUrl !== null,
+  );
+  if (matches.length === 0) return null;
+  // Directory names say nothing about which build is current, so the build
+  // is named only when every record agrees on it.
+  const builds = [...new Set(matches.map(({ build }) => build))];
   return {
     dirs: matches.map(({ dir }) => dir),
     command:
       recordedBaseUrls(matches).length > 1
         ? null
-        : `npx hot-updater agent infra upgrade --provider ${provider} --build ${latest.build}`,
+        : `npx hot-updater agent infra upgrade --provider ${provider} --build ${builds.length === 1 ? builds[0] : "<build>"}`,
   };
 };
 
@@ -117,4 +122,4 @@ export const scaffoldUpgradeFor = (
 export const scaffoldUpgradeNote = ({ dirs, command }: ScaffoldUpgrade) =>
   command === null
     ? `The agent infrastructure scaffolds in ${dirs.join(", ")} record more than one deployment: upgrade the one this database belongs to with \`npx hot-updater agent infra upgrade\`, and apply it as its upgrades/README.md says: upload the new server version and preview it, then migrate the database and deploy that version back to back.`
-    : `This deployment is kept with the agent infrastructure scaffold in ${dirs.at(-1)}: run \`${command}\`, and apply the new scaffold as its upgrades/README.md says: upload the new server version and preview it, then migrate the database and deploy that version back to back. Running init again instead would deploy at once, without that preview, and leave the scaffold behind.`;
+    : `This deployment is kept with the agent infrastructure ${dirs.length === 1 ? "scaffold" : "scaffolds"} in ${dirs.join(", ")}: run \`${command}\`, and apply the new scaffold as its upgrades/README.md says: upload the new server version and preview it, then migrate the database and deploy that version back to back. Running init again instead would deploy at once, without that preview, and leave the scaffold behind.`;
