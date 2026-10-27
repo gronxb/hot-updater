@@ -286,6 +286,7 @@ const VERSION_CODE = 0x0101021b;
 const VERSION_NAME = 0x0101021c;
 const NAME = 0x01010003;
 const VALUE = 0x01010024;
+const RESOURCE = 0x01010025;
 
 /** What an Android manifest says that import reads. */
 export interface AndroidManifestInfo {
@@ -323,7 +324,10 @@ export const readAndroidManifest = (
   for (const element of application?.children ?? []) {
     if (element.name !== "meta-data") continue;
     const name = attributeOf(element, NAME, "name");
-    const value = attributeOf(element, VALUE, "value");
+    // `android:resource` names a resource the app reads the value of.
+    const value =
+      attributeOf(element, VALUE, "value") ??
+      attributeOf(element, RESOURCE, "resource");
     if (name?.type === "string" && value !== null) {
       metaData.set(name.value, value);
     }

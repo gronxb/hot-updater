@@ -73,6 +73,8 @@ manifest release '>
 manifest debuggable 'android:debuggable="true">'
 manifest reference '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:value="@string/channel"/>'
+manifest resource '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:resource="@string/channel"/>'
 
 # Mach-O: an executable whose __cstring holds the literals, one holding
 # another UUIDv7, and a universal binary whose x86_64 slice holds another

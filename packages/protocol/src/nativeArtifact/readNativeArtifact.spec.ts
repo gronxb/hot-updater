@@ -137,6 +137,12 @@ describe("readNativeArtifact", () => {
       "aab",
       aab({ "base/manifest/AndroidManifest.xml": fixture("reference.pb") }),
     ],
+    // android:resource rather than android:value.
+    ["apk", apk({ "AndroidManifest.xml": fixture("resource.axml") })],
+    [
+      "aab",
+      aab({ "base/manifest/AndroidManifest.xml": fixture("resource.pb") }),
+    ],
   ] as const)(
     "reads a channel given as a resource reference in an .%s as unreadable",
     async (kind, files) => {
