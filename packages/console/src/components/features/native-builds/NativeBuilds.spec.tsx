@@ -346,13 +346,13 @@ describe("InstallCard", () => {
       "ipa",
       "ios",
       "App.ipa",
-      /Scan to download the \.ipa\. It installs only on devices its signing profile allows/,
+      /Scan to download\. The \.ipa installs only on devices its signing profile allows/,
     ],
     [
       "aab",
       "android",
       "app-release.aab",
-      /Scan to download the \.aab\. It installs through Google Play or bundletool/,
+      /Scan to download\. The \.aab installs through Google Play or bundletool/,
     ],
     [
       "app",
@@ -463,6 +463,30 @@ describe("InstallCard", () => {
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByText(/there is no QR code/)).toBeTruthy();
   });
+
+  // Without a QR code there is no caption: what the artifact installs on
+  // stays on the card, once.
+  it.each([
+    ["ipa", "ios", "App.ipa", /signing profile/g],
+    ["aab", "android", "app-release.aab", /bundletool/g],
+  ] as const)(
+    "keeps what an %s installs on when there is no QR code",
+    (kind, platform, file, limit) => {
+      downloadUrlQuery.mockReturnValue({ data: { url: null } });
+      const { container } = render(
+        <InstallCard
+          build={build({
+            platform,
+            artifact_kind: kind,
+            artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
+          })}
+        />,
+      );
+
+      expect(screen.queryByRole("img")).toBeNull();
+      expect(container.textContent!.match(limit)).toHaveLength(1);
+    },
+  );
 
   it("keeps a simulator app's install command beside its QR code", () => {
     downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/app.zip" } });

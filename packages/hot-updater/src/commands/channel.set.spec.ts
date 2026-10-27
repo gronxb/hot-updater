@@ -158,6 +158,18 @@ describe("handleSetChannel", () => {
     expect(output()).toContain("option in app.json");
   });
 
+  it("names the dynamic config, which overrides app.json, when a project has both", async () => {
+    await expoProject("app.json");
+    await write("app.config.ts", "export default ({ config }) => config;\n");
+
+    await handleSetChannel("pr-7");
+
+    expect(output()).toContain("option in app.config.ts");
+    expect(output()).toContain(
+      'plugins: [["@hot-updater/expo", { channel: "pr-7" }]]',
+    );
+  });
+
   it("says that prebuild replaces what it wrote into an Expo project's generated files", async () => {
     await expoProject("app.config.ts");
     await write(MANIFEST, manifest);

@@ -18,13 +18,23 @@ import { CopyableText } from "./CopyableText";
 import { isSubmitted } from "./StoreSubmission";
 
 /**
+ * What an artifact installs on, where the file alone isn't enough: the card
+ * says it once, under the QR code, or without one, in its place.
+ */
+const INSTALL_LIMITS: Partial<Record<NativeBuildRow["artifact_kind"], string>> =
+  {
+    ipa: "The .ipa installs only on devices its signing profile allows (development or ad hoc); an App Store export reaches testers through TestFlight.",
+    aab: "The .aab installs through Google Play or bundletool, not from the file.",
+  };
+
+/**
  * What scanning a build's QR code gets, by its artifact. The install steps
  * beside it add only what this doesn't say, so the card says each thing once.
  */
 const QR_CAPTIONS: Record<NativeBuildRow["artifact_kind"], string> = {
   apk: "Scan with an Android phone's camera, then open the APK to install it.",
-  ipa: "Scan to download the .ipa. It installs only on devices its signing profile allows (development or ad hoc); an App Store export reaches testers through TestFlight.",
-  aab: "Scan to download the .aab. It installs through Google Play or bundletool, not from the file.",
+  ipa: `Scan to download. ${INSTALL_LIMITS.ipa}`,
+  aab: `Scan to download. ${INSTALL_LIMITS.aab}`,
   app: "Scan to download the .app.zip on a Mac.",
 };
 
@@ -39,12 +49,16 @@ function DownloadQrCode({ build }: { readonly build: NativeBuildRow }) {
   // A storage without download URLs serves the build only through the
   // console, which a phone that scans isn't signed in to.
   if (url === null) {
+    const limits = INSTALL_LIMITS[build.artifact_kind];
     return (
-      <p className="text-xs text-muted-foreground">
-        This storage gives no download link a phone can open without signing in,
-        so there is no QR code. Download the build here, or open this page on
-        the phone signed in to the console.
-      </p>
+      <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+        <p>
+          This storage gives no download link a phone can open without signing
+          in, so there is no QR code. Download the build here, or open this page
+          on the phone signed in to the console.
+        </p>
+        {limits ? <p>{limits}</p> : null}
+      </div>
     );
   }
 
