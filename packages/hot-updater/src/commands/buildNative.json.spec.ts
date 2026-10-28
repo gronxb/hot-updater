@@ -5,7 +5,13 @@ vi.mock("@hot-updater/apple-helper", () => ({ buildIos: vi.fn() }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: {
-    log: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    log: {
+      info: vi.fn(),
+      step: vi.fn(),
+      success: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+    },
   },
   withCredentialResolver: vi.fn(async (run) =>
     run({ resolve: vi.fn(), dispose: vi.fn() }),

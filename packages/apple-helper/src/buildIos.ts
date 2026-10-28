@@ -129,7 +129,7 @@ const buildInto = async ({
     const appStoreConnect = await exportsForAppStoreConnect(schemeConfig);
     if (isCI() && !appStoreConnect) {
       p.log.info(
-        "This export isn't for App Store Connect, so it signs in the runner's own keychains and keeps the certificates Xcode creates.",
+        "Signing in the runner's own keychains (not an App Store Connect export).",
       );
     }
     return withSigningKeychain({

@@ -1,7 +1,14 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { stripVTControlCharacters } from "util";
 
+import { p } from "@hot-updater/cli-tools";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { cwd, log } = vi.hoisted(() => ({
@@ -102,12 +109,19 @@ describe("handleSetChannel", () => {
     expect(
       await readFile(path.join(cwd.current, INFO_PLIST), "utf8"),
     ).toContain("<string>pr-130</string>");
-    const successes = log.success.mock.calls.map((call) => String(call[0]));
-    expect(successes).toHaveLength(2);
-    expect(successes[0]).toMatch(/Set .*Android.* .*pr-130/);
-    expect(successes[1]).toMatch(/Set .*iOS.* .*pr-130/);
+    expect(log.success).toHaveBeenCalledOnce();
+    const success = stripVTControlCharacters(
+      String(log.success.mock.calls[0]![0]),
+    );
+    expect(success).toBe(
+      [
+        "Set the default channel to pr-130",
+        `Android  ${MANIFEST}`,
+        `iOS      ${INFO_PLIST}`,
+      ].join("\n"),
+    );
     expect(log.warn).toHaveBeenCalledWith(
-      "Rebuild native app after changing channel.",
+      "Rebuild the native app to use the channel.",
     );
     expect(output()).not.toContain("@hot-updater/expo");
   });
@@ -118,8 +132,15 @@ describe("handleSetChannel", () => {
     await handleSetChannel("pr-130");
 
     expect(log.success).toHaveBeenCalledOnce();
-    expect(String(log.success.mock.calls[0]![0])).toMatch(/Android/);
-    expect(output()).toMatch(/No Info\.plist found: nothing was written for/);
+    expect(
+      stripVTControlCharacters(String(log.success.mock.calls[0]![0])),
+    ).toBe(
+      [
+        "Set the default channel to pr-130",
+        `Android  ${MANIFEST}`,
+        "iOS      no Info.plist found",
+      ].join("\n"),
+    );
     expect(log.warn).toHaveBeenCalledOnce();
   });
 
@@ -131,19 +152,17 @@ describe("handleSetChannel", () => {
     // No success line, and no rebuild advice, for a run that wrote nothing.
     expect(log.success).not.toHaveBeenCalled();
     expect(log.warn).not.toHaveBeenCalled();
-    expect(output()).toMatch(
-      /No AndroidManifest\.xml found: nothing was written for/,
-    );
-    expect(output()).toMatch(/No Info\.plist found: nothing was written for/);
-    expect(output()).toContain(
-      "take the channel from the @hot-updater/expo plugin's `channel` option in app.config.ts",
-    );
     // The user's own environment variable, as the preview guide reads it,
     // never a channel to hardcode.
-    expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+    expect(log.info).toHaveBeenCalledWith(
+      [
+        "Read the channel from an environment variable in app.config.ts:",
+        'plugins: [["@hot-updater/expo", {',
+        '  channel: process.env.PREVIEW_CHANNEL ?? "production",',
+        "}]]",
+        "Then build with PREVIEW_CHANNEL=pr-130.",
+      ].join("\n"),
     );
-    expect(output()).toContain("Then build with PREVIEW_CHANNEL=pr-130.");
     expect(output()).not.toContain('channel: "pr-130"');
     await expect(
       readFile(path.join(cwd.current, MANIFEST), "utf8"),
@@ -155,10 +174,12 @@ describe("handleSetChannel", () => {
 
     await handleSetChannel("pr-7");
 
-    expect(output()).toContain(
-      '"plugins": [["@hot-updater/expo", { "channel": "pr-7" }]]',
+    expect(log.info).toHaveBeenCalledWith(
+      [
+        "Set the channel in app.json:",
+        '"plugins": [["@hot-updater/expo", { "channel": "pr-7" }]]',
+      ].join("\n"),
     );
-    expect(output()).toContain("option in app.json");
     // JSON has no environment.
     expect(output()).not.toContain("process.env");
   });
@@ -172,9 +193,11 @@ describe("handleSetChannel", () => {
 
     await handleSetChannel("pr-9");
 
-    expect(output()).toContain("option in app.config.js");
     expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+      "Read the channel from an environment variable in app.config.js:",
+    );
+    expect(output()).toContain(
+      '  channel: process.env.PREVIEW_CHANNEL ?? "production",',
     );
     expect(output()).toContain("Then build with PREVIEW_CHANNEL=pr-9.");
   });
@@ -185,9 +208,11 @@ describe("handleSetChannel", () => {
 
     await handleSetChannel("pr-7");
 
-    expect(output()).toContain("option in app.config.ts");
     expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+      "Read the channel from an environment variable in app.config.ts:",
+    );
+    expect(output()).toContain(
+      '  channel: process.env.PREVIEW_CHANNEL ?? "production",',
     );
     expect(output()).toContain("Then build with PREVIEW_CHANNEL=pr-7.");
   });
@@ -199,10 +224,19 @@ describe("handleSetChannel", () => {
 
     await handleSetChannel("pr-130");
 
-    expect(log.success).toHaveBeenCalledTimes(2);
-    expect(output()).toContain("replacing what was written here");
+    expect(log.success).toHaveBeenCalledOnce();
+    expect(log.warn).toHaveBeenCalledWith(
+      "expo prebuild replaces what was written here.",
+    );
     expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+      '  channel: process.env.PREVIEW_CHANNEL ?? "production",',
     );
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

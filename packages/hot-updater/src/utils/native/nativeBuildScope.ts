@@ -64,7 +64,7 @@ export const resolveNativeBuildScope = async (
   if (!resolved.version && resolved.candidates.length === 0 && prebuild) {
     // No native project declares a version, and the adapter can't say what
     // its prebuild would write: generating the project is the only way left.
-    const warning = `No ${platform} native project to read the app version from: running the ${buildAdapter.name} build adapter's prebuild, which writes it.`;
+    const warning = `No ${platform} native project to read the app version from.\nRunning the ${buildAdapter.name} build adapter's prebuild to write it.`;
     if (json) console.error(warning);
     else p.log.warn(warning);
     await prebuild({ platform });
@@ -73,8 +73,12 @@ export const resolveNativeBuildScope = async (
   if (!resolved.version) {
     throw new Error(
       isAmbiguousAppVersion(resolved)
-        ? `The native project builds several app versions (${formatAppVersionCandidates(resolved.candidates)}). Pass --scheme with the nativeBuild scheme that builds the app.`
-        : `Failed to retrieve native app version of ${platform}`,
+        ? [
+            "The native project builds several app versions.",
+            `Versions: ${formatAppVersionCandidates(resolved.candidates)}`,
+            "Pass --scheme with the nativeBuild scheme that builds the app.",
+          ].join("\n")
+        : `Couldn't read the ${platform} app version.`,
     );
   }
   return {

@@ -10,7 +10,7 @@ import {
   createCredentialResolver,
   withCredentialResolver,
 } from "./credentialResolver";
-import { getLocalKeyFile, writeLocalKey } from "./localKeyStore";
+import { writeLocalKey } from "./localKeyStore";
 import { maskSecretValues } from "./secretMasking";
 import { setConfiguredSecrets, withLocalKeyStore } from "./secrets";
 
@@ -223,7 +223,7 @@ describe("createCredentialResolver", () => {
     await resolver.dispose();
   });
 
-  it("fails naming the adapter, the command that stores it, and every replacement env var when nothing provides the item", async () => {
+  it("fails naming the adapter and the command that stores it when nothing provides the item, with the env vars that would", async () => {
     const resolver = createCredentialResolver({ secrets: fakeSecrets({}) });
 
     const error = await resolver
@@ -232,7 +232,7 @@ describe("createCredentialResolver", () => {
 
     expect(error).toBeInstanceOf(CredentialUnavailableError);
     expect((error as Error).message).toBe(
-      "asc-api-key is not in the fake secrets adapter (fake://asc-api-key). Store it once with `npx hot-updater apple login`. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.",
+      "No asc-api-key in the fake secrets adapter.\nStore it once with:\nnpx hot-updater apple login",
     );
     expect((error as CredentialUnavailableError).envNames).toEqual([
       "HOT_UPDATER_ASC_KEY_PATH",
@@ -248,22 +248,22 @@ describe("createCredentialResolver", () => {
     await expect(
       resolver.resolve({ kind: "play-service-account", name: "widget-play" }),
     ).rejects.toThrow(
-      "widget-play (play-service-account) is not in the fake secrets adapter (fake://widget-play). Store it once with `npx hot-updater secrets issue play-service-account widget-play`.",
+      "No widget-play (play-service-account) in the fake secrets adapter.\nStore it once with:\nnpx hot-updater secrets issue play-service-account widget-play",
     );
   });
 
-  it("names localSecrets()'s variable and file when neither holds it", async () => {
+  it("names the command that stores a keystore localSecrets() lacks, broken to fit", async () => {
     await expect(
       createCredentialResolver().resolve({
         kind: "android-keystore",
         name: "release-keystore",
       }),
     ).rejects.toThrow(
-      `release-keystore (android-keystore) is not in the localSecrets secrets adapter (HOT_UPDATER_RELEASE_KEYSTORE in the environment, or ${getLocalKeyFile("release-keystore", directory)} on this machine).`,
+      "No release-keystore (android-keystore) in the localSecrets secrets adapter.\nStore it once with:\nnpx hot-updater secrets put release-keystore --kind android-keystore \\\n  --keystore <release.jks> --key-alias <alias>",
     );
   });
 
-  it("adds the replacement env vars to the adapter's failure", async () => {
+  it("names the adapter's failure", async () => {
     const reason = new Error("AccessDenied: secretsmanager:GetSecretValue");
     const resolver = createCredentialResolver({
       secrets: {
@@ -279,7 +279,7 @@ describe("createCredentialResolver", () => {
       .catch((caught: unknown) => caught);
 
     expect((error as Error).message).toBe(
-      "The aws secrets adapter could not read android-keystore: AccessDenied: secretsmanager:GetSecretValue Or set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore from the environment.",
+      "Couldn't read android-keystore from the aws secrets adapter.\nAccessDenied: secretsmanager:GetSecretValue",
     );
     expect((error as Error).cause).toBe(reason);
   });
@@ -293,12 +293,12 @@ describe("createCredentialResolver", () => {
     });
 
     await expect(resolver.resolve({ kind: "asc-api-key" })).rejects.toThrow(
-      'The fake secrets adapter\'s asc-api-key has no issuerId: an asc-api-key is one JSON value, {"keyId", "issuerId", "p8"}.',
+      'The fake secrets adapter\'s asc-api-key has no issuerId.\nAn asc-api-key is one JSON value: {"keyId", "issuerId", "p8"}',
     );
     await expect(
       resolver.resolve({ kind: "android-keystore" }),
     ).rejects.toThrow(
-      'The fake secrets adapter\'s android-keystore is not a JSON object: an android-keystore is one JSON value, {"keystore", "storePassword", "keyAlias", "keyPassword"}.',
+      'The fake secrets adapter\'s android-keystore is not a JSON object.\nAn android-keystore is one JSON value: {"keystore", "storePassword", "keyAlias", "keyPassword"}',
     );
     await resolver.dispose();
   });

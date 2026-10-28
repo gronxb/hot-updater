@@ -21,7 +21,7 @@ import {
 } from "verkit";
 
 import { packageJsonData } from "../packageJson";
-import { ui } from "../utils/cli-ui";
+import { type MaybeRow, ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
 import type { FingerprintResult } from "../utils/fingerprint/common";
@@ -986,6 +986,20 @@ const promptServerBaseUrl = async () => {
   return trimmed ? trimmed : undefined;
 };
 
+/** Each issue and its resolution, which `--json` prints as they are, as one entry. */
+const reportIssues = (
+  issues: readonly {
+    readonly type: "error" | "warning";
+    readonly message: string;
+    readonly resolution: string;
+  }[],
+) => {
+  for (const issue of issues) {
+    const report = issue.type === "error" ? p.log.error : p.log.warn;
+    report(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+  }
+};
+
 export const handleDoctor = async ({
   serverBaseUrl,
   json = false,
@@ -1039,23 +1053,28 @@ export const handleDoctor = async ({
 
   if (details?.verification) {
     const { scope, checks, notChecked } = details.verification;
-    p.log.message(ui.block("Verification", [ui.kv("Scope", scope)]));
+    p.log.step(ui.block("Verification", [ui.kv("Scope", scope)]));
     for (const check of checks) {
-      const message = ui.line([check.status, check.code, check.message]);
+      const message = [
+        ui.prose(`${check.status} ${check.code} ${check.message}`),
+        check.paths?.length
+          ? check.paths.map((file) => ui.path(ui.fitPath(file))).join("\n")
+          : "",
+        check.resolution ? ui.prose(check.resolution) : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
       if (check.status === "pass") p.log.success(message);
       else p.log.error(message);
-      if (check.paths?.length)
-        p.log.info(check.paths.map((file) => ui.path(file)).join(", "));
-      if (check.resolution) p.log.info(check.resolution);
     }
-    p.log.info(`Not checked: ${notChecked.join(", ")}`);
+    p.log.info(ui.prose(`Not checked: ${notChecked.join(", ")}`));
     if (!result.success) process.exit(1);
     p.outro(`${scope} checks passed.`);
     return;
   }
 
   if (details?.hotUpdaterVersion) {
-    p.log.message(
+    p.log.step(
       ui.block("Version", [
         ui.kv("CLI", ui.version(details.hotUpdaterVersion)),
       ]),
@@ -1063,151 +1082,128 @@ export const handleDoctor = async ({
   }
 
   if (details?.infrastructureUnchecked) {
-    p.log.warn(details.infrastructureUnchecked.message);
-    p.log.info(details.infrastructureUnchecked.resolution);
+    const [command] = details.infrastructureUnchecked.commands;
+    // --json keeps the message and resolution; the command says the rest.
+    p.log.warn(
+      [
+        "Server version not checked.",
+        command ? ui.withCommand("To check it:", command) : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
   }
 
   if (details?.infrastructure) {
     const infrastructure = details.infrastructure;
-    const lines = [ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint))];
-    if (infrastructure.recordedIn) {
-      lines.push(ui.kv("Recorded in", ui.path(infrastructure.recordedIn)));
-    }
+    p.log.step(
+      ui.block("Infrastructure", [
+        ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint)),
+        infrastructure.recordedIn &&
+          ui.kv("Recorded in", ui.path(ui.fitPath(infrastructure.recordedIn))),
+        infrastructure.serverVersion &&
+          ui.kv("Server", ui.version(infrastructure.serverVersion)),
+        infrastructure.serverVersion &&
+          ui.kv("Required", ui.version(infrastructure.requiredVersion)),
+        infrastructure.infrastructureGeneration !== undefined &&
+          ui.kv("Generation", String(infrastructure.infrastructureGeneration)),
+      ]),
+    );
 
-    if (infrastructure.serverVersion) {
-      lines.push(ui.kv("Server", ui.version(infrastructure.serverVersion)));
-      lines.push(ui.kv("Required", ui.version(infrastructure.requiredVersion)));
-    }
-    if (infrastructure.infrastructureGeneration !== undefined) {
-      lines.push(
-        ui.kv("Generation", String(infrastructure.infrastructureGeneration)),
-      );
-    }
-    p.log.message(ui.block("Infrastructure", lines));
-
+    const reason = infrastructure.updateReason
+      ? `\n${ui.prose(infrastructure.updateReason)}`
+      : "";
     if (infrastructure.upgradeBlocked) {
-      p.log.error("In-place v0 to v1 infrastructure upgrade is not supported.");
-      if (infrastructure.updateReason) {
-        p.log.info(`Reason: ${infrastructure.updateReason}`);
-      }
+      p.log.error(
+        `In-place v0 to v1 infrastructure upgrade is not supported.${reason}`,
+      );
     } else if (infrastructure.needsUpdate) {
       p.log.error(
-        `Infrastructure update required: ${infrastructure.requiredVersion}+`,
+        `Infrastructure update required: ${infrastructure.requiredVersion}+${reason}`,
       );
-      if (infrastructure.updateReason) {
-        p.log.info(`Reason: ${infrastructure.updateReason}`);
-      }
     } else if (infrastructure.error) {
-      p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
+      p.log.error(
+        ui.prose(`Infrastructure check failed: ${infrastructure.error}`),
+      );
     } else {
       p.log.success("Infrastructure is up to date.");
     }
 
     if (infrastructure.catalogMode) {
       p.log.info(
-        `Release catalog: ${infrastructure.catalogMode}. ${infrastructure.catalogModeNote}`,
+        ui.prose(
+          `Release catalog: ${infrastructure.catalogMode}. ${infrastructure.catalogModeNote}`,
+        ),
       );
     }
 
     if (infrastructure.remediation) {
-      p.log.info(infrastructure.remediation.reason);
-      const recoveryLines = infrastructure.remediation.commands.map(
-        (command, index) =>
-          ui.kv(
-            index === 0 ? "Command" : `Command ${index + 1}`,
-            ui.command(command),
+      p.log.info(
+        [
+          ui.prose(infrastructure.remediation.reason),
+          ...infrastructure.remediation.commands.map((command) =>
+            ui.commandLines(command),
           ),
+        ].join("\n"),
       );
-      p.log.message(ui.block("Recovery", recoveryLines));
     }
   }
 
   if (details?.native) {
     const native = details.native;
-    const lines = [ui.kv("Strategy", native.updateStrategy)];
-
-    if (native.ios?.detected) {
-      lines.push(
-        ui.kv(
-          "iOS",
-          native.ios.bundleProviderConfigured
-            ? ui.status(true)
-            : ui.status(false),
-        ),
-      );
-      if (native.ios.appVersion) {
-        lines.push(ui.kv("iOS app version", ui.version(native.ios.appVersion)));
-      }
-      if (native.ios.channel) {
-        lines.push(ui.kv("iOS channel", ui.channel(native.ios.channel)));
-      }
-    }
-
-    if (native.android?.detected) {
-      lines.push(
-        ui.kv(
-          "Android",
-          native.android.bundleProviderConfigured
-            ? ui.status(true)
-            : ui.status(false),
-        ),
-      );
-      if (native.android.appVersion) {
-        lines.push(
-          ui.kv("Android app version", ui.version(native.android.appVersion)),
-        );
-      }
-      if (native.android.channel) {
-        lines.push(
-          ui.kv("Android channel", ui.channel(native.android.channel)),
-        );
-      }
-    }
-
-    p.log.message(ui.block("Native", lines));
+    const platformRows = (
+      label: string,
+      platform: NativeStatus["ios"] | NativeStatus["android"],
+    ): MaybeRow[] =>
+      platform?.detected
+        ? [
+            ui.kv(label, ui.status(platform.bundleProviderConfigured === true)),
+            platform.appVersion &&
+              ui.kv(`${label} app version`, ui.version(platform.appVersion)),
+            platform.channel &&
+              ui.kv(`${label} channel`, ui.channel(platform.channel)),
+          ]
+        : [];
+    p.log.step(
+      ui.block("Native", [
+        ui.kv("Strategy", native.updateStrategy),
+        ...platformRows("iOS", native.ios),
+        ...platformRows("Android", native.android),
+      ]),
+    );
 
     for (const issue of native.issues) {
-      const message = `${issue.platform}: ${issue.message}`;
-      if (issue.type === "error") {
-        p.log.error(message);
-      } else {
-        p.log.warn(message);
-      }
+      const message = ui.prose(`${issue.platform}: ${issue.message}`);
+      const report = issue.type === "error" ? p.log.error : p.log.warn;
       if (issue.changes) {
+        report(message);
         showFingerprintChanges(
           issue.changes,
           issue.platform === "ios" ? "iOS" : "Android",
         );
+        p.log.info(ui.prose(issue.resolution));
+      } else {
+        report(`${message}\n${ui.prose(issue.resolution)}`);
       }
-      p.log.info(issue.resolution);
     }
   }
 
   if (details?.schema) {
-    p.log.message(
+    p.log.step(
       ui.block(
         "Schema",
-        details.schema.settings.map(({ key, expected, found }) =>
-          ui.kv(
-            key,
-            `${found === null ? "missing" : ui.version(found)} → ${ui.version(expected)}`,
-          ),
-        ),
+        details.schema.settings.map(({ key, expected, found }) => [
+          key,
+          `${found === null ? "missing" : ui.version(found)} → ${ui.version(expected)}`,
+        ]),
       ),
     );
-    for (const issue of details.schema.issues) {
-      if (issue.type === "error") {
-        p.log.error(issue.message);
-      } else {
-        p.log.warn(issue.message);
-      }
-      p.log.info(issue.resolution);
-    }
+    reportIssues(details.schema.issues);
   }
 
   if (details?.releaseCatalogs) {
     const { scopes, issues } = details.releaseCatalogs;
-    p.log.message(
+    p.log.step(
       ui.block("Release catalogs", [
         ui.kv("Scopes", String(scopes.length)),
         ui.kv(
@@ -1216,25 +1212,19 @@ export const handleDoctor = async ({
         ),
       ]),
     );
-    for (const issue of issues) {
-      if (issue.type === "error") {
-        p.log.error(issue.message);
-      } else {
-        p.log.warn(issue.message);
-      }
-      p.log.info(issue.resolution);
-    }
+    reportIssues(issues);
   }
 
   if (details?.versionMismatches && details.versionMismatches.length > 0) {
-    p.log.warn("Version mismatches found:");
-
-    for (const mismatch of details.versionMismatches) {
-      p.log.error(
-        `${mismatch.packageName}: ${mismatch.currentVersion} ` +
-          `(expected ${mismatch.expectedVersion})`,
-      );
-    }
+    p.log.error(
+      ui.block(
+        "Version mismatches",
+        details.versionMismatches.map((mismatch) => [
+          mismatch.packageName,
+          `${mismatch.currentVersion} (expected ${mismatch.expectedVersion})`,
+        ]),
+      ),
+    );
   }
 
   if (shouldExitWithFailure) process.exit(1);

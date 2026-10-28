@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAndInjectFingerprintFiles } from "@/utils/fingerprint";
@@ -88,7 +93,7 @@ describe("prepareNativeBuild", () => {
     }
     expect(p.select).not.toHaveBeenCalled();
     expect(p.log.error).toHaveBeenCalledWith(
-      "Which scheme do you use to build? Re-run with --scheme <release> in a non-interactive shell.",
+      "Which scheme do you use to build?\nRe-run with --scheme <release> in a non-interactive shell.",
     );
     expect(calls).toEqual([]);
   });
@@ -187,7 +192,7 @@ describe("prepareNativeBuild", () => {
     ).resolves.toBeNull();
     expect(p.log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "nativeBuild.ios.release builds for devices, which exports an .ipa with exportOptionsPlist",
+        "nativeBuild.ios.release builds for devices, and can't export an .ipa.",
       ),
     );
     expect(buildAdapter.nativeBuild.prebuild).not.toHaveBeenCalled();
@@ -231,4 +236,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

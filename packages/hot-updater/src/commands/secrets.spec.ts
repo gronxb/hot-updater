@@ -4,12 +4,18 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import {
+  p,
   getLocalKeyFile,
   loadConfig,
   maskSecretValues,
   withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsPut } from "./secrets";
@@ -44,7 +50,7 @@ const P8 =
   "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49putSpecKeyLine01\n-----END PRIVATE KEY-----";
 
 const messages = () =>
-  log.message.mock.calls.map(([text]) =>
+  log.success.mock.calls.map(([text]) =>
     stripVTControlCharacters(String(text)),
   );
 
@@ -193,7 +199,7 @@ describe("hot-updater secrets put", () => {
     });
 
     expect(log.error).toHaveBeenCalledWith(
-      "A android-keystore takes --keystore <file>, --key-alias <alias>, not --p8 <file>.",
+      "android-keystore takes no --p8 <file>.\nIt takes --keystore <file>, --key-alias <alias>.",
     );
     expect(store.set).not.toHaveBeenCalled();
   });
@@ -207,7 +213,7 @@ describe("hot-updater secrets put", () => {
     });
 
     expect(log.error).toHaveBeenCalledWith(
-      '"../keys" is no secret name: letters, digits, ".", "_", and "-", starting with a letter or a digit, up to 64 characters.',
+      '"../keys" is not a secret name.\nUse up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.',
     );
     expect(store.set).not.toHaveBeenCalled();
     expect(loadConfig).not.toHaveBeenCalled();
@@ -233,8 +239,10 @@ describe("hot-updater secrets put", () => {
     );
     await expect(fs.readFile(stored, "utf-8")).resolves.toBe(json);
     expect((await fs.stat(stored)).mode & 0o777).toBe(0o600);
-    expect(messages().at(-1)).toMatch(/In:\s+/u);
-    expect(messages().at(-1)).toContain(stored);
+    // The file, which is outside the project, under ~ or shortened.
+    expect(messages().at(-1)).toMatch(
+      /\nSource {2}\S+play-service-account\.json$/u,
+    );
     // Never a .env file.
     await expect(
       fs.access(path.join(directory, ".env.hotupdater")),
@@ -257,7 +265,7 @@ describe("hot-updater secrets put", () => {
     });
 
     expect(log.error).toHaveBeenCalledWith(
-      "HOT_UPDATER_RELEASE_KEYSTORE is set in the environment or .env.hotupdater, which builds read before what Hot Updater stores, so the android-keystore you store would never be used. Unset it, then run this again.",
+      "The environment or .env.hotupdater overrides android-keystore.\nUnset HOT_UPDATER_RELEASE_KEYSTORE.",
     );
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -280,7 +288,7 @@ describe("hot-updater secrets put", () => {
     });
 
     expect(log.error).toHaveBeenCalledWith(
-      "release-keystore is in the read-only secrets adapter (ro://release-keystore), which builds read first and Hot Updater can't write, so the android-keystore you store would never be used. Replace it there yourself.",
+      "release-keystore is in the read-only secrets adapter, which is read-only.\nReplace it there: ro://release-keystore",
     );
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -307,4 +315,11 @@ describe("hot-updater secrets put", () => {
       fs.readFile(getLocalKeyFile("play-service-account", directory), "utf-8"),
     ).resolves.toBe('{"type":"service_account"}');
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

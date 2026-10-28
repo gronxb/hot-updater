@@ -73,12 +73,11 @@ export function warnIfExpoCNG(): void {
     return;
   }
 
-  console.log("");
-  p.log.warn("Expo CNG project detected:");
-  p.log.info("Configure in app.json or app.config.js:");
-  p.log.info(
-    '  "plugins": [["@hot-updater/expo", { "channel": "production" }]]',
+  p.log.warn(
+    [
+      "Expo CNG project: npx expo prebuild regenerates the native files.",
+      "Configure the @hot-updater/expo plugin in app.json or app.config.*:",
+      '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
+    ].join("\n"),
   );
-  p.log.info("  Instead run `npx expo prebuild`.");
-  console.log("");
 }

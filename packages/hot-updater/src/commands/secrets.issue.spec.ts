@@ -4,12 +4,18 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import {
+  p,
   getLocalKeyFile,
   loadConfig,
   readLocalKey,
   withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsIssue, handleSecretsPut } from "./secrets";
@@ -228,9 +234,9 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(printed()).toContain("App Store Connect API key stored");
     expect(printed()).not.toContain("issueSpecNewKey01");
     expect(ascKey.revoke).not.toHaveBeenCalled();
-    // The run ends saying that only the key stayed, not a session.
+    // The run ends with the key it stored and where.
     expect(lastLogged()).toBe(
-      "Hot Updater kept no Apple session: it stored key NEWKEY0001 as asc-api-key in spec://asc-api-key.",
+      "App Store Connect API key stored\nKey ID  NEWKEY0001\nSource  spec://asc-api-key",
     );
   });
 
@@ -245,7 +251,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(held.has("asc-api-key")).toBe(false);
   });
 
-  it("keeps a stored key without signing in, naming where it is, its key ID, and --replace", async () => {
+  it("keeps a stored key without signing in, naming its key ID and where it is, and nothing to run", async () => {
     const { store } = writableStore({ "asc-api-key": OLD_ASC });
 
     await withTTY(true, () => handleSecretsIssue("asc-api-key"));
@@ -254,15 +260,9 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(issueAscApiKey).not.toHaveBeenCalled();
     expect(text).not.toHaveBeenCalled();
     expect(store.set).not.toHaveBeenCalled();
-    const output = printed();
-    expect(output).toContain("App Store Connect API key already stored");
-    expect(output).toContain("spec://asc-api-key");
-    expect(output).toContain("OLDKEY0001");
-    expect(output).toContain(
-      "`npx hot-updater secrets issue asc-api-key --replace`",
+    expect(printed()).toBe(
+      "App Store Connect API key already stored\nKey ID  OLDKEY0001\nSource  spec://asc-api-key",
     );
-    expect(output).not.toContain("kept no Apple session");
-    expect(output).not.toContain("issueSpecOldKey01");
   });
 
   it("keeps a key the environment overrides without signing in or reading the adapter", async () => {
@@ -275,12 +275,13 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(process.exitCode).toBeUndefined();
     expect(issueAscApiKey).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
-    const output = printed();
-    expect(output).toContain(
-      "HOT_UPDATER_ASC_KEY_ID and HOT_UPDATER_ASC_ISSUER_ID",
+    expect(printed()).toBe(
+      [
+        "App Store Connect API key set by the environment",
+        "Key ID  ENVKEY0001",
+        "Source  HOT_UPDATER_ASC_KEY_ID and HOT_UPDATER_ASC_ISSUER_ID",
+      ].join("\n"),
     );
-    expect(output).toContain("ENVKEY0001");
-    expect(output).toContain("unset them");
   });
 
   it("--replace issues a new key over the stored one, names the old one and where to revoke it, and never revokes it", async () => {
@@ -301,17 +302,16 @@ describe("hot-updater secrets issue asc-api-key", () => {
     const warned = stripVTControlCharacters(
       log.warn.mock.calls.flat().map(String).join("\n"),
     );
-    expect(warned).toContain(
-      "The old App Store Connect API key is still valid",
+    expect(warned).toBe(
+      [
+        "The old App Store Connect API key is still valid",
+        "Key ID  OLDKEY0001",
+        "Revoke  https://appstoreconnect.apple.com/access/integrations/api",
+      ].join("\n"),
     );
-    expect(warned).toContain("OLDKEY0001");
-    expect(warned).toContain(
-      "Revoke OLDKEY0001 at https://appstoreconnect.apple.com/access/integrations/api",
-    );
-    expect(warned).toContain("Hot Updater never revokes it");
     expect(printed()).not.toContain("issueSpecOldKey01");
-    expect(lastLogged()).toBe(
-      "Hot Updater kept no Apple session: it stored key NEWKEY0001 as asc-api-key in spec://asc-api-key.",
+    expect(printed()).toContain(
+      "App Store Connect API key stored\nKey ID  NEWKEY0001\nSource  spec://asc-api-key",
     );
   });
 
@@ -323,7 +323,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(process.exitCode).toBeUndefined();
     const notice = log.info.mock.calls.findIndex(([message]) =>
       String(message).startsWith(
-        "No App Store Connect API key on this machine.",
+        "No App Store Connect API key on this machine: signing in issues one.",
       ),
     );
     expect(notice).toBeGreaterThanOrEqual(0);
@@ -353,14 +353,13 @@ describe("hot-updater secrets issue asc-api-key", () => {
     const warned = stripVTControlCharacters(
       log.warn.mock.calls.flat().map(String).join("\n"),
     );
-    expect(warned).toContain("OLDKEY0001");
-    expect(warned).toContain("Hot Updater never revokes it");
+    expect(warned).toContain("Key ID  OLDKEY0001");
     // Replacing the key, no "no key on this machine" notice.
-    expect(printed()).not.toContain("on this machine. Signing in issues");
+    expect(printed()).not.toContain("signing in issues one");
     expect(printed()).not.toContain("issueSpecOldKey01");
     expect(ascKey.revoke).not.toHaveBeenCalled();
-    expect(lastLogged()).toBe(
-      `Hot Updater kept no Apple session: it stored key NEWKEY0001 as asc-api-key in ${file}.`,
+    expect(printed()).toContain(
+      "App Store Connect API key stored\nKey ID  NEWKEY0001\nSource  ",
     );
   });
 
@@ -375,7 +374,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(process.exitCode).toBe(1);
     expect(issueAscApiKey).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      "HOT_UPDATER_ASC_API_KEY is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater secrets issue asc-api-key --replace` again.",
+      "The environment or .env.hotupdater overrides asc-api-key.\nUnset HOT_UPDATER_ASC_API_KEY.",
     );
     expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
   });
@@ -394,7 +393,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(issueAscApiKey).not.toHaveBeenCalled();
     expect(text).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      "asc-api-key is in the read-only secrets adapter (ro://asc-api-key), which builds read first and Hot Updater can't write, so a new App Store Connect API key would never be used. Replace it there yourself, or remove it there, then run `npx hot-updater secrets issue asc-api-key --replace` again.",
+      "asc-api-key is in the read-only secrets adapter, which is read-only.\nReplace it there: ro://asc-api-key",
     );
     expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
   });
@@ -412,7 +411,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(text).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
     expect(log.error).toHaveBeenCalledWith(
-      "HOT_UPDATER_ASC_KEY_ID is set in the environment or .env.hotupdater, which builds read before any secrets adapter, so a new App Store Connect API key would never be used. Unset it, then run `npx hot-updater secrets issue asc-api-key --replace` again.",
+      "The environment or .env.hotupdater overrides asc-api-key.\nUnset HOT_UPDATER_ASC_KEY_ID.",
     );
   });
 
@@ -422,8 +421,12 @@ describe("hot-updater secrets issue asc-api-key", () => {
     await withTTY(false, () => handleSecretsIssue("asc-api-key", "widget-asc"));
 
     expect(process.exitCode).toBe(1);
-    expect(log.error).toHaveBeenCalledWith(
-      "Hot Updater signs in to your Apple Account to issue the App Store Connect API key only at a terminal, never without a terminal. Run `npx hot-updater secrets issue asc-api-key widget-asc` in a terminal, or store a key you have with `npx hot-updater secrets put widget-asc --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
+    expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
+      [
+        "Can't sign in to your Apple Account without a terminal.",
+        "Run in a terminal: npx hot-updater secrets issue asc-api-key widget-asc",
+        "Or store a key you have: npx hot-updater secrets put --help",
+      ].join("\n"),
     );
     expect(loadConfig).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
@@ -439,7 +442,9 @@ describe("hot-updater secrets issue asc-api-key", () => {
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("never in CI (CI is set)."),
+      expect.stringContaining(
+        "Can't sign in to your Apple Account in CI (CI is set).",
+      ),
     );
     expect(text).not.toHaveBeenCalled();
     expect(issueAscApiKey).not.toHaveBeenCalled();
@@ -452,7 +457,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining('"../key" is no secret name'),
+      expect.stringContaining('"../key" is not a secret name.'),
     );
     expect(issueAscApiKey).not.toHaveBeenCalled();
   });
@@ -477,7 +482,12 @@ describe("hot-updater secrets issue play-service-account", () => {
     expect(printed()).not.toContain("issueSpecNewPlayKey01");
     expect(playKey.revoke).not.toHaveBeenCalled();
     expect(lastLogged()).toBe(
-      "Hot Updater kept no Google session: it stored a key of hot-updater-play@my-app.iam.gserviceaccount.com as play-service-account in spec://play-service-account.",
+      [
+        "Play service account stored",
+        "Service account  hot-updater-play@my-app.iam.gserviceaccount.com",
+        "Key ID           newkey-play-0001",
+        "Source           spec://play-service-account",
+      ].join("\n"),
     );
   });
 
@@ -488,11 +498,14 @@ describe("hot-updater secrets issue play-service-account", () => {
 
     expect(process.exitCode).toBeUndefined();
     expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-    const output = printed();
-    expect(output).toContain("Play service account already stored");
-    expect(output).toContain("uploader@old-project.iam.gserviceaccount.com");
-    expect(output).toContain("oldkey-play-0001");
-    expect(output).not.toContain("issueSpecOldPlayKey01");
+    expect(printed()).toBe(
+      [
+        "Play service account already stored",
+        "Service account  uploader@old-project.iam.gserviceaccount.com",
+        "Key ID           oldkey-play-0001",
+        "Source           spec://play-service-account",
+      ].join("\n"),
+    );
   });
 
   it("keeps a service account the environment's file sets, naming its email", async () => {
@@ -531,11 +544,16 @@ describe("hot-updater secrets issue play-service-account", () => {
     const warned = stripVTControlCharacters(
       log.warn.mock.calls.flat().map(String).join("\n"),
     );
-    expect(warned).toContain("The old Play service account is still valid");
-    expect(warned).toContain(
-      "Delete the key oldkey-play-0001 under the service account uploader@old-project.iam.gserviceaccount.com's keys at https://console.cloud.google.com/iam-admin/serviceaccounts?project=old-project",
+    // The URL, too long for its row, goes under its label.
+    expect(warned).toBe(
+      [
+        "The old Play service account is still valid",
+        "Service account  uploader@old-project.iam.gserviceaccount.com",
+        "Key ID           oldkey-play-0001",
+        "Revoke",
+        "https://console.cloud.google.com/iam-admin/serviceaccounts?project=old-project",
+      ].join("\n"),
     );
-    expect(warned).toContain("Hot Updater never revokes it");
   });
 
   it("refuses without a terminal, naming the import with --service-account", async () => {
@@ -544,10 +562,12 @@ describe("hot-updater secrets issue play-service-account", () => {
     await withTTY(false, () => handleSecretsIssue("play-service-account"));
 
     expect(process.exitCode).toBe(1);
-    expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Run `npx hot-updater google-play login` in a terminal, or store a key you have with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`.",
-      ),
+    expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
+      [
+        "Can't sign in to your Google Account without a terminal.",
+        "Run in a terminal: npx hot-updater google-play login",
+        "Or store a key you have: npx hot-updater secrets put --help",
+      ].join("\n"),
     );
     expect(issuePlayServiceAccount).not.toHaveBeenCalled();
   });
@@ -558,27 +578,26 @@ describe("hot-updater secrets put without the key's files", () => {
     [
       "asc-api-key",
       "asc-api-key",
-      "an asc-api-key",
       "--p8 <file>, --key-id <id>, --issuer-id <id>",
-      "npx hot-updater apple login",
+      "To issue a new key, run npx hot-updater apple login",
     ],
     [
       "widget-play",
       "play-service-account",
-      "a play-service-account",
       "--service-account <file>",
-      "npx hot-updater secrets issue play-service-account widget-play",
+      // Too long for the line, the command goes on its own.
+      "To issue a new key, run\nnpx hot-updater secrets issue play-service-account widget-play",
     ],
   ] as const)(
     "never signs in for %s (%s), and names the command that issues it",
-    async (name, kind, item, flags, issue) => {
+    async (name, kind, flags, issue) => {
       const { store } = writableStore();
 
       await withTTY(true, () => handleSecretsPut(name, { kind }));
 
       expect(process.exitCode).toBe(1);
-      expect(log.error).toHaveBeenCalledWith(
-        `secrets put stores ${item} you have: ${flags}. To sign in and have Hot Updater issue one, run \`${issue}\` in a terminal.`,
+      expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
+        `secrets put needs ${flags}.\n${issue}`,
       );
       expect(text).not.toHaveBeenCalled();
       expect(issueAscApiKey).not.toHaveBeenCalled();
@@ -586,5 +605,12 @@ describe("hot-updater secrets put without the key's files", () => {
       expect(store.get).not.toHaveBeenCalled();
       expect(store.set).not.toHaveBeenCalled();
     },
+  );
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
   );
 });

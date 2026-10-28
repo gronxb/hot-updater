@@ -243,7 +243,7 @@ describe("createSigningKeychain", () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(second).toBeUndefined();
       expect(log.info).toHaveBeenCalledWith(
-        "Waiting for another build that signs in a keychain of its own under this macOS user.",
+        "Waiting for another build's signing keychain under this macOS user.",
       );
       await first();
       await waiting;
@@ -346,7 +346,7 @@ describe("revokeKeychainCertificates", () => {
     ]);
     expect(requests[0]!.headers.get("authorization")).toMatch(/^Bearer ey/);
     expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining("Revoked the signing certificates Xcode created"),
+      expect.stringContaining("Revoked the certificates Xcode created"),
     );
   });
 
@@ -381,7 +381,7 @@ describe("revokeKeychainCertificates", () => {
     ]);
     expect(log.warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Revoke them at https://developer.apple.com/account/resources/certificates/list",
+        "Revoke them at:\nhttps://developer.apple.com/account/resources/certificates/list",
       ),
     );
   });

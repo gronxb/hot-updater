@@ -125,7 +125,7 @@ const cliPrompts: AscSignInPrompts = {
       await p.text({
         message:
           attempt === 1
-            ? "Two-factor code from your trusted device (no device at hand? enter any wrong code once, and Apple texts one to your phone)"
+            ? "Two-factor code (no trusted device? enter a wrong one for an SMS)"
             : "Verification code Apple sent to your phone",
         validate: (value) =>
           /^\d{6}$/u.test(value?.trim() ?? "")
@@ -211,15 +211,15 @@ const lastLine = (stderr: string) =>
 /** What to do about a key asc could not create, by what App Store Connect said. */
 const createFailureHint = (stderr: string): string | undefined => {
   if (/agreement/iu.test(stderr)) {
-    return "The Apple Developer Program License Agreement has changed: the Account Holder accepts it at https://developer.apple.com/account, then run this again.";
+    return "The Account Holder must accept the new Apple Developer Program License\nAgreement at https://developer.apple.com/account, then run this again.";
   }
   if (/limit|maximum/iu.test(stderr)) {
-    return `The team has as many active API keys as App Store Connect allows: revoke one you no longer use at ${ASC_INTEGRATIONS_URL}, then run this again.`;
+    return `The team has the most API keys App Store Connect allows. Revoke one at:\n${ASC_INTEGRATIONS_URL}`;
   }
   if (
     /account holder|admin|permission|forbidden|not allowed|403/iu.test(stderr)
   ) {
-    return "Creating an App Store Connect API key needs the Account Holder or Admin role in the team: sign in with such an Apple Account, or ask one to run this.";
+    return "Creating an API key needs the Account Holder or Admin role in the team.";
   }
   return undefined;
 };
@@ -272,7 +272,7 @@ export const createAscCliKeyIssuer =
   async ({ name, role, appleId, teamId, chooseTeam }) => {
     const cli = asc ?? (await findAscCli());
     p.log.info(
-      "Hot Updater signs in with asc, the open-source App Store Connect CLI. It keeps only the API key it issues: neither the password nor the session.",
+      "Signing in with asc, the App Store Connect CLI. Only the issued key is kept.",
     );
     const password = await prompts.password(appleId);
     if (password === undefined) {

@@ -74,7 +74,7 @@ const readServiceAccount = (json: string): ServiceAccount => {
   const { client_email, private_key, token_uri } = parsed;
   if (typeof client_email !== "string" || typeof private_key !== "string") {
     throw new Error(
-      "The Play service account has no client_email or private_key: use the JSON key file Google Cloud creates for the service account.",
+      "The Play service account has no client_email or private_key.\nUse the JSON key file Google Cloud creates for it.",
     );
   }
   registerSecretValue(private_key);
@@ -153,7 +153,7 @@ export class PlayVersionCodeUsedError extends Error {
 
   constructor(options?: ErrorOptions) {
     super(
-      "Google Play already has this .aab's version code. Raise versionCode for every build you upload.",
+      "Google Play already has this .aab's version code.\nRaise versionCode for every build you upload.",
       options,
     );
   }
@@ -170,13 +170,17 @@ const explain = (error: unknown, packageName: string): unknown => {
   const { status, apiMessage } = error;
   if (status === 401 || /does not have permission/i.test(apiMessage)) {
     return new Error(
-      `The Play service account cannot release ${packageName}. Invite its email in Play Console under Users and permissions, with permission to release to testing tracks, and enable the Google Play Android Developer API in its Google Cloud project.`,
+      [
+        `The Play service account can't release ${packageName}.`,
+        "Invite its email in Play Console (Users and permissions) to release to",
+        "testing tracks, and enable the Google Play Android Developer API.",
+      ].join("\n"),
       { cause: error },
     );
   }
   if (/package not found/i.test(apiMessage)) {
     return new Error(
-      `Google Play has no app ${packageName}. Create the app in Play Console and upload its first .aab there; the API releases the builds after it.`,
+      `Google Play has no app ${packageName}.\nCreate it in Play Console and upload its first .aab there.`,
       { cause: error },
     );
   }
@@ -231,7 +235,7 @@ const createPlayClient = ({
       });
       if (!response.ok) {
         throw new Error(
-          `Google refused the Play service account (HTTP ${response.status}): ${(await readApiMessage(response)) || "check that its key is current and the service account is enabled."}`,
+          `Google refused the Play service account (HTTP ${response.status}).\n${(await readApiMessage(response)) || "Check that its key is current and the service account is enabled."}`,
         );
       }
       const { access_token } = (await response.json()) as {
@@ -346,7 +350,11 @@ export const assertPlaySigned = async (aabPath: string): Promise<void> => {
   );
   if (exitCode === 0 && ANDROID_DEBUG_SIGNER.test(String(stdout))) {
     throw new Error(
-      `Google Play refuses an .aab signed with the Android debug keystore, and ${aabPath} is. Set the scheme's signing.keystore, or a release signingConfig in android/app/build.gradle, then build again.`,
+      [
+        "Google Play refuses an .aab signed with the Android debug keystore.",
+        "Set the scheme's signing.keystore, or a release signingConfig in",
+        "android/app/build.gradle, then build again.",
+      ].join("\n"),
     );
   }
 };
@@ -431,7 +439,7 @@ export const uploadToPlay = async ({
         throw error;
       }
       p.log.warn(
-        `Play Console has not published ${packageName} yet, which takes only draft releases. The internal release of version code ${versionCode} is a draft: roll it out in Play Console.`,
+        `${packageName} isn't published yet, so version code ${versionCode} is a draft.\nRoll it out in Play Console.`,
       );
       await release("draft");
       return { versionCode, status: "draft" };
@@ -475,7 +483,7 @@ const commit = async ({
       );
       if (changesNotSentForReview) {
         p.log.warn(
-          "Google Play saved the release without sending it for review, as the app's state requires. Send the changes for review in Play Console.",
+          "Google Play saved the release without sending it for review.\nSend the changes for review in Play Console.",
         );
       }
       return;
@@ -487,7 +495,11 @@ const commit = async ({
       ) {
         // Google may have applied a commit it did not answer.
         throw new Error(
-          `Google Play did not confirm the release: ${error instanceof Error ? error.message : String(error)} Check internal testing in Play Console before you upload this version code again.`,
+          [
+            "Google Play didn't confirm the release.",
+            error instanceof Error ? error.message : String(error),
+            "Check internal testing in Play Console before you upload it again.",
+          ].join("\n"),
           { cause: error },
         );
       }
@@ -668,13 +680,13 @@ export const resolvePlayUploadServiceAccount = ({
 }): CredentialRequest<"play-service-account"> => {
   if (androidScheme.aab === false) {
     throw new Error(
-      `Google Play takes an .aab, and the scheme ${scheme} builds an .apk (aab: false).`,
+      `The scheme ${scheme} builds an .apk (aab: false); Google Play takes an .aab.`,
     );
   }
   const variant = androidScheme.variant ?? "Release";
   if (/debug$/i.test(variant)) {
     throw new Error(
-      `Google Play takes a release build, and the scheme ${scheme} builds the ${variant} variant, which is debuggable and loads its JavaScript from Metro.`,
+      `The scheme ${scheme} builds ${variant}; Google Play takes a release build.`,
     );
   }
   return { kind: "play-service-account", name: "play-service-account" };

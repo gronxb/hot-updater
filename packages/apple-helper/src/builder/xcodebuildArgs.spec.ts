@@ -278,7 +278,7 @@ describe("xcodebuild arguments", () => {
       new Error("xcodebuild exited with code 65."),
     );
 
-    await expect(run()).rejects.toThrow("Xcodebuild failed");
+    await expect(run()).rejects.toThrow("xcodebuild exited with code 65.");
     expect(removeTmpDir).toHaveBeenCalledWith("/tmp/build");
     expect(cp).not.toHaveBeenCalled();
   });

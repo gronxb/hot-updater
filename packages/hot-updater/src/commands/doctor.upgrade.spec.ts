@@ -14,6 +14,7 @@ import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
+  p,
   createMigrator,
   loadConfig,
   readPackageUp,
@@ -32,7 +33,12 @@ import {
   type ToolingDatabase,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
-import { pgliteExecutor } from "@hot-updater/test-utils/node";
+import {
+  linesWiderThan,
+  pgliteExecutor,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiKeys, insights, remoteConfig } from "../plugins";
@@ -1041,4 +1047,11 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     deployed = "1.2.0";
     await expect(run()).resolves.toMatchObject({ success: true });
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

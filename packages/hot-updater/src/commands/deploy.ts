@@ -439,23 +439,16 @@ const summarizeDeploymentResults = (
   results: readonly CommittedDeployPlatformResult[],
 ): string => {
   if (results.length === 1) {
-    return [
-      "Deployment successful",
+    return ui.block("Deployment successful", [
       ui.kv("ID", ui.id(results[0]!.releaseId)),
-    ].join("\n");
+    ]);
   }
-
-  const labels = results.map(
-    (result) => `${getPlatformName(result.platform)} ID:`,
-  );
-  const labelWidth = Math.max(...labels.map((label) => label.length));
-  return [
+  return ui.block(
     "Deployment successful",
-    ...results.map(
-      (result, index) =>
-        `    ${labels[index]!.padEnd(labelWidth)} ${ui.id(result.releaseId)}`,
+    results.map((result) =>
+      ui.kv(`${getPlatformName(result.platform)} ID`, ui.id(result.releaseId)),
     ),
-  ].join("\n");
+  );
 };
 
 const getDeployPlatforms = async (
@@ -576,9 +569,9 @@ const deployPlatform = async ({
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
     prepareBundleSigning(config.signing, { cwd }).catch((error: unknown) => {
-      p.log.error("Signing configuration error:");
+      // As for a signing issue below: the E2E refusal check reads both.
       p.log.error(
-        `  ${error instanceof Error ? error.message : String(error)}`,
+        ui.prose(error instanceof Error ? error.message : String(error)),
       );
       p.log.error(
         "Deployment blocked. Fix the signing configuration and try again.",
@@ -617,28 +610,20 @@ const deployPlatform = async ({
       (i) => i.type === "warning",
     );
 
+    // Doctor's --json prints the same issues: only their layout is ours.
+    for (const issue of errors) {
+      p.log.error(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+    }
     if (errors.length > 0) {
-      console.log("");
-      p.log.error("Signing configuration error:");
-      for (const issue of errors) {
-        p.log.error(`  ${issue.message}`);
-        p.log.info(`  Resolution: ${issue.resolution}`);
-      }
-      console.log("");
       p.log.error(
         "Deployment blocked. Fix the signing configuration and try again.",
       );
       process.exit(1);
     }
-
-    if (warnings.length > 0) {
-      console.log("");
-      p.log.warn("Signing configuration warning:");
-      for (const warning of warnings) {
-        p.log.warn(`  ${warning.message}`);
-        p.log.info(`  Resolution: ${warning.resolution}`);
-      }
-      console.log("");
+    for (const warning of warnings) {
+      p.log.warn(
+        `${ui.prose(warning.message)}\n${ui.prose(warning.resolution)}`,
+      );
     }
   }
 
@@ -723,7 +708,11 @@ const deployPlatform = async ({
   } else {
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.warn(
-        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, then rebuild the apps.`,
+        [
+          `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'.`,
+          "Apps built here report the fingerprint strategy.",
+          "Delete fingerprint.json, then rebuild the apps.",
+        ].join("\n"),
       );
     }
     const defaultTargetAppVersion = options.targetAppVersion
@@ -760,8 +749,8 @@ const deployPlatform = async ({
     if (!targetAppVersion) {
       p.log.error(
         ambiguousVersions
-          ? `The native project builds several app versions (${ambiguousVersions}), so the target app version for this deploy cannot be read from it. Pass -t <targetAppVersion> for the app this deploy targets.`
-          : "Target app version not found in native files (Info.plist or project.pbxproj for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
+          ? `The native project builds several app versions:\n${ambiguousVersions}\nPass -t <targetAppVersion> for the app this deploy targets.`
+          : "Target app version not found in Info.plist, project.pbxproj, build.gradle.\nPass -t <targetAppVersion>.",
       );
       return null;
     }

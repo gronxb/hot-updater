@@ -5,7 +5,6 @@ import {
   issueAscApiKey,
 } from "@hot-updater/apple-helper";
 import {
-  describeSecret,
   describeStoredSecret,
   p,
   registerCredentialValue,
@@ -120,8 +119,8 @@ const revokeNotStored = async (
   const revoked = await key.revoke().catch(() => false);
   throw new AscApiKeyNotStoredError(
     revoked
-      ? `The App Store Connect API key ${key.keyId} was not stored, so it was revoked again: ${error.message}`
-      : `The App Store Connect API key ${key.keyId} was not stored, and revoking it failed: revoke ${key.keyId} at ${ASC_INTEGRATIONS_URL}. ${error.message}`,
+      ? `Couldn't store the App Store Connect API key ${key.keyId}, so it was revoked.\n${error.message}`
+      : `Couldn't store the App Store Connect API key ${key.keyId}, or revoke it.\n${error.message}\nRevoke it at ${ASC_INTEGRATIONS_URL}`,
     key.keyId,
     revoked,
     { cause: error },
@@ -147,7 +146,12 @@ const storeIssued = async (
       await revokeNotStored(key, error);
     }
     throw new Error(
-      `Hot Updater could not confirm that the ${secrets.name} secrets adapter stored ${name}: ${errorText(error)}\nThe key ${key.keyId} is kept. Check ${describeSecret(secrets, name)}: when it holds the key, run the build again; when it does not, revoke ${key.keyId} at ${ASC_INTEGRATIONS_URL}, then run this again.`,
+      [
+        `Couldn't confirm the ${secrets.name} secrets adapter stored ${name}.`,
+        errorText(error),
+        `If ${ui.fitPath(describeStoredSecret(secrets, name))} lacks key ${key.keyId}, revoke it at:`,
+        ASC_INTEGRATIONS_URL,
+      ].join("\n"),
       { cause: error },
     );
   }
@@ -236,10 +240,9 @@ export const ensureAscApiKey = async ({
     const { readable } = await storeIssued(store, name, key);
     p.log.success(
       ui.block("App Store Connect API key stored", [
-        ui.kv("Secret", name),
-        ui.kv("In", describeStoredSecret(store, name)),
+        name !== POLICY.kind && ui.kv("Name", name),
         ui.kv("Key ID", key.keyId),
-        `    Each machine that signs in issues its own key. Revoke the ones no machine or CI uses anymore at ${ASC_INTEGRATIONS_URL} (Team Keys).`,
+        ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
       ]),
     );
     await offerIssuedKeyToGitHub({

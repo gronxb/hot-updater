@@ -74,6 +74,7 @@
     }
   },
   "devDependencies": {
+    "@clack/prompts": "catalog:tools",
     "@electric-sql/pglite": "catalog:db",
     "@hot-updater/plugin-insights": "workspace:*",
     "@hot-updater/protocol": "workspace:*",

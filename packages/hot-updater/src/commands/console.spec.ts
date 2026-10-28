@@ -1,4 +1,9 @@
-import { loadConfig } from "@hot-updater/cli-tools";
+import { p, loadConfig } from "@hot-updater/cli-tools";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -154,4 +159,11 @@ describe("waitForConsoleReady", () => {
       }),
     ).rejects.toThrow("Timed out waiting for the console server on port 3000.");
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

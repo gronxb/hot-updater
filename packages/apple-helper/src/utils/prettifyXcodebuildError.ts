@@ -7,9 +7,10 @@ export const prettifyXcodebuildError = (error: any) => {
     const message =
       errorLines.includes("error: No profiles for") ||
       errorLines.includes("error: Provisioning profile")
-        ? "Not valid provisioning profile is set in the project. Check out the Signing & Capabilities tab in Xcode."
+        ? "No valid provisioning profile is set in the project.\nCheck the Signing & Capabilities tab in Xcode."
         : error.message;
-    return new BuildFailedError(`Xcodebuild failed: ${message}`, {
+    // The logger printed xcodebuild's errors and the log's path above.
+    return new BuildFailedError(message, {
       logPath: error.logPath,
       summary: error.summary,
       cause: error.cause,

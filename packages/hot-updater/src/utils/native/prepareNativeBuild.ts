@@ -37,6 +37,7 @@ import {
 } from "@/utils/version/appVersionCandidates";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { ui } from "../cli-ui";
 import { canPrompt } from "../prompt";
 import { nativeBuildAppVersionScope } from "./appVersionScope";
 import type { NativeBuildTarget } from "./createNativeBuild";
@@ -82,7 +83,9 @@ export async function prepareNativeBuild(
 
   const config = await loadConfig({ platform, channel: "" });
   if (!config) {
-    p.log.error("No config found. Please run `hot-updater init` first.");
+    p.log.error(
+      `No hot-updater.config.ts found.\nRun ${ui.command("npx hot-updater init")} first.`,
+    );
     return null;
   }
 
@@ -120,7 +123,7 @@ export async function prepareNativeBuild(
 
   if (!(scheme in config.nativeBuild[platform])) {
     p.log.error(
-      `scheme ${colors.blueBright(options.scheme)} is not in predefined schemes [${colors.blueBright(availableSchemes.join(", "))}]`,
+      `nativeBuild.${platform} has no scheme ${colors.blueBright(options.scheme)}.\nSchemes: ${availableSchemes.join(", ")}`,
     );
     return null;
   }
@@ -135,7 +138,7 @@ export async function prepareNativeBuild(
     !iosDeviceScheme.signing?.ascApiKey
   ) {
     p.log.error(
-      `nativeBuild.ios.${scheme} builds for devices, which exports an .ipa with exportOptionsPlist. Set exportOptionsPlist, or signing.ascApiKey to export for App Store Connect with automatic signing.`,
+      `nativeBuild.ios.${scheme} builds for devices, and can't export an .ipa.\nSet exportOptionsPlist, or signing.ascApiKey for automatic signing.`,
     );
     return null;
   }
@@ -168,7 +171,7 @@ export async function prepareNativeBuild(
     const localFingerprint = (await readLocalFingerprint())?.[platform];
     if (!localFingerprint) {
       p.log.warn(
-        `Resolving fingerprint for ${platform} failed. Building native will generate it.`,
+        `No ${platform} fingerprint in fingerprint.json yet: the build writes it.`,
       );
     }
     s.start(`Fingerprinting (${platform})`);
@@ -190,7 +193,11 @@ export async function prepareNativeBuild(
     // and an app with one reports the fingerprint strategy.
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.error(
-        "fingerprint.json exists, but updateStrategy is 'appVersion'. The native build would embed its fingerprint, and the app would report the fingerprint strategy. Delete fingerprint.json, then build again.",
+        [
+          'fingerprint.json exists, but updateStrategy is "appVersion".',
+          "The app would report the fingerprint strategy.",
+          "Delete fingerprint.json, then build again.",
+        ].join("\n"),
       );
       return null;
     }
@@ -211,9 +218,17 @@ export async function prepareNativeBuild(
       p.log.error(
         isAmbiguousAppVersion(resolved)
           ? platform === "ios"
-            ? `nativeBuild.ios.${scheme} (scheme ${iosScheme?.scheme}, bundleIdentifier ${iosScheme?.bundleIdentifier}) does not pick one of the app targets in project.pbxproj, which declare different versions (${formatAppVersionCandidates(resolved.candidates)}). Make its scheme match the name of the app target it builds.`
-            : `nativeBuild.android.${scheme} (variant ${androidScheme?.variant ?? "Release"}) does not pick one of the product flavors that set versionName, which declare different versions (${formatAppVersionCandidates(resolved.candidates)}). Set its variant to the flavor it builds, such as brandARelease.`
-          : `Failed to retrieve native app version of ${platform}`,
+            ? [
+                `nativeBuild.ios.${scheme} (scheme ${iosScheme?.scheme}) picks no single app target.`,
+                `Versions: ${formatAppVersionCandidates(resolved.candidates)}`,
+                "Make its scheme match the name of the app target it builds.",
+              ].join("\n")
+            : [
+                `nativeBuild.android.${scheme} (variant ${androidScheme?.variant ?? "Release"}) picks no single flavor.`,
+                `Versions: ${formatAppVersionCandidates(resolved.candidates)}`,
+                "Set its variant to the flavor it builds, such as brandARelease.",
+              ].join("\n")
+          : `Couldn't read the ${platform} app version.`,
       );
       return null;
     }

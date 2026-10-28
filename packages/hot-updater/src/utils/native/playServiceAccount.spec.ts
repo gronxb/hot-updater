@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, text, select, open } = vi.hoisted(() => ({
@@ -35,6 +40,7 @@ import type {
   IssuePlayServiceAccountRequest,
 } from "@hot-updater/android-helper";
 import {
+  p,
   getCwd,
   getLocalKeyFile,
   maskSecretValues,
@@ -213,8 +219,14 @@ describe("ensurePlayServiceAccount", () => {
     await expect(
       withTTY(false, () => ensure({ name: "widget-play" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
-    expect(log.error).toHaveBeenCalledWith(
-      `widget-play (play-service-account) is not in the spec-store secrets adapter (spec://widget-play, or ${keyFile("widget-play")} on this machine). Store it once from a terminal with \`npx hot-updater secrets issue play-service-account widget-play\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.`,
+    // Too long for the line, the command goes on its own.
+    expect(stripVTControlCharacters(String(log.error.mock.calls[0]![0]))).toBe(
+      [
+        "widget-play (play-service-account) is not in the spec-store secrets adapter.",
+        "Can't sign in to your Google Account without a terminal.",
+        "Run once in a terminal:",
+        "npx hot-updater secrets issue play-service-account widget-play",
+      ].join("\n"),
     );
     expect(calls).toEqual(["get widget-play"]);
     expect(issue).not.toHaveBeenCalled();
@@ -229,7 +241,9 @@ describe("ensurePlayServiceAccount", () => {
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("never in CI (CI is set)"),
+      expect.stringContaining(
+        "Can't sign in to your Google Account in CI (CI is set).",
+      ),
     );
     expect(process.exitCode).toBe(1);
     expect(calls).toEqual(["get play-service-account"]);
@@ -250,10 +264,10 @@ describe("ensurePlayServiceAccount", () => {
     expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
 
     const notice = log.info.mock.calls.findIndex(([message]) =>
-      String(message).startsWith("No Play service account on this machine."),
+      String(message).startsWith("No Play service account on this machine"),
     );
     expect(log.info.mock.calls[notice]![0]).toBe(
-      "No Play service account on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (https://hot-updater.dev/docs/concepts/secrets#share-a-key-across-machines) or import it with `npx hot-updater secrets put play-service-account --kind play-service-account --service-account <key.json>`.",
+      "No Play service account on this machine: signing in issues one.",
     );
     expect(log.info.mock.invocationCallOrder[notice]!).toBeLessThan(
       issue.mock.invocationCallOrder[0]!,
@@ -261,10 +275,11 @@ describe("ensurePlayServiceAccount", () => {
     const stored = stripVTControlCharacters(
       String(log.success.mock.calls[0]![0]),
     );
-    expect(stored).toContain(file);
-    expect(stored).toContain(EMAIL);
-    expect(stored).toContain(
-      "Delete the ones no machine or CI uses anymore under the service account's keys at https://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app.",
+    expect(stored).toMatch(
+      new RegExp(
+        `^Play service account stored\\nService account {2}${EMAIL.replaceAll(".", "\\.")}\\nKey ID {11}abc123\\nSource {11}\\S*play-service-account\\.json$`,
+        "u",
+      ),
     );
     const printed = [...Object.values(log), text, select]
       .flatMap((fn) => fn.mock.calls.flat())
@@ -355,9 +370,9 @@ describe("ensurePlayServiceAccount", () => {
 
     expect(error?.message).toBe(
       [
-        "The spec-store secrets adapter did not store play-service-account: PERMISSION_DENIED",
-        "The key abc123 was deleted again.",
-        `The service account ${EMAIL} and its Play Console access remain, and the next run reuses them.`,
+        "The spec-store secrets adapter didn't store play-service-account.",
+        "PERMISSION_DENIED",
+        `The key abc123 was deleted; the next run reuses ${EMAIL}.`,
       ].join("\n"),
     );
     expect(issued.revoke).toHaveBeenCalledTimes(1);
@@ -371,7 +386,7 @@ describe("ensurePlayServiceAccount", () => {
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toThrow(
-      "Deleting the key abc123 failed: delete it under the service account's keys at https://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app.",
+      "Delete the key abc123 at:\nhttps://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app",
     );
   });
 
@@ -398,7 +413,12 @@ describe("ensurePlayServiceAccount", () => {
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toThrow(
-      `Hot Updater could not confirm that the spec-store secrets adapter stored play-service-account: socket hang up\nThe key abc123 is kept. Check spec://play-service-account, or ${keyFile("play-service-account")} on this machine: when it holds the key, run the build again; when it does not, delete the key under the service account ${EMAIL} in Google Cloud, then run this again.`,
+      [
+        "Couldn't confirm the spec-store secrets adapter stored play-service-account.",
+        "socket hang up",
+        "If spec://play-service-account lacks key abc123, delete it at:",
+        "https://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app",
+      ].join("\n"),
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -418,4 +438,11 @@ describe("ensurePlayServiceAccount", () => {
     ).resolves.toEqual({ "play-service-account": KEY_FILE });
     expect(issued.revoke).not.toHaveBeenCalled();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

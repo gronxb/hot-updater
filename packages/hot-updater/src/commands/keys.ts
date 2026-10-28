@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   type ConfigResponse,
   DEFAULT_SIGNING_KEY_SECRET,
-  describeSecret,
+  describeStoredSecret,
   getBundleSigningPublicKey,
   getCwd,
   isSecretName,
@@ -15,7 +15,7 @@ import {
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
 import { warnIfExpoCNG } from "../utils/expoDetection";
@@ -129,7 +129,7 @@ const storePrivateKey = async (
     const stored = (await secrets.get([name], { cwd }))[name];
     if (stored !== undefined && stored.trim() !== keyPair.privateKey.trim()) {
       throw new Error(
-        `The ${secrets.name} secrets adapter stored ${name}, but reading it back returned another value (${describeSecret(secrets, name)}).`,
+        `The ${secrets.name} secrets adapter stored ${name}, but reads back another value.`,
       );
     }
   });
@@ -163,14 +163,18 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     if (secretName !== undefined) {
       if (!isSecretName(secretName)) {
         throw new Error(
-          `"${secretName}" is no secret name: letters, digits, ".", "_", and "-", starting with a letter or a digit, up to 64 characters.`,
+          `"${secretName}" is not a secret name.\nUse up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.`,
         );
       }
       ({ secrets } = await loadConfig(null));
       const held = (await secrets.get([secretName], { cwd }))[secretName];
       if (typeof held === "string" && held.trim()) {
         throw new Error(
-          `${secretName} already holds a value in the ${secrets.name} secrets adapter (${describeSecret(secrets, secretName)}), and keys generate never replaces it: installed apps reject bundles signed with a new key. Name another secret with --secret <name>, or follow the key rotation steps in the bundle signing guide.`,
+          [
+            `${secretName} already holds a value in the ${secrets.name} secrets adapter.`,
+            "keys generate never replaces a signing key.",
+            "Name another secret with --secret <name>, or rotate the key.",
+          ].join("\n"),
         );
       }
     }
@@ -194,9 +198,12 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       );
       spinner.stop("Keys generated");
       p.log.message(
-        ui.block("Keys", [
-          ui.kv("Private", describeSecret(secrets, secretName)),
-          ui.kv("Public", ui.path(publicKeyPath)),
+        ui.block("", [
+          ui.kv(
+            "Private",
+            ui.path(ui.fitPath(describeStoredSecret(secrets, secretName))),
+          ),
+          ui.kv("Public", ui.path(ui.fitPath(publicKeyPath))),
         ]),
       );
     } else {
@@ -204,21 +211,22 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       spinner.stop("Keys generated");
       const privateKeyPath = path.join(outputDir, "private-key.pem");
       p.log.message(
-        ui.block("Keys", [
-          ui.kv("Private", ui.path(privateKeyPath)),
-          ui.kv("Public", ui.path(publicKeyPath)),
+        ui.block("", [
+          ui.kv("Private", ui.path(ui.fitPath(privateKeyPath))),
+          ui.kv("Public", ui.path(ui.fitPath(publicKeyPath))),
           ui.kv("Gitignore", ignorePrivateKey(cwd, outputDir)),
         ]),
       );
     }
 
-    p.log.message(
-      ui.block("Config", [
-        ui.kv("Code", ui.code(localSigningSnippet(secretName))),
-        ui.kv("Run", ui.command("hot-updater keys export-public")),
-      ]),
+    p.log.info(
+      [
+        "Add to hot-updater.config.ts:",
+        ui.code(localSigningSnippet(secretName)),
+        ui.withCommand("Then run", "npx hot-updater keys export-public"),
+      ].join("\n"),
     );
-    p.log.warn("Keep private key secure.");
+    if (secretName === undefined) p.log.warn("Keep the private key secret.");
   } catch (error) {
     if (started) spinner.error("Failed to generate keys");
     p.log.error((error as Error).message);
@@ -343,14 +351,19 @@ function printPublicKeyInstructions(publicKeyPEM: string): void {
   );
 }
 
-const formatNativeTarget = (
+/** One row per native file, the platform on its first. */
+const nativeTargetRows = (
   platform: "android" | "ios",
   paths: string[],
-): string =>
-  ui.block(
-    platform,
-    paths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
-  );
+): Row[] =>
+  paths.map((targetPath, index) => [
+    index === 0 ? platform : "",
+    ui.path(ui.fitPath(targetPath)),
+  ]);
+
+/** `sha256:91c83d6cf355997d…`: enough of a key's fingerprint to tell it apart. */
+const shortFingerprint = (fingerprint: string) =>
+  fingerprint.length > 23 ? `${fingerprint.slice(0, 23)}…` : fingerprint;
 
 /**
  * Export public key for embedding in native configuration.
@@ -392,7 +405,9 @@ export const keysExportPublic = async (
         canonicalizeRsaSpkiPublicKey(publicKeyPEM),
         { flag: "wx", mode: 0o644 },
       );
-      p.log.success(ui.line(["Public key", ui.path(outputPath)]));
+      p.log.success(
+        ui.line(["Public key written to", ui.path(ui.fitPath(outputPath))]),
+      );
       return;
     }
 
@@ -422,15 +437,16 @@ export const keysExportPublic = async (
       process.exit(1);
     }
 
-    p.log.message(ui.title("Native files"));
-    if (androidExists) {
-      p.log.message(formatNativeTarget("android", androidManifestPaths));
-    }
-    if (iosExists) {
-      p.log.message(
-        formatNativeTarget("ios", config.platform.ios.infoPlistPaths),
-      );
-    }
+    p.log.step(
+      ui.block("Native files", [
+        ...(androidExists
+          ? nativeTargetRows("android", androidManifestPaths)
+          : []),
+        ...(iosExists
+          ? nativeTargetRows("ios", config.platform.ios.infoPlistPaths)
+          : []),
+      ]),
+    );
 
     const [androidPublicKey, iosPublicKey] = await Promise.all([
       androidExists
@@ -446,18 +462,18 @@ export const keysExportPublic = async (
 
     if (trustAnchorChanges.length > 0) {
       p.log.warn(
-        "Replacing a native bundle signing key is not a transparent rotation.",
-      );
-      p.log.message(
-        ui.block("Trust anchor change", [
-          ui.kv("New", nextPublicKey.fingerprint),
-          ...trustAnchorChanges.map(({ platform, fingerprint }) =>
-            ui.kv(platform, fingerprint),
-          ),
-        ]),
-      );
-      p.log.warn(
-        "Installed apps using the previous key will reject bundles signed by the new key.",
+        [
+          ui.block("This replaces the native bundle signing key", [
+            ui.kv("New", shortFingerprint(nextPublicKey.fingerprint)),
+            ...trustAnchorChanges.map(
+              ({ platform, fingerprint }): Row => [
+                platform,
+                shortFingerprint(fingerprint),
+              ],
+            ),
+          ]),
+          "Installed apps reject bundles signed with the new key.",
+        ].join("\n"),
       );
     }
 
@@ -467,12 +483,7 @@ export const keysExportPublic = async (
         trustAnchorChanges.length > 0
           ? "Replace the existing public key?"
           : "Write public key?";
-      if (
-        !canPrompt(
-          message,
-          "Re-run with -y to write it, or with -p to only print it,",
-        )
-      ) {
+      if (!canPrompt(message, "Re-run with -y to write it or -p to print it")) {
         process.exit(1);
       }
       const shouldContinue = await p.confirm({
@@ -670,7 +681,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
       : Promise.resolve({ value: null, paths: [] }),
   ]);
 
-  const foundKeys: string[] = [];
+  const foundKeys: Row[] = [];
   if (iosKey.value) {
     foundKeys.push(
       ui.kv(

@@ -476,12 +476,12 @@ describe("createAscCliKeyIssuer", () => {
     [
       "the team's key limit",
       "You have reached the maximum number of active API keys",
-      "revoke one you no longer use at https://appstoreconnect.apple.com/access/integrations/api",
+      "Revoke one at:\nhttps://appstoreconnect.apple.com/access/integrations/api",
     ],
     [
       "a pending Program License Agreement",
       "A required agreement is missing or has expired",
-      "accepts it at https://developer.apple.com/account",
+      "Agreement at https://developer.apple.com/account",
     ],
   ])("says what to do about %s", async (_, stderr, hint) => {
     const error = await issue({ create: stderr }).catch(

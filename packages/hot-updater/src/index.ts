@@ -1163,7 +1163,7 @@ program
 
     if (await isPortReachable(port, { host: "127.0.0.1" })) {
       p.log.error(
-        `Port ${port} is already in use. Set console.port in hot-updater.config.ts to open the console on another port.`,
+        `Port ${port} is already in use.\nSet console.port in hot-updater.config.ts to use another port.`,
       );
       process.exit(1);
     }
@@ -1172,7 +1172,7 @@ program
       // The link carries this run's session: the console answers no
       // other browser or process.
       p.log.info(
-        `Console: ${withConsoleSession(`http://localhost:${port}`, session)}`,
+        `Console:\n${withConsoleSession(`http://localhost:${port}`, session)}`,
       );
     });
   });

@@ -109,10 +109,24 @@ const removeUnregisteredArtifact = async (
     });
   } catch {
     p.log.warn(
-      `The native build was not registered, and its artifact stays at ${registration.artifact.storageUri}.`,
+      `The native build wasn't registered; its artifact stays at:\n${registration.artifact.storageUri}`,
     );
   }
 };
+
+/** What a build can't be tracked without, such as the registry, and why. */
+export class NativeBuildUnreachableError extends Error {
+  constructor(
+    /** What the build can't reach, such as "the native build registry". */
+    readonly what: string,
+    /** Why, as the server or storage said. */
+    readonly reason: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`${what}: ${reason}`, options);
+    this.name = "NativeBuildUnreachableError";
+  }
+}
 
 /**
  * Checks, before a build, that it can be tracked: the config's server
@@ -132,11 +146,12 @@ export const preflightNativeBuildRegistration = async (
     const { core, storage } = server;
     /** What the build can't reach, with why. */
     const unreachable = (what: string, error: unknown) =>
-      new Error(
-        `${what}: ${error instanceof Error ? error.message : String(error)}`,
+      new NativeBuildUnreachableError(
+        what,
+        error instanceof Error ? error.message : String(error),
         { cause: error },
       );
-    const where = `its ${storage.name} storage`;
+    const where = `the ${storage.name} storage`;
     if (storage.put === undefined || storage.exists === undefined) {
       throw unreachable(
         where,
@@ -153,7 +168,7 @@ export const preflightNativeBuildRegistration = async (
             null)
           : await core.findNativeBuild(scope);
     } catch (error) {
-      throw unreachable("its native build registry", error);
+      throw unreachable("the native build registry", error);
     }
     if (found !== null) {
       try {
@@ -200,7 +215,7 @@ export const registerNativeBuild = async (
 ): Promise<NativeBuildRow> => {
   if (build.minBundleId === NIL_UUID) {
     throw new Error(
-      "A debug build has no built-in bundle to register: it loads its JavaScript from Metro. Build a release variant or configuration to register it.",
+      "A Debug build has no built-in bundle to register.\nBuild a release variant or configuration.",
     );
   }
   const server = await loadServer(await loadConfig(null));
@@ -330,10 +345,9 @@ export const registerNativeBuild = async (
       throw error;
     }
     p.log.success(
-      ui.line([
-        "Registered native build",
-        ui.id(row.id),
-        ui.muted(`built-in bundle ${row.min_bundle_id}`),
+      ui.block("Native build registered", [
+        ui.kv("ID", ui.id(row.id)),
+        ui.kv("Built-in bundle", ui.id(row.min_bundle_id)),
       ]),
     );
     return row;

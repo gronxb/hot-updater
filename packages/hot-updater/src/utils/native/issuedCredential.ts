@@ -1,7 +1,6 @@
 import {
   CREDENTIAL_ENV_NAMES,
   credentialLoginCommand,
-  credentialPutCommand,
   describeSecret,
   getConfiguredAdapter,
   getConfiguredSecrets,
@@ -69,19 +68,18 @@ export type PreparedCredential =
       readonly env: Readonly<Record<string, string>>;
     };
 
-/** The docs page on sharing one key across machines. */
-export const SECRETS_DOCS_URL =
-  "https://hot-updater.dev/docs/concepts/secrets#share-a-key-across-machines";
-
-/** What the adapter's `name` holds, or why it can't be read, for messages. */
+/** That the adapter lacks `name`, and the command that stores it once. */
 const describeUnavailable = (
   secrets: SecretsAdapter,
   name: string,
   kind: IssuedCredentialKind,
-) => {
-  const item = name === kind ? kind : `${name} (${kind})`;
-  return `${item} is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}). Store it once from a terminal with \`${credentialLoginCommand(kind, name)}\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there.`;
-};
+) => ({
+  missing: `${name === kind ? kind : `${name} (${kind})`} is not in the ${secrets.name} secrets adapter.`,
+  fix: ui.withCommand(
+    "Run once in a terminal:",
+    credentialLoginCommand(kind, name),
+  ),
+});
 
 /**
  * Everything checked before a sign-in, in this order, so nothing fails
@@ -141,20 +139,17 @@ export const prepareIssuedCredential = async (
   if (
     !(await canSignIn({
       account: policy.account,
-      kind: policy.kind,
       describeUnavailable: async () =>
         describeUnavailable(secrets, name, policy.kind),
     }))
   ) {
     throw new CredentialSetupRefusedError(
-      `${name} is not in the ${secrets.name} secrets adapter, and there is no terminal to sign in with ${policy.signIn}.`,
+      `${name} is not in the ${secrets.name} secrets adapter, and there is no terminal to sign in to ${policy.signIn}.`,
     );
   }
 
   if (!replacing && keepsKeysOnThisMachine(secrets)) {
-    p.log.info(
-      `No ${policy.label} on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (${SECRETS_DOCS_URL}) or import it with \`${credentialPutCommand(policy.kind, name)}\`.`,
-    );
+    p.log.info(`No ${policy.label} on this machine: signing in issues one.`);
   }
   return {
     status: "missing",
@@ -238,6 +233,12 @@ export class CredentialStoreUnconfirmedError extends Error {
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
+/** A file system error's code, such as `EACCES`, which names its path already. */
+const fsErrorText = (error: unknown) =>
+  error instanceof Error && "code" in error && typeof error.code === "string"
+    ? error.code
+    : errorText(error);
+
 /**
  * Stores an issued key's `value` as `name`, and reads it back: returns
  * whether the adapter reads it as stored, which a write-only store does
@@ -287,7 +288,7 @@ export const storeIssuedCredential = async ({
   const held = await readBack().catch(() => undefined);
   if (held !== undefined && held !== value) {
     throw new CredentialStoreUnconfirmedError(
-      `the ${secrets.name} secrets adapter stored ${name}, and reads back another value.`,
+      `It reads back another value for ${name}.`,
     );
   }
   return { readable: held === value };
@@ -316,13 +317,16 @@ export const keepIssuedCopy = async ({
   registerCredentialValue(value);
   const cwd = getCwd();
   const store = getLocalSecretsStore(secrets);
-  const stored = `The ${secrets.name} secrets adapter stored ${name} (${describeSecret(secrets, name)}), and does not read it back here`;
   let file: string;
   try {
     file = await store.write(name, value, cwd);
   } catch (error) {
     p.log.warn(
-      `${stored}. Keeping a copy at ${store.file(name, cwd)} failed: ${error instanceof Error ? error.message : String(error)}\nThis build uses the key; builds that read the adapter where it holds the key, such as CI's, use it too.`,
+      [
+        `Couldn't copy ${name} to this machine: ${fsErrorText(error)}`,
+        ui.fitPath(store.file(name, cwd)),
+        `Only this build, and builds that read ${secrets.name}, use the key.`,
+      ].join("\n"),
     );
     return withIssuedKey(
       secrets,
@@ -332,9 +336,8 @@ export const keepIssuedCopy = async ({
     );
   }
   p.log.info(
-    ui.block(`${policy.label} kept on this machine`, [
-      ui.kv("File", file),
-      `    ${stored}, so Hot Updater kept a copy with localSecrets(), which only you can read and builds here read.`,
+    ui.block(`${policy.label} copied to this machine`, [
+      ui.kv("Source", ui.fitPath(file)),
     ]),
   );
   return withIssuedKey(

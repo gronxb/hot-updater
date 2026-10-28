@@ -163,7 +163,7 @@ describe("hot-updater api-key over hot-updater.config.ts", () => {
     expect(record?.name).toBe("Production app");
     const printed = messages().join("\n");
     expect(printed).toContain("API key created");
-    const apiKey = /API key:\s+(\S+)/u.exec(printed)?.[1];
+    const apiKey = /^API key {2,}(\S+)/mu.exec(printed)?.[1];
     expect(apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(printed.split(apiKey!).length - 1).toBe(1);
     expect(JSON.stringify(record)).not.toContain(apiKey);
@@ -249,7 +249,7 @@ describe("hot-updater api-key over hot-updater.config.ts", () => {
     await withTTY(false, () => handleApiKeyRevoke("api-key-id"));
 
     expect(log.error).toHaveBeenCalledWith(
-      "Revoke API key api-key-id? Re-run with -y in a non-interactive shell.",
+      "Revoke API key api-key-id?\nRe-run with -y in a non-interactive shell.",
     );
     expect(process.exitCode).toBe(1);
     expect(confirm).not.toHaveBeenCalled();

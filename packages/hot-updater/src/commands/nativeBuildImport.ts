@@ -28,7 +28,7 @@ import {
   type NativeArtifactProblem,
 } from "@hot-updater/protocol/native-artifact";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
 import {
@@ -106,8 +106,13 @@ const describeArtifact = (
 ) => {
   const text = (value: NativeArtifactInfo["channel"]) =>
     value === null ? null : typeof value === "string" ? value : "unreadable";
-  const lines = [
-    ui.kv("File", ui.path(file)),
+  /** One row per candidate, the label on the first. */
+  const candidates = (label: string, values: readonly string[]): Row[] =>
+    values.length === 0
+      ? [[label, ui.muted("none")]]
+      : values.map((value, index) => [index === 0 ? label : "", ui.id(value)]);
+  return ui.block("Native build artifact", [
+    ui.kv("File", ui.path(ui.fitPath(file, ARTIFACT_PATH_WIDTH))),
     ui.kv("Platform", ui.platform(info.platform)),
     ui.kv("Kind", info.kind),
     ui.kv("Size", formatBytes(byteSize)),
@@ -122,32 +127,17 @@ const describeArtifact = (
           ? `${ui.channel("production")} ${ui.muted("(none compiled in)")}`
           : ui.channel(text(info.channel)),
     ),
-    ui.kv(
-      "Min bundle ID",
-      info.minBundleIdCandidates.length === 0
-        ? ui.muted("none")
-        : ui.id(info.minBundleIdCandidates.join(", ")),
-    ),
-  ];
-  if (updateStrategy === "fingerprint") {
-    lines.push(
-      ui.kv(
-        "Fingerprint",
-        info.fingerprintCandidates.length === 0
-          ? ui.muted("none")
-          : ui.id(info.fingerprintCandidates.join(", ")),
-      ),
-    );
-  }
-  lines.push(
+    ...candidates("Min bundle ID", info.minBundleIdCandidates),
+    ...(updateStrategy === "fingerprint"
+      ? candidates("Fingerprint", info.fingerprintCandidates)
+      : []),
     ui.kv(
       "Built-in bundle",
       info.builtInBundle === null
         ? ui.muted("none")
         : `${info.builtInBundle.path} ${ui.muted(formatBytes(info.builtInBundle.byteSize))}`,
     ),
-  );
-  return ui.block("Native build artifact", lines);
+  ]);
 };
 
 /**
@@ -261,21 +251,11 @@ export const handleNativeBuildImport = async (
         }),
       );
     } else if (alreadyImported) {
-      p.log.info(
-        ui.line([
-          "Already imported as native build",
-          ui.id(nativeBuild!.id),
-          ui.muted("(the same built-in bundle and scope): nothing to do."),
-        ]),
+      p.log.step(
+        ui.line(["Already imported as native build", ui.id(nativeBuild!.id)]),
       );
     } else if (dryRun) {
-      p.log.info(
-        "Dry run: the artifact can be imported, and nothing was recorded.",
-      );
-    } else {
-      p.log.info(
-        "OTAs deployed from now on to its channel and target patch from its built-in bundle.",
-      );
+      p.log.step("Dry run: the artifact can be imported; nothing was recorded");
     }
   };
   let workDir: string | undefined;
@@ -308,7 +288,7 @@ export const handleNativeBuildImport = async (
       throw error;
     }
     if (!options.json) {
-      p.log.message(
+      p.log.step(
         describeArtifact(
           file,
           byteSize,

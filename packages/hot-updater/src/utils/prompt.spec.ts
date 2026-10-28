@@ -18,12 +18,13 @@ const setTTY = (value: boolean) => {
 };
 
 /** What the preflight says of a missing key, as the caller passes it. */
-const UNAVAILABLE =
-  "asc-api-key is not in the localSecrets secrets adapter (HOT_UPDATER_ASC_API_KEY in the environment, or /home/dev/.hot-updater/secrets/app-0123456789ab/asc-api-key.json on this machine).";
+const UNAVAILABLE = {
+  missing: "asc-api-key is not in the localSecrets secrets adapter.",
+  fix: "Run once in a terminal: npx hot-updater apple login",
+};
 const describeUnavailable = vi.fn(async () => UNAVAILABLE);
 const SIGN_IN = {
   account: "Apple Account",
-  kind: "asc-api-key",
   describeUnavailable,
 } as const;
 
@@ -53,7 +54,7 @@ describe("canPrompt", () => {
 
     expect(canPrompt("Continue?")).toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "Continue? Re-run with -y in a non-interactive shell.",
+      "Continue?\nRe-run with -y in a non-interactive shell.",
     );
     expect(process.exitCode).toBe(1);
   });
@@ -76,7 +77,11 @@ describe("canSignIn", () => {
 
     await expect(canSignIn(SIGN_IN)).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      `${UNAVAILABLE} Hot Updater signs in to your Apple Account to issue it only at a terminal, never in CI (CI is set). Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.`,
+      [
+        "asc-api-key is not in the localSecrets secrets adapter.",
+        "Can't sign in to your Apple Account in CI (CI is set).",
+        "Run once in a terminal: npx hot-updater apple login",
+      ].join("\n"),
     );
     expect(process.exitCode).toBe(1);
   });
@@ -88,12 +93,18 @@ describe("canSignIn", () => {
     await expect(
       canSignIn({
         account: "Google Account",
-        kind: "play-service-account",
-        describeUnavailable: async () => "widget-play is missing.",
+        describeUnavailable: async () => ({
+          missing: "widget-play is missing.",
+          fix: "Run once in a terminal: npx hot-updater google-play login",
+        }),
       }),
     ).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
-      "widget-play is missing. Hot Updater signs in to your Google Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH (or HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON) to provide play-service-account from the environment.",
+      [
+        "widget-play is missing.",
+        "Can't sign in to your Google Account without a terminal.",
+        "Run once in a terminal: npx hot-updater google-play login",
+      ].join("\n"),
     );
   });
 });

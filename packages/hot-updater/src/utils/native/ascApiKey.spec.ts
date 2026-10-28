@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, text, confirm, isCancel, git } = vi.hoisted(() => ({
@@ -52,6 +57,7 @@ import type {
   IssuedAscApiKey,
 } from "@hot-updater/apple-helper";
 import {
+  p,
   getCwd,
   getLocalKeyFile,
   maskSecretValues,
@@ -228,8 +234,12 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(false, () => ensure({ name: "widget-asc" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
-    expect(log.error).toHaveBeenCalledWith(
-      `widget-asc (asc-api-key) is not in the spec-store secrets adapter (spec://widget-asc, or ${keyFile("widget-asc")} on this machine). Store it once from a terminal with \`npx hot-updater secrets issue asc-api-key widget-asc\`, which signs in and stores the key Hot Updater issues, and builds, CI's included, read it from there. Hot Updater signs in to your Apple Account to issue it only at a terminal, never without a terminal. Or set HOT_UPDATER_ASC_KEY_PATH (or HOT_UPDATER_ASC_KEY), HOT_UPDATER_ASC_KEY_ID, and HOT_UPDATER_ASC_ISSUER_ID to provide asc-api-key from the environment.`,
+    expect(stripVTControlCharacters(String(log.error.mock.calls[0]![0]))).toBe(
+      [
+        "widget-asc (asc-api-key) is not in the spec-store secrets adapter.",
+        "Can't sign in to your Apple Account without a terminal.",
+        "Run once in a terminal: npx hot-updater secrets issue asc-api-key widget-asc",
+      ].join("\n"),
     );
     expect(process.exitCode).toBe(1);
     // Nothing is written, and no Apple prompt.
@@ -245,7 +255,9 @@ describe("ensureAscApiKey", () => {
       withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("never in CI (CI is set)"),
+      expect.stringContaining(
+        "Can't sign in to your Apple Account in CI (CI is set).",
+      ),
     );
     expect(calls).toEqual(["get asc-api-key"]);
     expect(text).not.toHaveBeenCalled();
@@ -283,12 +295,12 @@ describe("ensureAscApiKey", () => {
     // The notice comes before the Apple prompt and the sign-in.
     const notice = log.info.mock.calls.findIndex(([message]) =>
       String(message).startsWith(
-        "No App Store Connect API key on this machine.",
+        "No App Store Connect API key on this machine",
       ),
     );
     expect(notice).toBeGreaterThanOrEqual(0);
     expect(log.info.mock.calls[notice]![0]).toBe(
-      "No App Store Connect API key on this machine. Signing in issues a new key; to share one key across machines, use a readable secrets store (https://hot-updater.dev/docs/concepts/secrets#share-a-key-across-machines) or import it with `npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`.",
+      "No App Store Connect API key on this machine: signing in issues one.",
     );
     expect(log.info.mock.invocationCallOrder[notice]!).toBeLessThan(
       text.mock.invocationCallOrder[0]!,
@@ -296,11 +308,8 @@ describe("ensureAscApiKey", () => {
     const stored = stripVTControlCharacters(
       String(log.success.mock.calls[0]![0]),
     );
-    expect(stored).toContain("App Store Connect API key stored");
-    expect(stored).toContain(file);
-    expect(stored).toContain("KEY1234567");
-    expect(stored).toContain(
-      "Revoke the ones no machine or CI uses anymore at https://appstoreconnect.apple.com/access/integrations/api (Team Keys).",
+    expect(stored).toMatch(
+      /^App Store Connect API key stored\nKey ID  KEY1234567\nSource  \S*asc-api-key\.json$/u,
     );
     // The key is in the file alone: nothing printed or asked holds it.
     expect(printed()).not.toContain("MIGHAgEA");
@@ -369,7 +378,7 @@ describe("ensureAscApiKey", () => {
 
     expect(confirm).toHaveBeenLastCalledWith({
       message:
-        "Store it as the GitHub Actions secret HOT_UPDATER_ASC_API_KEY of acme/app, which CI builds read?",
+        "Store it as the GitHub Actions secret HOT_UPDATER_ASC_API_KEY in acme/app?",
       initialValue: true,
     });
     expect(githubSecrets).toHaveBeenCalledWith({
@@ -432,8 +441,8 @@ describe("ensureAscApiKey", () => {
         }),
       ),
     ).resolves.toMatchObject({ status: "issued" });
-    expect(log.warn).toHaveBeenLastCalledWith(
-      `Storing HOT_UPDATER_ASC_API_KEY in acme/app's GitHub Actions secrets failed: HTTP 403\nStore the contents of ${keyFile("asc-api-key")} as that secret yourself.`,
+    expect(String(log.warn.mock.calls.at(-1)![0])).toMatch(
+      /^Couldn't store the GitHub Actions secret HOT_UPDATER_ASC_API_KEY in acme\/app\.\nHTTP 403\nStore this file's contents as that secret:\n[^…\s]*asc-api-key\.json$/u,
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -494,7 +503,7 @@ describe("ensureAscApiKey", () => {
     expect(error).toBeInstanceOf(AscApiKeyNotStoredError);
     expect(error).toMatchObject({ keyId: "KEY1234567", revoked: true });
     expect((error as Error).message).toBe(
-      "The App Store Connect API key KEY1234567 was not stored, so it was revoked again: AccessDenied: PutSecretValue",
+      "Couldn't store the App Store Connect API key KEY1234567, so it was revoked.\nAccessDenied: PutSecretValue",
     );
     expect(issued.revoke).toHaveBeenCalledTimes(1);
     // Revoked before the session ends.
@@ -510,8 +519,8 @@ describe("ensureAscApiKey", () => {
       ensure({ name: "asc-api-key" }),
     ).catch((caught: unknown) => caught);
     expect(error).toMatchObject({ revoked: false });
-    expect((error as Error).message).toContain(
-      "was not stored, and revoking it failed: revoke KEY1234567 at https://appstoreconnect.apple.com/access/integrations/api.",
+    expect((error as Error).message).toBe(
+      "Couldn't store the App Store Connect API key KEY1234567, or revoke it.\nAccessDenied\nRevoke it at https://appstoreconnect.apple.com/access/integrations/api",
     );
     expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
@@ -549,7 +558,12 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toThrow(
-      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: the spec-store secrets adapter stored asc-api-key, and reads back another value.\nThe key KEY1234567 is kept. Check spec://asc-api-key, or ",
+      [
+        "Couldn't confirm the spec-store secrets adapter stored asc-api-key.",
+        "It reads back another value for asc-api-key.",
+        "If spec://asc-api-key lacks key KEY1234567, revoke it at:",
+        "https://appstoreconnect.apple.com/access/integrations/api",
+      ].join("\n"),
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -564,7 +578,7 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toThrow(
-      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: socket hang up",
+      "Couldn't confirm the spec-store secrets adapter stored asc-api-key.\nsocket hang up\n",
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
@@ -586,13 +600,12 @@ describe("ensureAscApiKey", () => {
     const kept = stripVTControlCharacters(
       String(
         log.info.mock.calls.find(([message]) =>
-          String(message).includes("kept on this machine"),
+          String(message).includes("copied to this machine"),
         )![0],
       ),
     );
-    expect(kept).toContain(file);
-    expect(kept).toContain(
-      "The spec-store secrets adapter stored asc-api-key (spec://asc-api-key",
+    expect(kept).toMatch(
+      /^App Store Connect API key copied to this machine\nSource {2}\S*asc-api-key\.json$/u,
     );
     expect(printed()).not.toContain("MIGHAgEA");
     expect(issued.revoke).not.toHaveBeenCalled();
@@ -632,7 +645,9 @@ describe("ensureAscApiKey", () => {
         (await secrets.get(["asc-api-key"], { cwd: tmp }))["asc-api-key"]!,
       ),
     ).toMatchObject({ keyId: "KEY1234567", p8: P8 });
-    expect(String(log.warn.mock.calls[0]![0])).toContain("Keeping a copy at");
+    expect(String(log.warn.mock.calls[0]![0])).toMatch(
+      /^Couldn't copy asc-api-key to this machine: ENOTDIR\n\S+asc-api-key\.json\nOnly this build, and builds that read spec-store, use the key\.$/u,
+    );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
@@ -721,8 +736,15 @@ describe("ensureAscApiKey", () => {
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key", replace: true })),
     ).rejects.toThrow(
-      "Hot Updater could not confirm that the spec-store secrets adapter stored asc-api-key: latest still resolves to the old version\nThe key KEY1234567 is kept.",
+      "Couldn't confirm the spec-store secrets adapter stored asc-api-key.\nlatest still resolves to the old version\nIf spec://asc-api-key lacks key KEY1234567",
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

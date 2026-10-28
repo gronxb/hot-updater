@@ -149,7 +149,7 @@ export const signInWithGoogle = async ({
         token.error === "invalid_client"
           ? "sign-in-not-configured"
           : "sign-in-cancelled",
-        `Google refused the sign-in (HTTP ${response.status})${typeof token.error_description === "string" ? `: ${token.error_description}` : typeof token.error === "string" ? `: ${token.error}` : "."}`,
+        `Google refused the sign-in (HTTP ${response.status}).${typeof token.error_description === "string" ? `\n${token.error_description}` : typeof token.error === "string" ? `\n${token.error}` : ""}`,
       );
     }
     registerSecretValue(token.access_token);

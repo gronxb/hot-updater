@@ -224,6 +224,41 @@ export const describeStoredSecret = (
 };
 
 /**
+ * `name`'s value, read in the order `secrets.get` reads it, with the one
+ * place it came from, for messages: the config's adapter
+ * (`describeSecret`), the environment variable `localSecrets()` reads
+ * first, or `localSecrets()`'s file. Undefined when nothing holds it.
+ */
+export const readSecretWithSource = async (
+  secrets: SecretsAdapter,
+  name: string,
+  cwd: string,
+): Promise<{ readonly value: string; readonly source: string } | undefined> => {
+  const held = (value: string | undefined): value is string =>
+    typeof value === "string" && value.length > 0;
+  if (!isLocalKeyStoreSecrets(secrets)) {
+    const value = (await secrets.get([name], { cwd }))[name];
+    return held(value)
+      ? { value, source: describeSecret(secrets, name) }
+      : undefined;
+  }
+  const { configured, store } = secrets[LOCAL_KEY_STORE];
+  if (configured) {
+    const value = (await configured.get([name], { cwd }))[name];
+    if (held(value)) {
+      return { value, source: describeSecret(configured, name) };
+    }
+  } else {
+    const value = (await readSecretVariables([name], cwd))[name];
+    if (held(value)) {
+      return { value, source: `${secretVariableName(name)} (environment)` };
+    }
+  }
+  const value = await store.read(name, cwd);
+  return held(value) ? { value, source: store.file(name, cwd) } : undefined;
+};
+
+/**
  * Whether a key `secrets` stores stays on this machine: it is `localSecrets()`,
  * whose files no other machine reads.
  */

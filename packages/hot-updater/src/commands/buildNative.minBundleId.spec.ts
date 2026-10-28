@@ -1,5 +1,10 @@
 import { DatabaseConstraintError } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** The configuration of the scheme the config sets, per test. */
 let configuration = "Release";
@@ -11,6 +16,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: {
     log: {
       info: vi.fn(),
+      step: vi.fn(),
       success: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
@@ -141,7 +147,7 @@ describe("native-build ios|android MIN_BUNDLE_ID", () => {
     expect(createNativeBuild).not.toHaveBeenCalled();
     expect(p.log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "can't reach its native build registry: database unreachable\nNothing was built.",
+        "Can't reach the native build registry. Nothing was built.\ndatabase unreachable",
       ),
     );
     exit.mockRestore();
@@ -158,8 +164,15 @@ describe("native-build ios|android MIN_BUNDLE_ID", () => {
     ).rejects.toThrow("exit");
 
     expect(p.log.error).toHaveBeenCalledWith(
-      "Tracking the native build failed: another native build registered its built-in bundle 019a0b1c-2d3f-7000-8000-000000000000 first, as a build that started in the same millisecond does. Build it again: the build issues a new MIN_BUNDLE_ID.\nThe build stays at /out/Example.app.",
+      "Couldn't track the native build.\nMIN_BUNDLE_ID 019a0b1c-2d3f-7000-8000-000000000000 is taken by another build.\nBuild again for a new MIN_BUNDLE_ID.\nThe build stays at /out/Example.app.",
     );
     exit.mockRestore();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

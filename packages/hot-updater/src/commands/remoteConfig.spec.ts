@@ -332,7 +332,7 @@ describe("hot-updater remote-config over hot-updater.config.ts", () => {
     process.exitCode = undefined;
     await withTTY(false, () => handleRemoteConfigPublish(file));
     expect(log.error).toHaveBeenCalledWith(
-      `${message} Re-run with -y in a non-interactive shell.`,
+      `${message}\nRe-run with -y in a non-interactive shell.`,
     );
     expect(process.exitCode).toBe(1);
     expect((await remoteConfigOf().getActive()).version).toBe(0);

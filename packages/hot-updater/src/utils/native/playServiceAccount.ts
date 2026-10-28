@@ -7,7 +7,6 @@ import {
   PLAY_CONSOLE_URL,
 } from "@hot-updater/android-helper";
 import {
-  describeSecret,
   describeStoredSecret,
   getHotUpdaterEnvValue,
   p,
@@ -107,9 +106,8 @@ const revokeNotStored = async (
     [
       reason,
       revoked
-        ? `The key ${issued.keyId} was deleted again.`
-        : `Deleting the key ${issued.keyId} failed: delete it under the service account's keys at ${keys}.`,
-      `The service account ${issued.email} and its Play Console access remain, and the next run reuses them.`,
+        ? `The key ${issued.keyId} was deleted; the next run reuses ${issued.email}.`
+        : `Delete the key ${issued.keyId} at:\n${keys}`,
     ].join("\n"),
     { cause: error.cause },
   );
@@ -132,12 +130,17 @@ const storeIssued = async (
     if (error instanceof CredentialNotStoredError) {
       await revokeNotStored(
         issued,
-        `The ${secrets.name} secrets adapter did not store ${name}: ${error.message}`,
+        `The ${secrets.name} secrets adapter didn't store ${name}.\n${error.message}`,
         error,
       );
     }
     throw new Error(
-      `Hot Updater could not confirm that the ${secrets.name} secrets adapter stored ${name}: ${errorText(error)}\nThe key ${issued.keyId} is kept. Check ${describeSecret(secrets, name)}: when it holds the key, run the build again; when it does not, delete the key under the service account ${issued.email} in Google Cloud, then run this again.`,
+      [
+        `Couldn't confirm the ${secrets.name} secrets adapter stored ${name}.`,
+        errorText(error),
+        `If ${ui.fitPath(describeStoredSecret(secrets, name))} lacks key ${issued.keyId}, delete it at:`,
+        serviceAccountKeysUrl(issued.projectId),
+      ].join("\n"),
       { cause: error },
     );
   }
@@ -213,17 +216,13 @@ export const ensurePlayServiceAccount = async ({
     }),
   ).trim();
 
-  p.log.info(
-    "Sign in with Google in your browser, as a Play Console admin. Google's own page asks for the password; Hot Updater keeps only the service account key it creates.",
-  );
+  p.log.info("Sign in with Google in your browser, as a Play Console admin.");
   const oauthClient = oauthClientOverride(fileEnv);
   const issued = await issue({
     packageName: app,
     ...(oauthClient ? { oauthClient } : {}),
     onSignInUrl: async (url) => {
-      p.log.message(
-        ui.line(["If the browser does not open, open", ui.path(url)]),
-      );
+      p.log.message(`If the browser doesn't open, open:\n${ui.path(url)}`);
       await open(url).catch(() => {});
     },
     askDeveloperId: async () =>
@@ -264,12 +263,10 @@ export const ensurePlayServiceAccount = async ({
     const { readable } = await storeIssued(store, name, issued);
     p.log.success(
       ui.block("Play service account stored", [
-        ui.kv("Secret", name),
-        ui.kv("In", describeStoredSecret(store, name)),
+        name !== POLICY.kind && ui.kv("Name", name),
         ui.kv("Service account", issued.email),
-        ui.kv("Project", issued.projectId),
         ui.kv("Key ID", issued.keyId),
-        `    Each machine that signs in creates its own key. Delete the ones no machine or CI uses anymore under the service account's keys at ${serviceAccountKeysUrl(issued.projectId)}.`,
+        ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
       ]),
     );
     await offerIssuedKeyToGitHub({

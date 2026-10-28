@@ -1,7 +1,12 @@
 import { stripVTControlCharacters } from "node:util";
 
 import type { EnrichedNativeBuildIosScheme } from "@hot-updater/apple-helper";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const events: string[] = [];
 /** The scheme the config sets, as beforePrebuild receives it. */
@@ -48,6 +53,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: {
     log: {
       info: vi.fn(),
+      step: vi.fn(),
       success: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
@@ -128,6 +134,14 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
   rememberTrackedBuild: vi.fn(async () => {}),
 }));
 vi.mock("@/utils/native/registerNativeBuild", () => ({
+  NativeBuildUnreachableError: class extends Error {
+    constructor(
+      readonly what: string,
+      readonly reason: string,
+    ) {
+      super(`${what}: ${reason}`);
+    }
+  },
   issueMinBundleId: vi.fn(async () => "019a0000-0000-7000-8000-000000000000"),
   isNativeBuildConflict: () => false,
   // The tracking preflight passes: its own specs cover what it checks.
@@ -147,6 +161,7 @@ import { p } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import {
+  NativeBuildUnreachableError,
   preflightNativeBuildRegistration,
   registerNativeBuild,
 } from "@/utils/native/registerNativeBuild";
@@ -237,7 +252,7 @@ describe("native-build ios --submit testflight", () => {
   it("reports a failed upload with the path the build stays at", async () => {
     vi.mocked(uploadToTestFlight).mockRejectedValueOnce(
       new Error(
-        "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).",
+        "App Store Connect already has build 42 of version 1.2.0.\nUse a new build number (CFBundleVersion).",
       ),
     );
     const exit = mockExit();
@@ -250,7 +265,7 @@ describe("native-build ios --submit testflight", () => {
     ).rejects.toThrow("exit");
 
     expect(p.log.error).toHaveBeenCalledWith(
-      "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).\nThe build stays at /out/export/App.ipa.",
+      "App Store Connect already has build 42 of version 1.2.0.\nUse a new build number (CFBundleVersion).\nThe build stays at /out/export/App.ipa.",
     );
     // The resolver deletes its temporary files before the process exits.
     expect(events.slice(-2)).toEqual(["dispose", "exit"]);
@@ -352,7 +367,10 @@ describe("native-build ios without an App Store Connect API key", () => {
 describe("native-build ios tracking", () => {
   it("stops before any sign-in or build when the build can't be tracked, naming what it can't reach", async () => {
     vi.mocked(preflightNativeBuildRegistration).mockRejectedValueOnce(
-      new Error("its native build registry: connection refused"),
+      new NativeBuildUnreachableError(
+        "the native build registry",
+        "connection refused",
+      ),
     );
     const exit = mockExit();
 
@@ -368,7 +386,7 @@ describe("native-build ios tracking", () => {
     expect(ensureAscApiKey).not.toHaveBeenCalled();
     expect(createNativeBuild).not.toHaveBeenCalled();
     expect(p.log.error).toHaveBeenCalledWith(
-      "Hot Updater tracks every native build, and can't reach its native build registry: connection refused\nNothing was built. Check the database and storage in hot-updater.config.ts, and their credentials.",
+      "Can't reach the native build registry. Nothing was built.\nconnection refused\nCheck the database and storage in hot-updater.config.ts.",
     );
   });
 
@@ -399,7 +417,7 @@ describe("native-build ios tracking", () => {
     expect(preflightNativeBuildRegistration).not.toHaveBeenCalled();
     expect(registerNativeBuild).not.toHaveBeenCalled();
     expect(p.log.info).toHaveBeenCalledWith(
-      "Not tracking this build: the scheme release builds Debug, which loads its JavaScript from Metro and has no built-in bundle to track.",
+      "Not tracking release: a Debug build has no built-in bundle.",
     );
   });
 
@@ -433,7 +451,7 @@ describe("native-build ios tracking", () => {
     expect(uploadToTestFlight).not.toHaveBeenCalled();
     expect(events).not.toContain("upload");
     expect(p.log.error).toHaveBeenCalledWith(
-      "Tracking the native build failed: storage refused the artifact\nThe build stays at /out/export/App.ipa, and was not submitted to TestFlight.",
+      "Couldn't track the native build.\nstorage refused the artifact\nNot submitted to TestFlight.\nThe build stays at /out/export/App.ipa.",
     );
   });
 });
@@ -463,14 +481,12 @@ describe("native-build ios --dry-run", () => {
     expect(registerNativeBuild).not.toHaveBeenCalled();
     expect(uploadToTestFlight).not.toHaveBeenCalled();
     const summary = stripVTControlCharacters(
-      String(vi.mocked(p.log.message).mock.calls[0]?.[0]),
+      String(vi.mocked(p.log.step).mock.calls[0]?.[0]),
     );
     expect(summary).toContain("Dry run: nothing was recorded or submitted");
     expect(summary).toContain("/out/export/App.ipa");
     expect(summary).toContain("0190a1b2-c3d4-7000-8000-01a1b2c3d4e5");
-    expect(summary).toContain(
-      "this native build, its artifact, and its built-in bundle, in Hot Updater",
-    );
+    expect(summary).toContain("the native build and its built-in bundle");
     expect(summary).toContain("to TestFlight");
     expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
       dryRun: true,
@@ -496,9 +512,9 @@ describe("native-build ios --dry-run", () => {
     expect(events).toContain("build");
     expect(ensureAscApiKey).not.toHaveBeenCalled();
     expect(uploadToTestFlight).not.toHaveBeenCalled();
-    expect(vi.mocked(p.log.message)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(p.log.step)).toHaveBeenCalledTimes(1);
     expect(p.log.error).toHaveBeenCalledWith(
-      "The dry run built, and a real run could not submit to TestFlight: asc-api-key is not in the envSecrets secrets adapter.",
+      "A real run couldn't submit to TestFlight.\nasc-api-key is not in the envSecrets secrets adapter.",
     );
     expect(exit).toHaveBeenCalledWith(1);
   });
@@ -513,4 +529,11 @@ describe("native-build ios --dry-run", () => {
     expect(events).toContain("upload");
     expect(p.log.message).not.toHaveBeenCalled();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

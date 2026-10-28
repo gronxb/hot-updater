@@ -42,7 +42,7 @@ describe("signInWithGoogle", () => {
     ).rejects.toMatchObject({
       code: "sign-in-not-configured",
       message:
-        "Google refused the sign-in (HTTP 401): The OAuth client was not found.",
+        "Google refused the sign-in (HTTP 401).\nThe OAuth client was not found.",
     });
   });
 

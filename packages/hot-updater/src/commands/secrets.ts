@@ -7,7 +7,6 @@ import {
   type CredentialKind,
   credentialIssueCommand,
   credentialLoginCommand,
-  credentialPutCommand,
   describeSecret,
   describeStoredSecret,
   getConfiguredAdapter,
@@ -19,6 +18,7 @@ import {
   nonInteractiveReason,
   p,
   readLoadedHotUpdaterEnv,
+  readSecretWithSource,
   registerCredentialValue,
   secretVariableName,
 } from "@hot-updater/cli-tools";
@@ -26,7 +26,7 @@ import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import {
   ensurePlayServiceAccount,
@@ -91,7 +91,7 @@ const readFile = async (file: string, flag: string) => {
   try {
     return await fs.readFile(path.resolve(file));
   } catch {
-    throw new Error(`${flag} does not point to a readable file.`);
+    throw new Error(`Can't read ${flag} ${file}.`);
   }
 };
 
@@ -125,12 +125,12 @@ const readSecretValue = async (options: SecretsPutOptions): Promise<string> => {
     );
   if (foreign.length > 0) {
     throw new Error(
-      `A ${kind} takes ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}, not ${[...new Set(foreign)].map((flag) => FLAG_NAMES[flag]).join(", ")}.`,
+      `${kind} takes no ${[...new Set(foreign)].map((flag) => FLAG_NAMES[flag]).join(", ")}.\nIt takes ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.`,
     );
   }
   const required = (flag: ValueFlag) => {
     const value = options[flag];
-    if (!value) throw new Error(`A ${kind} needs ${FLAG_NAMES[flag]}.`);
+    if (!value) throw new Error(`${kind} needs ${FLAG_NAMES[flag]}.`);
     return value;
   };
 
@@ -193,7 +193,7 @@ const isIssuedKind = (kind: string): kind is IssuedCredentialKind =>
 const assertSecretName = (name: string) => {
   if (!isSecretName(name)) {
     throw new Error(
-      `"${name}" is no secret name: letters, digits, ".", "_", and "-", starting with a letter or a digit, up to 64 characters.`,
+      `"${name}" is not a secret name.\nUse up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.`,
     );
   }
 };
@@ -248,7 +248,7 @@ export const handleSecretsPut = async (
     // No key to store: the sign-in that issues one is `secrets issue`'s.
     if (isIssuedKind(kind) && !hasValueFlags(options)) {
       throw new Error(
-        `secrets put stores ${kind === "asc-api-key" ? "an" : "a"} ${kind} you have: ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}. To sign in and have Hot Updater issue one, run \`${credentialLoginCommand(kind, name)}\` in a terminal.`,
+        `secrets put needs ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.\n${ui.withCommand("To issue a new key, run", credentialLoginCommand(kind, name))}`,
       );
     }
     // Registers the config's secrets adapter, which everything below uses.
@@ -263,7 +263,7 @@ export const handleSecretsPut = async (
     ).filter((variable) => !PASSWORD_INPUTS.has(variable));
     if (overrides.length > 0) {
       throw new Error(
-        `${listNames(overrides)} ${overrides.length === 1 ? "is" : "are"} set in the environment or .env.hotupdater, which builds read before what Hot Updater stores, so the ${options.kind} you store would never be used. Unset ${overrides.length === 1 ? "it" : "them"}, then run this again.`,
+        `The environment or .env.hotupdater overrides ${options.kind}.\nUnset ${listNames(overrides)}.`,
       );
     }
     // A read-only adapter's value is read before localSecrets()' copy, so a
@@ -273,7 +273,7 @@ export const handleSecretsPut = async (
       const held = (await configured.get([name], { cwd }))[name];
       if (held) {
         throw new Error(
-          `${name} is in the ${configured.name} secrets adapter (${describeSecret(configured, name)}), which builds read first and Hot Updater can't write, so the ${options.kind} you store would never be used. Replace it there yourself.`,
+          `${name} is in the ${configured.name} secrets adapter, which is read-only.\nReplace it there: ${describeSecret(configured, name)}`,
         );
       }
     }
@@ -283,11 +283,11 @@ export const handleSecretsPut = async (
     registerCredentialValue(value);
     // Always set: an adapter that stores nothing stores in `localSecrets()`'s store.
     await secrets.set!(name, value, { cwd });
-    p.log.message(
+    p.log.success(
       ui.block("Secret stored", [
         ui.kv("Name", name),
         ui.kv("Kind", options.kind),
-        ui.kv("In", describeStoredSecret(secrets, name)),
+        ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
       ]),
     );
   });
@@ -300,8 +300,6 @@ const ISSUERS: Readonly<
     {
       readonly label: string;
       readonly account: string;
-      /** Whose session the sign-in opens, and Hot Updater keeps none of. */
-      readonly session: string;
       readonly ensure: typeof ensureAscApiKey | typeof ensurePlayServiceAccount;
     }
   >
@@ -309,13 +307,11 @@ const ISSUERS: Readonly<
   "asc-api-key": {
     label: "App Store Connect API key",
     account: "Apple Account",
-    session: "Apple",
     ensure: ensureAscApiKey,
   },
   "play-service-account": {
     label: "Play service account",
     account: "Google Account",
-    session: "Google",
     ensure: ensurePlayServiceAccount,
   },
 };
@@ -323,8 +319,8 @@ const ISSUERS: Readonly<
 /** The key a credential's JSON value names, when it is readable. */
 interface HeldKey {
   /** The rows that name it, such as its key ID. */
-  readonly rows: readonly string[];
-  /** Where to revoke it, and how to find it there. */
+  readonly rows: readonly Row[];
+  /** Where to revoke it. */
   readonly revoke: string;
 }
 
@@ -357,10 +353,7 @@ const describeHeldKey = (
   if (kind === "asc-api-key") {
     const keyId = stringField(fields, "keyId");
     if (!keyId) return undefined;
-    return {
-      rows: [ui.kv("Key ID", keyId)],
-      revoke: `Revoke ${keyId} at ${ASC_INTEGRATIONS_URL} (Team Keys)`,
-    };
+    return { rows: [ui.kv("Key ID", keyId)], revoke: ASC_INTEGRATIONS_URL };
   }
   const email = stringField(fields, "client_email");
   if (!email) return undefined;
@@ -371,7 +364,9 @@ const describeHeldKey = (
       ui.kv("Service account", email),
       ...(keyId ? [ui.kv("Key ID", keyId)] : []),
     ],
-    revoke: `Delete ${keyId ? `the key ${keyId}` : "its old key"} under the service account ${email}'s keys${projectId ? ` at ${serviceAccountKeysUrl(projectId)}` : " in Google Cloud"}`,
+    revoke: projectId
+      ? serviceAccountKeysUrl(projectId)
+      : "Google Cloud, under the service account's keys",
   };
 };
 
@@ -432,8 +427,7 @@ export interface SecretsIssueOptions {
  * - A key the adapter holds is kept, without a sign-in, unless `--replace`:
  *   then a new key replaces it, and the old one, which CI may still use,
  *   is named with where to revoke it. Hot Updater never revokes it.
- * - A run that issued a key ends saying Hot Updater kept no session, only
- *   the key, and where it is.
+ * - A run that issued a key ends with the stored key's ID and where it is.
  */
 export const handleSecretsIssue = async (
   kind: IssuedCredentialKind,
@@ -454,7 +448,14 @@ export const handleSecretsIssue = async (
     const reason = nonInteractiveReason();
     if (reason !== undefined) {
       throw new Error(
-        `Hot Updater signs in to your ${issuer.account} to issue the ${issuer.label} only at a terminal, never ${reason}. Run \`${issue}\` in a terminal, or store a key you have with \`${credentialPutCommand(kind, name)}\`.`,
+        [
+          `Can't sign in to your ${issuer.account} ${reason}.`,
+          ui.withCommand("Run in a terminal:", issue),
+          ui.withCommand(
+            "Or store a key you have:",
+            "npx hot-updater secrets put --help",
+          ),
+        ].join("\n"),
       );
     }
 
@@ -465,24 +466,23 @@ export const handleSecretsIssue = async (
 
     const overrides = environmentOverrides(kind, name, secrets, env);
     if (overrides.length > 0) {
-      const set = `${listNames(overrides)} ${overrides.length === 1 ? "is" : "are"} set in the environment or .env.hotupdater`;
       if (replace) {
         throw new Error(
-          `${set}, which builds read before any secrets adapter, so a new ${issuer.label} would never be used. Unset ${overrides.length === 1 ? "it" : "them"}, then run \`${issue}\` again.`,
+          `The environment or .env.hotupdater overrides ${kind}.\nUnset ${listNames(overrides)}.`,
         );
       }
       const held = describeHeldKey(kind, await readOverrideFields(kind, env));
-      p.log.message(
+      p.log.step(
         ui.block(`${issuer.label} set by the environment`, [
-          ui.kv("From", listNames(overrides)),
           ...(held?.rows ?? []),
-          `    Builds use it before any secrets adapter, so Hot Updater issues no key. To issue one, unset ${overrides.length === 1 ? "it" : "them"} in the environment and .env.hotupdater, then run \`${credentialIssueCommand(kind, name)}\`.`,
+          ui.kv("Source", listNames(overrides)),
         ]),
       );
       return;
     }
 
-    const stored = (await secrets.get([name], { cwd }))[name] || undefined;
+    const found = await readSecretWithSource(secrets, name, cwd);
+    const stored = found?.value;
     // Masked before anything can print it: only its IDs are named.
     if (stored !== undefined) registerCredentialValue(stored);
     const previous =
@@ -496,17 +496,16 @@ export const handleSecretsIssue = async (
       const held = (await configured.get([name], { cwd }))[name];
       if (held) {
         throw new Error(
-          `${name} is in the ${configured.name} secrets adapter (${describeSecret(configured, name)}), which builds read first and Hot Updater can't write, so a new ${issuer.label} would never be used. Replace it there yourself, or remove it there, then run \`${issue}\` again.`,
+          `${name} is in the ${configured.name} secrets adapter, which is read-only.\nReplace it there: ${describeSecret(configured, name)}`,
         );
       }
     }
-    if (stored !== undefined && !replace) {
-      p.log.message(
+    if (found !== undefined && !replace) {
+      p.log.step(
         ui.block(`${issuer.label} already stored`, [
-          ui.kv("Name", name),
-          ui.kv("In", describeSecret(secrets, name)),
+          name !== kind && ui.kv("Name", name),
           ...(previous?.rows ?? []),
-          `    Builds use it, so Hot Updater issues no key. To issue a new one, run \`${credentialIssueCommand(kind, name)} --replace\`.`,
+          ui.kv("Source", ui.fitPath(found.source)),
         ]),
       );
       return;
@@ -521,22 +520,19 @@ export const handleSecretsIssue = async (
       replace: true,
       replacing: stored !== undefined,
     });
-    if (result.status !== "issued") return;
-    if (stored !== undefined) {
-      p.log.warn(
-        ui.block(`The old ${issuer.label} is still valid`, [
-          ...(previous?.rows ?? []),
-          ...[
-            `Hot Updater never revokes it, as CI or a copy elsewhere, such as a GitHub Actions secret, may still use it. Once nothing does: ${previous ? previous.revoke : `revoke it where you issued it (${kind === "asc-api-key" ? ASC_INTEGRATIONS_URL : "the service account's keys in Google Cloud"})`}.`,
-          ].map((line) => `    ${line}`),
-        ]),
-      );
-    }
-    // The sign-in's session ended with it: only the key remains.
-    const key =
-      "keyId" in result ? `key ${result.keyId}` : `a key of ${result.email}`;
-    p.log.info(
-      `Hot Updater kept no ${issuer.session} session: it stored ${key} as ${name} in ${result.secrets ? describeSecret(result.secrets, name) : describeStoredSecret(secrets, name)}.`,
+    if (result.status !== "issued" || stored === undefined) return;
+    // Never revoked: CI or a copy elsewhere may still use it.
+    p.log.warn(
+      ui.block(`The old ${issuer.label} is still valid`, [
+        ...(previous?.rows ?? []),
+        ui.kv(
+          "Revoke",
+          previous?.revoke ??
+            (kind === "asc-api-key"
+              ? ASC_INTEGRATIONS_URL
+              : "Google Cloud, under the service account's keys"),
+        ),
+      ]),
     );
   });
 };

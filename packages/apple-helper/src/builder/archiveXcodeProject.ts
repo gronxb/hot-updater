@@ -12,6 +12,7 @@ import {
   getDefaultDestination,
   resolveDestinations,
 } from "../utils/destination";
+import { formatCommand } from "../utils/formatCommand";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
@@ -93,12 +94,16 @@ export const archiveXcodeProject = async ({
       xcodeScheme,
     });
 
-    p.log.info(`Xcode Archive Settings:
-Project    ${xcodeProject.name}
-Scheme     ${xcodeScheme}
-Platform   ${platform}
-Command    xcodebuild ${archiveArgs.join(" ")}
-`);
+    p.log.info(
+      [
+        "Xcode archive",
+        `Project   ${xcodeProject.name}`,
+        `Scheme    ${xcodeScheme}`,
+        `Platform  ${platform}`,
+        "Command",
+        formatCommand(["xcodebuild", ...archiveArgs]),
+      ].join("\n"),
+    );
 
     try {
       await runXcodebuildWithLogging({

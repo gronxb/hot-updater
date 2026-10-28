@@ -49,12 +49,12 @@ export const createPatch = async (options: PatchOptions) => {
     const storageAdapter = server.storage;
     assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
     p.note(
-      [
+      ui.block("", [
         ui.kv("Channel", ui.channel(options.channel)),
         ui.kv("Platform", ui.platform(platform)),
         ui.kv("Base artifact ID", ui.id(options.baseBundleId)),
         ui.kv("Target artifact ID", ui.id(options.bundleId)),
-      ].join("\n"),
+      ]),
       "Patch",
     );
 

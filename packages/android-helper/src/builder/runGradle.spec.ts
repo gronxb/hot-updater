@@ -8,6 +8,7 @@ vi.mock("execa", () => ({
   execa: vi.fn(() => Object.assign(Promise.resolve({}), { all: undefined })),
 }));
 vi.mock("@hot-updater/cli-tools", () => ({
+  getCwd: () => "/app",
   p: { log: { info: vi.fn(), error: vi.fn() } },
 }));
 vi.mock("../utils/createGradleLogger", () => ({

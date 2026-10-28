@@ -146,7 +146,7 @@ export const acquireWithLockf: AcquireLock = async (lockPath) => {
   const release = await holdWithLockf(lockPath, false);
   if (release) return release;
   p.log.info(
-    "Waiting for another build that signs in a keychain of its own under this macOS user.",
+    "Waiting for another build's signing keychain under this macOS user.",
   );
   return (await holdWithLockf(lockPath, true))!;
 };
@@ -235,7 +235,12 @@ export const createSigningKeychain = async ({
       await releaseLock().catch(() => undefined);
       if (failures.length > 0) {
         p.log.warn(
-          `Restoring the keychains after the build failed (${failures.join("; ")}). Check \`security list-keychains -d user\` and \`security default-keychain -d user\`, and delete ${keychainPath} if it is left.`,
+          [
+            "Couldn't restore the keychains after the build.",
+            ...failures,
+            "Check security list-keychains -d user and default-keychain -d user,",
+            `and delete ${keychainPath} if it is left.`,
+          ].join("\n"),
         );
       }
     })();
@@ -376,12 +381,20 @@ export const revokeKeychainCertificates = async ({
 
   if (revoked.length > 0) {
     p.log.info(
-      `Revoked the signing certificates Xcode created for this build, whose keys the build's keychain held: ${revoked.join(", ")}.`,
+      [
+        "Revoked the certificates Xcode created for this build:",
+        ...revoked,
+      ].join("\n"),
     );
   }
   if (failed.length > 0) {
     p.log.warn(
-      `Revoking the signing certificates Xcode created for this build failed, and their keys are deleted with the build's keychain: ${failed.join("; ")}. Revoke them at ${CERTIFICATES_URL}, since App Store Connect stops creating certificates at a team's maximum.`,
+      [
+        "Couldn't revoke the certificates Xcode created for this build.",
+        ...failed,
+        "Revoke them at:",
+        CERTIFICATES_URL,
+      ].join("\n"),
     );
   }
   return { revoked, failed };
@@ -424,9 +437,7 @@ export const withSigningKeychain = async <T>({
     lockPath,
     acquireLock,
   });
-  p.log.info(
-    "Signing in a keychain of this build's own, deleted when it ends (CI is set).",
-  );
+  p.log.info("Signing in a keychain of this build's own (CI is set).");
 
   let cleanup: Promise<void> | undefined;
   const release = () => {

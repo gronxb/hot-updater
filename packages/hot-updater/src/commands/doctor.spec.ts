@@ -17,6 +17,11 @@ import {
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
@@ -77,6 +82,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
       warn: vi.fn(),
       info: vi.fn(),
       message: vi.fn(),
+      step: vi.fn(),
     },
   },
   readPackageUp: vi.fn(),
@@ -1905,7 +1911,7 @@ describe("doctor", () => {
     await handleDoctor({}).catch(() => {});
 
     expect(p.log.info).toHaveBeenCalledWith(
-      expect.stringContaining("iOS Fingerprint Changes:"),
+      expect.stringContaining("iOS fingerprint changes\n"),
     );
     expect(p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("ios/App/AppDelegate.swift"),
@@ -1913,4 +1919,11 @@ describe("doctor", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

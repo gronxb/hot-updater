@@ -6,7 +6,7 @@ import {
   type Platform,
 } from "@hot-updater/plugin-core";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
 import { loadServer } from "../utils/loadServer";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
@@ -78,13 +78,13 @@ export const handleNativeBuildFind = async (
       console.log(JSON.stringify({ ...scope, nativeBuild }, null, 2));
       return;
     }
-    const target =
+    const target: Row =
       scope.fingerprintHash === null
         ? ui.kv("App version", ui.version(scope.appVersion))
         : ui.kv("Fingerprint", ui.id(scope.fingerprintHash));
     if (nativeBuild === null) {
-      console.log(
-        ui.block("No native build", [
+      p.log.info(
+        ui.block("No native build matches", [
           ui.kv("Platform", ui.platform(scope.platform)),
           ui.kv("Channel", ui.channel(scope.channel)),
           target,
@@ -92,15 +92,15 @@ export const handleNativeBuildFind = async (
       );
       return;
     }
-    console.log(
-      ui.block("Native build", [
+    p.log.success(
+      ui.block("Native build found", [
         ui.kv("ID", ui.id(nativeBuild.id)),
         ui.kv("Platform", ui.platform(scope.platform)),
         ui.kv("Channel", ui.channel(scope.channel)),
         target,
         ui.kv("Kind", nativeBuild.artifact_kind),
         ui.kv("Min bundle ID", ui.id(nativeBuild.min_bundle_id)),
-        ui.kv("Created", new Date(nativeBuild.created_at_ms).toISOString()),
+        ui.kv("Created", formatUtc(nativeBuild.created_at_ms)),
       ]),
     );
   } catch (error) {
@@ -108,6 +108,10 @@ export const handleNativeBuildFind = async (
     process.exit(1);
   }
 };
+
+/** `2026-10-27 04:02 UTC`. */
+const formatUtc = (ms: number) =>
+  `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 
 /** The kind of artifact `native-build <platform> --scheme <scheme>` builds. */
 const schemeArtifactKind = (
@@ -140,7 +144,7 @@ export const handleNativeBuildDelete = async (
     if (options.json) {
       console.log(JSON.stringify({ id, deleted: false, reason: "not_found" }));
     } else {
-      p.log.info(ui.line(["No native build", ui.id(id), "to delete."]));
+      p.log.step(ui.line(["No native build", ui.id(id), "to delete"]));
     }
   };
   try {
@@ -156,7 +160,7 @@ export const handleNativeBuildDelete = async (
           ?.name ?? build.channel_id;
 
       if (!options.json) {
-        p.log.message(
+        p.log.step(
           ui.block("Native build", [
             ui.kv("ID", ui.id(build.id)),
             ui.kv("Platform", ui.platform(build.platform)),
@@ -166,12 +170,12 @@ export const handleNativeBuildDelete = async (
               : ui.kv("Fingerprint", ui.id(build.fingerprint_hash)),
             ui.kv("Kind", build.artifact_kind),
             ui.kv("Size", formatBytes(build.byte_size)),
-            ui.kv("Artifact", ui.path(build.artifact_storage_uri)),
+            ui.kv("Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))),
           ]),
         );
       }
       await confirmMutation(
-        "Delete this native build and its artifact? Installed apps keep working, and download full bundles instead of patches from its built-in bundle.",
+        "Delete this native build and its artifact?",
         options.yes,
       );
 
@@ -202,7 +206,7 @@ export const handleNativeBuildDelete = async (
           ),
         );
       } else {
-        console.log(
+        p.log.success(
           ui.block("Native build deleted", [
             ui.kv("ID", ui.id(id)),
             ui.kv("Platform", ui.platform(build.platform)),
@@ -217,16 +221,15 @@ export const handleNativeBuildDelete = async (
           artifactError instanceof Error
             ? artifactError.message
             : String(artifactError);
-        const message = `The native build is deleted, but its artifact stays at ${result.nativeBuild.artifact_storage_uri}: ${reason}. Delete that object from storage.`;
+        const message = [
+          "The native build is deleted, but its artifact is not.",
+          reason,
+          `Delete ${result.nativeBuild.artifact_storage_uri} from storage.`,
+        ].join("\n");
         if (options.json) console.error(message);
         else p.log.error(message);
         process.exitCode = 1;
         return;
-      }
-      if (!options.json) {
-        p.log.info(
-          "The built-in bundle's files stay until `hot-updater storage prune` deletes them.",
-        );
       }
     } finally {
       await safeDispose(server);

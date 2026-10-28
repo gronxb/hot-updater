@@ -238,7 +238,7 @@ export const readBuiltApp = async ({
   const aapt2 = findAapt2(androidProjectPath);
   if (!aapt2) {
     p.log.warn(
-      "aapt2 was not found in the Android SDK's build-tools, so the build reports the app version and channel of the project files.",
+      "No aapt2 in the Android SDK build-tools.\nThe build reports the project files' app version and channel.",
     );
     return undefined;
   }
@@ -275,7 +275,7 @@ export const readBuiltApp = async ({
     );
     if (appVersion === undefined || channel === undefined) {
       p.log.warn(
-        "aapt2 printed the artifact's versionName or com.hotupdater.CHANNEL in a form that cannot be read exactly, so the build reports the project files' value for it.",
+        "Couldn't read the artifact's versionName or com.hotupdater.CHANNEL exactly.\nThe build reports the project files' value instead.",
       );
     }
     const versionCode = parseManifestVersionCode(xmltree);
