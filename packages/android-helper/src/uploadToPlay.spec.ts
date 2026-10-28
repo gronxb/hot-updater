@@ -26,6 +26,7 @@ import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
 import {
   createServiceAccountAssertion,
   findPlayInternalRelease,
+  hasPlayReleases,
   PlayVersionCodeUsedError,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
@@ -598,6 +599,49 @@ describe("resolvePlayUploadServiceAccount", () => {
     ).toThrow(
       "The scheme release builds stagingDebug; Google Play takes a release build.",
     );
+  });
+});
+
+describe("hasPlayReleases", () => {
+  it("reads every track in an edit it deletes: any release means Play has the upload key", async () => {
+    const tracks = (releases: unknown[]) => ({
+      json: {
+        tracks: [
+          { track: "production", releases: [] },
+          { track: "internal", releases },
+        ],
+      },
+    });
+    const { fetch, requests } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`GET ${EDIT}/tracks`]: [
+        tracks([{ status: "completed", versionCodes: ["7"] }]),
+        tracks([{ status: "draft" }]),
+      ],
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+    const has = () =>
+      hasPlayReleases({
+        packageName: "com.example.app",
+        serviceAccount: { json: serviceAccountJson },
+        fetch,
+      });
+
+    await expect(has()).resolves.toBe(true);
+    await expect(has()).resolves.toBe(false);
+    expect(
+      requests
+        .filter(({ url }) => url !== TOKEN_URI)
+        .map(({ method, url }) => `${method} ${url.replace(APP, "")}`),
+    ).toEqual([
+      "POST /edits",
+      "GET /edits/edit-1/tracks",
+      "DELETE /edits/edit-1",
+      "POST /edits",
+      "GET /edits/edit-1/tracks",
+      "DELETE /edits/edit-1",
+    ]);
   });
 });
 

@@ -252,15 +252,39 @@ describe("createCredentialResolver", () => {
     );
   });
 
-  it("names the command that stores a keystore localSecrets() lacks, broken to fit", async () => {
+  it("offers a new keystore only with localSecrets() alone, warning that Play rejects one when it has the app's key", async () => {
     await expect(
       createCredentialResolver().resolve({
         kind: "android-keystore",
         name: "release-keystore",
       }),
     ).rejects.toThrow(
-      "No release-keystore (android-keystore) in the localSecrets secrets adapter.\nStore it once with:\nnpx hot-updater secrets put release-keystore --kind android-keystore \\\n  --keystore <release.jks> --key-alias <alias>",
+      [
+        "No release-keystore (android-keystore) in the localSecrets secrets adapter.",
+        "Play rejects a new key if the app has one: import it with google-play login.",
+        "Otherwise: npx hot-updater secrets issue android-keystore release-keystore",
+      ].join("\n"),
     );
+  });
+
+  it("never offers a second keystore when a team's adapter lacks it: someone set one up", async () => {
+    const error = await createCredentialResolver({
+      secrets: fakeSecrets({}),
+    })
+      .resolve({ kind: "android-keystore", name: "release-keystore" })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as Error,
+      );
+
+    expect(error?.message).toBe(
+      [
+        "No release-keystore (android-keystore) in fake://release-keystore.",
+        "Ask whoever set it up to store it there, or import it with:",
+        "npx hot-updater google-play login",
+      ].join("\n"),
+    );
+    expect(error?.message).not.toContain("secrets issue");
   });
 
   it("names the adapter's failure", async () => {

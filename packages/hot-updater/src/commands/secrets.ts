@@ -27,6 +27,7 @@ import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { printBanner } from "@/utils/printBanner";
 
 import { type Row, ui } from "../utils/cli-ui";
+import { androidKeystoreValue } from "../utils/native/androidKeystore";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import {
   ensurePlayServiceAccount,
@@ -46,9 +47,10 @@ export const ISSUED_KINDS = [
   "play-service-account",
 ] as const satisfies readonly IssuedCredentialKind[];
 
-/** Reports a failure with exit code 1, as the server's commands do. */
 /** Runs `run`, printing a failure and setting exit code 1; whether it succeeded. */
-const reportFailure = async (run: () => Promise<void>): Promise<boolean> => {
+export const reportFailure = async (
+  run: () => Promise<void>,
+): Promise<boolean> => {
   try {
     await run();
     return true;
@@ -147,11 +149,9 @@ const readSecretValue = async (options: SecretsPutOptions): Promise<string> => {
       });
     }
     case "android-keystore": {
-      const keystore = (
-        await readFile(required("keystore"), "--keystore")
-      ).toString("base64");
+      const keystore = await readFile(required("keystore"), "--keystore");
       const keyAlias = required("keyAlias");
-      return JSON.stringify({
+      return androidKeystoreValue({
         keystore,
         storePassword: await readPassword(
           "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
@@ -193,7 +193,7 @@ const hasValueFlags = (options: SecretsPutOptions) =>
 const isIssuedKind = (kind: string): kind is IssuedCredentialKind =>
   (ISSUED_KINDS as readonly string[]).includes(kind);
 
-const assertSecretName = (name: string) => {
+export const assertSecretName = (name: string) => {
   if (!isSecretName(name)) {
     throw new Error(
       `"${name}" is not a secret name.\nUse up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.`,
@@ -201,7 +201,7 @@ const assertSecretName = (name: string) => {
   }
 };
 
-const listNames = (names: readonly string[]) =>
+export const listNames = (names: readonly string[]) =>
   names.length <= 2
     ? names.join(" and ")
     : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
@@ -218,7 +218,7 @@ const PASSWORD_INPUTS: ReadonlySet<string> = new Set([
  * overrides, and with `localSecrets()`, the whole value's variable, which it
  * reads before its files.
  */
-const environmentOverrides = (
+export const environmentOverrides = (
   kind: CredentialKind,
   name: string,
   secrets: SecretsAdapter,
@@ -252,6 +252,11 @@ export const handleSecretsPut = async (
     if (isIssuedKind(kind) && !hasValueFlags(options)) {
       throw new Error(
         `secrets put needs ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.\n${ui.withCommand("To issue a new key, run", credentialLoginCommand(kind, name))}`,
+      );
+    }
+    if (kind === "android-keystore" && !hasValueFlags(options)) {
+      throw new Error(
+        `secrets put needs ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.\n${ui.withCommand("To create a new key, run", credentialIssueCommand(kind, name))}`,
       );
     }
     // Registers the config's secrets adapter, which everything below uses.

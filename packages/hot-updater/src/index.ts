@@ -103,6 +103,10 @@ import {
   handleStoragePrune,
   parseStoragePruneProtection,
 } from "./commands/storage";
+import {
+  handleGooglePlayUploadKey,
+  handleUploadKeyIssue,
+} from "./commands/uploadKey";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -458,9 +462,14 @@ secretsCommand
 secretsCommand
   .command("issue")
   .description(
-    "Sign in, at a terminal, and store the App Store Connect API key or Play service account Hot Updater issues",
+    "Sign in, at a terminal, and store the App Store Connect API key or Play service account Hot Updater issues, or create an Android upload key",
   )
-  .addArgument(new Argument("<kind>", "what to issue").choices(ISSUED_KINDS))
+  .addArgument(
+    new Argument("<kind>", "what to issue").choices([
+      ...ISSUED_KINDS,
+      "android-keystore",
+    ]),
+  )
   .argument(
     "[name]",
     "the secret's name, which builds resolve (default: the kind)",
@@ -468,6 +477,10 @@ secretsCommand
   .option(
     "--replace",
     "issue a new key even when one is stored; the old key stays valid until you revoke it",
+  )
+  .option(
+    "--pem <file>",
+    "android-keystore: write the upload key's certificate, for Play Console's upload key reset",
   )
   .addHelpText(
     "after",
@@ -481,10 +494,23 @@ secretsCommand
       "revokes the old key: it names the key and where to revoke it.",
       "In CI or without a terminal it never signs in; store a key you have with",
       "secrets put instead.",
+      "",
+      "android-keystore creates a new upload key with the JDK's keytool. A stored",
+      "keystore is kept: once Google Play has it, builds signed with another fail.",
+      "--replace overwrites it, so back it up first.",
     ].join("\n"),
   )
   .action(async (kind, name, options) => {
-    await handleSecretsIssue(kind, name ?? kind, options);
+    if (kind === "android-keystore") {
+      await handleUploadKeyIssue(name ?? kind, options);
+      return;
+    }
+    if (options.pem !== undefined) {
+      p.log.error(`--pem is for android-keystore, not ${kind}.`);
+      process.exitCode = 1;
+      return;
+    }
+    await handleSecretsIssue(kind, name ?? kind, { replace: options.replace });
   });
 
 /**
@@ -507,9 +533,9 @@ const LOGIN_COMMANDS = [
     group:
       "Google Play: login issues the Play service account, upload builds an .aab and releases it to the internal track",
     description:
-      "Sign in with Google and store the Play service account Hot Updater issues",
+      "Sign in with Google and store the Play service account Hot Updater issues, then the upload key",
     signIn:
-      "signs in to Google with gcloud and waits while you invite the service account in Play Console",
+      "signs in to Google with gcloud and waits while you invite the service account in Play Console, then stores the upload key: one it creates, or the keystore you have",
   },
 ] as const satisfies readonly {
   kind: (typeof ISSUED_KINDS)[number];
@@ -572,7 +598,9 @@ for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
         return;
       }
       if (!(await handleSecretsIssue(kind, kind))) return;
-      // The key is ready: a step a login adds after it goes here.
+      // Google Play also needs the key that signs the builds it takes,
+      // once the service account is ready.
+      if (kind === "play-service-account") await handleGooglePlayUploadKey();
     });
 }
 

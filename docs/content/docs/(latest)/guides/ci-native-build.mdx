@@ -49,9 +49,11 @@ Bring the keys you already have:
 
 Store the keys you have with
 [`secrets put`](/docs/concepts/secrets#store-a-secret). Or let Hot Updater
-issue the first two, on your machine only: in CI it never signs in. Run the
-[`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in)
-shortcuts:
+issue them, on your machine only: in CI it never signs in or creates a key.
+Run the [`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in)
+shortcuts, and `google-play login` also
+[creates the upload keystore](/docs/concepts/secrets#create-an-android-upload-key)
+or stores yours:
 
 ```package-install
 npx hot-updater apple login
@@ -287,8 +289,11 @@ adapter looks for it, says that Hot Updater signs in only at a terminal and
 never in CI, gives the command that stores it once (`google-play login`), and lists
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` and
 `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the variables that provide it
-instead. A missing keystore or App Store Connect API key fails the same way,
-with its own variables. A store the job can't sign in to, or a role without
+instead. A missing App Store Connect API key fails the same way, with its
+own variables. A missing keystore never suggests a second one: under a
+team's adapter it says to ask whoever set it up, or to import it with
+`google-play login`, since Google Play rejects builds signed with a key it
+doesn't have. A store the job can't sign in to, or a role without
 read access, fails with the store's reason.
 
 <Callout type="info">

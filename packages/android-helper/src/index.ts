@@ -2,6 +2,7 @@ export { buildAndroid } from "./buildAndroid";
 export {
   findPlayInternalRelease,
   assertPlaySigned,
+  hasPlayReleases,
   PlayVersionCodeUsedError,
   resolvePlayUploadServiceAccount,
   type UploadToPlayResult,

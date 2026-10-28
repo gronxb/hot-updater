@@ -253,8 +253,10 @@ describe("CLI commands", () => {
     );
 
     const issue = help("secrets", "issue").replace(/\s+/gu, " ");
-    expect(issue).toContain('choices: "asc-api-key", "play-service-account"');
-    expect(issue).not.toContain("android-keystore");
+    expect(issue).toContain(
+      'choices: "asc-api-key", "play-service-account", "android-keystore"',
+    );
+    expect(issue).toContain("--pem <file>");
     expect(issue).toContain("--replace");
     expect(issue).toContain("never revokes the old key");
     expect(issue).toContain(
@@ -267,10 +269,18 @@ describe("CLI commands", () => {
       expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
     }
 
+    // No terminal: it creates no upload key, which a runner would lose.
     const keystore = run("secrets", "issue", "android-keystore");
     expect(keystore.status).toBe(1);
-    expect(keystore.stderr).toContain(
-      "'android-keystore' is invalid for argument 'kind'. Allowed choices are asc-api-key, play-service-account.",
+    expect(
+      stripVTControlCharacters(keystore.stdout + keystore.stderr),
+    ).toContain(
+      "Run in a terminal: npx hot-updater secrets issue android-keystore",
+    );
+    const pem = run("secrets", "issue", "asc-api-key", "--pem", "a.pem");
+    expect(pem.status).toBe(1);
+    expect(stripVTControlCharacters(pem.stdout + pem.stderr)).toContain(
+      "--pem is for android-keystore, not asc-api-key.",
     );
     // No terminal: it refuses before reading the config or signing in.
     const noTerminal = run("secrets", "issue", "asc-api-key");
