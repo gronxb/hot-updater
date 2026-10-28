@@ -274,7 +274,9 @@ describe("CLI commands", () => {
     expect(keystore.status).toBe(1);
     expect(
       stripVTControlCharacters(keystore.stdout + keystore.stderr),
-    ).toContain("Can't create an upload key without a terminal.");
+    ).toContain(
+      "Run in a terminal: npx hot-updater secrets issue android-keystore",
+    );
     const pem = run("secrets", "issue", "asc-api-key", "--pem", "a.pem");
     expect(pem.status).toBe(1);
     expect(stripVTControlCharacters(pem.stdout + pem.stderr)).toContain(
