@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
@@ -273,9 +274,10 @@ describe("CLI commands", () => {
     // No terminal: it refuses before reading the config or signing in.
     const noTerminal = run("secrets", "issue", "asc-api-key");
     expect(noTerminal.status).toBe(1);
-    expect(noTerminal.stdout + noTerminal.stderr).toContain(
-      "Run in a terminal: npx hot-updater apple login",
-    );
+    // Without colors, which CI turns on.
+    expect(
+      stripVTControlCharacters(noTerminal.stdout + noTerminal.stderr),
+    ).toContain("Run in a terminal: npx hot-updater apple login");
 
     const missing = run("secrets", "put", "release-keystore");
     expect(missing.status).toBe(1);

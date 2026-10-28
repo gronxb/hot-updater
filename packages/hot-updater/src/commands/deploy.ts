@@ -579,7 +579,7 @@ const deployPlatform = async ({
       p.log.error(
         [
           "Bundle signing isn't ready: nothing was deployed.",
-          error instanceof Error ? error.message : String(error),
+          ui.prose(error instanceof Error ? error.message : String(error)),
           "Fix signing in hot-updater.config.ts, then deploy again.",
         ].join("\n"),
       );
@@ -617,28 +617,20 @@ const deployPlatform = async ({
       (i) => i.type === "warning",
     );
 
+    // Doctor's --json prints the same issues: only their layout is ours.
+    for (const issue of errors) {
+      p.log.error(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+    }
     if (errors.length > 0) {
-      console.log("");
-      p.log.error("Signing configuration error:");
-      for (const issue of errors) {
-        p.log.error(`  ${issue.message}`);
-        p.log.info(`  Resolution: ${issue.resolution}`);
-      }
-      console.log("");
       p.log.error(
         "Deployment blocked. Fix the signing configuration and try again.",
       );
       process.exit(1);
     }
-
-    if (warnings.length > 0) {
-      console.log("");
-      p.log.warn("Signing configuration warning:");
-      for (const warning of warnings) {
-        p.log.warn(`  ${warning.message}`);
-        p.log.info(`  Resolution: ${warning.resolution}`);
-      }
-      console.log("");
+    for (const warning of warnings) {
+      p.log.warn(
+        `${ui.prose(warning.message)}\n${ui.prose(warning.resolution)}`,
+      );
     }
   }
 

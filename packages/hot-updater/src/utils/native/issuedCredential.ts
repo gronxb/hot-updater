@@ -323,7 +323,8 @@ export const keepIssuedCopy = async ({
   } catch (error) {
     p.log.warn(
       [
-        `Couldn't copy ${name} to ${ui.fitPath(store.file(name, cwd))}: ${fsErrorText(error)}`,
+        `Couldn't copy ${name} to this machine: ${fsErrorText(error)}`,
+        ui.fitPath(store.file(name, cwd)),
         `Only this build, and builds that read ${secrets.name}, use the key.`,
       ].join("\n"),
     );

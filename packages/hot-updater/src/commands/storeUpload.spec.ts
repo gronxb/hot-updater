@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import {
   linesWiderThan,
@@ -178,7 +179,9 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
       expect(process.exitCode).toBe(1);
       expect(select).not.toHaveBeenCalled();
       expect(handleNativeBuildCreate).not.toHaveBeenCalled();
-      expect(log.error).toHaveBeenCalledWith(
+      expect(
+        stripVTControlCharacters(String(log.error.mock.calls[0]![0])),
+      ).toBe(
         `Several nativeBuild.${platform} schemes upload to ${store}: release, staging.\nCan't ask which one ${reason}.\nPick one: npx hot-updater ${shortcut.command} --scheme <release | staging>`,
       );
     },

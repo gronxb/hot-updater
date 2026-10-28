@@ -62,9 +62,16 @@ export function withSecretSigning(source: string): string {
  * blocks the deploy.
  */
 export function refusedForMissingSigningSecret(output: string): boolean {
+  // The CLI wraps a long message at spaces, inside the prompt library's
+  // frame: read it as one line, without colors.
+  const text = output
+    // oxlint-disable-next-line no-control-regex
+    .replace(/\u001b\[[0-9;]*m/gu, "")
+    .replace(/[│┌└◇◆■▲●○]/gu, " ")
+    .replace(/\s+/gu, " ");
   const missing = new RegExp(
     `which is not in the localSecrets secrets adapter \\(${PROJECT_SIGNING_KEY_VARIABLE} in the environment, or \\S+/secrets/[^/\\s]+/${PROJECT_SIGNING_KEY_SECRET}\\.json on this machine\\)`,
     "u",
   );
-  return missing.test(output) && output.includes("Deployment blocked.");
+  return missing.test(text) && text.includes("Deployment blocked.");
 }

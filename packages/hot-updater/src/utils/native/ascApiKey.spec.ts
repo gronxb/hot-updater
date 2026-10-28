@@ -646,7 +646,7 @@ describe("ensureAscApiKey", () => {
       ),
     ).toMatchObject({ keyId: "KEY1234567", p8: P8 });
     expect(String(log.warn.mock.calls[0]![0])).toMatch(
-      /^Couldn't copy asc-api-key to \S+: ENOTDIR\nOnly this build, and builds that read spec-store, use the key\.$/u,
+      /^Couldn't copy asc-api-key to this machine: ENOTDIR\n\S+asc-api-key\.json\nOnly this build, and builds that read spec-store, use the key\.$/u,
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
