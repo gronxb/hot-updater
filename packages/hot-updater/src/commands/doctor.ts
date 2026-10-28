@@ -49,8 +49,8 @@ import {
   recordedBaseUrls,
 } from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
-import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
 import { checkSecretEnv, type SecretEnvStatus } from "./doctor/secretEnv";
+import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
   hasVerificationOptions,
