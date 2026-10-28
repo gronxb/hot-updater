@@ -123,7 +123,7 @@ describe("handleSetChannel", () => {
     expect(log.warn).toHaveBeenCalledOnce();
   });
 
-  it("writes nothing in an Expo CNG project, says so, and shows the plugin option with the channel", async () => {
+  it("writes nothing in an Expo CNG project, says so, and shows the dynamic config's plugin option read from an environment variable", async () => {
     await expoProject("app.config.ts");
 
     await handleSetChannel("pr-130");
@@ -138,16 +138,19 @@ describe("handleSetChannel", () => {
     expect(output()).toContain(
       "take the channel from the @hot-updater/expo plugin's `channel` option in app.config.ts",
     );
+    // The user's own environment variable, as the preview guide reads it,
+    // never a channel to hardcode.
     expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: "pr-130" }]]',
+      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
     );
-    expect(output()).not.toContain("production");
+    expect(output()).toContain("Then build with PREVIEW_CHANNEL=pr-130.");
+    expect(output()).not.toContain('channel: "pr-130"');
     await expect(
       readFile(path.join(cwd.current, MANIFEST), "utf8"),
     ).rejects.toThrow();
   });
 
-  it("shows the plugin option as JSON for an app.json project", async () => {
+  it("shows the plugin option set to the channel, as JSON, for a static app.json", async () => {
     await expoProject("app.json");
 
     await handleSetChannel("pr-7");
@@ -156,6 +159,24 @@ describe("handleSetChannel", () => {
       '"plugins": [["@hot-updater/expo", { "channel": "pr-7" }]]',
     );
     expect(output()).toContain("option in app.json");
+    // JSON has no environment.
+    expect(output()).not.toContain("process.env");
+  });
+
+  it("shows the environment form for an app.config.js too", async () => {
+    await write(
+      "package.json",
+      JSON.stringify({ dependencies: { expo: "^54.0.0" } }),
+    );
+    await write("app.config.js", "module.exports = { expo: {} };\n");
+
+    await handleSetChannel("pr-9");
+
+    expect(output()).toContain("option in app.config.js");
+    expect(output()).toContain(
+      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+    );
+    expect(output()).toContain("Then build with PREVIEW_CHANNEL=pr-9.");
   });
 
   it("names the dynamic config, which overrides app.json, when a project has both", async () => {
@@ -166,8 +187,9 @@ describe("handleSetChannel", () => {
 
     expect(output()).toContain("option in app.config.ts");
     expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: "pr-7" }]]',
+      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
     );
+    expect(output()).toContain("Then build with PREVIEW_CHANNEL=pr-7.");
   });
 
   it("says that prebuild replaces what it wrote into an Expo project's generated files", async () => {
@@ -180,7 +202,7 @@ describe("handleSetChannel", () => {
     expect(log.success).toHaveBeenCalledTimes(2);
     expect(output()).toContain("replacing what was written here");
     expect(output()).toContain(
-      'plugins: [["@hot-updater/expo", { channel: "pr-130" }]]',
+      'plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
     );
   });
 });
