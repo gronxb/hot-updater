@@ -774,35 +774,42 @@ The CLI resolves it before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing one fails before either runs, and
 keeps it in memory: it writes the service account to no file.
 
-When the adapter has no `play-service-account` yet, sign in with Google when
-asked. In a terminal, the CLI opens Google's sign-in page in your browser and
-prints its address, asks for the app's package name and your Play Console
-developer account ID (the number after `/developers/` in Play Console's
-address), and lets you pick a Google Cloud project or create one. Then it:
+When the adapter has no `play-service-account` yet, the CLI issues one in a
+terminal. It needs the [gcloud CLI](https://cloud.google.com/sdk/docs/install),
+and stops before changing anything without it. It asks for the app's package
+name, filled in from the `nativeBuild.android` scheme's (a choice when several
+schemes declare different ones), and runs `gcloud auth login` when gcloud has
+no active Google Account. It puts the service account in the Google Cloud
+project "Hot Updater Play" an earlier run created, or creates it; only when
+Google refuses to create a project does it ask you to pick one. Then it:
 
-1. Checks that the Google Account administers the developer account and that
-   Google Play has the app, before it changes anything.
-2. Enables the IAM and Google Play Android Developer APIs in the project, and
+1. Enables the IAM and Google Play Android Developer APIs in the project, and
    creates the service account `hot-updater-play` there.
-3. Adds the service account to Play Console as a user that may view the app
-   and release it to testing tracks.
-4. Creates the service account's JSON key, stores it as
-   `play-service-account` ([where an issued key goes](#where-an-issued-key-goes)),
-   and continues with the build, which uploads with it.
+2. Creates the service account's JSON key.
+3. Opens Play Console's invite page for the service account's email. Invite
+   it there with release access to the app; this click is the one manual
+   step, since gcloud's sign-in may not manage Play Console users.
+4. Waits, for up to 10 minutes, until the key itself can open an edit of the
+   app, then stores it as `play-service-account`
+   ([where an issued key goes](#where-an-issued-key-goes)) and continues with
+   the build, which uploads with it.
+
+When the key never reaches the app, the CLI deletes it again and names the
+invite page; invite the service account, then run
+`npx hot-updater google-play login`. Google Play takes the first `.aab` of a
+new app only in Play Console: create the app there and upload one `.aab` by
+hand first.
 
 Google's own page asks for your password, and the CLI keeps only the issued
-key. When the key surely went nowhere, the CLI deletes the key again; the service
-account and its Play Console access stay, and the next run reuses them.
-Builds without a terminal, such as CI, use the stored key and never sign in:
-when it is missing, they fail with the command to run once in a terminal,
+key. When the key surely went nowhere, the CLI deletes the key again; the
+service account and its Play Console access stay, and the next run reuses
+them. Builds without a terminal, such as CI, use the stored key and never sign
+in: when it is missing, they fail with the command to run once in a terminal,
 `npx hot-updater google-play login` (the shortcut for
-`secrets issue play-service-account`), which does the same
-sign-in without building and keeps a key the adapter already holds;
+`secrets issue play-service-account`), which does the same without building
+and keeps a key the adapter already holds;
 `secrets issue play-service-account --replace` issues a new key and names the
-old one to delete under the service account's keys in Google Cloud. The sign-in needs a Google OAuth client of your
-own, of type Desktop app, in `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID` and
-`HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET`, until Hot Updater ships one; without
-it, the CLI stops before opening the browser.
+old one to delete under the service account's keys in Google Cloud.
 
 Before the prebuild, the CLI also refuses a scheme whose build Google Play
 would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name

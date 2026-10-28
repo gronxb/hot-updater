@@ -201,9 +201,10 @@ type PlayRequest = <T>(
 /**
  * Requests to the Google Play Developer API for `packageName`, as the
  * service account: each carries an access token, exchanged for a signed
- * assertion and replaced well before it expires.
+ * assertion and replaced well before it expires. The key issuer checks a
+ * new key's access with it too.
  */
-const createPlayClient = ({
+export const createPlayClient = ({
   json,
   packageName,
   fetch,

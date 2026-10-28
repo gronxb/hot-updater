@@ -47,12 +47,15 @@ export const ISSUED_KINDS = [
 ] as const satisfies readonly IssuedCredentialKind[];
 
 /** Reports a failure with exit code 1, as the server's commands do. */
-const reportFailure = async (run: () => Promise<void>) => {
+/** Runs `run`, printing a failure and setting exit code 1; whether it succeeded. */
+const reportFailure = async (run: () => Promise<void>): Promise<boolean> => {
   try {
     await run();
+    return true;
   } catch (error) {
     p.log.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
+    return false;
   }
 };
 
@@ -300,19 +303,16 @@ const ISSUERS: Readonly<
     {
       readonly label: string;
       readonly account: string;
-      readonly ensure: typeof ensureAscApiKey | typeof ensurePlayServiceAccount;
     }
   >
 > = {
   "asc-api-key": {
     label: "App Store Connect API key",
     account: "Apple Account",
-    ensure: ensureAscApiKey,
   },
   "play-service-account": {
     label: "Play service account",
     account: "Google Account",
-    ensure: ensurePlayServiceAccount,
   },
 };
 
@@ -428,14 +428,16 @@ export interface SecretsIssueOptions {
  *   without one, it refuses, naming the command to run in one and
  *   `secrets put`, which stores a key you have.
  * - A run that issued a key ends with the stored key's ID and where it is.
+ *
+ * Answers whether the key is ready: issued, kept, or set by the environment.
  */
 export const handleSecretsIssue = async (
   kind: IssuedCredentialKind,
   name: string = kind,
   { replace = false }: SecretsIssueOptions = {},
-): Promise<void> => {
+): Promise<boolean> => {
   printBanner();
-  await reportFailure(async () => {
+  return reportFailure(async () => {
     assertSecretName(name);
     if (!isIssuedKind(kind)) {
       throw new Error(`The kind is one of ${ISSUED_KINDS.join(", ")}.`);
@@ -443,7 +445,7 @@ export const handleSecretsIssue = async (
     const issuer = ISSUERS[kind];
 
     // Registers the config's secrets adapter, which everything below uses.
-    const { secrets } = await loadConfig(null);
+    const { secrets, nativeBuild } = await loadConfig(null);
     const cwd = getCwd();
     const env = await readLoadedHotUpdaterEnv(cwd);
 
@@ -515,14 +517,25 @@ export const handleSecretsIssue = async (
     }
 
     // A cancelled prompt throws, and is reported as the failure it is.
-    const result = await issuer.ensure({
+    const request = {
       name,
       env,
       secrets,
       // Read above: a key is issued whatever the adapter holds now.
       replace: true,
       replacing: stored !== undefined,
-    });
+    };
+    const result =
+      kind === "play-service-account"
+        ? await ensurePlayServiceAccount({
+            ...request,
+            // A scheme's application ID defaults to its package name.
+            packageNames: Object.values(nativeBuild?.android ?? {}).flatMap(
+              (scheme) =>
+                scheme ? [scheme.applicationId ?? scheme.packageName] : [],
+            ),
+          })
+        : await ensureAscApiKey(request);
     if (result.status !== "issued" || stored === undefined) return;
     // Never revoked: CI or a copy elsewhere may still use it.
     p.log.warn(

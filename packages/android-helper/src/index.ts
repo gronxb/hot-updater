@@ -16,15 +16,11 @@ export {
   readBuiltVersionCode,
 } from "./utils/readBuiltApp";
 export {
-  GOOGLE_OAUTH_CLIENT_ENV_NAMES,
   type GoogleCloudProject,
-  type GoogleOAuthClient,
-  HOT_UPDATER_GOOGLE_OAUTH_CLIENT,
   type IssuedPlayServiceAccount,
   type IssuePlayServiceAccount,
   type IssuePlayServiceAccountRequest,
   issuePlayServiceAccount,
-  PLAY_CONSOLE_URL,
   PLAY_SERVICE_ACCOUNT_ID,
   PlayServiceAccountError,
   type PlayServiceAccountErrorCode,

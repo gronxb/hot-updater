@@ -74,7 +74,6 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
     json: NEW_SERVICE_ACCOUNT,
     email: "hot-updater-play@my-app.iam.gserviceaccount.com",
     projectId: "my-app",
-    developerId: "1234",
     keyId: "newkey-play-0001",
     ...playKey,
   })),
@@ -116,8 +115,6 @@ const ENV_NAMES = [
   "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
   "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
   "HOT_UPDATER_PLAY_SERVICE_ACCOUNT",
-  "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID",
-  "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
 ];
 
 /** Everything the log printed, without colors, as one text. */
@@ -519,8 +516,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
 });
 
 describe("hot-updater secrets issue play-service-account", () => {
-  it("signs in with Google, and stores the issued service account through the adapter", async () => {
-    vi.stubEnv("HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID", "client.apps");
+  it("signs in with Google through gcloud, and stores the issued service account through the adapter", async () => {
     const { held } = writableStore();
 
     await withTTY(true, () => handleSecretsIssue("play-service-account"));
@@ -529,7 +525,6 @@ describe("hot-updater secrets issue play-service-account", () => {
     expect(issuePlayServiceAccount).toHaveBeenCalledWith(
       expect.objectContaining({
         packageName: "com.example.app",
-        oauthClient: { clientId: "client.apps" },
       }),
     );
     expect(held.get("play-service-account")).toBe(NEW_SERVICE_ACCOUNT);
@@ -543,6 +538,89 @@ describe("hot-updater secrets issue play-service-account", () => {
         "Key ID           newkey-play-0001",
         "Source           spec://play-service-account",
       ].join("\n"),
+    );
+  });
+
+  it("offers the package name the config's nativeBuild.android scheme declares", async () => {
+    const { store } = writableStore();
+    vi.mocked(loadConfig).mockResolvedValue({
+      secrets: withLocalKeyStore(store),
+      nativeBuild: {
+        android: {
+          release: { packageName: "com.codex.relay" },
+          staging: {
+            packageName: "com.codex.relay",
+            applicationId: "com.codex.relay",
+          },
+        },
+      },
+    } as never);
+    text.mockImplementation(
+      async ({ initialValue }: { initialValue?: string }) => initialValue,
+    );
+
+    await withTTY(true, () => handleSecretsIssue("play-service-account"));
+
+    expect(select).not.toHaveBeenCalled();
+    expect(text).toHaveBeenCalledWith(
+      expect.objectContaining({ initialValue: "com.codex.relay" }),
+    );
+    expect(issuePlayServiceAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ packageName: "com.codex.relay" }),
+    );
+  });
+
+  it("chooses among the application IDs several schemes declare, or takes another", async () => {
+    const { store } = writableStore();
+    vi.mocked(loadConfig).mockResolvedValue({
+      secrets: withLocalKeyStore(store),
+      nativeBuild: {
+        android: {
+          release: { packageName: "com.codex.relay" },
+          staging: {
+            packageName: "com.codex.relay",
+            applicationId: "com.codex.relay.staging",
+          },
+        },
+      },
+    } as never);
+    select.mockResolvedValueOnce("com.codex.relay.staging");
+
+    await withTTY(true, () => handleSecretsIssue("play-service-account"));
+
+    expect(select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "The app's package name in Google Play",
+        options: [
+          { value: "com.codex.relay", label: "com.codex.relay" },
+          {
+            value: "com.codex.relay.staging",
+            label: "com.codex.relay.staging",
+          },
+          { value: "", label: "Another package name" },
+        ],
+      }),
+    );
+    expect(text).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "The app's package name in Google Play",
+      }),
+    );
+    expect(issuePlayServiceAccount).toHaveBeenLastCalledWith(
+      expect.objectContaining({ packageName: "com.codex.relay.staging" }),
+    );
+
+    vi.clearAllMocks();
+    select.mockResolvedValueOnce("");
+    await withTTY(true, () =>
+      handleSecretsIssue("play-service-account", "play-other"),
+    );
+
+    expect(text).toHaveBeenCalledWith(
+      expect.objectContaining({ placeholder: "com.example.app" }),
+    );
+    expect(issuePlayServiceAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ packageName: "com.example.app" }),
     );
   });
 
@@ -581,7 +659,6 @@ describe("hot-updater secrets issue play-service-account", () => {
   });
 
   it("--replace stores a new key, names the old key and where to delete it, and never deletes it", async () => {
-    vi.stubEnv("HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID", "client.apps");
     const { held } = writableStore({
       "play-service-account": OLD_SERVICE_ACCOUNT,
     });

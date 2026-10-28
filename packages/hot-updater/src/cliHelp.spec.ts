@@ -258,8 +258,9 @@ describe("CLI commands", () => {
     expect(issue).toContain("--replace");
     expect(issue).toContain("never revokes the old key");
     expect(issue).toContain(
-      "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID and HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
+      "play-service-account signs in to Google with gcloud",
     );
+    expect(issue).not.toContain("OAuth client");
     expect(issue).toContain("secrets put instead");
     for (const removed of ["login", "logout", "whoami"]) {
       expect(help()).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
@@ -287,7 +288,7 @@ describe("CLI commands", () => {
   });
 
   it.each([
-    ["apple", "asc-api-key", "Apple Account", "Desktop app"],
+    ["apple", "asc-api-key", "Apple Account", "gcloud"],
     ["google-play", "play-service-account", "Google", "with asc"],
   ] as const)(
     "has %s login as the alias of secrets issue %s, taking nothing, and keeps no session",

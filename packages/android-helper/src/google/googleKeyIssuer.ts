@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 
 import { registerSecretValue } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 
 import type {
   GoogleCloudProject,
   IssuedPlayServiceAccount,
   IssuePlayServiceAccountRequest,
 } from "../playServiceAccount";
+import { createPlayClient, GooglePlayError } from "../uploadToPlay";
 import {
   createGoogleRequest,
   GoogleApiError,
@@ -15,17 +17,7 @@ import {
   isServiceDisabled,
   waitForOperation,
 } from "./googleApi";
-import { revokeGoogleToken, signInWithGoogle } from "./googleSignIn";
-import {
-  GOOGLE_OAUTH_CLIENT_ENV_NAMES,
-  PLAY_SERVICE_ACCOUNT_ID,
-  PlayServiceAccountError,
-} from "./types";
-
-const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
-const ANDROID_PUBLISHER_SCOPE =
-  "https://www.googleapis.com/auth/androidpublisher";
-const SCOPES = [CLOUD_PLATFORM_SCOPE, ANDROID_PUBLISHER_SCOPE];
+import { PLAY_SERVICE_ACCOUNT_ID, PlayServiceAccountError } from "./types";
 
 const PUBLISHER_API =
   "https://androidpublisher.googleapis.com/androidpublisher/v3";
@@ -33,17 +25,10 @@ const RESOURCE_MANAGER_API = "https://cloudresourcemanager.googleapis.com";
 const SERVICE_USAGE_API = "https://serviceusage.googleapis.com";
 const IAM_API = "https://iam.googleapis.com/v1";
 
+const GCLOUD_INSTALL_URL = "https://cloud.google.com/sdk/docs/install";
+
 /** IAM creates the service account; the Play Developer API is what it calls. */
 const SERVICES = ["iam.googleapis.com", "androidpublisher.googleapis.com"];
-
-/**
- * What the service account may do in Play Console, for the app only: read
- * it, and release to testing tracks, which `--submit play-internal` does.
- */
-const APP_PERMISSIONS = [
-  "CAN_VIEW_NON_FINANCIAL_DATA",
-  "CAN_MANAGE_TRACK_APKS",
-];
 
 const KEY_CREATION_CONSTRAINT =
   "constraints/iam.disableServiceAccountKeyCreation";
@@ -52,15 +37,38 @@ const KEY_CREATION_CONSTRAINT =
 const PROPAGATION_ATTEMPTS = 12;
 const PROPAGATION_DELAY_MS = 10_000;
 
+/** Checks of the key's access to the app, about ten minutes of them. */
+const ACCESS_ATTEMPTS = 120;
+const ACCESS_DELAY_MS = 5_000;
+
 const sleepFor = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** The developer account ID in `input`, a number or a Play Console URL. */
-export const parseDeveloperId = (input: string): string | undefined => {
-  const trimmed = input.trim();
-  if (/^\d+$/u.test(trimmed)) return trimmed;
-  return trimmed.match(/\/developers\/(\d+)(?:[/?#]|$)/u)?.[1];
-};
+/**
+ * Runs a command and answers its stdout; `interactive` hands it the
+ * terminal, as `gcloud auth login` needs.
+ */
+export type RunCommand = (
+  file: string,
+  args: readonly string[],
+  options?: { interactive?: boolean },
+) => Promise<string>;
+
+const runWithExeca: RunCommand = async (file, args, options) =>
+  (
+    await execa(
+      file,
+      args,
+      options?.interactive ? { stdio: "inherit" } : { stdin: "ignore" },
+    )
+  ).stdout ?? "";
+
+/**
+ * Play Console's page that invites `email` as a user. `_` stands for the
+ * developer account the browser is signed in to, so no ID is needed.
+ */
+export const playConsoleInviteUrl = (email: string) =>
+  `https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(email)}`;
 
 /** A project ID nobody has: Google Cloud's are global. */
 const newProjectId = () =>
@@ -70,25 +78,11 @@ const isNotFound = (error: unknown) =>
   error instanceof GoogleApiError && error.status === 404;
 const isConflict = (error: unknown) =>
   error instanceof GoogleApiError && error.status === 409;
-/** The API is disabled in the OAuth client's own project: waiting does not help. */
-const clientApiDisabled = (error: GoogleApiError) =>
+/** The API is disabled in another project than the one set up: waiting does not help. */
+const consumerApiDisabled = (error: GoogleApiError) =>
   new PlayServiceAccountError(
     "api-not-enabled",
-    `${error.apiMessage}\nEnable it in the OAuth client's project (${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}).`,
-    { cause: error },
-  );
-
-/** Google's own words, after a message that names the likely cause. */
-const googleSays = (error: unknown) =>
-  error instanceof GoogleApiError && error.apiMessage
-    ? `\nGoogle: ${error.apiMessage}`
-    : "";
-
-/** A Play Console refusal, as `not-play-admin`. */
-const notPlayAdmin = (developerId: string, error: unknown) =>
-  new PlayServiceAccountError(
-    "not-play-admin",
-    `This Google Account isn't an admin of Play Console developer ${developerId}.${googleSays(error)}\nSign in with an account that has the Admin permission there.`,
+    `${error.apiMessage}\nEnable it in ${error.consumer ?? "that project"}, then run this again.`,
     { cause: error },
   );
 
@@ -96,187 +90,217 @@ const isDenied = (error: unknown) =>
   error instanceof GoogleApiError &&
   (error.status === 403 || error.apiStatus === "PERMISSION_DENIED");
 
+/** The Google Account gcloud uses, if one is active. */
+const activeAccount = async (run: RunCommand) =>
+  (
+    await run("gcloud", [
+      "auth",
+      "list",
+      "--filter=status:ACTIVE",
+      "--format=value(account)",
+    ])
+  )
+    .trim()
+    .split("\n")[0]
+    ?.trim() || undefined;
+
 /**
- * `IssuePlayServiceAccount` with Google's own APIs, after a sign-in on
- * Google's consent screen (OAuth for installed apps, with PKCE and a
- * loopback redirect):
+ * gcloud's access token, after `gcloud auth login` when no account is
+ * active. Stops before any change when gcloud is not installed.
+ */
+const signInWithGcloud = async ({
+  run,
+  onStep,
+}: {
+  run: RunCommand;
+  onStep: (message: string) => void;
+}) => {
+  try {
+    await run("gcloud", ["--version"]);
+  } catch (error) {
+    throw new PlayServiceAccountError(
+      "gcloud-not-installed",
+      [
+        "gcloud CLI is not installed.",
+        "Install it, then run this again:",
+        GCLOUD_INSTALL_URL,
+      ].join("\n"),
+      { cause: error },
+    );
+  }
+  let account = await activeAccount(run);
+  if (account === undefined) {
+    // A cancelled or failed sign-in leaves no account, named below.
+    await run("gcloud", ["auth", "login"], { interactive: true }).catch(
+      () => {},
+    );
+    account = await activeAccount(run);
+    if (account === undefined) {
+      throw new PlayServiceAccountError(
+        "gcloud-not-signed-in",
+        "gcloud has no active Google Account.\nRun gcloud auth login, then run this again.",
+      );
+    }
+  }
+  onStep(`Signed in to gcloud as ${account}`);
+  const accessToken = (
+    await run("gcloud", ["auth", "print-access-token"])
+  ).trim();
+  registerSecretValue(accessToken);
+  return accessToken;
+};
+
+/**
+ * `IssuePlayServiceAccount` with the gcloud CLI's sign-in and Google's own
+ * APIs:
  *
- * 1. the Play Console side is checked first, with no change anywhere: the
- *    developer account answers to the account as its admin, and has the app;
- * 2. the chosen Google Cloud project, or a new one, gets the IAM and Play
- *    Developer APIs enabled, and the service account `hot-updater-play`;
- * 3. the service account becomes a Play Console user that may release the
- *    app to testing tracks;
- * 4. only then is its JSON key created, the last step, so a failure before
- *    it leaves no key behind.
+ * 1. gcloud's Google Account, signed in with `gcloud auth login` when none
+ *    is active, names the access token the Google Cloud steps use;
+ * 2. the Google Cloud project "Hot Updater Play" an earlier run created, or
+ *    a new one, gets the IAM and Play Developer APIs enabled, and the
+ *    service account `hot-updater-play` its JSON key;
+ * 3. the developer invites the service account in Play Console, which
+ *    `onInvite` opens: gcloud's token may not manage Google Play users;
+ * 4. the key itself opens an edit of the app until Google Play lets it,
+ *    and is deleted again when it never does.
  *
- * Each step reuses what an earlier run created: the project, the service
- * account, and its Play Console access.
+ * Each step reuses what an earlier run created: the project and the
+ * service account.
  */
 export const createGoogleKeyIssuer =
   ({
     fetch = globalThis.fetch,
     sleep = sleepFor,
+    run = runWithExeca,
   }: {
     fetch?: typeof globalThis.fetch;
     sleep?: (ms: number) => Promise<void>;
+    run?: RunCommand;
   } = {}) =>
   async (
     request: IssuePlayServiceAccountRequest,
   ): Promise<IssuedPlayServiceAccount> => {
-    const { packageName, oauthClient, onStep = () => {} } = request;
-    if (!oauthClient?.clientId) {
-      throw new PlayServiceAccountError(
-        "sign-in-not-configured",
-        [
-          "This build of Hot Updater has no Google OAuth client to sign in with.",
-          'Set these to a "Desktop app" OAuth client:',
-          `${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}, ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientSecret}`,
-        ].join("\n"),
-      );
-    }
-    const signIn = await signInWithGoogle({
-      client: oauthClient,
-      scopes: SCOPES,
-      onUrl: request.onSignInUrl,
-      fetch,
-    });
-    const dispose = async () => {
-      await revokeGoogleToken(signIn.accessToken, fetch);
+    const { packageName, onStep = () => {} } = request;
+    const accessToken = await signInWithGcloud({ run, onStep });
+    const google = createGoogleRequest({ accessToken, fetch });
+
+    const project = await chooseProject({ google, request, sleep, onStep });
+    const { projectId } = project;
+    onStep(`Enabling the Google Play Developer API in ${projectId}`);
+    await enableServices({ google, projectId, sleep });
+
+    onStep(`Creating the service account in ${projectId}`);
+    const email = await ensureServiceAccount({ google, project, sleep });
+
+    onStep("Creating the service account's JSON key");
+    const key = await createKey({ google, project, email, sleep });
+    const revoke = async () => {
+      try {
+        await google("Deleting the key", "DELETE", `${IAM_API}/${key.name}`);
+        return true;
+      } catch (error) {
+        return isNotFound(error);
+      }
     };
+
+    const inviteUrl = playConsoleInviteUrl(email);
     try {
-      const missing = SCOPES.filter((scope) => !signIn.scopes.includes(scope));
-      if (missing.length > 0) {
-        throw new PlayServiceAccountError(
-          "scope-not-granted",
-          `The sign-in didn't allow ${missing.map((scope) => (scope === ANDROID_PUBLISHER_SCOPE ? "managing Google Play" : "managing Google Cloud")).join(" or ")}.\nRun this again and keep every box on Google's consent screen ticked.`,
-        );
-      }
-      const google = createGoogleRequest({
-        accessToken: signIn.accessToken,
-        fetch,
-      });
-
-      const developerInput = await request.askDeveloperId();
-      const developerId = parseDeveloperId(developerInput);
-      if (developerId === undefined) {
-        throw new PlayServiceAccountError(
-          "developer-not-found",
-          `"${developerInput.trim()}" is not a developer account ID.\nIt is the number after /developers/ in Play Console's address.`,
-        );
-      }
-      onStep("Checking the Play Console developer account");
-      await checkPlayConsole({ google, developerId, packageName });
-
-      const project = await chooseProject({ google, request, sleep, onStep });
-      const { projectId } = project;
-      onStep(`Enabling the Google Play Developer API in ${projectId}`);
-      await enableServices({ google, projectId, sleep });
-
-      onStep(`Creating the service account in ${projectId}`);
-      const email = await ensureServiceAccount({ google, project, sleep });
-
-      onStep(`Giving ${email} release access to ${packageName}`);
-      await grantPlayAccess({ google, developerId, email, packageName });
-
-      onStep("Creating the service account's JSON key");
-      const key = await createKey({ google, project, email, sleep });
-      return {
+      await request.onInvite(inviteUrl, email);
+      onStep("Waiting for the Play Console invite");
+      await waitForPlayAccess({
         json: key.json,
-        keyId: key.keyId,
-        email,
-        projectId,
-        developerId,
-        revoke: async () => {
-          try {
-            await google(
-              "Deleting the key",
-              "DELETE",
-              `${IAM_API}/${key.name}`,
-            );
-            return true;
-          } catch (error) {
-            return isNotFound(error);
-          }
-        },
-        dispose,
-      };
+        packageName,
+        fetch,
+        sleep,
+      });
     } catch (error) {
-      await dispose();
-      throw error;
-    }
-  };
-
-/**
- * Whether the signed-in account administers `developerId`, and Google Play
- * has `packageName` there, asked without changing anything: listing the
- * account's users takes the admin permission, and an edit opened on the app
- * is deleted again.
- */
-const checkPlayConsole = async ({
-  google,
-  developerId,
-  packageName,
-}: {
-  google: GoogleRequest;
-  developerId: string;
-  packageName: string;
-}) => {
-  try {
-    await google(
-      "Listing the Play Console users",
-      "GET",
-      `${PUBLISHER_API}/developers/${developerId}/users?pageSize=1`,
-    );
-  } catch (error) {
-    // No project of the developer's is involved yet: a disabled API is the
-    // OAuth client's.
-    if (isServiceDisabled(error)) throw clientApiDisabled(error);
-    if (isNotFound(error)) {
+      const deleted = await revoke();
       throw new PlayServiceAccountError(
-        "developer-not-found",
-        `Play Console has no developer account ${developerId}.${googleSays(error)}\nIt is the number after /developers/ in Play Console's address.`,
+        "play-access-pending",
+        [
+          `The key can't release ${packageName} yet.`,
+          "Invite the service account in Play Console with release access:",
+          email,
+          inviteUrl,
+          "A new app needs its first .aab uploaded in Play Console.",
+          // Not stored anywhere: the developer deletes it by hand.
+          ...(deleted
+            ? []
+            : [
+                `Delete its unused key ${key.keyId} in Google Cloud:`,
+                `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${encodeURIComponent(projectId)}`,
+              ]),
+          "Then run: npx hot-updater google-play login",
+        ].join("\n"),
         { cause: error },
       );
     }
-    if (isDenied(error)) throw notPlayAdmin(developerId, error);
-    throw error;
-  }
+    return {
+      json: key.json,
+      keyId: key.keyId,
+      email,
+      projectId,
+      revoke,
+      // gcloud keeps its own sign-in: there is nothing to end here.
+      dispose: async () => {},
+    };
+  };
 
-  let edit: { id?: string };
-  try {
-    edit = await google<{ id?: string }>(
-      `Opening an edit of ${packageName}`,
-      "POST",
-      `${PUBLISHER_API}/applications/${encodeURIComponent(packageName)}/edits`,
-    );
-  } catch (error) {
-    if (isServiceDisabled(error)) throw clientApiDisabled(error);
-    if (isNotFound(error) || isDenied(error)) {
-      throw appNotFound(packageName, developerId, error);
+/**
+ * Waits until the key opens an edit of `packageName`, which Google Play
+ * allows once the service account is a Play Console user with access to
+ * the app, then deletes the edit, which changed nothing. Google may not
+ * take a key just created for a while either.
+ */
+const waitForPlayAccess = async ({
+  json,
+  packageName,
+  fetch,
+  sleep,
+}: {
+  json: string;
+  packageName: string;
+  fetch: typeof globalThis.fetch;
+  sleep: (ms: number) => Promise<void>;
+}) => {
+  const play = createPlayClient({ json, packageName, fetch });
+  const edits = `${PUBLISHER_API}/applications/${encodeURIComponent(packageName)}/edits`;
+  for (let attempt = 1; ; attempt++) {
+    if (attempt > 1) await sleep(ACCESS_DELAY_MS);
+    let ready = true;
+    try {
+      await play.authorization();
+    } catch {
+      // The key is not accepted yet.
+      ready = false;
     }
-    throw error;
-  }
-  if (edit.id) {
-    // Nothing was changed in it; an edit left open expires on its own.
-    await google(
-      "Deleting the edit",
-      "DELETE",
-      `${PUBLISHER_API}/applications/${encodeURIComponent(packageName)}/edits/${edit.id}`,
-    ).catch(() => {});
+    if (ready) {
+      try {
+        const edit = await play.request<{ id?: string }>(
+          `Opening an edit of ${packageName}`,
+          "POST",
+          edits,
+        );
+        if (edit?.id) {
+          await play
+            .request("Deleting the edit", "DELETE", `${edits}/${edit.id}`)
+            .catch(() => {});
+        }
+        return;
+      } catch (error) {
+        if (
+          !(error instanceof GooglePlayError) ||
+          ![401, 403, 404].includes(error.status)
+        ) {
+          throw error;
+        }
+      }
+    }
+    if (attempt >= ACCESS_ATTEMPTS) {
+      throw new Error("Google Play did not let the key reach the app in time.");
+    }
   }
 };
-
-const appNotFound = (
-  packageName: string,
-  developerId: string,
-  cause: unknown,
-) =>
-  new PlayServiceAccountError(
-    "app-not-found",
-    `Google Play has no app ${packageName} in the developer account ${developerId}. Google takes the first .aab of a new app only in Play Console: create the app there, upload one .aab by hand (for example to internal testing), then run this again${googleSays(cause)}.`,
-    { cause },
-  );
 
 /** The account's active projects, every page of them. */
 const listProjects = async (google: GoogleRequest) => {
@@ -308,7 +332,14 @@ const listProjects = async (google: GoogleRequest) => {
   return projects;
 };
 
-/** The project the developer picks, or a new one when there is none or they ask. */
+/** The display name of the project Hot Updater creates, which later runs reuse. */
+const PROJECT_DISPLAY_NAME = "Hot Updater Play";
+
+/**
+ * The project the service account goes in, without asking: the one an
+ * earlier run created, else a new one. Only when Google refuses to create
+ * one does the developer pick among the account's projects.
+ */
 const chooseProject = async ({
   google,
   request,
@@ -321,23 +352,46 @@ const chooseProject = async ({
   onStep: (message: string) => void;
 }): Promise<CloudProject> => {
   const projects = await listProjects(google);
-  const chosen =
-    projects.length > 0
-      ? await request.chooseProject(
-          projects.map(({ projectId, displayName }) => ({
-            projectId,
-            ...(displayName ? { displayName } : {}),
-          })),
-        )
-      : undefined;
-  if (chosen !== undefined) {
+  const reused = projects.find(
+    (project) => project.displayName === PROJECT_DISPLAY_NAME,
+  );
+  if (reused) return reused;
+  try {
+    return await createProject({ google, sleep, onStep });
+  } catch (error) {
+    if (
+      !(error instanceof PlayServiceAccountError) ||
+      (error.code !== "project-quota" &&
+        error.code !== "project-create-denied") ||
+      projects.length === 0
+    ) {
+      throw error;
+    }
+    const chosen = await request.chooseProject(
+      projects.map(({ projectId, displayName }) => ({
+        projectId,
+        ...(displayName ? { displayName } : {}),
+      })),
+    );
+    if (chosen === undefined) throw error;
     return (
       projects.find((project) => project.projectId === chosen) ?? {
         projectId: chosen,
       }
     );
   }
+};
 
+/** A new project, `hot-updater-play-<random>`, once Google has created it. */
+const createProject = async ({
+  google,
+  sleep,
+  onStep,
+}: {
+  google: GoogleRequest;
+  sleep: (ms: number) => Promise<void>;
+  onStep: (message: string) => void;
+}): Promise<CloudProject> => {
   const projectId = newProjectId();
   onStep(`Creating the Google Cloud project ${projectId}`);
   try {
@@ -345,7 +399,7 @@ const chooseProject = async ({
       "Creating the Google Cloud project",
       "POST",
       `${RESOURCE_MANAGER_API}/v3/projects`,
-      { projectId, displayName: "Hot Updater Play" },
+      { projectId, displayName: PROJECT_DISPLAY_NAME },
     );
     const created = await waitForOperation<{ name?: string }>({
       request: google,
@@ -367,7 +421,7 @@ const chooseProject = async ({
         [
           "Google Cloud has no project quota left for this account.",
           error.apiMessage || "Quota exceeded.",
-          "Run this again and pick an existing project, or delete one at:",
+          "Delete a project you no longer use, then run this again:",
           "https://console.cloud.google.com/cloud-resource-manager",
         ].join("\n"),
         { cause: error },
@@ -386,7 +440,7 @@ const chooseProject = async ({
         [
           "This Google Account may not create Google Cloud projects.",
           error.apiMessage || "Permission denied.",
-          "Pick an existing project, or ask an admin for the Project Creator role.",
+          "Ask an admin for the Project Creator role.",
         ].join("\n"),
         { cause: error },
       );
@@ -422,7 +476,7 @@ const whilePropagating = async <T>({
     } catch (error) {
       const disabled = isServiceDisabled(error);
       if (disabled && !consumerIs(error, project)) {
-        throw clientApiDisabled(error);
+        throw consumerApiDisabled(error);
       }
       if (
         (!disabled && !(notFound && isNotFound(error))) ||
@@ -547,98 +601,6 @@ const ensureServiceAccount = async ({
     }
     throw error;
   }
-};
-
-/**
- * Makes `email` a Play Console user that may release `packageName`, keeping
- * any permission it has: the user and the app's grant are created, or the
- * grant gains the release permissions.
- */
-const grantPlayAccess = async ({
-  google,
-  developerId,
-  email,
-  packageName,
-}: {
-  google: GoogleRequest;
-  developerId: string;
-  email: string;
-  packageName: string;
-}) => {
-  const developer = `${PUBLISHER_API}/developers/${developerId}`;
-  const user = `${developer}/users/${encodeURIComponent(email)}`;
-  try {
-    await google("Adding the Play Console user", "POST", `${developer}/users`, {
-      name: `developers/${developerId}/users/${email}`,
-      email,
-    });
-  } catch (error) {
-    if (isDenied(error)) throw notPlayAdmin(developerId, error);
-    if (!isConflict(error)) throw error;
-  }
-  try {
-    await google("Granting access to the app", "POST", `${user}/grants`, {
-      name: `developers/${developerId}/users/${email}/grants/${packageName}`,
-      packageName,
-      appLevelPermissions: APP_PERMISSIONS,
-    });
-    return;
-  } catch (error) {
-    if (isNotFound(error)) throw appNotFound(packageName, developerId, error);
-    if (isDenied(error)) throw notPlayAdmin(developerId, error);
-    if (!isConflict(error)) throw error;
-  }
-  const granted = await findGrant({ google, developer, email, packageName });
-  const missing = APP_PERMISSIONS.filter(
-    (permission) => !granted.includes(permission),
-  );
-  if (missing.length === 0) return;
-  await google(
-    "Granting access to the app",
-    "PATCH",
-    `${user}/grants/${encodeURIComponent(packageName)}?updateMask=appLevelPermissions`,
-    { appLevelPermissions: [...granted, ...missing] },
-  );
-};
-
-/** The app permissions `email` holds on `packageName`, from the user list. */
-const findGrant = async ({
-  google,
-  developer,
-  email,
-  packageName,
-}: {
-  google: GoogleRequest;
-  developer: string;
-  email: string;
-  packageName: string;
-}): Promise<string[]> => {
-  let pageToken: string | undefined;
-  do {
-    const page = await google<{
-      users?: {
-        email?: string;
-        grants?: { packageName?: string; appLevelPermissions?: string[] }[];
-      }[];
-      nextPageToken?: string;
-    }>(
-      "Listing the Play Console users",
-      "GET",
-      `${developer}/users?${new URLSearchParams({
-        pageSize: "100",
-        ...(pageToken ? { pageToken } : {}),
-      })}`,
-    );
-    const found = page.users?.find((candidate) => candidate.email === email);
-    if (found) {
-      return (
-        found.grants?.find((grant) => grant.packageName === packageName)
-          ?.appLevelPermissions ?? []
-      );
-    }
-    pageToken = page.nextPageToken || undefined;
-  } while (pageToken);
-  return [];
 };
 
 /** A new JSON key of the service account, checked and masked in the CLI's output. */

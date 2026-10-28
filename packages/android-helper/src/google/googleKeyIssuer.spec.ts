@@ -3,17 +3,16 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IssuePlayServiceAccountRequest } from "../playServiceAccount";
-import { createGoogleKeyIssuer, parseDeveloperId } from "./googleKeyIssuer";
+import { createGoogleKeyIssuer, type RunCommand } from "./googleKeyIssuer";
 import { PlayServiceAccountError } from "./types";
 
-const realFetch = globalThis.fetch;
-
-const CLOUD = "https://www.googleapis.com/auth/cloud-platform";
-const PUBLISHER = "https://www.googleapis.com/auth/androidpublisher";
 const API = "https://androidpublisher.googleapis.com/androidpublisher/v3";
 const IAM = "https://iam.googleapis.com/v1";
+const TOKEN = "https://oauth2.googleapis.com/token";
+const EDITS = `${API}/applications/com.example.app/edits`;
 const EMAIL = "hot-updater-play@my-app.iam.gserviceaccount.com";
-const USER = `${API}/developers/1234/users/${encodeURIComponent(EMAIL)}`;
+const INVITE_URL =
+  "https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=hot-updater-play%40my-app.iam.gserviceaccount.com";
 const KEY_NAME = `projects/my-app/serviceAccounts/${EMAIL}/keys/abc123`;
 const PRIVATE_KEY = crypto
   .generateKeyPairSync("rsa", { modulusLength: 2048 })
@@ -65,24 +64,21 @@ const serviceDisabled = (consumer = "projects/42") =>
     ],
   );
 
-/** The routes of a Google that has the app and one project, my-app. */
+const notInvited = () =>
+  googleError(403, "PERMISSION_DENIED", "The caller does not have permission");
+
+/**
+ * The routes of a Google that has the project an earlier run created,
+ * my-app, and a Play Console that already invited the service account.
+ */
 const defaultRoutes = (): Record<string, Handler> => ({
-  "POST https://oauth2.googleapis.com/token": () => ({
-    access_token: "ya29.token",
-    scope: `${CLOUD} ${PUBLISHER}`,
-    expires_in: 3599,
-  }),
-  "POST https://oauth2.googleapis.com/revoke": () => ({}),
-  [`GET ${API}/developers/1234/users?pageSize=1`]: () => ({ users: [] }),
-  [`POST ${API}/applications/com.example.app/edits`]: () => ({ id: "e1" }),
-  [`DELETE ${API}/applications/com.example.app/edits/e1`]: () => ({}),
   "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE":
     () => ({
       projects: [
         {
           name: "projects/42",
           projectId: "my-app",
-          displayName: "My App",
+          displayName: "Hot Updater Play",
         },
       ],
     }),
@@ -93,17 +89,32 @@ const defaultRoutes = (): Record<string, Handler> => ({
     done: true,
   }),
   [`POST ${IAM}/projects/my-app/serviceAccounts`]: () => ({ email: EMAIL }),
-  [`POST ${API}/developers/1234/users`]: () => ({ email: EMAIL }),
-  [`POST ${USER}/grants`]: () => ({}),
   [`POST ${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`]: () => ({
     name: KEY_NAME,
     privateKeyData: Buffer.from(KEY_FILE).toString("base64"),
   }),
   [`DELETE ${IAM}/${KEY_NAME}`]: () => ({}),
+  [`POST ${TOKEN}`]: () => ({ access_token: "ya29.key", expires_in: 3599 }),
+  [`POST ${EDITS}`]: () => ({ id: "e1" }),
+  [`DELETE ${EDITS}/e1`]: () => ({}),
 });
 
 let routes: Record<string, Handler>;
+/** Every request, and `invite` when the issuer hands out the invite. */
 let calls: Call[];
+let events: string[];
+
+/** The account has projects, none of them the one Hot Updater creates. */
+const otherProjectsOnly = (
+  project: { projectId: string; displayName: string } = {
+    projectId: "other",
+    displayName: "Other",
+  },
+) => {
+  routes[
+    "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE"
+  ] = () => ({ projects: [{ name: "projects/43", ...project }] });
+};
 
 const fetch = vi.fn(
   async (input: string | URL | Request, init?: RequestInit) => {
@@ -114,6 +125,7 @@ const fetch = vi.fn(
       body: typeof init?.body === "string" ? init.body : undefined,
     };
     calls.push(call);
+    events.push(`${call.method} ${call.url}`);
     const handler = routes[`${call.method} ${call.url}`];
     if (!handler) return googleError(404, "NOT_FOUND", `No route ${call.url}`);
     const answer = handler(call);
@@ -121,33 +133,52 @@ const fetch = vi.fn(
   },
 ) as unknown as typeof globalThis.fetch;
 
-/** The browser: Google sends it back to the loopback with `query`. */
-let browser: (url: URL) => Record<string, string>;
-let authorizationUrl: URL | undefined;
+/** The gcloud CLI on this machine, and the account it is signed in to. */
+let gcloud: {
+  installed: boolean;
+  account: string | undefined;
+  /** The account `gcloud auth login` signs in to. */
+  login: string | undefined;
+  /** `gcloud auth login` fails, as a cancelled sign-in does. */
+  loginFails?: boolean;
+};
+let commands: string[];
+
+const run: RunCommand = async (file, args, options) => {
+  const command = [file, ...args].join(" ");
+  commands.push(options?.interactive ? `${command} (interactive)` : command);
+  if (!gcloud.installed) {
+    throw Object.assign(new Error("spawn gcloud ENOENT"), { code: "ENOENT" });
+  }
+  if (args[0] === "--version") return "Google Cloud SDK 500.0.0";
+  if (args.join(" ").startsWith("auth list")) return gcloud.account ?? "";
+  if (args.join(" ") === "auth login") {
+    if (gcloud.loginFails) throw new Error("gcloud auth login: cancelled");
+    gcloud.account = gcloud.login;
+    return "";
+  }
+  if (args.join(" ") === "auth print-access-token") return "ya29.token\n";
+  throw new Error(`Unexpected command: ${command}`);
+};
+
+const sleep = vi.fn(async (_ms: number) => {});
+const onStep = vi.fn((_message: string) => {});
+const onInvite = vi.fn((_url: string, _email: string) => {
+  events.push("invite");
+});
 
 const request = (
   overrides: Partial<IssuePlayServiceAccountRequest> = {},
 ): IssuePlayServiceAccountRequest => ({
   packageName: "com.example.app",
-  oauthClient: {
-    clientId: "client.apps.googleusercontent.com",
-    clientSecret: "GOCSPX-s",
-  },
-  onSignInUrl: async (url) => {
-    authorizationUrl = new URL(url);
-    const redirect = new URL(
-      authorizationUrl.searchParams.get("redirect_uri")!,
-    );
-    redirect.search = new URLSearchParams(browser(authorizationUrl)).toString();
-    await realFetch(redirect);
-  },
-  askDeveloperId: async () => "1234",
+  onInvite,
   chooseProject: async () => "my-app",
+  onStep,
   ...overrides,
 });
 
 const issue = (overrides?: Partial<IssuePlayServiceAccountRequest>) =>
-  createGoogleKeyIssuer({ fetch, sleep: async () => {} })(request(overrides));
+  createGoogleKeyIssuer({ fetch, sleep, run })(request(overrides));
 
 const issueError = async (
   overrides?: Partial<IssuePlayServiceAccountRequest>,
@@ -163,92 +194,69 @@ const issueError = async (
 const called = (method: string, url: string) =>
   calls.filter((call) => call.method === method && call.url === url);
 
-const mutations = () =>
-  calls.filter(
-    (call) =>
-      call.method !== "GET" &&
-      !call.url.startsWith("https://oauth2.googleapis.com/") &&
-      !call.url.includes("/edits"),
-  );
-
 beforeEach(() => {
+  vi.clearAllMocks();
   routes = defaultRoutes();
   calls = [];
-  authorizationUrl = undefined;
-  browser = (url) => ({
-    code: "4/auth-code",
-    state: url.searchParams.get("state")!,
-  });
+  events = [];
+  commands = [];
+  gcloud = {
+    installed: true,
+    account: "dev@example.com",
+    login: "dev@example.com",
+  };
 });
 
 describe("createGoogleKeyIssuer", () => {
-  it("signs in with PKCE on a loopback redirect, then creates the service account, its Play access, and its key, in that order", async () => {
+  it("signs in with gcloud, creates the service account and its key, opens the invite, and waits until the key reaches the app", async () => {
     const issued = await issue();
 
-    // The browser opens Google's consent screen, with PKCE (S256).
-    expect(authorizationUrl!.origin + authorizationUrl!.pathname).toBe(
-      "https://accounts.google.com/o/oauth2/v2/auth",
+    expect(commands).toEqual([
+      "gcloud --version",
+      "gcloud auth list --filter=status:ACTIVE --format=value(account)",
+      "gcloud auth print-access-token",
+    ]);
+    expect(onStep).toHaveBeenCalledWith(
+      "Signed in to gcloud as dev@example.com",
     );
-    const params = authorizationUrl!.searchParams;
-    expect(params.get("client_id")).toBe("client.apps.googleusercontent.com");
-    expect(params.get("response_type")).toBe("code");
-    expect(params.get("code_challenge_method")).toBe("S256");
-    expect(params.get("scope")!.split(" ").sort()).toEqual(
-      [PUBLISHER, CLOUD].sort(),
-    );
-    expect(params.get("redirect_uri")).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-
-    // The code is exchanged with the verifier the challenge was made from.
-    const [exchange] = called("POST", "https://oauth2.googleapis.com/token");
-    const form = new URLSearchParams(exchange!.body);
-    expect(Object.fromEntries(form)).toEqual({
-      code: "4/auth-code",
-      client_id: "client.apps.googleusercontent.com",
-      client_secret: "GOCSPX-s",
-      redirect_uri: params.get("redirect_uri"),
-      grant_type: "authorization_code",
-      code_verifier: expect.any(String),
-    });
-    expect(
-      crypto
-        .createHash("sha256")
-        .update(form.get("code_verifier")!)
-        .digest("base64url"),
-    ).toBe(params.get("code_challenge"));
-
-    expect(
-      calls
-        .filter(
-          (call) => !call.url.startsWith("https://oauth2.googleapis.com/"),
-        )
-        .map((call) => `${call.method} ${call.url}`),
-    ).toEqual([
-      `GET ${API}/developers/1234/users?pageSize=1`,
-      `POST ${API}/applications/com.example.app/edits`,
-      `DELETE ${API}/applications/com.example.app/edits/e1`,
+    expect(events).toEqual([
       "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE",
       "POST https://serviceusage.googleapis.com/v1/projects/my-app/services:batchEnable",
       "GET https://serviceusage.googleapis.com/v1/operations/acf.1",
       `POST ${IAM}/projects/my-app/serviceAccounts`,
-      `POST ${API}/developers/1234/users`,
-      `POST ${USER}/grants`,
       `POST ${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`,
+      "invite",
+      `POST ${TOKEN}`,
+      `POST ${EDITS}`,
+      `DELETE ${EDITS}/e1`,
     ]);
-    // Only Google's sign-in and the four APIs are reached.
-    expect(new Set(calls.map((call) => new URL(call.url).host))).toEqual(
-      new Set([
-        "oauth2.googleapis.com",
-        "androidpublisher.googleapis.com",
-        "cloudresourcemanager.googleapis.com",
-        "serviceusage.googleapis.com",
-        "iam.googleapis.com",
-      ]),
-    );
-    for (const call of calls.filter(
-      (c) => !c.url.startsWith("https://oauth2."),
+    // Play Console's invite names the service account, URL-encoded, and no
+    // developer account: `_` is the one the browser is signed in to.
+    expect(onInvite).toHaveBeenCalledTimes(1);
+    expect(onInvite).toHaveBeenCalledWith(INVITE_URL, EMAIL);
+
+    // Google Cloud is reached with gcloud's token, Google Play with the key's.
+    for (const call of calls.filter((c) =>
+      /cloudresourcemanager|serviceusage|iam\.googleapis/u.test(c.url),
     )) {
       expect(call.headers.authorization).toBe("Bearer ya29.token");
     }
+    for (const call of called("POST", EDITS)) {
+      expect(call.headers.Authorization).toBe("Bearer ya29.key");
+    }
+    const [exchange] = called("POST", TOKEN);
+    const form = new URLSearchParams(exchange!.body);
+    expect(form.get("grant_type")).toBe(
+      "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    );
+    const [, claims] = form.get("assertion")!.split(".");
+    expect(
+      JSON.parse(Buffer.from(claims!, "base64url").toString()),
+    ).toMatchObject({
+      iss: EMAIL,
+      scope: "https://www.googleapis.com/auth/androidpublisher",
+    });
+
     const body = (method: string, url: string) =>
       JSON.parse(called(method, url)[0]!.body!) as unknown;
     expect(
@@ -264,18 +272,6 @@ describe("createGoogleKeyIssuer", () => {
     ).toMatchObject({
       accountId: "hot-updater-play",
     });
-    expect(body("POST", `${API}/developers/1234/users`)).toEqual({
-      name: `developers/1234/users/${EMAIL}`,
-      email: EMAIL,
-    });
-    expect(body("POST", `${USER}/grants`)).toEqual({
-      name: `developers/1234/users/${EMAIL}/grants/com.example.app`,
-      packageName: "com.example.app",
-      appLevelPermissions: [
-        "CAN_VIEW_NON_FINANCIAL_DATA",
-        "CAN_MANAGE_TRACK_APKS",
-      ],
-    });
     expect(
       body("POST", `${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`),
     ).toEqual({
@@ -287,180 +283,173 @@ describe("createGoogleKeyIssuer", () => {
       json: KEY_FILE,
       email: EMAIL,
       projectId: "my-app",
-      developerId: "1234",
       keyId: "abc123",
     });
-    // The sign-in lasts until dispose, so the key can still be deleted.
-    expect(called("POST", "https://oauth2.googleapis.com/revoke")).toHaveLength(
-      0,
-    );
+    expect(issued).not.toHaveProperty("developerId");
+    expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(0);
+    // gcloud keeps its sign-in: dispose reaches nothing.
+    const before = calls.length;
+    await issued.dispose();
+    expect(calls).toHaveLength(before);
     await expect(issued.revoke()).resolves.toBe(true);
     expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(1);
-    await issued.dispose();
-    const [revoke] = called("POST", "https://oauth2.googleapis.com/revoke");
-    expect(new URLSearchParams(revoke!.body).get("token")).toBe("ya29.token");
   });
 
-  it("refuses without an OAuth client, before any request", async () => {
-    const error = await issueError({ oauthClient: { clientId: "" } });
-
-    expect(error.code).toBe("sign-in-not-configured");
-    expect(error.message).toContain("HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID");
-    expect(calls).toEqual([]);
-  });
-
-  it("names a cancelled consent screen", async () => {
-    browser = (url) => ({
-      error: "access_denied",
-      state: url.searchParams.get("state")!,
-    });
+  it("stops before any request when gcloud is not installed, naming where to get it", async () => {
+    gcloud.installed = false;
 
     const error = await issueError();
 
-    expect(error.code).toBe("sign-in-cancelled");
+    expect(error.code).toBe("gcloud-not-installed");
+    expect(error.message).toBe(
+      [
+        "gcloud CLI is not installed.",
+        "Install it, then run this again:",
+        "https://cloud.google.com/sdk/docs/install",
+      ].join("\n"),
+    );
+    expect(commands).toEqual(["gcloud --version"]);
     expect(calls).toEqual([]);
+    expect(onInvite).not.toHaveBeenCalled();
   });
 
-  it("ignores an answer to another sign-in", async () => {
-    let first = true;
-    browser = (url) => {
-      if (first) {
-        first = false;
-        return { code: "stolen", state: "other" };
-      }
-      return { code: "4/auth-code", state: url.searchParams.get("state")! };
-    };
-    const onSignInUrl = request().onSignInUrl;
+  it("runs gcloud auth login on the terminal when no account is active", async () => {
+    gcloud.account = undefined;
 
-    await issue({
-      onSignInUrl: async (url) => {
-        await onSignInUrl(url);
-        await onSignInUrl(url);
-      },
-    });
+    await issue();
 
-    const [exchange] = called("POST", "https://oauth2.googleapis.com/token");
-    expect(new URLSearchParams(exchange!.body).get("code")).toBe("4/auth-code");
-  });
-
-  it("names a scope the account unticked, and ends the sign-in", async () => {
-    routes["POST https://oauth2.googleapis.com/token"] = () => ({
-      access_token: "ya29.token",
-      scope: CLOUD,
-    });
-
-    const error = await issueError();
-
-    expect(error.code).toBe("scope-not-granted");
-    expect(error.message).toContain("managing Google Play");
-    expect(called("POST", "https://oauth2.googleapis.com/revoke")).toHaveLength(
-      1,
+    expect(commands).toEqual([
+      "gcloud --version",
+      "gcloud auth list --filter=status:ACTIVE --format=value(account)",
+      "gcloud auth login (interactive)",
+      "gcloud auth list --filter=status:ACTIVE --format=value(account)",
+      "gcloud auth print-access-token",
+    ]);
+    expect(onStep).toHaveBeenCalledWith(
+      "Signed in to gcloud as dev@example.com",
     );
   });
 
-  it("takes the developer account ID from a pasted Play Console address", async () => {
-    await issue({
-      askDeveloperId: async () =>
-        "https://play.google.com/console/u/0/developers/1234/app-list",
-    });
-
-    expect(
-      called("GET", `${API}/developers/1234/users?pageSize=1`),
-    ).toHaveLength(1);
-  });
-
-  it("names a developer account ID that is none, before any change", async () => {
-    const error = await issueError({ askDeveloperId: async () => "my team" });
-
-    expect(error.code).toBe("developer-not-found");
-    expect(mutations()).toEqual([]);
-  });
-
-  it("names a developer account Play Console does not have, before any change", async () => {
-    routes[`GET ${API}/developers/1234/users?pageSize=1`] = () =>
-      googleError(404, "NOT_FOUND", "Developer not found.");
+  it("stops before any request when gcloud auth login leaves no active account", async () => {
+    gcloud.account = undefined;
+    gcloud.login = undefined;
 
     const error = await issueError();
 
-    expect(error.code).toBe("developer-not-found");
-    expect(mutations()).toEqual([]);
-    expect(called("POST", "https://oauth2.googleapis.com/revoke")).toHaveLength(
-      1,
+    expect(error.code).toBe("gcloud-not-signed-in");
+    expect(calls).toEqual([]);
+  });
+
+  it("names a cancelled gcloud auth login, before any request", async () => {
+    gcloud.account = undefined;
+    gcloud.loginFails = true;
+
+    const error = await issueError();
+
+    expect(error.code).toBe("gcloud-not-signed-in");
+    expect(calls).toEqual([]);
+  });
+
+  it("waits while Google takes the new key and Play Console the invite, every 5 seconds", async () => {
+    let exchanges = 0;
+    routes[`POST ${TOKEN}`] = () =>
+      ++exchanges <= 2
+        ? json(400, {
+            error: "invalid_grant",
+            error_description: "Invalid JWT Signature.",
+          })
+        : { access_token: "ya29.key" };
+    let opened = 0;
+    routes[`POST ${EDITS}`] = () =>
+      ++opened <= 2
+        ? notInvited()
+        : opened === 3
+          ? googleError(404, "NOT_FOUND", "Package not found: com.example.app.")
+          : { id: "e1" };
+
+    const issued = await issue();
+
+    expect(issued.email).toBe(EMAIL);
+    // Two refused exchanges, then one token for every edit after.
+    expect(called("POST", TOKEN)).toHaveLength(3);
+    expect(called("POST", EDITS)).toHaveLength(4);
+    expect(called("DELETE", `${EDITS}/e1`)).toHaveLength(1);
+    expect(sleep.mock.calls.filter(([ms]) => ms === 5_000)).toHaveLength(5);
+    expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(0);
+  });
+
+  it("deletes the key after about ten minutes without access, and says to invite it and run login again", async () => {
+    routes[`POST ${EDITS}`] = notInvited;
+
+    const error = await issueError();
+
+    expect(error.code).toBe("play-access-pending");
+    expect(error.message).toBe(
+      [
+        "The key can't release com.example.app yet.",
+        "Invite the service account in Play Console with release access:",
+        EMAIL,
+        INVITE_URL,
+        "A new app needs its first .aab uploaded in Play Console.",
+        "Then run: npx hot-updater google-play login",
+      ].join("\n"),
     );
-  });
-
-  it("names an account that is no Play Console admin, before any change", async () => {
-    routes[`GET ${API}/developers/1234/users?pageSize=1`] = () =>
-      googleError(
-        403,
-        "PERMISSION_DENIED",
-        "The caller does not have permission",
-      );
-
-    const error = await issueError();
-
-    expect(error.code).toBe("not-play-admin");
-    expect(mutations()).toEqual([]);
-  });
-
-  it("names the Play Developer API disabled in the OAuth client's project, not a missing admin role, before any change", async () => {
-    routes[`GET ${API}/developers/1234/users?pageSize=1`] = () =>
-      serviceDisabled("projects/999");
-
-    const error = await issueError();
-
-    expect(error.code).toBe("api-not-enabled");
-    expect(error.message).toContain("OAuth client");
-    expect(mutations()).toEqual([]);
-  });
-
-  it("keeps Google's words in a Play Console refusal", async () => {
-    routes[`GET ${API}/developers/1234/users?pageSize=1`] = () =>
-      googleError(403, "PERMISSION_DENIED", "Something else went wrong.");
-
-    const error = await issueError();
-
-    expect(error.code).toBe("not-play-admin");
-    expect(error.message).toContain("\nGoogle: Something else went wrong.");
-  });
-
-  it("names a Play Console refusal to add the service account as a missing admin role", async () => {
-    routes[`POST ${USER}/grants`] = () =>
-      googleError(
-        403,
-        "PERMISSION_DENIED",
-        "The caller does not have permission",
-      );
-
-    const error = await issueError();
-
-    expect(error.code).toBe("not-play-admin");
+    expect(called("POST", EDITS)).toHaveLength(120);
+    expect(sleep.mock.calls.filter(([ms]) => ms === 5_000)).toHaveLength(119);
+    expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(1);
+    // The key is deleted with gcloud's token, not its own.
     expect(
-      called("POST", `${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`),
+      called("DELETE", `${IAM}/${KEY_NAME}`)[0]!.headers.authorization,
+    ).toBe("Bearer ya29.token");
+  });
+
+  it("names the key to delete by hand when deleting it fails too", async () => {
+    routes[`POST ${EDITS}`] = notInvited;
+    routes[`DELETE ${IAM}/${KEY_NAME}`] = () =>
+      googleError(503, "UNAVAILABLE", "Try again later.");
+
+    const error = await issueError();
+
+    expect(error.code).toBe("play-access-pending");
+    expect(error.message.split("\n").slice(-3)).toEqual([
+      "Delete its unused key abc123 in Google Cloud:",
+      "https://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app",
+      "Then run: npx hot-updater google-play login",
+    ]);
+  });
+
+  it("deletes the key when Google Play fails otherwise, keeping the failure as the cause", async () => {
+    routes[`POST ${EDITS}`] = () =>
+      googleError(500, "INTERNAL", "Internal error.");
+
+    const error = await issueError();
+
+    expect(error.code).toBe("play-access-pending");
+    expect(String((error.cause as Error).message)).toContain("Internal error.");
+    expect(called("POST", EDITS)).toHaveLength(1);
+    expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(1);
+  });
+
+  it("reuses the project an earlier run created, without asking", async () => {
+    const chooseProject = vi.fn(async () => "never");
+
+    const issued = await issue({ chooseProject });
+
+    expect(chooseProject).not.toHaveBeenCalled();
+    expect(issued.projectId).toBe("my-app");
+    expect(
+      called("POST", "https://cloudresourcemanager.googleapis.com/v3/projects"),
     ).toEqual([]);
   });
 
-  it("names an app Google Play does not have yet, with the manual first upload, before any change", async () => {
-    routes[`POST ${API}/applications/com.example.app/edits`] = () =>
-      googleError(404, "NOT_FOUND", "Package not found: com.example.app.");
-
-    const error = await issueError();
-
-    expect(error.code).toBe("app-not-found");
-    expect(error.message).toContain("upload one .aab by hand");
-    expect(mutations()).toEqual([]);
-  });
-
-  it("creates a project when the account has none, and waits for it", async () => {
+  it("creates the project without asking when no project is Hot Updater's, and waits for it", async () => {
     const chooseProject = vi.fn(async () => "never");
-    routes[
-      "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE"
-    ] = () => ({});
-    let projectId = "";
+    otherProjectsOnly();
+    let created: { projectId: string; displayName: string } | undefined;
     routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] = (
       call,
     ) => {
-      projectId = (JSON.parse(call.body!) as { projectId: string }).projectId;
+      created = JSON.parse(call.body!) as typeof created;
       return { name: "operations/cp.1", done: false };
     };
     routes[
@@ -468,7 +457,7 @@ describe("createGoogleKeyIssuer", () => {
     ] = () => ({
       name: "operations/cp.1",
       done: true,
-      response: { name: "projects/77", projectId },
+      response: { name: "projects/77", projectId: created!.projectId },
     });
     routes = new Proxy(routes, {
       get: (target, key: string) =>
@@ -479,8 +468,9 @@ describe("createGoogleKeyIssuer", () => {
     const issued = await issue({ chooseProject });
 
     expect(chooseProject).not.toHaveBeenCalled();
-    expect(projectId).toMatch(/^hot-updater-play-[0-9a-f]{6}$/);
-    expect(issued.projectId).toBe(projectId);
+    expect(created!.projectId).toMatch(/^hot-updater-play-[0-9a-f]{6}$/);
+    expect(created!.displayName).toBe("Hot Updater Play");
+    expect(issued.projectId).toBe(created!.projectId);
     expect(
       called(
         "GET",
@@ -489,7 +479,27 @@ describe("createGoogleKeyIssuer", () => {
     ).toHaveLength(1);
   });
 
+  it("asks for one of the account's projects only when Google refuses to create one", async () => {
+    otherProjectsOnly({ projectId: "my-app", displayName: "My App" });
+    routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
+      () =>
+        googleError(
+          403,
+          "PERMISSION_DENIED",
+          "Permission 'resourcemanager.projects.create' denied.",
+        );
+    const chooseProject = vi.fn(async () => "my-app");
+
+    const issued = await issue({ chooseProject });
+
+    expect(chooseProject).toHaveBeenCalledWith([
+      { projectId: "my-app", displayName: "My App" },
+    ]);
+    expect(issued.projectId).toBe("my-app");
+  });
+
   it("names a project quota that is used up", async () => {
+    otherProjectsOnly();
     routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
       () =>
         googleError(
@@ -504,6 +514,7 @@ describe("createGoogleKeyIssuer", () => {
   });
 
   it("names a quota failure the project's operation reports", async () => {
+    otherProjectsOnly();
     routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
       () => ({
         name: "operations/cp.1",
@@ -516,7 +527,10 @@ describe("createGoogleKeyIssuer", () => {
     expect(error.code).toBe("project-quota");
   });
 
-  it("names an account that may not create projects", async () => {
+  it("names an account that may not create projects and has none to pick", async () => {
+    routes[
+      "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE"
+    ] = () => ({});
     routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
       () =>
         googleError(
@@ -524,10 +538,12 @@ describe("createGoogleKeyIssuer", () => {
           "PERMISSION_DENIED",
           "Permission 'resourcemanager.projects.create' denied.",
         );
+    const chooseProject = vi.fn(async () => "never");
 
-    const error = await issueError({ chooseProject: async () => undefined });
+    const error = await issueError({ chooseProject });
 
     expect(error.code).toBe("project-create-denied");
+    expect(chooseProject).not.toHaveBeenCalled();
   });
 
   it("waits while Google is still enabling IAM in the project", async () => {
@@ -553,14 +569,14 @@ describe("createGoogleKeyIssuer", () => {
     ).toHaveLength(12);
   });
 
-  it("does not wait for an API disabled in the OAuth client's own project", async () => {
+  it("does not wait for an API disabled in another project, and names it", async () => {
     routes[`POST ${IAM}/projects/my-app/serviceAccounts`] = () =>
       serviceDisabled("projects/999");
 
     const error = await issueError();
 
     expect(error.code).toBe("api-not-enabled");
-    expect(error.message).toContain("OAuth client");
+    expect(error.message).toContain("Enable it in projects/999");
     expect(
       called("POST", `${IAM}/projects/my-app/serviceAccounts`),
     ).toHaveLength(1);
@@ -588,82 +604,13 @@ describe("createGoogleKeyIssuer", () => {
     expect(error.message).toContain("iam.disableServiceAccountKeyCreation");
   });
 
-  it("reuses what an earlier run created, adding the release permissions to the app's grant", async () => {
+  it("reuses the service account an earlier run created", async () => {
     routes[`POST ${IAM}/projects/my-app/serviceAccounts`] = () =>
       googleError(409, "ALREADY_EXISTS", "Service account already exists.");
-    routes[`POST ${API}/developers/1234/users`] = () =>
-      googleError(409, "ALREADY_EXISTS", "User already exists.");
-    routes[`POST ${USER}/grants`] = () =>
-      googleError(409, "ALREADY_EXISTS", "Grant already exists.");
-    routes[`GET ${API}/developers/1234/users?pageSize=100`] = () => ({
-      users: [
-        { email: "someone@example.com" },
-        {
-          email: EMAIL,
-          grants: [
-            {
-              packageName: "com.example.app",
-              appLevelPermissions: [
-                "CAN_REPLY_TO_REVIEWS",
-                "CAN_MANAGE_TRACK_APKS",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    const grant = `PATCH ${USER}/grants/com.example.app?updateMask=appLevelPermissions`;
-    routes[grant] = () => ({});
 
     const issued = await issue();
 
     expect(issued.email).toBe(EMAIL);
-    expect(
-      JSON.parse(called("PATCH", grant.slice("PATCH ".length))[0]!.body!),
-    ).toEqual({
-      appLevelPermissions: [
-        "CAN_REPLY_TO_REVIEWS",
-        "CAN_MANAGE_TRACK_APKS",
-        "CAN_VIEW_NON_FINANCIAL_DATA",
-      ],
-    });
-  });
-
-  it("leaves a grant that has the release permissions as it is", async () => {
-    routes[`POST ${USER}/grants`] = () =>
-      googleError(409, "ALREADY_EXISTS", "Grant already exists.");
-    routes[`GET ${API}/developers/1234/users?pageSize=100`] = () => ({
-      users: [
-        {
-          email: EMAIL,
-          grants: [
-            {
-              packageName: "com.example.app",
-              appLevelPermissions: [
-                "CAN_VIEW_NON_FINANCIAL_DATA",
-                "CAN_MANAGE_TRACK_APKS",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    await issue();
-
-    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
-  });
-});
-
-describe("parseDeveloperId", () => {
-  it.each([
-    ["1234", "1234"],
-    [" 1234 ", "1234"],
-    ["https://play.google.com/console/u/0/developers/1234/app-list", "1234"],
-    ["https://play.google.com/console/developers/1234", "1234"],
-    ["my team", undefined],
-    ["https://play.google.com/console/developers/12a4", undefined],
-  ])("%s → %s", (input, id) => {
-    expect(parseDeveloperId(input)).toBe(id);
+    expect(onInvite).toHaveBeenCalledWith(INVITE_URL, EMAIL);
   });
 });

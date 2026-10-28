@@ -1,14 +1,10 @@
 import {
-  GOOGLE_OAUTH_CLIENT_ENV_NAMES,
-  type GoogleOAuthClient,
   type IssuedPlayServiceAccount,
   type IssuePlayServiceAccount,
   issuePlayServiceAccount,
-  PLAY_CONSOLE_URL,
 } from "@hot-updater/android-helper";
 import {
   describeStoredSecret,
-  getHotUpdaterEnvValue,
   p,
   registerCredentialValue,
 } from "@hot-updater/cli-tools";
@@ -69,20 +65,37 @@ const answered = <T>(answer: T | symbol): T => {
   return answer as T;
 };
 
-/** The OAuth client `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_*` set, if any. */
-const oauthClientOverride = (
-  env: Readonly<Record<string, string>>,
-): GoogleOAuthClient | undefined => {
-  const clientId = getHotUpdaterEnvValue(
-    env,
-    GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId,
-  );
-  if (clientId === undefined) return undefined;
-  const clientSecret = getHotUpdaterEnvValue(
-    env,
-    GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientSecret,
-  );
-  return { clientId, ...(clientSecret ? { clientSecret } : {}) };
+/**
+ * The app's package name in Google Play: the config's one as the answer to
+ * confirm, a choice among several, or typed when the config declares none.
+ */
+const askPackageName = async (declared: readonly string[]): Promise<string> => {
+  const message = "The app's package name in Google Play";
+  if (declared.length > 1) {
+    const choice = answered(
+      await p.select<string>({
+        message,
+        options: [
+          ...declared.map((name) => ({ value: name, label: name })),
+          { value: "", label: "Another package name" },
+        ],
+      }),
+    );
+    if (choice) return choice;
+  }
+  const [only] = declared.length === 1 ? declared : [];
+  return answered(
+    await p.text({
+      message,
+      ...(only
+        ? { initialValue: only, placeholder: only }
+        : { placeholder: "com.example.app" }),
+      validate: (value) =>
+        PACKAGE_NAME_PATTERN.test(value?.trim() ?? "")
+          ? undefined
+          : "Enter a package name, such as com.example.app.",
+    }),
+  ).trim();
 };
 
 const errorText = (error: unknown) =>
@@ -158,8 +171,9 @@ const storeIssued = async (
  *    and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once.
  *
- * Only then does the developer sign in with Google, in a browser, through
- * `issue`, and the issued key is stored through the config's adapter, or
+ * Only then does the developer sign in with Google, through gcloud, and
+ * invite the service account in Play Console, which opens in a browser,
+ * through `issue`, and the issued key is stored through the config's adapter, or
  * `localSecrets()`'s store by default, read back, and deleted again if
  * storing it fails. A key the default store keeps comes with an offer to
  * store it as a GitHub Actions secret too, and every issued key with where
@@ -168,7 +182,7 @@ const storeIssued = async (
  */
 export const ensurePlayServiceAccount = async ({
   name,
-  packageName,
+  packageNames = [],
   env = {},
   replace,
   replacing,
@@ -178,8 +192,11 @@ export const ensurePlayServiceAccount = async ({
 }: {
   /** The secret builds resolve, `play-service-account`. */
   name: string;
-  /** The app's package name, as the config sets it, which the prompt offers. */
-  packageName?: string;
+  /**
+   * The package names the config's `nativeBuild.android` schemes declare,
+   * which the prompt offers: one as its answer, several as a choice.
+   */
+  packageNames?: readonly string[];
   /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
   env?: Readonly<Record<string, string>>;
   /** The adapter the key is read from and stored in, the config's by default. */
@@ -201,60 +218,34 @@ export const ensurePlayServiceAccount = async ({
     ...(secrets ? { secrets } : {}),
   });
   if (prepared.status !== "missing") return prepared;
-  const { secrets: store, env: fileEnv } = prepared;
+  const { secrets: store } = prepared;
 
-  const app = answered(
-    await p.text({
-      message: "The app's package name in Google Play",
-      ...(packageName
-        ? { initialValue: packageName, placeholder: packageName }
-        : { placeholder: "com.example.app" }),
-      validate: (value) =>
-        PACKAGE_NAME_PATTERN.test(value?.trim() ?? "")
-          ? undefined
-          : "Enter a package name, such as com.example.app.",
-    }),
-  ).trim();
+  const app = await askPackageName([...new Set(packageNames)]);
 
-  p.log.info("Sign in with Google in your browser, as a Play Console admin.");
-  const oauthClient = oauthClientOverride(fileEnv);
   const issued = await issue({
     packageName: app,
-    ...(oauthClient ? { oauthClient } : {}),
-    onSignInUrl: async (url) => {
+    onInvite: async (url, email) => {
+      p.log.info(
+        `In Play Console, invite with release access to ${app}:\n${email}`,
+      );
       p.log.message(`If the browser doesn't open, open:\n${ui.path(url)}`);
       await open(url).catch(() => {});
     },
-    askDeveloperId: async () =>
-      answered(
-        await p.text({
-          message: "Your Play Console developer account ID",
-          placeholder: `the number after /developers/ in ${PLAY_CONSOLE_URL}'s address, or that address`,
-          validate: (value) =>
-            /^\s*\d+\s*$/u.test(value ?? "") ||
-            /\/developers\/\d+/u.test(value ?? "")
-              ? undefined
-              : "Enter the number after /developers/ in Play Console's address, or paste the address.",
-        }),
-      ),
     chooseProject: async (projects) => {
       const choice = answered(
         await p.select<string>({
-          message: "Google Cloud project to create the service account in",
-          options: [
-            ...projects.map((project) => ({
-              value: project.projectId,
-              label: project.projectId,
-              ...(project.displayName &&
-              project.displayName !== project.projectId
-                ? { hint: project.displayName }
-                : {}),
-            })),
-            { value: "", label: "Create a new project" },
-          ],
+          message:
+            "Google Cloud can't create a project here. Project for the service account",
+          options: projects.map((project) => ({
+            value: project.projectId,
+            label: project.projectId,
+            ...(project.displayName && project.displayName !== project.projectId
+              ? { hint: project.displayName }
+              : {}),
+          })),
         }),
       );
-      return choice || undefined;
+      return choice;
     },
     onStep: (message) => p.log.step(message),
   });

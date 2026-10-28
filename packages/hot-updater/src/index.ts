@@ -474,9 +474,8 @@ secretsCommand
     [
       "",
       "asc-api-key signs in to your Apple Account with asc, the App Store Connect CLI.",
-      "play-service-account signs in with Google in your browser, with your own",
-      '"Desktop app" OAuth client in HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID and',
-      "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET, until Hot Updater ships one.",
+      "play-service-account signs in to Google with gcloud, then waits while you",
+      "invite the service account in Play Console.",
       "",
       "A key already stored, or set by the environment, is kept. --replace never",
       "revokes the old key: it names the key and where to revoke it.",
@@ -484,9 +483,9 @@ secretsCommand
       "secrets put instead.",
     ].join("\n"),
   )
-  .action((kind, name, options) =>
-    handleSecretsIssue(kind, name ?? kind, options),
-  );
+  .action(async (kind, name, options) => {
+    await handleSecretsIssue(kind, name ?? kind, options);
+  });
 
 /**
  * `apple login` and `google-play login`: the shortcuts of `secrets issue`
@@ -510,7 +509,7 @@ const LOGIN_COMMANDS = [
     description:
       "Sign in with Google and store the Play service account Hot Updater issues",
     signIn:
-      'signs in with Google in your browser, with your own "Desktop app" OAuth client in HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID and HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET until Hot Updater ships one',
+      "signs in to Google with gcloud and waits while you invite the service account in Play Console",
   },
 ] as const satisfies readonly {
   kind: (typeof ISSUED_KINDS)[number];
@@ -572,7 +571,8 @@ for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
       ) {
         return;
       }
-      await handleSecretsIssue(kind, kind);
+      if (!(await handleSecretsIssue(kind, kind))) return;
+      // The key is ready: a step a login adds after it goes here.
     });
 }
 
@@ -594,9 +594,9 @@ loginGroups
       "",
       "Shortcut for `hot-updater native-build android --scheme <scheme> --submit play-internal`.",
       "It takes only --scheme; for --json or --output-path, run native-build android.",
-      "Without a Play service account, it signs in with Google at a terminal, as",
-      "native-build android does, with your own Desktop OAuth client until Hot Updater",
-      "ships one; in CI it never signs in (run google-play login once first).",
+      "Without a Play service account, it signs in to Google with gcloud at a",
+      "terminal, as native-build android does; in CI it never signs in (run",
+      "google-play login once first).",
     ].join("\n"),
   )
   .action(async (options: StoreUploadOptions, command) => {
