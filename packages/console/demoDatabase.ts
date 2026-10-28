@@ -676,8 +676,8 @@ const { core } = seeding;
 
 // Native builds, registered before the deploys so their built-in bundles are
 // stored before the patches from them: a superseded pair on one scope, each
-// artifact kind, a pull request's builds on both platforms, and enough older
-// pull request builds to page. Their MIN_BUNDLE_IDs take both forms an app
+// artifact kind, submitted to a store or not, a pull request's builds on both
+// platforms, and enough older pull request builds to page. Their MIN_BUNDLE_IDs take both forms an app
 // in the field has: zero random bits, as builds issue them, and an earlier
 // CLI's platform byte (`01` iOS, `02` Android) and random bits.
 type DemoNativeBuild = {
@@ -780,6 +780,16 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     minBundleId: "019f6300-00a7-7000-8000-000000000000",
     kind: "app",
     gitCommitHash: "e4f1a2b3",
+  },
+  // An AAB built elsewhere and imported, which no store took: no commit.
+  {
+    n: 27,
+    platform: "android",
+    channel: "staging",
+    target: { appVersion: "1.3.1" },
+    minBundleId: "01971f31-0000-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: null,
   },
 ];
 for (const build of demoNativeBuilds) {

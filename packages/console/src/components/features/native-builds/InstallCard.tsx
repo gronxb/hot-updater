@@ -17,12 +17,25 @@ import {
 import { CopyableText } from "./CopyableText";
 import { isSubmitted } from "./StoreSubmission";
 
-/** What scanning a build's QR code gets, by its artifact. */
+/**
+ * What an artifact installs on, where the file alone isn't enough: the card
+ * says it once, under the QR code, or without one, in its place.
+ */
+const INSTALL_LIMITS: Partial<Record<NativeBuildRow["artifact_kind"], string>> =
+  {
+    ipa: "The .ipa installs only on devices its signing profile allows (development or ad hoc); an App Store export reaches testers through TestFlight.",
+    aab: "The .aab installs through Google Play or bundletool, not from the file.",
+  };
+
+/**
+ * What scanning a build's QR code gets, by its artifact. The install steps
+ * beside it add only what this doesn't say, so the card says each thing once.
+ */
 const QR_CAPTIONS: Record<NativeBuildRow["artifact_kind"], string> = {
   apk: "Scan with an Android phone's camera, then open the APK to install it.",
-  ipa: "Scan to download the .ipa. It installs only on devices its signing profile allows (development or ad hoc); an App Store export reaches testers through TestFlight.",
-  aab: "Scan to download the .aab. It installs through Google Play or bundletool, not from the file.",
-  app: "Scan to download the .app.zip on a Mac, then install it on a simulator.",
+  ipa: `Scan to download. ${INSTALL_LIMITS.ipa}`,
+  aab: `Scan to download. ${INSTALL_LIMITS.aab}`,
+  app: "Scan to download the .app.zip on a Mac.",
 };
 
 /**
@@ -36,12 +49,16 @@ function DownloadQrCode({ build }: { readonly build: NativeBuildRow }) {
   // A storage without download URLs serves the build only through the
   // console, which a phone that scans isn't signed in to.
   if (url === null) {
+    const limits = INSTALL_LIMITS[build.artifact_kind];
     return (
-      <p className="text-xs text-muted-foreground">
-        This storage gives no download link a phone can open without signing in,
-        so there is no QR code. Download the build here, or open this page on
-        the phone signed in to the console.
-      </p>
+      <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+        <p>
+          This storage gives no download link a phone can open without signing
+          in, so there is no QR code. Download the build here, or open this page
+          on the phone signed in to the console.
+        </p>
+        {limits ? <p>{limits}</p> : null}
+      </div>
     );
   }
 
@@ -80,7 +97,10 @@ function SubmittedVersion({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
-/** How the artifact installs, beside its download. */
+/**
+ * How else the artifact installs, beside its QR code's caption and its
+ * download: none of it repeats the caption.
+ */
 function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
   switch (build.artifact_kind) {
     case "apk":
@@ -99,8 +119,7 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       return (
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            A simulator build runs only in the iOS Simulator. Download the
-            archive, then install it on the booted simulator:
+            It runs only in the iOS Simulator. Install it on the booted one:
           </p>
           <CopyableText
             label="the install command"
@@ -112,27 +131,30 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       return isSubmitted(build) ? (
         <p className="text-xs text-muted-foreground">
           Submitted to Google Play internal testing as{" "}
-          <SubmittedVersion build={build} />. Testers install it from Google
-          Play once its release is rolled out; on an app Play Console hasn't
-          published, the release is a draft you roll out in Play Console.
-        </p>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          An AAB installs through Google Play or bundletool, not from a
-          download.
-        </p>
-      );
-    case "ipa":
-      return isSubmitted(build) ? (
-        <p className="text-xs text-muted-foreground">
-          On TestFlight as <SubmittedVersion build={build} />: testers install
-          it from TestFlight.
+          <SubmittedVersion build={build} />. Testers get it once its release is
+          rolled out; on an app Play Console hasn't published, the release is a
+          draft you roll out in Play Console.
         </p>
       ) : (
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            An IPA installs on registered devices through Xcode or Apple
-            Configurator. For testers, upload it to TestFlight:
+            For testers, build and release to internal testing:
+          </p>
+          <CopyableText
+            label="the Google Play command"
+            value="npx hot-updater google-play upload"
+          />
+        </div>
+      );
+    case "ipa":
+      return isSubmitted(build) ? (
+        <p className="text-xs text-muted-foreground">
+          On TestFlight as <SubmittedVersion build={build} />.
+        </p>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            Over USB, Xcode or Apple Configurator installs it. For testers:
           </p>
           <CopyableText
             label="the TestFlight command"
@@ -146,7 +168,8 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
 /**
  * Installs one native build: every artifact by a QR code of its download,
  * which a phone scans, and by download here; an APK also with `adb`, a
- * simulator app with `xcrun simctl`, and an IPA's testers with TestFlight.
+ * simulator app with `xcrun simctl`, and an IPA's or an AAB's testers through
+ * its store.
  */
 export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
   const fileName = nativeBuildFileName(build);

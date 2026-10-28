@@ -117,9 +117,7 @@ export class IosConfigParser implements ConfigParser {
     const plistPaths = this.getPlistPaths();
 
     if (plistPaths.length === 0) {
-      console.warn(
-        "hot-updater: No Info.plist files found. Skipping iOS-specific config modifications.",
-      );
+      // The caller says that nothing was written.
       return { paths: [] };
     }
 

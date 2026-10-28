@@ -20,18 +20,23 @@ export const Route = createFileRoute("/api/native-builds/$buildId/download")({
           deps = await prepareConfig(request);
         } catch (error) {
           // A browser without a session opens the build's page instead,
-          // where the console signs it in and returns to the build. The
-          // path is relative to this one, so it stays under the console's
-          // own path, wherever that is mounted.
+          // where the console signs it in and returns to this download
+          // (`returnTo`, relative to that page). Both paths are relative,
+          // so they stay under the console's own path, wherever that is
+          // mounted; sign-in takes `returnTo` only on the console's origin.
           if (
             error instanceof Response &&
             error.status === 401 &&
             isNavigation(request)
           ) {
+            const buildId = encodeURIComponent(params.buildId);
+            const returnTo = encodeURIComponent(
+              `../api/native-builds/${buildId}/download`,
+            );
             return new Response(null, {
               headers: {
                 "cache-control": "no-store",
-                location: `../../../native-builds/${encodeURIComponent(params.buildId)}`,
+                location: `../../../native-builds/${buildId}?returnTo=${returnTo}`,
               },
               status: 302,
             });
