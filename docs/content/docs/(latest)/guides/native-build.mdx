@@ -205,10 +205,8 @@ read it, as one JSON value:
   to `~/.hot-updater/secrets/<project-key>/<name>.json`, a file only your user
   can read, outside the project. The next build on the machine reads it, with
   no step in between.
-- With an adapter that stores values, through the adapter, read back once
-  stored. One that does not read it back on your machine, such as a
-  write-only store, also gets a copy in the `localSecrets()` store, which
-  builds on your machine read after the adapter.
+- With another adapter, through the adapter, read back once stored. A key
+  the adapter doesn't read back is revoked: nothing is kept on your machine.
 
 With `localSecrets()`, each machine keeps its own key: on another machine a
 sign-in issues a new one. With a

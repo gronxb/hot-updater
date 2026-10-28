@@ -8,7 +8,7 @@ import {
   getLocalKeyFile,
   loadConfig,
   maskSecretValues,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
@@ -71,10 +71,10 @@ const writableStore = (values: Record<string, string> = {}) => {
   return { store, held };
 };
 
-/** Makes `secrets` the config's, as loadConfig hands it over: with `localSecrets()`'s store. */
+/** Makes `secrets` the config's, as loadConfig hands it over: `localSecrets()` without one. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
-    secrets: withLocalKeyStore(secrets),
+    secrets: resolveSecretsAdapter(secrets),
   } as never);
 };
 
@@ -269,51 +269,6 @@ describe("hot-updater secrets put", () => {
     );
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
-  });
-
-  it("refuses a value a read-only adapter already holds, which builds read first, before any prompt", async () => {
-    configure({
-      name: "read-only",
-      get: async (names) =>
-        Object.fromEntries(names.map((name) => [name, "held"])),
-      describe: (name) => `ro://${name}`,
-    });
-    vi.spyOn(process, "cwd").mockReturnValue(directory);
-    await fs.writeFile(path.join(directory, "package.json"), "{}");
-
-    await handleSecretsPut("release-keystore", {
-      kind: "android-keystore",
-      keystore: "release.jks",
-      keyAlias: "upload",
-    });
-
-    expect(log.error).toHaveBeenCalledWith(
-      "release-keystore is in the read-only secrets adapter, which is read-only.\nReplace it there: ro://release-keystore",
-    );
-    expect(password).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it("stores in `localSecrets()`'s store when the config's adapter stores nothing", async () => {
-    configure({
-      name: "read-only",
-      get: async (names) =>
-        Object.fromEntries(names.map((name) => [name, undefined])),
-    });
-    vi.spyOn(process, "cwd").mockReturnValue(directory);
-    await fs.writeFile(path.join(directory, "package.json"), "{}");
-    const file = path.join(directory, "play.json");
-    await fs.writeFile(file, '{"type":"service_account"}');
-
-    await handleSecretsPut("play-service-account", {
-      kind: "play-service-account",
-      serviceAccount: file,
-    });
-
-    expect(process.exitCode).toBeUndefined();
-    await expect(
-      fs.readFile(getLocalKeyFile("play-service-account", directory), "utf-8"),
-    ).resolves.toBe('{"type":"service_account"}');
   });
 });
 

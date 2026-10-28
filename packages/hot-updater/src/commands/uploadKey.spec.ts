@@ -6,11 +6,11 @@ import { stripVTControlCharacters } from "node:util";
 
 import {
   createCredentialResolver,
-  getLocalSecretsStore,
   loadConfig,
   p,
   readLocalKey,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
+  writeLocalKey,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
@@ -222,7 +222,7 @@ const configure = (
   },
 ) => {
   vi.mocked(loadConfig).mockResolvedValue({
-    secrets: withLocalKeyStore(secrets),
+    secrets: resolveSecretsAdapter(secrets),
     nativeBuild,
   } as never);
 };
@@ -386,7 +386,7 @@ describe("hot-updater secrets issue android-keystore", () => {
 
     // native-build resolves signing.keystore "secret:release-keystore" so.
     const resolver = createCredentialResolver({
-      secrets: withLocalKeyStore(store),
+      secrets: resolveSecretsAdapter(store),
     });
     try {
       const keystore = await resolver.resolve({
@@ -407,8 +407,7 @@ describe("hot-updater secrets issue android-keystore", () => {
 
   it("with a team's adapter, reads and writes only there: a copy on this machine is no stored key", async () => {
     const { store, held } = writableStore();
-    const local = getLocalSecretsStore(withLocalKeyStore(store));
-    await local.write("android-keystore", '{"stale":"copy"}', directory);
+    await writeLocalKey("android-keystore", '{"stale":"copy"}', directory);
 
     await withTTY(true, () => handleUploadKeyIssue());
 
@@ -416,28 +415,10 @@ describe("hot-updater secrets issue android-keystore", () => {
     expect(store.set).toHaveBeenCalledTimes(1);
     expect(JSON.parse(held.get("android-keystore")!).keyAlias).toBe("upload");
     // The file on this machine is neither read as the key nor written.
-    expect(await local.read("android-keystore", directory)).toBe(
+    expect(await readLocalKey("android-keystore", directory)).toBe(
       '{"stale":"copy"}',
     );
     expect(logged("success")).toContain("Source   spec://android-keystore");
-  });
-
-  it("refuses a read-only adapter in one line, before creating a key", async () => {
-    const readOnly = {
-      name: "env-store",
-      describe: (name: string) => `env://${name}`,
-      get: vi.fn(async () => ({})),
-    } satisfies SecretsAdapter;
-    configure(readOnly);
-
-    await withTTY(true, () => handleUploadKeyIssue());
-
-    expect(process.exitCode).toBe(1);
-    expect(logged("error")).toBe(
-      "The env-store secrets adapter is read-only: add android-keystore there.",
-    );
-    expect(keytoolCalls).toEqual([]);
-    expect(await readLocalKey("android-keystore", directory)).toBeUndefined();
   });
 
   it("fails when the adapter doesn't read the key back as stored, keeping nothing on this machine", async () => {
@@ -681,23 +662,6 @@ describe("hot-updater google-play login's upload key", () => {
         "Or store yours: npx hot-updater secrets put --help",
       ].join("\n"),
     );
-  });
-
-  it("refuses a read-only adapter before asking anything", async () => {
-    configure({
-      name: "env-store",
-      describe: (name: string) => `env://${name}`,
-      get: vi.fn(async () => ({})),
-    });
-
-    await withTTY(true, () => handleGooglePlayUploadKey());
-
-    expect(process.exitCode).toBe(1);
-    expect(logged("error")).toBe(
-      "The env-store secrets adapter is read-only: add android-keystore there.",
-    );
-    expect(select).not.toHaveBeenCalled();
-    expect(keytoolCalls).toEqual([]);
   });
 
   it("creates a new upload key when chosen, as secrets issue does", async () => {

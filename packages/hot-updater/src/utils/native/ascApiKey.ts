@@ -17,11 +17,10 @@ import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   type IssuedCredentialPolicy,
-  keepIssuedCopy,
   offerIssuedKeyToGitHub,
   prepareIssuedCredential,
   storeIssuedCredential,
-  type WritableSecrets,
+  withIssuedValue,
 } from "./issuedCredential";
 
 const POLICY: IssuedCredentialPolicy = {
@@ -72,11 +71,8 @@ export type EnsureAscApiKeyResult =
   | {
       readonly status: "issued";
       readonly keyId: string;
-      /**
-       * Set when the adapter does not read the key back here, such as a
-       * write-only store: the adapter this run reads it with, from a copy.
-       */
-      readonly secrets?: SecretsAdapter;
+      /** The adapter the rest of this run reads with: the key from memory. */
+      readonly secrets: SecretsAdapter;
     };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -105,13 +101,14 @@ const errorText = (error: unknown) =>
 /**
  * Stores `key` as `name`, one JSON value `{"keyId","issuerId","p8"}`, and
  * reads it back. The key is revoked again, with the session it was issued
- * in, only when the adapter surely does not hold it; one it may hold is
- * kept, since revoking it would leave the store with a dead key.
+ * in, when the adapter does not read it back as stored; one a failed write
+ * may have stored is kept, since revoking it would leave the store with a
+ * dead key.
  */
 const storedValue = (key: IssuedAscApiKey) =>
   JSON.stringify({ keyId: key.keyId, issuerId: key.issuerId, p8: key.p8 });
 
-/** Revokes `key`, which surely is stored nowhere, and says so. */
+/** Revokes `key`, which the adapter does not hold, and says so. */
 const revokeNotStored = async (
   key: IssuedAscApiKey,
   error: CredentialNotStoredError,
@@ -128,15 +125,15 @@ const revokeNotStored = async (
 };
 
 const storeIssued = async (
-  secrets: WritableSecrets,
+  secrets: SecretsAdapter,
   name: string,
   key: IssuedAscApiKey,
-): Promise<{ readonly readable: boolean }> => {
+): Promise<void> => {
   const value = storedValue(key);
   // Masked before it is sent, so no failure can print it.
   registerCredentialValue(value);
   try {
-    return await storeIssuedCredential({
+    await storeIssuedCredential({
       secrets,
       name,
       value,
@@ -166,10 +163,11 @@ const storeIssued = async (
  *
  * Only then does the developer sign in with their Apple Account, through
  * `issue`, and the issued key is stored through the config's adapter, or
- * `localSecrets()`'s store by default, read back, and revoked with the
- * same session if nothing holds it. A key the default store keeps comes
- * with an offer to store it as a GitHub Actions secret too, and every
- * issued key with where to revoke the ones no machine uses anymore.
+ * `localSecrets()` by default, read back, and revoked with the same
+ * session unless the adapter reads back exactly that key. A key
+ * `localSecrets()` keeps comes with an offer to store it as a GitHub
+ * Actions secret too, and every issued key with where to revoke the ones
+ * no machine uses anymore.
  */
 export const ensureAscApiKey = async ({
   name,
@@ -234,7 +232,7 @@ export const ensureAscApiKey = async ({
     },
   });
   try {
-    const { readable } = await storeIssued(store, name, key);
+    await storeIssued(store, name, key);
     p.log.success(
       ui.block("App Store Connect API key stored", [
         name !== POLICY.kind && ui.kv("Name", name),
@@ -248,17 +246,11 @@ export const ensureAscApiKey = async ({
       secrets: store,
       ...(githubSecrets ? { githubSecrets } : {}),
     });
-    if (readable) return { status: "issued", keyId: key.keyId };
-    // The adapter keeps the key, which builds here would not find.
+    // This run reads the key from memory; builds after it, from the adapter.
     return {
       status: "issued",
       keyId: key.keyId,
-      secrets: await keepIssuedCopy({
-        policy: POLICY,
-        name,
-        value: storedValue(key),
-        secrets: store,
-      }),
+      secrets: withIssuedValue(store, name, storedValue(key)),
     };
   } finally {
     await key.dispose();

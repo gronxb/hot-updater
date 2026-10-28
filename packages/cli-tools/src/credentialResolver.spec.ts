@@ -12,13 +12,14 @@ import {
 } from "./credentialResolver";
 import { writeLocalKey } from "./localKeyStore";
 import { maskSecretValues } from "./secretMasking";
-import { setConfiguredSecrets, withLocalKeyStore } from "./secrets";
+import { setConfiguredSecrets, resolveSecretsAdapter } from "./secrets";
 
 /** A secrets adapter holding `values`, whose `get` records each call. */
 const fakeSecrets = (
   values: Readonly<Record<string, string>>,
 ): SecretsAdapter & { get: ReturnType<typeof vi.fn> } => ({
   name: "fake",
+  set: async () => {},
   get: vi.fn(async (names: readonly string[]) =>
     Object.fromEntries(names.map((name) => [name, values[name]])),
   ),
@@ -51,7 +52,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  setConfiguredSecrets(withLocalKeyStore());
+  setConfiguredSecrets(resolveSecretsAdapter());
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await fs.rm(directory, { force: true, recursive: true });
@@ -292,6 +293,7 @@ describe("createCredentialResolver", () => {
     const resolver = createCredentialResolver({
       secrets: {
         name: "aws",
+        set: async () => {},
         get: async () => {
           throw reason;
         },
@@ -461,6 +463,7 @@ describe("credential temporary files", () => {
     const resolver = createCredentialResolver({
       secrets: {
         name: "late",
+        set: async () => {},
         get: async () => {
           await released;
           return {

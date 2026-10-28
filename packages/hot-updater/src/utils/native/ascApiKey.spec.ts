@@ -62,10 +62,9 @@ import {
   getCwd,
   getLocalKeyFile,
   maskSecretValues,
-  readLocalKey,
   setConfiguredSecrets,
   withCredentialResolver,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -82,12 +81,10 @@ const P8 =
  */
 const fakeStore = ({
   values = {},
-  writable = true,
   setError,
   readBack,
 }: {
   values?: Record<string, string>;
-  writable?: boolean;
   setError?: Error;
   readBack?: () => Promise<string | undefined>;
 } = {}) => {
@@ -108,16 +105,12 @@ const fakeStore = ({
         ),
       );
     },
-    ...(writable
-      ? {
-          set: async (name: string, value: string) => {
-            calls.push(`set ${name}`);
-            written = true;
-            if (setError) throw setError;
-            held.set(name, value);
-          },
-        }
-      : {}),
+    set: async (name: string, value: string) => {
+      calls.push(`set ${name}`);
+      written = true;
+      if (setError) throw setError;
+      held.set(name, value);
+    },
   };
   setConfiguredSecrets(store);
   return { store, held, calls };
@@ -203,7 +196,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await fs.rm(tmp, { recursive: true, force: true });
-  setConfiguredSecrets(withLocalKeyStore());
+  setConfiguredSecrets(resolveSecretsAdapter());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -267,7 +260,7 @@ describe("ensureAscApiKey", () => {
 
   it("never signs in in CI with the default store, writing nothing", async () => {
     vi.stubEnv("CI", "true");
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
@@ -276,11 +269,11 @@ describe("ensureAscApiKey", () => {
   });
 
   it("says before signing in that this machine has no key, stores the issued key in `localSecrets()`'s store, and names where to prune old keys", async () => {
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     git.remote = undefined;
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
 
-    expect(result).toEqual({ status: "issued", keyId: "KEY1234567" });
+    expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
     const file = keyFile("asc-api-key");
     expect(file.startsWith(path.join(tmp, "home", "secrets") + path.sep)).toBe(
       true,
@@ -343,24 +336,8 @@ describe("ensureAscApiKey", () => {
     expect(printed()).not.toContain("on this machine. Signing in issues");
   });
 
-  it("stores the key of a read-only adapter in `localSecrets()`'s store, where builds here read it", async () => {
-    fakeStore({ writable: false });
-    const githubSecrets = vi.fn();
-    await expect(
-      withTTY(true, () => ensure({ name: "widget-asc", githubSecrets })),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
-    // A GitHub Actions secret would not be read through another adapter.
-    expect(confirm).not.toHaveBeenCalled();
-    expect(githubSecrets).not.toHaveBeenCalled();
-    expect(JSON.parse((await readLocalKey("widget-asc", getCwd()))!)).toEqual({
-      keyId: "KEY1234567",
-      issuerId: "issuer-1",
-      p8: P8,
-    });
-  });
-
   it("revokes the key when `localSecrets()`'s store can't be written", async () => {
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     // A file where `localSecrets()`'s store's home goes.
     await fs.writeFile(path.join(tmp, "home"), "");
     await expect(
@@ -370,7 +347,7 @@ describe("ensureAscApiKey", () => {
   });
 
   it("stores the key as a GitHub Actions secret too, once, when the developer agrees", async () => {
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     const set = vi.fn(async () => {});
     const githubSecrets = vi.fn(() => ({ name: "github", get: vi.fn(), set }));
     confirm.mockResolvedValue(true);
@@ -404,7 +381,7 @@ describe("ensureAscApiKey", () => {
   ])(
     "keeps the key on this machine alone when the developer %s the GitHub Actions offer",
     async (_, answer, cancelled) => {
-      setConfiguredSecrets(withLocalKeyStore());
+      setConfiguredSecrets(resolveSecretsAdapter());
       const set = vi.fn(async () => {});
       confirm.mockResolvedValue(answer);
       isCancel.mockImplementation((value) => cancelled && value === answer);
@@ -426,7 +403,7 @@ describe("ensureAscApiKey", () => {
   );
 
   it("reports a failed GitHub Actions write, keeping the key on this machine", async () => {
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     confirm.mockResolvedValue(true);
     await expect(
       withTTY(true, () =>
@@ -453,7 +430,7 @@ describe("ensureAscApiKey", () => {
     ["no GitHub token", { token: undefined }],
     ["a remote elsewhere", { remote: "https://gitlab.com/acme/app.git" }],
   ])("offers nothing with %s", async (_, lookup) => {
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     Object.assign(git, lookup);
     const githubSecrets = vi.fn();
     await withTTY(true, () => ensure({ name: "asc-api-key", githubSecrets }));
@@ -466,7 +443,7 @@ describe("ensureAscApiKey", () => {
 
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    ).resolves.toMatchObject({ status: "issued", keyId: "KEY1234567" });
 
     expect(calls).toEqual([
       "get asc-api-key",
@@ -550,24 +527,52 @@ describe("ensureAscApiKey", () => {
     });
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    ).resolves.toMatchObject({ status: "issued", keyId: "KEY1234567" });
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps the key when the adapter reads back another value", async () => {
-    fakeStore({ readBack: async () => '{"keyId":"OTHER"}' });
-    await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).rejects.toThrow(
-      [
-        "Couldn't confirm the spec-store secrets adapter stored asc-api-key.",
-        "It reads back another value for asc-api-key.",
-        "If spec://asc-api-key lacks key KEY1234567, revoke it at:",
-        "https://appstoreconnect.apple.com/access/integrations/api",
-      ].join("\n"),
-    );
-    expect(issued.revoke).not.toHaveBeenCalled();
-  });
+  it.each([
+    [
+      "another value",
+      async () => '{"keyId":"OTHER"}',
+      "reads back another value for asc-api-key.",
+    ],
+    [
+      "nothing, as a write-only store does",
+      async () => undefined,
+      "reads back nothing for asc-api-key.",
+    ],
+    [
+      "an error",
+      async () => {
+        throw new Error("ThrottlingException");
+      },
+      "can't read back asc-api-key: ThrottlingException",
+    ],
+  ])(
+    "revokes the key when the adapter reads back %s, and copies it nowhere",
+    async (_, readBack, reason) => {
+      fakeStore({ readBack });
+      // A key planted where localSecrets() keeps keys is neither read nor written.
+      await fs.mkdir(path.dirname(keyFile("asc-api-key")), { recursive: true });
+      await fs.writeFile(keyFile("asc-api-key"), '{"keyId":"OLDKEY0001"}');
+
+      const error = await withTTY(true, () =>
+        ensure({ name: "asc-api-key" }),
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(AscApiKeyNotStoredError);
+      expect((error as Error).message).toBe(
+        `Couldn't store the App Store Connect API key KEY1234567, so it was revoked.\nThe spec-store secrets adapter ${reason}`,
+      );
+      expect(issued.revoke).toHaveBeenCalledTimes(1);
+      expect(issued.dispose).toHaveBeenCalledTimes(1);
+      await expect(fs.readFile(keyFile("asc-api-key"), "utf-8")).resolves.toBe(
+        '{"keyId":"OLDKEY0001"}',
+      );
+      expect(printed()).not.toContain("copied to this machine");
+    },
+  );
 
   it("keeps the key when nothing confirms whether the adapter stored it", async () => {
     fakeStore({
@@ -584,72 +589,21 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a copy of a key a write-only adapter stored in `localSecrets()`'s store, which builds here read, and never revokes it", async () => {
-    const { held } = fakeStore({ readBack: async () => undefined });
+  it("reads the issued key from memory for the rest of the run, and every other name from the adapter", async () => {
+    const { calls } = fakeStore({ values: { other: "kept" } });
     const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
-
-    const file = keyFile("asc-api-key");
-    expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
-    const copy = await fs.readFile(file, "utf-8");
-    expect(copy).toBe(held.get("asc-api-key"));
-    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     const { secrets } = result as { secrets: SecretsAdapter };
-    await expect(secrets.get(["asc-api-key"], { cwd: tmp })).resolves.toEqual({
-      "asc-api-key": copy,
+    calls.length = 0;
+
+    const read = await secrets.get(["asc-api-key", "other"], { cwd: tmp });
+
+    expect(JSON.parse(read["asc-api-key"]!)).toMatchObject({
+      keyId: "KEY1234567",
+      p8: P8,
     });
-
-    const kept = stripVTControlCharacters(
-      String(
-        log.info.mock.calls.find(([message]) =>
-          String(message).includes("copied to this machine"),
-        )![0],
-      ),
-    );
-    expect(kept).toMatch(
-      /^App Store Connect API key copied to this machine\nSource {2}\S*asc-api-key\.json$/u,
-    );
-    expect(printed()).not.toContain("MIGHAgEA");
-    expect(issued.revoke).not.toHaveBeenCalled();
-    expect(issued.dispose).toHaveBeenCalledTimes(1);
-
-    // The next build here reads the copy, and signs in no more.
-    vi.clearAllMocks();
-    await expect(
-      withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).resolves.toEqual({ status: "stored" });
-    expect(issue).not.toHaveBeenCalled();
-  });
-
-  it("replaces the copy of a key a write-only adapter stored when --replace issues another", async () => {
-    const { held } = fakeStore({ readBack: async () => undefined });
-    await fs.mkdir(path.dirname(keyFile("asc-api-key")), { recursive: true });
-    await fs.writeFile(keyFile("asc-api-key"), '{"keyId":"OLDKEY0001"}');
-
-    const result = await withTTY(true, () =>
-      ensure({ name: "asc-api-key", replace: true, replacing: true }),
-    );
-
-    expect(result).toMatchObject({ status: "issued", keyId: "KEY1234567" });
-    expect(await fs.readFile(keyFile("asc-api-key"), "utf-8")).toBe(
-      held.get("asc-api-key"),
-    );
-    expect(issued.revoke).not.toHaveBeenCalled();
-  });
-
-  it("uses the key from memory when its copy can't be written", async () => {
-    fakeStore({ readBack: async () => undefined });
-    await fs.writeFile(path.join(tmp, "home"), "");
-    const result = await withTTY(true, () => ensure({ name: "asc-api-key" }));
-    const { secrets } = result as { secrets: SecretsAdapter };
-    expect(
-      JSON.parse(
-        (await secrets.get(["asc-api-key"], { cwd: tmp }))["asc-api-key"]!,
-      ),
-    ).toMatchObject({ keyId: "KEY1234567", p8: P8 });
-    expect(String(log.warn.mock.calls[0]![0])).toMatch(
-      /^Couldn't copy asc-api-key to this machine: ENOTDIR\n\S+asc-api-key\.json\nOnly this build, and builds that read spec-store, use the key\.$/u,
-    );
-    expect(issued.revoke).not.toHaveBeenCalled();
+    expect(read["other"]).toBe("kept");
+    expect(calls).toEqual(["get other"]);
+    await expect(fs.access(keyFile("asc-api-key"))).rejects.toThrow();
   });
 
   it("stores through a class adapter, keeping its methods and their receiver", async () => {
@@ -670,7 +624,7 @@ describe("ensureAscApiKey", () => {
 
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key" })),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    ).resolves.toMatchObject({ status: "issued", keyId: "KEY1234567" });
     expect(
       JSON.parse((await store.get(["asc-api-key"]))["asc-api-key"]!),
     ).toMatchObject({
@@ -746,7 +700,7 @@ describe("ensureAscApiKey", () => {
     const { calls, held } = fakeStore({ values: { "asc-api-key": previous } });
     await expect(
       withTTY(true, () => ensure({ name: "asc-api-key", replace: true })),
-    ).resolves.toEqual({ status: "issued", keyId: "KEY1234567" });
+    ).resolves.toMatchObject({ status: "issued", keyId: "KEY1234567" });
     // One write and its read-back: no read before the sign-in.
     expect(calls).toEqual(["set asc-api-key", "get asc-api-key"]);
     expect(JSON.parse(held.get("asc-api-key")!)).toMatchObject({

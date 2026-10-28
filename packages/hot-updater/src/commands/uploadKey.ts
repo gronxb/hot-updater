@@ -79,23 +79,6 @@ type HeldKey =
     }
   | { readonly status: "missing" };
 
-/**
- * The adapter the keystore is read from and stored in: the config's own,
- * never a file on this machine under it, so every teammate reads the one
- * key; `localSecrets()`'s store only when the config sets no other.
- */
-const keystoreStore = (secrets: SecretsAdapter): SecretsAdapter =>
-  getConfiguredAdapter(secrets) ?? secrets;
-
-/** Refuses an adapter that stores nothing, before a key is created or read. */
-const assertWritable = (store: SecretsAdapter, name: string) => {
-  if (!store.set) {
-    throw new Error(
-      `The ${store.name} secrets adapter is read-only: add ${name} there.`,
-    );
-  }
-};
-
 const readHeldKey = async (
   secrets: SecretsAdapter,
   name: string,
@@ -103,18 +86,7 @@ const readHeldKey = async (
 ): Promise<HeldKey> => {
   const overrides = environmentOverrides(KIND, name, secrets, env);
   if (overrides.length > 0) return { status: "environment", overrides };
-  const cwd = getCwd();
-  const configured = getConfiguredAdapter(secrets);
-  let found: { readonly value: string; readonly source: string } | undefined;
-  if (configured) {
-    const value = (await configured.get([name], { cwd }))[name];
-    found =
-      typeof value === "string" && value
-        ? { value, source: describeSecret(configured, name) }
-        : undefined;
-  } else {
-    found = await readSecretWithSource(secrets, name, cwd);
-  }
+  const found = await readSecretWithSource(secrets, name, getCwd());
   if (found === undefined) return { status: "missing" };
   // Masked before anything can print it: only its alias is named.
   registerCredentialValue(found.value);
@@ -197,7 +169,7 @@ const readEnvironmentCertificate = async (
 };
 
 /**
- * Stores a keystore's `value` as `name` in `keystoreStore`, and reads it
+ * Stores a keystore's `value` as `name` through `secrets`, and reads it
  * back there: only an exact match counts as stored, so a store that loses
  * or never returns it fails here, not on a teammate's build. No copy is
  * kept on this machine.
@@ -209,21 +181,19 @@ const storeUploadKey = async (
 ): Promise<void> => {
   // Masked before it is sent, so no failure can print it.
   registerCredentialValue(value);
-  const store = keystoreStore(secrets);
-  assertWritable(store, name);
   const cwd = getCwd();
   try {
-    await store.set!(name, value, { cwd });
+    await secrets.set(name, value, { cwd });
   } catch (error) {
     throw new Error(
-      `The ${store.name} secrets adapter didn't store ${name}.\n${errorText(error)}`,
+      `The ${secrets.name} secrets adapter didn't store ${name}.\n${errorText(error)}`,
       { cause: error },
     );
   }
   let held: string | undefined;
   let reason = "It reads back another value.";
   try {
-    held = (await store.get([name], { cwd }))[name];
+    held = (await secrets.get([name], { cwd }))[name];
     if (held === undefined) reason = "It reads back nothing.";
   } catch (error) {
     reason = errorText(error);
@@ -231,10 +201,10 @@ const storeUploadKey = async (
   if (held !== value) {
     throw new Error(
       [
-        `The ${store.name} secrets adapter doesn't read ${name} back as stored.`,
+        `The ${secrets.name} secrets adapter doesn't read ${name} back as stored.`,
         reason,
         getConfiguredAdapter(secrets)
-          ? `Nothing is kept on this machine: check ${describeSecret(store, name)}.`
+          ? `Nothing is kept on this machine: check ${describeSecret(secrets, name)}.`
           : `Check ${describeStoredSecret(secrets, name)}.`,
       ].join("\n"),
     );
@@ -388,9 +358,6 @@ export const handleUploadKeyIssue = async (
       );
       return;
     }
-    // Refused before a key exists that it could not store.
-    assertWritable(keystoreStore(secrets), name);
-
     const reason = nonInteractiveReason();
     if (reason !== undefined) {
       throw new Error(
@@ -676,8 +643,6 @@ export const handleGooglePlayUploadKey = async (): Promise<void> => {
         continue;
       }
 
-      // Refused before a key is created or asked for that it could not store.
-      assertWritable(keystoreStore(secrets), name);
       const reason = nonInteractiveReason();
       if (reason !== undefined) {
         throw new Error(

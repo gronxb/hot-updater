@@ -263,6 +263,7 @@ describe("native-build android --submit play-internal", () => {
     vi.mocked(ensurePlayServiceAccount).mockResolvedValueOnce({
       status: "issued",
       email: "hot-updater-play@p.iam.gserviceaccount.com",
+      secrets: { name: "spec", set: async () => {}, get: async () => ({}) },
     });
     vi.mocked(uploadToPlay).mockRejectedValueOnce(
       new Error("Opening a Google Play edit failed (HTTP 403)."),

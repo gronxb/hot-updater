@@ -45,7 +45,7 @@ import {
   getLocalKeyFile,
   maskSecretValues,
   setConfiguredSecrets,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -67,12 +67,10 @@ const KEY_FILE = JSON.stringify({
  */
 const fakeStore = ({
   values = {},
-  writable = true,
   setError,
   readBack,
 }: {
   values?: Record<string, string>;
-  writable?: boolean;
   setError?: Error;
   readBack?: () => Promise<string | undefined>;
 } = {}) => {
@@ -93,16 +91,12 @@ const fakeStore = ({
         ),
       );
     },
-    ...(writable
-      ? {
-          set: async (name: string, value: string) => {
-            calls.push(`set ${name}`);
-            written = true;
-            if (setError) throw setError;
-            held.set(name, value);
-          },
-        }
-      : {}),
+    set: async (name: string, value: string) => {
+      calls.push(`set ${name}`);
+      written = true;
+      if (setError) throw setError;
+      held.set(name, value);
+    },
   };
   setConfiguredSecrets(store);
   return { store, held, calls };
@@ -178,7 +172,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await fs.rm(tmp, { recursive: true, force: true });
-  setConfiguredSecrets(withLocalKeyStore());
+  setConfiguredSecrets(resolveSecretsAdapter());
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -247,13 +241,13 @@ describe("ensurePlayServiceAccount", () => {
   });
 
   it("says this machine has no key, stores the issued key in `localSecrets()`'s store, names where to delete old keys, and the next run reuses it", async () => {
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
 
     const result = await withTTY(true, () =>
       ensure({ name: "play-service-account" }),
     );
     const file = keyFile("play-service-account");
-    expect(result).toEqual({ status: "issued", email: EMAIL });
+    expect(result).toMatchObject({ status: "issued", email: EMAIL });
     await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
     expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     expect((await fs.stat(path.dirname(file))).mode & 0o777).toBe(0o700);
@@ -293,7 +287,7 @@ describe("ensurePlayServiceAccount", () => {
 
   it("never signs in in CI with the default store, writing nothing", async () => {
     vi.stubEnv("CI", "true");
-    setConfiguredSecrets(withLocalKeyStore());
+    setConfiguredSecrets(resolveSecretsAdapter());
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
     ).rejects.toBeInstanceOf(CredentialSetupRefusedError);
@@ -311,7 +305,7 @@ describe("ensurePlayServiceAccount", () => {
           packageNames: ["com.example.app"],
         }),
       ),
-    ).resolves.toEqual({ status: "issued", email: EMAIL });
+    ).resolves.toMatchObject({ status: "issued", email: EMAIL });
 
     expect(calls).toEqual([
       "get play-service-account",
@@ -360,7 +354,7 @@ describe("ensurePlayServiceAccount", () => {
 
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).resolves.toEqual({ status: "issued", email: EMAIL });
+    ).resolves.toMatchObject({ status: "issued", email: EMAIL });
   });
 
   it("deletes the key again when the adapter refuses it, and says what remains", async () => {
@@ -403,7 +397,7 @@ describe("ensurePlayServiceAccount", () => {
 
     await expect(
       withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).resolves.toEqual({ status: "issued", email: EMAIL });
+    ).resolves.toMatchObject({ status: "issued", email: EMAIL });
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
@@ -428,20 +422,20 @@ describe("ensurePlayServiceAccount", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("keeps a copy of a key a write-only adapter stored, which this run reads", async () => {
+  it("deletes a key a write-only adapter doesn't read back, and copies it nowhere", async () => {
     fakeStore({ readBack: async () => undefined });
 
-    const result = await withTTY(true, () =>
-      ensure({ name: "play-service-account" }),
-    );
-    expect(result).toMatchObject({ status: "issued", email: EMAIL });
-    const file = keyFile("play-service-account");
-    await expect(fs.readFile(file, "utf-8")).resolves.toBe(KEY_FILE);
-    const { secrets } = result as { secrets: SecretsAdapter };
     await expect(
-      secrets.get(["play-service-account"], { cwd: tmp }),
-    ).resolves.toEqual({ "play-service-account": KEY_FILE });
-    expect(issued.revoke).not.toHaveBeenCalled();
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).rejects.toThrow(
+      [
+        "The spec-store secrets adapter didn't store play-service-account.",
+        "The spec-store secrets adapter reads back nothing for play-service-account.",
+        `The key abc123 was deleted; the next run reuses ${EMAIL}.`,
+      ].join("\n"),
+    );
+    expect(issued.revoke).toHaveBeenCalledTimes(1);
+    await expect(fs.access(keyFile("play-service-account"))).rejects.toThrow();
   });
 });
 

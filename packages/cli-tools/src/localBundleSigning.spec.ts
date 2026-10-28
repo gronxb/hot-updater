@@ -14,7 +14,7 @@ import {
   normalizeSigningConfig,
 } from "./localBundleSigning";
 import { maskSecretValues } from "./secretMasking";
-import { withLocalKeyStore } from "./secrets";
+import { resolveSecretsAdapter } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -167,6 +167,7 @@ const fakeSecrets = (values: Record<string, string>) => {
   );
   const secrets: SecretsAdapter = {
     name: "fake",
+    set: async () => {},
     get,
     describe: (name) => `fake://store/${name}`,
   };
@@ -245,7 +246,7 @@ describe("local signing with privateKey from a secret", () => {
     );
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:env-signing-key" },
-      { secrets: withLocalKeyStore() },
+      { secrets: resolveSecretsAdapter() },
     );
 
     await expect(signing.getPublicKey({ cwd })).resolves.toEqual({
@@ -269,7 +270,7 @@ describe("local signing with privateKey from a secret", () => {
     const cwd = await createTempDir();
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:bundle-signing-key" },
-      { secrets: withLocalKeyStore() },
+      { secrets: resolveSecretsAdapter() },
     );
 
     await expect(signing.getPublicKey({ cwd })).rejects.toThrow(
@@ -280,6 +281,7 @@ describe("local signing with privateKey from a secret", () => {
   it("reports an unreadable store, and refuses a value that is no key without quoting it", async () => {
     const failing: SecretsAdapter = {
       name: "fake",
+      set: async () => {},
       get: async () => {
         throw new Error("permission denied");
       },

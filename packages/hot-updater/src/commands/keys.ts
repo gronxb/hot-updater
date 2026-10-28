@@ -109,15 +109,13 @@ const ignorePrivateKey = (cwd: string, outputDir: string) => {
       : "unchanged";
 };
 
-type WritableSecrets = SecretsAdapter & Required<Pick<SecretsAdapter, "set">>;
-
 /**
  * Stores the private key as `name` and reads it back. The public key file
  * is created first, so an existing one fails before anything is stored, and
  * removed if storing fails.
  */
 const storePrivateKey = async (
-  secrets: WritableSecrets,
+  secrets: SecretsAdapter,
   name: string,
   keyPair: KeyPair,
   outputDir: string,
@@ -125,11 +123,11 @@ const storePrivateKey = async (
 ) => {
   await savePublicKey(keyPair.publicKey, outputDir, async () => {
     await secrets.set(name, keyPair.privateKey, { cwd });
-    // A write-only store, such as GitHub Actions secrets, reads nothing back.
+    // A key the adapter doesn't read back is one no build signs with.
     const stored = (await secrets.get([name], { cwd }))[name];
-    if (stored !== undefined && stored.trim() !== keyPair.privateKey.trim()) {
+    if (stored?.trim() !== keyPair.privateKey.trim()) {
       throw new Error(
-        `The ${secrets.name} secrets adapter stored ${name}, but reads back another value.`,
+        `The ${secrets.name} secrets adapter reads back ${stored === undefined ? "nothing" : "another value"} for ${name}.`,
       );
     }
   });
@@ -187,15 +185,8 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
     const publicKeyPath = path.join(outputDir, "public-key.pem");
     if (secrets !== undefined && secretName !== undefined) {
-      // The config's adapter, or `localSecrets()`'s store, which stores
-      // what an adapter can't.
-      await storePrivateKey(
-        secrets as WritableSecrets,
-        secretName,
-        keyPair,
-        outputDir,
-        cwd,
-      );
+      // The config's adapter, or `localSecrets()` by default.
+      await storePrivateKey(secrets, secretName, keyPair, outputDir, cwd);
       spinner.clear();
       p.log.success(
         ui.block("Keys generated", [
