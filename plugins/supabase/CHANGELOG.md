@@ -1,5 +1,15 @@
 # @hot-updater/supabase
 
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies [3c00e7a]
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/server@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
 ## 1.2.0-rc.2
 
 ### Patch Changes
