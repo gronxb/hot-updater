@@ -68,9 +68,17 @@ export const prepareDynamoDBDeployment = async (input: {
   await migrateDynamoDB(input, [insights(), apiKeys(), remoteConfig()]);
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+    secretsEnv,
+  );
   const { managedEnv } = initEnvSources;
   const providerEnv = getHotUpdaterInitInputEnv(initEnvSources, nonInteractive);
   const savedInputs = resolveAwsInitInputs(providerEnv);
@@ -424,10 +432,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build, configAuthMode), {
-    cwd: process.cwd(),
-    settings: "AWS",
-  });
+  await writeHotUpdaterFiles(
+    getConfigScaffold(build, configAuthMode, {
+      region: bucketRegion,
+      bucketName,
+      tableName: resolvedDynamoDBTableName,
+      cloudfrontDistributionId: distributionId,
+    }),
+    {
+      cwd: process.cwd(),
+      settings: "AWS",
+    },
+  );
 
   // The app's server URL is the CloudFront domain.
   printAppSetup({

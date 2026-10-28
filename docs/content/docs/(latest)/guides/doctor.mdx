@@ -19,6 +19,7 @@ work:
 - The server's database has run the migrations its core and plugins need
 - The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
+- Where each credential the config reads with `secretEnv` comes from
 
 Doctor only reports: it writes nothing, and each issue names the command or
 edit that [resolves it](#resolve-issues).
@@ -409,6 +410,20 @@ test.
 
 To preview a proposed change to one Bundle's policy, use
 [`bundle update --dry-run`](/docs/guides/console#preview-and-protect-automated-changes).
+
+## Check secrets
+
+Doctor lists each name the config reads with
+[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), and
+where a command finds it: set by the environment, which wins, in the
+`secrets` adapter, or missing. It reads the adapter once and writes nothing.
+A missing name is a warning: a teammate stores it, or runs
+[`secrets import`](/docs/concepts/secrets#managed-projects) where
+`.env.hotupdater` has it.
+
+With a team store, doctor also names a managed credential the config still
+reads with `process.env`, which the store never supplies. Running init
+again rewrites it.
 
 ## Update Package Versions
 

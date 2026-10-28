@@ -20,8 +20,15 @@ import { createCosmosStore, currentCosmosEngine } from "./cosmosStore";
  */
 export type CosmosDatabaseConfig = Omit<
   CosmosClientOptions,
-  "consistencyLevel"
+  "consistencyLevel" | "connectionString"
 > & {
+  /**
+   * The account's connection string, or a function that returns it, such as
+   * one that reads it with `secretEnv`: called on the first request, so a
+   * config loads without it. `endpoint` beside a function names the
+   * account to `hot-updater doctor`.
+   */
+  readonly connectionString?: string | (() => string | Promise<string>);
   readonly consistencyLevel?: "Strong";
   /** The database the container lives in. @default "hot-updater" */
   readonly databaseId?: string;
@@ -55,8 +62,16 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
   }
   // Created on the first request, so a config loads without the connection.
   let client: CosmosClient | undefined;
+  const { connectionString } = connection;
   const store = createCosmosStore({
-    client: () => (client ??= new CosmosClient(connection)),
+    client: async () =>
+      (client ??= new CosmosClient({
+        ...connection,
+        connectionString:
+          typeof connectionString === "function"
+            ? await connectionString()
+            : connectionString,
+      })),
     databaseId,
     containerId,
     // What every migration path checks a reused container against.
@@ -96,7 +111,10 @@ const accountHostOf = ({
   connectionString,
 }: CosmosDatabaseConfig) => {
   const url =
-    endpoint ?? connectionString?.match(/AccountEndpoint=([^;]+)/iu)?.[1];
+    endpoint ??
+    (typeof connectionString === "string"
+      ? connectionString.match(/AccountEndpoint=([^;]+)/iu)?.[1]
+      : undefined);
   try {
     return url === undefined ? undefined : new URL(url).hostname;
   } catch {

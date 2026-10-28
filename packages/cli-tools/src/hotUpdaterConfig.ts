@@ -108,7 +108,28 @@ const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",
   "commonOptions",
   "credential",
+  "databaseSecrets",
+  "deploySecrets",
+  "storageSecrets",
 ]);
+
+/**
+ * `const <name> = secretEnv([...names])`, a helper a managed config reads
+ * credentials with: from the environment and `.env.hotupdater` first, then
+ * from the config's `secrets` adapter. `storageSecrets` and
+ * `databaseSecrets` read each adapter's own, so a command that reaches only
+ * one needs only its credentials; `deploySecrets` reads what both share.
+ * Its builder imports `secretEnv` from `hot-updater`.
+ */
+export const secretEnvHelper = (
+  name: "databaseSecrets" | "deploySecrets" | "storageSecrets",
+  names: readonly string[],
+): ManagedHelperStatement => ({
+  name,
+  strategy: "replace",
+  code: `const ${name} = secretEnv([\n${names.map((variable) => `  ${JSON.stringify(variable)},`).join("\n")}\n]);`,
+});
+
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 /** Build adapter packages, whose imports a kept build still needs. */
 const BUILD_IMPORT_PACKAGES = new Set(
@@ -313,6 +334,42 @@ const isDataProperty = (
   !property.method &&
   !property.shorthand;
 
+/** `process.env.HOT_UPDATER_*`, with or without `!`. */
+const isHotUpdaterEnvRead = (expression: Expression): boolean => {
+  const read =
+    expression.type === "TSNonNullExpression"
+      ? expression.expression
+      : expression;
+  return (
+    read.type === "MemberExpression" &&
+    !read.computed &&
+    read.property.type === "Identifier" &&
+    read.property.name.startsWith("HOT_UPDATER_") &&
+    read.object.type === "MemberExpression" &&
+    !read.object.computed &&
+    read.object.object.type === "Identifier" &&
+    read.object.object.name === "process" &&
+    read.object.property.type === "Identifier" &&
+    read.object.property.name === "env"
+  );
+};
+
+/**
+ * A value init writes into a managed adapter's options: a string, a
+ * `process.env.HOT_UPDATER_*` read, as configs of 1.1 read every value, or
+ * an object of only those, such as `credentials`. Init replaces it with
+ * what its run resolves; any other value is the project's own and kept.
+ */
+const isInitWrittenValue = (expression: Expression): boolean =>
+  (expression.type === "Literal" && typeof expression.value === "string") ||
+  isHotUpdaterEnvRead(expression) ||
+  (expression.type === "ObjectExpression" &&
+    expression.properties.length > 0 &&
+    expression.properties.every(
+      (property) =>
+        isDataProperty(property) && isInitWrittenValue(property.value),
+    ));
+
 const dedentBlock = (text: string) => {
   const lines = text.replace(/\s+$/, "").split("\n");
   const indents = lines
@@ -453,14 +510,23 @@ const mergeObjectLiteralText = (
       continue;
     }
 
+    // A value init wrote, which init's run now resolves again.
+    if (isInitWrittenValue(property.value)) {
+      edits.push({
+        start: property.value.start - existingObject.objectExpression.start,
+        end: property.value.end - existingObject.objectExpression.start,
+        text: getNodeText(newObject.source, nextProperty.value),
+      });
+      continue;
+    }
+
     const existingCallee = getCallCallee(property.value);
     const nextCallee = getCallCallee(nextProperty.value);
     const hasIncompatibleValue =
       (existingCallee !== null &&
         nextCallee !== null &&
         existingCallee !== nextCallee) ||
-      (property.value.type === "ObjectExpression") !==
-        (nextProperty.value.type === "ObjectExpression");
+      property.value.type !== nextProperty.value.type;
     if (
       replaceIncompatibleProperties.includes(propertyName) &&
       hasIncompatibleValue

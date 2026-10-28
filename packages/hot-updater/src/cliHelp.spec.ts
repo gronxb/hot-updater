@@ -236,7 +236,8 @@ describe("CLI commands", () => {
     const secrets = help("secrets");
     expect(secrets).toMatch(/^\s+put \[options\] <name>\s/m);
     expect(secrets).toMatch(/^\s+issue \[options\] <kind> \[name\]\s/m);
-    for (const removed of ["list", "env", "import", "token"]) {
+    expect(secrets).toMatch(/^\s+import\s+Store the deploy credentials/m);
+    for (const removed of ["list", "env", "token"]) {
       expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
     }
     expect(help("secrets", "put")).not.toContain("--app");

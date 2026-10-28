@@ -43,13 +43,23 @@ const withCode = (error: { code?: string; message: string }) =>
  * be what creates the client, called on the first statement.
  */
 export const supabaseExecutor = (
-  client: SupabaseClient | (() => SupabaseClient),
+  client: SupabaseClient | (() => SupabaseClient | Promise<SupabaseClient>),
 ): SqlExecutor => {
-  let created: SupabaseClient | undefined;
-  const clientOf = () =>
-    typeof client === "function" ? (created ??= client()) : client;
+  let created: Promise<SupabaseClient> | undefined;
+  const clientOf = async () => {
+    if (typeof client !== "function") return client;
+    created ??= Promise.resolve()
+      .then(client)
+      .catch((error: unknown) => {
+        created = undefined;
+        throw error;
+      });
+    return created;
+  };
   const apply = async (statements: readonly SqlStatement[]) => {
-    const { data, error } = await clientOf().rpc(SUPABASE_APPLY_FUNCTION, {
+    const { data, error } = await (
+      await clientOf()
+    ).rpc(SUPABASE_APPLY_FUNCTION, {
       p_statements: statements.map(toApplyStatement),
     });
     if (error) throw withCode(error);

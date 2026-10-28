@@ -2,9 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import { secretEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { initProvider } from "./init/index";
 import { getConfigScaffold } from "./templates";
 
 const tempDirs: string[] = [];
@@ -255,5 +256,112 @@ export default defineConfig({
     expect(scaffold.text).toContain(
       "credentials: fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })",
     );
+  });
+
+  const RESOURCES = {
+    region: "ap-northeast-2",
+    bucketName: "bundles",
+    tableName: "hot-updater",
+    cloudfrontDistributionId: "E123",
+  };
+
+  it("names the resources init set up, and reads an account's keys with secretEnv", () => {
+    expect(getConfigScaffold("bare", { mode: "account" }, RESOURCES).text)
+      .toMatchInlineSnapshot(`
+      "import { dynamoDB, s3Storage } from "@hot-updater/aws";
+      import { bare } from "@hot-updater/bare";
+      import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+      import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+      import { existsSync } from "node:fs";
+
+      if (existsSync(".env.hotupdater")) {
+        process.loadEnvFile(".env.hotupdater");
+      }
+
+      const deploySecrets = secretEnv([
+        "HOT_UPDATER_S3_ACCESS_KEY_ID",
+        "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+      ]);
+
+      const awsOptions = {
+        region: "ap-northeast-2",
+        credentials: async () => {
+          const env = await deploySecrets();
+          return {
+            accessKeyId: env.HOT_UPDATER_S3_ACCESS_KEY_ID,
+            secretAccessKey: env.HOT_UPDATER_S3_SECRET_ACCESS_KEY,
+          };
+        },
+      };
+
+      export default defineConfig({
+        build: bare({ enableHermes: true }),
+        storage: s3Storage({
+          ...awsOptions,
+          bucketName: "bundles",
+        }),
+        database: dynamoDB({
+          ...awsOptions,
+          tableName: "hot-updater",
+          cloudfrontDistributionId: "E123",
+        }),
+        plugins: [apiKeys(), insights(), remoteConfig()],
+        secrets: localSecrets(),
+        updateStrategy: "appVersion", // or "fingerprint"
+      });"
+    `);
+  });
+
+  it("reads the same keys init stores in a team store", () => {
+    const { text } = getConfigScaffold("bare", { mode: "account" }, RESOURCES);
+    const names = [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
+      .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
+      .map((name) => JSON.parse(name) as string)
+      .sort();
+
+    expect(names).toEqual([...initProvider.secrets].sort());
+  });
+
+  it("reads no secret for a profile, which is each person's own", () => {
+    const { text } = getConfigScaffold(
+      "bare",
+      { mode: "sso", profile: "dev" },
+      RESOURCES,
+    );
+
+    expect(text).not.toContain("secretEnv");
+    expect(text).toContain('region: "ap-northeast-2",');
+    expect(text).toContain(
+      "credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })",
+    );
+  });
+
+  it("switches the credentials when init runs again with another sign-in", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-aws-"));
+    tempDirs.push(dir);
+    const configPath = path.join(dir, "hot-updater.config.ts");
+    const sso = getConfigScaffold(
+      "bare",
+      { mode: "sso", profile: "dev" },
+      RESOURCES,
+    );
+    const account = getConfigScaffold("bare", { mode: "account" }, RESOURCES);
+    await fs.writeFile(configPath, `${sso.text}\n`);
+
+    await writeHotUpdaterConfig(account, configPath);
+    const toAccount = await fs.readFile(configPath, "utf8");
+    expect(toAccount).toContain("credentials: async () => {");
+    expect(toAccount).not.toContain("fromSSO");
+
+    await writeHotUpdaterConfig(sso, configPath);
+    const toSso = await fs.readFile(configPath, "utf8");
+    expect(toSso).toContain(
+      "credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })",
+    );
+    expect(toSso).not.toContain("await deploySecrets()");
+  });
+
+  it("names variables secretEnv takes", () => {
+    expect(() => secretEnv(initProvider.secrets)).not.toThrow();
   });
 });

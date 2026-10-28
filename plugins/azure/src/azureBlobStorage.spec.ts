@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { azureBlobStorage } from "./azureBlobStorage";
 
@@ -12,6 +12,25 @@ describe("azureBlobStorage", () => {
     await expect(
       storage.exists({ storageUri: "azure-blob://bundles/key" }),
     ).rejects.toThrow();
+  });
+});
+
+describe("azureBlobStorage's connection string from a function", () => {
+  it("is read on first use, not when the config loads", async () => {
+    const connectionString = vi.fn(async () => {
+      throw new Error("secretEnv found no value for STORAGE_CONNECTION_STRING");
+    });
+
+    const storage = azureBlobStorage({
+      connectionString,
+      containerName: "bundles",
+    });
+    expect(connectionString).not.toHaveBeenCalled();
+
+    await expect(
+      storage.exists({ storageUri: "azblob://bundles/key" }),
+    ).rejects.toThrow("secretEnv found no value for STORAGE_CONNECTION_STRING");
+    expect(connectionString).toHaveBeenCalledTimes(1);
   });
 });
 

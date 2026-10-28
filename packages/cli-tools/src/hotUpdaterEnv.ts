@@ -73,12 +73,21 @@ export const getHotUpdaterInitInputEnv = (
   nonInteractive: boolean,
 ) => (nonInteractive ? env : managedEnv);
 
+/**
+ * Init's inputs: `.env.hotupdater` (`managedEnv`), with `envFile`'s over
+ * it (`env`). `secretsEnv`, the credentials init read from a team secrets
+ * store, sits under both, as values the file would hold.
+ */
 export const readHotUpdaterInitEnv = async (
   cwd: string,
   envFile?: string,
+  secretsEnv: Readonly<Record<string, string>> = {},
 ): Promise<HotUpdaterInitEnv> => {
   const savedEnvPath = path.resolve(cwd, HOT_UPDATER_ENV_PATH);
-  const savedEnv = await readEnvFile(savedEnvPath, true);
+  const savedEnv = {
+    ...secretsEnv,
+    ...(await readEnvFile(savedEnvPath, true)),
+  };
 
   if (!envFile) {
     return { env: {}, managedEnv: savedEnv };

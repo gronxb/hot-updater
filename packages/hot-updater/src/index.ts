@@ -93,6 +93,7 @@ import {
   handleRemoteConfigVersions,
 } from "./commands/remoteConfig";
 import {
+  handleSecretsImport,
   handleSecretsIssue,
   handleSecretsPut,
   ISSUED_KINDS,
@@ -458,6 +459,17 @@ secretsCommand
     "\nTo sign in and have Hot Updater issue an App Store Connect API key or a Play service account, run apple login or google-play login (secrets issue).",
   )
   .action((name: string, options) => handleSecretsPut(name, options));
+
+secretsCommand
+  .command("import")
+  .description(
+    "Store the deploy credentials .env.hotupdater sets in the team secrets adapter",
+  )
+  .addHelpText(
+    "after",
+    "\nIt reads each back and deletes nothing: .env.hotupdater's lines still override the adapter on this machine.",
+  )
+  .action(() => handleSecretsImport());
 
 secretsCommand
   .command("issue")

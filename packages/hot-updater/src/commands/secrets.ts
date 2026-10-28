@@ -12,15 +12,18 @@ import {
   getConfiguredAdapter,
   getCwd,
   getHotUpdaterEnvValue,
+  getSecretEnvNames,
   isSecretName,
   type IssuedCredentialKind,
   loadConfig,
+  MANAGED_CLIENT_CREDENTIAL_ENV,
   nonInteractiveReason,
   p,
   readLoadedHotUpdaterEnv,
   readSecretWithSource,
   registerCredentialValue,
   secretVariableName,
+  storeEnvFileSecrets,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -554,6 +557,38 @@ export const handleSecretsIssue = async (
               : "Google Cloud, under the service account's keys"),
         ),
       ]),
+    );
+  });
+};
+
+/**
+ * `secrets import`: stores the credentials hot-updater.config.ts reads with
+ * `secretEnv`, and the app's API key, from `.env.hotupdater` through the
+ * config's team `secrets` adapter, and reads them back. It deletes nothing:
+ * the file's lines go on overriding the adapter on this machine.
+ */
+export const handleSecretsImport = async (): Promise<void> => {
+  printBanner();
+  await reportFailure(async () => {
+    const config = await loadConfig(null);
+    const adapter = getConfiguredAdapter(config.secrets);
+    if (adapter === undefined) {
+      throw new Error(
+        "hot-updater.config.ts sets no secrets adapter, so .env.hotupdater is already where secrets are read.\nSet secrets to a team store first.",
+      );
+    }
+    // A config with no secretEnv, such as Firebase's, still shares the
+    // app's API key.
+    const names = [...getSecretEnvNames(config), MANAGED_CLIENT_CREDENTIAL_ENV];
+    const stored = await storeEnvFileSecrets(adapter, names, getCwd());
+    if (stored.length === 0) {
+      throw new Error(`.env.hotupdater sets none of ${listNames(names)}.`);
+    }
+    p.log.success(
+      `Stored ${listNames(stored)} in the ${adapter.name} secrets adapter.`,
+    );
+    p.log.info(
+      ".env.hotupdater still sets them: delete those lines, or keep them to override the adapter here.",
     );
   });
 };

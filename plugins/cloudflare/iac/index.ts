@@ -138,10 +138,14 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
@@ -686,10 +690,17 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
-    cwd,
-    settings: "Cloudflare",
-  });
+  await writeHotUpdaterFiles(
+    getConfigScaffold(build, {
+      accountId,
+      bucketName: selectedBucketName,
+      d1DatabaseId: selectedD1DatabaseId,
+    }),
+    {
+      cwd,
+      settings: "Cloudflare",
+    },
+  );
 
   printAppSetup({
     ...(subdomains.subdomain

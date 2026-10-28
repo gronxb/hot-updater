@@ -212,6 +212,93 @@ describe("loadConfig", () => {
     }
   });
 
+  it("records the names every secretEnv of the config reads, once each, for doctor and secrets import", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        'const storage = secretEnv(["HU_SPEC_KEY_ID", "HU_SPEC_SECRET"]);',
+        'const database = secretEnv(["HU_SPEC_SECRET", "HU_SPEC_TOKEN"]);',
+        "export default {",
+        '  storage: { name: "s3Storage", protocol: "s3", credentials: storage },',
+        '  database: { name: "d1Database", token: database },',
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { getSecretEnvNames, loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(getSecretEnvNames(config)).toEqual([
+      "HU_SPEC_KEY_ID",
+      "HU_SPEC_SECRET",
+      "HU_SPEC_TOKEN",
+    ]);
+  });
+
+  it("finds the team store for init, and leaves process.env as the config found it", async () => {
+    const secrets = Object.freeze({
+      name: "spec-team",
+      get: vi.fn(),
+      set: vi.fn(),
+    });
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SECRETS__", secrets);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        // As process.loadEnvFile(".env.hotupdater") would.
+        'process.env.HU_SPEC_LOADED = "from-env-file";',
+        "export default { secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__ };",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { loadTeamSecrets } = await import("./teamSecrets");
+
+      await expect(loadTeamSecrets()).resolves.toBe(secrets);
+      expect(process.env.HU_SPEC_LOADED).toBeUndefined();
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
+      const { setConfiguredSecrets, resolveSecretsAdapter } =
+        await import("./secrets");
+      setConfiguredSecrets(resolveSecretsAdapter());
+    }
+  });
+
+  it("finds no team store with localSecrets()", async () => {
+    const { loadTeamSecrets } = await import("./teamSecrets");
+
+    await expect(loadTeamSecrets()).resolves.toBeUndefined();
+  });
+
+  it("loads a config of 1.1 that reads its values from process.env as it did, with no secretEnv names", async () => {
+    vi.stubEnv("HU_SPEC_BUCKET", "bundles");
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        '  storage: { name: "s3Storage", protocol: "s3", bucketName: process.env.HU_SPEC_BUCKET! },',
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { getSecretEnvNames, loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+
+      expect(config.storage).toMatchObject({ bucketName: "bundles" });
+      expect(getSecretEnvNames(config)).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("binds each secretEnv to the secrets of the config that created it, whatever config loads after", async () => {
     // Given: a config function whose secrets adapter depends on the platform
     const storeOf = (name: string) => ({

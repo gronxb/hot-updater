@@ -18,7 +18,7 @@ import {
   createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { postgres } from "./postgres";
 
@@ -136,5 +136,30 @@ describe("postgres plugin schema", () => {
     } finally {
       await database.dispose?.();
     }
+  });
+});
+
+describe("postgres's connection string from a function", () => {
+  it("is read when the pool first connects, and names no target", async () => {
+    const connectionString = vi.fn(async () => {
+      throw new Error("secretEnv found no value for DATABASE_URL");
+    });
+
+    const database = postgres({ connectionString });
+    expect(connectionString).not.toHaveBeenCalled();
+    expect(
+      Reflect.get(database, Symbol.for("@hot-updater/database-target")),
+    ).toBeUndefined();
+
+    const core = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    await expect(core.listChannels()).rejects.toThrow(
+      "secretEnv found no value for DATABASE_URL",
+    );
+    expect(connectionString).toHaveBeenCalledTimes(1);
+    await database.dispose?.();
   });
 });

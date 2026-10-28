@@ -96,16 +96,21 @@ export const supabaseStorage = (
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
   // Created on first use, so a config loads without the service role key.
-  let client: ReturnType<typeof createClient> | undefined;
-  const bucket = () =>
-    (client ??= createClient(
-      config.supabaseUrl,
-      resolveSupabaseServiceRoleKey(config),
-    )).storage.from(config.bucketName);
+  let client: Promise<ReturnType<typeof createClient>> | undefined;
+  const bucket = async () =>
+    (
+      await (client ??= resolveSupabaseServiceRoleKey(config).then(
+        (key) => createClient(config.supabaseUrl, key),
+        (error: unknown) => {
+          client = undefined;
+          throw error;
+        },
+      ))
+    ).storage.from(config.bucketName);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
   const resolveSignedUrl = createSupabaseSignedUrlBatcher({
-    createSignedUrls: (_bucketName, keys, expiresIn) =>
-      bucket().createSignedUrls(keys, expiresIn),
+    createSignedUrls: async (_bucketName, keys, expiresIn) =>
+      (await bucket()).createSignedUrls(keys, expiresIn),
     expiresIn: config.signedUrlExpiresIn ?? 3600,
     formatObjectPath: (_bucketName, key) => key,
   });
@@ -125,7 +130,9 @@ export const supabaseStorage = (
     protocol: "supabase-storage",
     async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      const { error } = await bucket().upload(toObjectName(storageKey), body, {
+      const { error } = await (
+        await bucket()
+      ).upload(toObjectName(storageKey), body, {
         contentType,
         cacheControl: "max-age=31536000",
         upsert: true,
@@ -145,7 +152,9 @@ export const supabaseStorage = (
     },
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const { data, error } = await bucket().download(toObjectName(key));
+      const { data, error } = await (
+        await bucket()
+      ).download(toObjectName(key));
       if (error) {
         if (await isMissingObjectError(error)) return { response: null };
         throw new Error(`Failed to download storage object: ${error.message}`);
@@ -160,7 +169,7 @@ export const supabaseStorage = (
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const { data, error } = await bucket().exists(toObjectName(key));
+      const { data, error } = await (await bucket()).exists(toObjectName(key));
       if (error) {
         if (isMissingExistsError(error)) return { exists: false };
         throw error;
@@ -169,7 +178,7 @@ export const supabaseStorage = (
     },
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const { error } = await bucket().remove([toObjectName(key)]);
+      const { error } = await (await bucket()).remove([toObjectName(key)]);
       if (error && !isNotFoundError(error)) {
         throw new Error(`Failed to delete storage object: ${error.message}`);
       }

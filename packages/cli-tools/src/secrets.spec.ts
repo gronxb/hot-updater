@@ -347,6 +347,21 @@ describe("secretEnv", () => {
     );
   });
 
+  it("reads the adapter once for every adapter that calls it, and again after a failure", async () => {
+    vi.stubEnv("SPEC_SHARED", undefined);
+    const store = storeOf({ SPEC_SHARED: "shared-value" });
+    store.get.mockRejectedValueOnce(new Error("store unreachable"));
+    setConfiguredSecrets(store);
+    const deploy = secretEnv(["SPEC_SHARED"]);
+
+    await expect(deploy()).rejects.toThrow("store unreachable");
+    const [storage, database] = await Promise.all([deploy(), deploy()]);
+
+    expect(storage).toBe(database);
+    expect(storage.SPEC_SHARED).toBe("shared-value");
+    expect(store.get).toHaveBeenCalledTimes(2);
+  });
+
   it("reads nothing until it is called", () => {
     const store = storeOf({});
     setConfiguredSecrets(store);

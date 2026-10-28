@@ -2,6 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
+  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ManagedHelperStatement,
   type ProviderConfig,
@@ -12,23 +13,44 @@ export type AwsConfigScaffoldAuthMode =
   | { mode: "local"; profile: string | null }
   | { mode: "sso"; profile: string };
 
+/** The AWS resources init set up, which the config names as they are. */
+export interface AwsConfigResources {
+  readonly region: string;
+  readonly bucketName: string;
+  readonly tableName: string;
+  readonly cloudfrontDistributionId: string;
+}
+
+/**
+ * The config init writes. With the `resources` init set up, it names them,
+ * and an account's access keys are read with `secretEnv`, from the
+ * environment and `.env.hotupdater`, then the config's `secrets` adapter.
+ * Without them, as the agent scaffold writes it, it reads every value from
+ * the environment. A profile or SSO sign-in is each person's own.
+ */
 export const getConfigScaffold = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
+  resources?: AwsConfigResources,
 ): HotUpdaterConfigScaffold => {
+  const value = (envKey: string, resolved: string | undefined) =>
+    resolved === undefined
+      ? `process.env.${envKey}!`
+      : JSON.stringify(resolved);
+  const region = value("HOT_UPDATER_S3_REGION", resources?.region);
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
     configString: `s3Storage({
     ...awsOptions,
-    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+    bucketName: ${value("HOT_UPDATER_S3_BUCKET_NAME", resources?.bucketName)},
   })`,
   };
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
     configString: `dynamoDB({
     ...awsOptions,
-    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    tableName: ${value("HOT_UPDATER_DYNAMODB_TABLE_NAME", resources?.tableName)},
+    cloudfrontDistributionId: ${value("HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID", resources?.cloudfrontDistributionId)},
   })`,
   };
 
@@ -43,7 +65,7 @@ export const getConfigScaffold = (
           replaceIncompatibleProperties: ["credentials"],
           code: `
 const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
+  region: ${region},
   credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim(),
         },
@@ -58,12 +80,12 @@ const awsOptions = {
           code: authMode.profile
             ? `
 const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
+  region: ${region},
   credentials: fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim()
             : `
 const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
+  region: ${region},
   credentials: fromNodeProviderChain(),
 };`.trim(),
         },
@@ -75,16 +97,37 @@ const awsOptions = {
           name: "awsOptions",
           strategy: "merge-object",
           replaceIncompatibleProperties: ["credentials"],
-          code: `
+          code:
+            resources === undefined
+              ? `
 const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
+  region: ${region},
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
     secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
   },
+};`.trim()
+              : `
+const awsOptions = {
+  region: ${region},
+  credentials: async () => {
+    const env = await deploySecrets();
+    return {
+      accessKeyId: env.HOT_UPDATER_S3_ACCESS_KEY_ID,
+      secretAccessKey: env.HOT_UPDATER_S3_SECRET_ACCESS_KEY,
+    };
+  },
 };`.trim(),
         },
       ];
+      if (resources !== undefined) {
+        helperStatements.unshift(
+          secretEnvHelper("deploySecrets", [
+            "HOT_UPDATER_S3_ACCESS_KEY_ID",
+            "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+          ]),
+        );
+      }
       break;
   }
 
@@ -119,6 +162,9 @@ const awsOptions = {
       });
       break;
     case "account":
+      if (resources !== undefined) {
+        builder.addImport({ pkg: "hot-updater", named: ["secretEnv"] });
+      }
       break;
   }
 
@@ -130,4 +176,5 @@ const awsOptions = {
 export const getConfigTemplate = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
-) => getConfigScaffold(build, authMode).text;
+  resources?: AwsConfigResources,
+) => getConfigScaffold(build, authMode, resources).text;

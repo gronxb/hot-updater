@@ -34,21 +34,30 @@ describe("Supabase adapters without credentials", () => {
 });
 
 describe("resolveSupabaseServiceRoleKey", () => {
-  it("returns the service role key", () => {
-    expect(
+  it("returns the service role key", async () => {
+    await expect(
       resolveSupabaseServiceRoleKey({
         supabaseUrl: "https://test.supabase.invalid",
         supabaseServiceRoleKey: "service-role-key",
       }),
-    ).toBe("service-role-key");
+    ).resolves.toBe("service-role-key");
   });
 
-  it("rejects a missing service role key", () => {
-    expect(() =>
+  it("calls a function for the service role key", async () => {
+    await expect(
+      resolveSupabaseServiceRoleKey({
+        supabaseUrl: "https://test.supabase.invalid",
+        supabaseServiceRoleKey: async () => "from-secrets",
+      }),
+    ).resolves.toBe("from-secrets");
+  });
+
+  it("rejects a missing service role key", async () => {
+    await expect(
       resolveSupabaseServiceRoleKey({
         supabaseUrl: "https://test.supabase.invalid",
         supabaseServiceRoleKey: "",
       }),
-    ).toThrow("Supabase service role key is required");
+    ).rejects.toThrow("Supabase service role key is required");
   });
 });

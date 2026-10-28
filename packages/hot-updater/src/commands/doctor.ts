@@ -6,6 +6,7 @@ import {
   getBundleSigningPublicKey,
   getCwd,
   loadConfig,
+  LOCAL_SECRETS_NAME,
   p,
   readPackageUp,
   nonInteractiveReason,
@@ -48,6 +49,7 @@ import {
   recordedBaseUrls,
 } from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
+import { checkSecretEnv, type SecretEnvStatus } from "./doctor/secretEnv";
 import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
@@ -62,6 +64,7 @@ import {
   getRequiredUpdateTarget,
   type InfrastructureStatus,
 } from "./doctorInfrastructure";
+import { INIT_PROVIDER_PACKAGES } from "./initProviders";
 
 export {
   checkInfrastructureStatus,
@@ -127,6 +130,8 @@ interface DoctorDetails {
   releaseCatalogs?: ReleaseCatalogStatus;
   /** Where each `secret:` reference in the config is read from. */
   secrets?: SecretsStatus;
+  /** Where each name the config's `secretEnv` reads comes from. */
+  secretEnv?: SecretEnvStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -842,12 +847,26 @@ async function checkProject(
       }
     }
 
-    // A config that doesn't load is reported by the checks that need it.
-    const secrets = await loadConfig(null).then(
-      (config) => checkSecrets(config, cwd),
-      () => undefined,
-    );
-    if (secrets) details.secrets = secrets;
+    // Rows to read, never a failure: a config that doesn't load is reported
+    // by the checks that need it, and an adapter that can't be read is a row.
+    const config = await loadConfig(null).catch(() => undefined);
+    if (config) {
+      const secrets = await checkSecrets(config, cwd);
+      if (secrets) details.secrets = secrets;
+      const secretEnv = await checkSecretEnv(config, {
+        cwd,
+        // Read only with a team store: the provider's own init lists them.
+        managedSecrets: async () => {
+          const managed = await context.managed();
+          if (managed === null) return [];
+          const provider = await INIT_PROVIDER_PACKAGES[managed.provider]
+            .load()
+            .catch(() => null);
+          return provider?.initProvider.secrets ?? [];
+        },
+      }).catch(() => undefined);
+      if (secretEnv) details.secretEnv = secretEnv;
+    }
 
     // The server's data reads through the fence, so it is checked once the
     // schema passes.
@@ -923,6 +942,7 @@ async function checkProject(
       details.schema ||
       details.releaseCatalogs ||
       details.secrets ||
+      details.secretEnv ||
       details.infrastructureUnchecked
     ) {
       return {
@@ -1210,30 +1230,50 @@ export const handleDoctor = async ({
     }
   }
 
-  if (details?.secrets) {
-    const { adapter, references, error } = details.secrets;
-    p.log.step(
-      ui.block("Secrets", [
-        ui.kv("Adapter", adapter),
-        ...references.map(({ name, source, inAdapter }) =>
-          ui.kv(
-            name,
-            source === "environment"
-              ? inAdapter === false
-                ? ui.warning("set by the environment, none in the adapter")
-                : "set by the environment"
-              : source === "adapter"
-                ? "in the adapter"
-                : source === "missing"
-                  ? ui.warning("missing")
-                  : "not checked",
+  if (details?.secrets || details?.secretEnv) {
+    const { secrets, secretEnv } = details;
+    const adapter =
+      secrets?.adapter ?? secretEnv?.adapter ?? LOCAL_SECRETS_NAME;
+    // The `secret:` references, then the names `secretEnv` reads, each with
+    // where a command finds it.
+    const rows = [...(secrets?.references ?? []), ...(secretEnv?.names ?? [])];
+    if (rows.length > 0) {
+      p.log.step(
+        ui.block("Secrets", [
+          ui.kv("Adapter", adapter),
+          ...rows.map(({ name, source, inAdapter }) =>
+            ui.kv(
+              name,
+              source === "environment"
+                ? inAdapter === false
+                  ? ui.warning("set by the environment, none in the adapter")
+                  : "set by the environment"
+                : source === "adapter"
+                  ? "in the adapter"
+                  : source === "missing"
+                    ? ui.warning("missing")
+                    : "not checked",
+            ),
           ),
-        ),
-      ]),
-    );
-    if (error !== undefined) {
+        ]),
+      );
+    }
+    for (const error of new Set(
+      [secrets?.error, secretEnv?.error].filter(
+        (error): error is string => error !== undefined,
+      ),
+    )) {
       p.log.warn(
         ui.prose(`Couldn't read the ${adapter} secrets adapter: ${error}`),
+      );
+    }
+    const processEnvReads = secretEnv?.processEnvReads ?? [];
+    if (processEnvReads.length > 0) {
+      const them = processEnvReads.length === 1 ? "it" : "them";
+      p.log.warn(
+        ui.prose(
+          `hot-updater.config.ts reads ${processEnvReads.join(", ")} with process.env, so ${adapter} never supplies ${them}. Run init again to read ${them} with secretEnv.`,
+        ),
       );
     }
   }

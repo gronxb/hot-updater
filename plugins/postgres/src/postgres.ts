@@ -22,7 +22,8 @@ const targetOf = ({
   host,
   port,
   database,
-}: PoolConfig): string | undefined => {
+}: PostgresPoolConfig): string | undefined => {
+  if (typeof connectionString === "function") return undefined;
   if (connectionString !== undefined) {
     try {
       const url = new URL(connectionString);
@@ -36,7 +37,16 @@ const targetOf = ({
     : `postgres/${host}:${port ?? 5432}/${database}`;
 };
 
-export type PostgresConfig = PoolConfig & {
+type PostgresPoolConfig = Omit<PoolConfig, "connectionString"> & {
+  /**
+   * The database's URL, or a function that returns it, such as one that
+   * reads it with `secretEnv`: called when the pool first connects, so a
+   * config loads without it.
+   */
+  readonly connectionString?: string | (() => string | Promise<string>);
+};
+
+export type PostgresConfig = PostgresPoolConfig & {
   readonly dialect?: Dialect;
 };
 
@@ -49,8 +59,20 @@ export type PostgresConfig = PoolConfig & {
 export const postgres = (config: PostgresConfig): EngineDatabase => {
   const { dialect, ...poolConfig } = config;
   const target = targetOf(poolConfig);
+  const { connectionString } = poolConfig;
   const db = new Kysely<object>({
-    dialect: dialect ?? new PostgresDialect({ pool: new Pool(poolConfig) }),
+    dialect:
+      dialect ??
+      new PostgresDialect({
+        pool:
+          typeof connectionString === "function"
+            ? async () =>
+                new Pool({
+                  ...poolConfig,
+                  connectionString: await connectionString(),
+                })
+            : new Pool({ ...poolConfig, connectionString }),
+      }),
   });
   return {
     ...createEngineDatabase({
