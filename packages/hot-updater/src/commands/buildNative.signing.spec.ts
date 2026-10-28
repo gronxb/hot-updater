@@ -119,7 +119,7 @@ import {
   p,
   setConfiguredSecrets,
   withCredentialResolver,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
@@ -265,7 +265,7 @@ describe("native-build ios|android resolves its signing credentials before the p
         expect.objectContaining({ name: "widget-asc", secrets: own }),
       );
     } finally {
-      setConfiguredSecrets(withLocalKeyStore());
+      setConfiguredSecrets(resolveSecretsAdapter());
     }
   });
 });

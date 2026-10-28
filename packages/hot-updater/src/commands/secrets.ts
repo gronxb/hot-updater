@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { ASC_INTEGRATIONS_URL } from "@hot-updater/apple-helper";
 import {
+  assertWritableSecrets,
   CREDENTIAL_ENV_NAMES,
   type CredentialKind,
   credentialIssueCommand,
@@ -233,9 +234,9 @@ export const environmentOverrides = (
 
 /**
  * `secrets put`: stores a build credential you have as `name` through the
- * config's `secrets` adapter, or `localSecrets()`'s store by default, as
- * one JSON value that `secret:<name>` resolves. It never signs in:
- * `secrets issue` does.
+ * config's `secrets` adapter, or `localSecrets()` by default, as one JSON
+ * value that `secret:<name>` resolves. An adapter without `set` refuses.
+ * It never signs in: `secrets issue` does.
  */
 export const handleSecretsPut = async (
   name: string,
@@ -261,6 +262,7 @@ export const handleSecretsPut = async (
     }
     // Registers the config's secrets adapter, which everything below uses.
     const { secrets } = await loadConfig(null);
+    assertWritableSecrets(secrets, name);
     const cwd = getCwd();
     // The keystore's passwords are this command's input, not an override.
     const overrides = environmentOverrides(
@@ -274,23 +276,10 @@ export const handleSecretsPut = async (
         `The environment or .env.hotupdater overrides ${options.kind}.\nUnset ${listNames(overrides)}.`,
       );
     }
-    // A read-only adapter's value is read before localSecrets()' copy, so a
-    // value stored there would never be used.
-    const configured = getConfiguredAdapter(secrets);
-    if (configured && !configured.set) {
-      const held = (await configured.get([name], { cwd }))[name];
-      if (held) {
-        throw new Error(
-          `${name} is in the ${configured.name} secrets adapter, which is read-only.\nReplace it there: ${describeSecret(configured, name)}`,
-        );
-      }
-    }
-
     const value = await readSecretValue(options);
     // Masked before it is sent, so no failure can print it.
     registerCredentialValue(value);
-    // Always set: an adapter that stores nothing stores in `localSecrets()`'s store.
-    await secrets.set!(name, value, { cwd });
+    await secrets.set(name, value, { cwd });
     p.log.success(
       ui.block("Secret stored", [
         ui.kv("Name", name),
@@ -408,6 +397,30 @@ const readOverrideFields = async (
   return parseFields(contents);
 };
 
+/**
+ * The row that says a configured adapter lacks `name`, which an
+ * environment override hides on this machine; nothing for `localSecrets()`
+ * or an adapter that holds it.
+ */
+const describeAdapterGap = async (
+  secrets: SecretsAdapter,
+  name: string,
+  cwd: string,
+): Promise<Row | undefined> => {
+  const configured = getConfiguredAdapter(secrets);
+  if (!configured) return undefined;
+  const where = describeSecret(configured, name);
+  try {
+    const held = (await configured.get([name], { cwd }))[name];
+    return held ? undefined : ui.kv("Adapter", `none in ${ui.fitPath(where)}`);
+  } catch (error) {
+    return ui.kv(
+      "Adapter",
+      `can't read ${where}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
 export interface SecretsIssueOptions {
   /** Issue a new key even when one is stored, which stays valid. */
   readonly replace?: boolean;
@@ -418,17 +431,17 @@ export interface SecretsIssueOptions {
  * signs in, at a terminal, and stores the key Hot Updater
  * issues as `name` through the config's `secrets` adapter, as builds do
  * when theirs is missing: an App Store Connect API key after an Apple
- * Account sign-in, a Play service account after a Google one. Without an
- * adapter that stores values, the key goes to `localSecrets()`'s store,
- * which builds here read.
+ * Account sign-in, a Play service account after a Google one.
  *
  * - A key the per-field environment variables set, such as
  *   `HOT_UPDATER_ASC_KEY_ID`, is kept, and builds read it before any
  *   adapter: `--replace` refuses, since a new key would never be used,
- *   until they are unset.
+ *   until they are unset. A configured adapter that lacks `name` is named,
+ *   since a teammate without the variables finds nothing.
  * - A key the adapter holds is kept, without a sign-in, unless `--replace`:
  *   then a new key replaces it, and the old one, which CI may still use,
  *   is named with where to revoke it. Hot Updater never revokes it.
+ * - An adapter without `set` refuses before any sign-in.
  * - Only then, when it has to sign in, does it need a terminal: in CI or
  *   without one, it refuses, naming the command to run in one and
  *   `secrets put`, which stores a key you have.
@@ -466,6 +479,7 @@ export const handleSecretsIssue = async (
         ui.block(`${issuer.label} set by the environment`, [
           ...(held?.rows ?? []),
           ui.kv("Source", listNames(overrides)),
+          await describeAdapterGap(secrets, name, cwd),
         ]),
       );
       return;
@@ -479,17 +493,6 @@ export const handleSecretsIssue = async (
       stored === undefined
         ? undefined
         : describeHeldKey(kind, parseFields(stored));
-    // A read-only adapter's key is read before localSecrets()' copy, so a
-    // new key stored there would never be used.
-    const configured = getConfiguredAdapter(secrets);
-    if (stored !== undefined && replace && configured && !configured.set) {
-      const held = (await configured.get([name], { cwd }))[name];
-      if (held) {
-        throw new Error(
-          `${name} is in the ${configured.name} secrets adapter, which is read-only.\nReplace it there: ${describeSecret(configured, name)}`,
-        );
-      }
-    }
     if (found !== undefined && !replace) {
       p.log.step(
         ui.block(`${issuer.label} already stored`, [
@@ -501,6 +504,8 @@ export const handleSecretsIssue = async (
       return;
     }
 
+    // Nothing is issued that the adapter can't store.
+    assertWritableSecrets(secrets, name);
     // Only a sign-in needs a terminal: a key already held is reported
     // above, in CI too.
     const reason = nonInteractiveReason();

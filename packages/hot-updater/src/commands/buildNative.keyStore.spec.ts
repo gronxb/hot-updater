@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import {
   linesWiderThan,
@@ -13,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * The first build of a project without a `secrets` adapter: the key a
  * sign-in issues goes to `localSecrets()`'s store, the same build signs and
  * uploads with it, and the next build on this machine reuses it without
- * signing in. Only the sign-ins, the native build, and the stores are
+ * signing in. A configured adapter is the only store: one that can't store
+ * or read back the key leaves nothing on this machine. Only the sign-ins, the native build, and the stores are
  * stand-ins; the credential resolver and the issued-key flow are the CLI's
  * own.
  */
@@ -40,8 +42,11 @@ const { log, uploads, scheme, home } = vi.hoisted(() => ({
   uploads: [] as unknown[],
   scheme: {
     platform: "ios" as "ios" | "android",
-    /** A write-only adapter, as GitHub Actions secrets outside a workflow. */
-    writeOnly: false,
+    /**
+     * The config's adapter: none (`localSecrets()`), one that stores but
+     * reads nothing back, or one without `set`.
+     */
+    adapter: "none" as "none" | "writeOnly" | "readOnly",
   },
   home: { path: "" },
 }));
@@ -116,19 +121,19 @@ vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", async () => {
-  const { withLocalKeyStore } = await import("@hot-updater/cli-tools");
+  const { resolveSecretsAdapter } = await import("@hot-updater/cli-tools");
   return {
     prepareNativeBuild: vi.fn(async (options) => {
-      const configured = scheme.writeOnly
-        ? {
-            name: "write-only",
-            get: async (names: readonly string[]) =>
-              Object.fromEntries(names.map((name) => [name, undefined])),
-            set: async () => {},
-          }
-        : undefined;
-      // As loadConfig hands it over: `localSecrets()`'s store after the config's adapter.
-      const secrets = withLocalKeyStore(configured);
+      const get = async (names: readonly string[]) =>
+        Object.fromEntries(names.map((name) => [name, undefined]));
+      const configured =
+        scheme.adapter === "writeOnly"
+          ? { name: "write-only", get, set: async () => {} }
+          : scheme.adapter === "readOnly"
+            ? { name: "read-only", get }
+            : undefined;
+      // As loadConfig hands it over: `localSecrets()` without an adapter.
+      const secrets = resolveSecretsAdapter(configured);
       if (scheme.platform === "ios") {
         await options.beforePrebuild?.({
           scheme: "release",
@@ -225,7 +230,7 @@ const printed = () =>
 beforeEach(async () => {
   vi.clearAllMocks();
   uploads.length = 0;
-  scheme.writeOnly = false;
+  scheme.adapter = "none";
   home.path = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-build-"));
   vi.stubEnv("HOT_UPDATER_HOME", home.path);
   vi.stubEnv("CI", "");
@@ -285,36 +290,57 @@ describe("a first build without a secrets adapter", () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("uploads to TestFlight with the key a write-only adapter stored, from its copy on this machine", async () => {
+  it("revokes the key a write-only adapter doesn't read back, builds nothing, and copies it nowhere", async () => {
     scheme.platform = "ios";
-    scheme.writeOnly = true;
+    scheme.adapter = "writeOnly";
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
     await withTTY(() =>
       handleNativeBuildCreate("ios", {
         scheme: "release",
         submit: "testflight",
       }),
-    );
+    ).catch(() => undefined);
 
-    expect(uploads).toEqual([{ keyId: "KEY1234567", p8: P8 }]);
-    expect(printed()).toContain("copied to this machine");
+    expect(uploads).toEqual([]);
+    expect(stripVTControlCharacters(printed())).toContain(
+      [
+        "Couldn't store the App Store Connect API key KEY1234567, so it was revoked.",
+        "The write-only secrets adapter reads back nothing for asc-api-key.",
+      ].join("\n"),
+    );
+    expect(printed()).not.toContain("copied to this machine");
     expect(printed()).not.toContain("MIGHAgEA");
-    expect(log.error).not.toHaveBeenCalled();
+    await expect(fs.readdir(home.path)).resolves.toEqual([]);
+    exit.mockRestore();
   });
 
-  it("uploads to Google Play with the service account a write-only adapter stored, from its copy on this machine", async () => {
-    scheme.platform = "android";
-    scheme.writeOnly = true;
-    await withTTY(() =>
-      handleNativeBuildCreate("android", {
-        scheme: "release",
-        submit: "play-internal",
-      }),
-    );
+  it.each(["ios", "android"] as const)(
+    "refuses a read-only adapter on %s before any sign-in, copying nothing to this machine",
+    async (platform) => {
+      scheme.platform = platform;
+      scheme.adapter = "readOnly";
+      const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("exit");
+      }) as never);
+      await withTTY(() =>
+        handleNativeBuildCreate(platform, {
+          scheme: "release",
+          submit: platform === "ios" ? "testflight" : "play-internal",
+        }),
+      ).catch(() => undefined);
 
-    expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
-    expect(printed()).not.toContain("MIIBfirstBuild");
-    expect(log.error).not.toHaveBeenCalled();
-  });
+      expect(issueAscApiKey).not.toHaveBeenCalled();
+      expect(issuePlayServiceAccount).not.toHaveBeenCalled();
+      expect(uploads).toEqual([]);
+      expect(printed()).toContain(
+        `The read-only secrets adapter is read-only: store ${platform === "ios" ? "asc-api-key" : "play-service-account"} there.`,
+      );
+      await expect(fs.readdir(home.path)).resolves.toEqual([]);
+      exit.mockRestore();
+    },
+  );
 
   it("uploads to Google Play with the service account the sign-in issued, and the next build reuses it without signing in", async () => {
     scheme.platform = "android";

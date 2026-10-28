@@ -55,7 +55,7 @@ import {
   p,
   getLocalKeyFile,
   readLocalKey,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
   writeLocalKey,
 } from "@hot-updater/cli-tools";
 
@@ -162,7 +162,7 @@ describe("keys generate --secret", () => {
 
   it("stores the private key in `localSecrets()`'s store without a secrets adapter, and writes only the public key", async () => {
     const cwd = await createProject();
-    mocks.loadConfig.mockResolvedValue({ secrets: withLocalKeyStore() });
+    mocks.loadConfig.mockResolvedValue({ secrets: resolveSecretsAdapter() });
 
     await keysGenerate({ keySize: 2048, secret: true });
 
@@ -205,7 +205,7 @@ describe("keys generate --secret", () => {
     } else {
       await writeLocalKey("bundle-signing-key", "existing", cwd);
     }
-    mocks.loadConfig.mockResolvedValue({ secrets: withLocalKeyStore() });
+    mocks.loadConfig.mockResolvedValue({ secrets: resolveSecretsAdapter() });
     exit();
 
     await expect(keysGenerate({ keySize: 2048, secret: true })).rejects.toThrow(
@@ -232,6 +232,43 @@ describe("keys generate --secret", () => {
 
     expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
     expect(output()).toContain("permission denied");
+  });
+
+  it("refuses a read-only adapter in one line before generating, writing nothing on this machine", async () => {
+    const cwd = await createProject();
+    const get = vi.fn(async () => ({}));
+    mocks.loadConfig.mockResolvedValue({ secrets: { name: "read-only", get } });
+    exit();
+
+    await expect(keysGenerate({ keySize: 2048, secret: true })).rejects.toThrow(
+      "process.exit",
+    );
+
+    expect(output()).toContain(
+      "The read-only secrets adapter is read-only: store bundle-signing-key there.",
+    );
+    expect(get).not.toHaveBeenCalled();
+    expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
+    expect(await readLocalKey("bundle-signing-key", cwd)).toBeUndefined();
+  });
+
+  it("removes the public key when the adapter doesn't read the private key back", async () => {
+    const cwd = await createProject();
+    const { secrets } = writableSecrets();
+    mocks.loadConfig.mockResolvedValue({
+      secrets: { ...secrets, get: async () => ({}) },
+    });
+    exit();
+
+    await expect(keysGenerate({ keySize: 2048, secret: true })).rejects.toThrow(
+      "process.exit",
+    );
+
+    expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
+    expect(output()).toContain(
+      "The fake secrets adapter reads back nothing for bundle-signing-key.",
+    );
+    expect(await readLocalKey("bundle-signing-key", cwd)).toBeUndefined();
   });
 
   it("stores nothing when a public key already exists", async () => {

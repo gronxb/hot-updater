@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
+  assertWritableSecrets,
   type ConfigResponse,
   DEFAULT_SIGNING_KEY_SECRET,
   describeStoredSecret,
@@ -125,11 +126,11 @@ const storePrivateKey = async (
 ) => {
   await savePublicKey(keyPair.publicKey, outputDir, async () => {
     await secrets.set(name, keyPair.privateKey, { cwd });
-    // A write-only store, such as GitHub Actions secrets, reads nothing back.
+    // A key the adapter doesn't read back is one no build signs with.
     const stored = (await secrets.get([name], { cwd }))[name];
-    if (stored !== undefined && stored.trim() !== keyPair.privateKey.trim()) {
+    if (stored?.trim() !== keyPair.privateKey.trim()) {
       throw new Error(
-        `The ${secrets.name} secrets adapter stored ${name}, but reads back another value.`,
+        `The ${secrets.name} secrets adapter reads back ${stored === undefined ? "nothing" : "another value"} for ${name}.`,
       );
     }
   });
@@ -159,14 +160,16 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
   let started = false;
 
   try {
-    let secrets: SecretsAdapter | undefined;
+    let secrets: WritableSecrets | undefined;
     if (secretName !== undefined) {
       if (!isSecretName(secretName)) {
         throw new Error(
           `"${secretName}" is not a secret name.\nUse up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.`,
         );
       }
-      ({ secrets } = await loadConfig(null));
+      const { secrets: configured } = await loadConfig(null);
+      assertWritableSecrets(configured, secretName);
+      secrets = configured;
       const held = (await secrets.get([secretName], { cwd }))[secretName];
       if (typeof held === "string" && held.trim()) {
         throw new Error(
@@ -187,15 +190,8 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
     const publicKeyPath = path.join(outputDir, "public-key.pem");
     if (secrets !== undefined && secretName !== undefined) {
-      // The config's adapter, or `localSecrets()`'s store, which stores
-      // what an adapter can't.
-      await storePrivateKey(
-        secrets as WritableSecrets,
-        secretName,
-        keyPair,
-        outputDir,
-        cwd,
-      );
+      // The config's adapter, or `localSecrets()` by default.
+      await storePrivateKey(secrets, secretName, keyPair, outputDir, cwd);
       spinner.clear();
       p.log.success(
         ui.block("Keys generated", [

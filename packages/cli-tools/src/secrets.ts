@@ -9,7 +9,6 @@ import {
   createLocalSecretsStore,
   type LocalSecretsStore,
 } from "./localKeyStore";
-import { p } from "./prompts";
 import { isReservedVariableName } from "./reservedVariables";
 import { registerSecretValue } from "./secretMasking";
 
@@ -76,15 +75,8 @@ export const LOCAL_SECRETS_NAME = "localSecrets";
 const LOCAL_KEY_STORE = Symbol.for("@hot-updater/cli-tools/local-key-store");
 
 type LocalKeyStoreSecrets = SecretsAdapter & {
-  readonly [LOCAL_KEY_STORE]: {
-    /** The config's own adapter; undefined for `localSecrets()`. */
-    readonly configured?: SecretsAdapter;
-    readonly store: LocalSecretsStore;
-  };
+  readonly [LOCAL_KEY_STORE]: { readonly store: LocalSecretsStore };
 };
-
-/** `localSecrets()`'s store without a `path`, the one after any adapter. */
-const defaultLocalSecretsStore = createLocalSecretsStore();
 
 const isLocalKeyStoreSecrets = (
   secrets: SecretsAdapter,
@@ -97,17 +89,16 @@ const isLocalKeyStoreSecrets = (
  * `~/.hot-updater/secrets/<project-key>/<name>.json`; `set` writes that
  * file, 0600 in a 0700 directory, outside the project, so it survives
  * `node_modules` and is never committed. `HOT_UPDATER_HOME` moves
- * `~/.hot-updater`. The project key is the same for every clone of one app
- * on a machine (its `origin` remote and its directory in the repository),
- * so another machine signs in and issues a key of its own.
+ * `~/.hot-updater`. The project key hashes the checkout's real path
+ * (`getProjectKey`), so each clone of an app has its own directory, and
+ * another clone or machine signs in and issues a key of its own.
  *
  * @example
  * export default defineConfig({ secrets: localSecrets(), ... });
  */
 export const localSecrets = (
   options: LocalSecretsOptions = {},
-): SecretsAdapter =>
-  createLocalKeyStoreSecrets(undefined, createLocalSecretsStore(options));
+): SecretsAdapter => createLocalSecrets(createLocalSecretsStore(options));
 
 export interface LocalSecretsOptions {
   /**
@@ -115,113 +106,88 @@ export interface LocalSecretsOptions {
    * each, such as `~/.hot-updater/secrets/my-app`: `~` is the home
    * directory, and a relative path is the project's. A directory in a git
    * work tree must be one git ignores. Defaults to
-   * `~/.hot-updater/secrets/<project-key>`, whose key is the same for every
-   * clone of the app on a machine (`getProjectKey`).
+   * `~/.hot-updater/secrets/<project-key>`, whose key hashes the
+   * checkout's real path, one per clone (`getProjectKey`).
    */
   readonly path?: string;
 }
 
 /**
- * The config's `secrets` adapter with `localSecrets()`'s store after it:
- * `get` reads each name the adapter does not hold from
- * `~/.hot-updater/secrets/<project-key>/<name>.json`, and `set` stores there
- * when the adapter stores nothing. Without an adapter, it is
- * `localSecrets()` itself. Keys Hot Updater issues, and credentials
- * `secrets put` imports, are reused by the next build on this machine with
- * no step in between.
+ * The `secrets` adapter a config load uses: the config's own adapter as it
+ * is, with no store on this machine under it, or `localSecrets()` when the
+ * config sets none.
  */
-export const withLocalKeyStore = (
+export const resolveSecretsAdapter = (
   configured?: SecretsAdapter,
-): SecretsAdapter =>
-  configured && isLocalKeyStoreSecrets(configured)
-    ? configured
-    : createLocalKeyStoreSecrets(configured, defaultLocalSecretsStore);
+): SecretsAdapter => configured ?? localSecrets();
 
-const createLocalKeyStoreSecrets = (
-  configured: SecretsAdapter | undefined,
-  store: LocalSecretsStore,
-): SecretsAdapter => {
-  const describeFile = (name: string) => store.file(name, getCwd());
+const createLocalSecrets = (store: LocalSecretsStore): SecretsAdapter => {
   const adapter: LocalKeyStoreSecrets = {
-    name: configured?.name ?? LOCAL_SECRETS_NAME,
-    [LOCAL_KEY_STORE]: configured ? { configured, store } : { store },
+    name: LOCAL_SECRETS_NAME,
+    [LOCAL_KEY_STORE]: { store },
     get: async (names, context) => {
-      const values = configured
-        ? { ...(await configured.get(names, context)) }
-        : await readSecretVariables(names, context.cwd);
+      const values = await readSecretVariables(names, context.cwd);
       // No prototype: a secret may be named __proto__.
       const read: Record<string, string | undefined> = Object.create(null);
       for (const name of names) {
-        const value = Object.hasOwn(values, name) ? values[name] : undefined;
-        read[name] =
-          typeof value === "string" && value
-            ? value
-            : await store.read(name, context.cwd);
+        read[name] = values[name] || (await store.read(name, context.cwd));
       }
       return read;
     },
     set: async (name, value, context) => {
-      if (configured?.set) {
-        await configured.set(name, value, context);
-        // A copy kept for a write-only adapter would hand builds here the
-        // value this one replaces: it follows the adapter.
-        if ((await store.read(name, context.cwd)) === undefined) return;
-        try {
-          await store.write(name, value, context.cwd);
-        } catch (error) {
-          p.log.warn(
-            `The ${configured.name} secrets adapter stored ${name}, and the copy on this machine at ${store.file(name, context.cwd)} still holds the value it replaced: ${error instanceof Error ? error.message : String(error)}. Delete that file.`,
-          );
-        }
-        return;
-      }
       await store.write(name, value, context.cwd);
     },
     describe: (name) =>
-      configured
-        ? `${describeSecret(configured, name)}, or ${describeFile(name)} on this machine`
-        : `${secretVariableName(name)} in the environment, or ${describeFile(name)} on this machine`,
+      `${secretVariableName(name)} in the environment, or ${store.file(name, getCwd())} on this machine`,
   };
   return adapter;
 };
 
 /**
- * The `localSecrets()` store `secrets` reads after its adapter, and stores
- * in when the adapter stores nothing: `localSecrets({ path })`'s, else the
- * default one.
+ * `localSecrets()`'s store, for `localSecrets()` itself; undefined for any
+ * other adapter, which keeps nothing on this machine.
  */
 export const getLocalSecretsStore = (
   secrets: SecretsAdapter,
-): LocalSecretsStore =>
-  isLocalKeyStoreSecrets(secrets)
-    ? secrets[LOCAL_KEY_STORE].store
-    : defaultLocalSecretsStore;
+): LocalSecretsStore | undefined =>
+  isLocalKeyStoreSecrets(secrets) ? secrets[LOCAL_KEY_STORE].store : undefined;
 
 /**
- * The config's own `secrets` adapter, without `localSecrets()`'s store
- * after it: undefined for `localSecrets()`, and when the config sets none.
- * `secretEnv` reads deploy credentials from it.
+ * The config's own `secrets` adapter: undefined for `localSecrets()`,
+ * which is the adapter when the config sets none. `secretEnv` reads deploy
+ * credentials from it.
  */
 export const getConfiguredAdapter = (
   secrets: SecretsAdapter,
 ): SecretsAdapter | undefined =>
-  isLocalKeyStoreSecrets(secrets)
-    ? secrets[LOCAL_KEY_STORE].configured
-    : secrets;
+  isLocalKeyStoreSecrets(secrets) ? undefined : secrets;
 
 /**
- * Where `secrets.set` stores `name`, for messages: the config's adapter
- * when it stores values, else `localSecrets()`'s file.
+ * Where `secrets.set` stores `name`, for messages: the config's adapter,
+ * else `localSecrets()`'s file.
  */
 export const describeStoredSecret = (
   secrets: SecretsAdapter,
   name: string,
-): string => {
-  const configured = getConfiguredAdapter(secrets);
-  return configured?.set
-    ? describeSecret(configured, name)
-    : getLocalSecretsStore(secrets).file(name, getCwd());
-};
+): string =>
+  getLocalSecretsStore(secrets)?.file(name, getCwd()) ??
+  describeSecret(secrets, name);
+
+/**
+ * Refuses, in one line, to store `name` through an adapter without `set`,
+ * before anything is issued or generated: a value kept anywhere else would
+ * be one only this machine reads.
+ */
+export function assertWritableSecrets(
+  secrets: SecretsAdapter,
+  name: string,
+): asserts secrets is SecretsAdapter & Required<Pick<SecretsAdapter, "set">> {
+  if (!secrets.set) {
+    throw new Error(
+      `The ${secrets.name} secrets adapter is read-only: store ${name} there.`,
+    );
+  }
+}
 
 /**
  * `name`'s value, read in the order `secrets.get` reads it, with the one
@@ -236,23 +202,19 @@ export const readSecretWithSource = async (
 ): Promise<{ readonly value: string; readonly source: string } | undefined> => {
   const held = (value: string | undefined): value is string =>
     typeof value === "string" && value.length > 0;
-  if (!isLocalKeyStoreSecrets(secrets)) {
+  const store = getLocalSecretsStore(secrets);
+  if (!store) {
     const value = (await secrets.get([name], { cwd }))[name];
     return held(value)
       ? { value, source: describeSecret(secrets, name) }
       : undefined;
   }
-  const { configured, store } = secrets[LOCAL_KEY_STORE];
-  if (configured) {
-    const value = (await configured.get([name], { cwd }))[name];
-    if (held(value)) {
-      return { value, source: describeSecret(configured, name) };
-    }
-  } else {
-    const value = (await readSecretVariables([name], cwd))[name];
-    if (held(value)) {
-      return { value, source: `${secretVariableName(name)} (environment)` };
-    }
+  const variable = (await readSecretVariables([name], cwd))[name];
+  if (held(variable)) {
+    return {
+      value: variable,
+      source: `${secretVariableName(name)} (environment)`,
+    };
   }
   const value = await store.read(name, cwd);
   return held(value) ? { value, source: store.file(name, cwd) } : undefined;
@@ -312,8 +274,8 @@ export const setConfiguredSecrets = (secrets: SecretsAdapter): void => {
 };
 
 /**
- * The config's `secrets` adapter with `localSecrets()`'s store after it
- * (`withLocalKeyStore`), `localSecrets()` until a config loads.
+ * The config's `secrets` adapter (`resolveSecretsAdapter`), `localSecrets()`
+ * until a config loads.
  */
 export const getConfiguredSecrets = (): SecretsAdapter =>
   (globalThis as SecretsSlot)[CONFIGURED_SECRETS] ?? localSecrets();

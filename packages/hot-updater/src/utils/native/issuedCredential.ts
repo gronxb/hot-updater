@@ -1,8 +1,8 @@
 import {
+  assertWritableSecrets,
   CREDENTIAL_ENV_NAMES,
   credentialLoginCommand,
   describeSecret,
-  getConfiguredAdapter,
   getConfiguredSecrets,
   getCwd,
   getHotUpdaterEnvValue,
@@ -11,8 +11,6 @@ import {
   keepsKeysOnThisMachine,
   p,
   readLoadedHotUpdaterEnv,
-  registerCredentialValue,
-  withLocalKeyStore,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -54,13 +52,12 @@ export type WritableSecrets = SecretsAdapter &
 export type PreparedCredential =
   /** The environment overrides the key: the adapter is not read. */
   | { readonly status: "environment" }
-  /** The secrets adapter, or `localSecrets()`'s store, holds the key: no sign-in. */
+  /** The secrets adapter holds the key: no sign-in. */
   | { readonly status: "stored" }
   /**
-   * Nothing holds the key, and a sign-in can start: there is a terminal.
-   * The key goes to `secrets`, the config's adapter with `localSecrets()`'s
-   * store after it. `env` is the environment with the project's
-   * `.env.hotupdater` under it.
+   * Nothing holds the key, and a sign-in can start: there is a terminal,
+   * and `secrets`, the config's adapter or `localSecrets()`, stores values.
+   * `env` is the environment with the project's `.env.hotupdater` under it.
    */
   | {
       readonly status: "missing";
@@ -86,13 +83,14 @@ const describeUnavailable = (
  * after the developer signed in:
  *
  * 1. an environment override of the kind is used as it is;
- * 2. a value the config's `secrets` adapter, or `localSecrets()`'s store,
- *    holds as `name` is used as it is, so CI builds with the stored key
- *    and never signs in, unless `replace` is set: `secrets issue` read it
- *    already;
- * 3. in CI or without a terminal, `canSignIn` refuses with the command
+ * 2. a value the config's `secrets` adapter holds as `name` is used as it
+ *    is, so CI builds with the stored key and never signs in, unless
+ *    `replace` is set: `secrets issue` read it already;
+ * 3. an adapter without `set` refuses: a key it can't store would be one
+ *    only this run has;
+ * 4. in CI or without a terminal, `canSignIn` refuses with the command
  *    that signs in once;
- * 4. when nothing holds a key and the key would stay on this machine, the
+ * 5. when nothing holds a key and the key would stay on this machine, the
  *    developer is told that signing in issues a new key, and how to share
  *    one instead.
  *
@@ -105,7 +103,7 @@ export const prepareIssuedCredential = async (
     env = {},
     replace = false,
     replacing = false,
-    secrets: configured = getConfiguredSecrets(),
+    secrets = getConfiguredSecrets(),
   }: {
     readonly name: string;
     readonly env?: Readonly<Record<string, string>>;
@@ -129,12 +127,12 @@ export const prepareIssuedCredential = async (
     return { status: "environment" };
   }
 
-  const secrets = withLocalKeyStore(configured) as WritableSecrets;
   const cwd = getCwd();
   if (!replace) {
     const held = (await secrets.get([name], { cwd }))[name];
     if (typeof held === "string" && held) return { status: "stored" };
   }
+  assertWritableSecrets(secrets, name);
 
   if (
     !(await canSignIn({
@@ -160,8 +158,8 @@ export const prepareIssuedCredential = async (
 
 /**
  * A secrets adapter that reads `name` with `read` and every other name
- * from `secrets`, so the build that issued the key signs and uploads with
- * it before builds read it where it is stored. `where` names it in messages.
+ * from `secrets`, so the run that issued the key signs and uploads with it
+ * from memory. `where` names it in messages.
  */
 export const withIssuedKey = (
   secrets: SecretsAdapter,
@@ -202,16 +200,20 @@ export const offerIssuedKeyToGitHub = async ({
   readonly githubSecrets?: CreateGitHubSecrets;
 }): Promise<void> => {
   // A key another adapter stores is read where it is.
-  if (getConfiguredAdapter(secrets) !== undefined) return;
+  const store = getLocalSecretsStore(secrets);
+  if (!store) return;
   await offerGitHubSecret({
     name,
     value,
-    file: getLocalSecretsStore(secrets).file(name, getCwd()),
+    file: store.file(name, getCwd()),
     ...(githubSecrets ? { createSecrets: githubSecrets } : {}),
   });
 };
 
-/** The adapter surely does not hold the issued key: the caller revokes it. */
+/**
+ * The adapter does not hold the issued key as it was issued: the caller
+ * revokes it.
+ */
 export class CredentialNotStoredError extends Error {
   constructor(reason: string, options?: { cause?: unknown }) {
     super(reason, options);
@@ -220,8 +222,9 @@ export class CredentialNotStoredError extends Error {
 }
 
 /**
- * The adapter may hold the issued key, which nothing confirmed: the caller
- * keeps the key, since revoking one the adapter holds leaves it a dead key.
+ * The adapter's write failed, and it may hold the issued key, which
+ * nothing confirmed: the caller keeps the key, since revoking one the
+ * adapter holds leaves it a dead key.
  */
 export class CredentialStoreUnconfirmedError extends Error {
   constructor(reason: string, options?: { cause?: unknown }) {
@@ -233,20 +236,15 @@ export class CredentialStoreUnconfirmedError extends Error {
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-/** A file system error's code, such as `EACCES`, which names its path already. */
-const fsErrorText = (error: unknown) =>
-  error instanceof Error && "code" in error && typeof error.code === "string"
-    ? error.code
-    : errorText(error);
-
 /**
- * Stores an issued key's `value` as `name`, and reads it back: returns
- * whether the adapter reads it as stored, which a write-only store does
- * not. Throws `CredentialNotStoredError` only when the write failed and
- * the adapter reads back no such value, so the caller may revoke the key,
- * and `CredentialStoreUnconfirmedError` when nothing tells, or the adapter
- * reads back another value, such as the key it replaces from a store whose
- * latest version lags: a key the store may hold is never revoked.
+ * Stores an issued key's `value` as `name`, and reads it back through the
+ * adapter, which must hold exactly `value`: a key it doesn't read back is
+ * one no build, here or on a teammate's machine, finds. Throws
+ * `CredentialNotStoredError`, so the caller revokes the key, when the
+ * write succeeded and the read-back fails or differs, or when the write
+ * failed and the adapter reads back no such value; and
+ * `CredentialStoreUnconfirmedError` when the write failed and nothing
+ * tells whether the adapter holds the key.
  */
 export const storeIssuedCredential = async ({
   secrets,
@@ -256,13 +254,9 @@ export const storeIssuedCredential = async ({
   readonly secrets: WritableSecrets;
   readonly name: string;
   readonly value: string;
-}): Promise<{ readonly readable: boolean }> => {
+}): Promise<void> => {
   const cwd = getCwd();
-  // An adapter that stores values is read back alone: localSecrets()'s copy
-  // after it may hold the key this one replaces.
-  const configured = getConfiguredAdapter(secrets);
-  const reader = configured?.set ? configured : secrets;
-  const readBack = async () => (await reader.get([name], { cwd }))[name];
+  const readBack = async () => (await secrets.get([name], { cwd }))[name];
 
   try {
     await secrets.set(name, value, { cwd });
@@ -276,7 +270,7 @@ export const storeIssuedCredential = async ({
         cause: error,
       });
     }
-    if (held === value) return { readable: true };
+    if (held === value) return;
     if (held === undefined) {
       throw new CredentialNotStoredError(errorText(error), { cause: error });
     }
@@ -285,65 +279,34 @@ export const storeIssuedCredential = async ({
     });
   }
 
-  const held = await readBack().catch(() => undefined);
-  if (held !== undefined && held !== value) {
-    throw new CredentialStoreUnconfirmedError(
-      `It reads back another value for ${name}.`,
+  let held: string | undefined;
+  try {
+    held = await readBack();
+  } catch (error) {
+    throw new CredentialNotStoredError(
+      `The ${secrets.name} secrets adapter can't read back ${name}: ${errorText(error)}`,
+      { cause: error },
     );
   }
-  return { readable: held === value };
+  if (held !== value) {
+    throw new CredentialNotStoredError(
+      `The ${secrets.name} secrets adapter reads back ${held === undefined ? "nothing" : "another value"} for ${name}.`,
+    );
+  }
 };
 
 /**
- * The adapter stored the issued key and does not read it back here, as a
- * write-only store does: builds on this machine would not find it, and the
- * key is printed nowhere. Keeps a copy in `localSecrets()`'s store, which builds
- * here read after the adapter, and returns the adapter this run
- * reads the key with: from the copy, or from memory when the copy can't be
- * written, which is reported. The key stays stored either way, and is
- * never revoked.
+ * The adapter the rest of an issuing run reads with: the issued key from
+ * memory, every other name from `secrets`. Nothing is written elsewhere.
  */
-export const keepIssuedCopy = async ({
-  policy,
-  name,
-  value,
-  secrets,
-}: {
-  readonly policy: IssuedCredentialPolicy;
-  readonly name: string;
-  readonly value: string;
-  readonly secrets: SecretsAdapter;
-}): Promise<SecretsAdapter> => {
-  registerCredentialValue(value);
-  const cwd = getCwd();
-  const store = getLocalSecretsStore(secrets);
-  let file: string;
-  try {
-    file = await store.write(name, value, cwd);
-  } catch (error) {
-    p.log.warn(
-      [
-        `Couldn't copy ${name} to this machine: ${fsErrorText(error)}`,
-        ui.fitPath(store.file(name, cwd)),
-        `Only this build, and builds that read ${secrets.name}, use the key.`,
-      ].join("\n"),
-    );
-    return withIssuedKey(
-      secrets,
-      name,
-      async () => value,
-      describeSecret(secrets, name),
-    );
-  }
-  p.log.info(
-    ui.block(`${policy.label} copied to this machine`, [
-      ui.kv("Source", ui.fitPath(file)),
-    ]),
-  );
-  return withIssuedKey(
+export const withIssuedValue = (
+  secrets: SecretsAdapter,
+  name: string,
+  value: string,
+): SecretsAdapter =>
+  withIssuedKey(
     secrets,
     name,
-    async () => (await store.read(name, cwd)) ?? value,
-    file,
+    async () => value,
+    describeSecret(secrets, name),
   );
-};

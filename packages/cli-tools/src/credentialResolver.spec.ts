@@ -12,7 +12,7 @@ import {
 } from "./credentialResolver";
 import { writeLocalKey } from "./localKeyStore";
 import { maskSecretValues } from "./secretMasking";
-import { setConfiguredSecrets, withLocalKeyStore } from "./secrets";
+import { setConfiguredSecrets, resolveSecretsAdapter } from "./secrets";
 
 /** A secrets adapter holding `values`, whose `get` records each call. */
 const fakeSecrets = (
@@ -51,7 +51,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  setConfiguredSecrets(withLocalKeyStore());
+  setConfiguredSecrets(resolveSecretsAdapter());
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await fs.rm(directory, { force: true, recursive: true });

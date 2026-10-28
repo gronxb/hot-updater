@@ -629,11 +629,10 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   /**
-   * Where the CLI reads the secrets the config names: `secret:<name>` build
-   * credentials and `secretEnv([...])` deploy credentials. Builds read a
-   * credential this adapter does not hold from `localSecrets()`'s store,
-   * `~/.hot-updater/secrets/<project-key>/<name>.json`, where keys Hot Updater
-   * issues go when the adapter stores nothing.
+   * Where the CLI reads the secrets the config names, `secret:<name>` build
+   * credentials and `secretEnv([...])` deploy credentials, and stores the
+   * keys it issues. It is the only store: nothing is kept on this machine
+   * under it, and one without `set` is read-only.
    *
    * @default localSecrets()
    */

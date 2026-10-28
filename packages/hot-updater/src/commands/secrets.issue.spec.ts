@@ -8,7 +8,7 @@ import {
   getLocalKeyFile,
   loadConfig,
   readLocalKey,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
@@ -163,7 +163,7 @@ let directory: string;
 /** Makes `secrets` the config's, as loadConfig hands it over: with `localSecrets()`'s store. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
-    secrets: withLocalKeyStore(secrets),
+    secrets: resolveSecretsAdapter(secrets),
   } as never);
 };
 
@@ -262,7 +262,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
   });
 
-  it("keeps a key the environment overrides without signing in or reading the adapter", async () => {
+  it("keeps a key the environment overrides without signing in, naming an adapter that lacks it", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
     vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
     const { calls } = writableStore();
@@ -271,14 +271,27 @@ describe("hot-updater secrets issue asc-api-key", () => {
 
     expect(process.exitCode).toBeUndefined();
     expect(issueAscApiKey).not.toHaveBeenCalled();
-    expect(calls).toEqual([]);
+    // One read, to tell a teammate's view apart: nothing is written.
+    expect(calls).toEqual(["get asc-api-key"]);
     expect(printed()).toBe(
       [
         "App Store Connect API key set by the environment",
-        "Key ID  ENVKEY0001",
-        "Source  HOT_UPDATER_ASC_KEY_ID and HOT_UPDATER_ASC_ISSUER_ID",
+        "Key ID   ENVKEY0001",
+        "Source   HOT_UPDATER_ASC_KEY_ID and HOT_UPDATER_ASC_ISSUER_ID",
+        "Adapter  none in spec://asc-api-key",
       ].join("\n"),
     );
+  });
+
+  it("adds no Adapter row when the adapter holds the key the environment overrides", async () => {
+    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
+    vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
+    writableStore({ "asc-api-key": OLD_ASC });
+
+    await withTTY(true, () => handleSecretsIssue("asc-api-key"));
+
+    expect(process.exitCode).toBeUndefined();
+    expect(printed()).not.toContain("Adapter");
   });
 
   it("--replace issues a new key over the stored one, names the old one and where to revoke it, and never revokes it", async () => {
@@ -376,24 +389,30 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
   });
 
-  it("--replace refuses a key a read-only adapter holds, which a new key would never replace", async () => {
-    const get = vi.fn(async (names: readonly string[]) =>
-      Object.fromEntries(names.map((name) => [name, OLD_ASC])),
-    );
-    configure({ name: "read-only", get, describe: (name) => `ro://${name}` });
+  it.each([
+    ["--replace over a key it holds", OLD_ASC, true],
+    ["a key it lacks", undefined, false],
+  ])(
+    "refuses a read-only adapter before any sign-in: %s",
+    async (_, value, replace) => {
+      const get = vi.fn(async (names: readonly string[]) =>
+        Object.fromEntries(names.map((name) => [name, value])),
+      );
+      configure({ name: "read-only", get, describe: (name) => `ro://${name}` });
 
-    await withTTY(true, () =>
-      handleSecretsIssue("asc-api-key", "asc-api-key", { replace: true }),
-    );
+      await withTTY(true, () =>
+        handleSecretsIssue("asc-api-key", "asc-api-key", { replace }),
+      );
 
-    expect(process.exitCode).toBe(1);
-    expect(issueAscApiKey).not.toHaveBeenCalled();
-    expect(text).not.toHaveBeenCalled();
-    expect(log.error).toHaveBeenCalledWith(
-      "asc-api-key is in the read-only secrets adapter, which is read-only.\nReplace it there: ro://asc-api-key",
-    );
-    expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
-  });
+      expect(process.exitCode).toBe(1);
+      expect(issueAscApiKey).not.toHaveBeenCalled();
+      expect(text).not.toHaveBeenCalled();
+      expect(log.error).toHaveBeenCalledWith(
+        "The read-only secrets adapter is read-only: store asc-api-key there.",
+      );
+      expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
+    },
+  );
 
   it("--replace refuses a key the environment overrides, which a new key would never replace", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
@@ -544,7 +563,7 @@ describe("hot-updater secrets issue play-service-account", () => {
   it("offers the package name the config's nativeBuild.android scheme declares", async () => {
     const { store } = writableStore();
     vi.mocked(loadConfig).mockResolvedValue({
-      secrets: withLocalKeyStore(store),
+      secrets: resolveSecretsAdapter(store),
       nativeBuild: {
         android: {
           release: { packageName: "com.codex.relay" },
@@ -573,7 +592,7 @@ describe("hot-updater secrets issue play-service-account", () => {
   it("chooses among the application IDs several schemes declare, or takes another", async () => {
     const { store } = writableStore();
     vi.mocked(loadConfig).mockResolvedValue({
-      secrets: withLocalKeyStore(store),
+      secrets: resolveSecretsAdapter(store),
       nativeBuild: {
         android: {
           release: { packageName: "com.codex.relay" },
@@ -651,7 +670,7 @@ describe("hot-updater secrets issue play-service-account", () => {
 
     expect(process.exitCode).toBeUndefined();
     expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-    expect(calls).toEqual([]);
+    expect(calls).toEqual(["get play-service-account"]);
     const output = printed();
     expect(output).toContain("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH");
     expect(output).toContain("uploader@old-project.iam.gserviceaccount.com");

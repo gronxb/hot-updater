@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import crypto from "node:crypto";
 import os from "os";
 import path from "path";
+import { stripVTControlCharacters } from "util";
 
 import {
   assembleServer,
@@ -68,6 +69,22 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,
+  // The secrets check reads the environment and the adapter as the CLI does.
+  ...(({
+    CREDENTIAL_ENV_NAMES,
+    getConfiguredAdapter,
+    getHotUpdaterEnvValue,
+    isSecretName,
+    readLoadedHotUpdaterEnv,
+    secretVariableName,
+  }) => ({
+    CREDENTIAL_ENV_NAMES,
+    getConfiguredAdapter,
+    getHotUpdaterEnvValue,
+    isSecretName,
+    readLoadedHotUpdaterEnv,
+    secretVariableName,
+  }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: vi.fn(() => "/mock/cwd"),
   loadConfig: vi.fn(),
   p: {
@@ -488,6 +505,75 @@ describe("doctor", () => {
     );
     expect(p.text).not.toHaveBeenCalled();
     logSpy.mockRestore();
+  });
+
+  it("lists where each secret: reference is read from, and --json gives the same fields", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PATH", "/tmp/release.jks");
+    const get = vi.fn(async (names: readonly string[]) =>
+      Object.fromEntries(
+        names.map((name) => [name, name === "asc-api-key" ? "{}" : undefined]),
+      ),
+    );
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: { name: "team-store", get },
+        nativeBuild: {
+          ios: { release: { signing: { ascApiKey: "secret:asc-api-key" } } },
+          android: {
+            release: { signing: { keystore: "secret:release-keystore" } },
+          },
+        },
+        signing: { enabled: true, privateKey: "secret:bundle-signing-key" },
+      }),
+    );
+
+    await handleDoctor({ serverBaseUrl: undefined }).catch(() => {});
+
+    const block = vi
+      .mocked(p.log.step)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)))
+      .find((message) => message.startsWith("Secrets"));
+    expect(block).toBe(
+      [
+        "Secrets",
+        "Adapter             team-store",
+        "asc-api-key         in the adapter",
+        "release-keystore    set by the environment, none in the adapter",
+        "bundle-signing-key  missing",
+      ].join("\n"),
+    );
+    expect(get).toHaveBeenCalledTimes(1);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleDoctor({ json: true });
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      success: true,
+      details: {
+        secrets: {
+          adapter: "team-store",
+          references: [
+            {
+              name: "asc-api-key",
+              fields: ["nativeBuild.ios.release.signing.ascApiKey"],
+              source: "adapter",
+              inAdapter: true,
+            },
+            {
+              name: "release-keystore",
+              source: "environment",
+              inAdapter: false,
+            },
+            { name: "bundle-signing-key", source: "missing" },
+          ],
+        },
+      },
+    });
+    logSpy.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it("exits non-zero when the default output reports a doctor error", async () => {

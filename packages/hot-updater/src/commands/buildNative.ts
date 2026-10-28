@@ -225,11 +225,8 @@ const buildNativeInternal = async ({
                   name: ascApiKeyName,
                   secrets,
                 });
-                // A key the adapter does not read back here is in its copy:
-                // this build signs and uploads with it from there.
-                if (ensured.status === "issued" && ensured.secrets) {
-                  secrets = ensured.secrets;
-                }
+                // This build signs and uploads with the issued key from memory.
+                if (ensured.status === "issued") secrets = ensured.secrets;
               } catch (e) {
                 if (e instanceof CredentialSetupRefusedError) throw e;
                 throw new NativeBuildFailure(
@@ -253,9 +250,8 @@ const buildNativeInternal = async ({
                 });
                 if (ensured.status === "issued") {
                   serviceAccountIssued = true;
-                  // A key the adapter does not read back here is in its
-                  // copy: this build uploads with it from there.
-                  if (ensured.secrets) secrets = ensured.secrets;
+                  // This build uploads with the issued key from memory.
+                  secrets = ensured.secrets;
                 }
               } catch (e) {
                 if (e instanceof CredentialSetupRefusedError) throw e;

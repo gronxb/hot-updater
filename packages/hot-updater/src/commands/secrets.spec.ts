@@ -8,7 +8,7 @@ import {
   getLocalKeyFile,
   loadConfig,
   maskSecretValues,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
@@ -71,10 +71,10 @@ const writableStore = (values: Record<string, string> = {}) => {
   return { store, held };
 };
 
-/** Makes `secrets` the config's, as loadConfig hands it over: with `localSecrets()`'s store. */
+/** Makes `secrets` the config's, as loadConfig hands it over: `localSecrets()` without one. */
 const configure = (secrets?: SecretsAdapter) => {
   vi.mocked(loadConfig).mockResolvedValue({
-    secrets: withLocalKeyStore(secrets),
+    secrets: resolveSecretsAdapter(secrets),
   } as never);
 };
 
@@ -271,50 +271,36 @@ describe("hot-updater secrets put", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("refuses a value a read-only adapter already holds, which builds read first, before any prompt", async () => {
-    configure({
-      name: "read-only",
-      get: async (names) =>
-        Object.fromEntries(names.map((name) => [name, "held"])),
-      describe: (name) => `ro://${name}`,
-    });
-    vi.spyOn(process, "cwd").mockReturnValue(directory);
-    await fs.writeFile(path.join(directory, "package.json"), "{}");
+  it.each([
+    ["holds the name", "held"],
+    ["lacks the name", undefined],
+  ])(
+    "refuses a read-only adapter that %s in one line, before any prompt, writing nothing on this machine",
+    async (_, value) => {
+      const get = vi.fn(async (names: readonly string[]) =>
+        Object.fromEntries(names.map((name) => [name, value])),
+      );
+      configure({ name: "read-only", get, describe: (name) => `ro://${name}` });
+      vi.spyOn(process, "cwd").mockReturnValue(directory);
+      await fs.writeFile(path.join(directory, "package.json"), "{}");
 
-    await handleSecretsPut("release-keystore", {
-      kind: "android-keystore",
-      keystore: "release.jks",
-      keyAlias: "upload",
-    });
+      await handleSecretsPut("release-keystore", {
+        kind: "android-keystore",
+        keystore: "release.jks",
+        keyAlias: "upload",
+      });
 
-    expect(log.error).toHaveBeenCalledWith(
-      "release-keystore is in the read-only secrets adapter, which is read-only.\nReplace it there: ro://release-keystore",
-    );
-    expect(password).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it("stores in `localSecrets()`'s store when the config's adapter stores nothing", async () => {
-    configure({
-      name: "read-only",
-      get: async (names) =>
-        Object.fromEntries(names.map((name) => [name, undefined])),
-    });
-    vi.spyOn(process, "cwd").mockReturnValue(directory);
-    await fs.writeFile(path.join(directory, "package.json"), "{}");
-    const file = path.join(directory, "play.json");
-    await fs.writeFile(file, '{"type":"service_account"}');
-
-    await handleSecretsPut("play-service-account", {
-      kind: "play-service-account",
-      serviceAccount: file,
-    });
-
-    expect(process.exitCode).toBeUndefined();
-    await expect(
-      fs.readFile(getLocalKeyFile("play-service-account", directory), "utf-8"),
-    ).resolves.toBe('{"type":"service_account"}');
-  });
+      expect(log.error).toHaveBeenCalledWith(
+        "The read-only secrets adapter is read-only: store release-keystore there.",
+      );
+      expect(get).not.toHaveBeenCalled();
+      expect(password).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      await expect(
+        fs.access(getLocalKeyFile("release-keystore", directory)),
+      ).rejects.toThrow();
+    },
+  );
 });
 
 // No line the command prints wraps on an 80-column terminal.

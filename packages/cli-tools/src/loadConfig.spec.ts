@@ -205,9 +205,9 @@ describe("loadConfig", () => {
       );
     } finally {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
-      const { setConfiguredSecrets, withLocalKeyStore } =
+      const { setConfiguredSecrets, resolveSecretsAdapter } =
         await import("./secrets");
-      setConfiguredSecrets(withLocalKeyStore());
+      setConfiguredSecrets(resolveSecretsAdapter());
       vi.unstubAllEnvs();
     }
   });
@@ -263,9 +263,9 @@ describe("loadConfig", () => {
       expect(stores.none.get).not.toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");
-      const { setConfiguredSecrets, withLocalKeyStore } =
+      const { setConfiguredSecrets, resolveSecretsAdapter } =
         await import("./secrets");
-      setConfiguredSecrets(withLocalKeyStore());
+      setConfiguredSecrets(resolveSecretsAdapter());
       vi.unstubAllEnvs();
     }
   });

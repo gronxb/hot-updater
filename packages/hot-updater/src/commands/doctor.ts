@@ -48,6 +48,7 @@ import {
   recordedBaseUrls,
 } from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
+import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
   hasVerificationOptions,
@@ -124,6 +125,8 @@ interface DoctorDetails {
   schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
+  /** Where each `secret:` reference in the config is read from. */
+  secrets?: SecretsStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -839,6 +842,13 @@ async function checkProject(
       }
     }
 
+    // A config that doesn't load is reported by the checks that need it.
+    const secrets = await loadConfig(null).then(
+      (config) => checkSecrets(config, cwd),
+      () => undefined,
+    );
+    if (secrets) details.secrets = secrets;
+
     // The server's data reads through the fence, so it is checked once the
     // schema passes.
     const schema = await checkSchema(context);
@@ -912,6 +922,7 @@ async function checkProject(
       details.native ||
       details.schema ||
       details.releaseCatalogs ||
+      details.secrets ||
       details.infrastructureUnchecked
     ) {
       return {
@@ -1196,6 +1207,34 @@ export const handleDoctor = async ({
       } else {
         report(`${message}\n${ui.prose(issue.resolution)}`);
       }
+    }
+  }
+
+  if (details?.secrets) {
+    const { adapter, references, error } = details.secrets;
+    p.log.step(
+      ui.block("Secrets", [
+        ui.kv("Adapter", adapter),
+        ...references.map(({ name, source, inAdapter }) =>
+          ui.kv(
+            name,
+            source === "environment"
+              ? inAdapter === false
+                ? ui.warning("set by the environment, none in the adapter")
+                : "set by the environment"
+              : source === "adapter"
+                ? "in the adapter"
+                : source === "missing"
+                  ? ui.warning("missing")
+                  : "not checked",
+          ),
+        ),
+      ]),
+    );
+    if (error !== undefined) {
+      p.log.warn(
+        ui.prose(`Couldn't read the ${adapter} secrets adapter: ${error}`),
+      );
     }
   }
 

@@ -18,7 +18,7 @@ import { normalizeSigningConfig } from "./localBundleSigning.js";
 import {
   type SecretsScope,
   setConfiguredSecrets,
-  withLocalKeyStore,
+  resolveSecretsAdapter,
   withSecretsScope,
 } from "./secrets.js";
 
@@ -117,8 +117,8 @@ export type ConfigResponse = RequiredDeep<
   signing?: ReturnType<typeof normalizeSigningConfig>;
   /**
    * Where `secret:` references and issued keys are read and stored: the
-   * config's adapter with `localSecrets()`'s store after it (`withLocalKeyStore`),
-   * or `localSecrets()` when it sets none.
+   * config's adapter alone, or `localSecrets()` when it sets none
+   * (`resolveSecretsAdapter`).
    */
   secrets: SecretsAdapter;
 };
@@ -250,7 +250,7 @@ const resolveConfig = (
   scopes: readonly SecretsScope[],
 ): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
-  const secrets = withLocalKeyStore(mergedConfig.secrets);
+  const secrets = resolveSecretsAdapter(mergedConfig.secrets);
   const signing = normalizeSigningConfig(mergedConfig.signing, { secrets });
   for (const scope of scopes) scope.secrets ??= secrets;
   setConfiguredSecrets(secrets);

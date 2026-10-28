@@ -14,7 +14,7 @@ import {
   normalizeSigningConfig,
 } from "./localBundleSigning";
 import { maskSecretValues } from "./secretMasking";
-import { withLocalKeyStore } from "./secrets";
+import { resolveSecretsAdapter } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -245,7 +245,7 @@ describe("local signing with privateKey from a secret", () => {
     );
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:env-signing-key" },
-      { secrets: withLocalKeyStore() },
+      { secrets: resolveSecretsAdapter() },
     );
 
     await expect(signing.getPublicKey({ cwd })).resolves.toEqual({
@@ -269,7 +269,7 @@ describe("local signing with privateKey from a secret", () => {
     const cwd = await createTempDir();
     const signing = createLocalSigningAdapter(
       { enabled: true, privateKey: "secret:bundle-signing-key" },
-      { secrets: withLocalKeyStore() },
+      { secrets: resolveSecretsAdapter() },
     );
 
     await expect(signing.getPublicKey({ cwd })).rejects.toThrow(

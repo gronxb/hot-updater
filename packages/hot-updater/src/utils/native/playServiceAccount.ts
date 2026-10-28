@@ -17,10 +17,10 @@ import {
   CredentialNotStoredError,
   CredentialSetupRefusedError,
   type IssuedCredentialPolicy,
-  keepIssuedCopy,
   offerIssuedKeyToGitHub,
   prepareIssuedCredential,
   storeIssuedCredential,
+  withIssuedValue,
   type WritableSecrets,
 } from "./issuedCredential";
 
@@ -45,11 +45,8 @@ export type EnsurePlayServiceAccountResult =
   | {
       readonly status: "issued";
       readonly email: string;
-      /**
-       * Set when the adapter does not read the key back here, such as a
-       * write-only store: the adapter this run reads it with, from a copy.
-       */
-      readonly secrets?: SecretsAdapter;
+      /** The adapter the rest of this run reads with: the key from memory. */
+      readonly secrets: SecretsAdapter;
     };
 
 const PACKAGE_NAME_PATTERN =
@@ -103,11 +100,11 @@ const errorText = (error: unknown) =>
 
 /**
  * Stores `issued` as `name`, the service account's own JSON, and reads it
- * back. The key is deleted again only when the adapter surely does not
- * hold it; one it may hold is kept, since deleting it would leave the store
- * with a dead key, and the message says which.
+ * back. The key is deleted again when the adapter does not read it back as
+ * stored; one a failed write may have stored is kept, since deleting it
+ * would leave the store with a dead key, and the message says which.
  */
-/** Deletes the key, which surely is stored nowhere, and says so. */
+/** Deletes the key, which the adapter does not hold, and says so. */
 const revokeNotStored = async (
   issued: IssuedPlayServiceAccount,
   reason: string,
@@ -130,11 +127,11 @@ const storeIssued = async (
   secrets: WritableSecrets,
   name: string,
   issued: IssuedPlayServiceAccount,
-): Promise<{ readonly readable: boolean }> => {
+): Promise<void> => {
   // Masked before it is sent, so no failure can print it.
   registerCredentialValue(issued.json);
   try {
-    return await storeIssuedCredential({
+    await storeIssuedCredential({
       secrets,
       name,
       value: issued.json,
@@ -166,18 +163,19 @@ const storeIssued = async (
  *
  * 1. an environment override of play-service-account
  *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
- * 2. a value the config's `secrets` adapter, or `localSecrets()`'s store,
- *    holds as `name` is used as it is, so CI uploads with the stored key
- *    and never signs in;
- * 3. without a terminal, it refuses with the command that signs in once.
+ * 2. a value the config's `secrets` adapter holds as `name` is used as it
+ *    is, so CI uploads with the stored key and never signs in;
+ * 3. an adapter without `set` refuses;
+ * 4. without a terminal, it refuses with the command that signs in once.
  *
  * Only then does the developer sign in with Google, through gcloud, and
  * invite the service account in Play Console, which opens in a browser,
- * through `issue`, and the issued key is stored through the config's adapter, or
- * `localSecrets()`'s store by default, read back, and deleted again if
- * storing it fails. A key the default store keeps comes with an offer to
- * store it as a GitHub Actions secret too, and every issued key with where
- * to delete the ones no machine uses anymore. The environment overrides
+ * through `issue`, and the issued key is stored through the config's
+ * adapter, or `localSecrets()` by default, read back, and deleted again
+ * unless the adapter reads back exactly that key. A key `localSecrets()`
+ * keeps comes with an offer to store it as a GitHub Actions secret too, and
+ * every issued key with where to delete the ones no machine uses anymore.
+ * The environment overrides
  * are read, never written.
  */
 export const ensurePlayServiceAccount = async ({
@@ -251,7 +249,7 @@ export const ensurePlayServiceAccount = async ({
   });
 
   try {
-    const { readable } = await storeIssued(store, name, issued);
+    await storeIssued(store, name, issued);
     p.log.success(
       ui.block("Play service account stored", [
         name !== POLICY.kind && ui.kv("Name", name),
@@ -266,17 +264,11 @@ export const ensurePlayServiceAccount = async ({
       secrets: store,
       ...(githubSecrets ? { githubSecrets } : {}),
     });
-    if (readable) return { status: "issued", email: issued.email };
-    // The adapter keeps the key, which builds here would not find.
+    // This run reads the key from memory; builds after it, from the adapter.
     return {
       status: "issued",
       email: issued.email,
-      secrets: await keepIssuedCopy({
-        policy: POLICY,
-        name,
-        value: issued.json,
-        secrets: store,
-      }),
+      secrets: withIssuedValue(store, name, issued.json),
     };
   } finally {
     await issued.dispose();
