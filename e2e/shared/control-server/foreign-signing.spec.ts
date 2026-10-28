@@ -80,7 +80,8 @@ describe("refusedForMissingSigningSecret", () => {
     ].join("\n");
 
     expect(refusedForMissingSigningSecret(refusal)).toBe(true);
-    // As the CLI prints it: wrapped at spaces in the prompt frame, colored.
+    // As deploy prints prepareBundleSigning's refusal: wrapped at spaces in
+    // the prompt frame, colored.
     const printed = [
       "■  Failed to resolve the bundle signing provider public key.",
       "│  signing.privateKey reads the bundle signing key bundle-signing-key, which",

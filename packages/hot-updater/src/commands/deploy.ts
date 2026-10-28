@@ -569,12 +569,12 @@ const deployPlatform = async ({
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
     prepareBundleSigning(config.signing, { cwd }).catch((error: unknown) => {
+      // As for a signing issue below: the E2E refusal check reads both.
       p.log.error(
-        [
-          "Bundle signing isn't ready: nothing was deployed.",
-          ui.prose(error instanceof Error ? error.message : String(error)),
-          "Fix signing in hot-updater.config.ts, then deploy again.",
-        ].join("\n"),
+        ui.prose(error instanceof Error ? error.message : String(error)),
+      );
+      p.log.error(
+        "Deployment blocked. Fix the signing configuration and try again.",
       );
       return process.exit(1);
     }),

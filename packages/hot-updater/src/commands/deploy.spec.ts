@@ -1519,12 +1519,9 @@ describe("deploy rollout wiring", () => {
 
       // The reason is printed, not thrown past the CLI as a stack trace.
       expect(exit).toHaveBeenCalledWith(1);
-      expect(mockCli.p.log.error).toHaveBeenCalledWith(
-        [
-          "Bundle signing isn't ready: nothing was deployed.",
-          reason,
-          "Fix signing in hot-updater.config.ts, then deploy again.",
-        ].join("\n"),
+      expect(mockCli.p.log.error).toHaveBeenCalledWith(reason);
+      expect(mockCli.p.log.error).toHaveBeenLastCalledWith(
+        "Deployment blocked. Fix the signing configuration and try again.",
       );
       expect(mockBuildAdapter.build).not.toHaveBeenCalled();
       expect(mockStorageAdapter.put).not.toHaveBeenCalled();
