@@ -13,42 +13,18 @@ import {
 import { CopyableText } from "./CopyableText";
 
 /** The command that tracks a build made elsewhere. */
-export const IMPORT_COMMAND =
-  "npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>";
+export const IMPORT_COMMAND = "npx hot-updater native-build import <file>";
 
 /** `native-build import`'s section of the native build guide. */
 export const IMPORT_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/native-build#import-a-build-made-elsewhere";
 
 /**
- * How to track a build made elsewhere: the CLI command, which reads the
- * artifact on the machine that has it. The Console uploads nothing, since a
- * host may cap a request's body far below an `.ipa`.
+ * The toolbar's "Import a build" button and the command it shows: the CLI
+ * reads the artifact on the machine that has it, so the Console uploads
+ * nothing, since a host may cap a request's body far below an `.ipa`. The
+ * guide has the rest, such as `--channel`.
  */
-export function ImportBuildSteps() {
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <p className="text-xs text-muted-foreground">
-        Track an <code className="font-mono">.ipa</code>,{" "}
-        <code className="font-mono">.aab</code>,{" "}
-        <code className="font-mono">.apk</code> or simulator{" "}
-        <code className="font-mono">.app</code> (or its{" "}
-        <code className="font-mono">.app.zip</code>) built elsewhere, such as by
-        EAS, Xcode Cloud or Fastlane, so the OTAs you deploy after it patch from
-        its built-in bundle. Run in the app's project:
-      </p>
-      <CopyableText label="the import command" value={IMPORT_COMMAND} wrap />
-      <p className="text-xs text-muted-foreground">
-        Add <code className="font-mono">-c &lt;channel&gt;</code> (
-        <code className="font-mono">--channel</code>) when the app reports
-        another channel than the one it was built with, such as one its code
-        sets or switches to at runtime.
-      </p>
-    </div>
-  );
-}
-
-/** The toolbar's "Import a build" button and the command it shows. */
 export function ImportBuildDialog() {
   return (
     <Dialog>
@@ -69,10 +45,10 @@ export function ImportBuildDialog() {
         <DialogHeader>
           <DialogTitle>Import a build</DialogTitle>
           <DialogDescription>
-            The build appears here once the command tracks it.
+            Track an .ipa, .aab, .apk or .app built elsewhere as a patch base.
           </DialogDescription>
         </DialogHeader>
-        <ImportBuildSteps />
+        <CopyableText label="the import command" value={IMPORT_COMMAND} wrap />
         <a
           className={buttonVariants({
             className: "min-h-11 w-full sm:min-h-8 sm:w-fit",

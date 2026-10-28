@@ -104,12 +104,10 @@ function EmptyRow({
             <>
               <p className="font-medium text-foreground">No native builds</p>
               <p>
-                Build a release app with{" "}
-                <code className="font-mono text-xs">
-                  hot-updater native-build android
-                </code>{" "}
+                Build one with{" "}
+                <code className="font-mono text-xs">native-build android</code>{" "}
                 or <code className="font-mono text-xs">native-build ios</code>,
-                which tracks it here, or import one built elsewhere:
+                or import one built elsewhere:
               </p>
               <div className="w-full text-left">
                 <CopyableText

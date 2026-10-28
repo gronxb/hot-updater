@@ -12,7 +12,10 @@ export function CopyableText({
   /** What the copy button copies, such as "the install command". */
   readonly label: string;
   readonly value: string;
-  /** Whether a long value wraps instead of scrolling, so all of it shows. */
+  /**
+   * Whether a value too wide for a phone breaks at its spaces there instead
+   * of scrolling, so all of it shows: one line from `sm` up.
+   */
   readonly wrap?: boolean;
 }) {
   const copy = async () => {
@@ -28,7 +31,7 @@ export function CopyableText({
       <code
         className={
           wrap
-            ? "min-w-0 flex-1 text-left font-mono text-xs break-all whitespace-pre-wrap"
+            ? "min-w-0 flex-1 text-left font-mono text-xs whitespace-normal sm:whitespace-nowrap"
             : "min-w-0 flex-1 overflow-x-auto text-left font-mono text-xs whitespace-nowrap"
         }
       >

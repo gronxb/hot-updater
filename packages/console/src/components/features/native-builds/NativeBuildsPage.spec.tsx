@@ -45,11 +45,17 @@ describe("NativeBuildsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import a build" }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain(
-      "npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>",
-    );
-    // The merged CLI's channel option, and its guide.
-    expect(dialog.textContent).toContain("--channel");
+    // A title, one line, the command, and the guide: nothing else.
+    expect(
+      [...dialog.querySelectorAll("h2, p, code, a")].map(
+        (element) => element.textContent,
+      ),
+    ).toEqual([
+      "Import a build",
+      "Track an .ipa, .aab, .apk or .app built elsewhere as a patch base.",
+      "npx hot-updater native-build import <file>",
+      "Import guide",
+    ]);
     expect(screen.getByRole("link", { name: /Import guide/ })).toHaveProperty(
       "href",
       "https://hot-updater.dev/docs/guides/native-build#import-a-build-made-elsewhere",

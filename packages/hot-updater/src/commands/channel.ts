@@ -23,8 +23,10 @@ const NATIVE_CHANNEL_FILES = [
  * Writes the default channel into the native files, and says per platform
  * whether it wrote any. In an Expo CNG project the build takes the channel
  * from the `@hot-updater/expo` plugin's `channel` option, which
- * `expo prebuild` writes into the native files, so it shows that option set
- * to this channel.
+ * `expo prebuild` writes into the native files, so it points there: in
+ * `app.json`, the option set to this channel; in a dynamic `app.config.*`,
+ * the option read from the user's own environment variable, as the pull
+ * request preview guide does, with the variable to build with.
  */
 export const handleSetChannel = async (channel: string) => {
   const expoConfig = expoConfigFile();
@@ -54,15 +56,19 @@ export const handleSetChannel = async (channel: string) => {
   }
 
   if (expoConfig !== null) {
-    const option =
-      expoConfig === "app.json"
-        ? `"plugins": [["@hot-updater/expo", { "channel": ${JSON.stringify(channel)} }]]`
-        : `plugins: [["@hot-updater/expo", { channel: ${JSON.stringify(channel)} }]]`;
+    const source = `This Expo project's builds take the channel from the @hot-updater/expo plugin's \`channel\` option in ${expoConfig}, which \`expo prebuild\` writes into the native files${written ? ", replacing what was written here" : ""}.`;
     p.log.info(
-      [
-        `This Expo project's builds take the channel from the @hot-updater/expo plugin's \`channel\` option in ${expoConfig}, which \`expo prebuild\` writes into the native files${written ? ", replacing what was written here" : ""}. Set it there:`,
-        `  ${option}`,
-      ].join("\n"),
+      (expoConfig === "app.json"
+        ? [
+            `${source} Set it there:`,
+            `  "plugins": [["@hot-updater/expo", { "channel": ${JSON.stringify(channel)} }]]`,
+          ]
+        : [
+            `${source} To build ${channel} without editing it, read the channel from an environment variable there, as the pull request preview guide does:`,
+            '  plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+            `Then build with PREVIEW_CHANNEL=${channel}.`,
+          ]
+      ).join("\n"),
     );
   }
 
