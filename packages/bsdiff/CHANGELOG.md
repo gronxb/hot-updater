@@ -1,5 +1,7 @@
 # @hot-updater/bsdiff
 
+## 1.2.0-rc.1
+
 ## 1.2.0-rc.0
 
 ## 1.1.3
