@@ -577,13 +577,9 @@ export const handleSecretsImport = async (): Promise<void> => {
         "hot-updater.config.ts sets no secrets adapter, so .env.hotupdater is already where secrets are read.\nSet secrets to a team store first.",
       );
     }
-    const secretEnvNames = getSecretEnvNames(config);
-    if (secretEnvNames.length === 0) {
-      throw new Error(
-        `hot-updater.config.ts reads no credential with secretEnv, so nothing would read them from ${adapter.name}.\nRead them with secretEnv first: ${SECRET_ENV_DOCS_URL}`,
-      );
-    }
-    const names = [...secretEnvNames, MANAGED_CLIENT_CREDENTIAL_ENV];
+    // A config with no secretEnv, such as Firebase's, still shares the
+    // app's API key.
+    const names = [...getSecretEnvNames(config), MANAGED_CLIENT_CREDENTIAL_ENV];
     const stored = await storeEnvFileSecrets(adapter, names, getCwd());
     if (stored.length === 0) {
       throw new Error(`.env.hotupdater sets none of ${listNames(names)}.`);
@@ -596,6 +592,3 @@ export const handleSecretsImport = async (): Promise<void> => {
     );
   });
 };
-
-const SECRET_ENV_DOCS_URL =
-  "https://hot-updater.dev/docs/concepts/secrets#deploy-credentials-with-secretenv";

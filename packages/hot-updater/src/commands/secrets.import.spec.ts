@@ -124,16 +124,32 @@ describe("hot-updater secrets import", () => {
     );
   });
 
-  it("refuses a config that reads its credentials with process.env, which no store supplies", async () => {
+  it("stores the app's API key for a config with no secretEnv, such as Firebase's", async () => {
+    const { store, held } = teamStore();
+    configure(store, []);
+
+    await handleSecretsImport();
+
+    expect(process.exitCode).toBeUndefined();
+    expect(Object.fromEntries(held)).toEqual({
+      HOT_UPDATER_API_KEY: "app-api-key",
+    });
+  });
+
+  it("refuses when .env.hotupdater sets none of the names", async () => {
     const { store } = teamStore();
     configure(store, []);
+    await fs.writeFile(
+      path.join(directory, ".env.hotupdater"),
+      "HOT_UPDATER_INIT_PROVIDER=firebase\n",
+    );
 
     await handleSecretsImport();
 
     expect(process.exitCode).toBe(1);
     expect(store.set).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      "hot-updater.config.ts reads no credential with secretEnv, so nothing would read them from teamStore.\nRead them with secretEnv first: https://hot-updater.dev/docs/concepts/secrets#deploy-credentials-with-secretenv",
+      ".env.hotupdater sets none of HOT_UPDATER_API_KEY.",
     );
   });
 });
