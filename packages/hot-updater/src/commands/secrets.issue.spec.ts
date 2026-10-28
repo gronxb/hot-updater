@@ -415,7 +415,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
   });
 
-  it("refuses without a terminal before anything else, naming the command to run in one and the import", async () => {
+  it("refuses without a terminal when no key is stored, naming the command to run in one and the import", async () => {
     const { calls } = writableStore();
 
     await withTTY(false, () => handleSecretsIssue("asc-api-key", "widget-asc"));
@@ -428,10 +428,65 @@ describe("hot-updater secrets issue asc-api-key", () => {
         "Or store a key you have: npx hot-updater secrets put --help",
       ].join("\n"),
     );
-    expect(loadConfig).not.toHaveBeenCalled();
-    expect(calls).toEqual([]);
+    // Only the read that found no key: nothing is written.
+    expect(calls).toEqual(["get widget-asc"]);
     expect(text).not.toHaveBeenCalled();
     expect(issueAscApiKey).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["without a terminal", false, ""],
+    ["in CI", true, "true"],
+  ])(
+    "reports a stored key %s, as at a terminal, and exits 0",
+    async (_, isTTY, ci) => {
+      vi.stubEnv("CI", ci);
+      const { store } = writableStore({ "asc-api-key": OLD_ASC });
+
+      await withTTY(isTTY, () => handleSecretsIssue("asc-api-key"));
+
+      expect(process.exitCode).toBeUndefined();
+      expect(log.error).not.toHaveBeenCalled();
+      expect(issueAscApiKey).not.toHaveBeenCalled();
+      expect(text).not.toHaveBeenCalled();
+      expect(store.set).not.toHaveBeenCalled();
+      expect(printed()).toBe(
+        "App Store Connect API key already stored\nKey ID  OLDKEY0001\nSource  spec://asc-api-key",
+      );
+    },
+  );
+
+  it("reports a key the environment sets without a terminal, and exits 0", async () => {
+    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
+    vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
+    writableStore();
+
+    await withTTY(false, () => handleSecretsIssue("asc-api-key"));
+
+    expect(process.exitCode).toBeUndefined();
+    expect(issueAscApiKey).not.toHaveBeenCalled();
+    expect(printed()).toContain(
+      "App Store Connect API key set by the environment",
+    );
+  });
+
+  it("--replace still refuses without a terminal, since it signs in", async () => {
+    const { store } = writableStore({ "asc-api-key": OLD_ASC });
+
+    await withTTY(false, () =>
+      handleSecretsIssue("asc-api-key", "asc-api-key", { replace: true }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
+      [
+        "Can't sign in to your Apple Account without a terminal.",
+        "Run in a terminal: npx hot-updater secrets issue asc-api-key --replace",
+        "Or store a key you have: npx hot-updater secrets put --help",
+      ].join("\n"),
+    );
+    expect(issueAscApiKey).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
   });
 
   it("refuses in CI, even on a terminal the runner allocates", async () => {
@@ -552,6 +607,27 @@ describe("hot-updater secrets issue play-service-account", () => {
         "Key ID           oldkey-play-0001",
         "Revoke",
         "https://console.cloud.google.com/iam-admin/serviceaccounts?project=old-project",
+      ].join("\n"),
+    );
+  });
+
+  it("reports a stored service account without a terminal, and exits 0", async () => {
+    const { store } = writableStore({
+      "play-service-account": OLD_SERVICE_ACCOUNT,
+    });
+
+    await withTTY(false, () => handleSecretsIssue("play-service-account"));
+
+    expect(process.exitCode).toBeUndefined();
+    expect(log.error).not.toHaveBeenCalled();
+    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(printed()).toBe(
+      [
+        "Play service account already stored",
+        "Service account  uploader@old-project.iam.gserviceaccount.com",
+        "Key ID           oldkey-play-0001",
+        "Source           spec://play-service-account",
       ].join("\n"),
     );
   });

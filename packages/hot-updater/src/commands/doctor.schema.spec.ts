@@ -227,7 +227,7 @@ describe("doctor's schema check", () => {
               settings: [
                 { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
               ],
-              resolution: `Run \`${command}\`: it applies the migrations this release needs, then redeploys the Worker from it, back to back. ${ORDER}, so run nothing in between. Doctor read init's saved inputs (HOT_UPDATER_INIT_PROVIDER and the rest) from the environment, not from .env.hotupdater, so init needs them as well: pass the file that holds them to --from-env-file, or export them in the shell that runs it.`,
+              resolution: `Pass init's saved inputs as <env file> to migrate and redeploy in one run: \`${command}\`.`,
               commands: [command],
             },
           ],

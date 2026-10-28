@@ -109,8 +109,6 @@ const buildInto = async ({
       minBundleId,
     });
 
-    p.log.success(`.app file created: ${path.basename(appPath)}`);
-
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: appPath,
@@ -192,7 +190,6 @@ const archiveAndExport = async ({
     await fs.promises.cp(appFromArchive, archivedAppPath, {
       recursive: true,
     });
-    p.log.success(".app extracted from .xcarchive");
   }
 
   // Without export options, a scheme that signs with an App Store Connect

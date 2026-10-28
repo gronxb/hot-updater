@@ -196,9 +196,9 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         outputDir,
         cwd,
       );
-      spinner.stop("Keys generated");
-      p.log.message(
-        ui.block("", [
+      spinner.clear();
+      p.log.success(
+        ui.block("Keys generated", [
           ui.kv(
             "Private",
             ui.path(ui.fitPath(describeStoredSecret(secrets, secretName))),
@@ -208,10 +208,10 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       );
     } else {
       await saveKeyPair(keyPair, outputDir);
-      spinner.stop("Keys generated");
+      spinner.clear();
       const privateKeyPath = path.join(outputDir, "private-key.pem");
-      p.log.message(
-        ui.block("", [
+      p.log.success(
+        ui.block("Keys generated", [
           ui.kv("Private", ui.path(ui.fitPath(privateKeyPath))),
           ui.kv("Public", ui.path(ui.fitPath(publicKeyPath))),
           ui.kv("Gitignore", ignorePrivateKey(cwd, outputDir)),
@@ -704,7 +704,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     return;
   }
 
-  p.log.message(ui.block("Public keys", foundKeys));
+  p.log.step(ui.block("Public keys", foundKeys));
 
   // Confirmation prompt (unless --yes)
   if (!options.yes) {

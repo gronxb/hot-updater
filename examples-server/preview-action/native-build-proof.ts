@@ -211,7 +211,8 @@ const stages: Record<string, () => Promise<void>> = {
       "native-proof-pass",
       "the keystore's password is printed.",
     );
-    expectIncludes(log, "Fingerprint(");
+    // The fingerprint step's result, which only a build that ran prints.
+    expectIncludes(log, "Android fingerprint ");
     // Google refuses the made-up service account after the build and the
     // registration, and the build is kept.
     expectIncludes(log, "The build stays at");

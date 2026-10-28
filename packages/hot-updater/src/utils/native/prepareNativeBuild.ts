@@ -42,6 +42,8 @@ import { canPrompt } from "../prompt";
 import { nativeBuildAppVersionScope } from "./appVersionScope";
 import type { NativeBuildTarget } from "./createNativeBuild";
 
+const PLATFORM_NAMES = { ios: "iOS", android: "Android" } as const;
+
 /** The scheme built, as `nativeBuild` in hot-updater.config.ts sets it. */
 export type NativeBuildSchemeOptions = {
   /** The scheme's name. */
@@ -174,18 +176,18 @@ export async function prepareNativeBuild(
         `No ${platform} fingerprint in fingerprint.json yet: the build writes it.`,
       );
     }
-    s.start(`Fingerprinting (${platform})`);
+    s.start(`Fingerprinting ${PLATFORM_NAMES[platform]}`);
 
     // generate fingerprint.json automatically
     const generatedFingerprint = (await createAndInjectFingerprintFiles())
       .fingerprint[platform];
 
-    s.stop(`Fingerprint(${platform}): ${generatedFingerprint.hash}`);
+    s.stop(
+      `${PLATFORM_NAMES[platform]} fingerprint ${generatedFingerprint.hash}`,
+    );
 
     if (!isFingerprintEquals(localFingerprint, generatedFingerprint)) {
-      p.log.info(
-        `${colors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
-      );
+      p.log.info("Updated fingerprint.json");
     }
     target = { fingerprintHash: generatedFingerprint.hash, appVersion: null };
   } else {
@@ -202,7 +204,7 @@ export async function prepareNativeBuild(
       return null;
     }
     const s = p.spinner();
-    s.start(`Get native app version (${platform})`);
+    s.start(`Reading the ${PLATFORM_NAMES[platform]} app version`);
 
     const iosScheme = config.nativeBuild.ios[scheme];
     const androidScheme = config.nativeBuild.android[scheme];
@@ -212,7 +214,11 @@ export async function prepareNativeBuild(
     );
     const appVersion = resolved.version;
 
-    s.stop(`App Version(${platform}): ${appVersion}`);
+    s.stop(
+      appVersion
+        ? `${PLATFORM_NAMES[platform]} app version ${appVersion}`
+        : `No ${PLATFORM_NAMES[platform]} app version found`,
+    );
 
     if (!appVersion) {
       p.log.error(

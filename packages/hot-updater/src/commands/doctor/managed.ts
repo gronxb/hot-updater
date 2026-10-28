@@ -112,15 +112,16 @@ export const readManagedDeployment = async (
 };
 
 /**
- * What init's command needs when doctor read init's saved inputs from the
- * environment rather than `.env.hotupdater`; empty otherwise.
+ * What init's command does, as the line before it: with the inputs doctor
+ * read from the environment rather than `.env.hotupdater`, it names the
+ * file the command's `<env file>` stands for.
  */
-export const replaySourceNote = ({
+export const replayLead = ({
   source,
 }: Pick<ManagedDeployment, "source">): string =>
   source === "file"
-    ? ""
-    : ` Doctor read init's saved inputs (${INIT_PROVIDER_ENV_KEY} and the rest) from the environment, not from .env.hotupdater, so init needs them as well: pass the file that holds them to --from-env-file, or export them in the shell that runs it.`;
+    ? "Migrate the database and redeploy the server in one run:"
+    : "Pass init's saved inputs as <env file> to migrate and redeploy in one run:";
 
 /**
  * Why init's command does not apply while the config lists plugins the

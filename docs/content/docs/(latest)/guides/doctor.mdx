@@ -424,10 +424,18 @@ is older than the release this CLI needs, it prints the required version, why,
 and the command that upgrades it:
 
 ```txt
-Infrastructure update required: 1.2.0+
-Reason: Core schema 1.2.0: the native build registry table and the tables of the official plugins added beside it
-Run npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater: it applies the database migrations of this release and redeploys the Worker from it in one run, so the 503 window is the deploy. …
+■  Infrastructure update required: 1.2.0+
+│  Core schema 1.2.0: the native build registry table and the tables of the
+│  official plugins added beside it
+│
+●  Migrate the database and redeploy the server in one run:
+│  npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater
 ```
+
+When doctor read init's saved inputs from the environment rather than
+`.env.hotupdater`, such as CI's variables, the command names `<env file>`:
+pass the file that holds them. When the database also has migrations to run,
+the schema check names the command instead, once.
 
 For a deployment `hot-updater init` created (`aws`, `cloudflare`, `supabase`,
 `firebase`, `vercel`, `azure`), the command is init with the inputs it saved

@@ -606,8 +606,8 @@ npx hot-updater native-build ios --scheme release --submit testflight --dry-run
 It resolves the scheme, the app version or fingerprint, and the channel, runs
 the tracking check read-only, and reads the store key `--submit` would use
 without signing in or issuing one. Then it builds, keeps the artifact on this
-machine, and prints what it would have recorded and where it would have
-submitted the build. It writes no record, uploads nothing to your storage, and
+machine, and prints what it skipped in one line, such as
+`Dry run: not recorded or submitted to TestFlight`. It writes no record, uploads nothing to your storage, and
 submits to no store. A missing store key is reported, the build still runs,
 and the command exits with an error at the end. With `--json`, the last line
 has `dryRun: true`, `registration: { skipped: "dry-run" }`, and

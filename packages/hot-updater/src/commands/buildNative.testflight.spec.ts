@@ -480,14 +480,16 @@ describe("native-build ios --dry-run", () => {
     expect(ensureAscApiKey).not.toHaveBeenCalled();
     expect(registerNativeBuild).not.toHaveBeenCalled();
     expect(uploadToTestFlight).not.toHaveBeenCalled();
-    const summary = stripVTControlCharacters(
-      String(vi.mocked(p.log.step).mock.calls[0]?.[0]),
+    // The build's block names the artifact; the dry run adds one line.
+    const built = stripVTControlCharacters(
+      vi.mocked(p.log.success).mock.calls.map(String).join("\n"),
     );
-    expect(summary).toContain("Dry run: nothing was recorded or submitted");
-    expect(summary).toContain("/out/export/App.ipa");
-    expect(summary).toContain("0190a1b2-c3d4-7000-8000-01a1b2c3d4e5");
-    expect(summary).toContain("the native build and its built-in bundle");
-    expect(summary).toContain("to TestFlight");
+    expect(built).toContain("Built iOS");
+    expect(built).toContain("/out/export/App.ipa");
+    expect(built).toContain("0190a1b2-c3d4-7000-8000-01a1b2c3d4e5");
+    expect(vi.mocked(p.log.step).mock.calls).toEqual([
+      ["Dry run: not recorded or submitted to TestFlight"],
+    ]);
     expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
       dryRun: true,
       nativeBuild: null,
