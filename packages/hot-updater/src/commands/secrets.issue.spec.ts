@@ -70,14 +70,23 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
 }));
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
-  issuePlayServiceAccount: vi.fn(async () => ({
-    json: NEW_SERVICE_ACCOUNT,
-    email: "hot-updater-play@my-app.iam.gserviceaccount.com",
-    projectId: "my-app",
-    keyId: "newkey-play-0001",
-    ...playKey,
-  })),
+  issuePlayServiceAccount: vi.fn(
+    async (request: { askPackageName: () => Promise<string> }) => {
+      // The issuer asks once its sign-in tool is found.
+      packageNames.push(await request.askPackageName());
+      return {
+        json: NEW_SERVICE_ACCOUNT,
+        email: "hot-updater-play@my-app.iam.gserviceaccount.com",
+        projectId: "my-app",
+        keyId: "newkey-play-0001",
+        ...playKey,
+      };
+    },
+  ),
 }));
+
+/** The package names the issuer was given, in order. */
+const packageNames: string[] = [];
 
 import { issuePlayServiceAccount } from "@hot-updater/android-helper";
 import { issueAscApiKey } from "@hot-updater/apple-helper";
@@ -516,11 +525,7 @@ describe("hot-updater secrets issue play-service-account", () => {
     await withTTY(true, () => handleSecretsIssue("play-service-account"));
 
     expect(process.exitCode).toBeUndefined();
-    expect(issuePlayServiceAccount).toHaveBeenCalledWith(
-      expect.objectContaining({
-        packageName: "com.example.app",
-      }),
-    );
+    expect(packageNames.at(-1)).toBe("com.example.app");
     expect(held.get("play-service-account")).toBe(NEW_SERVICE_ACCOUNT);
     expect(printed()).toContain("Play service account stored");
     expect(printed()).not.toContain("issueSpecNewPlayKey01");
@@ -559,9 +564,7 @@ describe("hot-updater secrets issue play-service-account", () => {
     expect(text).toHaveBeenCalledWith(
       expect.objectContaining({ initialValue: "com.codex.relay" }),
     );
-    expect(issuePlayServiceAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ packageName: "com.codex.relay" }),
-    );
+    expect(packageNames.at(-1)).toBe("com.codex.relay");
   });
 
   it("chooses among the application IDs several schemes declare, or takes another", async () => {
@@ -600,9 +603,7 @@ describe("hot-updater secrets issue play-service-account", () => {
         message: "The app's package name in Google Play",
       }),
     );
-    expect(issuePlayServiceAccount).toHaveBeenLastCalledWith(
-      expect.objectContaining({ packageName: "com.codex.relay.staging" }),
-    );
+    expect(packageNames.at(-1)).toBe("com.codex.relay.staging");
 
     vi.clearAllMocks();
     select.mockResolvedValueOnce("");
@@ -613,9 +614,7 @@ describe("hot-updater secrets issue play-service-account", () => {
     expect(text).toHaveBeenCalledWith(
       expect.objectContaining({ placeholder: "com.example.app" }),
     );
-    expect(issuePlayServiceAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ packageName: "com.example.app" }),
-    );
+    expect(packageNames.at(-1)).toBe("com.example.app");
   });
 
   it("keeps a stored service account without signing in, naming it", async () => {

@@ -108,6 +108,7 @@ import {
   handleGooglePlayUploadKey,
   handleUploadKeyIssue,
 } from "./commands/uploadKey";
+import { ui } from "./utils/cli-ui";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -498,7 +499,7 @@ secretsCommand
     "after",
     [
       "",
-      "asc-api-key signs in to your Apple Account with asc, the App Store Connect CLI.",
+      "asc-api-key signs in to your Apple Account in Hot Updater's own prompts.",
       "play-service-account signs in to Google with gcloud, then waits while you",
       "invite the service account in Play Console.",
       "",
@@ -537,8 +538,7 @@ const LOGIN_COMMANDS = [
       "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
     description:
       "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
-    signIn:
-      "signs in to your Apple Account with asc, the App Store Connect CLI",
+    signIn: "signs in to your Apple Account in Hot Updater's own prompts",
   },
   {
     kind: "play-service-account",
@@ -558,17 +558,22 @@ const LOGIN_COMMANDS = [
 
 /**
  * A shortcut takes nothing but what it declares: anything else, an option or
- * an argument, exits 1 naming the full command that takes it.
+ * an argument, exits 1 on two short lines, with the full command to run
+ * instead, labeled, as `instead` names it for what was passed.
  */
 const onlyShortcut = (
   command: { readonly args: readonly string[] },
   shortcut: string,
   takes: string,
-  full: string,
+  instead: (args: readonly string[]) => readonly [label: string, run: string],
 ) => {
   if (command.args.length === 0) return true;
+  const [label, run] = instead(command.args);
   p.log.error(
-    `hot-updater ${shortcut} takes ${takes}: for ${command.args.join(" ")}, run npx hot-updater ${full}.`,
+    [
+      `${shortcut} takes ${takes}.`,
+      `${label}: ${ui.command(`npx hot-updater ${run}`)}`,
+    ].join("\n"),
   );
   process.exitCode = 1;
   return false;
@@ -600,11 +605,10 @@ for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
     )
     .action(async (_options, command) => {
       if (
-        !onlyShortcut(
-          command,
-          shortcut,
-          "no options or arguments",
-          `secrets issue ${kind} [name] [--replace]`,
+        !onlyShortcut(command, shortcut, "no options or arguments", (args) =>
+          args.includes("--replace")
+            ? ["New key", `secrets issue ${kind} --replace`]
+            : ["Full command", `secrets issue ${kind} --help`],
         )
       ) {
         return;
@@ -641,12 +645,10 @@ loginGroups
   )
   .action(async (options: StoreUploadOptions, command) => {
     if (
-      !onlyShortcut(
-        command,
-        "google-play upload",
-        "only --scheme",
-        "native-build android -s <scheme> --submit play-internal [--json] [-o <path>]",
-      )
+      !onlyShortcut(command, "google-play upload", "only --scheme", () => [
+        "Full command",
+        "native-build android --submit play-internal",
+      ])
     ) {
       return;
     }
@@ -1296,12 +1298,10 @@ program
   )
   .action(async (options: StoreUploadOptions, command) => {
     if (
-      !onlyShortcut(
-        command,
-        "testflight",
-        "only --scheme",
-        "native-build ios -s <scheme> --submit testflight [--json] [-o <path>]",
-      )
+      !onlyShortcut(command, "testflight", "only --scheme", () => [
+        "Full command",
+        "native-build ios --submit testflight",
+      ])
     ) {
       return;
     }

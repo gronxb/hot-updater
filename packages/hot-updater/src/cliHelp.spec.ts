@@ -16,6 +16,21 @@ const run = (...args: string[]) => {
   return result;
 };
 
+/** asc, the App Store Connect CLI, which Hot Updater no longer runs. */
+const NAMES_ASC = /App Store Connect CLI|\basc\b(?!-api-key)/u;
+
+/**
+ * The lines of a refusal clack prints, without the gutter, each under 77
+ * columns with it, so an 80-column terminal never wraps one.
+ */
+const refusal = (result: { stdout: string; stderr: string }) => {
+  const lines = stripVTControlCharacters(result.stdout + result.stderr)
+    .split("\n")
+    .filter((line) => /^[■│] {2}\S/u.test(line));
+  for (const line of lines) expect(line.length).toBeLessThanOrEqual(76);
+  return lines.map((line) => line.slice(3));
+};
+
 const help = (...command: string[]): string => {
   const result = run(...command, "--help");
   expect(result.status).toBe(0);
@@ -264,6 +279,11 @@ describe("CLI commands", () => {
       "play-service-account signs in to Google with gcloud",
     );
     expect(issue).not.toContain("OAuth client");
+    // Hot Updater signs in to Apple itself: no asc binary is involved.
+    expect(issue).toContain(
+      "asc-api-key signs in to your Apple Account in Hot Updater's own prompts.",
+    );
+    expect(issue).not.toMatch(NAMES_ASC);
     expect(issue).toContain("secrets put instead");
     for (const removed of ["login", "logout", "whoami"]) {
       expect(help()).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
@@ -300,7 +320,7 @@ describe("CLI commands", () => {
 
   it.each([
     ["apple", "asc-api-key", "Apple Account", "gcloud"],
-    ["google-play", "play-service-account", "Google", "with asc"],
+    ["google-play", "play-service-account", "Google", "Apple Account"],
   ] as const)(
     "has %s login as the alias of secrets issue %s, taking nothing, and keeps no session",
     (group, kind, account, otherKind) => {
@@ -316,6 +336,7 @@ describe("CLI commands", () => {
       expect(login).toContain(`Alias of \`hot-updater secrets issue ${kind}\``);
       expect(login).toContain(account);
       expect(login).not.toContain(otherKind);
+      expect(login).not.toMatch(NAMES_ASC);
       expect(login).toContain("Hot Updater keeps no session");
       expect(login).toContain("no logout or whoami");
       expect(loginHelp).not.toMatch(/^\s+--replace/m);
@@ -329,13 +350,28 @@ describe("CLI commands", () => {
       expect(alias.stdout).toBe(canonical.stdout);
       expect(alias.stderr).toBe(canonical.stderr);
 
-      // It takes nothing: anything else names the full command.
-      for (const extra of [["widget-key"], ["--replace"], ["--json"]]) {
+      // It takes nothing: anything else names the full command, on two
+      // short lines.
+      for (const [extra, instead] of [
+        [
+          ["widget-key"],
+          `Full command: npx hot-updater secrets issue ${kind} --help`,
+        ],
+        [
+          ["--replace"],
+          `New key: npx hot-updater secrets issue ${kind} --replace`,
+        ],
+        [
+          ["--json"],
+          `Full command: npx hot-updater secrets issue ${kind} --help`,
+        ],
+      ] as const) {
         const refused = run(group, "login", ...extra);
         expect(refused.status).toBe(1);
-        expect(refused.stdout + refused.stderr).toContain(
-          `hot-updater ${group} login takes no options or arguments: for ${extra.join(" ")}, run npx hot-updater secrets issue ${kind} [name] [--replace].`,
-        );
+        expect(refusal(refused)).toEqual([
+          `${group} login takes no options or arguments.`,
+          instead,
+        ]);
       }
     },
   );
@@ -391,9 +427,10 @@ describe("CLI commands", () => {
       ]) {
         const refused = run(...command, ...extra);
         expect(refused.status).toBe(1);
-        expect(refused.stdout + refused.stderr).toContain(
-          `hot-updater ${command.join(" ")} takes only --scheme: for ${extra.filter((arg) => arg !== "-s" && arg !== "release").join(" ")}, run npx hot-updater native-build ${platform} -s <scheme> --submit ${destination} [--json] [-o <path>].`,
-        );
+        expect(refusal(refused)).toEqual([
+          `${command.join(" ")} takes only --scheme.`,
+          `Full command: npx hot-updater native-build ${platform} --submit ${destination}`,
+        ]);
       }
     },
   );

@@ -67,21 +67,29 @@ const serviceDisabled = (consumer = "projects/42") =>
 const notInvited = () =>
   googleError(403, "PERMISSION_DENIED", "The caller does not have permission");
 
+const SEARCH =
+  "https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE";
+const CREATE = "https://cloudresourcemanager.googleapis.com/v3/projects";
+/** Service Usage's read of the Play Developer API in `projectId`. */
+const playApi = (projectId: string) =>
+  `https://serviceusage.googleapis.com/v1/projects/${projectId}/services/androidpublisher.googleapis.com`;
+
 /**
- * The routes of a Google that has the project an earlier run created,
- * my-app, and a Play Console that already invited the service account.
+ * The routes of a Google that has one project with the Play Developer API,
+ * my-app, as an earlier run leaves it, and a Play Console that already
+ * invited the service account.
  */
 const defaultRoutes = (): Record<string, Handler> => ({
-  "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE":
-    () => ({
-      projects: [
-        {
-          name: "projects/42",
-          projectId: "my-app",
-          displayName: "Hot Updater Play",
-        },
-      ],
-    }),
+  [`GET ${SEARCH}`]: () => ({
+    projects: [
+      {
+        name: "projects/42",
+        projectId: "my-app",
+        displayName: "Hot Updater Play",
+      },
+    ],
+  }),
+  [`GET ${playApi("my-app")}`]: () => ({ state: "ENABLED" }),
   "POST https://serviceusage.googleapis.com/v1/projects/my-app/services:batchEnable":
     () => ({ name: "operations/acf.1", done: false }),
   "GET https://serviceusage.googleapis.com/v1/operations/acf.1": () => ({
@@ -104,16 +112,55 @@ let routes: Record<string, Handler>;
 let calls: Call[];
 let events: string[];
 
-/** The account has projects, none of them the one Hot Updater creates. */
-const otherProjectsOnly = (
-  project: { projectId: string; displayName: string } = {
-    projectId: "other",
-    displayName: "Other",
-  },
+/**
+ * The account's projects, each with the Play Developer API when `enabled`;
+ * the API's state of one Service Usage can't read is a 403.
+ */
+const accountProjects = (
+  projects: {
+    projectId: string;
+    displayName?: string;
+    enabled?: boolean | "unreadable";
+  }[],
 ) => {
-  routes[
-    "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE"
-  ] = () => ({ projects: [{ name: "projects/43", ...project }] });
+  routes[`GET ${SEARCH}`] = () => ({
+    projects: projects.map(({ projectId, displayName }, index) => ({
+      name: `projects/${43 + index}`,
+      projectId,
+      ...(displayName ? { displayName } : {}),
+    })),
+  });
+  for (const { projectId, enabled = false } of projects) {
+    routes[`GET ${playApi(projectId)}`] = () =>
+      enabled === "unreadable"
+        ? googleError(403, "PERMISSION_DENIED", "Permission denied.")
+        : { state: enabled ? "ENABLED" : "DISABLED" };
+  }
+};
+
+/** The account has projects, none of them with the Play Developer API. */
+const otherProjectsOnly = () =>
+  accountProjects([{ projectId: "other", displayName: "Other" }]);
+
+/** Google creates the project it is asked for, which then works as my-app. */
+const createsProjects = () => {
+  let created: { projectId: string; displayName: string } | undefined;
+  routes[`POST ${CREATE}`] = (call) => {
+    created = JSON.parse(call.body!) as typeof created;
+    return { name: "operations/cp.1", done: false };
+  };
+  routes["GET https://cloudresourcemanager.googleapis.com/v3/operations/cp.1"] =
+    () => ({
+      name: "operations/cp.1",
+      done: true,
+      response: { name: "projects/77", projectId: created!.projectId },
+    });
+  routes = new Proxy(routes, {
+    get: (target, key: string) =>
+      target[key] ??
+      target[key.replaceAll(/hot-updater-play-[0-9a-f]{6}/gu, "my-app")],
+  });
+  return () => created;
 };
 
 const fetch = vi.fn(
@@ -166,11 +213,15 @@ const onStep = vi.fn((_message: string) => {});
 const onInvite = vi.fn((_url: string, _email: string) => {
   events.push("invite");
 });
+const askPackageName = vi.fn(async () => {
+  commands.push("ask the package name");
+  return "com.example.app";
+});
 
 const request = (
   overrides: Partial<IssuePlayServiceAccountRequest> = {},
 ): IssuePlayServiceAccountRequest => ({
-  packageName: "com.example.app",
+  askPackageName,
   onInvite,
   chooseProject: async () => "my-app",
   onStep,
@@ -213,6 +264,7 @@ describe("createGoogleKeyIssuer", () => {
 
     expect(commands).toEqual([
       "gcloud --version",
+      "ask the package name",
       "gcloud auth list --filter=status:ACTIVE --format=value(account)",
       "gcloud auth print-access-token",
     ]);
@@ -220,7 +272,8 @@ describe("createGoogleKeyIssuer", () => {
       "Signed in to gcloud as dev@example.com",
     );
     expect(events).toEqual([
-      "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE",
+      `GET ${SEARCH}`,
+      `GET ${playApi("my-app")}`,
       "POST https://serviceusage.googleapis.com/v1/projects/my-app/services:batchEnable",
       "GET https://serviceusage.googleapis.com/v1/operations/acf.1",
       `POST ${IAM}/projects/my-app/serviceAccounts`,
@@ -295,7 +348,7 @@ describe("createGoogleKeyIssuer", () => {
     expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(1);
   });
 
-  it("stops before any request when gcloud is not installed, naming where to get it", async () => {
+  it("stops before any prompt or request when gcloud is not installed, naming where to get it", async () => {
     gcloud.installed = false;
 
     const error = await issueError();
@@ -309,6 +362,7 @@ describe("createGoogleKeyIssuer", () => {
       ].join("\n"),
     );
     expect(commands).toEqual(["gcloud --version"]);
+    expect(askPackageName).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
     expect(onInvite).not.toHaveBeenCalled();
   });
@@ -320,6 +374,7 @@ describe("createGoogleKeyIssuer", () => {
 
     expect(commands).toEqual([
       "gcloud --version",
+      "ask the package name",
       "gcloud auth list --filter=status:ACTIVE --format=value(account)",
       "gcloud auth login (interactive)",
       "gcloud auth list --filter=status:ACTIVE --format=value(account)",
@@ -430,47 +485,82 @@ describe("createGoogleKeyIssuer", () => {
     expect(called("DELETE", `${IAM}/${KEY_NAME}`)).toHaveLength(1);
   });
 
-  it("reuses the project an earlier run created, without asking", async () => {
+  it("uses the account's only project with the Play Developer API without asking, and says so", async () => {
+    accountProjects([
+      { projectId: "web", displayName: "Web" },
+      { projectId: "my-app", displayName: "My App", enabled: true },
+      { projectId: "locked", enabled: "unreadable" },
+    ]);
     const chooseProject = vi.fn(async () => "never");
 
     const issued = await issue({ chooseProject });
 
     expect(chooseProject).not.toHaveBeenCalled();
     expect(issued.projectId).toBe("my-app");
-    expect(
-      called("POST", "https://cloudresourcemanager.googleapis.com/v3/projects"),
-    ).toEqual([]);
+    expect(onStep).toHaveBeenCalledWith(
+      "Using my-app, the project with the Play Developer API",
+    );
+    // One list, then one read of each project's API.
+    expect(events.slice(0, 4).sort()).toEqual(
+      [
+        `GET ${SEARCH}`,
+        `GET ${playApi("web")}`,
+        `GET ${playApi("my-app")}`,
+        `GET ${playApi("locked")}`,
+      ].sort(),
+    );
+    expect(called("POST", CREATE)).toEqual([]);
   });
 
-  it("creates the project without asking when no project is Hot Updater's, and waits for it", async () => {
-    const chooseProject = vi.fn(async () => "never");
+  it("asks among the account's projects when several have the Play Developer API", async () => {
+    accountProjects([
+      { projectId: "my-app", displayName: "My App", enabled: true },
+      { projectId: "shop", enabled: true },
+      { projectId: "web" },
+    ]);
+    const chooseProject = vi.fn(async () => "my-app");
+
+    const issued = await issue({ chooseProject });
+
+    expect(chooseProject).toHaveBeenCalledExactlyOnceWith([
+      { projectId: "my-app", displayName: "My App", playApiEnabled: true },
+      { projectId: "shop", playApiEnabled: true },
+      { projectId: "web", playApiEnabled: false },
+    ]);
+    expect(issued.projectId).toBe("my-app");
+    expect(called("POST", CREATE)).toEqual([]);
+  });
+
+  it("asks when no project has the Play Developer API, and creates one when picked", async () => {
     otherProjectsOnly();
-    let created: { projectId: string; displayName: string } | undefined;
-    routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] = (
-      call,
-    ) => {
-      created = JSON.parse(call.body!) as typeof created;
-      return { name: "operations/cp.1", done: false };
-    };
-    routes[
-      "GET https://cloudresourcemanager.googleapis.com/v3/operations/cp.1"
-    ] = () => ({
-      name: "operations/cp.1",
-      done: true,
-      response: { name: "projects/77", projectId: created!.projectId },
-    });
-    routes = new Proxy(routes, {
-      get: (target, key: string) =>
-        target[key] ??
-        target[key.replaceAll(/hot-updater-play-[0-9a-f]{6}/gu, "my-app")],
-    });
+    const created = createsProjects();
+    const chooseProject = vi.fn(async () => null);
+
+    const issued = await issue({ chooseProject });
+
+    expect(chooseProject).toHaveBeenCalledExactlyOnceWith([
+      { projectId: "other", displayName: "Other", playApiEnabled: false },
+    ]);
+    expect(created()!.projectId).toMatch(/^hot-updater-play-[0-9a-f]{6}$/);
+    expect(issued.projectId).toBe(created()!.projectId);
+  });
+
+  it("creates a project without asking, or reading any API, for an account without projects", async () => {
+    routes[`GET ${SEARCH}`] = () => ({});
+    const created = createsProjects();
+    const chooseProject = vi.fn(async () => "never");
 
     const issued = await issue({ chooseProject });
 
     expect(chooseProject).not.toHaveBeenCalled();
-    expect(created!.projectId).toMatch(/^hot-updater-play-[0-9a-f]{6}$/);
-    expect(created!.displayName).toBe("Hot Updater Play");
-    expect(issued.projectId).toBe(created!.projectId);
+    expect(created()!.projectId).toMatch(/^hot-updater-play-[0-9a-f]{6}$/);
+    expect(created()!.displayName).toBe("Hot Updater Play");
+    expect(issued.projectId).toBe(created()!.projectId);
+    expect(
+      calls.filter(({ url }) =>
+        url.endsWith("/androidpublisher.googleapis.com"),
+      ),
+    ).toEqual([]);
     expect(
       called(
         "GET",
@@ -479,65 +569,41 @@ describe("createGoogleKeyIssuer", () => {
     ).toHaveLength(1);
   });
 
-  it("asks for one of the account's projects only when Google refuses to create one", async () => {
-    otherProjectsOnly({ projectId: "my-app", displayName: "My App" });
-    routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
-      () =>
-        googleError(
-          403,
-          "PERMISSION_DENIED",
-          "Permission 'resourcemanager.projects.create' denied.",
-        );
-    const chooseProject = vi.fn(async () => "my-app");
-
-    const issued = await issue({ chooseProject });
-
-    expect(chooseProject).toHaveBeenCalledWith([
-      { projectId: "my-app", displayName: "My App" },
-    ]);
-    expect(issued.projectId).toBe("my-app");
-  });
-
   it("names a project quota that is used up", async () => {
     otherProjectsOnly();
-    routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
-      () =>
-        googleError(
-          429,
-          "RESOURCE_EXHAUSTED",
-          "Project creation quota exceeded.",
-        );
+    routes[`POST ${CREATE}`] = () =>
+      googleError(
+        429,
+        "RESOURCE_EXHAUSTED",
+        "Project creation quota exceeded.",
+      );
 
-    const error = await issueError({ chooseProject: async () => undefined });
+    const error = await issueError({ chooseProject: async () => null });
 
     expect(error.code).toBe("project-quota");
   });
 
   it("names a quota failure the project's operation reports", async () => {
     otherProjectsOnly();
-    routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
-      () => ({
-        name: "operations/cp.1",
-        done: true,
-        error: { code: 8, message: "You have exceeded your project quota." },
-      });
+    routes[`POST ${CREATE}`] = () => ({
+      name: "operations/cp.1",
+      done: true,
+      error: { code: 8, message: "You have exceeded your project quota." },
+    });
 
-    const error = await issueError({ chooseProject: async () => undefined });
+    const error = await issueError({ chooseProject: async () => null });
 
     expect(error.code).toBe("project-quota");
   });
 
   it("names an account that may not create projects and has none to pick", async () => {
-    routes[
-      "GET https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state%3AACTIVE"
-    ] = () => ({});
-    routes["POST https://cloudresourcemanager.googleapis.com/v3/projects"] =
-      () =>
-        googleError(
-          403,
-          "PERMISSION_DENIED",
-          "Permission 'resourcemanager.projects.create' denied.",
-        );
+    routes[`GET ${SEARCH}`] = () => ({});
+    routes[`POST ${CREATE}`] = () =>
+      googleError(
+        403,
+        "PERMISSION_DENIED",
+        "Permission 'resourcemanager.projects.create' denied.",
+      );
     const chooseProject = vi.fn(async () => "never");
 
     const error = await issueError({ chooseProject });
