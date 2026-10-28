@@ -1,5 +1,40 @@
 # hot-updater
 
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- 939651e: Fixes from the 1.2.0-rc.0 QA of `hot-updater doctor` and the CLI.
+  - Without `--server-base-url`, doctor checks the server an agent infrastructure scaffold records in `hot-updater-infra/<provider>/*/deployment.json`, naming the file in `details.infrastructure.recordedIn`. When none records one, or several record different servers, it reports `details.infrastructureUnchecked`: the server's version was not checked, and `npx hot-updater doctor --server-base-url <url>` checks it. It no longer reports success with nothing about the skip.
+  - Init's command names `--from-env-file .env.hotupdater` only when that file holds the init record and every input doctor compared, as doctor read them. When they came from the environment, such as CI's variables or a file the config loads, the command names `--build` and `--from-env-file <env file>` and says that init needs them too.
+  - For a deployment an agent infrastructure scaffold in `hot-updater-infra/<provider>/` keeps (its `deployment.json` records a deployed server on the configured database, and the config lists only the official plugins), doctor names `npx hot-updater agent infra upgrade --provider <provider> --build <build>` and its upload, preview, migrate and deploy order instead of init, which would deploy without a preview and leave the scaffold behind.
+  - When the console's port is taken, `hot-updater console` says that `console.port` in hot-updater.config.ts changes it.
+  - The upgrade files the agent infrastructure scaffold copies, such as `upgrades/1.2.0.md`, are oxfmt-formatted as shipped, so a project's formatter keeps them as generated and their manifest hashes hold.
+
+- cd5fa07: `hot-updater native-build ios` removes the temporary directories it builds in, which it used to leave in the system's temporary directory, 10 GB or more each.
+  - The Xcode DerivedData of a simulator build, which can take 10 GB or more, is removed once the `.app` is copied out of it, whether the build succeeds or fails.
+  - The `.xcarchive` and the export are written straight to the build directory, instead of temporary directories copied into it.
+  - The build directory is removed once its artifact is copied to the output path, and a failed build removes it, and every other directory it used, right away.
+  - A build interrupted with Ctrl+C, or ended by a signal, removes them too.
+  - The build log in `.hot-updater/log` stays where it is, after a failed build too.
+
+- bcc239a: The Console's Install card says each thing about installing a native build once: the QR code's caption says what scanning gets, and the steps beside it add only another way, such as `adb`, `xcrun simctl`, Xcode or Apple Configurator, or the `testflight` and `google-play upload` commands. An AAB's card no longer says twice that it installs through Google Play or bundletool.
+
+  A native build's Console download link, as a pull request preview's comment shows it, opened in a browser without a Console session, goes to the build's page to sign in, and sign-in returns to the download. The build's page names the download in `returnTo`, relative to the page, and sign-in takes it only on the Console's own origin; anything else returns to the page. A request that isn't a browser navigation still gets the 401.
+
+  `hot-updater channel set <channel>` says per platform when it found no `AndroidManifest.xml` or `Info.plist` and wrote nothing, instead of a success line, and asks for a rebuild only when it wrote a file. In an Expo CNG project it says that builds take the channel from the `@hot-updater/expo` plugin's `channel` option in the project's `app.json` or `app.config.*`, which `expo prebuild` writes into the native files, and shows that option set to the channel given, not `production`.
+
+- Updated dependencies [cd5fa07]
+- Updated dependencies [bcc239a]
+  - @hot-updater/apple-helper@1.2.0-rc.1
+  - @hot-updater/console@1.2.0-rc.1
+  - @hot-updater/android-helper@1.2.0-rc.1
+  - @hot-updater/bsdiff@1.2.0-rc.1
+  - @hot-updater/cli-tools@1.2.0-rc.1
+  - @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/server@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
 ## 1.2.0-rc.0
 
 ### Minor Changes
