@@ -439,23 +439,16 @@ const summarizeDeploymentResults = (
   results: readonly CommittedDeployPlatformResult[],
 ): string => {
   if (results.length === 1) {
-    return [
-      "Deployment successful",
+    return ui.block("Deployment successful", [
       ui.kv("ID", ui.id(results[0]!.releaseId)),
-    ].join("\n");
+    ]);
   }
-
-  const labels = results.map(
-    (result) => `${getPlatformName(result.platform)} ID:`,
-  );
-  const labelWidth = Math.max(...labels.map((label) => label.length));
-  return [
+  return ui.block(
     "Deployment successful",
-    ...results.map(
-      (result, index) =>
-        `    ${labels[index]!.padEnd(labelWidth)} ${ui.id(result.releaseId)}`,
+    results.map((result) =>
+      ui.kv(`${getPlatformName(result.platform)} ID`, ui.id(result.releaseId)),
     ),
-  ].join("\n");
+  );
 };
 
 const getDeployPlatforms = async (

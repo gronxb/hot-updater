@@ -583,7 +583,7 @@ describe("deploy rollout wiring", () => {
     const summary = mockCli.p.outro.mock.calls[0]?.[0];
     expect(release.id).not.toBe(release.bundle_id);
     expect(summary).toContain("Deployment successful");
-    expect(summary).toContain(`ID:`);
+    expect(summary).toMatch(/^ID {2,}/mu);
     expect(summary).toContain(release.id);
     expect(summary).not.toContain("Release ID");
     expect(summary).not.toContain("Bundle ID");
@@ -594,7 +594,7 @@ describe("deploy rollout wiring", () => {
     expect(summary.match(new RegExp(release.id, "g"))).toHaveLength(1);
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `Deployment successful\n    ID:       ${release.id}`,
+      `Deployment successful\nID  ${release.id}`,
     );
   });
 
@@ -726,16 +726,16 @@ describe("deploy rollout wiring", () => {
       const summary = mockCli.p.outro.mock.calls[0]?.[0];
       expect(summary).toContain(release!.id);
       expect(summary).not.toContain(bundleId);
-      expect(summary).toContain(`${platformName} ID:`);
-      expect(summary).not.toContain("Authority ID:");
-      expect(summary).not.toContain("Catalog ID:");
+      expect(summary).toContain(`${platformName} ID  `);
+      expect(summary).not.toContain("Authority ID");
+      expect(summary).not.toContain("Catalog ID");
       expect(summary).not.toContain(catalog!.catalog_id);
       expect(summary).not.toContain(release!.scope_key);
       expect(summary).not.toContain("Generation");
     }
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `Deployment successful\n    iOS ID:     ${releases.find(({ platform }) => platform === "ios")!.id}\n    Android ID: ${releases.find(({ platform }) => platform === "android")!.id}`,
+      `Deployment successful\niOS ID      ${releases.find(({ platform }) => platform === "ios")!.id}\nAndroid ID  ${releases.find(({ platform }) => platform === "android")!.id}`,
     );
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),

@@ -27,8 +27,6 @@ const LINE_WIDTH = 77;
 /** The widest a command line is shown, after clack's 3-column gutter. */
 const COMMAND_WIDTH = 74;
 
-const LABEL_WIDTH = 9;
-
 interface TableColumn<TKey extends string> {
   key: TKey;
   label?: string;
@@ -50,7 +48,6 @@ export const ui = {
   title: (text: string): string => colors.bold(colors.cyan(text)),
   code: (text: StringValue): string => colors.dim(stringify(text)),
   command: (text: StringValue): string => colors.green(stringify(text)),
-  label: (text: string): string => colors.dim(text.padEnd(LABEL_WIDTH)),
   muted: (text: StringValue): string => colors.dim(stringify(text)),
   id: (value: StringValue): string => colorIfPresent(value, colors.yellow),
   path: (value: StringValue): string => colorIfPresent(value, colors.dim),
@@ -65,42 +62,38 @@ export const ui = {
     enabled ? colors.green("enabled") : colors.red("disabled"),
   bool: (value: boolean): string =>
     value ? colors.green("yes") : colors.dim("no"),
-  kv: (label: string, value: StringValue): string =>
-    `    ${ui.label(`${label}:`)} ${stringify(value) || colors.dim("-")}`,
+  /** A `label  value` row, which `ui.block` lines up with the others. */
+  kv: (label: string, value: StringValue): Row => [label, value],
   line: (parts: string[]): string => parts.filter(Boolean).join(" "),
   /**
-   * Label and value rows, one per line, the labels padded to the widest
-   * label plus two spaces, without colons.
+   * A heading and its lines, for `p.log.step`, `p.log.success`, or
+   * `p.log.warn`, whose symbol marks the heading. Its `ui.kv` rows have
+   * their labels padded to the widest label plus two spaces, without
+   * colons; a falsy entry, as `cond && ui.kv(...)` gives, is left out.
    */
-  rows: (entries: readonly MaybeRow[]): string => {
-    const rows = entries.filter((entry): entry is Row => Boolean(entry));
-    const width = Math.max(0, ...rows.map(([label]) => label.length)) + 2;
-    return rows
-      .map(([label, value]) => {
-        const [first = "", ...more] = (
-          stringify(value) || colors.dim("-")
-        ).split("\n");
-        // A value too long for its row, such as a URL, goes under its label.
-        if (
-          more.length === 0 &&
-          width + stripVTControlCharacters(first).length > LINE_WIDTH
-        ) {
-          return `${colors.dim(label)}\n${first}`;
-        }
-        // The lines of a value of several, such as a list, line up.
-        return [
-          `${colors.dim(label.padEnd(width))}${first}`,
-          ...more.map((line) => `${" ".repeat(width)}${line}`),
-        ].join("\n");
-      })
+  block: (
+    heading: string,
+    lines: readonly (string | MaybeRow)[] = [],
+  ): string => {
+    const entries = lines.filter(
+      (line): line is string | Row => typeof line === "string" || Boolean(line),
+    );
+    const width =
+      Math.max(
+        0,
+        ...entries.map((entry) =>
+          typeof entry === "string" ? 0 : entry[0].length,
+        ),
+      ) + 2;
+    return [
+      heading,
+      ...entries.map((entry) =>
+        typeof entry === "string" ? entry : renderRow(entry, width),
+      ),
+    ]
+      .filter(Boolean)
       .join("\n");
   },
-  /**
-   * A result's heading and its rows, for `p.log.step`, `p.log.success`, or
-   * `p.log.warn`, whose symbol marks the heading.
-   */
-  summary: (heading: string, entries: readonly MaybeRow[] = []): string =>
-    [heading, ui.rows(entries)].filter(Boolean).join("\n"),
   /**
    * A command to copy, highlighted, broken at spaces with ` \` when it is
    * longer than `width`, each continuation indented two spaces, so the
@@ -147,8 +140,6 @@ export const ui = {
    */
   fitPath: (file: string, width: number = PATH_WIDTH): string =>
     shortenPath(displayPath(file), width),
-  block: (heading: string, lines: string[]): string =>
-    [ui.title(heading), ...lines].join("\n"),
   table: <TKey extends string>(
     columns: readonly TableColumn<TKey>[],
     rows: readonly Record<TKey, StringValue>[],
@@ -256,4 +247,24 @@ const wrapWords = (sentence: string, width: number): string[] => {
   }
   flush();
   return lines;
+};
+
+/**
+ * One row: a value too long for it, such as a URL, goes under its label,
+ * and the lines of a value of several, such as a list, line up.
+ */
+const renderRow = ([label, value]: Row, width: number): string => {
+  const [first = "", ...more] = (stringify(value) || colors.dim("-")).split(
+    "\n",
+  );
+  if (
+    more.length === 0 &&
+    width + stripVTControlCharacters(first).length > LINE_WIDTH
+  ) {
+    return `${colors.dim(label)}\n${first}`;
+  }
+  return [
+    `${colors.dim(label.padEnd(width))}${first}`,
+    ...more.map((line) => `${" ".repeat(width)}${line}`),
+  ].join("\n");
 };

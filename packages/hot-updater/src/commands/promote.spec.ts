@@ -123,14 +123,14 @@ describe("handlePromote", () => {
     const result = stripVTControlCharacters(
       String(log.info.mock.calls[0]?.[0]),
     );
-    expect(result).toMatch(/\bID:\s+/);
+    expect(result).toMatch(/^ID {2,}/mu);
     expect(result).toContain(promoted!.id);
     expect(result).not.toContain(sourceBundle.id);
     expect(result).not.toContain("Release ID");
     const preview = stripVTControlCharacters(
       String(log.message.mock.calls[0]?.[0]),
     );
-    expect(preview).toContain("Source ID:");
+    expect(preview).toMatch(/^Source ID {2,}/mu);
     expect(preview).toContain(sourceReleaseId);
     expect(preview).not.toContain(sourceBundle.id);
     expect(preview).toContain("reused; no upload or copy");

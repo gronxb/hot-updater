@@ -497,22 +497,19 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     );
 
     p.log.message(
-      ui.block(
-        "Storage prune",
-        [
-          ui.kv("Storage", storageAdapter.name),
-          ui.kv("Bundles", bundles.length),
-          ui.kv("Manifests", manifestCount),
-          ui.kv("Objects", objects.length),
-          ui.kv("Protect newer", formatDuration(protectNewerThan)),
-          ui.kv("Bundle data", bundleObjects.length),
-          ui.kv("Shared assets", assetObjects.length),
-          ui.kv("Reclaimable", formatBytes(candidateBytes)),
-          protectedCount > 0
-            ? ui.kv("Protected", `${protectedCount} newer/undated objects`)
-            : null,
-        ].filter((line): line is string => line !== null),
-      ),
+      ui.block("Storage prune", [
+        ui.kv("Storage", storageAdapter.name),
+        ui.kv("Bundles", bundles.length),
+        ui.kv("Manifests", manifestCount),
+        ui.kv("Objects", objects.length),
+        ui.kv("Protect newer", formatDuration(protectNewerThan)),
+        ui.kv("Bundle data", bundleObjects.length),
+        ui.kv("Shared assets", assetObjects.length),
+        ui.kv("Reclaimable", formatBytes(candidateBytes)),
+        protectedCount > 0
+          ? ui.kv("Protected", `${protectedCount} newer/undated objects`)
+          : null,
+      ]),
     );
 
     if (candidates.length === 0) {

@@ -152,9 +152,9 @@ export const offerGitHubSecret = async ({
   }
   p.log.success(
     [
-      ui.summary("GitHub Actions secret stored", [
-        ["Secret", variable],
-        ["Repository", repository],
+      ui.block("GitHub Actions secret stored", [
+        ui.kv("Secret", variable),
+        ui.kv("Repository", repository),
       ]),
       "Add to the workflow's env:",
       `${variable}: \${{ secrets.${variable} }}`,

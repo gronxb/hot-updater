@@ -1053,7 +1053,7 @@ export const handleDoctor = async ({
 
   if (details?.verification) {
     const { scope, checks, notChecked } = details.verification;
-    p.log.step(ui.summary("Verification", [["Scope", scope]]));
+    p.log.step(ui.block("Verification", [ui.kv("Scope", scope)]));
     for (const check of checks) {
       const message = [
         ui.prose(`${check.status} ${check.code} ${check.message}`),
@@ -1075,7 +1075,9 @@ export const handleDoctor = async ({
 
   if (details?.hotUpdaterVersion) {
     p.log.step(
-      ui.summary("Version", [["CLI", ui.version(details.hotUpdaterVersion)]]),
+      ui.block("Version", [
+        ui.kv("CLI", ui.version(details.hotUpdaterVersion)),
+      ]),
     );
   }
 
@@ -1095,24 +1097,16 @@ export const handleDoctor = async ({
   if (details?.infrastructure) {
     const infrastructure = details.infrastructure;
     p.log.step(
-      ui.summary("Infrastructure", [
-        ["Endpoint", ui.path(infrastructure.versionEndpoint)],
-        infrastructure.recordedIn && [
-          "Recorded in",
-          ui.path(ui.fitPath(infrastructure.recordedIn)),
-        ],
-        infrastructure.serverVersion && [
-          "Server",
-          ui.version(infrastructure.serverVersion),
-        ],
-        infrastructure.serverVersion && [
-          "Required",
-          ui.version(infrastructure.requiredVersion),
-        ],
-        infrastructure.infrastructureGeneration !== undefined && [
-          "Generation",
-          String(infrastructure.infrastructureGeneration),
-        ],
+      ui.block("Infrastructure", [
+        ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint)),
+        infrastructure.recordedIn &&
+          ui.kv("Recorded in", ui.path(ui.fitPath(infrastructure.recordedIn))),
+        infrastructure.serverVersion &&
+          ui.kv("Server", ui.version(infrastructure.serverVersion)),
+        infrastructure.serverVersion &&
+          ui.kv("Required", ui.version(infrastructure.requiredVersion)),
+        infrastructure.infrastructureGeneration !== undefined &&
+          ui.kv("Generation", String(infrastructure.infrastructureGeneration)),
       ]),
     );
 
@@ -1163,20 +1157,16 @@ export const handleDoctor = async ({
     ): MaybeRow[] =>
       platform?.detected
         ? [
-            [label, ui.status(platform.bundleProviderConfigured === true)],
-            platform.appVersion && [
-              `${label} app version`,
-              ui.version(platform.appVersion),
-            ],
-            platform.channel && [
-              `${label} channel`,
-              ui.channel(platform.channel),
-            ],
+            ui.kv(label, ui.status(platform.bundleProviderConfigured === true)),
+            platform.appVersion &&
+              ui.kv(`${label} app version`, ui.version(platform.appVersion)),
+            platform.channel &&
+              ui.kv(`${label} channel`, ui.channel(platform.channel)),
           ]
         : [];
     p.log.step(
-      ui.summary("Native", [
-        ["Strategy", native.updateStrategy],
+      ui.block("Native", [
+        ui.kv("Strategy", native.updateStrategy),
         ...platformRows("iOS", native.ios),
         ...platformRows("Android", native.android),
       ]),
@@ -1200,7 +1190,7 @@ export const handleDoctor = async ({
 
   if (details?.schema) {
     p.log.step(
-      ui.summary(
+      ui.block(
         "Schema",
         details.schema.settings.map(({ key, expected, found }) => [
           key,
@@ -1214,12 +1204,12 @@ export const handleDoctor = async ({
   if (details?.releaseCatalogs) {
     const { scopes, issues } = details.releaseCatalogs;
     p.log.step(
-      ui.summary("Release catalogs", [
-        ["Scopes", String(scopes.length)],
-        [
+      ui.block("Release catalogs", [
+        ui.kv("Scopes", String(scopes.length)),
+        ui.kv(
           "Verified",
           String(scopes.filter(({ state }) => state === "verified").length),
-        ],
+        ),
       ]),
     );
     reportIssues(issues);
@@ -1227,7 +1217,7 @@ export const handleDoctor = async ({
 
   if (details?.versionMismatches && details.versionMismatches.length > 0) {
     p.log.error(
-      ui.summary(
+      ui.block(
         "Version mismatches",
         details.versionMismatches.map((mismatch) => [
           mismatch.packageName,

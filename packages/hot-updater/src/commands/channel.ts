@@ -49,10 +49,10 @@ export const handleSetChannel = async (channel: string) => {
   }
   if (written) {
     p.log.success(
-      ui.summary(`Set the default channel to ${ui.channel(channel)}`, rows),
+      ui.block(`Set the default channel to ${ui.channel(channel)}`, rows),
     );
   } else if (expoConfig === null) {
-    p.log.warn(ui.summary("No native file to write the channel into", rows));
+    p.log.warn(ui.block("No native file to write the channel into", rows));
   }
 
   if (expoConfig !== null) {
@@ -207,13 +207,11 @@ export const handleChannelDelete = (
         );
       } else {
         p.log.success(
-          ui.summary(result.deleted ? "Channel deleted" : "Bundles deleted", [
-            ["Channel", ui.channel(channel)],
-            ["Bundles", String(deletedBundleIds.length)],
-            options.nativeBuilds && [
-              "Native builds",
-              String(deletedNativeBuildIds.length),
-            ],
+          ui.block(result.deleted ? "Channel deleted" : "Bundles deleted", [
+            ui.kv("Channel", ui.channel(channel)),
+            ui.kv("Bundles", String(deletedBundleIds.length)),
+            options.nativeBuilds &&
+              ui.kv("Native builds", String(deletedNativeBuildIds.length)),
           ]),
         );
       }

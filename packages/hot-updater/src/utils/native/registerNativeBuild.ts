@@ -345,9 +345,9 @@ export const registerNativeBuild = async (
       throw error;
     }
     p.log.success(
-      ui.summary("Native build registered", [
-        ["ID", ui.id(row.id)],
-        ["Built-in bundle", ui.id(row.min_bundle_id)],
+      ui.block("Native build registered", [
+        ui.kv("ID", ui.id(row.id)),
+        ui.kv("Built-in bundle", ui.id(row.min_bundle_id)),
       ]),
     );
     return row;

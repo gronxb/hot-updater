@@ -284,10 +284,10 @@ export const handleSecretsPut = async (
     // Always set: an adapter that stores nothing stores in `localSecrets()`'s store.
     await secrets.set!(name, value, { cwd });
     p.log.success(
-      ui.summary("Secret stored", [
-        ["Name", name],
-        ["Kind", options.kind],
-        ["Source", ui.fitPath(describeStoredSecret(secrets, name))],
+      ui.block("Secret stored", [
+        ui.kv("Name", name),
+        ui.kv("Kind", options.kind),
+        ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
       ]),
     );
   });
@@ -353,7 +353,7 @@ const describeHeldKey = (
   if (kind === "asc-api-key") {
     const keyId = stringField(fields, "keyId");
     if (!keyId) return undefined;
-    return { rows: [["Key ID", keyId]], revoke: ASC_INTEGRATIONS_URL };
+    return { rows: [ui.kv("Key ID", keyId)], revoke: ASC_INTEGRATIONS_URL };
   }
   const email = stringField(fields, "client_email");
   if (!email) return undefined;
@@ -361,8 +361,8 @@ const describeHeldKey = (
   const projectId = stringField(fields, "project_id");
   return {
     rows: [
-      ["Service account", email],
-      ...(keyId ? [["Key ID", keyId] as const] : []),
+      ui.kv("Service account", email),
+      ...(keyId ? [ui.kv("Key ID", keyId)] : []),
     ],
     revoke: projectId
       ? serviceAccountKeysUrl(projectId)
@@ -473,9 +473,9 @@ export const handleSecretsIssue = async (
       }
       const held = describeHeldKey(kind, await readOverrideFields(kind, env));
       p.log.step(
-        ui.summary(`${issuer.label} set by the environment`, [
+        ui.block(`${issuer.label} set by the environment`, [
           ...(held?.rows ?? []),
-          ["Source", listNames(overrides)],
+          ui.kv("Source", listNames(overrides)),
         ]),
       );
       return;
@@ -502,10 +502,10 @@ export const handleSecretsIssue = async (
     }
     if (found !== undefined && !replace) {
       p.log.step(
-        ui.summary(`${issuer.label} already stored`, [
-          name !== kind && ["Name", name],
+        ui.block(`${issuer.label} already stored`, [
+          name !== kind && ui.kv("Name", name),
           ...(previous?.rows ?? []),
-          ["Source", ui.fitPath(found.source)],
+          ui.kv("Source", ui.fitPath(found.source)),
         ]),
       );
       return;
@@ -523,15 +523,15 @@ export const handleSecretsIssue = async (
     if (result.status !== "issued" || stored === undefined) return;
     // Never revoked: CI or a copy elsewhere may still use it.
     p.log.warn(
-      ui.summary(`The old ${issuer.label} is still valid`, [
+      ui.block(`The old ${issuer.label} is still valid`, [
         ...(previous?.rows ?? []),
-        [
+        ui.kv(
           "Revoke",
           previous?.revoke ??
             (kind === "asc-api-key"
               ? ASC_INTEGRATIONS_URL
               : "Google Cloud, under the service account's keys"),
-        ],
+        ),
       ]),
     );
   });

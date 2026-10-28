@@ -336,8 +336,8 @@ export const keepIssuedCopy = async ({
     );
   }
   p.log.info(
-    ui.summary(`${policy.label} copied to this machine`, [
-      ["Source", ui.fitPath(file)],
+    ui.block(`${policy.label} copied to this machine`, [
+      ui.kv("Source", ui.fitPath(file)),
     ]),
   );
   return withIssuedKey(

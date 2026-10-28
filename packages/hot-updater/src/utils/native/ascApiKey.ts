@@ -239,10 +239,10 @@ export const ensureAscApiKey = async ({
   try {
     const { readable } = await storeIssued(store, name, key);
     p.log.success(
-      ui.summary("App Store Connect API key stored", [
-        name !== POLICY.kind && ["Name", name],
-        ["Key ID", key.keyId],
-        ["Source", ui.fitPath(describeStoredSecret(store, name))],
+      ui.block("App Store Connect API key stored", [
+        name !== POLICY.kind && ui.kv("Name", name),
+        ui.kv("Key ID", key.keyId),
+        ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
       ]),
     );
     await offerIssuedKeyToGitHub({

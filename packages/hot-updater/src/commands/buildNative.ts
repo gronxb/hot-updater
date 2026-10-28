@@ -418,15 +418,15 @@ const buildNativeInternal = async ({
             existingSubmission = uploaded.refused;
           } else if (uploaded.state === "COMPLETE") {
             p.log.success(
-              ui.summary("Uploaded to TestFlight", [
-                [
+              ui.block("Uploaded to TestFlight", [
+                ui.kv(
                   "Version",
                   storeVersionLabel(
                     uploaded.shortVersion,
                     uploaded.bundleVersion,
                   ),
-                ],
-                ["Open", uploaded.testFlightUrl],
+                ),
+                ui.kv("Open", uploaded.testFlightUrl),
               ]),
             );
             // Recorded once App Store Connect accepted the build. A build
@@ -521,11 +521,11 @@ const buildNativeInternal = async ({
             } else {
               const { versionCode, status } = uploaded;
               p.log.success(
-                ui.summary(
+                ui.block(
                   status === "draft"
                     ? "Uploaded to Google Play internal testing as a draft"
                     : "Uploaded to Google Play internal testing",
-                  [["Version code", versionCode]],
+                  [ui.kv("Version code", versionCode)],
                 ),
               );
               // Google Play took the bundle on the internal track, as a draft
@@ -660,7 +660,7 @@ const buildNow = async ({
             }),
   });
   p.log.success(
-    ui.summary(
+    ui.block(
       `Built ${platformName} ${ui.muted(`(${buildAdapter.name})`)}`,
       nativeBuildRows(result),
     ),
@@ -751,13 +751,11 @@ const logAlreadySubmitted = (
 ) =>
   p.log.step(
     [
-      ui.summary(`Already on ${STORE_NAMES[existing.destination]}`, [
-        existing.version !== null && ["Version", existing.version],
-        existing.submittedAtMs !== null && [
-          "Since",
-          formatUtc(existing.submittedAtMs),
-        ],
-        url !== undefined && ["Open", url],
+      ui.block(`Already on ${STORE_NAMES[existing.destination]}`, [
+        existing.version !== null && ui.kv("Version", existing.version),
+        existing.submittedAtMs !== null &&
+          ui.kv("Since", formatUtc(existing.submittedAtMs)),
+        url !== undefined && ui.kv("Open", url),
       ]),
       refused ? "Bump the build number to upload this build." : undefined,
     ]
@@ -876,33 +874,33 @@ const summarizeDryRun = (
   upload: NativeBuildCreateOptions["submit"],
   reused: NativeBuildCacheHit | null,
 ): string =>
-  ui.summary("Dry run: nothing was recorded or submitted", [
-    ["Platform", ui.platform(result.platform)],
-    ["Channel", ui.channel(result.channel)],
+  ui.block("Dry run: nothing was recorded or submitted", [
+    ui.kv("Platform", ui.platform(result.platform)),
+    ui.kv("Channel", ui.channel(result.channel)),
     result.fingerprintHash === null
-      ? ["App version", ui.version(result.appVersion)]
-      : ["Fingerprint", ui.id(result.fingerprintHash)],
-    ["Min bundle ID", ui.id(result.minBundleId)],
-    ["Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)],
-    [
+      ? ui.kv("App version", ui.version(result.appVersion))
+      : ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
+    ui.kv("Min bundle ID", ui.id(result.minBundleId)),
+    ui.kv("Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)),
+    ui.kv(
       "Would record",
       result.minBundleId === NIL_UUID
         ? "nothing (a Debug build)"
         : reused?.source === "storage"
           ? `nothing (tracked as ${reused.nativeBuild.id})`
           : "the native build and its built-in bundle",
-    ],
-    ["Would submit", upload ? `to ${STORE_NAMES[upload]}` : "nothing"],
+    ),
+    ui.kv("Would submit", upload ? `to ${STORE_NAMES[upload]}` : "nothing"),
   ]);
 
 const nativeBuildRows = (result: NativeBuildResult): Row[] => [
-  ["Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)],
-  ["Kind", result.artifactKind],
-  ["Min bundle ID", ui.id(result.minBundleId)],
+  ui.kv("Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)),
+  ui.kv("Kind", result.artifactKind),
+  ui.kv("Min bundle ID", ui.id(result.minBundleId)),
   result.fingerprintHash === null
-    ? ["App version", ui.version(result.appVersion)]
-    : ["Fingerprint", ui.id(result.fingerprintHash)],
-  ["Channel", ui.channel(result.channel)],
+    ? ui.kv("App version", ui.version(result.appVersion))
+    : ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
+  ui.kv("Channel", ui.channel(result.channel)),
 ];
 
 /**

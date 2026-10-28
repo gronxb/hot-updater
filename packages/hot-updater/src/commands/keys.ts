@@ -198,12 +198,12 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       );
       spinner.stop("Keys generated");
       p.log.message(
-        ui.rows([
-          [
+        ui.block("", [
+          ui.kv(
             "Private",
             ui.path(ui.fitPath(describeStoredSecret(secrets, secretName))),
-          ],
-          ["Public", ui.path(ui.fitPath(publicKeyPath))],
+          ),
+          ui.kv("Public", ui.path(ui.fitPath(publicKeyPath))),
         ]),
       );
     } else {
@@ -211,10 +211,10 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       spinner.stop("Keys generated");
       const privateKeyPath = path.join(outputDir, "private-key.pem");
       p.log.message(
-        ui.rows([
-          ["Private", ui.path(ui.fitPath(privateKeyPath))],
-          ["Public", ui.path(ui.fitPath(publicKeyPath))],
-          ["Gitignore", ignorePrivateKey(cwd, outputDir)],
+        ui.block("", [
+          ui.kv("Private", ui.path(ui.fitPath(privateKeyPath))),
+          ui.kv("Public", ui.path(ui.fitPath(publicKeyPath))),
+          ui.kv("Gitignore", ignorePrivateKey(cwd, outputDir)),
         ]),
       );
     }
@@ -438,7 +438,7 @@ export const keysExportPublic = async (
     }
 
     p.log.step(
-      ui.summary("Native files", [
+      ui.block("Native files", [
         ...(androidExists
           ? nativeTargetRows("android", androidManifestPaths)
           : []),
@@ -463,8 +463,8 @@ export const keysExportPublic = async (
     if (trustAnchorChanges.length > 0) {
       p.log.warn(
         [
-          ui.summary("This replaces the native bundle signing key", [
-            ["New", shortFingerprint(nextPublicKey.fingerprint)],
+          ui.block("This replaces the native bundle signing key", [
+            ui.kv("New", shortFingerprint(nextPublicKey.fingerprint)),
             ...trustAnchorChanges.map(
               ({ platform, fingerprint }): Row => [
                 platform,
@@ -681,7 +681,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
       : Promise.resolve({ value: null, paths: [] }),
   ]);
 
-  const foundKeys: string[] = [];
+  const foundKeys: Row[] = [];
   if (iosKey.value) {
     foundKeys.push(
       ui.kv(

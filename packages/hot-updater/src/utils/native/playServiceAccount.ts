@@ -262,11 +262,11 @@ export const ensurePlayServiceAccount = async ({
   try {
     const { readable } = await storeIssued(store, name, issued);
     p.log.success(
-      ui.summary("Play service account stored", [
-        name !== POLICY.kind && ["Name", name],
-        ["Service account", issued.email],
-        ["Key ID", issued.keyId],
-        ["Source", ui.fitPath(describeStoredSecret(store, name))],
+      ui.block("Play service account stored", [
+        name !== POLICY.kind && ui.kv("Name", name),
+        ui.kv("Service account", issued.email),
+        ui.kv("Key ID", issued.keyId),
+        ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
       ]),
     );
     await offerIssuedKeyToGitHub({

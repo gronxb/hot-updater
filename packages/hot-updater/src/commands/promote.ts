@@ -105,7 +105,7 @@ export const handlePromote = async (
         ? `Promoted bundle to ${targetChannel}.`
         : `Moved bundle to ${targetChannel}.`,
     );
-    p.log.info(ui.kv("ID", ui.id(promoted.id)));
+    p.log.info(ui.block("", [ui.kv("ID", ui.id(promoted.id))]));
   } finally {
     await safeDispose(server);
   }

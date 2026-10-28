@@ -80,27 +80,27 @@ export const handleNativeBuildFind = async (
     }
     const target: Row =
       scope.fingerprintHash === null
-        ? ["App version", ui.version(scope.appVersion)]
-        : ["Fingerprint", ui.id(scope.fingerprintHash)];
+        ? ui.kv("App version", ui.version(scope.appVersion))
+        : ui.kv("Fingerprint", ui.id(scope.fingerprintHash));
     if (nativeBuild === null) {
       p.log.info(
-        ui.summary("No native build matches", [
-          ["Platform", ui.platform(scope.platform)],
-          ["Channel", ui.channel(scope.channel)],
+        ui.block("No native build matches", [
+          ui.kv("Platform", ui.platform(scope.platform)),
+          ui.kv("Channel", ui.channel(scope.channel)),
           target,
         ]),
       );
       return;
     }
     p.log.success(
-      ui.summary("Native build found", [
-        ["ID", ui.id(nativeBuild.id)],
-        ["Platform", ui.platform(scope.platform)],
-        ["Channel", ui.channel(scope.channel)],
+      ui.block("Native build found", [
+        ui.kv("ID", ui.id(nativeBuild.id)),
+        ui.kv("Platform", ui.platform(scope.platform)),
+        ui.kv("Channel", ui.channel(scope.channel)),
         target,
-        ["Kind", nativeBuild.artifact_kind],
-        ["Min bundle ID", ui.id(nativeBuild.min_bundle_id)],
-        ["Created", formatUtc(nativeBuild.created_at_ms)],
+        ui.kv("Kind", nativeBuild.artifact_kind),
+        ui.kv("Min bundle ID", ui.id(nativeBuild.min_bundle_id)),
+        ui.kv("Created", formatUtc(nativeBuild.created_at_ms)),
       ]),
     );
   } catch (error) {
@@ -161,16 +161,16 @@ export const handleNativeBuildDelete = async (
 
       if (!options.json) {
         p.log.step(
-          ui.summary("Native build", [
-            ["ID", ui.id(build.id)],
-            ["Platform", ui.platform(build.platform)],
-            ["Channel", ui.channel(channel)],
+          ui.block("Native build", [
+            ui.kv("ID", ui.id(build.id)),
+            ui.kv("Platform", ui.platform(build.platform)),
+            ui.kv("Channel", ui.channel(channel)),
             build.fingerprint_hash === null
-              ? ["App version", ui.version(build.app_version)]
-              : ["Fingerprint", ui.id(build.fingerprint_hash)],
-            ["Kind", build.artifact_kind],
-            ["Size", formatBytes(build.byte_size)],
-            ["Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))],
+              ? ui.kv("App version", ui.version(build.app_version))
+              : ui.kv("Fingerprint", ui.id(build.fingerprint_hash)),
+            ui.kv("Kind", build.artifact_kind),
+            ui.kv("Size", formatBytes(build.byte_size)),
+            ui.kv("Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))),
           ]),
         );
       }
@@ -207,10 +207,10 @@ export const handleNativeBuildDelete = async (
         );
       } else {
         p.log.success(
-          ui.summary("Native build deleted", [
-            ["ID", ui.id(id)],
-            ["Platform", ui.platform(build.platform)],
-            ["Channel", ui.channel(channel)],
+          ui.block("Native build deleted", [
+            ui.kv("ID", ui.id(id)),
+            ui.kv("Platform", ui.platform(build.platform)),
+            ui.kv("Channel", ui.channel(channel)),
           ]),
         );
       }

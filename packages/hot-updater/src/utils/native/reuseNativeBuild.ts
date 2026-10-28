@@ -234,14 +234,14 @@ export const reuseNativeBuild = async ({
   });
 
   if (key.key === null) {
-    p.log.info(ui.summary("Cache skipped", [["Reason", key.uncacheable]]));
+    p.log.info(ui.block("Cache skipped", [ui.kv("Reason", key.uncacheable)]));
     return { key, slot, hit: null, report: report(null), remember };
   }
   if (noCache) {
     p.log.info(
-      ui.summary("Cache skipped (--no-cache)", [
-        ["Key", shortKey(key.key)],
-        ["Computed", `${seconds} s`],
+      ui.block("Cache skipped (--no-cache)", [
+        ui.kv("Key", shortKey(key.key)),
+        ui.kv("Computed", `${seconds} s`),
       ]),
     );
     return { key, slot, hit: null, report: report(null), remember };
@@ -283,17 +283,17 @@ export const reuseNativeBuild = async ({
         ? hit.nativeBuild.id
         : (hit.nativeBuildId ?? hit.result.minBundleId);
     p.log.success(
-      ui.summary("Cache hit: reusing a native build", [
-        ["ID", ui.id(id)],
-        ["From", hit.source === "storage" ? "storage" : "this machine"],
-        ["Key", shortKey(key.key)],
-        [
+      ui.block("Cache hit: reusing a native build", [
+        ui.kv("ID", ui.id(id)),
+        ui.kv("From", hit.source === "storage" ? "storage" : "this machine"),
+        ui.kv("Key", shortKey(key.key)),
+        ui.kv(
           "Artifact",
           ui.fitPath(
             path.resolve(cwd, hit.result.artifactPath),
             ARTIFACT_PATH_WIDTH,
           ),
-        ],
+        ),
       ]),
     );
     // A build downloaded from storage is kept here for the next run, and
@@ -320,18 +320,18 @@ export const reuseNativeBuild = async ({
       : diffNativeBuildKeyComponents(cached.components, key.components);
   p.log.info(
     missingArtifact
-      ? ui.summary("Cache miss: the tracked build has no artifact", [
-          ["Build", ui.id(missingArtifact.id)],
-          ["Key", shortKey(key.key)],
+      ? ui.block("Cache miss: the tracked build has no artifact", [
+          ui.kv("Build", ui.id(missingArtifact.id)),
+          ui.kv("Key", shortKey(key.key)),
         ])
       : takenMinBundleId
-        ? ui.summary("Cache miss: the cached build's MIN_BUNDLE_ID is taken", [
-            ["MIN_BUNDLE_ID", ui.id(cached!.build.minBundleId)],
-            ["Key", shortKey(key.key)],
+        ? ui.block("Cache miss: the cached build's MIN_BUNDLE_ID is taken", [
+            ui.kv("MIN_BUNDLE_ID", ui.id(cached!.build.minBundleId)),
+            ui.kv("Key", shortKey(key.key)),
           ])
-        : ui.summary("Cache miss: no build has this key", [
-            ["Key", shortKey(key.key)],
-            changed.length > 0 && ["Changed", describeChanges(changed)],
+        : ui.block("Cache miss: no build has this key", [
+            ui.kv("Key", shortKey(key.key)),
+            changed.length > 0 && ui.kv("Changed", describeChanges(changed)),
           ]),
   );
   return {

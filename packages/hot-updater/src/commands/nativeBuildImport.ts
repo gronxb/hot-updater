@@ -111,32 +111,32 @@ const describeArtifact = (
     values.length === 0
       ? [[label, ui.muted("none")]]
       : values.map((value, index) => [index === 0 ? label : "", ui.id(value)]);
-  return ui.summary("Native build artifact", [
-    ["File", ui.path(ui.fitPath(file, ARTIFACT_PATH_WIDTH))],
-    ["Platform", ui.platform(info.platform)],
-    ["Kind", info.kind],
-    ["Size", formatBytes(byteSize)],
-    ["App", info.appId ?? ui.muted("none")],
-    ["App version", ui.version(text(info.appVersion) ?? "none")],
-    ["Build number", info.buildNumber ?? ui.muted("none")],
-    [
+  return ui.block("Native build artifact", [
+    ui.kv("File", ui.path(ui.fitPath(file, ARTIFACT_PATH_WIDTH))),
+    ui.kv("Platform", ui.platform(info.platform)),
+    ui.kv("Kind", info.kind),
+    ui.kv("Size", formatBytes(byteSize)),
+    ui.kv("App", info.appId ?? ui.muted("none")),
+    ui.kv("App version", ui.version(text(info.appVersion) ?? "none")),
+    ui.kv("Build number", info.buildNumber ?? ui.muted("none")),
+    ui.kv(
       "Channel",
       channel !== undefined
         ? `${ui.channel(channel)} ${ui.muted(`(--channel; compiled in: ${text(info.channel) ?? "none"})`)}`
         : info.channel === null
           ? `${ui.channel("production")} ${ui.muted("(none compiled in)")}`
           : ui.channel(text(info.channel)),
-    ],
+    ),
     ...candidates("Min bundle ID", info.minBundleIdCandidates),
     ...(updateStrategy === "fingerprint"
       ? candidates("Fingerprint", info.fingerprintCandidates)
       : []),
-    [
+    ui.kv(
       "Built-in bundle",
       info.builtInBundle === null
         ? ui.muted("none")
         : `${info.builtInBundle.path} ${ui.muted(formatBytes(info.builtInBundle.byteSize))}`,
-    ],
+    ),
   ]);
 };
 
