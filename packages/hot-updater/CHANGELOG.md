@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- 755bde5: rc.5 QA fixes. Doctor's advice for managed credentials the config reads with `process.env` names init's command only for a deployment init manages; for one an agent infrastructure scaffold keeps, or a config of your own, it is one line and the `secretEnv` docs link. `google-play login` checks for gcloud before any question, uses the account's only Google Cloud project with the Google Play Android Developer API, and otherwise asks which project to use or whether to create one, instead of creating a new project. `apple login` and `secrets issue` help no longer name asc, and a shortcut's refusal of an option is two short lines with the full command.
+- Updated dependencies [755bde5]
+  - @hot-updater/android-helper@1.2.0-rc.6
+  - @hot-updater/apple-helper@1.2.0-rc.6
+  - @hot-updater/bsdiff@1.2.0-rc.6
+  - @hot-updater/cli-tools@1.2.0-rc.6
+  - @hot-updater/console@1.2.0-rc.6
+  - @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/server@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
 ## 1.2.0-rc.5
 
 ### Patch Changes
