@@ -849,9 +849,8 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
         infrastructure: {
           needsUpdate: true,
           remediation: {
-            reason: expect.stringContaining(
-              "upload the new server version and preview it, then migrate the database and deploy that version back to back",
-            ),
+            reason:
+              "Generate an upgrade scaffold and apply it as its upgrades/README.md says:",
             commands: [command],
           },
         },
@@ -859,9 +858,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
           issues: [
             {
               code: "SCHEMA_MIGRATION_PENDING",
-              resolution: expect.stringContaining(
-                `This deployment is kept with the agent infrastructure scaffold in ${path.join("hot-updater-infra", "cloudflare", "upgrade-bare-1.1.3")}: run \`${command}\``,
-              ),
+              resolution: `Generate an upgrade scaffold and apply it as its upgrades/README.md says: \`${command}\`.`,
               commands: [command],
             },
           ],
@@ -869,6 +866,99 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain("hot-updater init --provider");
+  });
+
+  it.each([
+    [
+      "the outdated server",
+      "1.2.0",
+      [
+        "●  Generate an upgrade scaffold and apply it as its upgrades/README.md says:",
+        "│  npx hot-updater agent infra upgrade --provider cloudflare --build bare",
+      ],
+    ],
+    [
+      "the pending migration, which the outdated server's upgrade is",
+      "1.0.0",
+      [
+        "│  Generate an upgrade scaffold and apply it as its upgrades/README.md says:",
+        "│  npx hot-updater agent infra upgrade --provider cloudflare --build bare.",
+      ],
+    ],
+  ])(
+    "names a scaffold's upgrade command once, under %s, after one line",
+    async (_, schemaCore, printed) => {
+      const adapter = createMemoryAdapter();
+      await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+      await storeSetting(adapter, "schema.core", schemaCore);
+      await project(
+        marked(
+          createEngineDatabase({ name: "d1Database", adapter }),
+          "cloudflare",
+        ),
+        "cloudflare",
+      );
+      await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER);
+      vi.spyOn(process, "cwd").mockReturnValue(cwd);
+      vi.spyOn(globalThis, "fetch").mockImplementation(fetchVersion);
+      vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("exit");
+      });
+      for (const method of [
+        "info",
+        "warn",
+        "error",
+        "step",
+        "success",
+      ] as const)
+        vi.spyOn(p.log, method).mockImplementation(() => {});
+      vi.spyOn(p, "intro").mockImplementation(() => {});
+
+      await expect(handleDoctor({ serverBaseUrl: SERVER })).rejects.toThrow(
+        "exit",
+      );
+
+      const lines = renderClackLog(recordedClackCalls(p.log, p));
+      const start = lines.indexOf(printed[0]!);
+      expect(lines.slice(start, start + printed.length)).toEqual(printed);
+      // No paragraph around it: the entry ends, or the output does.
+      expect(["│", undefined]).toContain(lines[start + printed.length]);
+      expect(
+        lines.filter((line) => line.includes("agent infra upgrade")),
+      ).toEqual([printed[1]]);
+    },
+  );
+
+  it("names the command to pick one in its advice when the scaffolds record several deployments", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER);
+    await scaffold(
+      "cloudflare",
+      "upgrade-bare-staging",
+      "https://staging.example.com",
+    );
+
+    const advice = `The agent infrastructure scaffolds in ${[
+      path.join("hot-updater-infra", "cloudflare", "upgrade-bare-1.1.3"),
+      path.join("hot-updater-infra", "cloudflare", "upgrade-bare-staging"),
+    ].join(
+      ", ",
+    )} record several deployments: generate the upgrade of this database's with \`npx hot-updater agent infra upgrade\`, and apply it as its upgrades/README.md says.`;
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        infrastructure: { remediation: { reason: advice, commands: [] } },
+        schema: { issues: [{ resolution: advice, commands: [] }] },
+      },
+    });
   });
 
   it("keeps naming init beside a scaffold that was generated but never deployed", async () => {
@@ -944,7 +1034,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
 
     const result = await run();
     expect(JSON.stringify(result)).not.toContain(
-      "kept with the agent infrastructure scaffold",
+      "Generate an upgrade scaffold",
     );
     expect(JSON.stringify(result)).not.toContain(
       "agent infra upgrade --provider cloudflare",

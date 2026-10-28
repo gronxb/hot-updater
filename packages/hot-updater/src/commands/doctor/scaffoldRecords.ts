@@ -162,8 +162,14 @@ export const scaffoldUpgradeFor = (
   };
 };
 
-/** How to upgrade through the scaffold, and in which order. */
+/**
+ * How to upgrade through the scaffold: the line before its command, or,
+ * when the scaffolds record several deployments and doctor names no
+ * command, the advice with the command to pick one in it. The order it
+ * applies in, a preview before the migration and the deploy, is the
+ * scaffold's upgrades/README.md.
+ */
 export const scaffoldUpgradeNote = ({ dirs, command }: ScaffoldUpgrade) =>
   command === null
-    ? `The agent infrastructure scaffolds in ${dirs.join(", ")} record more than one deployment: upgrade the one this database belongs to with \`npx hot-updater agent infra upgrade\`, and apply it as its upgrades/README.md says: upload the new server version and preview it, then migrate the database and deploy that version back to back.`
-    : `This deployment is kept with the agent infrastructure ${dirs.length === 1 ? "scaffold" : "scaffolds"} in ${dirs.join(", ")}: run \`${command}\`, and apply the new scaffold as its upgrades/README.md says: upload the new server version and preview it, then migrate the database and deploy that version back to back. Running init again instead would deploy at once, without that preview, and leave the scaffold behind.`;
+    ? `The agent infrastructure scaffolds in ${dirs.join(", ")} record several deployments: generate the upgrade of this database's with \`npx hot-updater agent infra upgrade\`, and apply it as its upgrades/README.md says.`
+    : "Generate an upgrade scaffold and apply it as its upgrades/README.md says:";

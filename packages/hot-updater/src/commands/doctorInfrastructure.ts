@@ -113,7 +113,8 @@ export const createInfrastructureRemediation = ({
   }
   if (scaffold !== null) {
     return {
-      reason: `${scaffoldUpgradeNote(scaffold)} A server of an earlier release answers 503 once the database is migrated.`,
+      // The command follows the reason, which names it no more.
+      reason: scaffoldUpgradeNote(scaffold),
       commands: scaffold.command === null ? [] : [scaffold.command],
     };
   }

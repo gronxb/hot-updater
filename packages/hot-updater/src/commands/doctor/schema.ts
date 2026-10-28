@@ -88,7 +88,10 @@ const pendingResolution = (
   // A scaffold that keeps the deployment upgrades it with a preview.
   if (scaffold !== null) {
     return {
-      resolution: `${scaffoldUpgradeNote(scaffold)} ${SERVER_ORDER}.`,
+      resolution:
+        scaffold.command === null
+          ? scaffoldUpgradeNote(scaffold)
+          : `${scaffoldUpgradeNote(scaffold)} \`${scaffold.command}\`.`,
       commands: scaffold.command === null ? [] : [scaffold.command],
     };
   }
