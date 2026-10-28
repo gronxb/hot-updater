@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- ebb223a: `apple login` and `google-play login` report a key already stored, or set by the environment, and exit 0 without a terminal too, as in CI; only a sign-in needs one. Doctor's outdated-server advice is one line and init's command, named once: when the database also has migrations to run, the schema check names it instead. `agent infra upgrade` names `upgrades/README.md` once, and each file relative to the templates' directory. `native-build --dry-run` ends with one line, such as `Dry run: not recorded or submitted to TestFlight`, after the build's block, without repeating its rows; the app version and fingerprint steps read `iOS app version 1.7.0`, and the `.app file created` line is gone. `keys generate` prints its keys under a `Keys generated` heading. `--json` output is unchanged.
+- Updated dependencies [ebb223a]
+  - @hot-updater/apple-helper@1.2.0-rc.4
+  - @hot-updater/android-helper@1.2.0-rc.4
+  - @hot-updater/bsdiff@1.2.0-rc.4
+  - @hot-updater/cli-tools@1.2.0-rc.4
+  - @hot-updater/console@1.2.0-rc.4
+  - @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/server@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
 ## 1.2.0-rc.3
 
 ### Patch Changes
