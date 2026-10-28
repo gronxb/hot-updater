@@ -228,7 +228,16 @@ describe("AWS init", () => {
       functionArn: FUNCTION_ARN,
     });
     expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledWith(
-      getConfigScaffold("bare", { mode: "account" }),
+      getConfigScaffold(
+        "bare",
+        { mode: "account" },
+        {
+          region: "ap-northeast-2",
+          bucketName: "bundles",
+          tableName: "hot-updater-metadata",
+          cloudfrontDistributionId: "dist-id",
+        },
+      ),
       { cwd: process.cwd(), settings: "AWS" },
     );
     expect(mocks.printAppSetup).toHaveBeenCalledWith({

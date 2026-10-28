@@ -38,8 +38,11 @@ Console's URL for the comment's links.
 - [Deploy the Console](/docs/guides/console-deployment): the comment's
   links and QR code open it. See [The comment](#the-comment).
 - Read the deploy credentials with
-  [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), and
-  add their values to the repository's secrets.
+  [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), as
+  the config managed `init` writes does, and add their values to the
+  repository's secrets, or keep them in a
+  [team store](/docs/concepts/secrets#this-machine-or-the-team), which the job
+  only signs in to.
 - Add a [native build scheme](/docs/guides/native-build#configure-schemes)
   for each previewed platform: a Release APK for Android, signed with a
   `secret:` keystore, and a scheme with `simulator: true` for iOS, which builds

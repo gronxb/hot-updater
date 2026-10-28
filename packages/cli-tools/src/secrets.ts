@@ -216,10 +216,12 @@ const LOADING_SCOPE = Symbol.for("@hot-updater/cli-tools/secrets-scope");
 
 /**
  * The `secrets` adapter of one config load, filled once the config it
- * evaluates resolves: each `secretEnv` the evaluation creates reads from it.
+ * evaluates resolves: each `secretEnv` the evaluation creates reads from it,
+ * and adds the names it reads to `names`.
  */
 export interface SecretsScope {
   secrets?: SecretsAdapter;
+  names?: Set<string>;
 }
 
 type SecretsSlot = {
@@ -313,40 +315,55 @@ export const secretEnv = <const TName extends string>(
     );
   }
   const scope = (globalThis as SecretsSlot)[LOADING_SCOPE];
-  return async () => {
-    const cwd = getCwd();
-    const fileEnv = await readLoadedHotUpdaterEnv(cwd);
-    // No prototype: a variable may be named __proto__.
-    const variables: Record<string, string> = Object.create(null);
-    const fromStore: string[] = [];
-    for (const name of wanted) {
-      const value = getHotUpdaterEnvValue(fileEnv, name);
-      if (value === undefined) fromStore.push(name);
-      else variables[name] = value;
-    }
-    if (fromStore.length > 0) {
-      // Deploy credentials come from the config's own adapter: `localSecrets()`'s
-      // store holds only the keys Hot Updater stores.
-      const secrets = getConfiguredAdapter(
-        scope?.secrets ?? getConfiguredSecrets(),
+  if (scope) {
+    scope.names ??= new Set();
+    for (const name of wanted) scope.names.add(name);
+  }
+  // One read per command: the adapters that call it share its values.
+  let read: Promise<Readonly<Record<TName, string>>> | undefined;
+  return () =>
+    (read ??= readSecretEnv<TName>(wanted, scope).catch((error: unknown) => {
+      read = undefined;
+      throw error;
+    }));
+};
+
+const readSecretEnv = async <const TName extends string>(
+  wanted: readonly TName[],
+  scope: SecretsScope | undefined,
+): Promise<Readonly<Record<TName, string>>> => {
+  const cwd = getCwd();
+  const fileEnv = await readLoadedHotUpdaterEnv(cwd);
+  // No prototype: a variable may be named __proto__.
+  const variables: Record<string, string> = Object.create(null);
+  const fromStore: string[] = [];
+  for (const name of wanted) {
+    const value = getHotUpdaterEnvValue(fileEnv, name);
+    if (value === undefined) fromStore.push(name);
+    else variables[name] = value;
+  }
+  if (fromStore.length > 0) {
+    // Deploy credentials come from the config's own adapter: `localSecrets()`'s
+    // store holds only the keys Hot Updater stores.
+    const secrets = getConfiguredAdapter(
+      scope?.secrets ?? getConfiguredSecrets(),
+    );
+    const read = secrets ? await secrets.get(fromStore, { cwd }) : {};
+    const missing = fromStore.filter((name) => {
+      const value = Object.hasOwn(read, name) ? read[name] : undefined;
+      if (typeof value !== "string" || value === "") return true;
+      variables[name] = value;
+      return false;
+    });
+    if (missing.length > 0) {
+      const them = missing.length === 1 ? "it" : "them";
+      throw new Error(
+        secrets === undefined
+          ? `secretEnv found no value for ${list(missing)}: set ${them} in the environment or .env.hotupdater, or read ${them} from a secrets store with the config's secrets.`
+          : `secretEnv found no value for ${list(missing)}: ${missing.length === 1 ? "it is" : "they are"} not set in the environment or .env.hotupdater, and the ${secrets.name} secrets adapter does not hold ${them} (${missing.map((name) => describeSecret(secrets, name)).join("; ")}).`,
       );
-      const read = secrets ? await secrets.get(fromStore, { cwd }) : {};
-      const missing = fromStore.filter((name) => {
-        const value = Object.hasOwn(read, name) ? read[name] : undefined;
-        if (typeof value !== "string" || value === "") return true;
-        variables[name] = value;
-        return false;
-      });
-      if (missing.length > 0) {
-        const them = missing.length === 1 ? "it" : "them";
-        throw new Error(
-          secrets === undefined
-            ? `secretEnv found no value for ${list(missing)}: set ${them} in the environment or .env.hotupdater, or read ${them} from a secrets store with the config's secrets.`
-            : `secretEnv found no value for ${list(missing)}: ${missing.length === 1 ? "it is" : "they are"} not set in the environment or .env.hotupdater, and the ${secrets.name} secrets adapter does not hold ${them} (${missing.map((name) => describeSecret(secrets, name)).join("; ")}).`,
-        );
-      }
     }
-    for (const value of Object.values(variables)) registerSecretValue(value);
-    return Object.freeze(variables) as Readonly<Record<TName, string>>;
-  };
+  }
+  for (const value of Object.values(variables)) registerSecretValue(value);
+  return Object.freeze(variables) as Readonly<Record<TName, string>>;
 };

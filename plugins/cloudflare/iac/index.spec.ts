@@ -695,8 +695,14 @@ describe("Cloudflare init discovery", () => {
     expect(mocks.makeEnv).toHaveBeenLastCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",
     });
+    // The config names the resources init chose, and reads the credentials
+    // with secretEnv.
     expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledWith(
-      getConfigScaffold("bare"),
+      getConfigScaffold("bare", {
+        accountId: "account-id",
+        bucketName: "bundles",
+        d1DatabaseId: "database-id",
+      }),
       { cwd: project, settings: "Cloudflare" },
     );
     const [scaffold] = mocks.writeHotUpdaterFiles.mock.calls.at(-1)!;

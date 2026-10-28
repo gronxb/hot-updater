@@ -91,4 +91,8 @@ export const initProvider = {
       preflight: false,
     },
   },
+  secrets: [
+    "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+    "HOT_UPDATER_VERCEL_DATABASE_URL",
+  ],
 } as const satisfies InitProviderDefinition;

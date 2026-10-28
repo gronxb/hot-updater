@@ -198,12 +198,12 @@ React Native app.
 
 After provisioning, record these outputs for [Set up your app](/docs/get-started/app-setup):
 
-| Output                | Value                                                             |
-| --------------------- | ----------------------------------------------------------------- |
-| Client base URL       | `https://<your-cloudfront-distribution-url>`                      |
-| Client request header | `x-api-key`                                                       |
-| Client API key        | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration  | `hot-updater.config.ts` and the selected provider resources       |
+| Output                | Value                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Client base URL       | `https://<your-cloudfront-distribution-url>`                                          |
+| Client request header | `x-api-key`                                                                           |
+| Client API key        | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater`, or your team store |
+| Deploy configuration  | `hot-updater.config.ts` and the selected provider resources                           |
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -230,6 +230,15 @@ The CLI and the Console reach S3 and DynamoDB through these settings and run the
 as the function. The managed function runs these official plugins only; to run
 other server plugins, use a [custom server](/docs/custom/overview).
 
+The config names the resources init chose and reads an account's access keys
+with
+[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
+the environment and `.env.hotupdater` first, then the config's `secrets`
+adapter. With a
+[team store](/docs/concepts/secrets#this-machine-or-the-team) there, init
+also stores them and `HOT_UPDATER_API_KEY` in it, so a teammate's commands
+read them there.
+
 On a rerun, init updates `storage`, `database`, and `plugins` in the existing
 file and keeps your other settings, including a wrapped build such as
 `withSentry(bare())`. When it cannot edit `hot-updater.config.ts`, such as a
@@ -241,10 +250,10 @@ AWS SDK default provider chain instead of embedding access keys:
 
 ```ts title="hot-updater.config.ts"
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
-import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { defineConfig, localSecrets } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -252,7 +261,7 @@ if (existsSync(".env.hotupdater")) {
 }
 
 const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
+  region: "us-east-1",
   credentials: fromNodeProviderChain(),
 };
 
@@ -260,13 +269,12 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: s3Storage({
     ...awsOptions,
-    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+    bucketName: "your-bucket-name",
   }),
   database: dynamoDB({
     ...awsOptions,
-    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId:
-      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    tableName: "hot-updater",
+    cloudfrontDistributionId: "your-distribution-id",
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and google-play login

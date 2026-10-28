@@ -155,12 +155,12 @@ in the React Native app.
 
 After provisioning, record these outputs for [Set up your app](/docs/get-started/app-setup):
 
-| Output                | Value                                                             |
-| --------------------- | ----------------------------------------------------------------- |
-| Client base URL       | `https://<Function App default host name>`                        |
-| Client request header | `x-api-key`                                                       |
-| Client API key        | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration  | `hot-updater.config.ts` and the selected provider resources       |
+| Output                | Value                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Client base URL       | `https://<Function App default host name>`                                            |
+| Client request header | `x-api-key`                                                                           |
+| Client API key        | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater`, or your team store |
+| Deploy configuration  | `hot-updater.config.ts` and the selected provider resources                           |
 
 Use the actual URL init prints. Configure the SDK and native bundle loader
 through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -187,6 +187,15 @@ and run the same plugins as the Function. The managed Function runs these
 official plugins only; to run other server plugins, use a
 [custom server](/docs/custom/overview).
 
+The config names the Cosmos DB account init chose and reads both connection
+strings with
+[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
+the environment and `.env.hotupdater` first, then the config's `secrets`
+adapter. With a
+[team store](/docs/concepts/secrets#this-machine-or-the-team) there, init
+also stores them and `HOT_UPDATER_API_KEY` in it, so a teammate's commands
+read them there.
+
 On a rerun, init updates `storage`, `database`, and `plugins` in the existing
 file and keeps your other settings, including a wrapped build such as
 `withSentry(bare())`. When it cannot edit `hot-updater.config.ts`, such as a
@@ -196,22 +205,30 @@ config that a function returns, it leaves the file unchanged and prints the
 ```ts title="hot-updater.config.ts"
 import { azureBlobStorage, cosmosDatabase } from "@hot-updater/azure";
 import { bare } from "@hot-updater/bare";
+import { defineConfig, localSecrets, secretEnv } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig, localSecrets } from "hot-updater";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
+const deploySecrets = secretEnv([
+  "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+  "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
+]);
+
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: azureBlobStorage({
-    connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!,
+    connectionString: async () =>
+      (await deploySecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
     containerName: "hot-updater",
   }),
   database: cosmosDatabase({
-    connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!,
+    endpoint: "https://your-cosmos-account.documents.azure.com:443/",
+    connectionString: async () =>
+      (await deploySecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and google-play login

@@ -1,17 +1,46 @@
 import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
+  deploySecretsHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
   type RunInitOptions,
 } from "@hot-updater/cli-tools";
 
+/** The Cloudflare resources init set up, which the config names as they are. */
+export interface CloudflareConfigResources {
+  readonly accountId: string;
+  readonly bucketName: string;
+  readonly d1DatabaseId: string;
+}
+
+/**
+ * The config init writes. With the `resources` init set up, it names them,
+ * and reads the API token and R2 keys with `secretEnv`, from the
+ * environment and `.env.hotupdater`, then the config's `secrets` adapter.
+ * Without them, as the agent scaffold writes it, it reads every value from
+ * the environment.
+ */
 export const getConfigScaffold = (
   build: RunInitOptions["build"],
+  resources?: CloudflareConfigResources,
 ): HotUpdaterConfigScaffold => {
-  const storageConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
-    configString: `r2Storage({
+  const builder = new ConfigBuilder().setBuildType(build).setPlugins({
+    imports: [
+      {
+        pkg: "hot-updater/plugins",
+        named: ["apiKeys", "insights", "remoteConfig"],
+      },
+    ],
+    configString: "[apiKeys(), insights(), remoteConfig()]",
+  });
+
+  if (resources === undefined) {
+    return createHotUpdaterConfigScaffoldFromBuilder(
+      builder
+        .setStorage({
+          imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+          configString: `r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
@@ -19,29 +48,58 @@ export const getConfigScaffold = (
       secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
     },
   })`,
-  };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
-    configString: `d1Database({
+        })
+        .setDatabase({
+          imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+          configString: `d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   })`,
+        }),
+    );
+  }
+
+  const accountId = JSON.stringify(resources.accountId);
+  const storageConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+    configString: `r2Storage({
+    bucketName: ${JSON.stringify(resources.bucketName)},
+    accountId: ${accountId},
+    credentials: async () => {
+      const env = await deploySecrets();
+      return {
+        accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
+        secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+      };
+    },
+  })`,
   };
+  const databaseConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+    configString: `d1Database({
+    databaseId: ${JSON.stringify(resources.d1DatabaseId)},
+    accountId: ${accountId},
+    cloudflareApiToken: async () =>
+      (await deploySecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+  })`,
+  };
+  const helperStatements = [
+    deploySecretsHelper([
+      "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+      "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+    ]),
+  ];
 
   return createHotUpdaterConfigScaffoldFromBuilder(
-    new ConfigBuilder()
-      .setBuildType(build)
+    builder
       .setStorage(storageConfig)
       .setDatabase(databaseConfig)
-      .setPlugins({
-        imports: [
-          {
-            pkg: "hot-updater/plugins",
-            named: ["apiKeys", "insights", "remoteConfig"],
-          },
-        ],
-        configString: "[apiKeys(), insights(), remoteConfig()]",
-      }),
+      .addImport({ pkg: "hot-updater", named: ["secretEnv"] })
+      .setIntermediateCode(
+        helperStatements.map(({ code }) => code).join("\n\n"),
+      ),
+    { helperStatements },
   );
 };

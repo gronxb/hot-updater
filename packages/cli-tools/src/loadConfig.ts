@@ -254,9 +254,26 @@ const resolveConfig = (
   const signing = normalizeSigningConfig(mergedConfig.signing, { secrets });
   for (const scope of scopes) scope.secrets ??= secrets;
   setConfiguredSecrets(secrets);
-  return {
+  const resolved = {
     ...mergedConfig,
     signing,
     secrets,
   } as ConfigResponse;
+  Object.defineProperty(resolved, SECRET_ENV_NAMES, {
+    value: [...new Set(scopes.flatMap((scope) => [...(scope.names ?? [])]))],
+  });
+  return resolved;
+};
+
+const SECRET_ENV_NAMES = Symbol.for("@hot-updater/cli-tools/secret-env-names");
+
+/**
+ * The names every `secretEnv` the config created while it loaded reads,
+ * such as `HOT_UPDATER_CLOUDFLARE_API_TOKEN`, in the order it created them.
+ */
+export const getSecretEnvNames = (
+  config: ConfigResponse,
+): readonly string[] => {
+  const names: unknown = Reflect.get(config, SECRET_ENV_NAMES);
+  return Array.isArray(names) ? names : [];
 };

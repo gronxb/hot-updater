@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   ensureInstallPackages: vi.fn(),
   group: vi.fn(),
   isProjectFileTracked: vi.fn(() => false),
+  loadTeamSecrets: vi.fn(),
   logError: vi.fn(),
   makeEnv: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       env: Readonly<Record<string, string>>,
       key: string,
     ) => env[key],
+    loadTeamSecrets: mocks.loadTeamSecrets,
     makeEnv: mocks.makeEnv,
     p: {
       ...actual.p,
@@ -78,6 +80,7 @@ describe("init choices", () => {
     mocks.makeEnv.mockResolvedValue("");
     mocks.runAwsInit.mockResolvedValue(undefined);
     mocks.runSupabaseInit.mockResolvedValue(undefined);
+    mocks.loadTeamSecrets.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -278,6 +281,40 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
       envFile: ".env.hotupdater",
+    });
+  });
+
+  it("reads from a team store only the credentials the saved .env.hotupdater lacks, interactive or not", async () => {
+    // Given: interactive init, whose saved file holds every AWS credential
+    // and the API key, and a store it can't read
+    const get = vi.fn(async () => {
+      throw new Error("store unreachable");
+    });
+    mocks.loadTeamSecrets.mockResolvedValue({
+      name: "teamStore",
+      get,
+      set: vi.fn(),
+    });
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {},
+      managedEnv: {
+        HOT_UPDATER_INIT_BUILD: "expo",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+        HOT_UPDATER_S3_ACCESS_KEY_ID: "saved-key-id",
+        HOT_UPDATER_S3_SECRET_ACCESS_KEY: "saved-secret",
+        HOT_UPDATER_API_KEY: "saved-app-key",
+      },
+    });
+
+    // When
+    await init({ build: "expo", provider: "aws" });
+
+    // Then: init runs on the saved values, without asking the store
+    expect(get).not.toHaveBeenCalled();
+    expect(mocks.logError).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).toHaveBeenCalledWith({
+      build: "expo",
+      secretsEnv: {},
     });
   });
 
