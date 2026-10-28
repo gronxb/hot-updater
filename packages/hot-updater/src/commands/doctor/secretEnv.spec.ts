@@ -1,12 +1,17 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import { getSecretEnvNames, localSecrets } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkSecretEnv } from "./secretEnv";
+import {
+  checkSecretEnv,
+  secretEnvAdvice,
+  secretEnvInitCommand,
+} from "./secretEnv";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -144,5 +149,64 @@ describe("doctor's secretEnv rows", () => {
     ).resolves.toBeUndefined();
     // Without a team store, the provider's init is never loaded.
     expect(managedSecrets).not.toHaveBeenCalled();
+  });
+});
+
+describe("doctor's advice for credentials read with process.env", () => {
+  const managed = {
+    provider: "cloudflare",
+    command:
+      "npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater",
+    confirmed: true,
+    foreignPlugins: [],
+  } as const;
+  const scaffold = { provider: "cloudflare" } as const;
+
+  it("names init's command only for a deployment init manages", () => {
+    expect(secretEnvInitCommand({ managed, scaffolds: [] })).toBe(
+      managed.command,
+    );
+    // A scaffold of another provider keeps another deployment.
+    expect(
+      secretEnvInitCommand({ managed, scaffolds: [{ provider: "aws" }] }),
+    ).toBe(managed.command);
+  });
+
+  it.each([
+    ["an agent scaffold keeps the deployment", managed, [scaffold]],
+    ["no deployment is init's", null, []],
+    [
+      "the database may not be the one init saved",
+      { ...managed, confirmed: false },
+      [],
+    ],
+    [
+      "the config lists a plugin the managed server does not run",
+      { ...managed, foreignPlugins: ["audit"] },
+      [],
+    ],
+  ] as const)("never names init when %s", (_, deployment, scaffolds) => {
+    expect(
+      secretEnvInitCommand({ managed: deployment, scaffolds }),
+    ).toBeUndefined();
+  });
+
+  it("is one line and a link without init, else init's command", () => {
+    expect(
+      secretEnvAdvice("them", undefined).map(stripVTControlCharacters),
+    ).toEqual([
+      "Read them with secretEnv in hot-updater.config.ts:",
+      "https://hot-updater.dev/docs/concepts/secrets#deploy-credentials-with-secretenv",
+    ]);
+    expect(
+      secretEnvAdvice("it", managed.command)
+        .join("\n")
+        .split("\n")
+        .map(stripVTControlCharacters),
+    ).toEqual([
+      "Run init again to read it with secretEnv:",
+      "npx hot-updater init --provider cloudflare --from-env-file \\",
+      "  .env.hotupdater",
+    ]);
   });
 });

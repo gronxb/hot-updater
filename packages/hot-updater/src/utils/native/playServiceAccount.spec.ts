@@ -131,6 +131,7 @@ const issue = vi.fn(
   async (
     request: IssuePlayServiceAccountRequest,
   ): Promise<IssuedPlayServiceAccount> => {
+    await request.askPackageName();
     await request.onInvite(INVITE_URL, EMAIL);
     return {
       json: KEY_FILE,
@@ -317,9 +318,6 @@ describe("ensurePlayServiceAccount", () => {
     expect(text).toHaveBeenCalledWith(
       expect.objectContaining({ initialValue: "com.example.app" }),
     );
-    expect(issue).toHaveBeenCalledWith(
-      expect.objectContaining({ packageName: "com.example.app" }),
-    );
     // Only Play Console's invite opens: gcloud signs in on its own, and no
     // developer account ID is asked for.
     expect(open.mock.calls).toEqual([[INVITE_URL]]);
@@ -346,6 +344,70 @@ describe("ensurePlayServiceAccount", () => {
         stripVTControlCharacters(String(message)),
       ),
     ).toContain(`If the browser doesn't open, open:\n${INVITE_URL}`);
+  });
+
+  it("asks for the package name only once the issuer has found its sign-in tool", async () => {
+    fakeStore();
+    const gcloudMissing = new Error("gcloud CLI is not installed.");
+    issue.mockImplementationOnce(async () => {
+      throw gcloudMissing;
+    });
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).rejects.toBe(gcloudMissing);
+    expect(text).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("offers the account's projects, those with the Play API first, and a new project", async () => {
+    fakeStore();
+    const picks: (string | null)[] = [];
+    issue.mockImplementationOnce(async (request) => {
+      await request.askPackageName();
+      picks.push(
+        await request.chooseProject([
+          { projectId: "web", displayName: "Web", playApiEnabled: false },
+          { projectId: "my-app", displayName: "My App", playApiEnabled: true },
+          { projectId: "shop", playApiEnabled: true },
+        ]),
+        await request.chooseProject([
+          { projectId: "web", displayName: "web", playApiEnabled: false },
+        ]),
+      );
+      return {
+        json: KEY_FILE,
+        email: EMAIL,
+        projectId: "my-app",
+        keyId: "abc123",
+        revoke: issued.revoke,
+        dispose: issued.dispose,
+      };
+    });
+    select.mockResolvedValueOnce("shop").mockResolvedValueOnce("");
+
+    await withTTY(true, () => ensure({ name: "play-service-account" }));
+
+    expect(select).toHaveBeenNthCalledWith(1, {
+      message: "Google Cloud project for the service account",
+      options: [
+        { value: "my-app", label: "my-app", hint: "My App, Play API enabled" },
+        { value: "shop", label: "shop", hint: "Play API enabled" },
+        { value: "web", label: "web", hint: "Web" },
+        { value: "", label: "Create a new project" },
+      ],
+      initialValue: "my-app",
+    });
+    // Without a project that has the API, a new one is the default.
+    expect(select).toHaveBeenNthCalledWith(2, {
+      message: "Google Cloud project for the service account",
+      options: [
+        { value: "web", label: "web" },
+        { value: "", label: "Create a new project" },
+      ],
+      initialValue: "",
+    });
+    expect(picks).toEqual(["shop", null]);
   });
 
   it("goes on when the browser can't open the invite", async () => {

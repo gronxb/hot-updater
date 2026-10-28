@@ -10,24 +10,31 @@ export {
 export interface GoogleCloudProject {
   readonly projectId: string;
   readonly displayName?: string;
+  /** Whether the Google Play Android Developer API is enabled in it. */
+  readonly playApiEnabled: boolean;
 }
 
 export interface IssuePlayServiceAccountRequest {
-  /** The app's package name in Google Play, which the service account may release. */
-  readonly packageName: string;
+  /**
+   * Asks for the app's package name in Google Play, which the service
+   * account may release: after the sign-in's own tool is found, before
+   * anything else.
+   */
+  readonly askPackageName: () => Promise<string>;
   /**
    * Sees Play Console's page that invites the service account `email`, to
    * print it and open it in a browser; the issuer then waits for the invite.
    */
   readonly onInvite: (url: string, email: string) => Promise<void> | void;
   /**
-   * Sees the account's projects when Google refuses to create one for it,
-   * and returns the one to create the service account in, or undefined to
-   * stop with Google's refusal.
+   * Sees the account's projects when no one of them is the obvious home of
+   * the service account, the only one with the Google Play Developer API,
+   * and returns the project ID to create it in, or null for a new project.
+   * Never called for an account without projects: a new one is created.
    */
   readonly chooseProject: (
     projects: readonly GoogleCloudProject[],
-  ) => Promise<string | undefined>;
+  ) => Promise<string | null>;
   /** Reports each step, such as "Creating the service account". */
   readonly onStep?: (message: string) => void;
 }

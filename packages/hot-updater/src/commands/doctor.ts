@@ -49,7 +49,12 @@ import {
   recordedBaseUrls,
 } from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
-import { checkSecretEnv, type SecretEnvStatus } from "./doctor/secretEnv";
+import {
+  checkSecretEnv,
+  secretEnvAdvice,
+  type SecretEnvStatus,
+  secretEnvInitCommand,
+} from "./doctor/secretEnv";
 import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
@@ -865,7 +870,17 @@ async function checkProject(
           return provider?.initProvider.secrets ?? [];
         },
       }).catch(() => undefined);
-      if (secretEnv) details.secretEnv = secretEnv;
+      if (secretEnv) {
+        const initCommand =
+          secretEnv.processEnvReads.length === 0
+            ? undefined
+            : secretEnvInitCommand({
+                managed: await context.managed(),
+                scaffolds: await context.scaffolds(),
+              });
+        details.secretEnv =
+          initCommand === undefined ? secretEnv : { ...secretEnv, initCommand };
+      }
     }
 
     // The server's data reads through the fence, so it is checked once the
@@ -1271,9 +1286,12 @@ export const handleDoctor = async ({
     if (processEnvReads.length > 0) {
       const them = processEnvReads.length === 1 ? "it" : "them";
       p.log.warn(
-        ui.prose(
-          `hot-updater.config.ts reads ${processEnvReads.join(", ")} with process.env, so ${adapter} never supplies ${them}. Run init again to read ${them} with secretEnv.`,
-        ),
+        [
+          ui.prose(
+            `hot-updater.config.ts reads ${processEnvReads.join(", ")} with process.env, so ${adapter} never supplies ${them}.`,
+          ),
+          ...secretEnvAdvice(them, secretEnv?.initCommand),
+        ].join("\n"),
       );
     }
   }

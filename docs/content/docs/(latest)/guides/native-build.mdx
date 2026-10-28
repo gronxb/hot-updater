@@ -773,12 +773,18 @@ keeps it in memory: it writes the service account to no file.
 
 When the adapter has no `play-service-account` yet, the CLI issues one in a
 terminal. It needs the [gcloud CLI](https://cloud.google.com/sdk/docs/install),
-and stops before changing anything without it. It asks for the app's package
+and stops before any question without it. It asks for the app's package
 name, filled in from the `nativeBuild.android` scheme's (a choice when several
 schemes declare different ones), and runs `gcloud auth login` when gcloud has
-no active Google Account. It puts the service account in the Google Cloud
-project "Hot Updater Play" an earlier run created, or creates it; only when
-Google refuses to create a project does it ask you to pick one. Then it:
+no active Google Account. It lists the account's Google Cloud projects and,
+in each, whether the Google Play Android Developer API is enabled:
+
+- When exactly one project has the API, it uses that one and says so.
+- Otherwise you pick one of the projects, or "Create a new project", the
+  default when none has the API. The new project is `hot-updater-play-<random>`.
+- An account without projects gets a new one without a question.
+
+Then it:
 
 1. Enables the IAM and Google Play Android Developer APIs in the project, and
    creates the service account `hot-updater-play` there.

@@ -4,7 +4,6 @@ import { registerSecretValue } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import type {
-  GoogleCloudProject,
   IssuedPlayServiceAccount,
   IssuePlayServiceAccountRequest,
 } from "../playServiceAccount";
@@ -27,8 +26,11 @@ const IAM_API = "https://iam.googleapis.com/v1";
 
 const GCLOUD_INSTALL_URL = "https://cloud.google.com/sdk/docs/install";
 
+/** The Google Play Android Developer API, which the service account calls. */
+const PLAY_API = "androidpublisher.googleapis.com";
+
 /** IAM creates the service account; the Play Developer API is what it calls. */
-const SERVICES = ["iam.googleapis.com", "androidpublisher.googleapis.com"];
+const SERVICES = ["iam.googleapis.com", PLAY_API];
 
 const KEY_CREATION_CONSTRAINT =
   "constraints/iam.disableServiceAccountKeyCreation";
@@ -104,17 +106,8 @@ const activeAccount = async (run: RunCommand) =>
     .split("\n")[0]
     ?.trim() || undefined;
 
-/**
- * gcloud's access token, after `gcloud auth login` when no account is
- * active. Stops before any change when gcloud is not installed.
- */
-const signInWithGcloud = async ({
-  run,
-  onStep,
-}: {
-  run: RunCommand;
-  onStep: (message: string) => void;
-}) => {
+/** Stops before anything else, a prompt included, when gcloud is not installed. */
+const requireGcloud = async (run: RunCommand) => {
   try {
     await run("gcloud", ["--version"]);
   } catch (error) {
@@ -128,6 +121,16 @@ const signInWithGcloud = async ({
       { cause: error },
     );
   }
+};
+
+/** gcloud's access token, after `gcloud auth login` when no account is active. */
+const signInWithGcloud = async ({
+  run,
+  onStep,
+}: {
+  run: RunCommand;
+  onStep: (message: string) => void;
+}) => {
   let account = await activeAccount(run);
   if (account === undefined) {
     // A cancelled or failed sign-in leaves no account, named below.
@@ -154,11 +157,12 @@ const signInWithGcloud = async ({
  * `IssuePlayServiceAccount` with the gcloud CLI's sign-in and Google's own
  * APIs:
  *
- * 1. gcloud's Google Account, signed in with `gcloud auth login` when none
- *    is active, names the access token the Google Cloud steps use;
- * 2. the Google Cloud project "Hot Updater Play" an earlier run created, or
- *    a new one, gets the IAM and Play Developer APIs enabled, and the
- *    service account `hot-updater-play` its JSON key;
+ * 1. once gcloud is found, `askPackageName` names the app, and gcloud's
+ *    Google Account, signed in with `gcloud auth login` when none is
+ *    active, the access token the Google Cloud steps use;
+ * 2. the account's only project with the Play Developer API, else the one
+ *    `chooseProject` picks, else a new one, gets the IAM and Play Developer
+ *    APIs enabled, and the service account `hot-updater-play` its JSON key;
  * 3. the developer invites the service account in Play Console, which
  *    `onInvite` opens: gcloud's token may not manage Google Play users;
  * 4. the key itself opens an edit of the app until Google Play lets it,
@@ -180,13 +184,15 @@ export const createGoogleKeyIssuer =
   async (
     request: IssuePlayServiceAccountRequest,
   ): Promise<IssuedPlayServiceAccount> => {
-    const { packageName, onStep = () => {} } = request;
+    const { onStep = () => {} } = request;
+    await requireGcloud(run);
+    const packageName = await request.askPackageName();
     const accessToken = await signInWithGcloud({ run, onStep });
     const google = createGoogleRequest({ accessToken, fetch });
 
     const project = await chooseProject({ google, request, sleep, onStep });
     const { projectId } = project;
-    onStep(`Enabling the Google Play Developer API in ${projectId}`);
+    onStep(`Enabling the APIs in ${projectId}`);
     await enableServices({ google, projectId, sleep });
 
     onStep(`Creating the service account in ${projectId}`);
@@ -304,7 +310,7 @@ const waitForPlayAccess = async ({
 
 /** The account's active projects, every page of them. */
 const listProjects = async (google: GoogleRequest) => {
-  const projects: (GoogleCloudProject & CloudProject)[] = [];
+  const projects: CloudProject[] = [];
   let pageToken: string | undefined;
   do {
     const page = await google<{
@@ -332,13 +338,50 @@ const listProjects = async (google: GoogleRequest) => {
   return projects;
 };
 
-/** The display name of the project Hot Updater creates, which later runs reuse. */
+/** Service Usage reads of the projects' Play Developer API, at most this many at once. */
+const API_CHECK_CONCURRENCY = 8;
+
+/**
+ * Whether each project has the Google Play Developer API enabled, by one
+ * Service Usage read each; a project this account may not read counts as
+ * without it.
+ */
+const withPlayApiState = async (
+  google: GoogleRequest,
+  projects: readonly CloudProject[],
+): Promise<(CloudProject & { playApiEnabled: boolean })[]> => {
+  const states: boolean[] = [];
+  for (let start = 0; start < projects.length; start += API_CHECK_CONCURRENCY) {
+    states.push(
+      ...(await Promise.all(
+        projects
+          .slice(start, start + API_CHECK_CONCURRENCY)
+          .map(({ projectId }) =>
+            google<{ state?: string }>(
+              "Reading the project's APIs",
+              "GET",
+              `${SERVICE_USAGE_API}/v1/projects/${encodeURIComponent(projectId)}/services/${PLAY_API}`,
+            ).then(
+              ({ state }) => state === "ENABLED",
+              () => false,
+            ),
+          ),
+      )),
+    );
+  }
+  return projects.map((project, index) => ({
+    ...project,
+    playApiEnabled: states[index]!,
+  }));
+};
+
+/** The display name of the project Hot Updater creates. */
 const PROJECT_DISPLAY_NAME = "Hot Updater Play";
 
 /**
- * The project the service account goes in, without asking: the one an
- * earlier run created, else a new one. Only when Google refuses to create
- * one does the developer pick among the account's projects.
+ * The project the service account goes in: a new one for an account
+ * without projects; the only project with the Play Developer API, without
+ * asking; else the one the developer picks, or a new one.
  */
 const chooseProject = async ({
   google,
@@ -351,35 +394,28 @@ const chooseProject = async ({
   sleep: (ms: number) => Promise<void>;
   onStep: (message: string) => void;
 }): Promise<CloudProject> => {
-  const projects = await listProjects(google);
-  const reused = projects.find(
-    (project) => project.displayName === PROJECT_DISPLAY_NAME,
-  );
-  if (reused) return reused;
-  try {
-    return await createProject({ google, sleep, onStep });
-  } catch (error) {
-    if (
-      !(error instanceof PlayServiceAccountError) ||
-      (error.code !== "project-quota" &&
-        error.code !== "project-create-denied") ||
-      projects.length === 0
-    ) {
-      throw error;
-    }
-    const chosen = await request.chooseProject(
-      projects.map(({ projectId, displayName }) => ({
-        projectId,
-        ...(displayName ? { displayName } : {}),
-      })),
-    );
-    if (chosen === undefined) throw error;
-    return (
-      projects.find((project) => project.projectId === chosen) ?? {
-        projectId: chosen,
-      }
-    );
+  const listed = await listProjects(google);
+  if (listed.length === 0) return createProject({ google, sleep, onStep });
+  const projects = await withPlayApiState(google, listed);
+  const enabled = projects.filter(({ playApiEnabled }) => playApiEnabled);
+  if (enabled.length === 1) {
+    const [only] = enabled;
+    onStep(`Using ${only!.projectId}, the project with the Play Developer API`);
+    return only!;
   }
+  const chosen = await request.chooseProject(
+    projects.map(({ projectId, displayName, playApiEnabled }) => ({
+      projectId,
+      ...(displayName ? { displayName } : {}),
+      playApiEnabled,
+    })),
+  );
+  if (chosen === null) return createProject({ google, sleep, onStep });
+  return (
+    projects.find((project) => project.projectId === chosen) ?? {
+      projectId: chosen,
+    }
+  );
 };
 
 /** A new project, `hot-updater-play-<random>`, once Google has created it. */
@@ -511,6 +547,7 @@ const consumerIs = (error: GoogleApiError, project: CloudProject) =>
 /** A project as the steps after choosing it name it. */
 interface CloudProject {
   readonly projectId: string;
+  readonly displayName?: string;
   /** Its number, as Google names it in errors, when Resource Manager said. */
   readonly projectNumber?: string;
 }

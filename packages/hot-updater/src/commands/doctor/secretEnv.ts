@@ -9,6 +9,10 @@ import {
   readLoadedHotUpdaterEnv,
 } from "@hot-updater/cli-tools";
 
+import { ui } from "../../utils/cli-ui";
+import type { ManagedDeployment } from "./managed";
+import type { ScaffoldDeployment } from "./scaffoldRecords";
+
 /** Where a command reads one name the config's `secretEnv` reads. */
 export interface SecretEnvNameStatus {
   readonly name: string;
@@ -33,7 +37,59 @@ export interface SecretEnvStatus {
    * `process.env.<name>`, which no adapter supplies.
    */
   readonly processEnvReads: readonly string[];
+  /**
+   * Init's command, which rewrites `processEnvReads` to `secretEnv`, for a
+   * deployment init manages; undefined otherwise, such as one an agent
+   * infrastructure scaffold keeps, where the config is edited instead.
+   */
+  readonly initCommand?: string;
 }
+
+/** Where the config's `secretEnv` is documented, for an edit by hand. */
+export const SECRET_ENV_DOCS_URL =
+  "https://hot-updater.dev/docs/concepts/secrets#deploy-credentials-with-secretenv";
+
+/**
+ * Init's command when running init again may rewrite the config: the
+ * deployment is init's, the configured database the one it saved, with only
+ * the official plugins, and no agent infrastructure scaffold records a
+ * deployment of its provider, which init would replace. Undefined otherwise.
+ */
+export const secretEnvInitCommand = ({
+  managed,
+  scaffolds,
+}: {
+  readonly managed: Pick<
+    ManagedDeployment,
+    "provider" | "command" | "confirmed" | "foreignPlugins"
+  > | null;
+  readonly scaffolds: readonly Pick<ScaffoldDeployment, "provider">[];
+}): string | undefined =>
+  managed !== null &&
+  managed.confirmed &&
+  managed.foreignPlugins.length === 0 &&
+  !scaffolds.some(({ provider }) => provider === managed.provider)
+    ? managed.command
+    : undefined;
+
+/**
+ * What moves the managed credentials the config reads with `process.env` to
+ * `secretEnv`: init's command when init manages the deployment, else an
+ * edit of the config, as the docs show.
+ */
+export const secretEnvAdvice = (
+  them: "it" | "them",
+  initCommand: string | undefined,
+): string[] =>
+  initCommand === undefined
+    ? [
+        `Read ${them} with secretEnv in hot-updater.config.ts:`,
+        ui.path(SECRET_ENV_DOCS_URL),
+      ]
+    : [
+        `Run init again to read ${them} with secretEnv:`,
+        ui.commandLines(initCommand),
+      ];
 
 /**
  * Where each name the config's `secretEnv` reads comes from, with one `get`

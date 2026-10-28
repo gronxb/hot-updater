@@ -48,6 +48,9 @@ export type EnsurePlayServiceAccountResult =
       readonly secrets: SecretsAdapter;
     };
 
+/** The project choice that creates one: no project ID is empty. */
+const NEW_PROJECT = "";
+
 const PACKAGE_NAME_PATTERN =
   /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/u;
 
@@ -166,7 +169,8 @@ const storeIssued = async (
  *    is, so CI uploads with the stored key and never signs in;
  * 3. without a terminal, it refuses with the command that signs in once.
  *
- * Only then does the developer sign in with Google, through gcloud, and
+ * Only then, once gcloud is found, does it ask for the package name, and
+ * the developer sign in with Google, through gcloud, and
  * invite the service account in Play Console, which opens in a browser,
  * through `issue`, and the issued key is stored through the config's
  * adapter, or `localSecrets()` by default, read back, and deleted again
@@ -216,10 +220,11 @@ export const ensurePlayServiceAccount = async ({
   if (prepared.status !== "missing") return prepared;
   const { secrets: store } = prepared;
 
-  const app = await askPackageName([...new Set(packageNames)]);
-
+  // Asked once the sign-in's tool is found, so a missing gcloud stops first.
+  let app = "";
   const issued = await issue({
-    packageName: app,
+    askPackageName: async () =>
+      (app = await askPackageName([...new Set(packageNames)])),
     onInvite: async (url, email) => {
       p.log.info(
         `In Play Console, invite with release access to ${app}:\n${email}`,
@@ -228,20 +233,34 @@ export const ensurePlayServiceAccount = async ({
       await open(url).catch(() => {});
     },
     chooseProject: async (projects) => {
+      // Those with the Play Developer API first, the likely answers.
+      const sorted = [
+        ...projects.filter(({ playApiEnabled }) => playApiEnabled),
+        ...projects.filter(({ playApiEnabled }) => !playApiEnabled),
+      ];
       const choice = answered(
         await p.select<string>({
-          message:
-            "Google Cloud can't create a project here. Project for the service account",
-          options: projects.map((project) => ({
-            value: project.projectId,
-            label: project.projectId,
-            ...(project.displayName && project.displayName !== project.projectId
-              ? { hint: project.displayName }
-              : {}),
-          })),
+          message: "Google Cloud project for the service account",
+          options: [
+            ...sorted.map(({ projectId, displayName, playApiEnabled }) => {
+              const hint = [
+                displayName !== projectId && displayName,
+                playApiEnabled && "Play API enabled",
+              ].filter(Boolean);
+              return {
+                value: projectId,
+                label: projectId,
+                ...(hint.length > 0 ? { hint: hint.join(", ") } : {}),
+              };
+            }),
+            { value: NEW_PROJECT, label: "Create a new project" },
+          ],
+          initialValue: sorted[0]?.playApiEnabled
+            ? sorted[0].projectId
+            : NEW_PROJECT,
         }),
       );
-      return choice;
+      return choice === NEW_PROJECT ? null : choice;
     },
     onStep: (message) => p.log.step(message),
   });

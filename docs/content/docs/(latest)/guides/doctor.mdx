@@ -422,8 +422,12 @@ A missing name is a warning: a teammate stores it, or runs
 `.env.hotupdater` has it.
 
 With a team store, doctor also names a managed credential the config still
-reads with `process.env`, which the store never supplies. Running init
-again rewrites it.
+reads with `process.env`, which the store never supplies. For a deployment
+`init` manages, it prints init's command, which rewrites the config. For one
+an agent infrastructure scaffold keeps, or a config of your own, it links
+[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv)
+instead: read those names with it in `hot-updater.config.ts`, and never run
+init there.
 
 ## Update Package Versions
 
