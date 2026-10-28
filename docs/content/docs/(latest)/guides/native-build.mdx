@@ -392,8 +392,8 @@ opens the build's page, `/native-builds/<build id>`:
   bundle, and each patch's size.
 
 **Import a build**, beside the refresh button and in an empty list, shows
-the command that tracks a build made elsewhere, such as by EAS, Xcode Cloud
-or Fastlane,
+the command that tracks a build made elsewhere, such as by another build
+service,
 `npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>`,
 and links [Import a build made elsewhere](#import-a-build-made-elsewhere).
 The Console uploads nothing; the CLI reads the artifact where it is.
@@ -404,8 +404,8 @@ says whether the bundle has a patch from it. Deleting a build stays with
 
 ## Import a build made elsewhere
 
-A release build you didn't make with `native-build`, such as one from EAS,
-Xcode Cloud, Fastlane, or an earlier release, can serve as a patch base too.
+A release build you didn't make with `native-build`, such as one from another
+build service or an earlier release, can serve as a patch base too.
 Import its store artifact, the `.ipa`, `.aab` or `.apk` you upload to a store,
 or a simulator `.app` (the directory, or its `.app.zip`):
 
