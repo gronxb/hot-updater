@@ -43,8 +43,8 @@ export const twoFactorMessage = (request: TwoFactorCodeRequest) => {
     return `${request.afterWrongCode ? "Wrong code. " : ""}Code texted to ${phone}`;
   }
   return request.textsOnWrongCode
-    ? `Code shown on your Apple device (no device? enter a wrong code to text ${phone})`
-    : "Code shown on your Apple device";
+    ? `Code on your Apple device (wrong code texts ${phone})`
+    : "Code on your Apple device";
 };
 
 /** Hot Updater's own prompts, so the sign-in looks like the rest of the CLI. */

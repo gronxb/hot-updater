@@ -769,12 +769,27 @@ describe("twoFactorMessage", () => {
   it("says where a device code is shown, and where a wrong one texts the next", () => {
     expect(
       twoFactorMessage({ ...base, via: "device", textsOnWrongCode: true }),
-    ).toBe(
-      "Code shown on your Apple device (no device? enter a wrong code to text +1 (•••) •••-••12)",
-    );
+    ).toBe("Code on your Apple device (wrong code texts +1 (•••) •••-••12)");
     expect(
       twoFactorMessage({ ...base, via: "device", textsOnWrongCode: false }),
-    ).toBe("Code shown on your Apple device");
+    ).toBe("Code on your Apple device");
+  });
+
+  it("fits an 80-column terminal after the prompt's prefix, even for a long number", () => {
+    const destination = "+1 (•••) •••-••12 ext. ••••";
+    for (const request of [
+      { ...base, destination, via: "device" as const, textsOnWrongCode: true },
+      {
+        ...base,
+        destination,
+        via: "sms" as const,
+        textsOnWrongCode: false,
+        afterWrongCode: true,
+      },
+    ]) {
+      // Clack puts "◆  " before the message.
+      expect(twoFactorMessage(request).length + 3).toBeLessThanOrEqual(80);
+    }
   });
 
   it("names the number a code was texted to", () => {
