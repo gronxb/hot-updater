@@ -124,7 +124,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog().replaceAll(" \\ ", " ");
     expectIncludes(
       log,
-      "No widget-keystore (android-keystore) in the localSecrets secrets adapter. Store it once with: npx hot-updater secrets put widget-keystore --kind android-keystore --keystore <release.jks> --key-alias <alias>",
+      "No widget-keystore (android-keystore) in the localSecrets secrets adapter. Play rejects a new key if the app has one: import it with google-play login. Otherwise: npx hot-updater secrets issue android-keystore widget-keystore",
     );
     expectNothingBuilt(log);
   },

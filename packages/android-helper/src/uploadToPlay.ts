@@ -328,6 +328,42 @@ export const findPlayInternalRelease = async ({
 };
 
 /**
+ * Whether Google Play releases any version of `packageName` on any track,
+ * which means Play has the app's upload key. It reads the tracks in an edit
+ * it then deletes, changing nothing.
+ */
+export const hasPlayReleases = async ({
+  packageName,
+  serviceAccount: { json },
+  fetch = globalThis.fetch,
+}: {
+  packageName: string;
+  serviceAccount: Credentials["play-service-account"];
+  fetch?: typeof globalThis.fetch;
+}): Promise<boolean> => {
+  const { app, request } = createPlayClient({ json, packageName, fetch });
+  const { id: editId } = await request<{ id: string }>(
+    "Opening a Google Play edit",
+    "POST",
+    `${API_URL}${app}/edits`,
+    {},
+  );
+  const edit = `${API_URL}${app}/edits/${encodeURIComponent(editId)}`;
+  try {
+    const { tracks = [] } = await request<{
+      tracks?: { releases?: { versionCodes?: string[] }[] }[];
+    }>("Reading the tracks", "GET", `${edit}/tracks`);
+    return tracks.some(({ releases = [] }) =>
+      releases.some(({ versionCodes = [] }) => versionCodes.length > 0),
+    );
+  } finally {
+    await request("Deleting the Google Play edit", "DELETE", edit).catch(
+      () => undefined,
+    );
+  }
+};
+
+/**
  * The common name of every Android debug certificate: Android Studio's and
  * the Android Gradle plugin's (`CN=Android Debug, O=Android, C=US`), and React
  * Native's template `debug.keystore` (`CN=Android Debug, OU=Android,

@@ -8,7 +8,11 @@ import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
 import { getCwd } from "./cwd";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { registerSecretValue } from "./secretMasking";
-import { getConfiguredSecrets } from "./secrets";
+import {
+  describeSecret,
+  getConfiguredAdapter,
+  getConfiguredSecrets,
+} from "./secrets";
 
 export type { CredentialFiles } from "./credentialFiles";
 export { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
@@ -108,34 +112,50 @@ const formatCommand = (command: string): string => {
 };
 
 /**
- * The command that stores a credential of `kind` you have as `name` through
- * the config's `secrets` adapter, from its files.
+ * `lead` and the command it names on one line when they fit 77 columns,
+ * else the command on the lines after it.
  */
-export const credentialPutCommand = (
-  kind: CredentialKind,
-  name: string = kind,
+const withLead = (lead: string, command: string): string =>
+  lead.length + 1 + command.length <= 77
+    ? `${lead} ${command}`
+    : `${lead}\n${formatCommand(command)}`;
+
+/**
+ * Why a build has no upload keystore, in three lines, steering away from a
+ * second key: Play rejects builds signed with a key it does not have.
+ * Under a team's adapter the keystore is someone's already, so it is
+ * imported, never created; only `localSecrets()` alone offers a new one.
+ */
+const describeMissingKeystore = (
+  store: SecretsAdapter,
+  item: string,
+  name: string,
 ): string => {
-  const put = `npx hot-updater secrets put ${name} --kind ${kind}`;
-  switch (kind) {
-    case "android-keystore":
-      return `${put} --keystore <release.jks> --key-alias <alias>`;
-    case "asc-api-key":
-      return `${put} --p8 <AuthKey.p8> --key-id <id> --issuer-id <id>`;
-    case "play-service-account":
-      return `${put} --service-account <key.json>`;
+  const configured = getConfiguredAdapter(store);
+  if (configured) {
+    return [
+      `No ${item} in ${describeSecret(configured, name)}.`,
+      "Ask whoever set it up to store it there, or import it with:",
+      "npx hot-updater google-play login",
+    ].join("\n");
   }
+  return [
+    `No ${item} in the ${store.name} secrets adapter.`,
+    "Play rejects a new key if the app has one: import it with google-play login.",
+    withLead("Otherwise:", credentialStoreCommand("android-keystore", name)),
+  ].join("\n");
 };
 
 /** The credentials Hot Updater issues itself after a sign-in. */
 export type IssuedCredentialKind = Exclude<CredentialKind, "android-keystore">;
 
 /**
- * The command that signs in once, at a terminal, and stores the key Hot
- * Updater issues as `name`: an App Store Connect API key after an Apple
- * Account sign-in, a Play service account after a Google one.
+ * The command that stores the key Hot Updater issues as `name`: an App
+ * Store Connect API key after an Apple Account sign-in, a Play service
+ * account after a Google one, and an upload keystore it creates.
  */
 export const credentialIssueCommand = (
-  kind: IssuedCredentialKind,
+  kind: CredentialKind,
   name: string = kind,
 ): string =>
   `npx hot-updater secrets issue ${kind}${name === kind ? "" : ` ${name}`}`;
@@ -162,14 +182,15 @@ export const credentialLoginCommand = (
 
 /**
  * The command that stores a missing credential of `kind` as `name`: the
- * keystore you have, or the key Hot Updater issues after a sign-in.
+ * upload keystore Hot Updater creates, or the key it issues after a
+ * sign-in.
  */
 export const credentialStoreCommand = (
   kind: CredentialKind,
   name: string = kind,
 ): string =>
   kind === "android-keystore"
-    ? credentialPutCommand(kind, name)
+    ? credentialIssueCommand(kind, name)
     : credentialLoginCommand(kind, name);
 
 export class CredentialUnavailableError extends Error {
@@ -613,7 +634,9 @@ export const createCredentialResolver = ({
     if (value === undefined) {
       throw new CredentialUnavailableError(
         kind,
-        `No ${item} in the ${store.name} secrets adapter.\nStore it once with:\n${formatCommand(credentialStoreCommand(kind, name))}`,
+        kind === "android-keystore"
+          ? describeMissingKeystore(store, item, name)
+          : `No ${item} in the ${store.name} secrets adapter.\nStore it once with:\n${formatCommand(credentialStoreCommand(kind, name))}`,
       );
     }
     registerSecretValue(value);
