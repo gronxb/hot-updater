@@ -8,7 +8,7 @@ import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
 import { getCwd } from "./cwd";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { registerSecretValue } from "./secretMasking";
-import { describeSecret, getConfiguredSecrets } from "./secrets";
+import { getConfiguredSecrets } from "./secrets";
 
 export type { CredentialFiles } from "./credentialFiles";
 export { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
@@ -87,11 +87,25 @@ const describeFields = (fields: readonly EnvField[]) => {
 };
 
 /**
- * The sentence every "credential unavailable" message ends with: the
- * environment variables that provide `kind` whatever the secrets adapter.
+ * A command to print, broken at spaces with ` \` once a line would pass
+ * 74 columns, each continuation indented two spaces, so a terminal never
+ * wraps it mid-word and it still pastes as one command.
  */
-export const credentialOverrideHint = (kind: CredentialKind): string =>
-  `Or set ${describeFields(CREDENTIAL_ENV_NAMES[kind])} to provide ${kind} from the environment.`;
+const formatCommand = (command: string): string => {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of command.split(" ")) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && next.length > 72) {
+      lines.push(`${line} \\`);
+      line = `  ${word}`;
+    } else {
+      line = next;
+    }
+  }
+  lines.push(line);
+  return lines.join("\n");
+};
 
 /**
  * The command that stores a credential of `kind` you have as `name` through
@@ -354,7 +368,7 @@ const readJsonFields = <TField extends string>(
   if (!parsed) {
     throw new CredentialUnavailableError(
       kind,
-      `${item} is not a JSON object: ${aKind(kind)} is one JSON value, ${shape}.`,
+      `${item} is not a JSON object.\n${capitalize(aKind(kind))} is one JSON value: ${shape}`,
     );
   }
   registerJsonSecrets(value, parsed);
@@ -364,7 +378,7 @@ const readJsonFields = <TField extends string>(
   if (missing.length > 0) {
     throw new CredentialUnavailableError(
       kind,
-      `${item} has no ${missing.join(", ")}: ${aKind(kind)} is one JSON value, ${shape}.`,
+      `${item} has no ${missing.join(", ")}.\n${capitalize(aKind(kind))} is one JSON value: ${shape}`,
     );
   }
   return parsed as Record<TField, string>;
@@ -372,6 +386,9 @@ const readJsonFields = <TField extends string>(
 
 const aKind = (kind: string) =>
   `${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind}`;
+
+const capitalize = (text: string) =>
+  text.charAt(0).toUpperCase() + text.slice(1);
 
 /** A base64 value's bytes, or undefined when it is not base64. */
 const decodeBase64 = (value: string): Buffer | undefined => {
@@ -589,14 +606,14 @@ export const createCredentialResolver = ({
       const reason = error instanceof Error ? error.message : String(error);
       throw new CredentialUnavailableError(
         kind,
-        `The ${store.name} secrets adapter could not read ${item}: ${reason} ${credentialOverrideHint(kind)}`,
+        `Couldn't read ${item} from the ${store.name} secrets adapter.\n${reason}`,
         { cause: error },
       );
     }
     if (value === undefined) {
       throw new CredentialUnavailableError(
         kind,
-        `${item} is not in the ${store.name} secrets adapter (${describeSecret(store, name)}). Store it once with \`${credentialStoreCommand(kind, name)}\`. ${credentialOverrideHint(kind)}`,
+        `No ${item} in the ${store.name} secrets adapter.\nStore it once with:\n${formatCommand(credentialStoreCommand(kind, name))}`,
       );
     }
     registerSecretValue(value);

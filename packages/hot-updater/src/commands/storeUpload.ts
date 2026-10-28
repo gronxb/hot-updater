@@ -5,6 +5,7 @@ import type { Platform } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
+import { ui } from "../utils/cli-ui";
 import { handleNativeBuildCreate } from "./buildNative";
 
 /** `testflight` and `google-play upload` take only the scheme. */
@@ -20,10 +21,10 @@ interface StoreShortcut {
   readonly store: string;
   /** The command, after `npx hot-updater`. */
   readonly command: string;
-  /** The full command it runs, with `<scheme>` for the scheme. */
-  readonly full: (scheme: string) => string;
   /** How to add a scheme the store takes. */
   readonly addScheme: string;
+  /** The guide that shows that scheme. */
+  readonly guide: string;
   /**
    * Throws for a scheme whose build the store would not take, as the
    * build's own `--submit` checks it before the prebuild.
@@ -35,9 +36,9 @@ const TESTFLIGHT: StoreShortcut = {
   platform: "ios",
   store: "TestFlight",
   command: "testflight",
-  full: (scheme) => `native-build ios -s ${scheme} --submit testflight`,
-  addScheme:
-    "Add a device scheme with signing.ascApiKey, as https://hot-updater.dev/docs/guides/native-build#upload-to-testflight shows",
+  addScheme: "Add a device scheme with signing.ascApiKey:",
+  guide:
+    "https://hot-updater.dev/docs/guides/native-build#upload-to-testflight",
   check: (scheme, iosScheme) =>
     resolveTestFlightUploadKey({ scheme, iosScheme }),
 };
@@ -46,9 +47,9 @@ const GOOGLE_PLAY: StoreShortcut = {
   platform: "android",
   store: "Google Play",
   command: "google-play upload",
-  full: (scheme) => `native-build android -s ${scheme} --submit play-internal`,
-  addScheme:
-    "Add a release scheme that builds an .aab, signed with signing.keystore, as https://hot-updater.dev/docs/guides/native-build#upload-to-google-play shows",
+  addScheme: "Add a release scheme that builds an .aab with signing.keystore:",
+  guide:
+    "https://hot-updater.dev/docs/guides/native-build#upload-to-google-play",
   check: (scheme, androidScheme) =>
     resolvePlayUploadServiceAccount({ scheme, androidScheme }),
 };
@@ -96,16 +97,17 @@ const resolveScheme = async (
   if (uploadable.length === 0) {
     return fail(
       [
-        `No nativeBuild.${platform} scheme in hot-updater.config.ts uploads to ${store}.`,
+        `No nativeBuild.${platform} scheme uploads to ${store}.`,
         ...refused,
-        `${shortcut.addScheme}, then run npx hot-updater ${command}.`,
+        shortcut.addScheme,
+        shortcut.guide,
       ].join("\n"),
     );
   }
   const [only] = uploadable;
   if (uploadable.length === 1 && only !== undefined) {
     p.log.info(
-      `Scheme ${only}: the only nativeBuild.${platform} scheme that uploads to ${store}.`,
+      `Using ${only}, the only nativeBuild.${platform} scheme for ${store}.`,
     );
     return only;
   }
@@ -113,7 +115,14 @@ const resolveScheme = async (
   const reason = nonInteractiveReason();
   if (reason !== undefined) {
     return fail(
-      `Several nativeBuild.${platform} schemes upload to ${store}: ${uploadable.join(", ")}. Hot Updater asks which one only at a terminal, never ${reason}: run npx hot-updater ${command} --scheme <${uploadable.join(" | ")}>, or npx hot-updater ${shortcut.full(`<${uploadable.join(" | ")}>`)}.`,
+      [
+        `Several nativeBuild.${platform} schemes upload to ${store}: ${uploadable.join(", ")}.`,
+        `Can't ask which one ${reason}.`,
+        ui.withCommand(
+          "Pick one:",
+          `npx hot-updater ${command} --scheme <${uploadable.join(" | ")}>`,
+        ),
+      ].join("\n"),
     );
   }
   const picked = await p.select({

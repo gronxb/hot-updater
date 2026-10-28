@@ -1,10 +1,11 @@
 import fs from "fs";
 import path from "path";
 
-import { BuildFailedError, p } from "@hot-updater/cli-tools";
+import { BuildFailedError, getCwd, p } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
 import { createGradleLogger } from "../utils/createGradleLogger";
+import { formatCommand } from "../utils/formatCommand";
 
 type RunGradleArgs = {
   tasks: string[];
@@ -62,12 +63,16 @@ export async function runGradle({
     gradleArgs.push(...args.extraParams);
   }
 
-  p.log.info(`Run Gradle Settings: 
-Project    ${androidProjectPath}
-App Module ${appModuleName}
-Tasks      ${tasks.join(", ")}
-Args       ${gradleArgs.join(" ")}
-`);
+  p.log.info(
+    [
+      "Gradle build",
+      `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
+      `App module  ${appModuleName}`,
+      `Tasks       ${tasks.join(", ")}`,
+      "Command",
+      formatCommand([path.basename(getGradleWrapper()), ...gradleArgs]),
+    ].join("\n"),
+  );
 
   if ("port" in args && args.port != null) {
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
@@ -197,6 +202,6 @@ async function getBuildOutputFilePath({
     return outputFilePath;
   }
 
-  p.log.error(`Failed to find the output file for ${outputFilePath}`);
+  p.log.error(`Gradle wrote no ${outputFilePath}.`);
   process.exit(1);
 }

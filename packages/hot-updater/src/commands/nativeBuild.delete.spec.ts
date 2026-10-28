@@ -1,8 +1,14 @@
+import { p } from "@hot-updater/cli-tools";
 import {
   createStorageAdapter,
   type NativeBuildRegistration,
   type StorageAdapter,
 } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
@@ -12,7 +18,13 @@ const { confirm, loadConfig, loadServer, log } = vi.hoisted(() => ({
   confirm: vi.fn(),
   loadConfig: vi.fn(),
   loadServer: vi.fn(),
-  log: { error: vi.fn(), info: vi.fn(), message: vi.fn() },
+  log: {
+    error: vi.fn(),
+    info: vi.fn(),
+    message: vi.fn(),
+    step: vi.fn(),
+    success: vi.fn(),
+  },
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -201,7 +213,11 @@ describe("handleNativeBuildDelete", () => {
 
     expect(output()).toMatchObject({ deleted: true, artifactDeleted: false });
     expect(console.error).toHaveBeenCalledWith(
-      `The native build is deleted, but its artifact stays at ${ARTIFACT_URI}: access denied. Delete that object from storage.`,
+      [
+        "The native build is deleted, but its artifact is not.",
+        "access denied",
+        `Delete ${ARTIFACT_URI} from storage.`,
+      ].join("\n"),
     );
     expect(process.exitCode).toBe(1);
     await expect(
@@ -235,4 +251,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

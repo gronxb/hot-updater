@@ -71,7 +71,7 @@ describe("findAscCli", () => {
     );
     expect(error).toBeInstanceOf(AscCliUnavailableError);
     expect((error as Error).message).toContain(
-      `does not match its published SHA-256 (expected ${RELEASE_ARM64_SHA256}, got ${crypto.createHash("sha256").update("tampered").digest("hex")})`,
+      `failed its SHA-256 check; it was deleted.\nExpected ${RELEASE_ARM64_SHA256}\nGot      ${crypto.createHash("sha256").update("tampered").digest("hex")}`,
     );
     expect((error as Error).message).toContain("brew install asc");
     // Neither the binary nor a partial download is left to run.
@@ -90,7 +90,7 @@ describe("findAscCli", () => {
       arch: "x64",
     }).catch((caught: unknown) => caught);
     expect((error as Error).message).toBe(
-      `Could not download asc ${ASC_CLI_VERSION} from GitHub (fetch failed). Install asc ${ASC_CLI_VERSION} or later with \`brew install asc\` (https://github.com/rorkai/App-Store-Connect-CLI), then run the command again.`,
+      `Couldn't download asc ${ASC_CLI_VERSION} from GitHub.\nfetch failed\nInstall asc ${ASC_CLI_VERSION} or later with brew install asc, then run this again.`,
     );
   });
 

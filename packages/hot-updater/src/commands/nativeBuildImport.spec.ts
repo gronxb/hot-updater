@@ -5,12 +5,18 @@ import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 
 import { hdiff } from "@hot-updater/bsdiff";
+import { p } from "@hot-updater/cli-tools";
 import {
   createStorageAdapter,
   createStorageUri,
   createUUIDv7,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +32,7 @@ const { loadConfig, loadServer, log } = vi.hoisted(() => ({
     error: vi.fn(),
     info: vi.fn(),
     message: vi.fn(),
+    step: vi.fn(),
     success: vi.fn(),
     warn: vi.fn(),
   },
@@ -787,4 +794,11 @@ describe("native-build import", () => {
       expect.objectContaining({ base_bundle_id: MIN_BUNDLE_ID }),
     ]);
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

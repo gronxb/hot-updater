@@ -249,7 +249,7 @@ describe("hot-updater api-key over hot-updater.config.ts", () => {
     await withTTY(false, () => handleApiKeyRevoke("api-key-id"));
 
     expect(log.error).toHaveBeenCalledWith(
-      "Revoke API key api-key-id? Re-run with -y in a non-interactive shell.",
+      "Revoke API key api-key-id?\nRe-run with -y in a non-interactive shell.",
     );
     expect(process.exitCode).toBe(1);
     expect(confirm).not.toHaveBeenCalled();

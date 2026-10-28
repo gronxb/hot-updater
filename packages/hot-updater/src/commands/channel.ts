@@ -9,7 +9,7 @@ import { expoConfigFile } from "@/utils/expoDetection";
 import { loadServer } from "@/utils/loadServer";
 import { setChannel } from "@/utils/setChannel";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 import { withPublicBundleErrors } from "../utils/publicBundleError";
 import { confirmMutation, safeDispose } from "./release";
@@ -30,50 +30,53 @@ const NATIVE_CHANNEL_FILES = [
  */
 export const handleSetChannel = async (channel: string) => {
   const expoConfig = expoConfigFile();
+  const rows: Row[] = [];
   let written = false;
   for (const { platform, name, file } of NATIVE_CHANNEL_FILES) {
     const { paths } = await setChannel(platform, channel);
-    if (paths.length === 0) {
-      p.log.info(
-        ui.line([
-          "No",
-          file,
-          "found:",
-          "nothing was written for",
-          `${ui.platform(name)}.`,
-        ]),
-      );
-      continue;
-    }
-    written = true;
-    p.log.success(ui.line(["Set", ui.platform(name), ui.channel(channel)]));
-    p.log.message(
-      ui.block(
-        `${name} paths`,
-        paths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
-      ),
+    written ||= paths.length > 0;
+    rows.push(
+      ...(paths.length === 0
+        ? [[name, ui.muted(`no ${file} found`)] as const]
+        : paths.map(
+            (targetPath, index) =>
+              [
+                index === 0 ? name : "",
+                ui.path(ui.fitPath(targetPath)),
+              ] as const,
+          )),
     );
+  }
+  if (written) {
+    p.log.success(
+      ui.summary(`Set the default channel to ${ui.channel(channel)}`, rows),
+    );
+  } else if (expoConfig === null) {
+    p.log.warn(ui.summary("No native file to write the channel into", rows));
   }
 
   if (expoConfig !== null) {
-    const source = `This Expo project's builds take the channel from the @hot-updater/expo plugin's \`channel\` option in ${expoConfig}, which \`expo prebuild\` writes into the native files${written ? ", replacing what was written here" : ""}.`;
+    // `expo prebuild` writes the plugin's option into the native files.
     p.log.info(
       (expoConfig === "app.json"
         ? [
-            `${source} Set it there:`,
-            `  "plugins": [["@hot-updater/expo", { "channel": ${JSON.stringify(channel)} }]]`,
+            `Set the channel in ${expoConfig}:`,
+            `"plugins": [["@hot-updater/expo", { "channel": ${JSON.stringify(channel)} }]]`,
           ]
         : [
-            `${source} To build ${channel} without editing it, read the channel from an environment variable there, as the pull request preview guide does:`,
-            '  plugins: [["@hot-updater/expo", { channel: process.env.PREVIEW_CHANNEL ?? "production" }]]',
+            `Read the channel from an environment variable in ${expoConfig}:`,
+            'plugins: [["@hot-updater/expo", {',
+            '  channel: process.env.PREVIEW_CHANNEL ?? "production",',
+            "}]]",
             `Then build with PREVIEW_CHANNEL=${channel}.`,
           ]
       ).join("\n"),
     );
-  }
-
-  if (written) {
-    p.log.warn("Rebuild native app after changing channel.");
+    if (written) {
+      p.log.warn("expo prebuild replaces what was written here.");
+    }
+  } else if (written) {
+    p.log.warn("Rebuild the native app to use the channel.");
   }
 };
 
@@ -109,8 +112,8 @@ export const handleChannelDelete = (
             JSON.stringify({ channel, deleted: false, reason: "not_found" }),
           );
         } else {
-          p.log.info(
-            ui.line(["No channel named", ui.channel(channel), "to delete."]),
+          p.log.step(
+            ui.line(["No channel named", ui.channel(channel), "to delete"]),
           );
         }
         return;
@@ -203,19 +206,24 @@ export const handleChannelDelete = (
           ),
         );
       } else {
-        console.log(
-          ui.block(result.deleted ? "Channel deleted" : "Bundles deleted", [
-            ui.kv("Channel", ui.channel(channel)),
-            ui.kv("Bundles", String(deletedBundleIds.length)),
-            ...(options.nativeBuilds
-              ? [ui.kv("Native builds", String(deletedNativeBuildIds.length))]
-              : []),
+        p.log.success(
+          ui.summary(result.deleted ? "Channel deleted" : "Bundles deleted", [
+            ["Channel", ui.channel(channel)],
+            ["Bundles", String(deletedBundleIds.length)],
+            options.nativeBuilds && [
+              "Native builds",
+              String(deletedNativeBuildIds.length),
+            ],
           ]),
         );
       }
       if (keptArtifacts.length > 0) {
         // Under --json, stdout stays one JSON document; stderr says where.
-        const message = `The native builds are deleted, but these artifacts stay; delete them from storage:\n${keptArtifacts.join("\n")}`;
+        const message = [
+          "The native builds are deleted, but these artifacts are not.",
+          "Delete them from storage:",
+          ...keptArtifacts,
+        ].join("\n");
         if (options.json) console.error(message);
         else p.log.error(message);
         process.exitCode = 1;
@@ -225,17 +233,12 @@ export const handleChannelDelete = (
         if (!options.json) {
           p.log.error(
             options.nativeBuilds
-              ? `The ${channel} channel is kept: a bundle or a native build was added to it meanwhile. Run the command again.`
-              : `The ${channel} channel is kept: a native build embeds it as its default channel, or a bundle was deployed to it meanwhile. Run it again with --native-builds to delete the channel's native builds and their artifacts too.`,
+              ? `Kept the ${channel} channel: it got a new bundle or native build.\nRun the command again.`
+              : `Kept the ${channel} channel: it has a native build or a new bundle.\n${ui.withCommand("To delete its native builds too:", `npx hot-updater channel delete ${channel} --native-builds`)}`,
           );
         }
         process.exitCode = 1;
         return;
-      }
-      if (!options.json && deletedBundleIds.length > 0) {
-        p.log.info(
-          "The stored files stay until `hot-updater storage prune` deletes them.",
-        );
       }
     } finally {
       await safeDispose(server);

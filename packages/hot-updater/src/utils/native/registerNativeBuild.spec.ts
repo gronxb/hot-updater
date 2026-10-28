@@ -4,13 +4,18 @@ import path from "path";
 
 import { extractBuiltInBundle as extractAndroid } from "@hot-updater/android-helper";
 import { archiveAppBundle } from "@hot-updater/apple-helper";
-import { loadConfig } from "@hot-updater/cli-tools";
+import { p, loadConfig } from "@hot-updater/cli-tools";
 import {
   createStorageAdapter,
   createStorageUri,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabaseHarness } from "../../commands/database.testFixtures";
@@ -231,7 +236,7 @@ describe("registerNativeBuild", () => {
       registerNativeBuild(android({ minBundleId: NIL_UUID }), {
         buildKey: null,
       }),
-    ).rejects.toThrow("A debug build has no built-in bundle");
+    ).rejects.toThrow("A Debug build has no built-in bundle");
     expect(loadServer).not.toHaveBeenCalled();
   });
 
@@ -462,7 +467,7 @@ describe("preflightNativeBuildRegistration", () => {
     );
 
     await expect(preflightNativeBuildRegistration(scope)).rejects.toThrow(
-      "its native build registry: The server has no native build route",
+      "the native build registry: The server has no native build route",
     );
     expect(harness.dispose).toHaveBeenCalledOnce();
   });
@@ -476,7 +481,7 @@ describe("preflightNativeBuildRegistration", () => {
     );
 
     await expect(preflightNativeBuildRegistration(scope)).rejects.toThrow(
-      "its memoryStorage storage: AccessDenied",
+      "the memoryStorage storage: AccessDenied",
     );
   });
 
@@ -490,7 +495,7 @@ describe("preflightNativeBuildRegistration", () => {
     const find = vi.spyOn(harness.core, "findNativeBuild");
 
     await expect(preflightNativeBuildRegistration(scope)).rejects.toThrow(
-      "its readOnly storage: the storage adapter does not implement put.",
+      "the readOnly storage: the storage adapter does not implement put.",
     );
     expect(find).not.toHaveBeenCalled();
   });
@@ -544,4 +549,11 @@ describe("issueMinBundleId", () => {
     );
     expect(getBundle).toHaveBeenCalledTimes(10);
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

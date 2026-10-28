@@ -559,7 +559,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect did not confirm the upload of build 42: Committing the .ipa upload failed (HTTP 503). Check the build in TestFlight before you upload it again: https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      "App Store Connect didn't confirm the upload of build 42.\nCommitting the .ipa upload failed (HTTP 503).\nCheck TestFlight before you upload it again:\nhttps://appstoreconnect.apple.com/apps/123/testflight/ios",
     );
     expect(
       requests.filter((request) => request.method === "PATCH"),
@@ -649,7 +649,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect already has build 42 of version 1.2.0, which a request of this upload it did not answer may have reserved. Upload with a new build number (CFBundleVersion).",
+      "App Store Connect already has build 42 of version 1.2.0.\nAn unanswered request of this upload may have reserved it.\nUpload with a new build number (CFBundleVersion).",
     );
     // Nothing is uploaded into, committed, or removed.
     expect(requests.map(({ method }) => method)).toEqual([
@@ -748,7 +748,7 @@ describe("uploadToTestFlight", () => {
     ).rejects.toThrow("Uploading part 2 of 2 failed: HTTP 403.");
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        "App Store Connect kept the unfinished build upload upload-1, which reserves build 42 of version 1.2.0:",
+        "App Store Connect kept the unfinished upload of build 42.",
       ),
     );
   });
@@ -799,7 +799,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect did not confirm the upload of build 42: Committing the .ipa upload failed (HTTP 409): The upload is processing.",
+      "App Store Connect didn't confirm the upload of build 42.\nCommitting the .ipa upload failed (HTTP 409): The upload is processing.",
     );
     expect(requests.some((request) => request.method === "DELETE")).toBe(false);
   });
@@ -886,7 +886,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).",
+      "App Store Connect already has build 42 of version 1.2.0.\nUse a new build number (CFBundleVersion).",
     );
   });
   it("finds the app again after a rate limit", async () => {
@@ -994,7 +994,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).",
+      "App Store Connect already has build 42 of version 1.2.0.\nUse a new build number (CFBundleVersion).",
     );
     expect(requests).toHaveLength(2);
   });
@@ -1018,7 +1018,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect has no app with the bundle ID com.example.app that this API key can see.",
+      "App Store Connect has no app com.example.app that this API key can see.",
     );
     expect(requests).toHaveLength(1);
   });
@@ -1088,7 +1088,7 @@ describe("uploadToTestFlight", () => {
         processingTimeoutMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect did not report build 42 processing: Reading the build upload failed (HTTP 503). Check the build in TestFlight: https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      "App Store Connect didn't report build 42 processing.\nReading the build upload failed (HTTP 503).\nCheck the build in TestFlight:\nhttps://appstoreconnect.apple.com/apps/123/testflight/ios",
     );
   });
 
@@ -1108,7 +1108,7 @@ describe("uploadToTestFlight", () => {
         processingTimeoutMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect did not report build 42 processing (AWAITING_UPLOAD). Check the build in TestFlight",
+      "App Store Connect didn't report build 42 processing.\nState: AWAITING_UPLOAD\nCheck the build in TestFlight",
     );
   });
 
@@ -1154,7 +1154,7 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).rejects.toThrow(
-      "App Store Connect refused the API key: check its key ID and issuer ID, and that the key is not revoked.",
+      "App Store Connect refused the API key.\nCheck its key ID and issuer ID, and that it isn't revoked.",
     );
   });
 
@@ -1175,7 +1175,7 @@ describe("uploadToTestFlight", () => {
 
     expect(result.state).toBe("PROCESSING");
     expect(p.log.warn).toHaveBeenCalledWith(
-      "App Store Connect is still processing build 42. It appears in TestFlight once processing finishes: https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      "App Store Connect is still processing build 42.\nTestFlight lists it once processing finishes:\nhttps://appstoreconnect.apple.com/apps/123/testflight/ios",
     );
   });
 
@@ -1300,7 +1300,7 @@ describe("resolveTestFlightUploadKey", () => {
           iosScheme({ exportOptionsPlist: "ExportOptions.plist" }),
         ),
       ).rejects.toThrow(
-        `TestFlight takes an .ipa exported for App Store Connect, and the scheme release's exportOptionsPlist exports with the method ${method}. Set its method to app-store-connect.`,
+        `The scheme release's exportOptionsPlist uses method ${method}.\nSet its method to app-store-connect for TestFlight.`,
       );
     },
   );
@@ -1319,7 +1319,7 @@ describe("resolveTestFlightUploadKey", () => {
         }),
       ),
     ).rejects.toThrow(
-      "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_ALLOWED=NO in extraParams).",
+      "The scheme release turns code signing off:\nCODE_SIGNING_ALLOWED=NO in extraParams",
     );
   });
 
@@ -1338,7 +1338,7 @@ describe("resolveTestFlightUploadKey", () => {
         }),
       ),
     ).rejects.toThrow(
-      "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_REQUIRED = NO in Unsigned.xcconfig).",
+      "The scheme release turns code signing off:\nCODE_SIGNING_REQUIRED = NO in Unsigned.xcconfig",
     );
   });
 
@@ -1357,7 +1357,7 @@ describe("resolveTestFlightUploadKey", () => {
         }),
       ),
     ).rejects.toThrow(
-      "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_ALLOWED=NO in config/Unsigned.xcconfig).",
+      "The scheme release turns code signing off:\nCODE_SIGNING_ALLOWED=NO in config/Unsigned.xcconfig",
     );
   });
 
@@ -1464,7 +1464,7 @@ describe("resolveTestFlightUploadKey", () => {
       await write("B.xcconfig", '#include "A.xcconfig"\n');
 
       await expect(resolve({ xcconfig: "A.xcconfig" })).rejects.toThrow(
-        "turns code signing off (CODE_SIGNING_ALLOWED = NO in A.xcconfig).",
+        "turns code signing off:\nCODE_SIGNING_ALLOWED = NO in A.xcconfig",
       );
     });
 
@@ -1475,7 +1475,7 @@ describe("resolveTestFlightUploadKey", () => {
       );
 
       await expect(resolve({ xcconfig: "Signing.xcconfig" })).rejects.toThrow(
-        "TestFlight takes a signed .ipa, and the scheme release turns code signing off (CODE_SIGNING_REQUIRED = NO in Signing.xcconfig).",
+        "The scheme release turns code signing off:\nCODE_SIGNING_REQUIRED = NO in Signing.xcconfig",
       );
     });
 
@@ -1486,7 +1486,7 @@ describe("resolveTestFlightUploadKey", () => {
       await expect(
         resolve({ xcconfig: "config/Release.xcconfig" }),
       ).rejects.toThrow(
-        "turns code signing off (CODE_SIGNING_ALLOWED = NO in Shared.xcconfig).",
+        "turns code signing off:\nCODE_SIGNING_ALLOWED = NO in Shared.xcconfig",
       );
     });
   });
@@ -1518,7 +1518,7 @@ describe("resolveTestFlightUploadKey", () => {
         }),
       ),
     ).rejects.toThrow(
-      "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
+      "The scheme release builds a simulator .app, not an .ipa for TestFlight.",
     );
   });
 
@@ -1531,13 +1531,13 @@ describe("resolveTestFlightUploadKey", () => {
         }),
       ),
     ).rejects.toThrow(
-      "TestFlight takes a release build, and the scheme release builds the StagingDebug configuration, which loads its JavaScript from Metro.",
+      "The scheme release builds StagingDebug; TestFlight takes a release build.",
     );
   });
 
   it("refuses a scheme that only archives", async () => {
     await expect(resolveTestFlightUploadKey(iosScheme())).rejects.toThrow(
-      "The scheme release archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.",
+      "The scheme release archives without exporting an .ipa.\nSet signing.ascApiKey, or exportOptionsPlist with method app-store-connect.",
     );
   });
 });
@@ -1572,7 +1572,7 @@ describe("assertTestFlightExportOptions", () => {
         scheme({ exportOptionsPlist: "/project/ExportOptions.plist" }),
       ),
     ).rejects.toThrow(
-      "TestFlight takes an .ipa exported for App Store Connect, and the scheme release's exportOptionsPlist exports with the method ad-hoc. Set its method to app-store-connect.",
+      "The scheme release's exportOptionsPlist uses method ad-hoc.\nSet its method to app-store-connect for TestFlight.",
     );
   });
 

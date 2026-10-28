@@ -1,6 +1,31 @@
-import { colors } from "@hot-updater/cli-tools";
+import os from "node:os";
+import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
+
+import { colors, getCwd } from "@hot-updater/cli-tools";
 
 type StringValue = string | number | boolean | null | undefined;
+
+/** One `label  value` row. */
+export type Row = readonly [label: string, value: StringValue];
+
+/** A row, or a falsy entry that is left out, as `cond && [label, value]` gives. */
+export type MaybeRow = Row | false | null | undefined | "" | 0;
+
+/** The widest a path is shown, so a row fits an 80-column terminal. */
+const PATH_WIDTH = 48;
+
+/**
+ * The widest an artifact's path is shown, after a 15-column label: a path
+ * to install or copy is shortened only when its row would wrap.
+ */
+export const ARTIFACT_PATH_WIDTH = 62;
+
+/** The widest a line is, after clack's 3-column gutter on 80 columns. */
+const LINE_WIDTH = 77;
+
+/** The widest a command line is shown, after clack's 3-column gutter. */
+const COMMAND_WIDTH = 74;
 
 const LABEL_WIDTH = 9;
 
@@ -43,6 +68,85 @@ export const ui = {
   kv: (label: string, value: StringValue): string =>
     `    ${ui.label(`${label}:`)} ${stringify(value) || colors.dim("-")}`,
   line: (parts: string[]): string => parts.filter(Boolean).join(" "),
+  /**
+   * Label and value rows, one per line, the labels padded to the widest
+   * label plus two spaces, without colons.
+   */
+  rows: (entries: readonly MaybeRow[]): string => {
+    const rows = entries.filter((entry): entry is Row => Boolean(entry));
+    const width = Math.max(0, ...rows.map(([label]) => label.length)) + 2;
+    return rows
+      .map(([label, value]) => {
+        const [first = "", ...more] = (
+          stringify(value) || colors.dim("-")
+        ).split("\n");
+        // A value too long for its row, such as a URL, goes under its label.
+        if (
+          more.length === 0 &&
+          width + stripVTControlCharacters(first).length > LINE_WIDTH
+        ) {
+          return `${colors.dim(label)}\n${first}`;
+        }
+        // The lines of a value of several, such as a list, line up.
+        return [
+          `${colors.dim(label.padEnd(width))}${first}`,
+          ...more.map((line) => `${" ".repeat(width)}${line}`),
+        ].join("\n");
+      })
+      .join("\n");
+  },
+  /**
+   * A result's heading and its rows, for `p.log.step`, `p.log.success`, or
+   * `p.log.warn`, whose symbol marks the heading.
+   */
+  summary: (heading: string, entries: readonly MaybeRow[] = []): string =>
+    [heading, ui.rows(entries)].filter(Boolean).join("\n"),
+  /**
+   * A command to copy, highlighted, broken at spaces with ` \` when it is
+   * longer than `width`, each continuation indented two spaces, so the
+   * terminal never wraps it mid-word.
+   */
+  commandLines: (command: string, width: number = COMMAND_WIDTH): string => {
+    const lines: string[] = [];
+    let line = "";
+    for (const word of command.split(" ")) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && next.length > width - 2) {
+        lines.push(`${line} \\`);
+        line = `  ${word}`;
+      } else {
+        line = next;
+      }
+    }
+    lines.push(line);
+    return lines.map((text) => colors.green(text)).join("\n");
+  },
+  /**
+   * `lead` and the command it names, on one line when they fit, else the
+   * command on the lines after it: `Run in a terminal: npx hot-updater …`.
+   */
+  withCommand: (lead: string, command: string): string =>
+    lead.length + 1 + command.length <= LINE_WIDTH
+      ? `${lead} ${colors.green(command)}`
+      : `${lead}\n${ui.commandLines(command)}`,
+  /**
+   * Text written once for both `--json` and people, such as a doctor
+   * issue's resolution, laid out for a terminal: one sentence per line,
+   * wrapped at spaces, with each `command` highlighted, without its
+   * backticks, and on lines of its own when it is too long to share one.
+   */
+  prose: (text: string, width: number = LINE_WIDTH): string =>
+    text
+      .split(/(?<=[.!?])\s+(?=[A-Z`])/u)
+      .flatMap((sentence) => wrapWords(sentence, width))
+      .join("\n"),
+  /**
+   * A path as a person reads it: relative to the project when inside it,
+   * with `~` for the home directory otherwise, and a long middle shortened
+   * to `…` so it never wraps.
+   */
+  fitPath: (file: string, width: number = PATH_WIDTH): string =>
+    shortenPath(displayPath(file), width),
   block: (heading: string, lines: string[]): string =>
     [ui.title(heading), ...lines].join("\n"),
   table: <TKey extends string>(
@@ -87,4 +191,69 @@ export const ui = {
       border("└", "┴", "┘"),
     ].join("\n");
   },
+};
+
+const displayPath = (file: string): string => {
+  if (!path.isAbsolute(file)) return file;
+  const relative = path.relative(getCwd(), file);
+  if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+    return relative;
+  }
+  const home = os.homedir();
+  return file === home || file.startsWith(`${home}${path.sep}`)
+    ? `~${file.slice(home.length)}`
+    : file;
+};
+
+/**
+ * Keeps the leading directories that fit and the file name, with `…` for
+ * the directories between: `~/.hot-updater/secrets/…/asc-api-key.json`.
+ */
+const shortenPath = (file: string, width: number): string => {
+  if (file.length <= width) return file;
+  const segments = file.split("/");
+  const last = segments.pop() ?? "";
+  const head: string[] = [];
+  for (const segment of segments) {
+    if ([...head, segment, "…", last].join("/").length > width) break;
+    head.push(segment);
+  }
+  return head.length === segments.length
+    ? file
+    : [...head, "…", last].join("/");
+};
+
+/**
+ * A sentence's lines, at most `width` wide, broken at spaces; a `command`
+ * in backticks stays whole, highlighted, and goes on lines of its own when
+ * it would not fit on one with the words around it.
+ */
+const wrapWords = (sentence: string, width: number): string[] => {
+  const lines: string[] = [];
+  let line = "";
+  let length = 0;
+  const flush = () => {
+    if (line) lines.push(line);
+    line = "";
+    length = 0;
+  };
+  for (const token of sentence.match(/`[^`]*`\S*|\S+/gu) ?? []) {
+    const command = /^`([^`]*)`(\S*)$/u.exec(token);
+    const visible = command ? `${command[1]}${command[2]}` : token;
+    const text = command
+      ? `${colors.green(command[1] ?? "")}${command[2]}`
+      : token;
+    if (command && visible.length > width) {
+      flush();
+      lines.push(ui.commandLines(command[1] ?? ""));
+      if (command[2]) line = command[2];
+      length = line.length;
+      continue;
+    }
+    if (length > 0 && length + 1 + visible.length > width) flush();
+    line = length > 0 ? `${line} ${text}` : text;
+    length += (length > 0 ? 1 : 0) + visible.length;
+  }
+  flush();
+  return lines;
 };

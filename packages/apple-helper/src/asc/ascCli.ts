@@ -31,7 +31,7 @@ const ASC_RELEASE_ASSET: Readonly<Record<string, string>> = {
 
 const ASC_RELEASE_URL = `https://github.com/rorkai/App-Store-Connect-CLI/releases/download/${ASC_CLI_VERSION}`;
 
-const INSTALL_HINT = `Install asc ${ASC_CLI_VERSION} or later with \`brew install asc\` (https://github.com/rorkai/App-Store-Connect-CLI), then run the command again.`;
+const INSTALL_HINT = `Install asc ${ASC_CLI_VERSION} or later with brew install asc, then run this again.`;
 
 /** asc could not be found, downloaded, or verified. */
 export class AscCliUnavailableError extends Error {
@@ -96,7 +96,7 @@ export const findAscCli = async ({
 } = {}): Promise<AscCli> => {
   if (platform !== "darwin") {
     throw new AscCliUnavailableError(
-      "Signing in with an Apple Account to issue an App Store Connect API key runs on macOS, where iOS builds run.",
+      "Signing in to issue an App Store Connect API key needs macOS.",
     );
   }
   const minimum = parseVersion(ASC_CLI_VERSION)!;
@@ -119,7 +119,7 @@ export const findAscCli = async ({
   const expected = ASC_CLI_SHA256[arch];
   if (!asset || !expected) {
     throw new AscCliUnavailableError(
-      `asc publishes no macOS binary for ${arch}. ${INSTALL_HINT}`,
+      `asc publishes no macOS binary for ${arch}.\n${INSTALL_HINT}`,
     );
   }
   const binary = path.join(cacheDir, "asc", ASC_CLI_VERSION, asset);
@@ -140,13 +140,13 @@ export const findAscCli = async ({
       });
     } catch (error) {
       throw new AscCliUnavailableError(
-        `Could not download asc ${ASC_CLI_VERSION} from GitHub (${error instanceof Error ? error.message : String(error)}). ${INSTALL_HINT}`,
+        `Couldn't download asc ${ASC_CLI_VERSION} from GitHub.\n${error instanceof Error ? error.message : String(error)}\n${INSTALL_HINT}`,
         { cause: error },
       );
     }
     if (!response.ok || !response.body) {
       throw new AscCliUnavailableError(
-        `Could not download asc ${ASC_CLI_VERSION} from GitHub (HTTP ${response.status}). ${INSTALL_HINT}`,
+        `Couldn't download asc ${ASC_CLI_VERSION} from GitHub (HTTP ${response.status}).\n${INSTALL_HINT}`,
       );
     }
     await fs.writeFile(partial, Buffer.from(await response.arrayBuffer()), {
@@ -155,7 +155,12 @@ export const findAscCli = async ({
     const actual = await sha256Of(partial);
     if (actual !== expected) {
       throw new AscCliUnavailableError(
-        `The downloaded asc ${ASC_CLI_VERSION} does not match its published SHA-256 (expected ${expected}, got ${actual}), so it was deleted and not run. ${INSTALL_HINT}`,
+        [
+          `The downloaded asc ${ASC_CLI_VERSION} failed its SHA-256 check; it was deleted.`,
+          `Expected ${expected}`,
+          `Got      ${actual}`,
+          INSTALL_HINT,
+        ].join("\n"),
       );
     }
     await fs.chmod(partial, 0o755);

@@ -130,7 +130,7 @@ export const offerGitHubSecret = async ({
 
   const variable = secretVariableName(name);
   const answer = await p.confirm({
-    message: `Store it as the GitHub Actions secret ${variable} of ${repository}, which CI builds read?`,
+    message: `Store it as the GitHub Actions secret ${variable} in ${repository}?`,
     initialValue: true,
   });
   // A cancel is a no: the key is in its file already.
@@ -140,16 +140,25 @@ export const offerGitHubSecret = async ({
     await createSecrets({ repo: repository, token }).set(name, value);
   } catch (error) {
     p.log.warn(
-      `Storing ${variable} in ${repository}'s GitHub Actions secrets failed: ${error instanceof Error ? error.message : String(error)}\nStore the contents of ${file} as that secret yourself.`,
+      [
+        `Couldn't store the GitHub Actions secret ${variable} in ${repository}.`,
+        error instanceof Error ? error.message : String(error),
+        // The whole path, to copy: the file is the secret's value.
+        "Store this file's contents as that secret:",
+        ui.fitPath(file, Number.POSITIVE_INFINITY),
+      ].join("\n"),
     );
     return "failed";
   }
   p.log.success(
-    ui.block("GitHub Actions secret stored", [
-      ui.kv("Secret", variable),
-      ui.kv("Repository", repository),
-      ui.kv("Workflow", `env: ${variable}: \${{ secrets.${variable} }}`),
-    ]),
+    [
+      ui.summary("GitHub Actions secret stored", [
+        ["Secret", variable],
+        ["Repository", repository],
+      ]),
+      "Add to the workflow's env:",
+      `${variable}: \${{ secrets.${variable} }}`,
+    ].join("\n"),
   );
   return "stored";
 };

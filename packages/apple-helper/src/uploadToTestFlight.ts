@@ -81,7 +81,7 @@ export class TestFlightBuildExistsError extends Error {
     options?: ErrorOptions,
   ) {
     super(
-      `App Store Connect already has build ${bundleVersion} of version ${shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
+      `App Store Connect already has build ${bundleVersion} of version ${shortVersion}.\nUse a new build number (CFBundleVersion).`,
       options,
     );
   }
@@ -407,24 +407,24 @@ export const resolveTestFlightUploadKey = async ({
 }): Promise<CredentialRequest<"asc-api-key">> => {
   if (iosScheme.simulator) {
     throw new Error(
-      `TestFlight takes an .ipa, and the scheme ${scheme} builds a simulator .app.`,
+      `The scheme ${scheme} builds a simulator .app, not an .ipa for TestFlight.`,
     );
   }
   const configuration = iosScheme.configuration ?? "Release";
   if (/debug$/i.test(configuration)) {
     throw new Error(
-      `TestFlight takes a release build, and the scheme ${scheme} builds the ${configuration} configuration, which loads its JavaScript from Metro.`,
+      `The scheme ${scheme} builds ${configuration}; TestFlight takes a release build.`,
     );
   }
   const unsigned = await codeSigningOff(iosScheme);
   if (unsigned) {
     throw new Error(
-      `TestFlight takes a signed .ipa, and the scheme ${scheme} turns code signing off (${unsigned}).`,
+      `The scheme ${scheme} turns code signing off:\n${unsigned}`,
     );
   }
   if (!iosScheme.exportOptionsPlist && !iosScheme.signing) {
     throw new Error(
-      `The scheme ${scheme} archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.`,
+      `The scheme ${scheme} archives without exporting an .ipa.\nSet signing.ascApiKey, or exportOptionsPlist with method app-store-connect.`,
     );
   }
   if (
@@ -436,7 +436,7 @@ export const resolveTestFlightUploadKey = async ({
     );
     if (!APP_STORE_EXPORT_METHODS.has(method)) {
       throw new Error(
-        `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${scheme}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
+        `The scheme ${scheme}'s exportOptionsPlist uses method ${method || "(none)"}.\nSet its method to app-store-connect for TestFlight.`,
       );
     }
   }
@@ -462,7 +462,7 @@ export const assertTestFlightExportOptions = async (
   const method = await readExportMethod(schemeConfig.exportOptionsPlist);
   if (!APP_STORE_EXPORT_METHODS.has(method)) {
     throw new Error(
-      `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${schemeConfig.hotUpdaterSchemeName}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
+      `The scheme ${schemeConfig.hotUpdaterSchemeName}'s exportOptionsPlist uses method ${method || "(none)"}.\nSet its method to app-store-connect for TestFlight.`,
     );
   }
 };
@@ -546,13 +546,13 @@ const createAppStoreConnectRequest = ({
       );
       if (response.status === 401) {
         throw new Error(
-          "App Store Connect refused the API key: check its key ID and issuer ID, and that the key is not revoked.",
+          "App Store Connect refused the API key.\nCheck its key ID and issuer ID, and that it isn't revoked.",
           { cause: error },
         );
       }
       if (response.status === 403) {
         throw new Error(
-          `${error.message} An API key with the Admin, App Manager, or Developer role uploads builds.`,
+          `${error.message}\nUploads need a key with the Admin, App Manager, or Developer role.`,
           { cause: error },
         );
       }
@@ -579,7 +579,7 @@ const findApp = async (request: AppStoreConnectRequest, bundleId: string) => {
   const app = apps.find((app) => app.attributes?.bundleId === bundleId);
   if (!app) {
     throw new Error(
-      `App Store Connect has no app with the bundle ID ${bundleId} that this API key can see. Create the app in App Store Connect, or use a key of its team.`,
+      `App Store Connect has no app ${bundleId} that this API key can see.\nCreate the app in App Store Connect, or use a key of its team.`,
     );
   }
   const testFlightUrl = `https://appstoreconnect.apple.com/apps/${app.id}/testflight/ios`;
@@ -702,7 +702,11 @@ export const uploadToTestFlight = async ({
         // made is no build in TestFlight: that one stays a failure.
         if (unanswered) {
           throw new Error(
-            `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}, which a request of this upload it did not answer may have reserved. Upload with a new build number (CFBundleVersion).`,
+            [
+              `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}.`,
+              "An unanswered request of this upload may have reserved it.",
+              "Upload with a new build number (CFBundleVersion).",
+            ].join("\n"),
             { cause: error },
           );
         }
@@ -724,7 +728,7 @@ export const uploadToTestFlight = async ({
   }
 
   p.log.info(
-    `Uploading ${ipaName} (version ${info.shortVersion}, build ${info.bundleVersion}) to App Store Connect`,
+    `Uploading ${ipaName} ${info.shortVersion} (${info.bundleVersion}) to App Store Connect`,
   );
   // An unfinished upload would keep the build number reserved.
   const removeUpload = async () => {
@@ -743,7 +747,11 @@ export const uploadToTestFlight = async ({
         }
         if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
           p.log.warn(
-            `App Store Connect kept the unfinished build upload ${buildUploadId}, which reserves build ${info.bundleVersion} of version ${info.shortVersion}: ${(error as Error).message} Upload with a new build number (CFBundleVersion).`,
+            [
+              `App Store Connect kept the unfinished upload of build ${info.bundleVersion}.`,
+              (error as Error).message,
+              "Upload with a new build number (CFBundleVersion).",
+            ].join("\n"),
           );
           return;
         }
@@ -815,7 +823,12 @@ export const uploadToTestFlight = async ({
     } catch (error) {
       const unconfirmed = () =>
         new Error(
-          `App Store Connect did not confirm the upload of build ${info.bundleVersion}: ${(error as Error).message} Check the build in TestFlight before you upload it again: ${testFlightUrl}`,
+          [
+            `App Store Connect didn't confirm the upload of build ${info.bundleVersion}.`,
+            (error as Error).message,
+            "Check TestFlight before you upload it again:",
+            testFlightUrl,
+          ].join("\n"),
           { cause: error },
         );
       if (!isRetryable(error)) {
@@ -882,12 +895,23 @@ export const uploadToTestFlight = async ({
       if (Date.now() >= deadline) {
         if (!reportedProcessing) {
           throw new Error(
-            `App Store Connect did not report build ${info.bundleVersion} processing${lastError instanceof Error ? `: ${lastError.message}` : state.state ? ` (${state.state}).` : "."} Check the build in TestFlight: ${testFlightUrl}`,
+            [
+              `App Store Connect didn't report build ${info.bundleVersion} processing.`,
+              lastError instanceof Error
+                ? lastError.message
+                : state.state
+                  ? `State: ${state.state}`
+                  : undefined,
+              "Check the build in TestFlight:",
+              testFlightUrl,
+            ]
+              .filter(Boolean)
+              .join("\n"),
             { cause: lastError },
           );
         }
         p.log.warn(
-          `App Store Connect is still processing build ${info.bundleVersion}. It appears in TestFlight once processing finishes: ${testFlightUrl}`,
+          `App Store Connect is still processing build ${info.bundleVersion}.\nTestFlight lists it once processing finishes:\n${testFlightUrl}`,
         );
         return {
           appId: app.id,

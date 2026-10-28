@@ -16,6 +16,7 @@ import {
   getConfiguredSecrets,
   localSecrets,
   parseSecretReference,
+  readSecretWithSource,
   secretEnv,
   secretVariableName,
   setConfiguredSecrets,
@@ -298,6 +299,49 @@ describe("localSecrets()", () => {
     } finally {
       await fs.rm(path.dirname(file), { recursive: true, force: true });
     }
+  });
+});
+
+describe("readSecretWithSource", () => {
+  it("names the one place localSecrets() read the value from: its variable, else its file", async () => {
+    const secrets = localSecrets();
+    await expect(
+      readSecretWithSource(secrets, "asc-api-key", directory),
+    ).resolves.toBeUndefined();
+
+    await writeLocalKey("asc-api-key", "from-file", directory);
+    await expect(
+      readSecretWithSource(secrets, "asc-api-key", directory),
+    ).resolves.toEqual({
+      value: "from-file",
+      source: getLocalKeyFile("asc-api-key", directory),
+    });
+
+    vi.stubEnv("HOT_UPDATER_ASC_API_KEY", "from-env");
+    await expect(
+      readSecretWithSource(secrets, "asc-api-key", directory),
+    ).resolves.toEqual({
+      value: "from-env",
+      source: "HOT_UPDATER_ASC_API_KEY (environment)",
+    });
+  });
+
+  it("names the config's adapter when it holds the value, else the file after it", async () => {
+    const adapter = storeOf({ "asc-api-key": "from-adapter" });
+    await writeLocalKey("asc-api-key", "from-file", directory);
+    await writeLocalKey("play-service-account", "play-file", directory);
+    const secrets = withLocalKeyStore(adapter);
+
+    await expect(
+      readSecretWithSource(secrets, "asc-api-key", directory),
+    ).resolves.toEqual({ value: "from-adapter", source: "spec://asc-api-key" });
+    await expect(
+      readSecretWithSource(secrets, "play-service-account", directory),
+    ).resolves.toEqual({
+      value: "play-file",
+      source: getLocalKeyFile("play-service-account", directory),
+    });
+    expect(adapter.get).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { ui } from "../cli-ui";
+
 export interface KeyPair {
   privateKey: string; // PEM format (PKCS#8)
   publicKey: string; // PEM format (SubjectPublicKeyInfo)
@@ -116,7 +118,7 @@ export async function savePublicKey(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       throw new Error(
-        `A public key already exists in ${outputDir}. Move it before generating a new key pair.`,
+        `${ui.fitPath(publicKeyPath)} already exists.\nMove it, then generate the key pair again.`,
       );
     }
     throw error;

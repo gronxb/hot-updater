@@ -45,8 +45,9 @@ describe("CLI console", () => {
 
         expect(result.timedOut).toBe(false);
         expect(result.exitCode).toBe(1);
+        expect(output).toContain(`Port ${port} is already in use.`);
         expect(output).toContain(
-          `Port ${port} is already in use. Set console.port in hot-updater.config.ts to open the console on another port.`,
+          "Set console.port in hot-updater.config.ts to use another port.",
         );
         expect(output).not.toContain("EADDRINUSE");
         expect(output).not.toContain("Console server exited");

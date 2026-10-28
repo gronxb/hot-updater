@@ -1,5 +1,10 @@
 import type { EnrichedNativeBuildAndroidScheme } from "@hot-updater/android-helper";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const events: string[] = [];
 
@@ -26,7 +31,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
   p: {
-    log: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    log: {
+      info: vi.fn(),
+      step: vi.fn(),
+      success: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+    },
   },
   withCredentialResolver: vi.fn(async (run) => {
     try {
@@ -176,7 +187,7 @@ describe("native-build android --submit play-internal", () => {
   it("submits nothing when the .aab is debug-signed, saying why", async () => {
     vi.mocked(assertPlaySigned).mockRejectedValueOnce(
       new Error(
-        "Google Play refuses an .aab signed with the Android debug keystore, and /out/app-release.aab is.",
+        "Google Play refuses an .aab signed with the Android debug keystore.",
       ),
     );
     const exit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -266,7 +277,7 @@ describe("native-build android --submit play-internal", () => {
     ).rejects.toThrow("exit");
 
     expect(p.log.error).toHaveBeenCalledWith(
-      `Opening a Google Play edit failed (HTTP 403).\nIf Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in.\nThe build stays at ${AAB}.`,
+      `Opening a Google Play edit failed (HTTP 403).\nA new service account can take minutes to get Play access: build again soon.\nThe build stays at ${AAB}.`,
     );
     exit.mockRestore();
   });
@@ -296,7 +307,7 @@ describe("native-build android --submit play-internal", () => {
   it("refuses a scheme Google Play would not take before the prebuild", async () => {
     vi.mocked(resolvePlayUploadServiceAccount).mockImplementationOnce(() => {
       throw new Error(
-        "Google Play takes an .aab, and the scheme release builds an .apk (aab: false).",
+        "The scheme release builds an .apk (aab: false); Google Play takes an .aab.",
       );
     });
     const exit = mockExit();
@@ -309,7 +320,7 @@ describe("native-build android --submit play-internal", () => {
     ).rejects.toThrow("exit");
 
     expect(p.log.error).toHaveBeenCalledWith(
-      "Google Play takes an .aab, and the scheme release builds an .apk (aab: false).",
+      "The scheme release builds an .apk (aab: false); Google Play takes an .aab.",
     );
     expect(events).not.toContain("prebuild");
     expect(createNativeBuild).not.toHaveBeenCalled();
@@ -319,7 +330,7 @@ describe("native-build android --submit play-internal", () => {
   it("reports a failed upload with the path the build stays at", async () => {
     vi.mocked(uploadToPlay).mockRejectedValueOnce(
       new Error(
-        "Google Play already has this .aab's version code. Raise versionCode for every build you upload.",
+        "Google Play already has this .aab's version code.\nRaise versionCode for every build you upload.",
       ),
     );
     const exit = mockExit();
@@ -332,10 +343,17 @@ describe("native-build android --submit play-internal", () => {
     ).rejects.toThrow("exit");
 
     expect(p.log.error).toHaveBeenCalledWith(
-      `Google Play already has this .aab's version code. Raise versionCode for every build you upload.\nThe build stays at ${AAB}.`,
+      `Google Play already has this .aab's version code.\nRaise versionCode for every build you upload.\nThe build stays at ${AAB}.`,
     );
     // The resolver deletes its temporary files before the process exits.
     expect(events.slice(-2)).toEqual(["dispose", "exit"]);
     exit.mockRestore();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

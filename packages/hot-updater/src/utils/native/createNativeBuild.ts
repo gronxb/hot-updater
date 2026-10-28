@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-import { colors, getCwd, p } from "@hot-updater/cli-tools";
 import type { BuildAdapter } from "@hot-updater/plugin-core";
 import { NIL_UUID, type Platform } from "@hot-updater/protocol";
 
@@ -131,9 +130,6 @@ export const createNativeBuild = async ({
     await fs.promises.cp(buildDirectory, outputPath, {
       recursive: true,
     });
-
-    const relativePath = path.relative(getCwd(), outputPath);
-    p.log.info(`Artifact stored at ${colors.blueBright(relativePath)}`);
 
     return {
       platform,

@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, select, isCancel, handleNativeBuildCreate } = vi.hoisted(() => ({
@@ -23,7 +28,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("./buildNative", () => ({ handleNativeBuildCreate }));
 
-import { loadConfig } from "@hot-updater/cli-tools";
+import { p, loadConfig } from "@hot-updater/cli-tools";
 
 import { handleGooglePlayUpload, handleTestFlight } from "./storeUpload";
 
@@ -55,8 +60,8 @@ const SHORTCUTS = [
       debug: { ...IOS_DEVICE, configuration: "Debug" },
     },
     refusals: [
-      "TestFlight takes an .ipa, and the scheme simulator builds a simulator .app.",
-      "TestFlight takes a release build, and the scheme debug builds the Debug configuration",
+      "The scheme simulator builds a simulator .app, not an .ipa for TestFlight.",
+      "The scheme debug builds Debug; TestFlight takes a release build.",
     ],
     docs: "https://hot-updater.dev/docs/guides/native-build#upload-to-testflight",
   },
@@ -72,8 +77,8 @@ const SHORTCUTS = [
       debug: { ...ANDROID_RELEASE, variant: "Debug" },
     },
     refusals: [
-      "Google Play takes an .aab, and the scheme apk builds an .apk (aab: false).",
-      "Google Play takes a release build, and the scheme debug builds the Debug variant",
+      "The scheme apk builds an .apk (aab: false); Google Play takes an .aab.",
+      "The scheme debug builds Debug; Google Play takes a release build.",
     ],
     docs: "https://hot-updater.dev/docs/guides/native-build#upload-to-google-play",
   },
@@ -134,7 +139,7 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     expect(process.exitCode).toBeUndefined();
     expect(select).not.toHaveBeenCalled();
     expect(log.info).toHaveBeenCalledWith(
-      `Scheme release: the only nativeBuild.${platform} scheme that uploads to ${store}.`,
+      `Using release, the only nativeBuild.${platform} scheme for ${store}.`,
     );
     expect(built()).toEqual([[full, { scheme: "release", submit: upload }]]);
   });
@@ -160,8 +165,8 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
   });
 
   it.each([
-    ["without a terminal", false, "", "never without a terminal"],
-    ["in CI, even at a terminal", true, "true", "never in CI (CI is set)"],
+    ["without a terminal", false, "", "without a terminal"],
+    ["in CI, even at a terminal", true, "true", "in CI (CI is set)"],
   ])(
     "refuses several schemes %s, listing them and the --scheme form",
     async (_case, isTTY, ci, reason) => {
@@ -174,7 +179,7 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
       expect(select).not.toHaveBeenCalled();
       expect(handleNativeBuildCreate).not.toHaveBeenCalled();
       expect(log.error).toHaveBeenCalledWith(
-        `Several nativeBuild.${platform} schemes upload to ${store}: release, staging. Hot Updater asks which one only at a terminal, ${reason}: run npx hot-updater ${shortcut.command} --scheme <release | staging>, or npx hot-updater native-build ${full} -s <release | staging> --submit ${upload}.`,
+        `Several nativeBuild.${platform} schemes upload to ${store}: release, staging.\nCan't ask which one ${reason}.\nPick one: npx hot-updater ${shortcut.command} --scheme <release | staging>`,
       );
     },
   );
@@ -188,13 +193,12 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     expect(handleNativeBuildCreate).not.toHaveBeenCalled();
     const [message] = log.error.mock.calls[0]!;
     expect(message).toContain(
-      `No nativeBuild.${platform} scheme in hot-updater.config.ts uploads to ${store}.`,
+      `No nativeBuild.${platform} scheme uploads to ${store}.`,
     );
     for (const refusal of shortcut.refusals) {
       expect(message).toContain(refusal);
     }
     expect(message).toContain(shortcut.docs);
-    expect(message).toContain(`then run npx hot-updater ${shortcut.command}.`);
   });
 
   it("refuses a config without schemes for the platform", async () => {
@@ -262,7 +266,7 @@ describe("hot-updater testflight scheme eligibility", () => {
 
     expect(process.exitCode).toBeUndefined();
     expect(log.info).toHaveBeenCalledWith(
-      "Scheme release: the only nativeBuild.ios scheme that uploads to TestFlight.",
+      "Using release, the only nativeBuild.ios scheme for TestFlight.",
     );
     expect(handleNativeBuildCreate.mock.calls).toEqual([
       ["ios", { scheme: "release", submit: "testflight" }],
@@ -293,10 +297,17 @@ describe("hot-updater testflight scheme eligibility", () => {
     expect(process.exitCode).toBe(1);
     const [message] = log.error.mock.calls[0]!;
     expect(message).toContain(
-      "TestFlight takes a signed .ipa, and the scheme deviceUnsigned turns code signing off (CODE_SIGNING_ALLOWED=NO in extraParams).",
+      "The scheme deviceUnsigned turns code signing off:\nCODE_SIGNING_ALLOWED=NO in extraParams",
     );
     expect(message).toContain(
-      "TestFlight takes an .ipa exported for App Store Connect, and the scheme development's exportOptionsPlist exports with the method development.",
+      "The scheme development's exportOptionsPlist uses method development.",
     );
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

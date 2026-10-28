@@ -3,6 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { p } from "@hot-updater/cli-tools";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -20,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   logError: vi.fn(),
   logInfo: vi.fn(),
   logMessage: vi.fn(),
+  logStep: vi.fn(),
   logSuccess: vi.fn(),
   logWarn: vi.fn(),
 }));
@@ -51,6 +58,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
       error: mocks.logError,
       info: mocks.logInfo,
       message: mocks.logMessage,
+      step: mocks.logStep,
       success: mocks.logSuccess,
       warn: mocks.logWarn,
     },
@@ -171,7 +179,7 @@ describe("keysExportPublic", () => {
       message: "Replace the existing public key?",
       initialValue: false,
     });
-    expect(mocks.logMessage).toHaveBeenCalledWith(
+    expect(mocks.logWarn).toHaveBeenCalledWith(
       expect.stringContaining("sha256:"),
     );
     expect(mocks.androidSet).not.toHaveBeenCalled();
@@ -214,7 +222,7 @@ describe("keysExportPublic", () => {
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.androidSet).not.toHaveBeenCalled();
     expect(mocks.logError).toHaveBeenCalledWith(
-      "Write public key? Re-run with -y to write it, or with -p to only print it, in a non-interactive shell.",
+      "Write public key?\nRe-run with -y to write it or -p to print it in a non-interactive shell.",
     );
   });
 
@@ -306,7 +314,7 @@ describe("keysRemove", () => {
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.androidSet).not.toHaveBeenCalled();
     expect(mocks.logError).toHaveBeenCalledWith(
-      "Remove public keys from these files? Re-run with -y in a non-interactive shell.",
+      "Remove public keys from these files?\nRe-run with -y in a non-interactive shell.",
     );
   });
 });
@@ -319,4 +327,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

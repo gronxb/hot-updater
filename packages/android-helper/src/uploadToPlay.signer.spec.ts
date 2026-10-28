@@ -71,7 +71,7 @@ describe.skipIf(!hasJdk)("assertPlaySigned", () => {
     const aab = await bundle("debug", "CN=Android Debug,O=Android,C=US");
 
     await expect(assertPlaySigned(aab)).rejects.toThrow(
-      `Google Play refuses an .aab signed with the Android debug keystore, and ${aab} is. Set the scheme's signing.keystore, or a release signingConfig in android/app/build.gradle, then build again.`,
+      "Google Play refuses an .aab signed with the Android debug keystore.\nSet the scheme's signing.keystore, or a release signingConfig in\nandroid/app/build.gradle, then build again.",
     );
   });
 

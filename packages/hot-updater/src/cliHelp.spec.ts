@@ -274,7 +274,7 @@ describe("CLI commands", () => {
     const noTerminal = run("secrets", "issue", "asc-api-key");
     expect(noTerminal.status).toBe(1);
     expect(noTerminal.stdout + noTerminal.stderr).toContain(
-      "Run `npx hot-updater apple login` in a terminal",
+      "Run in a terminal: npx hot-updater apple login",
     );
 
     const missing = run("secrets", "put", "release-keystore");

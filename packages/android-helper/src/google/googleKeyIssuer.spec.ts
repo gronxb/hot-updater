@@ -421,7 +421,7 @@ describe("createGoogleKeyIssuer", () => {
     const error = await issueError();
 
     expect(error.code).toBe("not-play-admin");
-    expect(error.message).toContain("(Google: Something else went wrong.)");
+    expect(error.message).toContain("\nGoogle: Something else went wrong.");
   });
 
   it("names a Play Console refusal to add the service account as a missing admin role", async () => {
@@ -566,7 +566,7 @@ describe("createGoogleKeyIssuer", () => {
     ).toHaveLength(1);
   });
 
-  it("names the organization policy that forbids keys, and what remains", async () => {
+  it("names the organization policy that forbids keys, and what to ask for", async () => {
     routes[`POST ${IAM}/projects/my-app/serviceAccounts/${EMAIL}/keys`] = () =>
       googleError(
         400,
@@ -586,7 +586,6 @@ describe("createGoogleKeyIssuer", () => {
 
     expect(error.code).toBe("key-creation-disabled");
     expect(error.message).toContain("iam.disableServiceAccountKeyCreation");
-    expect(error.message).toContain(`The service account ${EMAIL}`);
   });
 
   it("reuses what an earlier run created, adding the release permissions to the app's grant", async () => {

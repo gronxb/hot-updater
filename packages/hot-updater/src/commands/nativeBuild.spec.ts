@@ -1,4 +1,10 @@
+import { p } from "@hot-updater/cli-tools";
 import type { NativeBuildRegistration } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
@@ -408,7 +414,7 @@ describe("handleNativeBuildFind", () => {
     expect(prebuild).toHaveBeenCalledTimes(1);
     expect(prebuild).toHaveBeenCalledWith({ platform: "ios" });
     expect(warn).toHaveBeenCalledWith(
-      "No ios native project to read the app version from: running the test build adapter's prebuild, which writes it.",
+      "No ios native project to read the app version from.\nRunning the test build adapter's prebuild to write it.",
     );
     expect(output()).toMatchObject({ channel: "qa", appVersion: "2.1.0" });
   });
@@ -492,4 +498,11 @@ describe("handleNativeBuildFind", () => {
     );
     expect(loadServer).not.toHaveBeenCalled();
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

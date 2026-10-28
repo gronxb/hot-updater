@@ -400,7 +400,7 @@ describe("uploadToPlay", () => {
       `${EDIT}:commit?changesNotSentForReview=true`,
     );
     expect(p.log.warn).toHaveBeenCalledWith(
-      "Google Play saved the release without sending it for review, as the app's state requires. Send the changes for review in Play Console.",
+      "Google Play saved the release without sending it for review.\nSend the changes for review in Play Console.",
     );
   });
 
@@ -411,7 +411,7 @@ describe("uploadToPlay", () => {
     const { fetch } = createRecordingFetch(routes);
 
     await expect(upload(fetch)).rejects.toThrow(
-      "Google Play did not confirm the release: Committing the Google Play edit failed (HTTP 503). Check internal testing in Play Console before you upload this version code again.",
+      "Google Play didn't confirm the release.\nCommitting the Google Play edit failed (HTTP 503).\nCheck internal testing in Play Console before you upload it again.",
     );
   });
 
@@ -466,7 +466,7 @@ describe("uploadToPlay", () => {
     const { fetch, requests } = createRecordingFetch(routes);
 
     await expect(upload(fetch)).rejects.toThrow(
-      "Google Play already has this .aab's version code. Raise versionCode for every build you upload.",
+      "Google Play already has this .aab's version code.\nRaise versionCode for every build you upload.",
     );
     expect(requests.at(-1)).toMatchObject({ method: "DELETE", url: EDIT });
     expect(requests.some((request) => request.url.includes(":commit"))).toBe(
@@ -518,7 +518,7 @@ describe("uploadToPlay", () => {
     const { fetch } = createRecordingFetch(routes);
 
     await expect(upload(fetch)).rejects.toThrow(
-      "The Play service account cannot release com.example.app. Invite its email in Play Console under Users and permissions",
+      "The Play service account can't release com.example.app.\nInvite its email in Play Console (Users and permissions)",
     );
   });
 
@@ -588,7 +588,7 @@ describe("resolvePlayUploadServiceAccount", () => {
     expect(() =>
       resolvePlayUploadServiceAccount(scheme({ aab: false })),
     ).toThrow(
-      "Google Play takes an .aab, and the scheme release builds an .apk (aab: false).",
+      "The scheme release builds an .apk (aab: false); Google Play takes an .aab.",
     );
   });
 
@@ -596,7 +596,7 @@ describe("resolvePlayUploadServiceAccount", () => {
     expect(() =>
       resolvePlayUploadServiceAccount(scheme({ variant: "stagingDebug" })),
     ).toThrow(
-      "Google Play takes a release build, and the scheme release builds the stagingDebug variant, which is debuggable and loads its JavaScript from Metro.",
+      "The scheme release builds stagingDebug; Google Play takes a release build.",
     );
   });
 });

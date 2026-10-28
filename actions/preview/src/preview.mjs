@@ -224,7 +224,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
   const built = found.nativeBuild === null;
   if (found.nativeBuild === null) {
     deps.log.info(
-      `No ${platform} native build on ${inputs.channel} has ${describeTarget(found)}: building one.`,
+      `Building ${platform}: no native build on ${inputs.channel} has ${describeTarget(found)}.`,
     );
     const scheme = /** @type {string} */ (inputs.schemes[platform]);
     const since = Date.now();
@@ -265,7 +265,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     };
   } else {
     deps.log.info(
-      `Reusing ${platform} native build ${found.nativeBuild.id}, which has ${describeTarget(found)}.`,
+      `Reusing ${platform} native build ${found.nativeBuild.id} (${describeTarget(found)}).`,
     );
     nativeBuild = {
       id: found.nativeBuild.id,
@@ -348,14 +348,12 @@ const servesDownloadQr = async (deps, inputs, id) => {
     const downloadUrl = response.headers.get("x-hot-updater-download-url");
     if (response.ok && downloadUrl === expected) return true;
     cause = response.ok
-      ? `The Console's QR code at ${url} holds ${downloadUrl}, not ${expected}`
-      : `The Console answered ${response.status} to ${url}`;
+      ? `the QR code at ${url} holds ${downloadUrl}, not ${expected}`
+      : `the Console answered ${response.status} to ${url}`;
   } catch (error) {
-    cause = `The Console is unreachable from the runner (${error instanceof Error ? error.message : String(error)}), as a private Console is`;
+    cause = `the Console is unreachable from the runner (${error instanceof Error ? error.message : String(error)})`;
   }
-  deps.log.notice(
-    `${cause}, so the comment links the APK's download without a QR code.`,
-  );
+  deps.log.notice(`No QR code in the comment: ${cause}.`);
   return false;
 };
 
@@ -469,7 +467,7 @@ export const runCleanup = async (deps, inputs, event) => {
 export const runAction = async (deps, env, event) => {
   if (event.fromFork) {
     deps.log.notice(
-      "The pull request comes from a fork, whose run gets no secrets: skipping the preview.",
+      "Skipping the preview: a pull request from a fork gets no secrets.",
     );
     return { skipped: true };
   }

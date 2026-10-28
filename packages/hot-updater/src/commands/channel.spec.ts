@@ -1,4 +1,10 @@
+import { p } from "@hot-updater/cli-tools";
 import { type Bundle, createStorageAdapter } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
@@ -189,7 +195,9 @@ describe("handleChannelDelete", () => {
     process.exitCode = undefined;
     await handleChannelDelete("pr-12", { yes: true });
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("Run it again with --native-builds"),
+      expect.stringContaining(
+        "npx hot-updater channel delete pr-12 --native-builds",
+      ),
     );
     expect(process.exitCode).toBe(1);
   });
@@ -348,4 +356,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

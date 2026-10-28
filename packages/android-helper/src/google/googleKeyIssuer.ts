@@ -18,7 +18,6 @@ import {
 import { revokeGoogleToken, signInWithGoogle } from "./googleSignIn";
 import {
   GOOGLE_OAUTH_CLIENT_ENV_NAMES,
-  PLAY_CONSOLE_URL,
   PLAY_SERVICE_ACCOUNT_ID,
   PlayServiceAccountError,
 } from "./types";
@@ -75,21 +74,21 @@ const isConflict = (error: unknown) =>
 const clientApiDisabled = (error: GoogleApiError) =>
   new PlayServiceAccountError(
     "api-not-enabled",
-    `${error.apiMessage} The Google OAuth client Hot Updater signs in with belongs to that project, which must enable the API (see ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}).`,
+    `${error.apiMessage}\nEnable it in the OAuth client's project (${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}).`,
     { cause: error },
   );
 
 /** Google's own words, after a message that names the likely cause. */
 const googleSays = (error: unknown) =>
   error instanceof GoogleApiError && error.apiMessage
-    ? ` (Google: ${error.apiMessage})`
+    ? `\nGoogle: ${error.apiMessage}`
     : "";
 
 /** A Play Console refusal, as `not-play-admin`. */
 const notPlayAdmin = (developerId: string, error: unknown) =>
   new PlayServiceAccountError(
     "not-play-admin",
-    `The Google Account you signed in with is not an admin of the Play Console developer account ${developerId}. Sign in with an account that has the Admin permission there (Users and permissions in ${PLAY_CONSOLE_URL})${googleSays(error)}.`,
+    `This Google Account isn't an admin of Play Console developer ${developerId}.${googleSays(error)}\nSign in with an account that has the Admin permission there.`,
     { cause: error },
   );
 
@@ -129,7 +128,11 @@ export const createGoogleKeyIssuer =
     if (!oauthClient?.clientId) {
       throw new PlayServiceAccountError(
         "sign-in-not-configured",
-        `This build of Hot Updater has no Google OAuth client to sign in with. Set ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId} and ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientSecret} to a "Desktop app" OAuth client.`,
+        [
+          "This build of Hot Updater has no Google OAuth client to sign in with.",
+          'Set these to a "Desktop app" OAuth client:',
+          `${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientId}, ${GOOGLE_OAUTH_CLIENT_ENV_NAMES.clientSecret}`,
+        ].join("\n"),
       );
     }
     const signIn = await signInWithGoogle({
@@ -146,7 +149,7 @@ export const createGoogleKeyIssuer =
       if (missing.length > 0) {
         throw new PlayServiceAccountError(
           "scope-not-granted",
-          `The sign-in did not allow ${missing.map((scope) => (scope === ANDROID_PUBLISHER_SCOPE ? "managing Google Play" : "managing Google Cloud")).join(" or ")}. Run this again and keep every box on Google's consent screen ticked.`,
+          `The sign-in didn't allow ${missing.map((scope) => (scope === ANDROID_PUBLISHER_SCOPE ? "managing Google Play" : "managing Google Cloud")).join(" or ")}.\nRun this again and keep every box on Google's consent screen ticked.`,
         );
       }
       const google = createGoogleRequest({
@@ -159,7 +162,7 @@ export const createGoogleKeyIssuer =
       if (developerId === undefined) {
         throw new PlayServiceAccountError(
           "developer-not-found",
-          `"${developerInput.trim()}" is no developer account ID. Open ${PLAY_CONSOLE_URL}: it is the number after /developers/ in the address.`,
+          `"${developerInput.trim()}" is not a developer account ID.\nIt is the number after /developers/ in Play Console's address.`,
         );
       }
       onStep("Checking the Play Console developer account");
@@ -232,7 +235,7 @@ const checkPlayConsole = async ({
     if (isNotFound(error)) {
       throw new PlayServiceAccountError(
         "developer-not-found",
-        `Play Console has no developer account ${developerId}. Open ${PLAY_CONSOLE_URL}: the developer account ID is the number after /developers/ in the address${googleSays(error)}.`,
+        `Play Console has no developer account ${developerId}.${googleSays(error)}\nIt is the number after /developers/ in Play Console's address.`,
         { cause: error },
       );
     }
@@ -361,21 +364,30 @@ const chooseProject = async ({
     ) {
       throw new PlayServiceAccountError(
         "project-quota",
-        `Google Cloud has no project quota left for this account: ${error.apiMessage || "quota exceeded"}. Delete a project you no longer use (https://console.cloud.google.com/cloud-resource-manager), or run this again and pick an existing project.`,
+        [
+          "Google Cloud has no project quota left for this account.",
+          error.apiMessage || "Quota exceeded.",
+          "Run this again and pick an existing project, or delete one at:",
+          "https://console.cloud.google.com/cloud-resource-manager",
+        ].join("\n"),
         { cause: error },
       );
     }
     if (/terms of service/iu.test(error.apiMessage)) {
       throw new PlayServiceAccountError(
         "project-create-denied",
-        "This Google Account has not accepted the Google Cloud Terms of Service. Open https://console.cloud.google.com once to accept them, then run this again.",
+        "This Google Account hasn't accepted the Google Cloud Terms of Service.\nAccept them at https://console.cloud.google.com, then run this again.",
         { cause: error },
       );
     }
     if (isDenied(error) || error.apiStatus === "FAILED_PRECONDITION") {
       throw new PlayServiceAccountError(
         "project-create-denied",
-        `This Google Account may not create Google Cloud projects: ${error.apiMessage || "permission denied"}. Ask your organization's admin for the Project Creator role, or run this again and pick an existing project.`,
+        [
+          "This Google Account may not create Google Cloud projects.",
+          error.apiMessage || "Permission denied.",
+          "Pick an existing project, or ask an admin for the Project Creator role.",
+        ].join("\n"),
         { cause: error },
       );
     }
@@ -419,7 +431,7 @@ const whilePropagating = async <T>({
         if (disabled) {
           throw new PlayServiceAccountError(
             "api-not-enabled",
-            `Google is still enabling the APIs in ${project.projectId}: ${error.apiMessage} Wait a few minutes, then run this again.`,
+            `Google is still enabling the APIs in ${project.projectId}.\n${error.apiMessage}\nWait a few minutes, then run this again.`,
             { cause: error },
           );
         }
@@ -476,7 +488,11 @@ const enableServices = async ({
     if (isDenied(error) && !isServiceDisabled(error)) {
       throw new PlayServiceAccountError(
         "project-access-denied",
-        `This Google Account may not enable APIs in ${projectId}: ${(error as GoogleApiError).apiMessage || "permission denied"}. Pick a project you own, or ask its owner for the Editor role.`,
+        [
+          `This Google Account may not enable APIs in ${projectId}.`,
+          (error as GoogleApiError).apiMessage || "Permission denied.",
+          "Pick a project you own, or ask its owner for the Editor role.",
+        ].join("\n"),
         { cause: error },
       );
     }
@@ -521,7 +537,11 @@ const ensureServiceAccount = async ({
     if (isDenied(error) && !isServiceDisabled(error)) {
       throw new PlayServiceAccountError(
         "project-access-denied",
-        `This Google Account may not create service accounts in ${projectId}: ${(error as GoogleApiError).apiMessage || "permission denied"}. Pick a project you own, or ask its owner for the Service Account Admin role.`,
+        [
+          `This Google Account may not create service accounts in ${projectId}.`,
+          (error as GoogleApiError).apiMessage || "Permission denied.",
+          "Pick a project you own, or ask for the Service Account Admin role.",
+        ].join("\n"),
         { cause: error },
       );
     }
@@ -660,7 +680,11 @@ const createKey = async ({
     ) {
       throw new PlayServiceAccountError(
         "key-creation-disabled",
-        `An organization policy (iam.disableServiceAccountKeyCreation) forbids service account keys in ${projectId}; organizations created since 2024 enforce it by default. Ask an organization policy admin to allow keys for this project, or run this again with a project outside the organization. The service account ${email} and its Play Console access remain for the next run.`,
+        [
+          `iam.disableServiceAccountKeyCreation forbids keys in ${projectId}.`,
+          "Ask an organization policy admin to allow keys for this project,",
+          "or run this again with a project outside the organization.",
+        ].join("\n"),
         { cause: error },
       );
     }

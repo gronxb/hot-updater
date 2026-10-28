@@ -1,6 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -118,7 +123,7 @@ describe("reuseNativeBuild", () => {
       changed: ["file:src/App.tsx", "env:EXPO_PUBLIC_A"],
     });
     expect(lines(p.log.info)).toEqual([
-      "Building: no tracked build has this key; changed since this machine's cached build: src/App.tsx, $EXPO_PUBLIC_A (key nbk1:aaaaaaaaaaaa…)",
+      "Cache miss: no build has this key\nKey      nbk1:aaaaaaaaaaaa…\nChanged  src/App.tsx\n         $EXPO_PUBLIC_A",
     ]);
     expect(findCachedNativeBuild).toHaveBeenCalledWith({
       key: KEY,
@@ -152,7 +157,7 @@ describe("reuseNativeBuild", () => {
 
     expect(cache.hit).toBeNull();
     expect(lines(p.log.info)).toEqual([
-      `Building: this machine's cached build with this key has the MIN_BUNDLE_ID ${result.minBundleId}, which another native build registered first (key nbk1:aaaaaaaaaaaa…)`,
+      `Cache miss: the cached build's MIN_BUNDLE_ID is taken\nMIN_BUNDLE_ID  ${result.minBundleId}\nKey            nbk1:aaaaaaaaaaaa…`,
     ]);
   });
 
@@ -169,7 +174,7 @@ describe("reuseNativeBuild", () => {
 
     expect(cache.report.hit).toBe("storage");
     expect(lines(p.log.success)[0]).toBe(
-      "Reusing native build build-1 (key nbk1:aaaaaaaaaaaa…; storage)\n    Artifact: out/app.apk",
+      "Cache hit: reusing a native build\nID        build-1\nFrom      storage\nKey       nbk1:aaaaaaaaaaaa…\nArtifact  out/app.apk",
     );
     expect(saveCachedNativeBuild).toHaveBeenCalledWith(
       expect.objectContaining({ key: KEY, nativeBuildId: "build-1" }),
@@ -221,7 +226,7 @@ describe("reuseNativeBuild", () => {
     });
     expect(findCachedNativeBuild).not.toHaveBeenCalled();
     expect(lines(p.log.info)[0]).toBe(
-      "Building: no build can be reused, as a Debug build loads its JavaScript from Metro.",
+      "Cache skipped\nReason  a Debug build loads its JavaScript from Metro",
     );
     // The new build is still cached with its key.
     await noCache.remember(result, null);
@@ -243,7 +248,14 @@ describe("reuseNativeBuild", () => {
     );
     expect((await reuse()).hit).toBeNull();
     expect(lines(p.log.warn)[0]).toBe(
-      "Building: the build with key nbk1:aaaaaaaaaaaa… could not be reused: storage unreachable",
+      "Couldn't reuse the build with key nbk1:aaaaaaaaaaaa…:\nstorage unreachable",
     );
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

@@ -58,13 +58,14 @@ import {
 import {
   isNativeBuildConflict,
   issueMinBundleId,
+  NativeBuildUnreachableError,
   preflightNativeBuildRegistration,
   registerNativeBuild,
 } from "@/utils/native/registerNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
@@ -287,7 +288,7 @@ const buildNativeInternal = async ({
           },
         });
         if (!preparedConfig) {
-          throw new NativeBuildFailure("preparing native build failed");
+          throw new NativeBuildFailure("Preparing the native build failed.");
         }
         const {
           buildAdapter,
@@ -392,7 +393,9 @@ const buildNativeInternal = async ({
             };
             // The store matched the version and build number, not this
             // artifact: nothing is recorded, as for a refused upload.
-            logAlreadySubmitted(existingSubmission, existing.testFlightUrl);
+            logAlreadySubmitted(existingSubmission, {
+              url: existing.testFlightUrl,
+            });
           }
         }
         if (apiKey && !existingSubmission) {
@@ -403,7 +406,7 @@ const buildNativeInternal = async ({
                   ipaPath: result.artifactPath,
                   apiKey,
                 }),
-              `The build stays at ${result.artifactPath}.`,
+              stays(result.artifactPath),
             ),
             (cause) =>
               cause instanceof TestFlightBuildExistsError
@@ -415,10 +418,15 @@ const buildNativeInternal = async ({
             existingSubmission = uploaded.refused;
           } else if (uploaded.state === "COMPLETE") {
             p.log.success(
-              ui.line([
-                "Uploaded to",
-                ui.platform("TestFlight"),
-                ui.path(uploaded.testFlightUrl),
+              ui.summary("Uploaded to TestFlight", [
+                [
+                  "Version",
+                  storeVersionLabel(
+                    uploaded.shortVersion,
+                    uploaded.bundleVersion,
+                  ),
+                ],
+                ["Open", uploaded.testFlightUrl],
               ]),
             );
             // Recorded once App Store Connect accepted the build. A build
@@ -473,7 +481,7 @@ const buildNativeInternal = async ({
             // Google Play refuses a debug-signed .aab after the upload.
             await reportUploadFailure(
               () => assertPlaySigned(result.artifactPath),
-              `The build stays at ${result.artifactPath}.`,
+              stays(result.artifactPath),
             );
             const versionCodeOfArtifact = async () =>
               result.buildNumber ??
@@ -492,9 +500,9 @@ const buildNativeInternal = async ({
                   }),
                 [
                   serviceAccountIssued
-                    ? "If Google Play refused the new service account, it may not have its access yet: the key is stored, so run the build again in a few minutes without signing in."
+                    ? "A new service account can take minutes to get Play access: build again soon."
                     : undefined,
-                  `The build stays at ${result.artifactPath}.`,
+                  stays(result.artifactPath),
                 ]
                   .filter(Boolean)
                   .join("\n"),
@@ -513,11 +521,12 @@ const buildNativeInternal = async ({
             } else {
               const { versionCode, status } = uploaded;
               p.log.success(
-                ui.line([
-                  status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
-                  ui.platform("Google Play internal testing"),
-                  ui.muted(`version code ${versionCode}`),
-                ]),
+                ui.summary(
+                  status === "draft"
+                    ? "Uploaded to Google Play internal testing as a draft"
+                    : "Uploaded to Google Play internal testing",
+                  [["Version code", versionCode]],
+                ),
               );
               // Google Play took the bundle on the internal track, as a draft
               // release when the app is not published yet.
@@ -531,7 +540,7 @@ const buildNativeInternal = async ({
         }
         const alreadySubmitted = existingSubmission !== null;
         if (dryRun) {
-          p.log.message(summarizeDryRun(result, upload, reused));
+          p.log.step(summarizeDryRun(result, upload, reused));
         }
         if (json) {
           console.log(
@@ -562,7 +571,7 @@ const buildNativeInternal = async ({
         }
         if (missingSubmitKey !== undefined) {
           throw new NativeBuildFailure(
-            `The dry run built, and a real run could not submit to ${upload === "testflight" ? "TestFlight" : "Google Play"}: ${missingSubmitKey}`,
+            `A real run couldn't submit to ${upload === "testflight" ? "TestFlight" : "Google Play"}.\n${missingSubmitKey}`,
           );
         }
         return result;
@@ -608,18 +617,16 @@ const buildNow = async ({
     minBundleId = tracked ? await issueMinBundleId() : createMinBundleId();
   } catch (error) {
     throw new NativeBuildFailure(
-      `Hot Updater tracks every native build, and can't reach its native build registry: ${error instanceof Error ? error.message : String(error)}\nNothing was built. Check the database in hot-updater.config.ts, and its credentials.`,
+      [
+        "Can't reach the native build registry. Nothing was built.",
+        error instanceof Error ? error.message : String(error),
+        "Check the database in hot-updater.config.ts and its credentials.",
+      ].join("\n"),
       { cause: error },
     );
   }
 
-  p.log.info(
-    ui.line([
-      "Building",
-      ui.platform(platformName),
-      ui.muted(buildAdapter.name),
-    ]),
-  );
+  p.log.info(`Building ${platformName} ${ui.muted(`(${buildAdapter.name})`)}`);
   const result = await createNativeBuild({
     platform,
     scheme,
@@ -653,14 +660,10 @@ const buildNow = async ({
             }),
   });
   p.log.success(
-    [
-      ui.line([
-        "Built",
-        ui.platform(platformName),
-        ui.muted(buildAdapter.name),
-      ]),
-      summarizeNativeBuild(result),
-    ].join("\n"),
+    ui.summary(
+      `Built ${platformName} ${ui.muted(`(${buildAdapter.name})`)}`,
+      nativeBuildRows(result),
+    ),
   );
   return result;
 };
@@ -683,9 +686,7 @@ const prepareTracking = async ({
   debug: boolean;
 }): Promise<NativeBuildTrackingSkip | null> => {
   if (debug) {
-    p.log.info(
-      `Not tracking this build: the scheme ${scheme} builds Debug, which loads its JavaScript from Metro and has no built-in bundle to track.`,
-    );
+    p.log.info(`Not tracking ${scheme}: a Debug build has no built-in bundle.`);
     return "debug";
   }
   // The scope the build would have, read without writing the native
@@ -699,7 +700,17 @@ const prepareTracking = async ({
     await preflightNativeBuildRegistration(scope);
   } catch (error) {
     throw new NativeBuildFailure(
-      `Hot Updater tracks every native build, and can't reach ${error instanceof Error ? error.message : String(error)}\nNothing was built. Check the database and storage in hot-updater.config.ts, and their credentials.`,
+      [
+        error instanceof NativeBuildUnreachableError
+          ? `Can't reach ${error.what}. Nothing was built.`
+          : "Can't reach the server. Nothing was built.",
+        error instanceof NativeBuildUnreachableError
+          ? error.reason
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        "Check the database and storage in hot-updater.config.ts.",
+      ].join("\n"),
       { cause: error },
     );
   }
@@ -731,19 +742,27 @@ const formatUtc = (ms: number) =>
 
 /**
  * Says the store already has the build, which this run doesn't upload
- * again: a store takes each build number once.
+ * again: a store takes each build number once. A build the store refused,
+ * which this run built to upload, needs a new build number.
  */
-const logAlreadySubmitted = (existing: ExistingSubmission, url?: string) =>
-  p.log.info(
+const logAlreadySubmitted = (
+  existing: ExistingSubmission,
+  { url, refused = false }: { url?: string; refused?: boolean } = {},
+) =>
+  p.log.step(
     [
-      `Already on ${STORE_NAMES[existing.destination]}`,
-      existing.submittedAtMs === null
-        ? ""
-        : ` since ${formatUtc(existing.submittedAtMs)}`,
-      existing.version === null ? "" : ` as ${existing.version}`,
-      `. Bump the build number to upload a new build.`,
-      url ? ` ${url}` : "",
-    ].join(""),
+      ui.summary(`Already on ${STORE_NAMES[existing.destination]}`, [
+        existing.version !== null && ["Version", existing.version],
+        existing.submittedAtMs !== null && [
+          "Since",
+          formatUtc(existing.submittedAtMs),
+        ],
+        url !== undefined && ["Open", url],
+      ]),
+      refused ? "Bump the build number to upload this build." : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n"),
   );
 
 /**
@@ -769,7 +788,7 @@ const storeRefusal = async <T>(
       submittedAtMs: null,
       source: "store",
     };
-    logAlreadySubmitted(refused);
+    logAlreadySubmitted(refused, { refused: true });
     return { refused };
   }
 };
@@ -808,13 +827,18 @@ const recordSubmission = async (
   } catch (error) {
     throw new NativeBuildFailure(
       [
-        `${destination === "testflight" ? "TestFlight" : "Google Play"} has build ${version}, but recording it on native build ${build.id} failed: ${error instanceof Error ? error.message : String(error)}`,
-        "The store keeps the build: a run with the same inputs reuses it and skips the upload.",
+        `Couldn't record the ${destination === "testflight" ? "TestFlight" : "Google Play"} upload of ${version} on native build ${build.id}.`,
+        error instanceof Error ? error.message : String(error),
+        "The store keeps the build; a rerun skips its upload.",
       ].join("\n"),
       { cause: error },
     );
   }
 };
+
+/** Where a build that was not submitted stays. */
+const stays = (artifactPath: string) =>
+  `The build stays at ${ui.fitPath(artifactPath, ARTIFACT_PATH_WIDTH - 5)}.`;
 
 /**
  * Tracks the build, before any store submission: a build Hot Updater could
@@ -830,11 +854,17 @@ const trackBuild = async (
   } catch (error) {
     throw new NativeBuildFailure(
       [
+        "Couldn't track the native build.",
         isNativeBuildConflict(error)
-          ? `Tracking the native build failed: another native build registered its built-in bundle ${result.minBundleId} first, as a build that started in the same millisecond does. Build it again: the build issues a new MIN_BUNDLE_ID.`
-          : `Tracking the native build failed: ${error instanceof Error ? error.message : String(error)}`,
-        `The build stays at ${result.artifactPath}${upload ? `, and was not submitted to ${upload === "testflight" ? "TestFlight" : "Google Play"}` : ""}.`,
-      ].join("\n"),
+          ? `MIN_BUNDLE_ID ${result.minBundleId} is taken by another build.\nBuild again for a new MIN_BUNDLE_ID.`
+          : error instanceof Error
+            ? error.message
+            : String(error),
+        upload ? `Not submitted to ${STORE_NAMES[upload]}.` : undefined,
+        stays(result.artifactPath),
+      ]
+        .filter(Boolean)
+        .join("\n"),
       { cause: error },
     );
   }
@@ -846,50 +876,34 @@ const summarizeDryRun = (
   upload: NativeBuildCreateOptions["submit"],
   reused: NativeBuildCacheHit | null,
 ): string =>
-  ui.block("Dry run: nothing was recorded or submitted", [
-    ui.kv("Platform", ui.platform(result.platform)),
-    ui.kv("Channel", ui.channel(result.channel)),
-    result.fingerprintHash === null
-      ? ui.kv("App version", ui.version(result.appVersion))
-      : ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
-    ui.kv("Min bundle ID", ui.id(result.minBundleId)),
-    ui.kv("Artifact", ui.path(result.artifactPath)),
-    ui.kv(
-      "Would record",
-      result.minBundleId === NIL_UUID
-        ? "nothing: a Debug build has no built-in bundle"
-        : reused?.source === "storage"
-          ? `nothing: Hot Updater tracks this build as ${reused.nativeBuild.id}`
-          : "this native build, its artifact, and its built-in bundle, in Hot Updater",
-    ),
-    ui.kv(
-      "Would submit",
-      upload === "testflight"
-        ? "to TestFlight"
-        : upload === "play-internal"
-          ? "to Google Play's internal testing track"
-          : "nothing (no --submit)",
-    ),
-  ]);
-
-const summarizeNativeBuild = (result: NativeBuildResult): string => {
-  const rows: [label: string, value: string][] = [
-    ["Artifact", ui.path(result.artifactPath)],
-    ["Kind", result.artifactKind],
-    ["Min bundle ID", ui.id(result.minBundleId)],
+  ui.summary("Dry run: nothing was recorded or submitted", [
+    ["Platform", ui.platform(result.platform)],
+    ["Channel", ui.channel(result.channel)],
     result.fingerprintHash === null
       ? ["App version", ui.version(result.appVersion)]
       : ["Fingerprint", ui.id(result.fingerprintHash)],
-    ["Channel", ui.channel(result.channel)],
-  ];
-  const labelWidth = Math.max(...rows.map(([label]) => label.length + 1));
-  return rows
-    .map(
-      ([label, value]) =>
-        `    ${ui.muted(`${label}:`.padEnd(labelWidth))} ${value}`,
-    )
-    .join("\n");
-};
+    ["Min bundle ID", ui.id(result.minBundleId)],
+    ["Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)],
+    [
+      "Would record",
+      result.minBundleId === NIL_UUID
+        ? "nothing (a Debug build)"
+        : reused?.source === "storage"
+          ? `nothing (tracked as ${reused.nativeBuild.id})`
+          : "the native build and its built-in bundle",
+    ],
+    ["Would submit", upload ? `to ${STORE_NAMES[upload]}` : "nothing"],
+  ]);
+
+const nativeBuildRows = (result: NativeBuildResult): Row[] => [
+  ["Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)],
+  ["Kind", result.artifactKind],
+  ["Min bundle ID", ui.id(result.minBundleId)],
+  result.fingerprintHash === null
+    ? ["App version", ui.version(result.appVersion)]
+    : ["Fingerprint", ui.id(result.fingerprintHash)],
+  ["Channel", ui.channel(result.channel)],
+];
 
 /**
  * Resolves the credentials the build signs with: an iOS device build's

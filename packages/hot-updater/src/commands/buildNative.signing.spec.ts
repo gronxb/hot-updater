@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { events, prebuildScheme, resolve } = vi.hoisted(() => {
   const events: string[] = [];
@@ -28,7 +33,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
   p: {
-    log: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    log: {
+      info: vi.fn(),
+      step: vi.fn(),
+      success: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+    },
   },
   withCredentialResolver: vi.fn(async (run) =>
     run({ resolve, dispose: vi.fn() }),
@@ -202,7 +213,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       events.push(`resolve ${request.kind} ${request.name}`);
       throw new CredentialUnavailableError(
         "android-keystore",
-        "release-keystore (android-keystore) is not in the localSecrets secrets adapter.",
+        "No release-keystore (android-keystore) in the localSecrets secrets adapter.",
       );
     });
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -221,7 +232,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       "exit",
     ]);
     expect(p.log.error).toHaveBeenCalledWith(
-      "release-keystore (android-keystore) is not in the localSecrets secrets adapter.",
+      "No release-keystore (android-keystore) in the localSecrets secrets adapter.",
     );
   });
 
@@ -257,4 +268,11 @@ describe("native-build ios|android resolves its signing credentials before the p
       setConfiguredSecrets(withLocalKeyStore());
     }
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

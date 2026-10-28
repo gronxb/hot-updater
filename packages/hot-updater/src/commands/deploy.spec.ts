@@ -1,6 +1,12 @@
 import { pipeline } from "stream/promises";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { p } from "@hot-updater/cli-tools";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
   vi.hoisted(() => {
@@ -1494,8 +1500,7 @@ describe("deploy rollout wiring", () => {
       signing: mockSigningAdapter,
       updateStrategy: "appVersion",
     });
-    const reason =
-      "Failed to resolve the bundle signing provider public key. https://signer.example.com/sign answered 403 forbidden: The signing token may sign with a, b: scope it to one key.";
+    const reason = "https://signer.example.com/sign answered 403 forbidden.";
     mockCli.prepareBundleSigning.mockRejectedValue(new Error(reason));
     const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
       throw new Error("process.exit");
@@ -1514,7 +1519,13 @@ describe("deploy rollout wiring", () => {
 
       // The reason is printed, not thrown past the CLI as a stack trace.
       expect(exit).toHaveBeenCalledWith(1);
-      expect(mockCli.p.log.error).toHaveBeenCalledWith(`  ${reason}`);
+      expect(mockCli.p.log.error).toHaveBeenCalledWith(
+        [
+          "Bundle signing isn't ready: nothing was deployed.",
+          reason,
+          "Fix signing in hot-updater.config.ts, then deploy again.",
+        ].join("\n"),
+      );
       expect(mockBuildAdapter.build).not.toHaveBeenCalled();
       expect(mockStorageAdapter.put).not.toHaveBeenCalled();
       expect(await databaseHarness.releases()).toEqual([]);
@@ -2149,7 +2160,7 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining("Target app version not found in native files"),
+      expect.stringContaining("Target app version not found in Info.plist"),
     );
     expect(await databaseHarness.bundles()).toEqual([]);
   });
@@ -2172,7 +2183,7 @@ describe("deploy rollout wiring", () => {
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "builds several app versions (BrandA (Release): 5.5.1, BrandB (Release): 5.8.0)",
+        "builds several app versions:\nBrandA (Release): 5.5.1, BrandB (Release): 5.8.0",
       ),
     );
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
@@ -2256,4 +2267,11 @@ describe("deploy rollout wiring", () => {
       target_app_version: "1.7.0",
     });
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

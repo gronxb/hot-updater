@@ -576,12 +576,12 @@ const deployPlatform = async ({
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
     prepareBundleSigning(config.signing, { cwd }).catch((error: unknown) => {
-      p.log.error("Signing configuration error:");
       p.log.error(
-        `  ${error instanceof Error ? error.message : String(error)}`,
-      );
-      p.log.error(
-        "Deployment blocked. Fix the signing configuration and try again.",
+        [
+          "Bundle signing isn't ready: nothing was deployed.",
+          error instanceof Error ? error.message : String(error),
+          "Fix signing in hot-updater.config.ts, then deploy again.",
+        ].join("\n"),
       );
       return process.exit(1);
     }),
@@ -723,7 +723,11 @@ const deployPlatform = async ({
   } else {
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.warn(
-        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, then rebuild the apps.`,
+        [
+          `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'.`,
+          "Apps built here report the fingerprint strategy.",
+          "Delete fingerprint.json, then rebuild the apps.",
+        ].join("\n"),
       );
     }
     const defaultTargetAppVersion = options.targetAppVersion
@@ -760,8 +764,8 @@ const deployPlatform = async ({
     if (!targetAppVersion) {
       p.log.error(
         ambiguousVersions
-          ? `The native project builds several app versions (${ambiguousVersions}), so the target app version for this deploy cannot be read from it. Pass -t <targetAppVersion> for the app this deploy targets.`
-          : "Target app version not found in native files (Info.plist or project.pbxproj for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
+          ? `The native project builds several app versions:\n${ambiguousVersions}\nPass -t <targetAppVersion> for the app this deploy targets.`
+          : "Target app version not found in Info.plist, project.pbxproj, build.gradle.\nPass -t <targetAppVersion>.",
       );
       return null;
     }

@@ -11,7 +11,7 @@ import {
 import type { NativeBuildScope, Platform } from "@hot-updater/plugin-core";
 
 import { version } from "../../packageJson";
-import { ui } from "../cli-ui";
+import { ARTIFACT_PATH_WIDTH, ui } from "../cli-ui";
 import { getChannel } from "../setChannel";
 import {
   computeNativeBuildKey,
@@ -65,10 +65,12 @@ const describeChange = (change: string) => {
   }
 };
 
-const describeChanges = (changed: readonly string[]) => {
-  const shown = changed.slice(0, 5).map(describeChange).join(", ");
-  return changed.length > 5 ? `${shown} (+${changed.length - 5} more)` : shown;
-};
+/** Up to five changes, one per line. */
+const describeChanges = (changed: readonly string[]) =>
+  [
+    ...changed.slice(0, 5).map(describeChange),
+    ...(changed.length > 5 ? [`(+${changed.length - 5} more)`] : []),
+  ].join("\n");
 
 /** The artifact a scheme builds. */
 const artifactKindOf = (
@@ -217,7 +219,7 @@ export const reuseNativeBuild = async ({
       });
     } catch (error) {
       p.log.warn(
-        `The build was not cached on this machine: ${error instanceof Error ? error.message : String(error)}`,
+        `Couldn't cache the build on this machine.\n${error instanceof Error ? error.message : String(error)}`,
       );
     }
   };
@@ -232,14 +234,14 @@ export const reuseNativeBuild = async ({
   });
 
   if (key.key === null) {
-    p.log.info(`Building: no build can be reused, as ${key.uncacheable}.`);
+    p.log.info(ui.summary("Cache skipped", [["Reason", key.uncacheable]]));
     return { key, slot, hit: null, report: report(null), remember };
   }
   if (noCache) {
     p.log.info(
-      ui.line([
-        "Building: --no-cache reuses no build",
-        ui.muted(`(key ${shortKey(key.key)}, computed in ${seconds} s)`),
+      ui.summary("Cache skipped (--no-cache)", [
+        ["Key", shortKey(key.key)],
+        ["Computed", `${seconds} s`],
       ]),
     );
     return { key, slot, hit: null, report: report(null), remember };
@@ -270,7 +272,7 @@ export const reuseNativeBuild = async ({
     });
   } catch (error) {
     p.log.warn(
-      `Building: the build with key ${shortKey(key.key)} could not be reused: ${error instanceof Error ? error.message : String(error)}`,
+      `Couldn't reuse the build with key ${shortKey(key.key)}:\n${error instanceof Error ? error.message : String(error)}`,
     );
     return { key, slot, hit: null, report: report(null), remember };
   }
@@ -281,14 +283,18 @@ export const reuseNativeBuild = async ({
         ? hit.nativeBuild.id
         : (hit.nativeBuildId ?? hit.result.minBundleId);
     p.log.success(
-      [
-        ui.line([
-          "Reusing native build",
-          ui.id(id),
-          ui.muted(`(key ${shortKey(key.key)}; ${hit.source})`),
-        ]),
-        `    ${ui.muted("Artifact:")} ${ui.path(path.relative(cwd, hit.result.artifactPath))}`,
-      ].join("\n"),
+      ui.summary("Cache hit: reusing a native build", [
+        ["ID", ui.id(id)],
+        ["From", hit.source === "storage" ? "storage" : "this machine"],
+        ["Key", shortKey(key.key)],
+        [
+          "Artifact",
+          ui.fitPath(
+            path.resolve(cwd, hit.result.artifactPath),
+            ARTIFACT_PATH_WIDTH,
+          ),
+        ],
+      ]),
     );
     // A build downloaded from storage is kept here for the next run, and
     // one copied from here is marked tracked.
@@ -312,15 +318,21 @@ export const reuseNativeBuild = async ({
     cached === null
       ? []
       : diffNativeBuildKeyComponents(cached.components, key.components);
-  const why = missingArtifact
-    ? `the tracked build ${missingArtifact.id} with this key has no artifact in storage`
-    : takenMinBundleId
-      ? `this machine's cached build with this key has the MIN_BUNDLE_ID ${cached!.build.minBundleId}, which another native build registered first`
-      : cached === null
-        ? "no tracked build has this key, and none is cached on this machine"
-        : `no tracked build has this key; changed since this machine's cached build: ${describeChanges(changed)}`;
   p.log.info(
-    ui.line([`Building: ${why}`, ui.muted(`(key ${shortKey(key.key)})`)]),
+    missingArtifact
+      ? ui.summary("Cache miss: the tracked build has no artifact", [
+          ["Build", ui.id(missingArtifact.id)],
+          ["Key", shortKey(key.key)],
+        ])
+      : takenMinBundleId
+        ? ui.summary("Cache miss: the cached build's MIN_BUNDLE_ID is taken", [
+            ["MIN_BUNDLE_ID", ui.id(cached!.build.minBundleId)],
+            ["Key", shortKey(key.key)],
+          ])
+        : ui.summary("Cache miss: no build has this key", [
+            ["Key", shortKey(key.key)],
+            changed.length > 0 && ["Changed", describeChanges(changed)],
+          ]),
   );
   return {
     key,

@@ -521,12 +521,12 @@ describe("runAction preview", () => {
       async () => {
         throw new TypeError("fetch failed");
       },
-      "The Console is unreachable from the runner (fetch failed), as a private Console is, so the comment links the APK's download without a QR code.",
+      "No QR code in the comment: the Console is unreachable from the runner (fetch failed).",
     ],
     [
       "answers an error",
       async () => new Response("", { status: 404 }),
-      "The Console answered 404 to https://console.example.com/_hot-updater/native-builds/qr?build=build-1, so the comment links the APK's download without a QR code.",
+      "No QR code in the comment: the Console answered 404 to https://console.example.com/_hot-updater/native-builds/qr?build=build-1.",
     ],
     [
       // A Console behind a proxy that sees another address than the runner.
@@ -538,7 +538,7 @@ describe("runAction preview", () => {
               "http://10.0.0.2:3000/api/native-builds/build-1/download",
           },
         }),
-      "The Console's QR code at https://console.example.com/_hot-updater/native-builds/qr?build=build-1 holds http://10.0.0.2:3000/api/native-builds/build-1/download, not https://console.example.com/api/native-builds/build-1/download, so the comment links the APK's download without a QR code.",
+      "No QR code in the comment: the QR code at https://console.example.com/_hot-updater/native-builds/qr?build=build-1 holds http://10.0.0.2:3000/api/native-builds/build-1/download, not https://console.example.com/api/native-builds/build-1/download.",
     ],
   ])(
     "links the download without a QR code when the Console %s",

@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -198,7 +203,7 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
 
 import { issuePlayServiceAccount } from "@hot-updater/android-helper";
 import { issueAscApiKey } from "@hot-updater/apple-helper";
-import { getCwd, getLocalKeyFile } from "@hot-updater/cli-tools";
+import { p, getCwd, getLocalKeyFile } from "@hot-updater/cli-tools";
 
 import { handleNativeBuildCreate } from "./buildNative";
 
@@ -269,9 +274,9 @@ describe("a first build without a secrets adapter", () => {
       keyId: "KEY1234567",
       p8: P8,
     });
-    expect(printed()).toContain(file);
+    expect(printed()).toContain(path.basename(file));
     expect(printed()).toContain(
-      "No App Store Connect API key on this machine.",
+      "No App Store Connect API key on this machine: signing in issues one.",
     );
     expect(printed()).not.toContain("MIGHAgEA");
     expect(log.error).not.toHaveBeenCalled();
@@ -296,7 +301,7 @@ describe("a first build without a secrets adapter", () => {
     );
 
     expect(uploads).toEqual([{ keyId: "KEY1234567", p8: P8 }]);
-    expect(printed()).toContain("kept on this machine");
+    expect(printed()).toContain("copied to this machine");
     expect(printed()).not.toContain("MIGHAgEA");
     expect(log.error).not.toHaveBeenCalled();
   });
@@ -341,4 +346,11 @@ describe("a first build without a secrets adapter", () => {
     expect(issuePlayServiceAccount).not.toHaveBeenCalled();
     expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

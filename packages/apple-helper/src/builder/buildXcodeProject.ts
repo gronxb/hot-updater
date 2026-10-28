@@ -15,6 +15,7 @@ import {
   getDefaultDestination,
   resolveDestinations,
 } from "../utils/destination";
+import { formatCommand } from "../utils/formatCommand";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
@@ -113,14 +114,18 @@ export const buildXcodeProject = async ({
       xcodeProject,
     });
 
-    p.log.info(`Xcode Build Settings:
-Project        ${xcodeProject.name}
-Scheme         ${xcodeScheme}
-Configuration  ${configuration}
-Platform       ${platform}
-Device Type    ${deviceType}
-Command        xcodebuild ${buildArgs.join(" ")}
-`);
+    p.log.info(
+      [
+        "Xcode build",
+        `Project        ${xcodeProject.name}`,
+        `Scheme         ${xcodeScheme}`,
+        `Configuration  ${configuration}`,
+        `Platform       ${platform}`,
+        `Device type    ${deviceType}`,
+        "Command",
+        formatCommand(["xcodebuild", ...buildArgs]),
+      ].join("\n"),
+    );
 
     let builtAppPath: string;
     try {

@@ -33,7 +33,7 @@ export const resolveGradleSigningEnv = async ({
   }
   if (isDebugVariant(schemeConfig.variant)) {
     p.log.info(
-      `${schemeConfig.variant} signs with the debug keystore, so signing.keystore is not used.`,
+      `${schemeConfig.variant} signs with the debug keystore; signing.keystore is unused.`,
     );
     return undefined;
   }

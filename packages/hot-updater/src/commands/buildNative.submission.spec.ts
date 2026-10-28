@@ -1,5 +1,11 @@
+import { p } from "@hot-updater/cli-tools";
 import type { NativeBuildRow, Platform } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
@@ -93,6 +99,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: {
     log: {
       info: vi.fn(),
+      step: vi.fn(),
       success: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
@@ -384,8 +391,8 @@ describe("native-build ios --submit testflight", () => {
       .toISOString()
       .slice(0, 16)
       .replace("T", " ");
-    expect(p.log.info).toHaveBeenCalledWith(
-      `Already on TestFlight since ${since} UTC as 1.7.0 (66). Bump the build number to upload a new build.`,
+    expect(p.log.step).toHaveBeenCalledWith(
+      `Already on TestFlight\nVersion  1.7.0 (66)\nSince    ${since} UTC`,
     );
     expect(printed.submission).toEqual({
       destination: "testflight",
@@ -418,8 +425,8 @@ describe("native-build ios --submit testflight", () => {
 
     const printed = lastJson(log);
     log.mockRestore();
-    expect(p.log.info).toHaveBeenCalledWith(
-      "Already on TestFlight as 1.7.0 (66). Bump the build number to upload a new build.",
+    expect(p.log.step).toHaveBeenCalledWith(
+      "Already on TestFlight\nVersion  1.7.0 (66)\nBump the build number to upload this build.",
     );
     expect(printed.submission).toMatchObject({
       skipped: "already-submitted",
@@ -519,8 +526,8 @@ describe("native-build android --submit play-internal", () => {
       submit: "play-internal",
     });
 
-    expect(p.log.info).toHaveBeenCalledWith(
-      "Already on Google Play internal testing as 1.7.0 (66). Bump the build number to upload a new build.",
+    expect(p.log.step).toHaveBeenCalledWith(
+      "Already on Google Play internal testing\nVersion  1.7.0 (66)\nBump the build number to upload this build.",
     );
     expect(submission(await stored())).toEqual(NONE);
   });
@@ -537,4 +544,11 @@ describe("native-build android --submit play-internal", () => {
     expect(uploadToPlay).not.toHaveBeenCalled();
     expect(submission(await stored())).toEqual(NONE);
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });

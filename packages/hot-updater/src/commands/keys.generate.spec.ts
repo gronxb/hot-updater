@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -25,11 +30,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     p: {
       ...actual.p,
       log: {
-        error: record,
-        info: record,
-        message: record,
-        success: record,
-        warn: record,
+        error: vi.fn(record),
+        info: vi.fn(record),
+        message: vi.fn(record),
+        success: vi.fn(record),
+        warn: vi.fn(record),
       },
       spinner: () => ({ error: record, start: record, stop: record }),
     },
@@ -41,6 +46,7 @@ vi.mock("../utils/git", () => ({
 }));
 
 import {
+  p,
   getLocalKeyFile,
   readLocalKey,
   withLocalKeyStore,
@@ -169,7 +175,7 @@ describe("keys generate --secret", () => {
     expect(set).not.toHaveBeenCalled();
     expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
     expect(output()).toContain(
-      "bundle-signing-key already holds a value in the fake secrets adapter (fake://store/bundle-signing-key), and keys generate never replaces it",
+      "bundle-signing-key already holds a value in the fake secrets adapter.\nkeys generate never replaces a signing key.",
     );
   });
 
@@ -239,6 +245,13 @@ describe("keys generate --secret", () => {
     ).rejects.toThrow("process.exit");
 
     expect(mocks.loadConfig).not.toHaveBeenCalled();
-    expect(output()).toContain('"../key" is no secret name');
+    expect(output()).toContain('"../key" is not a secret name.');
   });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
+    [],
+  );
 });
