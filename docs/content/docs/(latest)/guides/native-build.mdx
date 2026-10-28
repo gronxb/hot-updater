@@ -211,10 +211,13 @@ read it, as one JSON value:
   write-only store, also gets a copy in the `localSecrets()` store, which
   builds on your machine read after the adapter.
 
-Each machine keeps its own key: on another machine a sign-in issues a new one.
-After issuing, the CLI prints where to revoke the keys nothing uses anymore,
-App Store Connect's Integrations page (Team Keys) or the service account's
-keys in Google Cloud. To use one key on every machine and in CI, see
+With `localSecrets()`, each machine keeps its own key: on another machine a
+sign-in issues a new one. With a
+[team store](/docs/concepts/secrets#this-machine-or-the-team), a teammate's
+sign-in finds the key already stored and issues none. After issuing, the CLI
+prints where to revoke the keys nothing uses anymore, App Store Connect's
+Integrations page (Team Keys) or the service account's keys in Google Cloud.
+To use one key on every machine and in CI, see
 [Share a key across machines](/docs/concepts/secrets#share-a-key-across-machines).
 
 For CI, store the same value as a repository secret and map it into the job,

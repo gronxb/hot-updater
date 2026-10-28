@@ -69,6 +69,8 @@ revoke once CI no longer uses it. With
 to store it as the GitHub Actions secret CI reads; another adapter stores it
 where CI reads it
 ([where an issued key goes](/docs/guides/native-build#where-an-issued-key-goes)).
+With a [team store](/docs/concepts/secrets#this-machine-or-the-team), one
+person runs them once, and every teammate and CI read the same keys.
 
 The App Store Connect API key is a team key with the Admin role: CI signs
 with Xcode's cloud-managed distribution certificate, which only an Admin key

@@ -114,4 +114,5 @@ Patch releases of one minor (such as 1.0.x) may change native code, the server, 
 ## Security & Configuration
 
 - Do not commit secrets. Use `.env.hotupdater` for provider credentials (Supabase, Cloudflare, AWS, Firebase, Vercel, Azure, etc.).
+- Every credential read, write, and "already stored" check goes through the config's `secrets` adapter; a local copy is only a fallback. `localSecrets()` is one machine's; a team store shares every credential with the team.
 - Keep tokens local; review `.gitignore` and provider guides in `README.md`/site docs.
