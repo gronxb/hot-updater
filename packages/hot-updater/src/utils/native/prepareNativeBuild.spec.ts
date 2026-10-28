@@ -15,13 +15,15 @@ import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { prepareNativeBuild } from "./prepareNativeBuild";
 
+const spinner = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn() }));
+
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: vi.fn(),
   loadConfig: vi.fn(),
   p: {
     log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-    spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+    spinner: () => spinner,
     select: vi.fn(),
     isCancel: () => false,
   },
@@ -143,6 +145,23 @@ describe("prepareNativeBuild", () => {
     expect(vi.mocked(loadConfig).mock.calls).toEqual([
       [{ platform: "ios", channel: "" }],
     ]);
+    expect(spinner.start).toHaveBeenCalledWith("Reading the iOS app version");
+    expect(spinner.stop).toHaveBeenCalledWith("iOS app version 1.0.0");
+  });
+
+  it("stops on the missing app version, not on a null one, before its error", async () => {
+    vi.mocked(resolveNativeAppVersion).mockResolvedValueOnce({
+      version: null,
+    } as unknown as Awaited<ReturnType<typeof resolveNativeAppVersion>>);
+
+    await prepareNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      interactive: false,
+    });
+
+    expect(spinner.stop).toHaveBeenCalledWith("No iOS app version found");
+    expect(p.log.error).toHaveBeenCalled();
   });
 
   it("hands the scheme to beforePrebuild before the adapter's prebuild, which a failing check skips", async () => {
@@ -225,6 +244,9 @@ describe("prepareNativeBuild", () => {
       androidSchemeConfig: { variant: "Release", aab: true },
     });
     expect(resolveNativeAppVersion).not.toHaveBeenCalled();
+    expect(spinner.stop).toHaveBeenCalledWith(
+      "Android fingerprint android-hash",
+    );
   });
 });
 

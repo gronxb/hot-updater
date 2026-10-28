@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
@@ -36,7 +37,12 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         success: vi.fn(record),
         warn: vi.fn(record),
       },
-      spinner: () => ({ error: record, start: record, stop: record }),
+      spinner: () => ({
+        clear: () => {},
+        error: record,
+        start: record,
+        stop: record,
+      }),
     },
   };
 });
@@ -129,8 +135,18 @@ describe("keys generate --secret", () => {
         .export({ format: "pem", type: "spki" }),
     ).toBe(publicKey);
     expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
-    expect(output()).toContain("fake://store/bundle-signing-key");
     expect(output()).not.toContain(privateKey.split("\n")[1]);
+    // One block under its heading, as every result prints.
+    expect(
+      vi
+        .mocked(p.log.success)
+        .mock.calls.map(([message]) =>
+          stripVTControlCharacters(String(message)),
+        ),
+    ).toEqual([
+      "Keys generated\nPrivate  fake://store/bundle-signing-key\nPublic   keys/public-key.pem",
+    ]);
+    expect(p.log.message).not.toHaveBeenCalled();
   });
 
   it("stores under the name --secret gives", async () => {

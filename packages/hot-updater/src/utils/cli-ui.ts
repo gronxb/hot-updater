@@ -97,12 +97,13 @@ export const ui = {
   /**
    * A command to copy, highlighted, broken at spaces with ` \` when it is
    * longer than `width`, each continuation indented two spaces, so the
-   * terminal never wraps it mid-word.
+   * terminal never wraps it mid-word. A placeholder such as `<env file>`
+   * stays whole.
    */
   commandLines: (command: string, width: number = COMMAND_WIDTH): string => {
     const lines: string[] = [];
     let line = "";
-    for (const word of command.split(" ")) {
+    for (const word of command.match(/(?:<[^<>]*>|\S)+/gu) ?? []) {
       const next = line ? `${line} ${word}` : word;
       if (line && next.length > width - 2) {
         lines.push(`${line} \\`);
@@ -236,9 +237,8 @@ const wrapWords = (sentence: string, width: number): string[] => {
       : token;
     if (command && visible.length > width) {
       flush();
-      lines.push(ui.commandLines(command[1] ?? ""));
-      if (command[2]) line = command[2];
-      length = line.length;
+      // Punctuation after it, such as a sentence's period, ends its line.
+      lines.push(`${ui.commandLines(command[1] ?? "")}${command[2]}`);
       continue;
     }
     if (length > 0 && length + 1 + visible.length > width) flush();

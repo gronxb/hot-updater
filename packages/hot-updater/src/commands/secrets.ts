@@ -417,9 +417,6 @@ export interface SecretsIssueOptions {
  * adapter that stores values, the key goes to `localSecrets()`'s store,
  * which builds here read.
  *
- * - In CI or without a terminal, it refuses before anything else, naming
- *   the command to run in one and `secrets put`, which stores a key you
- *   have.
  * - A key the per-field environment variables set, such as
  *   `HOT_UPDATER_ASC_KEY_ID`, is kept, and builds read it before any
  *   adapter: `--replace` refuses, since a new key would never be used,
@@ -427,6 +424,9 @@ export interface SecretsIssueOptions {
  * - A key the adapter holds is kept, without a sign-in, unless `--replace`:
  *   then a new key replaces it, and the old one, which CI may still use,
  *   is named with where to revoke it. Hot Updater never revokes it.
+ * - Only then, when it has to sign in, does it need a terminal: in CI or
+ *   without one, it refuses, naming the command to run in one and
+ *   `secrets put`, which stores a key you have.
  * - A run that issued a key ends with the stored key's ID and where it is.
  */
 export const handleSecretsIssue = async (
@@ -441,23 +441,6 @@ export const handleSecretsIssue = async (
       throw new Error(`The kind is one of ${ISSUED_KINDS.join(", ")}.`);
     }
     const issuer = ISSUERS[kind];
-    // A shortcut takes no --replace: the full form does.
-    const issue = replace
-      ? `${credentialIssueCommand(kind, name)} --replace`
-      : credentialLoginCommand(kind, name);
-    const reason = nonInteractiveReason();
-    if (reason !== undefined) {
-      throw new Error(
-        [
-          `Can't sign in to your ${issuer.account} ${reason}.`,
-          ui.withCommand("Run in a terminal:", issue),
-          ui.withCommand(
-            "Or store a key you have:",
-            "npx hot-updater secrets put --help",
-          ),
-        ].join("\n"),
-      );
-    }
 
     // Registers the config's secrets adapter, which everything below uses.
     const { secrets } = await loadConfig(null);
@@ -509,6 +492,26 @@ export const handleSecretsIssue = async (
         ]),
       );
       return;
+    }
+
+    // Only a sign-in needs a terminal: a key already held is reported
+    // above, in CI too.
+    const reason = nonInteractiveReason();
+    if (reason !== undefined) {
+      // A shortcut takes no --replace: the full form does.
+      const issue = replace
+        ? `${credentialIssueCommand(kind, name)} --replace`
+        : credentialLoginCommand(kind, name);
+      throw new Error(
+        [
+          `Can't sign in to your ${issuer.account} ${reason}.`,
+          ui.withCommand("Run in a terminal:", issue),
+          ui.withCommand(
+            "Or store a key you have:",
+            "npx hot-updater secrets put --help",
+          ),
+        ].join("\n"),
+      );
     }
 
     // A cancelled prompt throws, and is reported as the failure it is.

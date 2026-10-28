@@ -401,7 +401,15 @@ export async function handleInfraScaffold(
       build: options.build,
     });
     if (options.json) console.log(JSON.stringify(result, null, 2));
-    else
+    else {
+      // The templates' directory relative to the project or with `~`, and
+      // each file in it relative to it, whole: each is a file to open.
+      const file = (value: string) =>
+        ui.path(
+          value === result.output
+            ? ui.fitPath(value, Number.POSITIVE_INFINITY)
+            : path.relative(result.output, value),
+        );
       console.log(
         ui.block(
           operation === "scaffold"
@@ -410,27 +418,24 @@ export async function handleInfraScaffold(
           [
             ui.kv("Status", result.status),
             ui.kv("Provider", result.provider),
-            ui.kv("Templates", ui.path(result.output)),
-            ui.kv("Manifest", ui.path(result.manifest)),
-            ...(result.instructions
-              ? [ui.kv("Read", ui.path(result.instructions))]
-              : []),
-            ...(result.commonInstructions
-              ? [ui.kv("Common", ui.path(result.commonInstructions))]
-              : []),
-            ...(result.deployment
-              ? [ui.kv("State", ui.path(result.deployment))]
-              : []),
-            ...(result.environment
-              ? [ui.kv("Environment", ui.path(result.environment))]
-              : []),
-            ui.kv("Upgrades", ui.path(result.upgradeGuide)),
+            ui.kv("Templates", file(result.output)),
+            ui.kv("Manifest", file(result.manifest)),
+            result.instructions && ui.kv("Read", file(result.instructions)),
+            result.commonInstructions &&
+              ui.kv("Common", file(result.commonInstructions)),
+            result.deployment && ui.kv("State", file(result.deployment)),
+            result.environment &&
+              ui.kv("Environment", file(result.environment)),
+            // An upgrade's instructions are the upgrade guide: named once.
+            result.upgradeGuide !== result.instructions &&
+              ui.kv("Upgrades", file(result.upgradeGuide)),
             operation === "scaffold"
               ? "Fill the template inputs and deploy with your provider tools."
-              : "Read the instructions, apply the templates with provider tools, and verify each step.",
+              : "Apply the templates as Read says, and verify each step.",
           ],
         ),
       );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (options.json)

@@ -868,30 +868,26 @@ const trackBuild = async (
   }
 };
 
-/** What a dry run would have recorded and where it would have submitted. */
+/**
+ * What a dry run skipped, as one line: the build, or the cache hit, is
+ * printed above it.
+ */
 const summarizeDryRun = (
   result: NativeBuildResult,
   upload: NativeBuildCreateOptions["submit"],
   reused: NativeBuildCacheHit | null,
-): string =>
-  ui.block("Dry run: nothing was recorded or submitted", [
-    ui.kv("Platform", ui.platform(result.platform)),
-    ui.kv("Channel", ui.channel(result.channel)),
-    result.fingerprintHash === null
-      ? ui.kv("App version", ui.version(result.appVersion))
-      : ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
-    ui.kv("Min bundle ID", ui.id(result.minBundleId)),
-    ui.kv("Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)),
-    ui.kv(
-      "Would record",
-      result.minBundleId === NIL_UUID
-        ? "nothing (a Debug build)"
-        : reused?.source === "storage"
-          ? `nothing (tracked as ${reused.nativeBuild.id})`
-          : "the native build and its built-in bundle",
-    ),
-    ui.kv("Would submit", upload ? `to ${STORE_NAMES[upload]}` : "nothing"),
-  ]);
+): string => {
+  // A Debug build is not tracked, and one reused from storage is already.
+  const skipped = [
+    result.minBundleId !== NIL_UUID &&
+      reused?.source !== "storage" &&
+      "recorded",
+    upload && `submitted to ${STORE_NAMES[upload]}`,
+  ].filter(Boolean);
+  return skipped.length === 0
+    ? "Dry run: nothing to record or submit"
+    : `Dry run: not ${skipped.join(" or ")}`;
+};
 
 const nativeBuildRows = (result: NativeBuildResult): Row[] => [
   ui.kv("Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)),

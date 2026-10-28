@@ -1,7 +1,7 @@
 import {
   foreignPluginsNote,
   type ManagedDeployment,
-  replaySourceNote,
+  replayLead,
 } from "./doctor/managed";
 import {
   type ScaffoldUpgrade,
@@ -132,11 +132,11 @@ export const createInfrastructureRemediation = ({
   if (foreign !== undefined) {
     return { reason: `${foreign} ${own.reason}`, commands: own.commands };
   }
-  const replay = `Run ${managed.command}: it applies the database migrations of this release and redeploys ${managed.server} from it in one run, so the 503 window is the deploy. A server of an earlier release answers 503 once the database is migrated, so run nothing in between.${replaySourceNote(managed)}`;
+  // The command follows the reason, which names it no more.
   return managed.confirmed
-    ? { reason: replay, commands: [managed.command] }
+    ? { reason: replayLead(managed), commands: [managed.command] }
     : {
-        reason: `If hot-updater.config.ts names the database hot-updater init saved in .env.hotupdater: ${replay} Otherwise: ${own.reason}`,
+        reason: `If hot-updater.config.ts names the database hot-updater init saved, the first command migrates it and redeploys the server in one run. Otherwise: ${own.reason}`,
         commands: [managed.command, ...own.commands],
       };
 };

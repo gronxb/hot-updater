@@ -1137,7 +1137,18 @@ export const handleDoctor = async ({
       );
     }
 
-    if (infrastructure.remediation) {
+    // The schema check below names the same commands when the upgrade is
+    // the migration it reports: they are printed once, there.
+    const schemaCommands = new Set(
+      details.schema?.issues.flatMap(({ commands }) => commands ?? []) ?? [],
+    );
+    const repeated =
+      infrastructure.remediation !== undefined &&
+      infrastructure.remediation.commands.length > 0 &&
+      infrastructure.remediation.commands.every((command) =>
+        schemaCommands.has(command),
+      );
+    if (infrastructure.remediation && !repeated) {
       p.log.info(
         [
           ui.prose(infrastructure.remediation.reason),

@@ -7,7 +7,7 @@ import type { SchemaIssue, SchemaSetting, SchemaStatus } from "./issues";
 import {
   foreignPluginsNote,
   type ManagedDeployment,
-  replaySourceNote,
+  replayLead,
 } from "./managed";
 import { type ScaffoldUpgrade, scaffoldUpgradeNote } from "./scaffoldRecords";
 
@@ -101,11 +101,11 @@ const pendingResolution = (
       commands: own.commands,
     };
   }
-  const replay = `Run \`${managed.command}\`: it applies the migrations this release needs, then redeploys ${managed.server} from it, back to back. ${SERVER_ORDER}, so run nothing in between.${replaySourceNote(managed)}`;
+  const replay = `${replayLead(managed)} \`${managed.command}\`.`;
   return managed.confirmed
     ? { resolution: replay, commands: [managed.command] }
     : {
-        resolution: `If this is the database \`hot-updater init\` saved in .env.hotupdater: ${replay} Otherwise, it is your own server's: ${own.resolution}`,
+        resolution: `If this is the database \`hot-updater init\` saved, run \`${managed.command}\`, which migrates it and redeploys the server in one run. Otherwise, it is your own server's: ${own.resolution}`,
         commands: [managed.command, ...own.commands],
       };
 };

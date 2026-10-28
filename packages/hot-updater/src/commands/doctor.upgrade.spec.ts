@@ -42,7 +42,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiKeys, insights, remoteConfig } from "../plugins";
-import { doctor } from "./doctor";
+import { doctor, handleDoctor } from "./doctor";
 import {
   INIT_PROVIDER_PACKAGES,
   type InitProvider,
@@ -270,7 +270,6 @@ const upgrade = async (
   runInitMigration: () => Promise<void>,
 ) => {
   const command = initReplayCommand(provider);
-  const { server } = INIT_PROVIDER_PACKAGES[provider];
 
   await expect(run()).resolves.toMatchObject({
     success: false,
@@ -288,9 +287,7 @@ const upgrade = async (
             code: "SCHEMA_MIGRATION_PENDING",
             settings: PENDING,
             commands: [command],
-            resolution: expect.stringContaining(
-              `Run \`${command}\`: it applies the migrations this release needs, then redeploys ${server} from it, back to back.`,
-            ),
+            resolution: `Migrate the database and redeploy the server in one run: \`${command}\`.`,
           },
         ],
       },
@@ -652,9 +649,8 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       details: {
         infrastructure: {
           remediation: {
-            reason: expect.stringContaining(
-              "from the environment, not from .env.hotupdater",
-            ),
+            reason:
+              "Pass init's saved inputs as <env file> to migrate and redeploy in one run:",
             commands: [command],
           },
         },
@@ -662,6 +658,65 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       },
     });
   });
+
+  it.each([
+    [
+      "the outdated server",
+      "1.2.0",
+      [
+        "●  Pass init's saved inputs as <env file> to migrate and redeploy in one run:",
+        "│  npx hot-updater init --provider aws --build bare --from-env-file \\",
+        "│    <env file>",
+      ],
+    ],
+    [
+      "the pending migration, which the outdated server's upgrade is",
+      "1.0.0",
+      [
+        "│  Pass init's saved inputs as <env file> to migrate and redeploy in one run:",
+        "│  npx hot-updater init --provider aws --build bare --from-env-file <env file>.",
+      ],
+    ],
+  ])(
+    "names init's command once, under %s, after one line",
+    async (_, schemaCore, printed) => {
+      const adapter = createMemoryAdapter();
+      await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+      await storeSetting(adapter, "schema.core", schemaCore);
+      await project(
+        marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+        null,
+      );
+      vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "aws");
+      vi.stubEnv("HOT_UPDATER_INIT_BUILD", "bare");
+      vi.stubEnv("HOT_UPDATER_DYNAMODB_TABLE_NAME", "hot-updater");
+      vi.spyOn(process, "cwd").mockReturnValue(cwd);
+      vi.spyOn(globalThis, "fetch").mockImplementation(fetchVersion);
+      vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("exit");
+      });
+      for (const method of [
+        "info",
+        "warn",
+        "error",
+        "step",
+        "success",
+      ] as const)
+        vi.spyOn(p.log, method).mockImplementation(() => {});
+      vi.spyOn(p, "intro").mockImplementation(() => {});
+
+      await expect(handleDoctor({ serverBaseUrl: SERVER })).rejects.toThrow(
+        "exit",
+      );
+
+      const lines = renderClackLog(recordedClackCalls(p.log, p));
+      const start = lines.indexOf(printed[0]!);
+      expect(lines.slice(start, start + printed.length)).toEqual(printed);
+      expect(lines.filter((line) => line.includes("hot-updater init"))).toEqual(
+        [printed[1]],
+      );
+    },
+  );
 
   it("does not name .env.hotupdater when the environment overrides the database it saved", async () => {
     const adapter = createMemoryAdapter();
@@ -984,7 +1039,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
         infrastructure: {
           remediation: {
             reason: expect.stringMatching(
-              /^If hot-updater.config.ts names the database hot-updater init saved in .env.hotupdater: Run /u,
+              /^If hot-updater.config.ts names the database hot-updater init saved, the first command /u,
             ),
             commands: [
               command,
