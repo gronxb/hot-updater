@@ -1,9 +1,10 @@
-import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
 
+/** Exports the archive into `exportPath`. */
 export const exportXcodeArchive = async ({
   archivePath,
+  exportPath,
   sourceDir,
   exportExtraParams,
   exportOptionsPlist,
@@ -11,6 +12,8 @@ export const exportXcodeArchive = async ({
   authenticationArgs,
 }: {
   archivePath: string;
+  /** Where the export, such as the `.ipa`, is written. */
+  exportPath: string;
   /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
   authenticationArgs?: string[];
   exportExtraParams?: string[];
@@ -18,7 +21,6 @@ export const exportXcodeArchive = async ({
   logPrefix: string;
   sourceDir: string;
 }): Promise<{ exportPath: string }> => {
-  const exportPath = await createRandomTmpDir();
   const exportArgs = prepareExportArgs({
     authenticationArgs,
     archivePath,

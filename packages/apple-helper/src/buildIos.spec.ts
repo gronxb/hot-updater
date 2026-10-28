@@ -33,6 +33,13 @@ vi.mock("execa", () => ({
     stdout: await fs.readFile(args.at(-1)!, "utf-8"),
   })),
 }));
+// The build's directories are made under root, which each test removes.
+vi.mock("./utils/createRandomTmpDir", () => ({
+  createRandomTmpDir: vi.fn(async () => fs.mkdtemp(path.join(root, "tmp-"))),
+  removeTmpDir: vi.fn(async (directory: string) =>
+    fs.rm(directory, { recursive: true, force: true }),
+  ),
+}));
 vi.mock("./utils/ciSigningKeychain", () => ({
   withSigningKeychain: vi.fn(async ({ run }: { run: () => Promise<unknown> }) =>
     run(),
@@ -42,31 +49,45 @@ vi.mock("./utils/assertXcodebuildExist", () => ({
   assertXcodebuildExist: vi.fn(),
 }));
 vi.mock("./builder/buildXcodeProject", () => ({
-  buildXcodeProject: vi.fn(async () => {
-    const appPath = path.join(root, "derived", "App.app");
-    await fs.mkdir(appPath, { recursive: true });
-    return { appPath, infoPlistPath: path.join(appPath, "Info.plist") };
-  }),
+  buildXcodeProject: vi.fn(
+    async ({ outputDirectory }: { outputDirectory: string }) => {
+      const appPath = path.join(outputDirectory, "App.app");
+      await fs.mkdir(appPath, { recursive: true });
+      return { appPath };
+    },
+  ),
 }));
 vi.mock("./builder/archiveXcodeProject", () => ({
-  archiveXcodeProject: vi.fn(async () => {
-    const archivePath = path.join(root, "archives", "App.xcarchive");
-    await fs.mkdir(
-      path.join(archivePath, "Products", "Applications", "App.app"),
-      {
-        recursive: true,
-      },
-    );
-    return { archivePath };
-  }),
+  archiveXcodeProject: vi.fn(
+    async ({ archiveDirectory }: { archiveDirectory: string }) => {
+      const archivePath = path.join(archiveDirectory, "App.xcarchive");
+      await fs.mkdir(
+        path.join(archivePath, "Products", "Applications", "App.app"),
+        { recursive: true },
+      );
+      return { archivePath };
+    },
+  ),
 }));
+/** The export options each export read, before their directory is removed. */
+let exportOptions: string[];
 vi.mock("./builder/exportXcodeArchive", () => ({
-  exportXcodeArchive: vi.fn(async () => {
-    const exportPath = path.join(root, "exported");
-    await fs.mkdir(exportPath, { recursive: true });
-    await fs.writeFile(path.join(exportPath, "App.ipa"), "ipa");
-    return { exportPath };
-  }),
+  exportXcodeArchive: vi.fn(
+    async ({
+      exportPath,
+      exportOptionsPlist,
+    }: {
+      exportPath: string;
+      exportOptionsPlist: string;
+    }) => {
+      exportOptions.push(
+        await fs.readFile(exportOptionsPlist, "utf-8").catch(() => ""),
+      );
+      await fs.mkdir(exportPath, { recursive: true });
+      await fs.writeFile(path.join(exportPath, "App.ipa"), "ipa");
+      return { exportPath };
+    },
+  ),
 }));
 
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
@@ -113,6 +134,7 @@ const AUTHENTICATION_ARGS = [
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  exportOptions = [];
   root = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-spec-"));
 });
 
@@ -207,9 +229,10 @@ describe("buildIos", () => {
       vi.mocked(exportXcodeArchive).mock.calls[0]!;
     expect(authenticationArgs).toEqual(AUTHENTICATION_ARGS);
     // Without exportOptionsPlist, it exports for App Store Connect.
-    const exportOptions = await fs.readFile(exportOptionsPlist, "utf-8");
-    expect(exportOptions).toContain("<string>app-store-connect</string>");
-    expect(exportOptions).toContain("<string>automatic</string>");
+    expect(exportOptions[0]).toContain("<string>app-store-connect</string>");
+    expect(exportOptions[0]).toContain("<string>automatic</string>");
+    // The export options are written to a directory the export removes.
+    await expect(fs.stat(path.dirname(exportOptionsPlist))).rejects.toThrow();
   });
 
   it.each([

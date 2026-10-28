@@ -53,7 +53,8 @@ const DEFAULT_CHANNEL = "production";
 
 /**
  * Runs the build and the adapter's postbuild, then copies the output to
- * `outputPath`. The adapter's prebuild has already run, in
+ * `outputPath`, and disposes of the build's temporary directory whether the
+ * copy is made or not. The adapter's prebuild has already run, in
  * `prepareNativeBuild`.
  */
 export const createNativeBuild = async ({
@@ -94,53 +95,62 @@ export const createNativeBuild = async ({
        */
       channel?: string | null;
     };
+    /**
+     * Removes `buildDirectory` when it is temporary, once the artifact is
+     * copied out of it.
+     */
+    dispose?: () => Promise<void>;
   }>;
 }): Promise<NativeBuildResult> => {
-  const { buildDirectory, buildArtifactPath, builtApp } = await builder();
+  const { buildDirectory, buildArtifactPath, builtApp, dispose } =
+    await builder();
+  try {
+    // run postbuild hook
+    await buildAdapter.nativeBuild?.postbuild?.({ platform });
 
-  // run postbuild hook
-  await buildAdapter.nativeBuild?.postbuild?.({ platform });
+    const artifactKind = ARTIFACT_KINDS[path.extname(buildArtifactPath)];
+    if (!artifactKind) {
+      throw new Error(`Unexpected native build artifact: ${buildArtifactPath}`);
+    }
 
-  const artifactKind = ARTIFACT_KINDS[path.extname(buildArtifactPath)];
-  if (!artifactKind) {
-    throw new Error(`Unexpected native build artifact: ${buildArtifactPath}`);
+    const channel =
+      builtApp && builtApp.channel !== undefined
+        ? (builtApp.channel ?? DEFAULT_CHANNEL)
+        : await readChannel();
+    const builtTarget: NativeBuildTarget =
+      target.appVersion !== null && builtApp?.appVersion
+        ? { fingerprintHash: null, appVersion: builtApp.appVersion }
+        : target;
+
+    // copy artifacts to outputPath
+    await fs.promises.mkdir(outputPath, { recursive: true });
+    await fs.promises.rm(outputPath, {
+      recursive: true,
+      force: true,
+    });
+    await fs.promises.cp(buildDirectory, outputPath, {
+      recursive: true,
+    });
+
+    const relativePath = path.relative(getCwd(), outputPath);
+    p.log.info(`Artifact stored at ${colors.blueBright(relativePath)}`);
+
+    return {
+      platform,
+      scheme,
+      minBundleId: debug ? NIL_UUID : minBundleId,
+      channel,
+      ...builtTarget,
+      artifactPath: path.join(
+        outputPath,
+        path.relative(buildDirectory, buildArtifactPath),
+      ),
+      artifactKind,
+      ...(builtApp?.buildNumber === undefined
+        ? {}
+        : { buildNumber: builtApp.buildNumber }),
+    };
+  } finally {
+    await dispose?.();
   }
-
-  const channel =
-    builtApp && builtApp.channel !== undefined
-      ? (builtApp.channel ?? DEFAULT_CHANNEL)
-      : await readChannel();
-  const builtTarget: NativeBuildTarget =
-    target.appVersion !== null && builtApp?.appVersion
-      ? { fingerprintHash: null, appVersion: builtApp.appVersion }
-      : target;
-
-  // copy artifacts to outputPath
-  await fs.promises.mkdir(outputPath, { recursive: true });
-  await fs.promises.rm(outputPath, {
-    recursive: true,
-    force: true,
-  });
-  await fs.promises.cp(buildDirectory, outputPath, {
-    recursive: true,
-  });
-
-  const relativePath = path.relative(getCwd(), outputPath);
-  p.log.info(`Artifact stored at ${colors.blueBright(relativePath)}`);
-
-  return {
-    platform,
-    scheme,
-    minBundleId: debug ? NIL_UUID : minBundleId,
-    channel,
-    ...builtTarget,
-    artifactPath: path.join(
-      outputPath,
-      path.relative(buildDirectory, buildArtifactPath),
-    ),
-    artifactKind,
-    ...(builtApp?.buildNumber === undefined
-      ? {}
-      : { buildNumber: builtApp.buildNumber }),
-  };
 };

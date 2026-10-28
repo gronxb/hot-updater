@@ -14,7 +14,7 @@ import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { withSigningKeychain } from "./utils/ciSigningKeychain";
-import { createRandomTmpDir } from "./utils/createRandomTmpDir";
+import { createRandomTmpDir, removeTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readBuiltApp } from "./utils/readBuiltApp";
 import {
@@ -27,6 +27,10 @@ import {
  * Builds a simulator `.app` for a `simulator` scheme, and otherwise archives
  * and exports an `.ipa`, or returns the `.xcarchive` of a scheme it cannot
  * export: one with neither `exportOptionsPlist` nor `signing.ascApiKey`.
+ *
+ * The artifact is in a temporary `buildDirectory`, which `dispose` removes
+ * once the caller has copied it out. A failed build removes it, and every
+ * other directory the build used, itself.
  */
 export const buildIos = async ({
   schemeConfig,
@@ -48,27 +52,52 @@ export const buildIos = async ({
     /** The app's `CFBundleVersion`. */
     buildNumber: string | null;
   };
+  /** Removes `buildDirectory`, once the artifact is copied out of it. */
+  dispose: () => Promise<void>;
 }> => {
   await assertXcodebuildExist();
-  const iosProjectRoot = path.join(getCwd(), "ios");
+  if (schemeConfig.simulator && schemeConfig.destination.length) {
+    p.log.error(
+      "The scheme option 'simulator' is not compatible with the 'destination' option.",
+    );
+    process.exit(1);
+  }
 
   const buildDirectory = await createRandomTmpDir();
-  await fs.promises.mkdir(path.join(buildDirectory, "archive"), {
-    recursive: true,
-  });
+  try {
+    const built = await buildInto({
+      schemeConfig,
+      minBundleId,
+      credentials,
+      buildDirectory,
+    });
+    return { ...built, dispose: () => removeTmpDir(buildDirectory) };
+  } catch (error) {
+    await removeTmpDir(buildDirectory);
+    throw error;
+  }
+};
+
+const buildInto = async ({
+  schemeConfig,
+  minBundleId,
+  credentials,
+  buildDirectory,
+}: {
+  schemeConfig: EnrichedNativeBuildIosScheme;
+  minBundleId: string;
+  credentials?: Pick<CredentialResolver, "resolve">;
+  buildDirectory: string;
+}) => {
+  const iosProjectRoot = path.join(getCwd(), "ios");
 
   if (schemeConfig.simulator) {
-    if (schemeConfig.destination.length) {
-      p.log.error(
-        "The scheme option 'simulator' is not compatible with the 'destination' option.",
-      );
-      process.exit(1);
-    }
     const appDir = path.join(buildDirectory, "app");
     await fs.promises.mkdir(appDir, { recursive: true });
 
     const { appPath } = await buildXcodeProject({
       sourceDir: iosProjectRoot,
+      outputDirectory: appDir,
       logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
       platform: schemeConfig.platform,
       xcodeScheme: schemeConfig.scheme,
@@ -80,15 +109,12 @@ export const buildIos = async ({
       minBundleId,
     });
 
-    const finalAppPath = path.join(appDir, path.basename(appPath));
-    await fs.promises.cp(appPath, finalAppPath, { recursive: true });
-
     p.log.success(`.app file created: ${path.basename(appPath)}`);
 
     return {
       buildDirectory: buildDirectory,
-      buildArtifactPath: finalAppPath,
-      builtApp: await readBuiltApp(finalAppPath),
+      buildArtifactPath: appPath,
+      builtApp: await readBuiltApp(appPath),
     };
   } else {
     const signing = await resolveXcodeSigning({ schemeConfig, credentials });
@@ -139,8 +165,10 @@ const archiveAndExport = async ({
   const iosProjectRoot = path.join(getCwd(), "ios");
   const archiveDir = path.join(buildDirectory, "archive");
   const exportDir = path.join(buildDirectory, "export");
+  await fs.promises.mkdir(archiveDir, { recursive: true });
   // archivePath is the .xcarchive file path
   const { archivePath } = await archiveXcodeProject({
+    archiveDirectory: archiveDir,
     authenticationArgs,
     minBundleId,
     platform: schemeConfig.platform,
@@ -154,11 +182,8 @@ const archiveAndExport = async ({
     logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-archive`,
   });
 
-  const finalArchivePath = path.join(archiveDir, path.basename(archivePath));
-  await fs.promises.cp(archivePath, finalArchivePath, { recursive: true });
-
   // Extract .app from xcarchive if present
-  const appFromArchive = extractAppFromXcarchive(finalArchivePath);
+  const appFromArchive = extractAppFromXcarchive(archivePath);
 
   const archivedAppPath = appFromArchive
     ? path.join(archiveDir, path.basename(appFromArchive))
@@ -176,7 +201,7 @@ const archiveAndExport = async ({
   if (!schemeConfig.exportOptionsPlist && !authenticationArgs) {
     return {
       buildDirectory,
-      buildArtifactPath: finalArchivePath,
+      buildArtifactPath: archivePath,
       builtApp: archivedAppPath
         ? await readBuiltApp(archivedAppPath)
         : undefined,
@@ -184,20 +209,28 @@ const archiveAndExport = async ({
   }
 
   await fs.promises.mkdir(exportDir, { recursive: true });
-  const exportOptionsPlist =
-    schemeConfig.exportOptionsPlist ??
-    (await writeAppStoreConnectExportOptions(await createRandomTmpDir()));
-
-  const { exportPath } = await exportXcodeArchive({
-    archivePath,
-    authenticationArgs,
-    exportExtraParams: schemeConfig.exportExtraParams,
-    exportOptionsPlist,
-    sourceDir: iosProjectRoot,
-    logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
-  });
-
-  await fs.promises.cp(exportPath, exportDir, { recursive: true });
+  const exportArchive = (exportOptionsPlist: string) =>
+    exportXcodeArchive({
+      archivePath,
+      exportPath: exportDir,
+      authenticationArgs,
+      exportExtraParams: schemeConfig.exportExtraParams,
+      exportOptionsPlist,
+      sourceDir: iosProjectRoot,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
+    });
+  if (schemeConfig.exportOptionsPlist) {
+    await exportArchive(schemeConfig.exportOptionsPlist);
+  } else {
+    const exportOptionsDir = await createRandomTmpDir();
+    try {
+      await exportArchive(
+        await writeAppStoreConnectExportOptions(exportOptionsDir),
+      );
+    } finally {
+      await removeTmpDir(exportOptionsDir);
+    }
+  }
 
   const ipaFile = fs
     .readdirSync(exportDir)

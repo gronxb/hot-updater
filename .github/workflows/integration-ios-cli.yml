@@ -70,6 +70,11 @@ jobs:
         shell: bash
         run: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
+          # A temporary directory of the build's own, which it must leave
+          # without the directories it built in (DerivedData alone is 10 GB
+          # or more).
+          export TMPDIR="$RUNNER_TEMP/build-tmp"
+          mkdir -p "$TMPDIR"
           # The example's scheme, on an in-memory database and storage.
           printf 'export { default } from "../../examples-server/preview-action/ios-cli.config.ts";\n' \
             > hot-updater.config.ts
@@ -87,3 +92,9 @@ jobs:
           test -d "$app"
           test -f "$app/Info.plist"
           test -f "$app/main.jsbundle"
+          left=$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -name 'apple-helper-*')
+          if [ -n "$left" ]; then
+            echo "The build left its temporary directories:"
+            du -sh $left
+            exit 1
+          fi

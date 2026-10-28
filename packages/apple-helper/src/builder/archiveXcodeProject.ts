@@ -7,7 +7,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import { installPodsIfNeeded } from "../utils/cocoapods";
-import { createRandomTmpDir } from "../utils/createRandomTmpDir";
+import { createRandomTmpDir, removeTmpDir } from "../utils/createRandomTmpDir";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -23,8 +23,14 @@ import {
   writeBuildXcconfig,
 } from "../utils/writeBuildXcconfig";
 
+/**
+ * Archives the scheme into `archiveDirectory`. The build's xcconfig is
+ * written to a temporary directory, removed whether the archive succeeds or
+ * not.
+ */
 export const archiveXcodeProject = async ({
   sourceDir,
+  archiveDirectory,
   platform,
   installPods,
   destination,
@@ -45,6 +51,8 @@ export const archiveXcodeProject = async ({
   platform: ApplePlatform;
   xcodeScheme: string;
   sourceDir: string;
+  /** Where the `.xcarchive` is written. */
+  archiveDirectory: string;
   xcconfig?: string;
   logPrefix: string;
   /** The MIN_BUNDLE_ID the build compiles in. */
@@ -58,56 +66,59 @@ export const archiveXcodeProject = async ({
   // project.
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
-  const tmpDir = await createRandomTmpDir();
-
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
-  const archivePath = path.join(tmpDir, archiveName);
+  const archivePath = path.join(archiveDirectory, archiveName);
 
-  const build = await writeBuildXcconfig({
-    directory: tmpDir,
-    sourceDir,
-    xcconfig,
-    extraParams,
-    settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
-  });
+  const tmpDir = await createRandomTmpDir();
+  try {
+    const build = await writeBuildXcconfig({
+      directory: tmpDir,
+      sourceDir,
+      xcconfig,
+      extraParams,
+      settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+    });
 
-  const archiveArgs = prepareArchiveArgs({
-    authenticationArgs,
-    minBundleId,
-    archivePath,
-    platform,
-    sourceDir,
-    xcodeProject,
-    configuration,
-    extraParams: build.extraParams,
-    destination,
-    xcconfig: build.xcconfig,
-    xcodeScheme,
-  });
+    const archiveArgs = prepareArchiveArgs({
+      authenticationArgs,
+      minBundleId,
+      archivePath,
+      platform,
+      sourceDir,
+      xcodeProject,
+      configuration,
+      extraParams: build.extraParams,
+      destination,
+      xcconfig: build.xcconfig,
+      xcodeScheme,
+    });
 
-  p.log.info(`Xcode Archive Settings:
+    p.log.info(`Xcode Archive Settings:
 Project    ${xcodeProject.name}
 Scheme     ${xcodeScheme}
 Platform   ${platform}
 Command    xcodebuild ${archiveArgs.join(" ")}
 `);
 
-  try {
-    await runXcodebuildWithLogging({
-      args: archiveArgs,
-      // The build setting reaches the podspec's script phase, and the
-      // environment reaches Package.swift's build tool plugin, which
-      // can't read build settings.
-      env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
-      failureMessage: "Archive failed",
-      logPrefix,
-      sourceDir,
-      successMessage: "Archive completed successfully",
-    });
+    try {
+      await runXcodebuildWithLogging({
+        args: archiveArgs,
+        // The build setting reaches the podspec's script phase, and the
+        // environment reaches Package.swift's build tool plugin, which
+        // can't read build settings.
+        env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
+        failureMessage: "Archive failed",
+        logPrefix,
+        sourceDir,
+        successMessage: "Archive completed successfully",
+      });
 
-    return { archivePath };
-  } catch (error) {
-    throw prettifyXcodebuildError(error);
+      return { archivePath };
+    } catch (error) {
+      throw prettifyXcodebuildError(error);
+    }
+  } finally {
+    await removeTmpDir(tmpDir);
   }
 };
 
