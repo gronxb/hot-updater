@@ -894,10 +894,15 @@ function stripAnsi(value: string) {
   );
 }
 
+/**
+ * The release ID deploy's outro prints in its `ID  <uuid>` row. The harness
+ * deploys one platform at a time with the workspace CLI, so no `iOS ID` or
+ * `Android ID` row, or a released CLI's `ID:`, is ever read here.
+ */
 function extractDeployReleaseId(output: string) {
   const plainOutput = stripAnsi(output);
   const match = plainOutput.match(
-    /^[ \t│]*ID:[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
+    /^[ \t│]*ID[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
   );
 
   return match?.[1] ?? null;

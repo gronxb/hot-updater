@@ -1004,12 +1004,35 @@ describe("E2E scenario contract", () => {
         }),
     });
     const buildOutput = ["Release ID", "Bundle ID", "Artifact ID", "Build ID"]
-      .map((label) => `│  ${label}: ${file.id}`)
+      .map((label) => `│  \u001b[2m${label}  \u001b[22m${file.id}`)
       .join("\n");
-    const output = `${buildOutput}\n└  Deployment successful\n    \u001b[2mID:      \u001b[22m \u001b[33m${release!.id}\u001b[39m\n`;
+    // The tail of a deploy's output, as the workspace CLI prints it: the
+    // outro's heading, then its `ID` row, outside the frame.
+    const output = [
+      buildOutput,
+      "│",
+      "◆  Skipped (no compatible base bundles)",
+      "│",
+      "└  Deployment successful",
+      `\u001b[2mID  \u001b[22m\u001b[33m${release!.id}\u001b[39m`,
+      "",
+      "",
+    ].join("\n");
+    // A deploy refused for its signing key, as deploy prints the refusal.
+    const refused = [
+      "■  Failed to resolve the bundle signing provider public key.",
+      "│  signing.privateKey reads the bundle signing key bundle-signing-key, which",
+      "│  is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in",
+      "│  the environment, or",
+      "│  /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on",
+      "│  this machine).",
+      "│",
+      "■  \u001b[31mDeployment blocked. Fix the signing configuration and try again.\u001b[39m",
+    ].join("\n");
 
     expect(release!.id).not.toBe(file.id);
     expect(controller.extractDeployReleaseId(buildOutput)).toBeNull();
+    expect(controller.extractDeployReleaseId(refused)).toBeNull();
     const id = controller.extractDeployReleaseId(output);
     expect(id).toBe(release!.id);
     const deployed = await controller.resolveDeployedRelease(id, "production");
