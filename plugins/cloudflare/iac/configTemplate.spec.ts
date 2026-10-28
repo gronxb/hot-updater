@@ -82,10 +82,13 @@ describe("Cloudflare config scaffold", () => {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const deploySecrets = secretEnv([
-        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      const storageSecrets = secretEnv([
         "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
         "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+      ]);
+
+      const databaseSecrets = secretEnv([
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
       ]);
 
       export default defineConfig({
@@ -94,7 +97,7 @@ describe("Cloudflare config scaffold", () => {
           bucketName: "bundles",
           accountId: "account-id",
           credentials: async () => {
-            const env = await deploySecrets();
+            const env = await storageSecrets();
             return {
               accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
               secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
@@ -105,7 +108,7 @@ describe("Cloudflare config scaffold", () => {
           databaseId: "database-id",
           accountId: "account-id",
           cloudflareApiToken: async () =>
-            (await deploySecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+            (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: localSecrets(),
@@ -116,12 +119,12 @@ describe("Cloudflare config scaffold", () => {
 
   it("reads the same credentials init stores in a team store", () => {
     const { text } = getConfigScaffold("bare", RESOURCES);
-    const names = /secretEnv\(\[([^\]]*)\]\)/u
-      .exec(text)?.[1]
-      ?.match(/"[A-Z0-9_]+"/gu)
-      ?.map((name) => JSON.parse(name) as string);
+    const names = [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
+      .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
+      .map((name) => JSON.parse(name) as string)
+      .sort();
 
-    expect(names).toEqual(initProvider.secrets);
+    expect(names).toEqual([...initProvider.secrets].sort());
   });
 
   it("reads every value from the environment for the agent scaffold", () => {
@@ -153,10 +156,13 @@ describe("Cloudflare config scaffold", () => {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const deploySecrets = secretEnv([
-        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      const storageSecrets = secretEnv([
         "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
         "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+      ]);
+
+      const databaseSecrets = secretEnv([
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
       ]);
 
       export default defineConfig({
@@ -165,7 +171,7 @@ describe("Cloudflare config scaffold", () => {
           bucketName: "bundles",
           accountId: "account-id",
           credentials: async () => {
-            const env = await deploySecrets();
+            const env = await storageSecrets();
             return {
               accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
               secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
@@ -177,7 +183,7 @@ describe("Cloudflare config scaffold", () => {
           databaseId: "database-id",
           accountId: "account-id",
           cloudflareApiToken: async () =>
-            (await deploySecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+            (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: teamStore(),
@@ -200,7 +206,8 @@ describe("Cloudflare config scaffold", () => {
     const text = await fs.readFile(configPath, "utf8");
     expect(text).toContain('databaseId: "new-database",');
     expect(text).not.toContain("database-id");
-    expect(text.match(/const deploySecrets/gu)).toHaveLength(1);
+    expect(text.match(/const storageSecrets/gu)).toHaveLength(1);
+    expect(text.match(/const databaseSecrets/gu)).toHaveLength(1);
   });
 
   it("names variables secretEnv takes", () => {

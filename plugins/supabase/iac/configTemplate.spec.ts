@@ -5,10 +5,10 @@ import { getConfigScaffold } from "./configTemplate";
 import { initProvider } from "./init/index";
 
 const secretEnvNames = (text: string) =>
-  /secretEnv\(\[([^\]]*)\]\)/u
-    .exec(text)?.[1]
-    ?.match(/"[A-Z0-9_]+"/gu)
-    ?.map((name) => JSON.parse(name) as string);
+  [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
+    .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
+    .map((name) => JSON.parse(name) as string)
+    .sort();
 
 describe("Supabase config scaffold", () => {
   it("names the project and bucket init set up, and reads the service role key with secretEnv", () => {
@@ -60,7 +60,7 @@ describe("Supabase config scaffold", () => {
           bucketName: "bundles",
         }).text,
       ),
-    ).toEqual(initProvider.secrets);
+    ).toEqual([...initProvider.secrets].sort());
   });
 
   it("reads every value from the environment for the agent scaffold", () => {

@@ -2,7 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  deploySecretsHelper,
+  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ManagedHelperStatement,
   type ProviderConfig,
@@ -122,7 +122,7 @@ const awsOptions = {
       ];
       if (resources !== undefined) {
         helperStatements.unshift(
-          deploySecretsHelper([
+          secretEnvHelper("deploySecrets", [
             "HOT_UPDATER_S3_ACCESS_KEY_ID",
             "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
           ]),

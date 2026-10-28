@@ -203,10 +203,13 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const deploySecrets = secretEnv([
-  "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+const storageSecrets = secretEnv([
   "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
   "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+]);
+
+const databaseSecrets = secretEnv([
+  "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
 ]);
 
 export default defineConfig({
@@ -215,7 +218,7 @@ export default defineConfig({
     bucketName: "your-r2-bucket-name",
     accountId: "your-account-id",
     credentials: async () => {
-      const env = await deploySecrets();
+      const env = await storageSecrets();
       return {
         accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
         secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
@@ -226,7 +229,7 @@ export default defineConfig({
     databaseId: "your-d1-database-id",
     accountId: "your-account-id",
     cloudflareApiToken: async () =>
-      (await deploySecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+      (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and google-play login

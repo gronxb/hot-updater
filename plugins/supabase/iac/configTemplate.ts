@@ -1,7 +1,7 @@
 import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  deploySecretsHelper,
+  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
   type BuildType,
@@ -54,7 +54,11 @@ export const getConfigScaffold = (
   const helperStatements =
     resources === undefined
       ? []
-      : [deploySecretsHelper(["HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"])];
+      : [
+          secretEnvHelper("deploySecrets", [
+            "HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY",
+          ]),
+        ];
 
   const builder = new ConfigBuilder()
     .setBuildType(build)

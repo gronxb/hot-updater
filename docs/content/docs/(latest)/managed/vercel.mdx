@@ -208,8 +208,11 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const deploySecrets = secretEnv([
+const storageSecrets = secretEnv([
   "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+]);
+
+const databaseSecrets = secretEnv([
   "HOT_UPDATER_VERCEL_DATABASE_URL",
 ]);
 
@@ -217,11 +220,11 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: vercelBlobStorage({
     token: async () =>
-      (await deploySecrets()).HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN,
+      (await storageSecrets()).HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN,
   }),
   database: postgres({
     connectionString: async () =>
-      (await deploySecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
+      (await databaseSecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and google-play login

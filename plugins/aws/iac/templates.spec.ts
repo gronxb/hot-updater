@@ -314,12 +314,12 @@ export default defineConfig({
 
   it("reads the same keys init stores in a team store", () => {
     const { text } = getConfigScaffold("bare", { mode: "account" }, RESOURCES);
-    const names = /secretEnv\(\[([^\]]*)\]\)/u
-      .exec(text)?.[1]
-      ?.match(/"[A-Z0-9_]+"/gu)
-      ?.map((name) => JSON.parse(name) as string);
+    const names = [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
+      .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
+      .map((name) => JSON.parse(name) as string)
+      .sort();
 
-    expect(names).toEqual(initProvider.secrets);
+    expect(names).toEqual([...initProvider.secrets].sort());
   });
 
   it("reads no secret for a profile, which is each person's own", () => {

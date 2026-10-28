@@ -5,10 +5,10 @@ import { getConfigScaffold } from "./configTemplate";
 import { initProvider } from "./init/index";
 
 const secretEnvNames = (text: string) =>
-  /secretEnv\(\[([^\]]*)\]\)/u
-    .exec(text)?.[1]
-    ?.match(/"[A-Z0-9_]+"/gu)
-    ?.map((name) => JSON.parse(name) as string);
+  [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
+    .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
+    .map((name) => JSON.parse(name) as string)
+    .sort();
 
 describe("Azure config scaffold", () => {
   it("names the Cosmos DB account and reads both connection strings with secretEnv", () => {
@@ -27,8 +27,11 @@ describe("Azure config scaffold", () => {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const deploySecrets = secretEnv([
+      const storageSecrets = secretEnv([
         "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+      ]);
+
+      const databaseSecrets = secretEnv([
         "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
       ]);
 
@@ -36,13 +39,13 @@ describe("Azure config scaffold", () => {
         build: bare({ enableHermes: true }),
         storage: azureBlobStorage({
           connectionString: async () =>
-            (await deploySecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
+            (await storageSecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
           containerName: "hot-updater",
         }),
         database: cosmosDatabase({
           endpoint: "https://hot-updater-abc.documents.azure.com:443/",
           connectionString: async () =>
-            (await deploySecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
+            (await databaseSecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: localSecrets(),
@@ -58,7 +61,7 @@ describe("Azure config scaffold", () => {
           cosmosEndpoint: "https://hot-updater-abc.documents.azure.com:443/",
         }).text,
       ),
-    ).toEqual(initProvider.secrets);
+    ).toEqual([...initProvider.secrets].sort());
   });
 
   it("reads every value from the environment for the agent scaffold", () => {

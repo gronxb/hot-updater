@@ -5,10 +5,10 @@ import { getConfigScaffold } from "./configTemplate";
 import { initProvider } from "./init/index";
 
 const secretEnvNames = (text: string) =>
-  /secretEnv\(\[([^\]]*)\]\)/u
-    .exec(text)?.[1]
-    ?.match(/"[A-Z0-9_]+"/gu)
-    ?.map((name) => JSON.parse(name) as string);
+  [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
+    .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
+    .map((name) => JSON.parse(name) as string)
+    .sort();
 
 describe("Vercel config scaffold", () => {
   it("reads the Blob token and the database URL with secretEnv", () => {
@@ -24,8 +24,11 @@ describe("Vercel config scaffold", () => {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const deploySecrets = secretEnv([
+      const storageSecrets = secretEnv([
         "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+      ]);
+
+      const databaseSecrets = secretEnv([
         "HOT_UPDATER_VERCEL_DATABASE_URL",
       ]);
 
@@ -33,11 +36,11 @@ describe("Vercel config scaffold", () => {
         build: bare({ enableHermes: true }),
         storage: vercelBlobStorage({
           token: async () =>
-            (await deploySecrets()).HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN,
+            (await storageSecrets()).HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN,
         }),
         database: postgres({
           connectionString: async () =>
-            (await deploySecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
+            (await databaseSecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: localSecrets(),
@@ -49,7 +52,7 @@ describe("Vercel config scaffold", () => {
   it("reads the same credentials init stores in a team store", () => {
     expect(
       secretEnvNames(getConfigScaffold("bare", { secretEnv: true }).text),
-    ).toEqual(initProvider.secrets);
+    ).toEqual([...initProvider.secrets].sort());
   });
 
   it("reads every value from the environment for the agent scaffold", () => {

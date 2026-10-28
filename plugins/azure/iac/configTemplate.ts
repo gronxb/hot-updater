@@ -2,7 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  deploySecretsHelper,
+  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
@@ -31,15 +31,15 @@ export const getConfigScaffold = (
   build: BuildType,
   resources?: AzureConfigResources,
 ): HotUpdaterConfigScaffold => {
-  const read = (name: string) =>
+  const read = (reader: string, name: string) =>
     resources === undefined
       ? `process.env.${name}!`
       : `async () =>
-      (await deploySecrets()).${name}`;
+      (await ${reader}()).${name}`;
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/azure", named: ["azureBlobStorage"] }],
     configString: `azureBlobStorage({
-    connectionString: ${read("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING")},
+    connectionString: ${read("storageSecrets", "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING")},
     containerName: "${BLOB_CONTAINER}",
   })`,
   };
@@ -51,15 +51,17 @@ export const getConfigScaffold = (
         : `
     endpoint: ${JSON.stringify(resources.cosmosEndpoint)},`
     }
-    connectionString: ${read("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING")},
+    connectionString: ${read("databaseSecrets", "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING")},
   })`,
   };
   const helperStatements =
     resources === undefined
       ? []
       : [
-          deploySecretsHelper([
+          secretEnvHelper("storageSecrets", [
             "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+          ]),
+          secretEnvHelper("databaseSecrets", [
             "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
           ]),
         ];

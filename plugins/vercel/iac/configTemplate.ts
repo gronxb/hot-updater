@@ -2,7 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  deploySecretsHelper,
+  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
@@ -21,29 +21,29 @@ export const getConfigScaffold = (
   build: BuildType,
   { secretEnv }: VercelConfigOptions = { secretEnv: false },
 ): HotUpdaterConfigScaffold => {
-  const read = (name: string) =>
+  const read = (reader: string, name: string) =>
     secretEnv
       ? `async () =>
-      (await deploySecrets()).${name}`
+      (await ${reader}()).${name}`
       : `process.env.${name}!`;
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/vercel", named: ["vercelBlobStorage"] }],
     configString: `vercelBlobStorage({
-    token: ${read("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN")},
+    token: ${read("storageSecrets", "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN")},
   })`,
   };
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/vercel", named: ["postgres"] }],
     configString: `postgres({
-    connectionString: ${read("HOT_UPDATER_VERCEL_DATABASE_URL")},
+    connectionString: ${read("databaseSecrets", "HOT_UPDATER_VERCEL_DATABASE_URL")},
   })`,
   };
   const helperStatements = secretEnv
     ? [
-        deploySecretsHelper([
+        secretEnvHelper("storageSecrets", [
           "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
-          "HOT_UPDATER_VERCEL_DATABASE_URL",
         ]),
+        secretEnvHelper("databaseSecrets", ["HOT_UPDATER_VERCEL_DATABASE_URL"]),
       ]
     : [];
 

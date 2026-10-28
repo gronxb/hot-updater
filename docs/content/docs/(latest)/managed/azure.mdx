@@ -213,8 +213,11 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const deploySecrets = secretEnv([
+const storageSecrets = secretEnv([
   "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+]);
+
+const databaseSecrets = secretEnv([
   "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
 ]);
 
@@ -222,13 +225,13 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: azureBlobStorage({
     connectionString: async () =>
-      (await deploySecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
+      (await storageSecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
     containerName: "hot-updater",
   }),
   database: cosmosDatabase({
     endpoint: "https://your-cosmos-account.documents.azure.com:443/",
     connectionString: async () =>
-      (await deploySecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
+      (await databaseSecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and google-play login

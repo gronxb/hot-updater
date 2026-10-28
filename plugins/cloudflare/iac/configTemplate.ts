@@ -1,7 +1,7 @@
 import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  deploySecretsHelper,
+  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
   type RunInitOptions,
@@ -67,7 +67,7 @@ export const getConfigScaffold = (
     bucketName: ${JSON.stringify(resources.bucketName)},
     accountId: ${accountId},
     credentials: async () => {
-      const env = await deploySecrets();
+      const env = await storageSecrets();
       return {
         accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
         secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
@@ -81,15 +81,15 @@ export const getConfigScaffold = (
     databaseId: ${JSON.stringify(resources.d1DatabaseId)},
     accountId: ${accountId},
     cloudflareApiToken: async () =>
-      (await deploySecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+      (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
   })`,
   };
   const helperStatements = [
-    deploySecretsHelper([
-      "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+    secretEnvHelper("storageSecrets", [
       "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
       "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
     ]),
+    secretEnvHelper("databaseSecrets", ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]),
   ];
 
   return createHotUpdaterConfigScaffoldFromBuilder(
