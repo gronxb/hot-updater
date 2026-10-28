@@ -1,5 +1,13 @@
 # @hot-updater/standalone
 
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [2fd1c83]
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
 ## 1.2.0-rc.4
 
 ### Patch Changes

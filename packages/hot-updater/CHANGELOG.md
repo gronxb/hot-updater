@@ -1,5 +1,27 @@
 # hot-updater
 
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- dd7db4b: `secrets issue android-keystore` creates the Android upload key with the JDK's keytool and stores it through the secrets adapter, and `google-play login` sets it up after the Play service account: a new key, or the keystore you have.
+- 1489a30: Doctor's outdated-server advice for a deployment an agent infrastructure scaffold keeps is one line and the `agent infra upgrade` command, named once, as for a deployment init manages. The preview, migration and deploy order stay in the scaffold's `upgrades/README.md`. `--json` keeps its fields.
+- 709997a: `google-play login` signs in to Google with the gcloud CLI, running `gcloud auth login` when no account is active, and needs no Google OAuth client of your own (`HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID`/`_SECRET` are gone) and no Play Console developer account ID. The package name is filled in from the config's `nativeBuild.android` schemes (a choice when they declare several), as `native-build android --submit play-internal` does. The service account goes in the Google Cloud project "Hot Updater Play" an earlier run created, or a new one, without asking; only when Google refuses to create a project does it ask for one of the account's projects. After creating the key, it opens Play Console's invite page for the service account and waits, up to 10 minutes, until the key can reach the app; when it never does, it deletes the key and says to invite the service account and run `npx hot-updater google-play login` again.
+- 5d4d977: The config managed `init` writes names the provider's resources and reads its credentials with `secretEnv`, so a team store in `secrets` shares them: `init` stores them there with `HOT_UPDATER_API_KEY` and reads a missing one back, and `secrets import` moves an existing project's from `.env.hotupdater`. Doctor lists where each `secretEnv` name comes from. The storage and database adapters take a credential as a string or a function.
+- 2fd1c83: A configured `secrets` adapter is the only store: the CLI no longer reads `~/.hot-updater/secrets/` under it or writes there for it, so a teammate with the config and store access sees what you see. An issued key must read back exactly through the adapter, or it is revoked; the run uses it from memory. When the environment overrides a key the adapter lacks, `apple login` and `google-play login` add an `Adapter` row. `hot-updater doctor` lists each `secret:` reference and whether the adapter, the environment, or nothing holds it, with matching `--json` fields.
+- Updated dependencies [dd7db4b]
+- Updated dependencies [709997a]
+- Updated dependencies [5d4d977]
+- Updated dependencies [2fd1c83]
+  - @hot-updater/android-helper@1.2.0-rc.5
+  - @hot-updater/cli-tools@1.2.0-rc.5
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/apple-helper@1.2.0-rc.5
+  - @hot-updater/console@1.2.0-rc.5
+  - @hot-updater/server@1.2.0-rc.5
+  - @hot-updater/bsdiff@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
 ## 1.2.0-rc.4
 
 ### Patch Changes
