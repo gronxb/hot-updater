@@ -21,7 +21,6 @@ import {
   prepareIssuedCredential,
   storeIssuedCredential,
   withIssuedValue,
-  type WritableSecrets,
 } from "./issuedCredential";
 
 const POLICY: IssuedCredentialPolicy = {
@@ -126,7 +125,7 @@ const revokeNotStored = async (
 };
 
 const storeIssued = async (
-  secrets: WritableSecrets,
+  secrets: SecretsAdapter,
   name: string,
   key: IssuedAscApiKey,
 ): Promise<void> => {

@@ -547,7 +547,7 @@ describe("uploadToPlay", () => {
       Object.fromEntries(names.map((name) => [name, serviceAccountJson])),
     );
     const resolver = createCredentialResolver({
-      secrets: { name: "spec-store", get },
+      secrets: { name: "spec-store", get, set: async () => {} },
       cwd: dir,
     });
     const { fetch, requests } = createRecordingFetch(successRoutes());

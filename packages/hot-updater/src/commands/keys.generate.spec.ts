@@ -234,24 +234,6 @@ describe("keys generate --secret", () => {
     expect(output()).toContain("permission denied");
   });
 
-  it("refuses a read-only adapter in one line before generating, writing nothing on this machine", async () => {
-    const cwd = await createProject();
-    const get = vi.fn(async () => ({}));
-    mocks.loadConfig.mockResolvedValue({ secrets: { name: "read-only", get } });
-    exit();
-
-    await expect(keysGenerate({ keySize: 2048, secret: true })).rejects.toThrow(
-      "process.exit",
-    );
-
-    expect(output()).toContain(
-      "The read-only secrets adapter is read-only: store bundle-signing-key there.",
-    );
-    expect(get).not.toHaveBeenCalled();
-    expect(await listFiles(path.join(cwd, "keys"))).toEqual([]);
-    expect(await readLocalKey("bundle-signing-key", cwd)).toBeUndefined();
-  });
-
   it("removes the public key when the adapter doesn't read the private key back", async () => {
     const cwd = await createProject();
     const { secrets } = writableSecrets();

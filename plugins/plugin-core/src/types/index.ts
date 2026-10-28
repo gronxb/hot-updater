@@ -462,10 +462,11 @@ export interface SecretsAdapter {
     context: SecretsContext,
   ) => Promise<Readonly<Record<string, string | undefined>>>;
   /**
-   * Stores `value` as `name`, replacing what it held. Absent when the store
-   * is read-only to Hot Updater.
+   * Stores `value` as `name`, replacing what it held. Every adapter stores:
+   * the CLI keeps the keys it issues and imports here, and nowhere else. A
+   * write the store refuses, such as with a read-only token, throws.
    */
-  readonly set?: (
+  readonly set: (
     name: string,
     value: string,
     context: SecretsContext,
@@ -632,7 +633,7 @@ export type ConfigInput = {
    * Where the CLI reads the secrets the config names, `secret:<name>` build
    * credentials and `secretEnv([...])` deploy credentials, and stores the
    * keys it issues. It is the only store: nothing is kept on this machine
-   * under it, and one without `set` is read-only.
+   * under it.
    *
    * @default localSecrets()
    */

@@ -62,7 +62,6 @@ import {
   getCwd,
   getLocalKeyFile,
   maskSecretValues,
-  readLocalKey,
   setConfiguredSecrets,
   withCredentialResolver,
   resolveSecretsAdapter,
@@ -82,12 +81,10 @@ const P8 =
  */
 const fakeStore = ({
   values = {},
-  writable = true,
   setError,
   readBack,
 }: {
   values?: Record<string, string>;
-  writable?: boolean;
   setError?: Error;
   readBack?: () => Promise<string | undefined>;
 } = {}) => {
@@ -108,16 +105,12 @@ const fakeStore = ({
         ),
       );
     },
-    ...(writable
-      ? {
-          set: async (name: string, value: string) => {
-            calls.push(`set ${name}`);
-            written = true;
-            if (setError) throw setError;
-            held.set(name, value);
-          },
-        }
-      : {}),
+    set: async (name: string, value: string) => {
+      calls.push(`set ${name}`);
+      written = true;
+      if (setError) throw setError;
+      held.set(name, value);
+    },
   };
   setConfiguredSecrets(store);
   return { store, held, calls };
@@ -341,19 +334,6 @@ describe("ensureAscApiKey", () => {
     fakeStore();
     await withTTY(true, () => ensure({ name: "asc-api-key" }));
     expect(printed()).not.toContain("on this machine. Signing in issues");
-  });
-
-  it("refuses a read-only adapter before any Apple prompt or sign-in", async () => {
-    const { calls } = fakeStore({ writable: false });
-    await expect(
-      withTTY(true, () => ensure({ name: "widget-asc" })),
-    ).rejects.toThrow(
-      "The spec-store secrets adapter is read-only: store widget-asc there.",
-    );
-    expect(calls).toEqual(["get widget-asc"]);
-    expect(text).not.toHaveBeenCalled();
-    expect(issue).not.toHaveBeenCalled();
-    await expect(readLocalKey("widget-asc", getCwd())).resolves.toBeUndefined();
   });
 
   it("revokes the key when `localSecrets()`'s store can't be written", async () => {

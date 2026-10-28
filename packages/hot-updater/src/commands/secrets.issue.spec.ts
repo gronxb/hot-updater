@@ -389,31 +389,6 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
   });
 
-  it.each([
-    ["--replace over a key it holds", OLD_ASC, true],
-    ["a key it lacks", undefined, false],
-  ])(
-    "refuses a read-only adapter before any sign-in: %s",
-    async (_, value, replace) => {
-      const get = vi.fn(async (names: readonly string[]) =>
-        Object.fromEntries(names.map((name) => [name, value])),
-      );
-      configure({ name: "read-only", get, describe: (name) => `ro://${name}` });
-
-      await withTTY(true, () =>
-        handleSecretsIssue("asc-api-key", "asc-api-key", { replace }),
-      );
-
-      expect(process.exitCode).toBe(1);
-      expect(issueAscApiKey).not.toHaveBeenCalled();
-      expect(text).not.toHaveBeenCalled();
-      expect(log.error).toHaveBeenCalledWith(
-        "The read-only secrets adapter is read-only: store asc-api-key there.",
-      );
-      expect(await readLocalKey("asc-api-key", directory)).toBeUndefined();
-    },
-  );
-
   it("--replace refuses a key the environment overrides, which a new key would never replace", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
     const { calls } = writableStore({ "asc-api-key": OLD_ASC });

@@ -67,12 +67,10 @@ const KEY_FILE = JSON.stringify({
  */
 const fakeStore = ({
   values = {},
-  writable = true,
   setError,
   readBack,
 }: {
   values?: Record<string, string>;
-  writable?: boolean;
   setError?: Error;
   readBack?: () => Promise<string | undefined>;
 } = {}) => {
@@ -93,16 +91,12 @@ const fakeStore = ({
         ),
       );
     },
-    ...(writable
-      ? {
-          set: async (name: string, value: string) => {
-            calls.push(`set ${name}`);
-            written = true;
-            if (setError) throw setError;
-            held.set(name, value);
-          },
-        }
-      : {}),
+    set: async (name: string, value: string) => {
+      calls.push(`set ${name}`);
+      written = true;
+      if (setError) throw setError;
+      held.set(name, value);
+    },
   };
   setConfiguredSecrets(store);
   return { store, held, calls };
@@ -442,18 +436,6 @@ describe("ensurePlayServiceAccount", () => {
     );
     expect(issued.revoke).toHaveBeenCalledTimes(1);
     await expect(fs.access(keyFile("play-service-account"))).rejects.toThrow();
-  });
-
-  it("refuses a read-only adapter before the Google sign-in", async () => {
-    const { calls } = fakeStore({ writable: false });
-
-    await expect(
-      withTTY(true, () => ensure({ name: "play-service-account" })),
-    ).rejects.toThrow(
-      "The spec-store secrets adapter is read-only: store play-service-account there.",
-    );
-    expect(calls).toEqual(["get play-service-account"]);
-    expect(issue).not.toHaveBeenCalled();
   });
 });
 

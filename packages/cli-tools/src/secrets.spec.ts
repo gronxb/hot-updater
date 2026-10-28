@@ -12,7 +12,6 @@ import {
 } from "./reservedVariables";
 import { maskSecretValues } from "./secretMasking";
 import {
-  assertWritableSecrets,
   describeStoredSecret,
   getConfiguredAdapter,
   getConfiguredSecrets,
@@ -49,6 +48,7 @@ const storeOf = (
   values: Readonly<Record<string, string>>,
 ): SecretsAdapter & { get: ReturnType<typeof vi.fn> } => ({
   name: "spec-store",
+  set: async () => {},
   get: vi.fn(async (names: readonly string[]) =>
     Object.fromEntries(names.map((name) => [name, values[name]])),
   ),
@@ -225,20 +225,9 @@ describe("the default store", () => {
       "asc-api-key": "from-store",
       "play-service-account": undefined,
     });
-    expect(secrets.set).toBeUndefined();
     expect(describeStoredSecret(secrets, "asc-api-key")).toBe(
       "spec://asc-api-key",
     );
-  });
-
-  it("refuses to store through an adapter without set, in one line", () => {
-    const store = storeOf({});
-    expect(() => assertWritableSecrets(store, "asc-api-key")).toThrow(
-      "The spec-store secrets adapter is read-only: store asc-api-key there.",
-    );
-    expect(() =>
-      assertWritableSecrets({ ...store, set: async () => {} }, "asc-api-key"),
-    ).not.toThrow();
   });
 
   it("stores through the config's adapter when it stores values", async () => {

@@ -270,37 +270,6 @@ describe("hot-updater secrets put", () => {
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
-
-  it.each([
-    ["holds the name", "held"],
-    ["lacks the name", undefined],
-  ])(
-    "refuses a read-only adapter that %s in one line, before any prompt, writing nothing on this machine",
-    async (_, value) => {
-      const get = vi.fn(async (names: readonly string[]) =>
-        Object.fromEntries(names.map((name) => [name, value])),
-      );
-      configure({ name: "read-only", get, describe: (name) => `ro://${name}` });
-      vi.spyOn(process, "cwd").mockReturnValue(directory);
-      await fs.writeFile(path.join(directory, "package.json"), "{}");
-
-      await handleSecretsPut("release-keystore", {
-        kind: "android-keystore",
-        keystore: "release.jks",
-        keyAlias: "upload",
-      });
-
-      expect(log.error).toHaveBeenCalledWith(
-        "The read-only secrets adapter is read-only: store release-keystore there.",
-      );
-      expect(get).not.toHaveBeenCalled();
-      expect(password).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(1);
-      await expect(
-        fs.access(getLocalKeyFile("release-keystore", directory)),
-      ).rejects.toThrow();
-    },
-  );
 });
 
 // No line the command prints wraps on an 80-column terminal.

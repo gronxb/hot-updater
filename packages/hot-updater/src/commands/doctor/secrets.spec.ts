@@ -52,6 +52,7 @@ const configWith = (secrets: SecretsAdapter) =>
 
 const teamStore = (values: Record<string, string>) => ({
   name: "team-store",
+  set: async () => {},
   get: vi.fn(async (names: readonly string[]) =>
     Object.fromEntries(names.map((name) => [name, values[name]])),
   ),
@@ -103,6 +104,7 @@ describe("checkSecrets", () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
     const store = {
       name: "team-store",
+      set: async () => {},
       get: vi.fn(async () => {
         throw new Error("AccessDenied");
       }),

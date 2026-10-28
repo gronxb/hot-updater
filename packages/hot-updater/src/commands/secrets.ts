@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { ASC_INTEGRATIONS_URL } from "@hot-updater/apple-helper";
 import {
-  assertWritableSecrets,
   CREDENTIAL_ENV_NAMES,
   type CredentialKind,
   credentialIssueCommand,
@@ -235,8 +234,8 @@ export const environmentOverrides = (
 /**
  * `secrets put`: stores a build credential you have as `name` through the
  * config's `secrets` adapter, or `localSecrets()` by default, as one JSON
- * value that `secret:<name>` resolves. An adapter without `set` refuses.
- * It never signs in: `secrets issue` does.
+ * value that `secret:<name>` resolves. It never signs in: `secrets issue`
+ * does.
  */
 export const handleSecretsPut = async (
   name: string,
@@ -262,7 +261,6 @@ export const handleSecretsPut = async (
     }
     // Registers the config's secrets adapter, which everything below uses.
     const { secrets } = await loadConfig(null);
-    assertWritableSecrets(secrets, name);
     const cwd = getCwd();
     // The keystore's passwords are this command's input, not an override.
     const overrides = environmentOverrides(
@@ -441,7 +439,6 @@ export interface SecretsIssueOptions {
  * - A key the adapter holds is kept, without a sign-in, unless `--replace`:
  *   then a new key replaces it, and the old one, which CI may still use,
  *   is named with where to revoke it. Hot Updater never revokes it.
- * - An adapter without `set` refuses before any sign-in.
  * - Only then, when it has to sign in, does it need a terminal: in CI or
  *   without one, it refuses, naming the command to run in one and
  *   `secrets put`, which stores a key you have.
@@ -504,8 +501,6 @@ export const handleSecretsIssue = async (
       return;
     }
 
-    // Nothing is issued that the adapter can't store.
-    assertWritableSecrets(secrets, name);
     // Only a sign-in needs a terminal: a key already held is reported
     // above, in CI too.
     const reason = nonInteractiveReason();

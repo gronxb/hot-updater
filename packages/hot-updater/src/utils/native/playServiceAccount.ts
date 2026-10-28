@@ -21,7 +21,6 @@ import {
   prepareIssuedCredential,
   storeIssuedCredential,
   withIssuedValue,
-  type WritableSecrets,
 } from "./issuedCredential";
 
 /** Where a project's service accounts, and each one's keys, are in Google Cloud. */
@@ -124,7 +123,7 @@ const revokeNotStored = async (
 };
 
 const storeIssued = async (
-  secrets: WritableSecrets,
+  secrets: SecretsAdapter,
   name: string,
   issued: IssuedPlayServiceAccount,
 ): Promise<void> => {
@@ -165,8 +164,7 @@ const storeIssued = async (
  *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
  * 2. a value the config's `secrets` adapter holds as `name` is used as it
  *    is, so CI uploads with the stored key and never signs in;
- * 3. an adapter without `set` refuses;
- * 4. without a terminal, it refuses with the command that signs in once.
+ * 3. without a terminal, it refuses with the command that signs in once.
  *
  * Only then does the developer sign in with Google, through gcloud, and
  * invite the service account in Play Console, which opens in a browser,

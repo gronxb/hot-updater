@@ -167,6 +167,7 @@ const fakeSecrets = (values: Record<string, string>) => {
   );
   const secrets: SecretsAdapter = {
     name: "fake",
+    set: async () => {},
     get,
     describe: (name) => `fake://store/${name}`,
   };
@@ -280,6 +281,7 @@ describe("local signing with privateKey from a secret", () => {
   it("reports an unreadable store, and refuses a value that is no key without quoting it", async () => {
     const failing: SecretsAdapter = {
       name: "fake",
+      set: async () => {},
       get: async () => {
         throw new Error("permission denied");
       },

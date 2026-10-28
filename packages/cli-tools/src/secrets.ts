@@ -174,22 +174,6 @@ export const describeStoredSecret = (
   describeSecret(secrets, name);
 
 /**
- * Refuses, in one line, to store `name` through an adapter without `set`,
- * before anything is issued or generated: a value kept anywhere else would
- * be one only this machine reads.
- */
-export function assertWritableSecrets(
-  secrets: SecretsAdapter,
-  name: string,
-): asserts secrets is SecretsAdapter & Required<Pick<SecretsAdapter, "set">> {
-  if (!secrets.set) {
-    throw new Error(
-      `The ${secrets.name} secrets adapter is read-only: store ${name} there.`,
-    );
-  }
-}
-
-/**
  * `name`'s value, read in the order `secrets.get` reads it, with the one
  * place it came from, for messages: the config's adapter
  * (`describeSecret`), the environment variable `localSecrets()` reads

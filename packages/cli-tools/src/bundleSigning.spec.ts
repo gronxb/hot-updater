@@ -288,7 +288,7 @@ describe("local signing with privateKey from the config's secrets", () => {
     const get = vi.fn<SecretsAdapter["get"]>(async (names) =>
       Object.fromEntries(names.map((name) => [name, values[name]])),
     );
-    setConfiguredSecrets({ name: "fake", get });
+    setConfiguredSecrets({ name: "fake", get, set: async () => {} });
     return get;
   };
 
@@ -324,6 +324,7 @@ describe("local signing with privateKey from the config's secrets", () => {
     const android = createKeyPair();
     const store = (name: string, privateKey: string): SecretsAdapter => ({
       name,
+      set: async () => {},
       get: async (names) =>
         Object.fromEntries(names.map((entry) => [entry, privateKey])),
     });

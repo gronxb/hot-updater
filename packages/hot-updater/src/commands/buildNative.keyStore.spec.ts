@@ -14,8 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * The first build of a project without a `secrets` adapter: the key a
  * sign-in issues goes to `localSecrets()`'s store, the same build signs and
  * uploads with it, and the next build on this machine reuses it without
- * signing in. A configured adapter is the only store: one that can't store
- * or read back the key leaves nothing on this machine. Only the sign-ins, the native build, and the stores are
+ * signing in. A configured adapter is the only store: one that doesn't read
+ * back the key leaves nothing on this machine. Only the sign-ins, the native build, and the stores are
  * stand-ins; the credential resolver and the issued-key flow are the CLI's
  * own.
  */
@@ -43,10 +43,10 @@ const { log, uploads, scheme, home } = vi.hoisted(() => ({
   scheme: {
     platform: "ios" as "ios" | "android",
     /**
-     * The config's adapter: none (`localSecrets()`), one that stores but
-     * reads nothing back, or one without `set`.
+     * The config's adapter: none (`localSecrets()`), or one that stores but
+     * reads nothing back.
      */
-    adapter: "none" as "none" | "writeOnly" | "readOnly",
+    adapter: "none" as "none" | "writeOnly",
   },
   home: { path: "" },
 }));
@@ -129,9 +129,7 @@ vi.mock("@/utils/native/prepareNativeBuild", async () => {
       const configured =
         scheme.adapter === "writeOnly"
           ? { name: "write-only", get, set: async () => {} }
-          : scheme.adapter === "readOnly"
-            ? { name: "read-only", get }
-            : undefined;
+          : undefined;
       // As loadConfig hands it over: `localSecrets()` without an adapter.
       const secrets = resolveSecretsAdapter(configured);
       if (scheme.platform === "ios") {
@@ -315,32 +313,6 @@ describe("a first build without a secrets adapter", () => {
     await expect(fs.readdir(home.path)).resolves.toEqual([]);
     exit.mockRestore();
   });
-
-  it.each(["ios", "android"] as const)(
-    "refuses a read-only adapter on %s before any sign-in, copying nothing to this machine",
-    async (platform) => {
-      scheme.platform = platform;
-      scheme.adapter = "readOnly";
-      const exit = vi.spyOn(process, "exit").mockImplementation((() => {
-        throw new Error("exit");
-      }) as never);
-      await withTTY(() =>
-        handleNativeBuildCreate(platform, {
-          scheme: "release",
-          submit: platform === "ios" ? "testflight" : "play-internal",
-        }),
-      ).catch(() => undefined);
-
-      expect(issueAscApiKey).not.toHaveBeenCalled();
-      expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-      expect(uploads).toEqual([]);
-      expect(printed()).toContain(
-        `The read-only secrets adapter is read-only: store ${platform === "ios" ? "asc-api-key" : "play-service-account"} there.`,
-      );
-      await expect(fs.readdir(home.path)).resolves.toEqual([]);
-      exit.mockRestore();
-    },
-  );
 
   it("uploads to Google Play with the service account the sign-in issued, and the next build reuses it without signing in", async () => {
     scheme.platform = "android";

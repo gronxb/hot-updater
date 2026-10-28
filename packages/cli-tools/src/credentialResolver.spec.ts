@@ -19,6 +19,7 @@ const fakeSecrets = (
   values: Readonly<Record<string, string>>,
 ): SecretsAdapter & { get: ReturnType<typeof vi.fn> } => ({
   name: "fake",
+  set: async () => {},
   get: vi.fn(async (names: readonly string[]) =>
     Object.fromEntries(names.map((name) => [name, values[name]])),
   ),
@@ -292,6 +293,7 @@ describe("createCredentialResolver", () => {
     const resolver = createCredentialResolver({
       secrets: {
         name: "aws",
+        set: async () => {},
         get: async () => {
           throw reason;
         },
@@ -461,6 +463,7 @@ describe("credential temporary files", () => {
     const resolver = createCredentialResolver({
       secrets: {
         name: "late",
+        set: async () => {},
         get: async () => {
           await released;
           return {

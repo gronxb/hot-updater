@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
-  assertWritableSecrets,
   type ConfigResponse,
   DEFAULT_SIGNING_KEY_SECRET,
   describeStoredSecret,
@@ -110,15 +109,13 @@ const ignorePrivateKey = (cwd: string, outputDir: string) => {
       : "unchanged";
 };
 
-type WritableSecrets = SecretsAdapter & Required<Pick<SecretsAdapter, "set">>;
-
 /**
  * Stores the private key as `name` and reads it back. The public key file
  * is created first, so an existing one fails before anything is stored, and
  * removed if storing fails.
  */
 const storePrivateKey = async (
-  secrets: WritableSecrets,
+  secrets: SecretsAdapter,
   name: string,
   keyPair: KeyPair,
   outputDir: string,
@@ -160,16 +157,14 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
   let started = false;
 
   try {
-    let secrets: WritableSecrets | undefined;
+    let secrets: SecretsAdapter | undefined;
     if (secretName !== undefined) {
       if (!isSecretName(secretName)) {
         throw new Error(
           `"${secretName}" is not a secret name.\nUse up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.`,
         );
       }
-      const { secrets: configured } = await loadConfig(null);
-      assertWritableSecrets(configured, secretName);
-      secrets = configured;
+      ({ secrets } = await loadConfig(null));
       const held = (await secrets.get([secretName], { cwd }))[secretName];
       if (typeof held === "string" && held.trim()) {
         throw new Error(

@@ -248,7 +248,11 @@ describe("native-build ios|android resolves its signing credentials before the p
       },
     };
     vi.mocked(ensureAscApiKey).mockImplementationOnce(async () => {
-      setConfiguredSecrets({ name: "later-load", get: vi.fn() });
+      setConfiguredSecrets({
+        name: "later-load",
+        set: async () => {},
+        get: vi.fn(),
+      });
       return { status: "stored" };
     });
 

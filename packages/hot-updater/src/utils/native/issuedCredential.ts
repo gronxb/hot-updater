@@ -1,5 +1,4 @@
 import {
-  assertWritableSecrets,
   CREDENTIAL_ENV_NAMES,
   credentialLoginCommand,
   describeSecret,
@@ -45,23 +44,19 @@ export interface IssuedCredentialPolicy {
   readonly account: string;
 }
 
-/** A secrets adapter that stores values. */
-export type WritableSecrets = SecretsAdapter &
-  Required<Pick<SecretsAdapter, "set">>;
-
 export type PreparedCredential =
   /** The environment overrides the key: the adapter is not read. */
   | { readonly status: "environment" }
   /** The secrets adapter holds the key: no sign-in. */
   | { readonly status: "stored" }
   /**
-   * Nothing holds the key, and a sign-in can start: there is a terminal,
-   * and `secrets`, the config's adapter or `localSecrets()`, stores values.
+   * Nothing holds the key, and a sign-in can start: there is a terminal.
+   * The key goes to `secrets`, the config's adapter or `localSecrets()`.
    * `env` is the environment with the project's `.env.hotupdater` under it.
    */
   | {
       readonly status: "missing";
-      readonly secrets: WritableSecrets;
+      readonly secrets: SecretsAdapter;
       readonly env: Readonly<Record<string, string>>;
     };
 
@@ -86,11 +81,9 @@ const describeUnavailable = (
  * 2. a value the config's `secrets` adapter holds as `name` is used as it
  *    is, so CI builds with the stored key and never signs in, unless
  *    `replace` is set: `secrets issue` read it already;
- * 3. an adapter without `set` refuses: a key it can't store would be one
- *    only this run has;
- * 4. in CI or without a terminal, `canSignIn` refuses with the command
+ * 3. in CI or without a terminal, `canSignIn` refuses with the command
  *    that signs in once;
- * 5. when nothing holds a key and the key would stay on this machine, the
+ * 4. when nothing holds a key and the key would stay on this machine, the
  *    developer is told that signing in issues a new key, and how to share
  *    one instead.
  *
@@ -132,7 +125,6 @@ export const prepareIssuedCredential = async (
     const held = (await secrets.get([name], { cwd }))[name];
     if (typeof held === "string" && held) return { status: "stored" };
   }
-  assertWritableSecrets(secrets, name);
 
   if (
     !(await canSignIn({
@@ -177,6 +169,7 @@ export const withIssuedKey = (
     if (names.includes(name)) values[name] = await read();
     return values;
   },
+  set: (other, value, context) => secrets.set(other, value, context),
   describe: (other) =>
     other === name ? where : describeSecret(secrets, other),
 });
@@ -251,7 +244,7 @@ export const storeIssuedCredential = async ({
   name,
   value,
 }: {
-  readonly secrets: WritableSecrets;
+  readonly secrets: SecretsAdapter;
   readonly name: string;
   readonly value: string;
 }): Promise<void> => {
