@@ -42,12 +42,15 @@ const MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5";
 let sourceDir: string;
 
 beforeEach(async () => {
+  // The built .app copied out of DerivedData.
+  vi.spyOn(fs, "cp").mockResolvedValue(undefined);
   sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-ios-"));
   await fs.mkdir(path.join(sourceDir, "App.xcodeproj"));
   vi.mocked(runXcodebuildWithLogging).mockClear();
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(sourceDir, { recursive: true, force: true });
 });
 
@@ -63,6 +66,7 @@ describe("a project whose workspace pod install creates", () => {
   it("builds the workspace", async () => {
     await buildXcodeProject({
       sourceDir,
+      outputDirectory: path.join(sourceDir, "out"),
       platform: "ios",
       xcodeScheme: "App",
       configuration: "Debug",
@@ -82,6 +86,7 @@ describe("a project whose workspace pod install creates", () => {
   it("archives the workspace", async () => {
     await archiveXcodeProject({
       sourceDir,
+      archiveDirectory: path.join(sourceDir, "out"),
       platform: "ios",
       installPods: true,
       xcodeScheme: "App",

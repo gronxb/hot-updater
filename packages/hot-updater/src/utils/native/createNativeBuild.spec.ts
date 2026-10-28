@@ -197,6 +197,68 @@ describe("createNativeBuild", () => {
     expect(result.minBundleId).toBe("00000000-0000-0000-0000-000000000000");
   });
 
+  it("disposes of the build's temporary directory once the artifact is copied out of it", async () => {
+    const calls: string[] = [];
+    const built = await writeArtifact("export/App.ipa");
+    const outputPath = path.join(root, "output");
+
+    const result = await createNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+      target: { fingerprintHash: "fingerprint", appVersion: null },
+      debug: false,
+      readChannel: async () => "production",
+      outputPath,
+      buildAdapter: buildAdapter(calls),
+      builder: async () => ({
+        ...built,
+        dispose: async () => {
+          calls.push("dispose");
+          await fs.rm(built.buildDirectory, { recursive: true, force: true });
+        },
+      }),
+    });
+
+    expect(calls).toEqual(["postbuild:ios", "dispose"]);
+    await expect(fs.stat(built.buildDirectory)).rejects.toThrow();
+    expect(result.artifactPath).toBe(path.join(outputPath, "export/App.ipa"));
+    await expect(fs.readFile(result.artifactPath, "utf-8")).resolves.toBe(
+      "artifact",
+    );
+  });
+
+  it("disposes of the build's temporary directory when the postbuild fails", async () => {
+    const built = await writeArtifact("export/App.ipa");
+    const dispose = vi.fn(async () => {
+      await fs.rm(built.buildDirectory, { recursive: true, force: true });
+    });
+
+    await expect(
+      createNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+        target: { fingerprintHash: "fingerprint", appVersion: null },
+        debug: false,
+        readChannel: async () => "production",
+        outputPath: path.join(root, "output"),
+        buildAdapter: {
+          name: "bare",
+          build: vi.fn(),
+          nativeBuild: {
+            postbuild: async () => {
+              throw new Error("postbuild failed");
+            },
+          },
+        },
+        builder: async () => ({ ...built, dispose }),
+      }),
+    ).rejects.toThrow("postbuild failed");
+    expect(dispose).toHaveBeenCalledOnce();
+    await expect(fs.stat(built.buildDirectory)).rejects.toThrow();
+  });
+
   it("rejects an artifact that is none of the kinds", async () => {
     const built = await writeArtifact("archive/App.xcarchive");
 
