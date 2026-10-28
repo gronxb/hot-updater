@@ -216,7 +216,7 @@ describe("native-build android --submit play-internal", () => {
 
     expect(ensurePlayServiceAccount).toHaveBeenCalledWith({
       name: "play-service-account",
-      packageName: "com.example.app",
+      packageNames: ["com.example.app"],
     });
   });
 

@@ -24,14 +24,7 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "HOT_UPDATER_HOME",
 ]);
 
-const RESERVED_PREFIXES = [
-  "LD_",
-  "DYLD_",
-  "GIT_",
-  "NPM_CONFIG_",
-  // The OAuth client the Google sign-in issues a Play key with.
-  "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_",
-] as const;
+const RESERVED_PREFIXES = ["LD_", "DYLD_", "GIT_", "NPM_CONFIG_"] as const;
 
 /**
  * Whether `name` is a variable no secret may set: one a loader or

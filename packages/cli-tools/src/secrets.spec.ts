@@ -80,7 +80,6 @@ describe("isReservedVariableName", () => {
     "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
     "HOT_UPDATER_SIGNING_TOKEN",
-    "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
     "HOT_UPDATER_HOME",
   ])("reserves %s", (name) => {
     expect(isReservedVariableName(name)).toBe(true);

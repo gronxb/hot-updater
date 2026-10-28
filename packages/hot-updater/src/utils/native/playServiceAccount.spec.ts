@@ -122,6 +122,8 @@ const withTTY = async <T>(isTTY: boolean, run: () => Promise<T>) => {
   }
 };
 
+const INVITE_URL = `https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(EMAIL)}`;
+
 /**
  * An `IssuePlayServiceAccount` that issues EMAIL's key: what
  * ensurePlayServiceAccount depends on, whichever sign-in implements it
@@ -135,14 +137,11 @@ const issue = vi.fn(
   async (
     request: IssuePlayServiceAccountRequest,
   ): Promise<IssuedPlayServiceAccount> => {
-    await request.onSignInUrl("https://accounts.google.com/o/oauth2/v2/auth?x");
-    await request.askDeveloperId();
-    await request.chooseProject([{ projectId: "my-app" }]);
+    await request.onInvite(INVITE_URL, EMAIL);
     return {
       json: KEY_FILE,
       email: EMAIL,
       projectId: "my-app",
-      developerId: "1234",
       keyId: "abc123",
       revoke: issued.revoke,
       dispose: issued.dispose,
@@ -170,14 +169,10 @@ beforeEach(async () => {
   for (const name of [
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
-    "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID",
-    "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET",
   ]) {
     vi.stubEnv(name, "");
   }
-  text.mockImplementation(async ({ message }: { message: string }) =>
-    message.includes("developer account") ? "1234" : "com.example.app",
-  );
+  text.mockResolvedValue("com.example.app");
   select.mockResolvedValue("my-app");
 });
 
@@ -313,7 +308,7 @@ describe("ensurePlayServiceAccount", () => {
       withTTY(true, () =>
         ensure({
           name: "play-service-account",
-          packageName: "com.example.app",
+          packageNames: ["com.example.app"],
         }),
       ),
     ).resolves.toEqual({ status: "issued", email: EMAIL });
@@ -331,31 +326,41 @@ describe("ensurePlayServiceAccount", () => {
     expect(issue).toHaveBeenCalledWith(
       expect.objectContaining({ packageName: "com.example.app" }),
     );
-    expect(open).toHaveBeenCalledWith(
-      "https://accounts.google.com/o/oauth2/v2/auth?x",
-    );
+    // Only Play Console's invite opens: gcloud signs in on its own, and no
+    // developer account ID is asked for.
+    expect(open.mock.calls).toEqual([[INVITE_URL]]);
+    expect(text).toHaveBeenCalledTimes(1);
     expect(issued.revoke).not.toHaveBeenCalled();
     expect(issued.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("signs in with the OAuth client the environment names", async () => {
-    vi.stubEnv(
-      "HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID",
-      "mine.apps.googleusercontent.com",
-    );
-    vi.stubEnv("HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET", "GOCSPX-mine");
+  it("names the service account to invite, with the app, and prints the invite link", async () => {
     fakeStore();
 
-    await withTTY(true, () => ensure({ name: "play-service-account" }));
-
-    expect(issue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        oauthClient: {
-          clientId: "mine.apps.googleusercontent.com",
-          clientSecret: "GOCSPX-mine",
-        },
+    await withTTY(true, () =>
+      ensure({
+        name: "play-service-account",
+        packageNames: ["com.example.app"],
       }),
     );
+
+    expect(log.info).toHaveBeenCalledWith(
+      `In Play Console, invite with release access to com.example.app:\n${EMAIL}`,
+    );
+    expect(
+      log.message.mock.calls.map(([message]) =>
+        stripVTControlCharacters(String(message)),
+      ),
+    ).toContain(`If the browser doesn't open, open:\n${INVITE_URL}`);
+  });
+
+  it("goes on when the browser can't open the invite", async () => {
+    fakeStore();
+    open.mockRejectedValueOnce(new Error("no browser"));
+
+    await expect(
+      withTTY(true, () => ensure({ name: "play-service-account" })),
+    ).resolves.toEqual({ status: "issued", email: EMAIL });
   });
 
   it("deletes the key again when the adapter refuses it, and says what remains", async () => {

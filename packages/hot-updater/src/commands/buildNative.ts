@@ -249,7 +249,7 @@ const buildNativeInternal = async ({
                 const ensured = await ensurePlayServiceAccount({
                   name,
                   secrets,
-                  ...(packageName ? { packageName } : {}),
+                  ...(packageName ? { packageNames: [packageName] } : {}),
                 });
                 if (ensured.status === "issued") {
                   serviceAccountIssued = true;

@@ -80,7 +80,6 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
     json: SERVICE_ACCOUNT,
     email: "hot-updater-play@my-app.iam.gserviceaccount.com",
     projectId: "my-app",
-    developerId: "1234",
     keyId: "abc123",
     revoke: vi.fn(async () => true),
     dispose: vi.fn(async () => {}),
@@ -103,11 +102,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     log,
     isCancel: vi.fn(() => false),
     text: vi.fn(async ({ message }: { message: string }) =>
-      message.includes("developer account")
-        ? "1234"
-        : message.includes("package name")
-          ? "com.example.app"
-          : "dev@example.com",
+      message.includes("package name") ? "com.example.app" : "dev@example.com",
     ),
     select: vi.fn(async () => "my-app"),
   },
