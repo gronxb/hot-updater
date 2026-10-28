@@ -108,7 +108,9 @@ describe("doctor's release catalog check", () => {
   it("skips the check when hot-updater.config.ts names no database", async () => {
     vi.mocked(loadConfig).mockResolvedValue({ plugins: [] } as never);
 
-    await expect(doctor()).resolves.toBe(true);
+    const result = await doctor();
+    expect(result).toMatchObject({ success: true });
+    expect(result).not.toHaveProperty("details.releaseCatalogs");
     expect(loadServer).not.toHaveBeenCalled();
   });
 

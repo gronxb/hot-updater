@@ -1,4 +1,11 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -19,6 +26,7 @@ import {
   createSqlAdapter,
   createStorageAdapter,
   type DatabaseAdapter,
+  definePlugin,
   migrateCoreSchema,
   SETTINGS_TABLE,
   type ToolingDatabase,
@@ -163,6 +171,52 @@ const project = async (
 };
 
 const run = () => doctor({ cwd, fetch: fetchVersion, serverBaseUrl: SERVER });
+
+/** Each provider's scaffold resources for the database SAVED names. */
+const SCAFFOLD_RESOURCES: Record<InitProvider, Record<string, string>> = {
+  cloudflare: { d1DatabaseId: "database" },
+  supabase: { projectId: "ref" },
+  aws: { tableName: "hot-updater" },
+  firebase: { projectId: "app" },
+  vercel: {},
+  azure: { cosmosAccount: "account" },
+};
+
+/**
+ * The deployment record an agent infrastructure scaffold keeps in the CLI's
+ * default output, `hot-updater-infra/<provider>/<name>`.
+ */
+const scaffold = async (
+  provider: InitProvider,
+  name: string,
+  baseUrl: string | null,
+  build = "bare",
+  resources: Record<string, string> = SCAFFOLD_RESOURCES[provider],
+) => {
+  const dir = path.join(cwd, "hot-updater-infra", provider, name);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, "manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      provider,
+      operation: "upgrade",
+      build,
+      files: {},
+    }),
+  );
+  await writeFile(
+    path.join(dir, "deployment.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      provider,
+      resources,
+      baseUrl,
+      pendingStep: null,
+      verifiedSteps: [],
+    }),
+  );
+};
 
 /** Sets a settings row, as an earlier release's migration left it. */
 const storeSetting = async (
@@ -569,6 +623,304 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
           },
         },
         schema: { issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }] },
+      },
+    });
+  });
+
+  it("names the environment as the source when init's record is not in .env.hotupdater", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    // No .env.hotupdater: CI secrets, or a file the config loads, hold it.
+    await project(
+      marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+      null,
+    );
+    vi.stubEnv("HOT_UPDATER_INIT_PROVIDER", "aws");
+    vi.stubEnv("HOT_UPDATER_INIT_BUILD", "bare");
+    vi.stubEnv("HOT_UPDATER_DYNAMODB_TABLE_NAME", "hot-updater");
+
+    const command =
+      "npx hot-updater init --provider aws --build bare --from-env-file <env file>";
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        infrastructure: {
+          remediation: {
+            reason: expect.stringContaining(
+              "from the environment, not from .env.hotupdater",
+            ),
+            commands: [command],
+          },
+        },
+        schema: { issues: [{ commands: [command] }] },
+      },
+    });
+  });
+
+  it("does not name .env.hotupdater when the environment overrides the database it saved", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    // The file saved another table than the one the config reads now.
+    const another: Record<symbol, string> = {
+      [DATABASE_TARGET]: "dynamodb/rc22",
+    };
+    await project(
+      { ...createEngineDatabase({ name: "dynamoDB", adapter }), ...another },
+      "aws",
+    );
+    vi.stubEnv("HOT_UPDATER_DYNAMODB_TABLE_NAME", "rc22");
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: {
+          issues: [
+            {
+              commands: [
+                "npx hot-updater init --provider aws --build bare --from-env-file <env file>",
+              ],
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("says the server was not checked without a URL given or recorded", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await project(
+      marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+      "aws",
+    );
+
+    const result = await doctor({ cwd, fetch: fetchVersion });
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        infrastructureUnchecked: {
+          message:
+            "The server's version was not checked: doctor was given no --server-base-url, and no agent infrastructure scaffold in hot-updater-infra/ records the server.",
+          commands: ["npx hot-updater doctor --server-base-url <url>"],
+        },
+      },
+    });
+    expect(result).not.toHaveProperty("details.infrastructure");
+    expect(fetchVersion).not.toHaveBeenCalled();
+  });
+
+  it("checks the server an agent scaffold records, without --server-base-url", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", `${SERVER}/`);
+
+    await expect(doctor({ cwd, fetch: fetchVersion })).resolves.toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          versionEndpoint: `${SERVER}/version`,
+          recordedIn: path.join(
+            "hot-updater-infra",
+            "cloudflare",
+            "upgrade-bare-1.1.3",
+            "deployment.json",
+          ),
+          serverVersion: "1.1.3",
+          needsUpdate: true,
+        },
+      },
+    });
+    expect(fetchVersion).toHaveBeenCalledWith(
+      `${SERVER}/version`,
+      expect.anything(),
+    );
+  });
+
+  it("does not pick between servers several scaffolds record", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await project(
+      marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+      "aws",
+    );
+    await scaffold("aws", "setup-bare-1.1.3", "https://one.example.com");
+    await scaffold("aws", "upgrade-bare-1.2.0", "https://two.example.com");
+
+    await expect(doctor({ cwd, fetch: fetchVersion })).resolves.toMatchObject({
+      details: {
+        infrastructureUnchecked: {
+          message: expect.stringContaining(
+            "record more than one server (https://one.example.com, https://two.example.com)",
+          ),
+        },
+      },
+    });
+    expect(fetchVersion).not.toHaveBeenCalled();
+  });
+
+  it("names the scaffold upgrade instead of init for a deployment a scaffold keeps", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    // Init created it; agent infra scaffolds have kept it since.
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER);
+
+    const command =
+      "npx hot-updater agent infra upgrade --provider cloudflare --build bare";
+    const result = await doctor({ cwd, fetch: fetchVersion });
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          needsUpdate: true,
+          remediation: {
+            reason: expect.stringContaining(
+              "upload the new server version and preview it, then migrate the database and deploy that version back to back",
+            ),
+            commands: [command],
+          },
+        },
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              resolution: expect.stringContaining(
+                `This deployment is kept with the agent infrastructure scaffold in ${path.join("hot-updater-infra", "cloudflare", "upgrade-bare-1.1.3")}: run \`${command}\``,
+              ),
+              commands: [command],
+            },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("hot-updater init --provider");
+  });
+
+  it("keeps naming init beside a scaffold that was generated but never deployed", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    // A fresh scaffold records no server yet.
+    await scaffold("cloudflare", "setup-bare-1.2.0", null);
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: { issues: [{ commands: [initReplayCommand("cloudflare")] }] },
+        infrastructure: {
+          remediation: { commands: [initReplayCommand("cloudflare")] },
+        },
+      },
+    });
+  });
+
+  it("keeps naming init beside a scaffold of another database", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER, "bare", {
+      d1DatabaseId: "another-database",
+    });
+
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: { issues: [{ commands: [initReplayCommand("cloudflare")] }] },
+      },
+    });
+  });
+
+  it("does not name a scaffold's upgrade while the config lists a plugin of its own", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    // A server plugin of the project's own, which the scaffold's server lacks.
+    const custom = definePlugin({
+      id: "custom",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+    });
+    const config = await loadConfig(null);
+    vi.mocked(loadConfig).mockResolvedValue({
+      ...config,
+      plugins: [...managedPlugins(), custom],
+    } as never);
+    await scaffold("cloudflare", "upgrade-bare-1.1.3", SERVER);
+
+    const result = await run();
+    expect(JSON.stringify(result)).not.toContain(
+      "kept with the agent infrastructure scaffold",
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      "agent infra upgrade --provider cloudflare",
+    );
+    expect(result).toMatchObject({
+      details: {
+        infrastructure: {
+          remediation: {
+            reason: expect.stringContaining(
+              "lists a plugin the managed server does not run (custom)",
+            ),
+          },
+        },
+      },
+    });
+  });
+
+  it("names no build when the scaffolds of one deployment record different ones", async () => {
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "d1Database", managedPlugins());
+    await storeSetting(adapter, "schema.core", "1.0.0");
+    await project(
+      marked(
+        createEngineDatabase({ name: "d1Database", adapter }),
+        "cloudflare",
+      ),
+      "cloudflare",
+    );
+    await scaffold("cloudflare", "upgrade-bare-1.2.0", SERVER, "bare");
+    await scaffold("cloudflare", "upgrade-expo-1.1.3", SERVER, "expo");
+
+    const command =
+      "npx hot-updater agent infra upgrade --provider cloudflare --build <build>";
+    await expect(run()).resolves.toMatchObject({
+      details: {
+        schema: { issues: [{ commands: [command] }] },
+        infrastructure: { remediation: { commands: [command] } },
       },
     });
   });

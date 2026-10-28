@@ -1162,7 +1162,9 @@ program
     const port = await getConsolePort();
 
     if (await isPortReachable(port, { host: "127.0.0.1" })) {
-      p.log.error(`Port ${port} is already in use.`);
+      p.log.error(
+        `Port ${port} is already in use. Set console.port in hot-updater.config.ts to open the console on another port.`,
+      );
       process.exit(1);
     }
 

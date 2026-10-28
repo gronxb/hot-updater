@@ -147,6 +147,12 @@ export type InitProvider = keyof typeof INIT_PROVIDER_PACKAGES;
 export const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
 export const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
 
+/** The provider whose init writes a database of this `name`, if any. */
+export const providerOfDatabase = (name: string): InitProvider | undefined =>
+  INIT_PROVIDER_NAMES.find(
+    (provider) => INIT_PROVIDER_PACKAGES[provider].database === name,
+  );
+
 /** Init again with the inputs it saved: what reconciles a managed deployment. */
 export const initReplayCommand = (provider: InitProvider) =>
   `npx hot-updater init --provider ${provider} --from-env-file .env.hotupdater`;

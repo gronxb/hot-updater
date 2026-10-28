@@ -4,7 +4,12 @@ import { isRemoteDatabase } from "@hot-updater/plugin-core";
 import type { LoadedServer } from "../../utils/loadServer";
 import type { DoctorContext } from "./context";
 import type { SchemaIssue, SchemaSetting, SchemaStatus } from "./issues";
-import { foreignPluginsNote, type ManagedDeployment } from "./managed";
+import {
+  foreignPluginsNote,
+  type ManagedDeployment,
+  replaySourceNote,
+} from "./managed";
+import { type ScaffoldUpgrade, scaffoldUpgradeNote } from "./scaffoldRecords";
 
 /** The fence's error, by name: it may come from another copy of plugin-core. */
 interface SchemaMigrationRequired {
@@ -56,6 +61,14 @@ const ownedSettingKeys = ({ plugins }: LoadedServer): ReadonlySet<string> =>
     ),
   ]);
 
+/** What deploys the server that reads the database. */
+interface Deployment {
+  /** The deployment `hot-updater init` manages. */
+  readonly managed: ManagedDeployment | null;
+  /** The agent infrastructure scaffold that keeps it, which takes init's place. */
+  readonly scaffold: ScaffoldUpgrade | null;
+}
+
 /** That a server must change with the migration, and why they run back to back. */
 const SERVER_ORDER =
   "A server of an earlier release answers 503 once the database is migrated, and a server of this release answers 503 until it is";
@@ -70,8 +83,15 @@ const DB_GENERATE = "npx hot-updater db generate <server file>";
  */
 const pendingResolution = (
   { database }: LoadedServer,
-  managed: ManagedDeployment | null,
+  { managed, scaffold }: Deployment,
 ): { readonly resolution: string; readonly commands: string[] } => {
+  // A scaffold that keeps the deployment upgrades it with a preview.
+  if (scaffold !== null) {
+    return {
+      resolution: `${scaffoldUpgradeNote(scaffold)} ${SERVER_ORDER}.`,
+      commands: scaffold.command === null ? [] : [scaffold.command],
+    };
+  }
   const own = ownServerResolution(database);
   if (managed === null) return own;
   const foreign = foreignPluginsNote(managed);
@@ -81,7 +101,7 @@ const pendingResolution = (
       commands: own.commands,
     };
   }
-  const replay = `Run \`${managed.command}\`: it applies the migrations this release needs, then redeploys ${managed.server} from it, back to back. ${SERVER_ORDER}, so run nothing in between.`;
+  const replay = `Run \`${managed.command}\`: it applies the migrations this release needs, then redeploys ${managed.server} from it, back to back. ${SERVER_ORDER}, so run nothing in between.${replaySourceNote(managed)}`;
   return managed.confirmed
     ? { resolution: replay, commands: [managed.command] }
     : {
@@ -148,12 +168,10 @@ export const checkSchema = async (
     return undefined;
   } catch (error) {
     if (!isSchemaMigrationRequired(error)) return undefined;
-    return schemaStatus(
-      server,
-      error,
-      await v0VersionOf(server, error),
-      await context.managed(),
-    );
+    return schemaStatus(server, error, await v0VersionOf(server, error), {
+      managed: await context.managed(),
+      scaffold: await context.scaffoldUpgrade(),
+    });
   }
 };
 
@@ -188,7 +206,7 @@ const schemaStatus = (
   server: LoadedServer,
   { message, settings, currentVersion: fenced }: SchemaMigrationRequired,
   v0Version: string | undefined,
-  managed: ManagedDeployment | null,
+  deployment: Deployment,
 ): SchemaStatus => {
   const currentVersion = fenced ?? v0Version;
   const issues: SchemaIssue[] = [];
@@ -276,7 +294,7 @@ const schemaStatus = (
       type: "error",
       code: "SCHEMA_MIGRATION_PENDING",
       message: `The database has migrations to run before the server reads it: ${listed(pending)}.`,
-      ...pendingResolution(server, managed),
+      ...pendingResolution(server, deployment),
       settings: pending,
     });
   }
