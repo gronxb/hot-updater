@@ -135,11 +135,12 @@ An iOS build that needs an App Store Connect API key, for
 `signing.ascApiKey` or [`--submit testflight`](#upload-to-testflight), and
 finds none issues one. In a terminal, sign in with your Apple Account when
 asked: Hot Updater asks for its email, password, and two-factor code, and
-signs in with asc, the open-source
-[App Store Connect CLI](https://github.com/rorkai/App-Store-Connect-CLI)
-(MIT). The password goes only to that asc process, in its environment. With
-no trusted device at hand, enter any wrong code once: Apple texts a code to
-your phone, and Hot Updater asks for it. Hot Updater then creates a team API
+signs in as App Store Connect's web page does. The password never leaves
+the CLI: Apple's sign-in receives only a proof of it. The code prompt says
+where the code went. With no trusted device at hand, enter any wrong code
+once: Apple texts a code to your trusted phone, and Hot Updater asks for it.
+When the Apple Account is in more than one team, the CLI asks which one to
+use. Hot Updater then creates a team API
 key with the Admin role in that team, named `hot-updater <date>`, stores it
 under the name the build resolves
 ([where an issued key goes](#where-an-issued-key-goes)), and continues the
@@ -178,12 +179,8 @@ in issues a new one, and how to
 instead. When the issued key surely went nowhere, the CLI revokes it again,
 so no key is left that nothing holds.
 
-The CLI uses the `asc` on your `PATH` when it is version 5.16.1 or later, and
-otherwise downloads asc 5.16.1 from its GitHub release into
-`~/Library/Caches/hot-updater`, checked against the release's published
-SHA-256. asc runs with its session, config, and the key's `.p8` in a
-temporary directory only your user can read, which the CLI deletes when it
-is done, and never reads your `~/.asc` or keychain.
+The Apple session lives only in the CLI's memory and ends with the command;
+nothing of it is written to disk.
 
 The Android build passes the keystore to Gradle as the signing properties
 Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
