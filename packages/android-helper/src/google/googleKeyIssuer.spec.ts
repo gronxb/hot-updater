@@ -403,6 +403,21 @@ describe("createGoogleKeyIssuer", () => {
     ).toBe("Bearer ya29.token");
   });
 
+  it("names the key to delete by hand when deleting it fails too", async () => {
+    routes[`POST ${EDITS}`] = notInvited;
+    routes[`DELETE ${IAM}/${KEY_NAME}`] = () =>
+      googleError(503, "UNAVAILABLE", "Try again later.");
+
+    const error = await issueError();
+
+    expect(error.code).toBe("play-access-pending");
+    expect(error.message.split("\n").slice(-3)).toEqual([
+      "Delete its unused key abc123 in Google Cloud:",
+      "https://console.cloud.google.com/iam-admin/serviceaccounts?project=my-app",
+      "Then run: npx hot-updater google-play login",
+    ]);
+  });
+
   it("deletes the key when Google Play fails otherwise, keeping the failure as the cause", async () => {
     routes[`POST ${EDITS}`] = () =>
       googleError(500, "INTERNAL", "Internal error.");

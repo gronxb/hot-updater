@@ -214,7 +214,7 @@ export const createGoogleKeyIssuer =
         sleep,
       });
     } catch (error) {
-      await revoke();
+      const deleted = await revoke();
       throw new PlayServiceAccountError(
         "play-access-pending",
         [
@@ -223,6 +223,13 @@ export const createGoogleKeyIssuer =
           email,
           inviteUrl,
           "A new app needs its first .aab uploaded in Play Console.",
+          // Not stored anywhere: the developer deletes it by hand.
+          ...(deleted
+            ? []
+            : [
+                `Delete its unused key ${key.keyId} in Google Cloud:`,
+                `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${encodeURIComponent(projectId)}`,
+              ]),
           "Then run: npx hot-updater google-play login",
         ].join("\n"),
         { cause: error },
