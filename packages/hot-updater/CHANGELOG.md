@@ -1,5 +1,20 @@
 # hot-updater
 
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- 76090c3: `hot-updater channel set <channel>` in an Expo CNG project points at the `@hot-updater/expo` plugin's `channel` option as where the build takes its channel from. For a dynamic `app.config.*` it shows that option read from an environment variable, as the pull request preview guide does (`channel: process.env.PREVIEW_CHANNEL ?? "production"`), and the variable to build with (`PREVIEW_CHANNEL=<channel>`), instead of a channel to hardcode. For a static `app.json` it shows the option set to the channel, as JSON.
+- Updated dependencies [76090c3]
+  - @hot-updater/console@1.2.0-rc.2
+  - @hot-updater/android-helper@1.2.0-rc.2
+  - @hot-updater/apple-helper@1.2.0-rc.2
+  - @hot-updater/bsdiff@1.2.0-rc.2
+  - @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/server@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
 ## 1.2.0-rc.1
 
 ### Patch Changes

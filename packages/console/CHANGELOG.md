@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- 76090c3: The Native builds tab's "Import a build" dialog is a title, one line ("Track an .ipa, .aab, .apk or .app built elsewhere as a patch base."), the command `npx hot-updater native-build import <file>` with its copy button, and the Import guide link. The empty state shows the same shorter command. The rest, such as `--channel`, is in the guide.
+- @hot-updater/bsdiff@1.2.0-rc.2
+  - @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/server@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
 ## 1.2.0-rc.1
 
 ### Patch Changes
