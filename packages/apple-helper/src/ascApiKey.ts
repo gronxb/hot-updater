@@ -1,4 +1,4 @@
-import { createAscCliKeyIssuer } from "./asc/ascCliKeyIssuer";
+import { createAscKeyIssuer } from "./asc/ascKeyIssuer";
 
 /** Where team API keys are listed and revoked in App Store Connect. */
 export const ASC_INTEGRATIONS_URL =
@@ -7,13 +7,13 @@ export const ASC_INTEGRATIONS_URL =
 /** A team API key's role, as App Store Connect names it. */
 export type AscApiKeyRole = "ADMIN" | "APP_MANAGER" | "DEVELOPER";
 
-/** The App Store Connect team an Apple Account signed in to. */
+/** An App Store Connect team an Apple Account is in. */
 export interface AscTeam {
   readonly appleId?: string;
   /** The team ID to pass as `teamId` to issue the key in this team. */
   readonly teamId?: string;
-  /** The Apple Developer team ID, as Xcode's DEVELOPMENT_TEAM names it. */
-  readonly developerTeamId?: string;
+  /** The team's name, as App Store Connect shows it. */
+  readonly name?: string;
 }
 
 export interface IssueAscApiKeyRequest {
@@ -25,16 +25,20 @@ export interface IssueAscApiKeyRequest {
   /** The team to issue the key in; else the one the sign-in lands in. */
   readonly teamId?: string;
   /**
-   * Sees the team the sign-in landed in, when `teamId` is unset, and
-   * returns another team's ID to issue the key there instead.
+   * Sees the teams the Apple Account is in and the one the sign-in landed
+   * in, when `teamId` is unset, and returns another team's ID to issue the
+   * key there instead.
    */
-  readonly chooseTeam?: (team: AscTeam) => Promise<string | undefined>;
+  readonly chooseTeam?: (
+    teams: readonly AscTeam[],
+    current: AscTeam,
+  ) => Promise<string | undefined>;
 }
 
 /**
  * An App Store Connect team API key, just issued, with its one-time private
- * key and the signed-in session it was issued in. `dispose` ends that
- * session and deletes everything the sign-in kept; `revoke` works until then.
+ * key and the signed-in session it was issued in, which lives only in
+ * memory. `dispose` drops that session; `revoke` works until then.
  */
 export interface IssuedAscApiKey {
   /** The `.p8` private key, a PEM. */
@@ -60,9 +64,9 @@ export type IssueAscApiKey = (
 ) => Promise<IssuedAscApiKey>;
 
 /**
- * Hot Updater's sign-in, the one place that picks how it is done: asc, the
- * open-source App Store Connect CLI. Another implementation of
+ * Hot Updater's sign-in, the one place that picks how it is done: App Store
+ * Connect's own web sign-in, with no other tool. Another implementation of
  * `IssueAscApiKey` replaces it here without touching its callers.
  */
 export const issueAscApiKey: IssueAscApiKey = (request) =>
-  createAscCliKeyIssuer()(request);
+  createAscKeyIssuer()(request);

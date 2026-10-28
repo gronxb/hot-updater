@@ -10,7 +10,7 @@ import {
 } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { log, text, confirm, isCancel, git } = vi.hoisted(() => ({
+const { log, text, confirm, select, isCancel, git } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -20,6 +20,7 @@ const { log, text, confirm, isCancel, git } = vi.hoisted(() => ({
   },
   text: vi.fn(),
   confirm: vi.fn(),
+  select: vi.fn(),
   isCancel: vi.fn((_answer: unknown) => false),
   /** What `git` and `gh` answer the GitHub offer's lookups with. */
   git: {
@@ -30,7 +31,7 @@ const { log, text, confirm, isCancel, git } = vi.hoisted(() => ({
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
-  p: { log, text, confirm, isCancel },
+  p: { log, text, confirm, select, isCancel },
 }));
 
 vi.mock("execa", async (importOriginal) => ({
@@ -150,7 +151,7 @@ const issue = vi.fn(
     keyId: "KEY1234567",
     issuerId: "issuer-1",
     name: request.name,
-    team: { appleId: request.appleId, developerTeamId: "ABCDE12345" },
+    team: { appleId: request.appleId, teamId: "team-1", name: "Acme" },
     revoke: issued.revoke,
     dispose: issued.dispose,
   }),
@@ -678,15 +679,19 @@ describe("ensureAscApiKey", () => {
     expect(issued.revoke).not.toHaveBeenCalled();
   });
 
-  it("asks which team when the sign-in landed in another", async () => {
+  it("asks which team when the Apple Account is in several", async () => {
     fakeStore();
-    confirm.mockResolvedValueOnce(false);
-    text
-      .mockResolvedValueOnce("dev@example.com")
-      .mockResolvedValueOnce(" OTHERTEAM ");
+    text.mockResolvedValueOnce("dev@example.com");
+    select.mockResolvedValueOnce("team-2");
     let chosen: string | undefined;
     issue.mockImplementationOnce(async (request) => {
-      chosen = await request.chooseTeam?.({ developerTeamId: "ABCDE12345" });
+      chosen = await request.chooseTeam?.(
+        [
+          { teamId: "team-1", name: "Acme" },
+          { teamId: "team-2", name: "Acme Labs" },
+        ],
+        { teamId: "team-1", name: "Acme" },
+      );
       return {
         p8: P8,
         keyId: "KEY1234567",
@@ -698,10 +703,38 @@ describe("ensureAscApiKey", () => {
       };
     });
     await withTTY(true, () => ensure({ name: "asc-api-key" }));
-    expect(confirm).toHaveBeenCalledWith({
-      message: "Create the key in the team ABCDE12345?",
+    expect(select).toHaveBeenCalledWith({
+      message: "Team to create the key in",
+      initialValue: "team-1",
+      options: [
+        { value: "team-1", label: "Acme" },
+        { value: "team-2", label: "Acme Labs" },
+      ],
     });
-    expect(chosen).toBe("OTHERTEAM");
+    expect(chosen).toBe("team-2");
+  });
+
+  it("keeps the team the sign-in landed in without asking when it is the only one", async () => {
+    fakeStore();
+    text.mockResolvedValueOnce("dev@example.com");
+    let chosen: string | undefined = "unset";
+    issue.mockImplementationOnce(async (request) => {
+      chosen = await request.chooseTeam?.([{ teamId: "team-1" }], {
+        teamId: "team-1",
+      });
+      return {
+        p8: P8,
+        keyId: "KEY1234567",
+        issuerId: "issuer-1",
+        name: request.name,
+        team: { teamId: "team-1" },
+        revoke: issued.revoke,
+        dispose: issued.dispose,
+      };
+    });
+    await withTTY(true, () => ensure({ name: "asc-api-key" }));
+    expect(select).not.toHaveBeenCalled();
+    expect(chosen).toBeUndefined();
   });
 
   it("issues a key for secrets issue --replace whatever the adapter holds, without reading it again", async () => {

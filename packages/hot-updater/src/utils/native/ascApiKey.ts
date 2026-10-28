@@ -217,23 +217,20 @@ export const ensureAscApiKey = async ({
     name: issuedKeyName(),
     role: KEY_ROLE,
     appleId,
-    chooseTeam: async (team) => {
-      const label = team.developerTeamId ?? team.teamId;
-      if (!label) return undefined;
-      const same = answered(
-        await p.confirm({
-          message: `Create the key in the team ${label}${team.appleId ? ` (${team.appleId})` : ""}?`,
+    chooseTeam: async (teams, current) => {
+      if (teams.length < 2) return undefined;
+      const chosen = answered(
+        await p.select({
+          message: "Team to create the key in",
+          initialValue: current.teamId,
+          options: teams.flatMap((team) =>
+            team.teamId
+              ? [{ value: team.teamId, label: team.name ?? team.teamId }]
+              : [],
+          ),
         }),
       );
-      if (same) return undefined;
-      return answered(
-        await p.text({
-          message:
-            "The team ID to create the key in, as App Store Connect shows it",
-          validate: (value) =>
-            value?.trim() ? undefined : "Enter the team's ID.",
-        }),
-      ).trim();
+      return chosen === current.teamId ? undefined : chosen;
     },
   });
   try {
