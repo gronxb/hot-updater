@@ -734,8 +734,8 @@ these fields:
 Search for scripts that read the output of `hot-updater deploy`, such as
 `Deployment Successful`.
 
-Fails silently: deploy prints `Deployment successful` followed by `ID: <id>`
-(or `iOS ID: <id>` and `Android ID: <id>`), not
+Fails silently: deploy prints `Deployment successful` followed by `ID  <id>`
+(or `iOS ID  <id>` and `Android ID  <id>`), not
 `Deployment Successful (<id>)`. The printed ID is the public bundle ID.
 
 ## Self-hosted server
