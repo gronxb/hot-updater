@@ -1,5 +1,14 @@
 # @hot-updater/apple-helper
 
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- 3c00e7a: The commands new in 1.2 print short output that fits an 80-column terminal: one idea per line, `Label  value` rows padded to a common width, paths with `~` or relative to the project and shortened in the middle, and bare highlighted commands without backticks. A result with nothing to do, such as `apple login` with a key already stored, states the result and stops; a next step is printed only when you have to act. `apple login` and `google-play login` name the one place they found the key. Doctor prints each issue and its resolution as one entry, a sentence per line. `--json` output is unchanged.
+- Updated dependencies [3c00e7a]
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
 ## 1.2.0-rc.2
 
 ### Patch Changes
