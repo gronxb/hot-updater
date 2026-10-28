@@ -196,7 +196,7 @@ const hashBuiltInBundle = async (
 };
 
 /**
- * Imports an artifact built elsewhere (EAS, Xcode Cloud, Fastlane, an older
+ * Imports an artifact built elsewhere (another build service, an older
  * build): an `.ipa`, `.aab` or `.apk`, or a simulator `.app` (the directory
  * or its `.app.zip`). It reads what the artifact compiled in (platform, app
  * version, channel, MIN_BUNDLE_ID, fingerprint) and its built-in bundle,

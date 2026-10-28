@@ -320,7 +320,7 @@ nativeBuildCommand
 nativeBuildCommand
   .command("import")
   .description(
-    "Track an .ipa, .aab, .apk or simulator .app built elsewhere, such as by EAS, Xcode Cloud or Fastlane, as an OTA patch base: OTAs deployed after it patch from its built-in bundle. Importing the same build again succeeds and changes nothing",
+    "Track an .ipa, .aab, .apk or simulator .app built elsewhere, such as by another build service or an earlier release, as an OTA patch base: OTAs deployed after it patch from its built-in bundle. Importing the same build again succeeds and changes nothing",
   )
   .argument(
     "<file>",
