@@ -1,8 +1,10 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { maskSecretValues, storeEnvFileSecrets } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
   assertDockerComposeAvailable,
   findOpenPort,
@@ -10,7 +12,7 @@ import {
 } from "@hot-updater/test-utils/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { infisical, type InfisicalAuth } from "./infisical";
+import { infisical } from "./infisical";
 
 // A self-hosted Infisical in Docker (infisical.compose.yml). The oracle is
 // Infisical's REST API read with the bootstrap admin's token, never the
@@ -105,22 +107,47 @@ const createIdentity = async (
   };
 };
 
+const projects: string[] = [];
+
+/**
+ * `infisical({ projectId })` as a project whose `.env.hotupdater` sets
+ * `env` and the instance's URL, the only places it signs in from: each call
+ * runs in that project, whatever `cwd` it is given.
+ */
 const adapter = (
-  auth: InfisicalAuth,
+  env: Readonly<Record<string, string>>,
   options: { environment?: string; path?: string; projectId?: string } = {},
-) =>
-  infisical({
-    siteUrl: site,
-    projectId,
-    environment: "prod",
-    auth,
-    ...options,
-  });
+): SecretsAdapter => {
+  const project = fsSync.mkdtempSync(
+    path.join(os.tmpdir(), "hot-updater-infisical-project-"),
+  );
+  projects.push(project);
+  fsSync.writeFileSync(
+    path.join(project, ".env.hotupdater"),
+    Object.entries({ INFISICAL_DOMAIN: site, ...env })
+      .map(([name, value]) => `${name}=${value}`)
+      .join("\n"),
+  );
+  const secrets = infisical({ projectId, ...options });
+  return {
+    ...secrets,
+    get: (names) => secrets.get(names, { cwd: project }),
+    set: (name, value) => secrets.set(name, value, { cwd: project }),
+  };
+};
+
+const universalAuth = (identity: {
+  clientId: string;
+  clientSecret: string;
+}) => ({
+  INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: identity.clientId,
+  INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: identity.clientSecret,
+});
 
 const asWriter = (options?: Parameters<typeof adapter>[1]) =>
-  adapter({ method: "universal-auth", ...writer }, options);
+  adapter(universalAuth(writer), options);
 const asReader = (options?: Parameters<typeof adapter>[1]) =>
-  adapter({ method: "universal-auth", ...reader }, options);
+  adapter(universalAuth(reader), options);
 
 beforeAll(async () => {
   port = await findOpenPort();
@@ -189,6 +216,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (port) compose("down", "-v", "--remove-orphans");
   if (cwd) await fs.rm(cwd, { recursive: true, force: true });
+  for (const project of projects) {
+    await fs.rm(project, { recursive: true, force: true });
+  }
 }, 120_000);
 
 describe("infisical() on a self-hosted Infisical", () => {
@@ -332,18 +362,16 @@ describe("infisical() on a self-hosted Infisical", () => {
   );
 
   it("reports a wrong client secret (401) and a malformed token (403) as rejected credentials", async () => {
-    const wrongSecret = adapter({
-      method: "universal-auth",
-      clientId: writer.clientId,
-      clientSecret: "wrong-client-secret",
-    });
+    const wrongSecret = adapter(
+      universalAuth({ ...writer, clientSecret: "wrong-client-secret" }),
+    );
     await expect(wrongSecret.get(["a"], { cwd })).rejects.toThrow(
       `Infisical at ${site} rejected the credentials to sign in with Universal Auth (401)`,
     );
     expect(maskSecretValues("wrong-client-secret")).not.toContain("wrong");
 
     await expect(
-      adapter({ method: "token", token: "garbage" }).get(["a"], { cwd }),
+      adapter({ INFISICAL_TOKEN: "garbage" }).get(["a"], { cwd }),
     ).rejects.toThrow(
       `Infisical at ${site} rejected the credentials to list the secrets (403)`,
     );
@@ -364,11 +392,7 @@ describe("infisical() on a self-hosted Infisical", () => {
           "",
         ].join("\n"),
       );
-      const secrets = infisical({
-        siteUrl: site,
-        projectId,
-        environment: "prod",
-      });
+      const secrets = infisical({ projectId, siteUrl: site });
 
       await expect(
         storeEnvFileSecrets(

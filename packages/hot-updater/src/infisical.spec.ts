@@ -16,6 +16,8 @@ const AUTH_ENV = [
   "INFISICAL_MACHINE_IDENTITY_ID",
   "ACTIONS_ID_TOKEN_REQUEST_URL",
   "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+  "INFISICAL_DOMAIN",
+  "INFISICAL_API_URL",
 ] as const;
 
 interface Call {
@@ -306,17 +308,13 @@ describe("infisical", () => {
       },
     );
 
-    await expect(
-      adapter({
-        auth: { method: "github-oidc", audience: "https://github.com/acme" },
-      }).get(["a"], { cwd }),
-    ).resolves.toEqual({ a: "1" });
+    await expect(adapter().get(["a"], { cwd })).resolves.toEqual({ a: "1" });
 
     const [idToken, exchange, list] = calls;
     expect(idToken!.url.origin).toBe("https://pipelines.actions.example.com");
+    // GitHub's default audience, the repository owner's URL.
     expect(Object.fromEntries(idToken!.url.searchParams)).toEqual({
       "api-version": "2.0",
-      audience: "https://github.com/acme",
     });
     expect(idToken!.headers["authorization"]).toBe(
       "bearer runner-request-token",
@@ -330,32 +328,11 @@ describe("infisical", () => {
     expect(list!.headers["authorization"]).toBe("Bearer oidc-access-token");
   });
 
-  it("leaves the ID token's audience to GitHub's default when none is given", async () => {
-    process.env["INFISICAL_MACHINE_IDENTITY_ID"] = "identity-1";
-    process.env["ACTIONS_ID_TOKEN_REQUEST_URL"] =
-      "https://pipelines.actions.example.com/idtoken?api-version=2.0";
-    process.env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"] = "runner-request-token";
-    route = server(
-      {},
-      {
-        "GET /idtoken": () => json(200, { value: "github.jwt.value" }),
-        "POST /api/v1/auth/oidc-auth/login": () =>
-          json(200, { accessToken: "oidc-access-token" }),
-      },
-    );
-
-    await adapter().get(["a"], { cwd });
-
-    expect(calls[0]!.url.searchParams.has("audience")).toBe(false);
-  });
-
   it("asks for id-token: write when the job cannot request an ID token", async () => {
-    await expect(
-      adapter({
-        auth: { method: "github-oidc", identityId: "identity-1" },
-      }).get(["a"], { cwd }),
-    ).rejects.toThrow(
-      "infisical() signs in with GitHub OIDC in a GitHub Actions job with `permissions: id-token: write`, and ACTIONS_ID_TOKEN_REQUEST_URL is not set.",
+    process.env["INFISICAL_MACHINE_IDENTITY_ID"] = "identity-1";
+
+    await expect(adapter().get(["a"], { cwd })).rejects.toThrow(
+      "infisical() found INFISICAL_MACHINE_IDENTITY_ID outside a GitHub Actions job with `permissions: id-token: write`.",
     );
     expect(calls).toEqual([]);
   });
@@ -378,7 +355,7 @@ describe("infisical", () => {
     );
   });
 
-  it("prefers INFISICAL_TOKEN, then Universal Auth, when auth is not given", async () => {
+  it("prefers INFISICAL_TOKEN, then Universal Auth", async () => {
     universalAuthEnv();
     process.env["INFISICAL_TOKEN"] = "explicit-token";
 
@@ -388,11 +365,23 @@ describe("infisical", () => {
     expect(calls[0]!.headers["authorization"]).toBe("Bearer explicit-token");
   });
 
-  it("names every way to sign in when none is set", async () => {
-    await expect(adapter().get(["a"], { cwd })).rejects.toThrow(
-      "infisical() found no way to sign in to Infisical: set INFISICAL_TOKEN, INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, or INFISICAL_MACHINE_IDENTITY_ID in GitHub Actions.",
+  it("names every way to sign in, in two lines with the docs, when none is set", async () => {
+    const error = await adapter()
+      .get(["a"], { cwd })
+      .catch((thrown: unknown) => thrown as Error);
+
+    expect(error.message).toBe(
+      [
+        "infisical() found no Infisical sign-in: set INFISICAL_TOKEN, INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, or INFISICAL_MACHINE_IDENTITY_ID.",
+        "https://hot-updater.dev/docs/guides/secrets-adapters/infisical#sign-in-on-your-machine",
+      ].join("\n"),
     );
     expect(calls).toEqual([]);
+  });
+
+  it("takes no credentials from the config", () => {
+    // @ts-expect-error: sign-in comes from the environment only.
+    infisical({ projectId: PROJECT, auth: { method: "token", token: "t" } });
   });
 
   it("masks the credentials, the tokens, and the values it reads", async () => {
@@ -538,18 +527,83 @@ describe("infisical", () => {
     ]);
   });
 
-  it("defaults to Infisical Cloud (US)", async () => {
+  it("needs only projectId: Infisical Cloud (US), prod, and the root folder", async () => {
     process.env["INFISICAL_TOKEN"] = "t";
-    await infisical({ projectId: PROJECT, environment: "prod" }).get(["a"], {
-      cwd,
-    });
+    const secrets = infisical({ projectId: PROJECT });
+
+    await secrets.get(["a"], { cwd });
 
     expect(calls[0]!.url.origin).toBe("https://us.infisical.com");
+    expect(Object.fromEntries(calls[0]!.url.searchParams)).toMatchObject({
+      projectId: PROJECT,
+      environment: "prod",
+      secretPath: "/",
+    });
+    expect(secrets.describe?.("asc-api-key")).toBe(
+      "Infisical prod:/asc-api-key",
+    );
+  });
+
+  it.each([
+    [
+      "INFISICAL_DOMAIN",
+      "https://eu.infisical.com",
+      "https://eu.infisical.com",
+    ],
+    [
+      "INFISICAL_API_URL",
+      "https://infisical.example.com/api",
+      "https://infisical.example.com",
+    ],
+  ])(
+    "reads the instance from %s, as the Infisical CLI does",
+    async (name, value, origin) => {
+      process.env["INFISICAL_TOKEN"] = "t";
+      process.env[name] = value;
+
+      await infisical({ projectId: PROJECT }).get(["a"], { cwd });
+
+      expect(calls[0]!.url.href.split("?")[0]).toBe(`${origin}/api/v4/secrets`);
+    },
+  );
+
+  it("prefers INFISICAL_DOMAIN to INFISICAL_API_URL, from .env.hotupdater too", async () => {
+    process.env["INFISICAL_TOKEN"] = "t";
+    process.env["INFISICAL_API_URL"] = "https://older.example.com/api";
+    await fs.writeFile(
+      path.join(cwd, ".env.hotupdater"),
+      "INFISICAL_DOMAIN=https://eu.infisical.com\n",
+    );
+
+    await infisical({ projectId: PROJECT }).get(["a"], { cwd });
+
+    expect(calls[0]!.url.origin).toBe("https://eu.infisical.com");
+  });
+
+  it("keeps siteUrl over the environment's instance", async () => {
+    process.env["INFISICAL_TOKEN"] = "t";
+    process.env["INFISICAL_DOMAIN"] = "https://eu.infisical.com";
+
+    await adapter().get(["a"], { cwd });
+
+    expect(calls[0]!.url.origin).toBe(SITE);
+  });
+
+  it("refuses an INFISICAL_DOMAIN that is not HTTPS, naming it", async () => {
+    process.env["INFISICAL_TOKEN"] = "t";
+    process.env["INFISICAL_DOMAIN"] = "http://infisical.example.com";
+
+    await expect(
+      infisical({ projectId: PROJECT }).get(["a"], { cwd }),
+    ).rejects.toThrow(
+      "infisical() takes INFISICAL_DOMAIN as an HTTPS URL, or HTTP on a loopback address",
+    );
+    expect(calls).toEqual([]);
   });
 
   it("requires projectId and environment on first use, so a config loads without them", async () => {
     process.env["INFISICAL_TOKEN"] = "t";
-    const noProject = infisical({ projectId: "", environment: "prod" });
+    const noProject = infisical({ projectId: "" });
     const noEnvironment = infisical({ projectId: PROJECT, environment: " " });
 
     await expect(noProject.get(["a"], { cwd })).rejects.toThrow(
