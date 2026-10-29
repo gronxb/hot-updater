@@ -206,6 +206,11 @@ describe("checkGooglePlay", () => {
       ].join("\n"),
     );
     expect(block).not.toContain("MIIBspecprivatekey");
+    // Only the invite URL passes 80 columns: one unbroken word on its own
+    // line, so it stays clickable.
+    expect(
+      linesWiderThan(block.split("\n").map((line) => `│  ${line}`)),
+    ).toEqual([]);
   });
 
   it("asks for the first .aab when Google Play has no such app", async () => {

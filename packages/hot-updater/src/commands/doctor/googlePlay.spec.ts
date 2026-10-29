@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { checkPlayAccess } = vi.hoisted(() => ({
@@ -114,6 +115,14 @@ describe("doctor's Google Play check", () => {
       ].join("\n"),
     );
     expect(text).not.toContain("MIIBdoctor");
+    // The invite URL is one unbroken word on its own line: nothing wraps.
+    expect(
+      linesWiderThan(
+        stripVTControlCharacters(text)
+          .split("\n")
+          .map((line) => `│  ${line}`),
+      ),
+    ).toEqual([]);
   });
 
   it("marks each package the key reaches", async () => {

@@ -846,15 +846,28 @@ npx hot-updater google-play upload
    that the file is a service account key (`google-services.json` is not),
    stores it through the config's `secrets` adapter, and reads it back.
 
-When Google Cloud refuses to create the key, the organization policy
-`iam.disableServiceAccountKeyCreation` forbids keys, as it does by default in
-organizations created since May 2024. With the Organization Policy
-Administrator role (`roles/orgpolicy.policyAdmin`), allow keys for that
-project only, or create the service account in a project outside the
-organization:
+When Google Cloud refuses to create the key, an organization policy forbids
+keys. Organizations enforce two constraints for it:
+`iam.disableServiceAccountKeyCreation`, and the managed
+`iam.managed.disableServiceAccountKeyCreation`, which fails with
+`CUSTOM_ORG_POLICY_VIOLATION`. Turning off only the first is not enough. With
+the Organization Policy Administrator role (`roles/orgpolicy.policyAdmin`) on
+the organization, turn both off for that project only, or use a project
+outside the organization:
 
 ```bash
 gcloud resource-manager org-policies disable-enforce iam.disableServiceAccountKeyCreation --project=<project>
+gcloud org-policies set-policy policy.yaml
+```
+
+`policy.yaml` turns off the managed constraint. The second command needs the
+Organization Policy API enabled in the project:
+
+```yaml title="policy.yaml"
+name: projects/<project>/policies/iam.managed.disableServiceAccountKeyCreation
+spec:
+  rules:
+    - enforce: false
 ```
 
 #### Invite the service account in Play Console
