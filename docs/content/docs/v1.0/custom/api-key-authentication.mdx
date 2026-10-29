@@ -1,0 +1,199 @@
+---
+title: "API keys"
+description: Protect client routes with the apiKeys() server plugin and manage keys with hot-updater api-key.
+icon: KeyRound
+---
+
+## Protect client routes
+
+The `apiKeys()` [server plugin](/docs/v1.0/custom/server-plugins) protects a custom
+server's client routes. It stores each key's SHA-256 digest and non-secret
+metadata in the `api_keys` table and provides the server's client-route
+policy. It ships as `@hot-updater/plugin-api-keys`, which
+`@hot-updater/server/plugins` re-exports, so there is nothing extra to
+install:
+
+```ts title="src/hotUpdater.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  storage,
+  plugins: [apiKeys()], // [!code ++]
+});
+```
+
+With `apiKeys()`, Release Catalog reads, artifact resolution, Insights
+ingestion (`POST /events`), and other plugins' client routes require a valid
+key in `x-api-key`. `/version` stays public, and devices download artifacts
+from the URLs the storage adapter returns, such as presigned URLs. API keys do
+not grant access to Insights queries, admin routes, or API key management.
+
+`apiKeys()` is the server's client authentication, so the configuration sets
+no `clientAccess`. Setting both fails to type-check and throws
+`HotUpdaterConfigError` at startup.
+
+## Terminology
+
+| Surface                           | Canonical name                         |
+| --------------------------------- | -------------------------------------- |
+| User-facing credential            | API key                                |
+| Server plugin and its API         | `apiKeys()`, `hotUpdater.api.apiKeys`  |
+| CLI namespace                     | `hot-updater api-key`                  |
+| Default HTTP request header       | `x-api-key`                            |
+| Managed init environment variable | `HOT_UPDATER_API_KEY`                  |
+
+## Use another header
+
+To use a different header, set it explicitly and send the same header from the
+client:
+
+```ts title="src/hotUpdater.ts (excerpt)"
+plugins: [apiKeys({ headerName: "x-hot-updater-key" })],
+```
+
+Cacheable client responses, such as Release Catalogs, add the configured
+header to `Vary`, so shared caches keep authenticated responses partitioned by
+the credential header.
+
+## Bootstrap a self-hosted client
+
+Apply the [chosen adapter's schema](/docs/v1.0/custom/overview#database-adapters)
+first. A server that runs `apiKeys()` has its `api_keys` table in the schema.
+Kysely and MongoDB create it with `hot-updater db migrate`;
+Drizzle and Prisma apply it with their own schema tools, then run
+`hot-updater db migrate` to write the settings rows. Then create a key through
+the `apiKeys()` plugin of the same server configuration:
+
+```bash
+npx hot-updater api-key create --name "Mobile app" src/hotUpdater.ts
+```
+
+`hot-updater api-key` loads the file's `hotUpdater` export and creates the key
+through its `apiKeys()` plugin; a server without `apiKeys()` in its `plugins`
+stops the command with an error. The command prints the plaintext API key
+exactly once.
+Store it in your existing React Native build-time configuration without
+committing it to source, and send it using `x-api-key`. The server's
+`.env.hotupdater` file is not loaded into the React Native app automatically.
+The database receives only the key's SHA-256 digest and non-secret metadata,
+including its prefix, name, creation time, and revocation time.
+
+```ts title="src/hotUpdater.ts (React Native app)"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "https://example.com/hot-updater",
+  requestHeaders: { // [!code ++]
+    "x-api-key": "<API key printed by api-key create>", // [!code ++]
+  }, // [!code ++]
+});
+```
+
+`HotUpdater.init` configures the client but does not start an update check.
+Check with [`hotUpdater.wrap`](/docs/v1.0/react-native-api/wrap) or a
+[custom update flow](/docs/v1.0/guides/custom-update).
+
+## Configure a self-hosted cache
+
+Configure your CDN or reverse proxy explicitly to cache successful client
+Release Catalog GET responses. A cache hit can skip the server and its API key
+database lookup.
+
+- **Separate entries by API key.** Include the server host, full catalog path,
+  configured API key header (`x-api-key` by default), and `Accept-Encoding` in
+  the cache identity. Honor `Vary`, or explicitly configure these header values
+  in the cache key if your proxy does not support it. Forward the API key to the
+  origin. Requests with missing or different keys must never reuse another
+  key's cached response.
+- **Keep the shared TTL short.** Honor the server's
+  `Cache-Control: public, max-age=0, s-maxage=5`, or, on a CDN that reads it,
+  `CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5,
+  stale-if-error=0`. Do not extend the five-second shared TTL or the
+  five-second stale window. A revoked key can still receive a previously
+  cached catalog until that entry expires: up to 5 seconds under
+  `Cache-Control`, and up to 10 under `CDN-Cache-Control`.
+- **Never cache authentication failures.** Preserve
+  `Cache-Control: private, no-store` for `401`, `403`, and other error responses.
+  The one cacheable `404` is a scope with no catalog yet, marked
+  `x-hot-updater-catalog: none`; it carries the catalog's `Cache-Control` and
+  holds nothing a key protects. CloudFront keeps a cached `404` for at least
+  its error caching minimum TTL, ten seconds by default.
+  Keep artifact-resolution responses and Insights writes uncached.
+
+## Manage API keys
+
+List metadata and revoke a key by ID with:
+
+```bash
+npx hot-updater api-key list src/hotUpdater.ts
+npx hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
+```
+
+`list` accepts `--json`, and `revoke` asks for confirmation unless you pass
+`-y`.
+
+The path is optional. Without it, the CLI uses `database` and `plugins` in
+`hot-updater.config.ts` when the config sets `database`, and otherwise
+`src/hotUpdater.ts` or `src/db.ts`. The config's `plugins` must list
+`apiKeys()`, as the server's do. The commands need the server's database
+adapter: with `database: standaloneRepository(...)`, the CLI reaches only the
+server's admin API, which has no API key management routes, so run them in the
+server project with the path of the file that creates `hotUpdater`.
+
+The Console manages keys through the same plugin when its configuration lists
+`apiKeys()` in `plugins` over the server's database adapter.
+
+The plugin's API is also available in process:
+
+```ts
+const { apiKey, record } = await hotUpdater.api.apiKeys.create({
+  name: "Mobile app",
+});
+
+const records = await hotUpdater.api.apiKeys.list();
+await hotUpdater.api.apiKeys.revoke({ id: record.id });
+```
+
+`create` returns the plaintext once; `list` and `revoke` return metadata
+without digests. `register` stores a known plaintext key idempotently, and
+`provision` reuses a saved key or creates one. The plugin adds no API key
+management routes to `handlers.client` or `handlers.admin`.
+
+AWS, Azure, Cloudflare, Firebase, Supabase, and Vercel run `apiKeys()` in their managed
+servers. Their init writes explicit factories from `hot-updater/plugins`
+in the CLI configuration, registers an
+existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
+plaintext only in the local environment file. Afterwards, `hot-updater api-key`
+in the app directory manages the same keys through the `database` and `plugins`
+that init writes to `hot-updater.config.ts`.
+
+## Rotate an API key
+
+Create a replacement, ship clients configured with the replacement, verify the
+rollout, and then revoke the old API key. Revocation takes effect immediately at
+the origin; a shared Release Catalog cache can retain an authenticated response
+for its configured short TTL.
+
+## Security boundary
+
+An API key embedded in a mobile binary can be extracted. Treat this feature as
+an abuse-control boundary for OTA reads and Insights writes, not as an admin
+credential. Protect `handlers.admin`, Console access, and API key management
+with your application or framework authentication.
+
+Missing, malformed, unknown, and revoked API keys return `401`. A database
+failure during credential lookup returns `503` and does not fall back to public
+access.
+
+`apiKeys()` protects `handlers.client`, where update checks, Insights
+ingestion, and plugin client routes live; Insights queries live on
+`handlers.admin`. It does not authenticate the admin handler.
+
+## Unauthenticated alternative
+
+If you intentionally want client routes to be public, remove `apiKeys()`, set
+`clientAccess: "public"`, and omit `x-api-key` from the React Native request
+headers. Admin handler authentication remains a separate, required framework
+boundary.

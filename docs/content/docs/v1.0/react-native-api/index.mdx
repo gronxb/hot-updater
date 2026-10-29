@@ -1,0 +1,95 @@
+---
+title: "React Native API"
+description: "Find the client API for configuration, updates, targeting, progress, and diagnostics."
+icon: Smartphone
+---
+
+## Find an API
+
+Use this reference when implementing a specific client behavior. For the full
+app integration and first OTA, start with [app integration](/docs/v1.0/get-started/app-setup).
+
+## Configure the app
+
+Start with `HotUpdater.init`, which configures the update server and its
+[client plugins](#extend-with-plugins), such as the Insights and Remote Config
+plugins, and returns the app's HotUpdater instance. Call it once at the top
+level of a module and export the instance, `hotUpdater`. The other APIs on
+this page are methods of that instance, except the `useHotUpdaterStore` hook
+and the plugins, which `@hot-updater/react-native` exports:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+```
+
+| API | Use it to |
+| --- | --- |
+| [`HotUpdater.init`](/docs/v1.0/react-native-api/init) | Configure the update server, request settings, and client plugins once, and get the app's instance. |
+| [`wrap`](/docs/v1.0/react-native-api/wrap) | Check for an update when the app's root mounts, with an optional loading screen, and reload for a forced update. |
+
+## Check, stage, and reload
+
+For your own check timing instead of `wrap`, use these methods:
+
+| API | Use it to |
+| --- | --- |
+| [`checkForUpdate`](/docs/v1.0/react-native-api/checkForUpdate) | Select a compatible transition from the Release Catalog. |
+| [`updateBundle`](/docs/v1.0/react-native-api/updateBundle) | Stage a transition; prefer the helper returned by `checkForUpdate`. |
+| [`reload`](/docs/v1.0/react-native-api/reload) | Start the staged update immediately. |
+
+A staged update can change the selected ID before its code runs. See
+[custom update flows](/docs/v1.0/guides/custom-update) for check timing and UI, and
+[how updates work](/docs/v1.0/concepts/how-it-works) for the delivery lifecycle.
+
+## Target channels and cohorts
+
+| API | Use it to |
+| --- | --- |
+| [`getChannel`](/docs/v1.0/react-native-api/getChannel) | Read the effective channel. |
+| [`getDefaultChannel`](/docs/v1.0/react-native-api/getDefaultChannel) | Read the channel embedded in the native build. |
+| [`isChannelSwitched`](/docs/v1.0/react-native-api/isChannelSwitched) | Inspect whether a runtime channel switch is active. |
+| [`resetChannel`](/docs/v1.0/react-native-api/resetChannel) | Clear OTA state and restore the built-in bundle selection. |
+| [`getCohort`](/docs/v1.0/react-native-api/getCohort) | Read the persisted rollout cohort. |
+| [`setCohort`](/docs/v1.0/react-native-api/setCohort) | Override the cohort for future checks. |
+
+For workflows, see [runtime channel switching](/docs/v1.0/guides/runtime-channel-switch)
+and [rollout and cohorts](/docs/v1.0/guides/rollout-cohorts).
+
+## Observe progress
+
+| API | Use it to |
+| --- | --- |
+| [`useHotUpdaterStore`](/docs/v1.0/react-native-api/useHotUpdaterStore) | Subscribe to progress in React UI. |
+| [`addListener`](/docs/v1.0/react-native-api/addListener) | Handle raw progress events with an unsubscribe function. |
+| [`isUpdateDownloaded`](/docs/v1.0/react-native-api/isUpdateDownloaded) | Read download readiness for the current app session. |
+
+## Diagnose an installation
+
+| API | Use it to |
+| --- | --- |
+| [`getAppVersion`](/docs/v1.0/react-native-api/getAppVersion) | Read the native app version. |
+| [`getBundleId`](/docs/v1.0/react-native-api/getBundleId) | Read the selected update ID shown in the Console. |
+| [`notifyAppReady`](/docs/v1.0/react-native-api/notifyAppReady) | Read the native launch outcome and applied or recovered transition IDs. |
+| [`getActiveUpdateState`](/docs/v1.0/react-native-api/getActiveUpdateState) | Inspect active and stable selections, artifact IDs, and pending verification. |
+| [`getInstallId`](/docs/v1.0/react-native-api/getInstallId) | Identify an installation in Insights or a support report. |
+| [`getCrashHistory`](/docs/v1.0/react-native-api/getCrashHistory) | Inspect artifacts rejected after a crash. |
+| [`clearCrashHistory`](/docs/v1.0/react-native-api/clearCrashHistory) | Allow the device to retry previously rejected artifacts. |
+
+See [Insights](/docs/v1.0/guides/insights) for reporting limits and
+[automatic rollback](/docs/v1.0/concepts/automatic-rollback) for recovery behavior.
+
+## Extend with plugins
+
+Plugins go in `init`'s `plugins`, and each plugin's API is on the
+[instance `init` returns](/docs/v1.0/react-native-api/init#use-the-instance-init-returns),
+such as `hotUpdater.remoteConfig`:
+
+| API | Use it to |
+| --- | --- |
+| [`insights`](/docs/v1.0/react-native-api/insights) | Report launches, downloads, applies, recoveries, and update failures to Insights, optionally with your app's user ID. |
+| [`remoteConfig`](/docs/v1.0/react-native-api/remote-config) | Read values your server's Remote Config picks for the device, synchronously, with in-app defaults. |
+| [`defineClientPlugin`](/docs/v1.0/react-native-api/client-plugins) | Write a plugin that observes the update lifecycle, sends data to your server, and adds an API to the instance. Plugins import it from `@hot-updater/protocol`. |

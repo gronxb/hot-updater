@@ -1,0 +1,72 @@
+---
+title: "getChannel"
+description: "The `hotUpdater.getChannel()` function returns the app's current effective channel."
+icon: Radio
+---
+
+By default, if no channel is specified, the app is assigned to the `production` channel.
+
+For build-time setup, refer to
+[Default Channel Setup](/docs/v1.0/guides/channel-management). For runtime switching,
+see [Runtime Channel Switch](/docs/v1.0/guides/runtime-channel-switch).
+
+## Usage
+
+Use `hotUpdater.getChannel()` to read the app's current channel.
+
+### Example
+
+```tsx
+import { Text, View } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
+
+export default function App() {
+  const channel = hotUpdater.getChannel();
+
+  return (
+    <View>
+      <Text>Current Channel: {channel}</Text>
+    </View>
+  );
+}
+```
+
+## Behavior
+
+- If no runtime channel switch is active, `hotUpdater.getChannel()` returns the build-time channel.
+- After a transition to another channel is staged successfully,
+  `hotUpdater.getChannel()` returns that channel, even before reload. The
+  selected channel does not prove that its code is already running.
+- If no channel is configured, the default is `production`.
+- The build-time default channel is written into native project files by
+  [`hot-updater channel set`](/docs/v1.0/guides/channel-management).
+- Use [`hotUpdater.getDefaultChannel()`](/docs/v1.0/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime channel switch state.
+- You can restore the original channel with [`hotUpdater.resetChannel()`](/docs/v1.0/react-native-api/resetChannel).
+
+## Runtime example
+
+After configuring [`HotUpdater.init`](/docs/v1.0/react-native-api/init), check and
+apply a transition to another channel as part of your
+[custom update flow](/docs/v1.0/guides/custom-update):
+
+```tsx
+const updateInfo = await hotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+  channel: "beta", // [!code ++]
+});
+
+if (updateInfo) {
+  const didUpdate = await updateInfo.updateBundle();
+  if (didUpdate) {
+    await hotUpdater.reload();
+  }
+}
+```
+
+## Related APIs
+
+- [`hotUpdater.checkForUpdate()`](/docs/v1.0/react-native-api/checkForUpdate)
+- [`hotUpdater.getDefaultChannel()`](/docs/v1.0/react-native-api/getDefaultChannel)
+- [`hotUpdater.isChannelSwitched()`](/docs/v1.0/react-native-api/isChannelSwitched)
+- [`hotUpdater.resetChannel()`](/docs/v1.0/react-native-api/resetChannel)

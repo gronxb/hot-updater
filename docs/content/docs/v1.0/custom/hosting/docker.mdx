@@ -1,0 +1,342 @@
+---
+title: "Docker"
+description: Deploy Hot Updater server using Docker containers.
+icon: docker
+---
+
+## Prerequisites
+
+- Docker Or OrbStack: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
+- Docker Compose (included with Docker Desktop)
+- PostgreSQL database or use Docker Compose setup below
+
+## Installation
+
+Install required dependencies.
+
+```package-install
+npm install @hot-updater/server hono @hono/node-server
+```
+
+Install your chosen storage adapter separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+
+Install Drizzle ORM with PostgreSQL driver.
+
+```package-install
+npm install drizzle-orm postgres
+```
+
+```package-install
+npm install -D hot-updater drizzle-kit tsx typescript @types/node
+```
+
+## Build configuration
+
+The Dockerfile below expects a CommonJS TypeScript build that preserves the
+project-root layout under `dist`:
+
+```jsonc title="package.json (excerpt)"
+{
+  "type": "commonjs", // [!code ++]
+  "scripts": {
+    "build": "tsc" // [!code ++]
+  }
+}
+```
+
+```jsonc title="tsconfig.json"
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": ["src", "hot-updater-schema.ts"] // [!code ++]
+}
+```
+
+With this layout, `src/index.ts` is emitted as `dist/src/index.js`.
+
+## Database setup
+
+Create the database connection file.
+
+```typescript title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../hot-updater-schema"; // [!code ++]
+
+const client = postgres(process.env.DATABASE_URL!);
+export const db = drizzle(client, { schema }); // [!code ++]
+```
+
+## Hot Updater configuration
+
+Create the Hot Updater instance.
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
+import { s3Storage } from "@hot-updater/aws";
+import { db } from "./drizzle";
+
+export const hotUpdater = createHotUpdater({
+  database: drizzleAdapter({ db, provider: "postgresql" }),
+  plugins: [insights(), apiKeys()],
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
+});
+```
+
+## Server setup
+
+Create the server entry point.
+
+```typescript title="src/index.ts"
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
+
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+}
+
+const app = new Hono();
+
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken })); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
+
+const port = Number(process.env.PORT) || 3000;
+
+serve({ fetch: app.fetch, port }, (info) => {
+  console.log(`Server running at http://localhost:${info.port}`);
+});
+```
+
+<Callout type="warn">
+When using Hono `mount()`, update-check routes such as
+`/hot-updater/release-catalogs/*` and `/hot-updater/artifacts/*` are usually
+exposed for React Native clients, but that is a deployment choice.
+`/hot-updater/version` is always mounted for diagnostics. The specific admin
+middleware and mount must be registered before the broader client mount. Omit
+both to deploy a client-only server.
+</Callout>
+
+## Schema generation
+
+Generate the Drizzle schema for Hot Updater tables. Run these commands in the
+server project with `DATABASE_URL` and the storage environment variables from
+the container configuration below available to the local process as well.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+Point Drizzle Kit at the generated schema and apply it before starting the
+server:
+
+```typescript title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./hot-updater-schema.ts", // [!code ++]
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+});
+```
+
+```bash
+npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
+`db migrate` writes the settings rows the server checks before its first
+request; until they exist, its handlers answer `503`. Because this server runs
+`apiKeys()`, also
+[create a client API key and configure `x-api-key` in the app](/docs/v1.0/custom/quick-start#bootstrap-the-schema-and-api-key)
+against this same database before the first update check. `insights()` records
+the app's Insights events.
+
+## Dockerfile
+
+Create `Dockerfile` for production builds.
+
+```dockerfile title="Dockerfile"
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM node:24-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 3000
+
+CMD ["node", "dist/src/index.js"]
+```
+
+Create `.dockerignore`:
+
+```text title=".dockerignore"
+node_modules
+dist
+.git
+.env*
+*.log
+```
+
+## Build and run
+
+Build the Docker image.
+
+```bash
+docker build -t hot-updater-server .
+```
+
+Run the container with environment variables.
+
+```bash
+docker run -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
+  -e HOT_UPDATER_ADMIN_TOKEN="replace-with-a-secret" \
+  -e R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
+  -e R2_ACCESS_KEY_ID="<access-key-id>" \
+  -e R2_SECRET_ACCESS_KEY="<secret-access-key>" \
+  -e R2_BUCKET_NAME="<bucket-name>" \
+  hot-updater-server
+```
+
+## Docker Compose
+
+Create `docker-compose.yml` for complete setup with PostgreSQL. Before the
+first start, export `POSTGRES_PASSWORD` with a long random URL-safe password
+(for example, a value generated with `openssl rand -hex 32`). Save it in your
+secret store and reuse it for later Compose and local schema commands. Compose
+requires this value and uses it for both PostgreSQL and the application.
+The database port binds to the Docker host
+[loopback interface](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)
+for local schema commands.
+
+```yaml title="docker-compose.yml"
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hot_updater
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hot-updater:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/hot_updater
+      HOT_UPDATER_ADMIN_TOKEN: replace-with-a-secret
+      R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
+      R2_ACCESS_KEY_ID: <access-key-id>
+      R2_SECRET_ACCESS_KEY: <secret-access-key>
+      R2_BUCKET_NAME: <bucket-name>
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+```
+
+## Run with Docker Compose
+
+Start the database first so schema generation and application can finish
+before the application image is built:
+
+```bash
+docker compose up -d postgres
+```
+
+Make the same storage settings and a `DATABASE_URL` reachable from your local
+shell available to these commands. For the Compose database above, the local
+hostname is `127.0.0.1`, while the application container uses `postgres`.
+Use the same exported password:
+
+```bash
+export DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/hot_updater"
+npx hot-updater db generate src/hotUpdater.ts --yes
+npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
+Create the [client API key](/docs/v1.0/custom/api-key-authentication#bootstrap-a-self-hosted-client)
+against this database, then build and start the application:
+
+```bash
+docker compose up -d --build hot-updater
+```
+
+View logs.
+
+```bash
+docker compose logs -f hot-updater
+```
+
+Stop all services.
+
+```bash
+docker compose down
+```
+
+## CLI configuration
+
+[Connect the React Native project's CLI](/docs/v1.0/custom/cli-configuration) to the
+verified deployment URL with `/hot-updater/admin` as its base path. Keep the
+admin token in the deploy environment, match the server's storage adapter and
+bucket configuration, and list the server's plugins.
+
+Expose the container through your existing HTTPS ingress before connecting a
+mobile release build. For the app, use the HTTPS client root ending in
+`/hot-updater` and its client
+API key through [Set up your app](/docs/v1.0/get-started/app-setup). Run
+[Test an OTA update](/docs/v1.0/get-started/test-ota) against the deployed server;
+a successful host deployment alone does not verify the mobile update path.

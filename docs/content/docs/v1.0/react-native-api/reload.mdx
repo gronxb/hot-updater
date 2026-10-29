@@ -1,0 +1,47 @@
+---
+title: "reload"
+description: "Apply a downloaded bundle immediately."
+icon: RefreshCw
+---
+
+## Usage
+
+`hotUpdater.reload()` applies the currently downloaded bundle immediately.
+
+- If no new bundle is ready, it reloads the current app code
+- If a bundle was downloaded, that bundle becomes active immediately
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+async function syncUpdate() {
+  const updateInfo = await hotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+  });
+
+  if (!updateInfo) return;
+
+  const didUpdate = await updateInfo.updateBundle();
+
+  if (didUpdate && updateInfo.shouldForceUpdate) {
+    await hotUpdater.reload();  // [!code hl]
+  }
+}
+```
+
+Configure [`init`](/docs/v1.0/react-native-api/init) before using this manual flow.
+
+## How it restarts
+
+- Android: restarts the app process cold, so no native module can reach the
+  JavaScript runtime while it is replaced. The app opens again at its launch
+  screen.
+- iOS: reloads React Native in place.
+
+A brownfield app should not call `reload()`; see
+[Brownfield Apps](/docs/v1.0/guides/brownfield).
+
+## Related APIs
+
+- [`hotUpdater.checkForUpdate()`](/docs/v1.0/react-native-api/checkForUpdate)
+- [`hotUpdater.isUpdateDownloaded()`](/docs/v1.0/react-native-api/isUpdateDownloaded)

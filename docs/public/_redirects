@@ -6,7 +6,8 @@
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
 
-# Open the v0 archive at its introduction
+# Open the archives at their introductions
+/docs/v1.0 /docs/v1.0/get-started/introduction 302
 /docs/v0 /docs/v0/get-started/introduction 302
 
 # Build, storage, and database plugins are now adapters
