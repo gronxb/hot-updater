@@ -48,9 +48,5 @@ export default defineConfig({
     },
   },
   updateStrategy: "fingerprint",
-  signing: {
-    enabled: true,
-    privateKeyPath:
-      process.env.PREVIEW_SIGNING_KEY_PATH ?? "keys/private-key.pem",
-  },
+  signing: secret("bundle-signing-key"),
 });

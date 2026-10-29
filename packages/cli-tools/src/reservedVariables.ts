@@ -17,9 +17,8 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "PYTHONPATH",
   "PYTHONSTARTUP",
   "PERL5OPT",
-  // Hot Updater's own: the credential overrides and remoteSigning's token.
+  // Hot Updater's own: the credential overrides.
   ...Object.values(CREDENTIAL_ENV_NAMES).flat(2),
-  "HOT_UPDATER_SIGNING_TOKEN",
   // Where `localSecrets()`'s store is.
   "HOT_UPDATER_HOME",
 ]);

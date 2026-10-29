@@ -39,9 +39,9 @@ export const PROJECT_SIGNING_KEY_VARIABLE = "HOT_UPDATER_BUNDLE_SIGNING_KEY";
 /**
  * The app's hot-updater.config.ts for a deploy that reads the project's key
  * through the config's `secrets` adapter: its one `signing` object literal
- * names `secret("bundle-signing-key")`, with `secret` added to its
- * `hot-updater` import. The native files stay configured, so the CLI still
- * checks that the key it read matches the app's public key.
+ * becomes the shorthand `secret("bundle-signing-key")`, with `secret` added
+ * to its `hot-updater` import. The native files stay configured, so the CLI
+ * still checks that the key it read matches the app's public key.
  */
 export function withSecretSigning(source: string): string {
   const pattern = /\bsigning\s*:\s*\{[^{}]*\}/g;
@@ -53,7 +53,7 @@ export function withSecretSigning(source: string): string {
   }
   const signed = source.replace(
     pattern,
-    `signing: { enabled: true, privateKey: secret("${PROJECT_SIGNING_KEY_SECRET}") }`,
+    `signing: secret("${PROJECT_SIGNING_KEY_SECRET}")`,
   );
   const hotUpdaterImport = /import\s*\{([^}]*)\}\s*from\s*"hot-updater";/u;
   const named = signed.match(hotUpdaterImport)?.[1];

@@ -35,6 +35,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,
+  readBundleSigningState: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).readBundleSigningState,
+  secret: (await importOriginal<typeof import("@hot-updater/cli-tools")>())
+    .secret,
   nonInteractiveReason: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).nonInteractiveReason,
@@ -85,15 +90,7 @@ vi.mock("../utils/expoDetection", () => ({
   warnIfExpoCNG: vi.fn(),
 }));
 
-vi.mock("../utils/git", () => ({
-  appendToProjectRootGitignore: vi.fn(),
-}));
-
-vi.mock("../utils/signing", () => ({
-  generateKeyPair: vi.fn(),
-  getPrivateKeyGitignorePath: vi.fn(),
-  saveKeyPair: vi.fn(),
-}));
+import { secret } from "@hot-updater/cli-tools";
 
 import { keysExportPublic, keysRemove } from "./keys";
 
@@ -119,13 +116,19 @@ const createProject = async () => {
   return cwd;
 };
 
-const configureProject = async (cwd: string, publicKey: string) => {
+/** A project that signs with `signing: secret("bundle-signing-key")`. */
+const configureProject = async (
+  cwd: string,
+  { privateKey }: { readonly privateKey: string },
+) => {
   mocks.getCwd.mockReturnValue(cwd);
   mocks.loadConfig.mockResolvedValue({
-    signing: {
-      name: "test-signing",
-      getPublicKey: vi.fn(async () => ({ publicKey })),
-      sign: vi.fn(),
+    signing: secret("bundle-signing-key"),
+    secrets: {
+      name: "team-store",
+      get: async (names: readonly string[]) =>
+        Object.fromEntries(names.map((name) => [name, privateKey])),
+      set: async () => {},
     },
     platform: {
       android: {
@@ -163,7 +166,7 @@ describe("keysExportPublic", () => {
     const previous = createKeyPair();
     const next = createKeyPair();
     const cwd = await createProject();
-    await configureProject(cwd, next.publicKey);
+    await configureProject(cwd, next);
     mocks.androidGet.mockResolvedValue({
       value: previous.publicKey.trim().replaceAll("\n", "\\n"),
       paths: ["android/app/src/main/AndroidManifest.xml"],
@@ -188,7 +191,7 @@ describe("keysExportPublic", () => {
   it("keeps the normal confirmation for the same canonical public key", async () => {
     const keyPair = createKeyPair();
     const cwd = await createProject();
-    await configureProject(cwd, keyPair.publicKey);
+    await configureProject(cwd, keyPair);
     mocks.androidGet.mockResolvedValue({
       value: keyPair.publicKey.trim().replaceAll("\n", "\\n"),
       paths: ["android/app/src/main/AndroidManifest.xml"],
@@ -208,9 +211,10 @@ describe("keysExportPublic", () => {
 
   it("refuses to ask without a terminal, naming -y and -p, instead of waiting", async () => {
     setStdinTTY(undefined);
-    const { publicKey } = createKeyPair();
+    const keyPair = createKeyPair();
+
     const cwd = await createProject();
-    await configureProject(cwd, publicKey);
+    await configureProject(cwd, keyPair);
     mocks.androidGet.mockResolvedValue({ value: null, paths: [] });
     vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process exit");
@@ -230,7 +234,7 @@ describe("keysExportPublic", () => {
     const previous = createKeyPair();
     const next = createKeyPair();
     const cwd = await createProject();
-    await configureProject(cwd, next.publicKey);
+    await configureProject(cwd, next);
     mocks.androidGet.mockResolvedValue({
       value: previous.publicKey,
       paths: ["android/app/src/main/AndroidManifest.xml"],
@@ -267,10 +271,41 @@ describe("keysExportPublic", () => {
     );
   });
 
+  it.each([
+    [undefined, "hot-updater.config.ts signs no bundles."],
+    [{ enabled: false }, "hot-updater.config.ts signs no bundles."],
+    [
+      { name: "awsKmsSigning", getPublicKey: vi.fn(), sign: vi.fn() },
+      'signing takes secret("bundle-signing-key").\nStore your key: npx hot-updater secrets put bundle-signing-key <key.pem>',
+    ],
+  ])("exports nothing for signing %j", async (signing, reason) => {
+    mocks.getCwd.mockReturnValue(await createProject());
+    mocks.loadConfig.mockResolvedValue({
+      signing,
+      platform: {
+        android: { androidManifestPaths: [] },
+        ios: { infoPlistPaths: [] },
+      },
+    });
+    vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process exit");
+    });
+
+    await expect(keysExportPublic({ yes: true })).rejects.toThrow(
+      "process exit",
+    );
+
+    expect(mocks.logError).toHaveBeenCalledWith(
+      expect.stringContaining(reason),
+    );
+    expect(mocks.androidSet).not.toHaveBeenCalled();
+  });
+
   it("writes an Expo trust-anchor file without touching native files", async () => {
-    const { publicKey } = createKeyPair();
+    const keyPair = createKeyPair();
+    const { publicKey } = keyPair;
     const cwd = await createProject();
-    await configureProject(cwd, publicKey);
+    await configureProject(cwd, keyPair);
 
     await keysExportPublic({ output: "config/signing-public.pem" });
 

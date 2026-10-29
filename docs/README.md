@@ -33,10 +33,10 @@ and the v0 migration. Workflows such as Control update timing belong to their
 Workflows group. **Guides** follows the Workflows groups and holds end-to-end
 guides for one kind of app, such as Brownfield Apps. The **Adapters
 and Plugins** section starts with its overview: an adapter fills one slot of a
-config (build, storage, database, secrets, signing), and a plugin is an entry of a
+config (build, storage, database, secrets), and a plugin is an entry of a
 `plugins` list (server, client) or an integration that wraps a build adapter.
 It keeps **Build Adapters**, **Storage Adapters**, **Database Adapters**,
-**Signing Adapters**, **Secrets Adapters** and **Integration Plugins** directly visible, then
+**Secrets Adapters** and **Integration Plugins** directly visible, then
 **Create an Adapter** (storage and database guides and the database adapter
 contract), **Create a Plugin** (server and client guides), and **Test and
 publish**.

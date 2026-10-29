@@ -78,8 +78,10 @@ from the binary's bytes itself and fails unless the CLI registered that one.
 
 ## Bundle signing
 
-Every deploy signs its bundle with the example's `keys/private-key.pem`, and
-the app verifies each signature with the public key it embeds.
+Every deploy signs its bundle with the example's `keys/private-key.pem`,
+which the config reads with `{ enabled: true, privateKeyPath }`, and the app
+verifies each signature with the public key it embeds. Local preparation
+creates the key pair with node:crypto.
 `foreign-signing-key-refused` checks that verification on the device. Its
 first deploy signs with an RSA key generated for that deploy: the config
 points `signing` at the new key and lists no Info.plist or
@@ -87,15 +89,15 @@ AndroidManifest.xml, so the CLI has no native public key to compare it with.
 The app must refuse that update with a signature verification error and keep
 running its built-in bundle. The same bundle deployed again with the
 example's own key then installs, so only the key differs between the refused
-update and the installed one. That second deploy reads the key as
-`secret("bundle-signing-key")` from `HOT_UPDATER_BUNDLE_SIGNING_KEY`, with
-`keys/private-key.pem` moved away and `HOT_UPDATER_HOME` at an empty key
-store: the
-control server first runs it without the variable and fails unless the CLI
-refuses it for the missing secret, and the installed update proves the key
-read from the secret is the one the app embeds. The control server fails
-either deploy unless its bundle carries a signature, and restores the config
-and the key file when the deploy ends.
+update and the installed one. That second deploy sets the shorthand
+`signing: secret("bundle-signing-key")` and reads the key from
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, with `keys/private-key.pem` moved away and
+`HOT_UPDATER_HOME` at an empty key store: the control server first runs it
+without the variable and fails unless the CLI refuses it for the missing
+secret, and the installed update proves the key read from the secret is the
+one the app embeds. The control server fails either deploy unless its bundle
+carries a signature, and restores the config and the key file when the
+deploy ends.
 
 ## Targets
 

@@ -1932,9 +1932,6 @@ importers:
       '@1password/sdk':
         specifier: 0.5.0
         version: 0.5.0
-      '@aws-sdk/client-kms':
-        specifier: 3.1066.0
-        version: 3.1066.0
       '@bacons/xcode':
         specifier: 1.0.0-alpha.33
         version: 1.0.0-alpha.33
@@ -1950,9 +1947,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@google-cloud/kms':
-        specifier: 6.0.0
-        version: 6.0.0
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -3026,10 +3020,6 @@ packages:
 
   '@aws-sdk/client-iam@3.1066.0':
     resolution: {integrity: sha512-RCeIceMX5EbrOBKAf8a1863EhJ82RHQ1VRhlNbjpOJL06LRK7RzNuBueJBHxEza05q594kQX7bx2yLpG4ue2Tg==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/client-kms@3.1066.0':
-    resolution: {integrity: sha512-qaSA4aFdmh0HX8/1tjYX6oZoFV3ylL9mUgjZhlMkX6P9K4c6Cw8H0B9f4Ap2zMIKpgpvYBMBh/1c8XC/OiQk8Q==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-lambda@3.1066.0':
@@ -5639,10 +5629,6 @@ packages:
   '@google-cloud/firestore@8.7.1':
     resolution: {integrity: sha512-Hp/WI8sH569ANitsko6RNvCUkzTCYudHoINOkQjiJq2FBG6kKnofBAW7PtS823cu6RMxHqK2RxRcspdjrRpUFA==}
     engines: {node: '>=18'}
-
-  '@google-cloud/kms@6.0.0':
-    resolution: {integrity: sha512-tDSTv9gdd0Kd0knCiSftIaCHFYEolj2P2ZKRayhZx5mR558fjnVQgwWDGIh+pBMOatCrLqb20XON3rGB5fm5Ig==}
-    engines: {node: '>=22'}
 
   '@google-cloud/paginator@5.0.2':
     resolution: {integrity: sha512-DJS3s0OVH4zFDB1PzjxAsHqJT6sKVbRwwML0ZBP9PbU7Yebtu/7SWMRzvO2J3nUi9pRNITCfu4LJeooM2w4pjg==}
@@ -14325,10 +14311,6 @@ packages:
     resolution: {integrity: sha512-ziTrzUhhpL9Zk5k0HHzgP/KIpWDJT0VMBC/ynt/QIBvTW+UUcSivQRl6VlwTf/EilDxtSWklHoRsKy1c4k+59w==}
     engines: {node: '>=18'}
 
-  gcp-metadata@9.0.3:
-    resolution: {integrity: sha512-2YYnIlHaKBGT2IPg3G2M57hia9Galz15zsEOvw9T3oRf0lSn6KN6VcHQLqby7x8ksYKnjXvp3rp2KJyLCN6zfQ==}
-    engines: {node: '>=22'}
-
   geist@1.7.2:
     resolution: {integrity: sha512-Gu5lDFa3pLRyoBlBPf0QIFHVdWAnpco7fS1bJm41jyLPFoguBgiubseUN2oLXMgqZ7uxAxDoXcHMhCY/fOTTgg==}
     peerDependencies:
@@ -14508,10 +14490,6 @@ packages:
     resolution: {integrity: sha512-QpTAbNJ36TliZLx3TTtahR8HG0hN9RllL1e3FymOvQSIKK8JmgV58H924ub2wa2DsS3ANjjP1Aw1N+Ramc8hqQ==}
     engines: {node: '>=18'}
 
-  google-auth-library@11.0.2:
-    resolution: {integrity: sha512-vzpgPutxrghPsnjrjpzLX2bdv8IOL719Rh0oEjGnQu8YCIbnbMuTTQ5zU9LcKvLdOPgCxBwppbvnhgW90Qna5Q==}
-    engines: {node: '>=22'}
-
   google-auth-library@9.15.1:
     resolution: {integrity: sha512-Jb6Z0+nvECVz+2lzSMt9u98UsoakXxA2HGHMCxh+so3n90XgYWkq5dur19JAJV7ONiJY22yBTyJB1TSkvPq9Ng==}
     engines: {node: '>=14'}
@@ -14520,10 +14498,6 @@ packages:
     resolution: {integrity: sha512-M4vpZcXQIC1gqIVGQ7eaU3jXQA6zecStyTXu514TYfThlgSurYJOxHZo9fzU6hAgwPWvuEynAVHWyaIk80VeEA==}
     engines: {node: '>=18'}
 
-  google-gax@6.1.0:
-    resolution: {integrity: sha512-PN84pgPw6USmNfy8hlMkifsII+VzCTddRODjPqGZ0JKQuB3WYMEMMepTypmE7ymMXFYiOe3Oi0dHskQ4jkOZfg==}
-    engines: {node: '>=22'}
-
   google-logging-utils@0.0.2:
     resolution: {integrity: sha512-NEgUnEcBiP5HrPzufUkBzJOD/Sxsco3rLNo1F1TNf7ieU8ryUzBhqba8r756CjLX7rn3fHl6iLEwPYuqpoKgQQ==}
     engines: {node: '>=14'}
@@ -14531,10 +14505,6 @@ packages:
   google-logging-utils@1.1.3:
     resolution: {integrity: sha512-eAmLkjDjAFCVXg7A1unxHsLf961m6y17QFqXqAXGj/gVkKFrEICfStRfwUlGNfeCEjNRa32JEWOUTlYXPyyKvA==}
     engines: {node: '>=14'}
-
-  google-logging-utils@2.0.1:
-    resolution: {integrity: sha512-HMhaQghlOTvbcb3c4T5jmmOMtG3JUF1iOQMezaJXL86CDS+Tm2vHd0IeLFRAx3+ewd+bo9E1HFHoy17X5aJa9A==}
-    engines: {node: '>=22'}
 
   googleapis-common@8.0.2:
     resolution: {integrity: sha512-5MXeQzIZaqCH7B+HJWqhQm946VARpZep6acbWSr/fcgF2cQANq7allgX+i/G0EqF0WyUxB277gtWMzRYHMl9tg==}
@@ -18241,10 +18211,6 @@ packages:
     resolution: {integrity: sha512-E1sbAYg3aEbXrq0n1ojJkRHQJGE1kaE/O6GLA94y8rnJBfgvOPTOd1b9hOceQK1FFZI9qMh1vBERCyO2ifubcw==}
     engines: {node: '>=18'}
 
-  proto3-json-serializer@4.0.2:
-    resolution: {integrity: sha512-VUQlb/J2WjOG8BKhdLwJUz+MKxSMtBGYh+TaNmRtiYVhlIzXjzeAGIx7gtc3lXlA2iURzfF2+cXaQvC2ofwzpg==}
-    engines: {node: '>=22'}
-
   protobufjs@7.6.6:
     resolution: {integrity: sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg==}
     engines: {node: '>=12.0.0'}
@@ -18918,10 +18884,6 @@ packages:
   retry-request@8.0.4:
     resolution: {integrity: sha512-pI6/7eabUYkZxamkOq0g0uMxKLLGnjzhefY+vL8bVXag5rto4OU2YBTPytWLuHH7aEKD6fn7kJycQfid0Mwnkw==}
     engines: {node: '>=18'}
-
-  retry-request@9.0.1:
-    resolution: {integrity: sha512-4kGHEBl0ME6gR+8QB1sPMyg58jUxLUcCZNeqLDrfqzk0eWQN8XJFmeu7fmZCjlZCRW0S2u64Ik1HkO/0sWgCYQ==}
-    engines: {node: '>=22'}
 
   retry@0.13.1:
     resolution: {integrity: sha512-XQBQ3I8W1Cge0Seh+6gjj03LbmRFWuoszgK9ooCpwYIrhhoO80pfq4cUkU5DkknwfOfFteRwlZ56PYOGYyFWdg==}
@@ -19716,10 +19678,6 @@ packages:
   teeny-request@10.1.4:
     resolution: {integrity: sha512-R1Cg4Vu0UULeDfHL/kjABLaTW++9yD/B6n2g48y5dJ04hsEaxcfmAqbNDzNsbqAYJyIpZafjklLG9YxRu9uzOg==}
     engines: {node: '>=18'}
-
-  teeny-request@11.0.1:
-    resolution: {integrity: sha512-bNr5j2YjSdajgCVsp+8JVjRf1uHIbpNISLeKp/7V1NnVMX3Gh6H/kECNGlm2Q3I68ACODQ0iv6aZ3Rvm8WgLGA==}
-    engines: {node: '>=22'}
 
   teeny-request@9.0.0:
     resolution: {integrity: sha512-resvxdc6Mgb7YEThw6G6bExlXKkv6+YbuzGg9xuXxSgxJF7Ozs+o8Y9+2R3sArdWdW8nOokoQb1yrpFB0pQK2g==}
@@ -21457,19 +21415,6 @@ snapshots:
       '@aws-sdk/credential-provider-node': 3.972.55
       '@aws-sdk/types': 3.973.12
       '@smithy/core': 3.24.6
-      '@smithy/fetch-http-handler': 5.4.6
-      '@smithy/node-http-handler': 4.7.7
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
-  '@aws-sdk/client-kms@3.1066.0':
-    dependencies:
-      '@aws-crypto/sha256-browser': 5.2.0
-      '@aws-crypto/sha256-js': 5.2.0
-      '@aws-sdk/core': 3.977.6
-      '@aws-sdk/credential-provider-node': 3.972.55
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
       '@smithy/fetch-http-handler': 5.4.6
       '@smithy/node-http-handler': 4.7.7
       '@smithy/types': 4.16.1
@@ -25604,12 +25549,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
     optional: true
-
-  '@google-cloud/kms@6.0.0':
-    dependencies:
-      google-gax: 6.1.0
-    transitivePeerDependencies:
-      - supports-color
 
   '@google-cloud/paginator@5.0.2':
     dependencies:
@@ -36726,14 +36665,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  gcp-metadata@9.0.3:
-    dependencies:
-      gaxios: 7.1.5
-      google-logging-utils: 2.0.1
-      json-bigint: 1.0.0
-    transitivePeerDependencies:
-      - supports-color
-
   geist@1.7.2(next@16.2.9(@babel/core@7.26.0)(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)):
     dependencies:
       next: 16.2.9(@babel/core@7.26.0)(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -36956,17 +36887,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  google-auth-library@11.0.2:
-    dependencies:
-      base64-js: 1.5.1
-      ecdsa-sig-formatter: 1.0.11
-      gaxios: 7.1.5
-      gcp-metadata: 9.0.3
-      google-logging-utils: 2.0.1
-      jws: 4.0.1
-    transitivePeerDependencies:
-      - supports-color
-
   google-auth-library@9.15.1:
     dependencies:
       base64-js: 1.5.1
@@ -36995,27 +36915,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  google-gax@6.1.0:
-    dependencies:
-      '@grpc/grpc-js': 1.14.4
-      '@grpc/proto-loader': 0.8.1
-      '@opentelemetry/api': 1.9.1
-      duplexify: 4.1.3
-      google-auth-library: 11.0.2
-      google-logging-utils: 2.0.1
-      node-fetch: 3.3.2
-      object-hash: 3.0.0
-      proto3-json-serializer: 4.0.2
-      protobufjs: 7.6.6
-      retry-request: 9.0.1
-    transitivePeerDependencies:
-      - supports-color
-
   google-logging-utils@0.0.2: {}
 
   google-logging-utils@1.1.3: {}
-
-  google-logging-utils@2.0.1: {}
 
   googleapis-common@8.0.2:
     dependencies:
@@ -42652,10 +42554,6 @@ snapshots:
     dependencies:
       protobufjs: 7.6.6
 
-  proto3-json-serializer@4.0.2:
-    dependencies:
-      protobufjs: 7.6.6
-
   protobufjs@7.6.6:
     dependencies:
       '@protobufjs/aspromise': 1.1.2
@@ -43903,13 +43801,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  retry-request@9.0.1:
-    dependencies:
-      extend: 3.0.2
-      teeny-request: 11.0.1
-    transitivePeerDependencies:
-      - supports-color
-
   retry@0.13.1: {}
 
   rettime@0.11.11: {}
@@ -44933,15 +44824,6 @@ snapshots:
       - supports-color
 
   teeny-request@10.1.4:
-    dependencies:
-      http-proxy-agent: 7.0.2
-      https-proxy-agent: 7.0.6
-      node-fetch: 3.3.2
-      stream-events: 1.0.5
-    transitivePeerDependencies:
-      - supports-color
-
-  teeny-request@11.0.1:
     dependencies:
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6

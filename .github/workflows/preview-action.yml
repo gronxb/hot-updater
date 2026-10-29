@@ -27,8 +27,8 @@ concurrency:
 # builds embed the pull request's channel. The action gets only the Console's
 # URL, for the comment's links and the APK's download QR code: the config sets no
 # secrets adapter, so the CLI reads every credential from the job's
-# environment, the keystore as one JSON value, and signs bundles with a local
-# key. It comments nothing: each proof step reads Postgres and MinIO itself
+# environment, the keystore as one JSON value and the bundle signing key as a
+# one-line PEM. It comments nothing: each proof step reads Postgres and MinIO itself
 # and checks the comment the run rendered against them. The runs, in order:
 # no native build (build and register), the same fingerprint (deploy only),
 # a changed native input (build again), and the closed pull request's
@@ -77,6 +77,8 @@ jobs:
           bash examples-server/preview-action/scripts/seed.sh 3800 "$RUNNER_TEMP/logs" "$RUNNER_TEMP/preview-keys" > "$RUNNER_TEMP/seed.env"
           keystore="$(grep '^HOT_UPDATER_ANDROID_KEYSTORE=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
           echo "::add-mask::$keystore"
+          signing_key="$(grep '^HOT_UPDATER_BUNDLE_SIGNING_KEY=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
+          echo "::add-mask::$signing_key"
           # The job's environment is where the CLI reads every credential.
           cat "$RUNNER_TEMP/backend.env" "$RUNNER_TEMP/seed.env" >> "$GITHUB_ENV"
           echo "PROOF_CONSOLE_URL=http://127.0.0.1:3800" >> "$GITHUB_ENV"

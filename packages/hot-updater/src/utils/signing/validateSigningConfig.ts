@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 
-import type { ConfigResponse } from "@hot-updater/cli-tools";
+import {
+  type ConfigResponse,
+  readBundleSigningState,
+} from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
 import { AndroidConfigParser } from "../configParser/androidParser";
@@ -62,7 +65,7 @@ export async function validateSigningConfig(
     readonly platform?: Platform;
   } = {},
 ): Promise<SigningValidationResult> {
-  const signingEnabled = config.signing !== undefined;
+  const signingEnabled = readBundleSigningState(config.signing).status === "on";
 
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
   const androidParser = new AndroidConfigParser(

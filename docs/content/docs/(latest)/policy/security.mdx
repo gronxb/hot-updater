@@ -20,7 +20,7 @@ app code. The client handler URL and client API key are included in the app.
 | Native build signing and store upload keys         | The CLI's [`secrets` adapter](/docs/concepts/secrets) or CI secret storage                           | App signing, TestFlight, and Google Play uploads. Never embed them in the app.                      |
 | Admin bearer token                                 | Server-side admin clients, such as a standalone repository configuration                             | Administrative operations. Never send it to React Native or Console browser code.                   |
 | Signing public key                                 | Native app configuration                                                                             | Verifies the publisher of downloaded artifacts.                                                     |
-| Signing private key or signing-service credentials | A KMS or protected signing service; a local PEM key in the CLI's `secrets` adapter or a private file | Produces artifact signatures. Never embed them in the app.                                          |
+| Signing private key                                | The CLI's `secrets` adapter, or a private file                                                       | Produces artifact signatures. Never embed them in the app.                                          |
 
 A Supabase service-role key or Cloudflare API token is a provider credential,
 not a client API key. See [API key authentication](/docs/custom/api-key-authentication#security-boundary)

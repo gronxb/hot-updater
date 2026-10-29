@@ -26,9 +26,6 @@ export default defineConfig({
     debug: true,
   },
   // Bundle signing is enabled for this example.
-  // Run: npx hot-updater keys generate
-  signing: {
-    enabled: true,
-    privateKeyPath: "./keys/private-key.pem",
-  },
+  // Run: npx hot-updater secrets issue bundle-signing-key
+  signing: secret("bundle-signing-key"),
 });

@@ -7,9 +7,15 @@ import {
   HotUpdateDirUtil,
   type loadConfig,
   loadPlatformConfigs,
+  INVALID_SIGNING_NEXT_STEP,
+  ISSUE_SIGNING_KEY_COMMAND,
   p,
   prepareBundleSigning,
+  PUT_SIGNING_KEY_COMMAND,
   putStorageFile,
+  readBundleSigningState,
+  UNSIGNED_BUNDLES_NEXT_STEP,
+  UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
 import type {
   ConfiguredDatabase,
@@ -568,7 +574,10 @@ const deployPlatform = async ({
 
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
-    prepareBundleSigning(config.signing, { cwd }).catch((error: unknown) => {
+    prepareBundleSigning(config.signing, {
+      cwd,
+      secrets: config.secrets,
+    }).catch((error: unknown) => {
       // As for a signing issue below: the E2E refusal check reads both.
       p.log.error(
         ui.prose(error instanceof Error ? error.message : String(error)),
@@ -1125,6 +1134,34 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {
     return;
+  }
+  const signingStates = platformConfigs.map(({ config }) =>
+    readBundleSigningState(config.signing),
+  );
+  // A value signing doesn't take, such as a removed signing adapter, never
+  // deploys unsigned: refused before anything connects or builds.
+  const refused = signingStates.find((state) => state.status === "invalid");
+  if (refused?.status === "invalid") {
+    p.log.error(
+      [
+        refused.message,
+        ui.withCommand(INVALID_SIGNING_NEXT_STEP, PUT_SIGNING_KEY_COMMAND),
+      ].join("\n"),
+    );
+    p.log.error(
+      "Deployment blocked. Fix the signing configuration and try again.",
+    );
+    return process.exit(1);
+  }
+  // Once a run, however many platforms deploy unsigned. `enabled: false`
+  // signs nothing on purpose, without the warning.
+  if (signingStates.some((state) => state.status === "unsigned")) {
+    p.log.warn(
+      [
+        UNSIGNED_BUNDLES_WARNING,
+        ui.withCommand(UNSIGNED_BUNDLES_NEXT_STEP, ISSUE_SIGNING_KEY_COMMAND),
+      ].join("\n"),
+    );
   }
   // Every platform deploys through one server, assembled from the first
   // platform's config, so the configs must share one database. The ones a

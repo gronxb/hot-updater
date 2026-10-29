@@ -41,7 +41,7 @@ import { storeCredential } from "../utils/native/storeCredential";
 import { readBundleSigningKey } from "../utils/signing";
 import { readTypedPath } from "../utils/typedPath";
 
-/** The local bundle signing key `signing.privateKey` reads. */
+/** The bundle signing key `signing: secret("bundle-signing-key")` reads. */
 const BUNDLE_SIGNING_KEY = "bundle-signing-key";
 
 /** What `secrets put` stores: a build credential, or the bundle signing key. */

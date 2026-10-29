@@ -4,10 +4,9 @@ import path from "path";
 
 import type {
   AnyHotUpdaterPlugin,
-  BundleSigningAdapter,
   ConfigInput,
   ConfiguredDatabase,
-  LocalSigningConfig,
+  SigningConfig,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
 import {
@@ -36,9 +35,7 @@ describe("ConfigResponse", () => {
     }>();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
     expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
-      | BundleSigningAdapter
-      | Extract<LocalSigningConfig, { enabled: true }>
-      | undefined
+      SigningConfig | undefined
     >();
 
     expectTypeOf<ConfigResponse["database"]>().toEqualTypeOf<
@@ -216,7 +213,7 @@ describe("loadConfig", () => {
         "export default {",
         '  storage: { name: "s3Storage", protocol: "s3", credentials: { accessKeyId: secret("HU_SPEC_KEY_ID"), secretAccessKey: secret("HU_SPEC_SECRET") } },',
         '  database: { name: "d1Database", secret: secret("HU_SPEC_SECRET"), token: secret("HU_SPEC_TOKEN") },',
-        '  signing: { enabled: true, privateKey: secret("bundle-signing-key") },',
+        '  signing: secret("bundle-signing-key"),',
         '  nativeBuild: { android: { release: { packageName: "com.example", signing: { keystore: secret("release-keystore") } } } },',
         "};",
         "",
@@ -502,42 +499,16 @@ describe("loadConfig", () => {
     expect(config.cacheDir).toBe("from-null-context");
   });
 
-  it("preserves the configured signing provider identity", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      [
-        "const provider = {",
-        "  name: 'test-signer',",
-        "  getPublicKey: async () => ({ publicKey: 'public-key' }),",
-        "  sign: async ({ message }) => ({ signature: message }),",
-        "};",
-        "globalThis.__HOT_UPDATER_TEST_SIGNING_PROVIDER__ = provider;",
-        "export default {",
-        "  signing: provider,",
-        "};",
-        "",
-      ].join("\n"),
-    );
-
-    const { loadConfig } = await import("./loadConfig");
-    const config = await loadConfig(null);
-    const signing = config.signing;
-
-    expect(signing).toBe(
-      Reflect.get(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__"),
-    );
-  });
-
-  it("normalizes explicit local signing config without reading the private key", async () => {
+  it("loads a signing adapter, which deploy refuses, so the commands that fix it still run", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
       [
         "export default {",
         "  signing: {",
-        "    enabled: true,",
-        "    privateKeyPath: './private-key-canary.pem',",
+        "    name: 'awsKmsSigning',",
+        "    getPublicKey: async () => ({ publicKey: 'public-key' }),",
+        "    sign: async ({ message }) => ({ signature: message }),",
         "  },",
         "};",
         "",
@@ -545,55 +516,62 @@ describe("loadConfig", () => {
     );
 
     const { loadConfig } = await import("./loadConfig");
+    const { readBundleSigningState } = await import("./bundleSigning");
     const config = await loadConfig(null);
 
-    expect(config.signing).toEqual({
-      enabled: true,
-      privateKeyPath: "./private-key-canary.pem",
+    expect(readBundleSigningState(config.signing)).toEqual({
+      status: "invalid",
+      message: 'signing takes secret("bundle-signing-key").',
+    });
+  });
+
+  it("keeps the shorthand as the secret() it is", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        'export default { signing: secret("bundle-signing-key") };',
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const { readBundleSigningState } = await import("./bundleSigning");
+    const config = await loadConfig(null);
+
+    expect(readBundleSigningState(config.signing)).toEqual({
+      status: "on",
+      key: { secret: "bundle-signing-key" },
     });
   });
 
   it.each([
-    "{ enabled: false }",
-    "{ enabled: false, privateKeyPath: '/missing/key.pem' }",
+    [
+      "{ enabled: true, privateKeyPath: './private-key-canary.pem' }",
+      { enabled: true, privateKeyPath: "./private-key-canary.pem" },
+    ],
+    ["{ enabled: false }", { enabled: false }],
+    [
+      "{ enabled: false, privateKeyPath: '/missing/key.pem' }",
+      { enabled: false, privateKeyPath: "/missing/key.pem" },
+    ],
+    [
+      "{ privateKeyPath: '/missing/key.pem' }",
+      { privateKeyPath: "/missing/key.pem" },
+    ],
   ])(
-    "removes inactive local signing from the merged config: %s",
-    async (signing) => {
+    "keeps the object form as written, reading no key: %s",
+    async (source, expected) => {
       await writeProjectFile(
         projectRoot,
         "hot-updater.config.ts",
-        `export default { signing: ${signing} };`,
+        `export default { signing: ${source} };`,
       );
       const { loadConfig } = await import("./loadConfig");
-      expect((await loadConfig(null)).signing).toBeUndefined();
+      expect((await loadConfig(null)).signing).toEqual(expected);
     },
   );
-
-  it("rejects a local signing config without an explicit enabled state", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { signing: { privateKeyPath: '/missing/key.pem' } };",
-    );
-    const { loadConfig } = await import("./loadConfig");
-
-    await expect(loadConfig(null)).rejects.toThrow(
-      "Bundle signing must be a local key config or signing adapter",
-    );
-  });
-
-  it("loads local signing config", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { signing: { enabled: true, privateKeyPath: './private.pem' } };",
-    );
-    const { loadConfig } = await import("./loadConfig");
-    expect((await loadConfig(null)).signing).toEqual({
-      enabled: true,
-      privateKeyPath: "./private.pem",
-    });
-  });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {
     await writeProjectFile(

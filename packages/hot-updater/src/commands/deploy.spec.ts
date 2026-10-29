@@ -1,6 +1,6 @@
 import { pipeline } from "stream/promises";
 
-import { p } from "@hot-updater/cli-tools";
+import { p, secret } from "@hot-updater/cli-tools";
 import {
   linesWiderThan,
   recordedClackCalls,
@@ -314,11 +314,11 @@ const fixtureBundleId = (sequence: number): string =>
 const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 const LOGICAL_FILE_HASH = "a".repeat(64);
 const TRANSFER_FILE_HASH = "b".repeat(64);
-const mockSigningAdapter = {
-  getPublicKey: vi.fn(async () => ({ publicKey: "public-key" })),
-  name: "mock-signing",
-  sign: vi.fn(async () => ({ signature: new Uint8Array([1]) })),
-};
+/** 1.1's file-based signing; prepareBundleSigning, mocked, reads no key. */
+const mockSigning = {
+  enabled: true,
+  privateKeyPath: "./keys/private-key.pem",
+} as const;
 
 const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
   mockBuildAdapter.build.mockResolvedValue({
@@ -747,6 +747,103 @@ describe("deploy rollout wiring", () => {
     ]);
     expect(databaseHarness.deploy).toHaveBeenCalledTimes(1);
     expect(databaseHarness.deploy.mock.calls[0]![0]).toHaveLength(2);
+  });
+
+  it("warns once a run, for both platforms, that bundles without signing are unsigned", async () => {
+    mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    const unsigned = mockCli.p.log.warn.mock.calls.filter(([message]) =>
+      String(message).startsWith("Bundles are unsigned."),
+    );
+    expect(unsigned).toEqual([
+      [
+        "Bundles are unsigned.\nTo sign them, run: npx hot-updater secrets issue bundle-signing-key",
+      ],
+    ]);
+    expect(
+      String(unsigned[0]![0])
+        .split("\n")
+        .every((line) => line.length <= 76),
+    ).toBe(true);
+    expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a signing adapter before it connects or builds, never deploying unsigned", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      database: harnessDatabase,
+      fingerprint: {},
+      patch: { enabled: true, maxBaseBundles: 3 },
+      signing: { name: "awsKmsSigning", getPublicKey: vi.fn(), sign: vi.fn() },
+      storage: mockStorageAdapter,
+      updateStrategy: "appVersion",
+    });
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
+
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit");
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mockCli.p.log.error.mock.calls).toEqual([
+        [
+          'signing takes secret("bundle-signing-key").\nStore your key: npx hot-updater secrets put bundle-signing-key <key.pem>',
+        ],
+        ["Deployment blocked. Fix the signing configuration and try again."],
+      ]);
+      expect(mockLoadServer).not.toHaveBeenCalled();
+      expect(mockCli.prepareBundleSigning).not.toHaveBeenCalled();
+      expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+      expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it.each([
+    ["enabled: false", { enabled: false }],
+    ["the shorthand", secret("bundle-signing-key")],
+  ])("says nothing about unsigned bundles for %s", async (_label, signing) => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      database: harnessDatabase,
+      fingerprint: {},
+      patch: { enabled: true, maxBaseBundles: 3 },
+      signing,
+      storage: mockStorageAdapter,
+      updateStrategy: "appVersion",
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockCli.p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Bundles are unsigned."),
+    );
   });
 
   it("persists neither platform when core refuses the two-platform deployment", async () => {
@@ -1405,7 +1502,7 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockBuildAdapter.build.mockResolvedValue({
@@ -1415,7 +1512,6 @@ describe("deploy rollout wiring", () => {
     });
     const signFileHash = vi.fn(async () => "signature");
     mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "local-file",
       publicKey: "public-key",
       signFileHash,
     });
@@ -1455,7 +1551,7 @@ describe("deploy rollout wiring", () => {
     expect(signingOrder).toBeGreaterThanOrEqual(0);
   });
 
-  it("validates an Expo CNG trust anchor against the signing provider", async () => {
+  it("validates an Expo CNG trust anchor against the signing key", async () => {
     const getBundleSigningPublicKey = vi.fn(async () => ({
       publicKey: "expo-public-key",
     }));
@@ -1464,12 +1560,12 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: { enabled: true, maxBaseBundles: 3 },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
       name: "provider",
-      publicKey: "provider-public-key",
+      publicKey: "signing-public-key",
       signFileHash: vi.fn(async () => "signature"),
     });
 
@@ -1483,13 +1579,13 @@ describe("deploy rollout wiring", () => {
 
     expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
     expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
-      expectedPublicKey: "provider-public-key",
+      expectedPublicKey: "signing-public-key",
       nativePublicKey: "expo-public-key",
       platform: "ios",
     });
   });
 
-  it("fails before build or upload when the signing provider cannot be prepared", async () => {
+  it("fails before build or upload when the signing key cannot be read", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -1497,10 +1593,11 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
-    const reason = "https://signer.example.com/sign answered 403 forbidden.";
+    const reason =
+      "Failed to load the bundle signing private key from privateKeyPath.";
     mockCli.prepareBundleSigning.mockRejectedValue(new Error(reason));
     const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
       throw new Error("process.exit");
@@ -1633,7 +1730,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("verifies automatic patch bases with the signer's public key", async () => {
+  it("verifies automatic patch bases with the signing key's public key", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -1641,11 +1738,10 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "local-file",
       publicKey: "public-key",
       signFileHash: vi.fn(async () => "signature"),
     });
@@ -1926,7 +2022,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("verifies the built-in bundle base with the signer's public key", async () => {
+  it("verifies the built-in bundle base with the signing key's public key", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -1934,11 +2030,10 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "local-file",
       publicKey: "public-key",
       signFileHash: vi.fn(async () => "signature"),
     });

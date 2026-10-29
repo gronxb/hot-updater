@@ -77,7 +77,7 @@ import {
   INSIGHTS_OUTCOMES,
   INSIGHTS_WINDOWS,
 } from "./commands/insights";
-import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
+import { keysExportPublic, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import {
   handleNativeBuildDelete,
@@ -99,6 +99,7 @@ import {
   ISSUED_KINDS,
   SECRET_KINDS,
 } from "./commands/secrets";
+import { handleSigningKeyIssue } from "./commands/signingKey";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
@@ -466,7 +467,7 @@ secretsCommand
       "  secrets put android-keystore <upload.jks>",
       "At a terminal, a keystore without --key-alias asks for its passwords.",
       "",
-      "Bundle signing:",
+      "Bundle signing, with a key you have:",
       "  secrets put bundle-signing-key <key.pem>",
       "To sign in and issue an App Store Connect API key, run apple login.",
     ].join("\n"),
@@ -490,12 +491,13 @@ secretsCommand
 secretsCommand
   .command("issue")
   .description(
-    "Sign in, at a terminal, and store the App Store Connect API key Hot Updater issues, or create an Android upload key",
+    "Sign in, at a terminal, and store the App Store Connect API key Hot Updater issues, or create an Android upload key or a bundle signing key",
   )
   .addArgument(
     new Argument("<kind>", "what to issue").choices([
       ...ISSUED_KINDS,
       "android-keystore",
+      "bundle-signing-key",
     ]),
   )
   .argument(
@@ -524,6 +526,9 @@ secretsCommand
       "android-keystore creates a new upload key with the JDK's keytool. It fits",
       "only an app with no .aab on Google Play yet: Play keeps the first key.",
       "A stored keystore is kept; --replace overwrites it, so back it up first.",
+      "",
+      "bundle-signing-key creates an RSA key and sets signing in the config.",
+      "A stored key is kept: apps already shipped reject a new key's bundles.",
     ].join("\n"),
   )
   .action(async (kind, name, options) => {
@@ -534,6 +539,10 @@ secretsCommand
     if (options.pem !== undefined) {
       p.log.error(`--pem is for android-keystore, not ${kind}.`);
       process.exitCode = 1;
+      return;
+    }
+    if (kind === "bundle-signing-key") {
+      await handleSigningKeyIssue(name ?? kind, { replace: options.replace });
       return;
     }
     await handleSecretsIssue(kind, name ?? kind, { replace: options.replace });
@@ -1065,30 +1074,7 @@ Object listing and deletion require a capable Storage adapter such as s3Storage.
 
 const keysCommand = program
   .command("keys")
-  .description("Code signing key management");
-
-keysCommand
-  .command("generate")
-  .description("Generate RSA key pair for code signing")
-  .option("-o, --output <dir>", "output directory for keys", "./keys")
-  .option(
-    "-k, --key-size <size>",
-    "key size (2048 or 4096)",
-    (value) => {
-      const size = Number.parseInt(value, 10);
-      if (size !== 2048 && size !== 4096) {
-        p.log.error("Key size must be 2048 or 4096");
-        process.exit(1);
-      }
-      return size as 2048 | 4096;
-    },
-    4096,
-  )
-  .option(
-    "--secret [name]",
-    "store the private key through the config's secrets adapter as this name (default: bundle-signing-key)",
-  )
-  .action(keysGenerate);
+  .description("Embed or remove the bundle signing public key");
 
 keysCommand
   .command("export-public")

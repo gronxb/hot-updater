@@ -2,11 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  type LocalSigningConfig,
-  type NativeBuildAndroidScheme,
-  remoteSigning,
-  type SecretsAdapter,
+import type {
+  ConfigInput,
+  LocalSigningConfig,
+  NativeBuildAndroidScheme,
+  SecretsAdapter,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,7 +89,6 @@ describe("isReservedVariableName", () => {
     "HOT_UPDATER_ASC_KEY_PATH",
     "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
-    "HOT_UPDATER_SIGNING_TOKEN",
     "HOT_UPDATER_HOME",
     "INFISICAL_TOKEN",
     "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
@@ -151,8 +150,23 @@ describe("parseSecretReference", () => {
       // @ts-expect-error the bundle signing key takes secret("<name>")
       privateKey: "bundle-signing-key",
     };
+    const config: Pick<ConfigInput, "signing"> = {
+      // @ts-expect-error signing takes secret("<name>"), not a string
+      signing: "bundle-signing-key",
+    };
+    const adapter: Pick<ConfigInput, "signing"> = {
+      signing: {
+        name: "remoteSigning",
+        // @ts-expect-error signing adapters are removed
+        getPublicKey: async () => ({ publicKey: "" }),
+        sign: async () => ({ signature: new Uint8Array() }),
+      },
+    };
+    const shorthand: Pick<ConfigInput, "signing"> = {
+      signing: secret("bundle-signing-key"),
+    };
 
-    expect([scheme, signing]).toHaveLength(2);
+    expect([scheme, signing, config, adapter, shorthand]).toHaveLength(5);
   });
 });
 
@@ -421,7 +435,7 @@ describe("secret", () => {
     expect(secret("x".repeat(64)).name).toHaveLength(64);
   });
 
-  it.each(["NODE_OPTIONS", "LD_PRELOAD", "HOT_UPDATER_SIGNING_TOKEN"])(
+  it.each(["NODE_OPTIONS", "LD_PRELOAD", "HOT_UPDATER_HOME"])(
     "refuses the reserved name %s when the config loads",
     (name) => {
       expect(() => secret(name)).toThrow(
@@ -515,28 +529,6 @@ describe("secret", () => {
     await expect(ref()).rejects.toThrow("store unreachable");
     expect(await ref()).toBe("shared-value");
     expect(store.get).toHaveBeenCalledTimes(2);
-  });
-
-  it("is remoteSigning's token, read from the store on its first request", async () => {
-    vi.stubEnv("SIGNING_TOKEN", undefined);
-    const store = storeOf({ SIGNING_TOKEN: "store-signing-token" });
-    setConfiguredSecrets(store);
-    const sent: (string | null)[] = [];
-    const signer = remoteSigning({
-      endpoint: "https://signer.example.com",
-      signingToken: secret("SIGNING_TOKEN"),
-      fetch: async (_url, init) => {
-        sent.push(
-          new Headers(init?.headers).get("x-hot-updater-signing-token"),
-        );
-        return new Response("{}", { status: 500 });
-      },
-    });
-    expect(store.get).not.toHaveBeenCalled();
-
-    await expect(signer.getPublicKey({})).rejects.toThrow();
-
-    expect(sent).toEqual(["store-signing-token"]);
   });
 
   it("names what the adapter does not hold", async () => {
