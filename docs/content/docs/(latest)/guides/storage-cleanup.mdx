@@ -105,8 +105,10 @@ objects.
   before pruning.
 </Callout>
 
-Storage pruning currently requires the `listObjects` and `deleteObjects`
-management capabilities provided by `s3Storage`, including AWS S3 and
-S3-compatible services such as Cloudflare R2. Other Storage adapters continue to
-support deploy and runtime delivery but cannot use `storage prune` until they
-implement those management operations.
+Storage pruning requires the `listObjects` and `deleteObjects` management
+capabilities, which every official storage adapter provides.
+`standaloneStorage` sends them to your storage service's `/list` and
+`/delete-objects` routes; see the
+[Storage service contract](/docs/storage-adapters/standalone#storage-service-contract).
+A [custom storage adapter](/docs/storage-adapters/custom-storage) cannot use
+`storage prune` until it implements those operations.

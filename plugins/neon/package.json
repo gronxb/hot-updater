@@ -33,13 +33,13 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "catalog:aws",
-    "@aws-sdk/lib-storage": "3.1066.0",
-    "@aws-sdk/s3-request-presigner": "catalog:aws",
     "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/postgres": "workspace:*"
+    "@hot-updater/postgres": "workspace:*",
+    "@hot-updater/storage-s3": "workspace:*"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "catalog:aws",
+    "@aws-sdk/lib-storage": "catalog:aws",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "vitest": "catalog:"

@@ -61,11 +61,12 @@
     "@aws-sdk/client-ssm": "3.1066.0",
     "@aws-sdk/client-sts": "3.1066.0",
     "@aws-sdk/credential-providers": "3.1066.0",
-    "@aws-sdk/lib-storage": "3.1066.0",
+    "@aws-sdk/lib-storage": "catalog:aws",
     "@aws-sdk/lib-dynamodb": "3.1066.0",
     "@aws-sdk/s3-request-presigner": "catalog:aws",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@hot-updater/storage-s3": "workspace:*",
     "hono": "catalog:hono"
   }
 }

@@ -56,6 +56,21 @@ describe("standaloneStorage", () => {
     ).resolves.toEqual({ exists: true });
   });
 
+  it("names the missing route when the service cannot list objects", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 404 })),
+    );
+    const storage = standaloneStorage({
+      baseUrl: "https://repo.example.com",
+      protocol: "s3",
+    });
+
+    await expect(storage.listObjects()).rejects.toThrow(
+      "The storage service has no /list route, which storage prune needs.",
+    );
+  });
+
   it("returns the remote object response directly", async () => {
     vi.stubGlobal(
       "fetch",

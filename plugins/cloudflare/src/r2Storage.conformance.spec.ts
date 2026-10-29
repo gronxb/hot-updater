@@ -1,7 +1,9 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { setupStorageAdapterTestSuite } from "@hot-updater/test-utils";
@@ -9,10 +11,12 @@ import { vi } from "vitest";
 
 import { r2Storage } from "./r2Storage";
 
-/** An R2 bucket behind its S3 API, in memory. */
+/** An R2 bucket behind its S3 API, in memory: exact keys, string prefixes, and short pages. */
 const { objects } = vi.hoisted(() => ({
   objects: new Map<string, Uint8Array<ArrayBuffer>>(),
 }));
+
+const LIST_PAGE_SIZE = 3;
 
 const notFound = (name: string) =>
   Object.assign(new Error(name), { name, $metadata: { httpStatusCode: 404 } });
@@ -51,6 +55,26 @@ vi.spyOn(S3Client.prototype, "send").mockImplementation(
       objects.delete(command.input.Key!);
       return {} as never;
     }
+    if (command instanceof DeleteObjectsCommand) {
+      for (const { Key } of command.input.Delete?.Objects ?? []) {
+        objects.delete(Key!);
+      }
+      return {} as never;
+    }
+    if (command instanceof ListObjectsV2Command) {
+      const keys = [...objects.keys()]
+        .filter((key) => key.startsWith(command.input.Prefix ?? ""))
+        .sort();
+      const start = Number(command.input.ContinuationToken ?? 0);
+      const end = start + LIST_PAGE_SIZE;
+      return {
+        Contents: keys.slice(start, end).map((Key) => ({
+          Key,
+          Size: objects.get(Key)!.byteLength,
+        })),
+        NextContinuationToken: end < keys.length ? String(end) : undefined,
+      } as never;
+    }
     throw new Error("Unexpected S3 command.");
   },
 );
@@ -72,5 +96,13 @@ setupStorageAdapterTestSuite({
       basePath: "ota",
     };
   },
-  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+  operations: [
+    "put",
+    "get",
+    "getDownloadUrl",
+    "exists",
+    "delete",
+    "listObjects",
+    "deleteObjects",
+  ],
 });

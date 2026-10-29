@@ -4,6 +4,7 @@ import {
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
+  type StorageObject,
 } from "@hot-updater/plugin-core";
 
 import { presignR2GetUrl, type R2Credentials } from "./presignR2Url";
@@ -28,6 +29,16 @@ export type CloudflareWorkerStorageConfig = {
 
 /** Devices download right after the update check that returns the URL. */
 const PRESIGNED_URL_EXPIRES_IN_SECONDS = 3600;
+/** Keys the binding deletes in one call. */
+const DELETE_BATCH_SIZE = 1000;
+
+type R2WorkerOperations =
+  | "put"
+  | "get"
+  | "exists"
+  | "delete"
+  | "listObjects"
+  | "deleteObjects";
 
 /**
  * Storage on the Worker's R2 binding. With R2's S3-compatible credentials,
@@ -39,14 +50,15 @@ export function r2WorkerStorage(
   config: CloudflareWorkerStorageConfig & {
     readonly credentials: R2Credentials;
   },
-): StorageAdapterWith<"put" | "get" | "getDownloadUrl" | "exists" | "delete">;
+): StorageAdapterWith<R2WorkerOperations | "getDownloadUrl">;
 export function r2WorkerStorage(
   config: CloudflareWorkerStorageConfig,
-): StorageAdapterWith<"put" | "get" | "exists" | "delete">;
+): StorageAdapterWith<R2WorkerOperations>;
 export function r2WorkerStorage(
   config: CloudflareWorkerStorageConfig,
-): StorageAdapterWith<"put" | "get" | "exists" | "delete"> {
+): StorageAdapterWith<R2WorkerOperations> {
   const getStorageKey = createStorageKeyBuilder(config.basePath);
+  const basePrefix = getStorageKey() ? `${getStorageKey()}/` : "";
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "r2");
@@ -127,6 +139,47 @@ export function r2WorkerStorage(
       const { key } = parseAndValidate(storageUri);
       await config.bucket.delete(key);
       return { deleted: true };
+    },
+    async listObjects(prefix) {
+      const folder = getStorageKey(prefix ?? "");
+      const objects: StorageObject[] = [];
+      let cursor: string | undefined;
+      do {
+        const listed = await config.bucket.list({
+          prefix: folder ? `${folder}/` : "",
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        for (const object of listed.objects) {
+          if (!object.key.startsWith(basePrefix)) continue;
+          // A key no `put` writes, such as a folder marker, has no URI.
+          let storageUri: string;
+          try {
+            storageUri = createStorageUri({
+              protocol: "r2",
+              bucket: config.bucketName,
+              key: object.key,
+            });
+          } catch {
+            continue;
+          }
+          objects.push({
+            key: object.key.slice(basePrefix.length),
+            lastModifiedAt: object.uploaded,
+            size: object.size,
+            storageUri,
+          });
+        }
+        cursor = listed.truncated ? listed.cursor : undefined;
+      } while (cursor !== undefined);
+      return objects;
+    },
+    async deleteObjects(relativeKeys) {
+      const keys = relativeKeys.map((key) => getStorageKey(key));
+      for (let offset = 0; offset < keys.length; offset += DELETE_BATCH_SIZE) {
+        await config.bucket.delete(
+          keys.slice(offset, offset + DELETE_BATCH_SIZE),
+        );
+      }
     },
   });
 }
