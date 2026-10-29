@@ -38,7 +38,7 @@ const TESTFLIGHT: StoreShortcut = {
   command: "testflight",
   addScheme: "Add a device scheme with signing.ascApiKey:",
   guide:
-    "https://hot-updater.dev/docs/guides/native-build#upload-to-testflight",
+    "https://hot-updater.dev/docs/native-builds/testflight#upload-to-testflight",
   check: (scheme, iosScheme) =>
     resolveTestFlightUploadKey({ scheme, iosScheme }),
 };
@@ -49,7 +49,7 @@ const GOOGLE_PLAY: StoreShortcut = {
   command: "google-play upload",
   addScheme: "Add a release scheme that builds an .aab with signing.keystore:",
   guide:
-    "https://hot-updater.dev/docs/guides/native-build#upload-to-google-play",
+    "https://hot-updater.dev/docs/native-builds/google-play#upload-to-google-play",
   check: (scheme, androidScheme) =>
     resolvePlayUploadServiceAccount({ scheme, androidScheme }),
 };

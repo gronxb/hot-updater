@@ -1,0 +1,48 @@
+---
+title: "getCrashHistory"
+description: "Read the artifact IDs rejected after a crash and automatic rollback."
+icon: AlertTriangle
+---
+
+## Usage
+
+Use `hotUpdater.getCrashHistory()` in a support log or debug screen to inspect
+artifacts that crashed and triggered automatic rollback.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+const crashedArtifacts = hotUpdater.getCrashHistory();
+console.log("Rejected artifact IDs:", crashedArtifacts);
+```
+
+## Return value
+
+```ts
+getCrashHistory(): string[]
+```
+
+Each value matches the Console's Advanced **Artifact ID**. It is not the update
+ID returned by [`getBundleId()`](/docs/v1.0/react-native-api/getBundleId). An empty
+array means the device has no recorded crashed artifacts.
+
+The getter is synchronous and reads local history without making a network
+request. Recorded artifacts are rejected if the device attempts to install
+them again. [`clearCrashHistory()`](/docs/v1.0/react-native-api/clearCrashHistory)
+clears that rejection history for a controlled retry.
+
+The list also holds an artifact whose launch ended before the first render,
+until a later session retries it once. See
+[automatic rollback](/docs/v1.0/concepts/automatic-rollback#what-counts-as-a-failed-launch).
+
+Native bundle loading starts crash detection. Configure
+[`init`](/docs/v1.0/react-native-api/init) to observe the completed launch through
+`onNotifyAppReady` and client plugins. See
+[automatic rollback](/docs/v1.0/concepts/automatic-rollback) for the recovery
+lifecycle.
+
+## Related APIs
+
+- [`clearCrashHistory`](/docs/v1.0/react-native-api/clearCrashHistory)
+- [`getActiveUpdateState`](/docs/v1.0/react-native-api/getActiveUpdateState)
+- [Insights](/docs/v1.0/guides/insights) for reports received across installations

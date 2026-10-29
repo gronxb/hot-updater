@@ -131,7 +131,7 @@ through it, the path the server's own writes take:
 ## Secrets
 
 `secrets` is where the CLI reads the secrets the config names: the native
-build credentials a [`secret:<name>`](/docs/guides/native-build#provide-signing-credentials)
+build credentials a [`secret:<name>`](/docs/native-builds/credentials#provide-signing-credentials)
 reference names, and the deploy credentials `secretEnv` names. It defaults to
 [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets) from
 `hot-updater`, which reads each name from an environment variable, in the

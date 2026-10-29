@@ -1,15 +1,15 @@
 {
   "title": "Secrets Adapters",
-  "description": "Keep the CLI's secrets on this machine, in Infisical with any provider, in AWS, Google Cloud, or Azure through your provider package, or in another store through an adapter you paste.",
+  "description": "Keep the CLI's secrets on this machine, in AWS, Google Cloud, or Azure through your provider package, in Infisical with any provider, or in another store through an adapter you paste.",
   "icon": "LockKeyhole",
   "pages": [
     "local-secrets",
-    "infisical",
     "aws-secrets-manager",
     "google-secret-manager",
     "azure-key-vault",
-    "dotenvx",
+    "infisical",
+    "1password",
     "bitwarden",
-    "1password"
+    "dotenvx"
   ]
 }

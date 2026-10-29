@@ -1,0 +1,124 @@
+---
+title: "App Version Update Strategy"
+description: "Manually target specific app versions for OTA updates instead of using automatic compatibility checks."
+icon: Hash
+---
+
+## Overview
+
+The App Version strategy gives you manual control over which app versions receive updates. You specify exact versions or ranges when deploying, rather than relying on automatic fingerprint detection.
+
+This is the default strategy. Keep it when you prefer
+explicit version targeting over automated native compatibility checks.
+
+## Setup
+
+Set the strategy in your existing Hot Updater config, keeping its build,
+storage, database, and plugins settings:
+
+```typescript title="hot-updater.config.ts (partial)"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  updateStrategy: "appVersion", // [!code ++]
+});
+```
+
+## Version Targeting
+
+Use version ranges to control which app versions receive updates. The `-t` option accepts various expressions:
+
+| Range            | Who gets the update                                 |
+| :--------------- | :-------------------------------------------------- |
+| `1.2.3`          | Only version `1.2.3`                                |
+| `*`              | All versions                                        |
+| `1.2.x`          | Any patch version of `1.2`                          |
+| `1.2.3 - 1.2.7`  | Versions `1.2.3` through `1.2.7` (inclusive)        |
+| `>=1.2.3 <1.2.7` | Versions `1.2.3` (inclusive) to `1.2.7` (exclusive) |
+| `1.2`            | Same as `>=1.2.0 <1.3.0`                            |
+| `~1.2.3`         | Same as `>=1.2.3 <1.3.0`                            |
+| `^1.2.3`         | Same as `>=1.2.3 <2.0.0`                            |
+
+## Deployment
+
+Specify the target version when deploying:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -t "1.x.x"
+```
+
+Examples:
+
+- `npx hot-updater deploy -p ios -t "1.0.0"` - Only version 1.0.0
+- `npx hot-updater deploy -p android -t ">=1.2.0"` - Version 1.2.0 and above
+- `npx hot-updater deploy -p ios -t "*"` - All versions
+
+Without `-t`, deploy reads the selected platform's version from the native
+project. When the project builds several apps with different versions (Xcode
+app targets, or Android product flavors that set `versionName`), deploy cannot
+tell which one you mean and asks for `-t`; `npx hot-updater app-version` lists
+the versions it found. Every targeted version must be compatible with the
+update's JavaScript; a broad range does not check native compatibility for you.
+
+## Client Setup
+
+Initialize Hot Updater at module scope, then choose when to check. Import this
+module from your app entry point:
+
+Keep the `baseURL` and client key from [App setup](/docs/v1.0/get-started/app-setup).
+Managed providers require this client key; provider and admin credentials stay
+out of the app.
+
+```tsx title="updates.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "https://your-update-server.com",
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
+  onError: (error) => console.error("Hot Updater failed:", error),
+});
+
+export async function checkForAppUpdate() {
+  try {
+    const updateInfo = await hotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    if (!updateInfo) return;
+
+    const didUpdate = await updateInfo.updateBundle();
+    if (didUpdate && updateInfo.shouldForceUpdate) {
+      await hotUpdater.reload();
+    }
+  } catch (error) {
+    console.error("Failed to prepare update:", error);
+  }
+}
+```
+
+Call `checkForAppUpdate()` from your app's startup, resume, or user action.
+`init` configures the client; it does not check for updates. The helper stages
+the selected update, and standard updates take effect on the next runtime
+start. Follow [custom update flows](/docs/v1.0/guides/custom-update) to add progress
+and choose when to reload.
+
+The client fetches the app-version Release Catalog:
+
+```
+GET {baseUrl}/release-catalogs/app-version/:platform/:channelKey/:appVersion
+```
+
+It evaluates the catalog locally, then resolves the selected artifact through
+`/artifacts/v2/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
+base64url-encoded channel name.
+
+## Test an app-version update
+
+Follow [Test an OTA update](/docs/v1.0/get-started/test-ota) with a Release build.
+Use that build's native app version as the deployment target, then check,
+download and restart through your app's update flow. The SDK constructs the
+catalog request and sends the client headers configured in `HotUpdater.init`.
+
+If the check fails, use [client-access diagnostics](/docs/v1.0/guides/doctor#check-client-access).

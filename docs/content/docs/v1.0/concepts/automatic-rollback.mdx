@@ -1,0 +1,188 @@
+---
+title: "Automatic Rollback"
+description: Hot Updater verifies newly installed bundles on first launch and automatically recovers to a working bundle if startup fails.
+icon: ShieldCheck
+---
+
+<a id="in-one-sentence" />
+
+## What is automatic rollback?
+
+Automatic rollback prevents a bad OTA bundle from trapping users in a crash loop.
+
+Hot Updater first launches a newly installed bundle in a temporary state, keeping the last known-good bundle as a fallback. It treats the new bundle as safe after startup succeeds.
+
+For a custom update flow, call [`HotUpdater.init()`](/docs/v1.0/react-native-api/init)
+once at the top level of its own module, such as `src/hotUpdater.ts`. The SDK waits for native
+launch verification internally; your app chooses when to check and stage updates.
+
+## Core mechanism
+
+Hot Updater manages two roles during rollout:
+
+- **Staging bundle**: the newly installed bundle waiting to be verified
+- **Stable bundle**: the last bundle that was already known to start successfully
+
+The flow is:
+
+1. **Install the update**
+   - The downloaded bundle becomes the new staging bundle.
+   - The previously working bundle is kept as the fallback, if one exists.
+2. **Launch the staging bundle**
+   - On the next app start, Hot Updater loads the staging bundle first.
+3. **Verify startup**
+   - If the app reaches its first successful render, the launch is treated as successful.
+   - The staging bundle becomes the current trusted bundle.
+4. **Recover on failure**
+   - If the app exits or crashes before that point, the staging bundle is treated as failed.
+   - On the next launch, Hot Updater automatically returns to the last stable bundle.
+
+## What counts as a failed launch?
+
+A bundle fails launch verification if the app cannot complete startup.
+
+Typical examples include:
+
+- a JavaScript error during startup
+- a native crash while the new bundle is loading
+- a fatal error before the first screen appears
+- a JavaScript thread hang followed by the user or OS killing the app before the first render
+
+Native bundle loading starts crash monitoring and marks a launch successful
+when the first React Native content appears. Configure `HotUpdater.init()` at
+module scope to connect update requests and observe or report that native
+launch result.
+
+When a launch of an unverified staging bundle can show UI, Hot Updater persists a
+launch-in-progress record: on Android once a started activity shows a React
+Native view, or when an activity was on screen before React Native loaded; on
+iOS when the app is in the foreground. The first native content appearance
+clears it. If it remains
+on the next cold start, Hot Updater rolls back even when no crash marker was
+written. There is no timeout that interrupts a running JavaScript thread: recovery
+occurs after the app restarts. A user or OS termination before the first render
+also counts as a failed launch, even if the bundle would otherwise have finished
+loading.
+
+Such a launch cannot tell a hang from a user leaving early, so the first one
+leaves the bundle one retry instead of adding it to crash history. The session
+that recovered does not install it again; a later session can. If that launch
+ends before the first render too, or the bundle crashes, it goes into crash
+history.
+
+A launch that never shows UI does not count: an Android headless JS task, such as
+a background push message, or an iOS background launch. The staging bundle stays
+pending until a launch that shows UI verifies it or rolls it back. A crash in such
+a launch still rolls back.
+
+This protection requires a native app build containing the updated SDK; an OTA
+bundle alone cannot add it to an already installed native binary.
+
+## Crashes after the first render
+
+A crash after the first render does not roll back. By then the new bundle may
+have changed what the app stores, so returning to the previous bundle is not
+safe. Expo Updates follows the same rule.
+
+Such a crash can still trap users when the bundle crashes inside your update
+flow: its JavaScript never gets far enough to download a fix. Native covers
+that case. When a crash doesn't roll the bundle back, however long after the
+first render it happens, the next launch checks for an update natively in the
+background, without your JavaScript. Whatever it finds applies at the launch
+after that. A crash that rolls back needs no check: the bundle it restores
+already rendered. To recover devices, deploy a fixed
+bundle, or disable the bad Release so the server rolls them back. A device that
+keeps crashing picks it up within two restarts.
+
+The native check repeats your app's last update check that reached your
+server: each check the server answers, from JavaScript or from the native
+`checkForUpdate` of a brownfield app, saves its server, headers, timeout, and
+update strategy on the device. A check that fails keeps the one saved before.
+A device that never checked, for example because the user hasn't accepted your
+privacy terms yet, sends no request. A launch that didn't crash sends
+none either. A launch without UI waits for the next launch that shows UI. A
+debug build never runs this check: a crash there is a development error.
+
+## What happens during rollback?
+
+When rollback happens, Hot Updater:
+
+- stops using the failed staging bundle
+- restores the previous stable bundle when one exists
+- falls back to the embedded bundle when there is no stable OTA fallback
+- records the failed bundle in crash history, unless its first unfinished launch
+  leaves it one retry
+
+Observe the completed launch through
+[`onNotifyAppReady`](/docs/v1.0/react-native-api/notifyAppReady) in your `init`
+configuration. A `RECOVERED` result identifies the failed artifact as
+`fromBundleId` and the restored artifact as `toBundleId`, with optional Release
+IDs for each side. The [Insights plugin](/docs/v1.0/react-native-api/insights)
+reports these outcomes to the configured server for
+[Insights](/docs/v1.0/guides/insights).
+
+## Managing crashed bundles
+
+Hot Updater keeps a crash history for bundles that failed startup and triggered recovery.
+
+### getCrashHistory()
+
+Returns the artifact IDs that were marked as failed and rolled back. These match
+**Artifact ID** in the console's Advanced diagnostics.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+function checkCrashedBundles() {
+  const crashedBundles = hotUpdater.getCrashHistory();
+
+  if (crashedBundles.length > 0) {
+    console.log("Crashed bundles:", crashedBundles);
+    // Send to your monitoring service
+  }
+}
+```
+
+You can use this to:
+
+- monitor deployment health
+- identify which artifact IDs failed in production
+- send rollback events to analytics or error tracking tools
+
+### clearCrashHistory()
+
+Clears the crash history so a previously failed artifact ID can be retried.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+async function retryFailedBundle() {
+  hotUpdater.clearCrashHistory();
+  console.log("Crash history cleared");
+}
+```
+
+<Callout type="warn">
+  Only clear crash history after fixing the underlying issue. Otherwise the same
+  broken bundle can be applied again.
+</Callout>
+
+### Crash history blocking
+
+When a bundle crashes during startup, or a second launch of it ends before the first render, Hot Updater adds that exact artifact ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
+
+To deploy a fixed version:
+
+1. Fix the bug in your code
+2. Deploy again with a new artifact ID
+3. The new artifact ID bypasses the crash history
+
+Promoting the same files or editing delivery policy does not clear a file's
+crash history.
+
+If you need to retry the same artifact ID after investigating the failure:
+
+1. Confirm it is safe to retry the existing files. Code fixes need a new artifact.
+2. Call `clearCrashHistory()` on the affected device to reset the blocked list.
+3. Check again, call the returned `updateBundle()` helper, and reload after it
+   succeeds. The Release must still be enabled and eligible for that device.

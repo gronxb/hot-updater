@@ -1,0 +1,11 @@
+{
+  "title": "Signing Adapters",
+  "description": "Sign bundle artifacts with a local key, a KMS, or a remote service.",
+  "icon": "KeyRound",
+  "pages": [
+    "local",
+    "aws-kms",
+    "google-cloud-kms",
+    "remote"
+  ]
+}

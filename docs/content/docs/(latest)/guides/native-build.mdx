@@ -1,10 +1,10 @@
 ---
-title: "Build native apps"
-description: "Build an Android .apk or .aab, an iOS .ipa, or a simulator .app with the Hot Updater CLI."
+title: "Build"
+description: "Build an Android .apk or .aab, an iOS .ipa, or a simulator .app with the Hot Updater CLI, and track it with your server."
 icon: Hammer
 ---
 
-## Overview
+## What a build compiles in
 
 `hot-updater native-build android` and `hot-updater native-build ios` build
 the native app from a scheme in `hot-updater.config.ts`, and track it in Hot
@@ -90,98 +90,13 @@ An iOS scheme without `simulator` archives the app and exports an `.ipa`. It
 needs `signing.ascApiKey`, which exports for App Store Connect, or an
 `exportOptionsPlist` for another export method.
 
-## Provide signing credentials
-
 `signing` names a secret as `secret:<name>`, which the CLI reads from the
 config's [`secrets` adapter](/docs/custom/cli-configuration#secrets) while it
 builds. The build resolves it only when it signs: a Debug variant keeps the
 debug keystore, and a simulator build signs nothing. A scheme without `signing`
 keeps the project's own signing settings.
-
-The adapter holds each credential as one JSON value:
-`{"keyId","issuerId","p8"}` for an App Store Connect API key, with the `.p8`
-file's PEM; `{"keystore","storePassword","keyAlias","keyPassword"}` for a
-keystore, the keystore file in base64; and a Play service account's own JSON
-key file. With the default
-[`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), set the JSON
-in an environment variable, `HOT_UPDATER_ASC_API_KEY` for
-`secret:asc-api-key` and `HOT_UPDATER_` before any other name, upper-cased
-with `_` for every character but letters and digits, or let `apple login` or
-`secrets put` store it in a file in your home directory.
-`secrets issue android-keystore`
-[creates a new upload keystore](/docs/concepts/secrets#create-an-android-upload-key).
-[Secrets](/docs/concepts/secrets) covers storing them.
-
-These environment variables override the adapter for one credential: when any
-of a credential's variables is set, the build reads that credential from them
-and never asks the adapter for it.
-
-| Credential                | Environment variables                                                                                                                                                                        |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android keystore          | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
-| App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                                                             |
-| Play service account      | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--submit play-internal`](#upload-to-google-play)                   |
-
-The CLI writes a keystore or key given as contents to a temporary file that
-only your user can read, and deletes it when the build ends. It masks passwords
-in its output. A build resolves the credentials it signs and uploads with
-before the build adapter's prebuild, so a missing one fails before anything is
-built; the error names the secrets adapter and the command that stores the
-credential once. [Build and upload from CI](/docs/guides/ci-native-build)
-runs builds that read them in CI, which never signs in.
-
-### Sign in with your Apple Account
-
-An iOS build that needs an App Store Connect API key, for
-`signing.ascApiKey` or [`--submit testflight`](#upload-to-testflight), and
-finds none issues one. In a terminal, sign in with your Apple Account when
-asked: Hot Updater asks for its email, password, and two-factor code, and
-signs in as App Store Connect's web page does. The password never leaves
-the CLI: Apple's sign-in receives only a proof of it. The code prompt says
-where the code went. With no trusted device at hand, enter any wrong code
-once: Apple texts a code to your trusted phone, and Hot Updater asks for it.
-When the Apple Account is in more than one team, the CLI asks which one to
-use. Hot Updater then creates a team API
-key with the Admin role in that team, named `hot-updater <date>`, stores it
-under the name the build resolves
-([where an issued key goes](#where-an-issued-key-goes)), and continues the
-build. It keeps only the issued key: neither the password nor the Apple
-session is saved.
-
-The Admin role lets `xcodebuild` create cloud-managed distribution
-certificates and provisioning profiles, so the Mac needs no signing identity
-of its own, and lets the build upload to TestFlight. Creating it needs the
-Account Holder or Admin role in the team.
-
-To sign in ahead of a build, such as before CI's first build, run
-`apple login`, the shortcut for
-[`secrets issue asc-api-key`](/docs/concepts/secrets#issue-a-key-with-a-sign-in),
-which does the same sign-in without building:
-
-```package-install
-npx hot-updater apple login
-```
-
-It keeps a key the adapter already holds; `secrets issue asc-api-key
---replace` issues a new one and names the old key to revoke at App Store
-Connect → Users and Access → Integrations, which Hot Updater never revokes
-itself.
-
-CI (`CI` is set, even on a terminal a runner allocates) and other builds
-without a terminal use the stored key and never sign in. A build that finds no
-key there stops with that command.
-
-Before it asks for your Apple Account, the CLI checks everything that could
-fail afterwards, in this order: a `HOT_UPDATER_ASC_KEY*` override or a key the
-`secrets` adapter holds is used as it is; and CI and runs without a terminal
-stop with the command above. On a machine without a key, it says that signing
-in issues a new one, and how to
-[share one key across machines](/docs/concepts/secrets#share-a-key-across-machines)
-instead. When the issued key surely went nowhere, the CLI revokes it again,
-so no key is left that nothing holds.
-
-The Apple session lives only in the CLI's memory and ends with the command;
-nothing of it is written to disk.
+[Credentials](/docs/native-builds/credentials) lists the credentials a build
+reads and how to store them once.
 
 The Android build passes the keystore to Gradle as the signing properties
 Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
@@ -194,45 +109,6 @@ build's own, and the CLI revokes the development certificates Xcode created
 in it before deleting it, as
 [What a CI build does](/docs/guides/ci-native-build#what-a-ci-build-does)
 describes.
-
-### Where an issued key goes
-
-A key Hot Updater issues after an Apple sign-in goes where builds read it, as
-one JSON value:
-
-- With the default [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets),
-  to `~/.hot-updater/secrets/<project-key>/<name>.json`, a file only your user
-  can read, outside the project. The next build on the machine reads it, with
-  no step in between.
-- With another adapter, through the adapter, read back once stored. A key
-  the adapter doesn't read back is revoked: nothing is kept on your machine.
-
-With `localSecrets()`, each machine keeps its own key: on another machine a
-sign-in issues a new one. With a
-[team store](/docs/concepts/secrets#this-machine-or-the-team), a teammate's
-sign-in finds the key already stored and issues none. After issuing, the CLI
-prints where to revoke the keys nothing uses anymore, App Store Connect's
-Integrations page (Team Keys).
-To use one key on every machine and in CI, see
-[Share a key across machines](/docs/concepts/secrets#share-a-key-across-machines).
-
-For CI, store the same value as a repository secret and map it into the job,
-as in [Build and upload from CI](/docs/guides/ci-native-build):
-
-```yaml
-env:
-  HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
-```
-
-With `localSecrets()`, when the sign-in runs at a terminal, the project's `origin`
-(or another remote) is on GitHub, and you have a token (`GH_TOKEN` or
-`GITHUB_TOKEN`, or the GitHub CLI's `gh auth token`), the CLI offers once to
-store the key as that secret too. Declining keeps the key on your machine
-alone, and a failed write says so. To store it by hand, copy the file:
-
-```bash
-gh secret set HOT_UPDATER_ASC_API_KEY < ~/.hot-updater/secrets/<project-key>/asc-api-key.json
-```
 
 ## Build
 
@@ -367,7 +243,7 @@ opens the build's page, `/native-builds/<build id>`:
   a phone opens without signing in to the Console, and the `adb install`
   command. A simulator `.app` shows the `xcrun simctl install` command. An
   `.aab` installs through Google Play or bundletool, and an `.ipa` through
-  Xcode, Apple Configurator, or [TestFlight](#upload-to-testflight). Every
+  Xcode, Apple Configurator, or [TestFlight](/docs/native-builds/testflight#upload-to-testflight). Every
   build downloads through `/api/native-builds/<build id>/download`, which
   answers with a fresh storage URL on each request, so the link never
   expires. A browser that opens it without a Console session goes to the
@@ -412,15 +288,15 @@ npx hot-updater native-build import ./app-release.aab
 The CLI reads everything from the artifact, so it imports the build exactly as
 its app reports itself:
 
-| Value           | Where the CLI reads it                                                                                |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| Platform        | The file's extension                                                                                  |
-| App version     | `CFBundleShortVersionString` in the app's `Info.plist`, or `versionName` in the manifest              |
-| Build number    | `CFBundleVersion` in the app's `Info.plist`, or `versionCode` in the manifest                         |
-| Channel         | `HOT_UPDATER_CHANNEL`, or the `com.hotupdater.CHANNEL` meta-data; `production` without one            |
-| Min bundle ID   | The UUIDv7 string the native SDK's build step compiled into the app's code                            |
-| Fingerprint     | The SHA-256 string the build compiled into the app's code, with the fingerprint strategy              |
-| Built-in bundle | `main.jsbundle`, `assets/index.android.bundle`, or `base/assets/index.android.bundle`                 |
+| Value           | Where the CLI reads it                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| Platform        | The file's extension                                                                       |
+| App version     | `CFBundleShortVersionString` in the app's `Info.plist`, or `versionName` in the manifest   |
+| Build number    | `CFBundleVersion` in the app's `Info.plist`, or `versionCode` in the manifest              |
+| Channel         | `HOT_UPDATER_CHANNEL`, or the `com.hotupdater.CHANNEL` meta-data; `production` without one |
+| Min bundle ID   | The UUIDv7 string the native SDK's build step compiled into the app's code                 |
+| Fingerprint     | The SHA-256 string the build compiled into the app's code, with the fingerprint strategy   |
+| Built-in bundle | `main.jsbundle`, `assets/index.android.bundle`, or `base/assets/index.android.bundle`      |
 
 The app's code is its dex files' string pool on Android, and on iOS the
 `__cstring` section of the app's executable, or of the `HotUpdater` framework
@@ -667,258 +543,32 @@ A self-hosted server reached through `standaloneRepository` needs this
 release's `@hot-updater/server`; an older one answers `404`, and the CLI asks
 you to upgrade it.
 
-## Upload to TestFlight
+## Sign and upload
 
-`testflight` builds the `.ipa`, tracks it, and uploads it to App Store
-Connect, which lists it in TestFlight:
+<a id="provide-signing-credentials" />
+<a id="sign-in-with-your-apple-account" />
+<a id="where-an-issued-key-goes" />
+<a id="upload-to-testflight" />
+<a id="upload-to-google-play" />
+<a id="set-up-google-play" />
 
-```package-install
-npx hot-updater testflight
-```
-
-It is the shortcut for `native-build ios --scheme <scheme> --submit
-testflight`, which runs the same build. It builds the one `nativeBuild.ios`
-scheme whose build TestFlight takes, skipping simulator, `Debug`, unsigned,
-and archive-only schemes and ones that export for another method, and says
-which; with several, it asks which one at a
-terminal, and in CI or without a terminal it stops and lists them. It takes
-only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the full
-command:
-
-```package-install
-npx hot-updater native-build ios --scheme release --submit testflight
-```
-
-The upload authenticates with an App Store Connect team API key, which has a
-key ID and an issuer ID (App Store Connect → Users and Access → Integrations →
-Team Keys), with the Admin, App Manager, or Developer role: the scheme's
-`signing.ascApiKey`, or else the `secrets` adapter's `asc-api-key`. The
-`HOT_UPDATER_ASC_KEY*` environment variables in
-[Provide signing credentials](#provide-signing-credentials) override it.
-Without one, [sign in with your Apple Account](#sign-in-with-your-apple-account)
-when asked, and the CLI issues and stores it before it builds
-([where an issued key goes](#where-an-issued-key-goes)). The
-CLI resolves the key before the build adapter's prebuild (such as
-`expo prebuild`) and the build, so a missing key fails before either runs, and
-deletes the key's temporary file when the upload ends.
-Certificates and provisioning profiles stay with the build's signing.
-[Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
-with the stored key.
-
-Before the prebuild, the CLI also refuses, saying why, a scheme whose build
-App Store Connect would not take: a simulator scheme, a configuration whose
-name ends in `Debug`, a scheme that turns code signing off
-(`CODE_SIGNING_ALLOWED` or `CODE_SIGNING_REQUIRED` left `NO` after the
-overrides the build applies: `extraParams` settings, then its `xcconfig` and
-each `-xcconfig` in `extraParams`, in order), a scheme with neither `signing.ascApiKey` nor an
-`exportOptionsPlist`, which only archives, and an `exportOptionsPlist` whose
-`method` is not `app-store-connect` (or `app-store`). An `exportOptionsPlist`
-the prebuild writes is checked after the prebuild, before the build.
-
-After the build is tracked, the CLI:
-
-1. Reads the bundle ID, version (`CFBundleShortVersionString`) and build
-   number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
-2. Finds the App Store Connect app with that bundle ID. Create the app in
-   App Store Connect first; the key must belong to its team.
-3. Uploads the `.ipa` with the App Store Connect API's build uploads.
-4. Waits up to 30 minutes for App Store Connect to accept the build, and
-   prints the warnings and errors it reports.
-
-App Store Connect takes each build number once per version: raise
-`CFBundleVersion` for every build you upload. When an upload fails, the build
-stays at its output path. A build that App Store Connect is still processing
-after 30 minutes appears in TestFlight once processing finishes, at the URL
-the CLI prints.
-
-Once App Store Connect accepts the build, the CLI records it on the tracked
-build, and the Console's [Native builds](#native-builds-in-the-console) tab
-shows it as on TestFlight with its version and build number, such as
-`1.7.0 (66)`. Only an upload the run made is recorded: a build App Store
-Connect is still processing after 30 minutes, a failed upload, and
-`--dry-run` record nothing. A build number App Store Connect
-already has, from this or another upload, is skipped with `Already on
-TestFlight` and its version, such as `1.7.0 (66)`; see
-[Reuse a build](#reuse-a-build).
-
-## Upload to Google Play
-
-`google-play upload` builds the `.aab`, tracks it, and releases it to Google
-Play's internal testing track:
-
-```package-install
-npx hot-updater google-play upload
-```
-
-It is the shortcut for `native-build android --scheme <scheme> --submit
-play-internal`, which runs the same build. It builds the one
-`nativeBuild.android` scheme whose build Google Play takes, skipping `.apk`
-(`aab: false`) and `Debug` schemes, and says which; with several, it asks which
-one at a terminal, and in CI or without a terminal it stops and lists them. It
-takes only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the
-full command:
-
-```package-install
-npx hot-updater native-build android --scheme release --submit play-internal
-```
-
-The upload authenticates with the `secrets` adapter's `play-service-account`, the
-JSON key file of a Google Cloud service account.
-`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or
-`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the file's contents) overrides it.
-The CLI resolves it before the build adapter's prebuild (such as
-`expo prebuild`) and the build, so a missing one fails before either runs, and
-keeps it in memory: it writes the service account to no file.
-
-Before the prebuild, the CLI checks everything the upload needs: the
-`play-service-account` key, the upload keystore the scheme's
-`signing.keystore` names, and, with the key, Play access, by opening an edit
-of the app and deleting it. When anything is missing it lists every item,
-then exits without building:
-
-```txt
-Google Play isn't ready for com.example.app:
-✗ Service account key
-  npx hot-updater secrets put play-service-account <key.json>
-✓ Upload keystore
-· Play access          checked once the key is stored
-Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play
-```
-
-A `--dry-run` builds anyway and fails at the end with the same lines. The
-CLI never creates a key or a keystore on its own: [Set up Google
-Play](#set-up-google-play) stores both once.
-
-Before the prebuild, the CLI also refuses a scheme whose build Google Play
-would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
-ends in `Debug`. Before it uploads, it refuses an `.aab` signed with the Android
-debug keystore, as a release build type left on `signingConfigs.debug` is: set
-the scheme's `signing.keystore`, or a release signing config in Gradle.
-
-After the build is tracked, the CLI:
-
-1. Reads the application ID from the `.aab`'s manifest with `aapt2`, with the
-   suffixes flavors and build types add, or else uses the scheme's
-   `applicationId`.
-2. Opens an edit with the Google Play Developer API and uploads the `.aab`.
-3. Releases the bundle's version code to the `internal` track and commits the
-   edit. When any step fails, it deletes the edit, so nothing is released.
-
-Create the app in Play Console and upload its first `.aab` there by hand:
-Google takes a new app's first `.aab` only in Play Console, and the API
-releases the builds after it.
-
-Google Play takes each version code once: raise `versionCode` for every build
-you upload. On an app Play Console has not published yet, Google Play takes
-only draft releases, so the internal release is a draft that you roll out in
-Play Console. When the app's state requires it, the CLI commits without
-sending the changes for review, and you send them for review in Play Console.
-When an upload fails, the build stays at its output path, and nothing is
-recorded. Once Google Play takes the bundle, the CLI records it on the tracked
-build, and the Console's [Native builds](#native-builds-in-the-console) tab
-shows it as on Play internal with its version name and code, such as
-`1.7.0 (66)`. A version code Google Play already has is skipped with
-`Already on Google Play internal testing` and its version, such as
-`1.7.0 (66)`; see [Reuse a build](#reuse-a-build).
-[Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
-with the stored service account.
-
-### Set up Google Play
-
-Store two files once, check Play access, then upload:
-
-```package-install
-npx hot-updater secrets put play-service-account ~/Downloads/key.json
-npx hot-updater secrets put android-keystore ./upload.jks
-npx hot-updater doctor
-npx hot-updater google-play upload
-```
-
-#### Create the Play service account key
-
-1. In Google Cloud, [create a service account](https://console.cloud.google.com/iam-admin/serviceaccounts/create)
-   in a project. It needs no Google Cloud role.
-2. In the same project, enable the
-   [Google Play Android Developer API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com).
-3. Open the service account, then **Keys** > **Add key** > **Create new key**
-   > **JSON**. Google Cloud downloads its JSON key file.
-4. Store it with `secrets put play-service-account <file>`. The CLI checks
-   that the file is a service account key (`google-services.json` is not),
-   stores it through the config's `secrets` adapter, and reads it back.
-
-When Google Cloud refuses to create the key, an organization policy forbids
-keys. Organizations enforce two constraints for it:
-`iam.disableServiceAccountKeyCreation`, and the managed
-`iam.managed.disableServiceAccountKeyCreation`, which fails with
-`CUSTOM_ORG_POLICY_VIOLATION`. Turning off only the first is not enough. With
-the Organization Policy Administrator role (`roles/orgpolicy.policyAdmin`) on
-the organization, turn both off for that project only, or use a project
-outside the organization:
-
-```bash
-gcloud resource-manager org-policies disable-enforce iam.disableServiceAccountKeyCreation --project=<project>
-gcloud org-policies set-policy policy.yaml
-```
-
-`policy.yaml` turns off the managed constraint. The second command needs the
-Organization Policy API enabled in the project:
-
-```yaml title="policy.yaml"
-name: projects/<project>/policies/iam.managed.disableServiceAccountKeyCreation
-spec:
-  rules:
-    - enforce: false
-```
-
-#### Invite the service account in Play Console
-
-In Play Console, open **Users and permissions** and invite the key's
-`client_email` to the app with the app permission **Release apps to testing
-tracks**. Set it under App permissions, not account-wide. `hot-updater doctor`
-prints the email and a link that opens the invite with it filled in.
-
-A new app takes its first `.aab` only in Play Console: create the app there
-and upload one `.aab` by hand. Until then, the access check reports
-`✗ App in Play   upload the first .aab in Play Console`.
-
-#### Store the upload keystore
-
-`secrets put android-keystore <file>` stores the keystore Google Play knows as
-the app's upload key, a `.jks`, `.keystore`, or `.p12` file. At a terminal it
-asks for the keystore's password, three tries, picks its alias when it holds
-one key, tries that password for the key before asking for the key's own, and
-checks with `keytool` that they open the key as Gradle signs. Without a
-terminal, pass `--key-alias` and set `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`
-and `HOT_UPDATER_ANDROID_KEY_PASSWORD`. A scheme signs with it through
-`signing: { keystore: "secret:android-keystore" }`.
-
-Google Play keeps the key of an app's first upload. For an app that has never
-uploaded an `.aab`,
-[`secrets issue android-keystore`](/docs/concepts/secrets#create-an-android-upload-key)
-creates a new upload key instead.
-
-#### Check Play access
-
-`hot-updater doctor` shows a Google Play row when `play-service-account`
-resolves: for each package a release `nativeBuild.android` scheme builds, it
-opens an edit and deletes it, changing nothing, and names the invite or the
-first upload when the key can't reach the app. `google-play upload` and
-`native-build android --submit play-internal` run the same check before they
-build.
+[Credentials](/docs/native-builds/credentials) stores the keys a build signs
+and uploads with. [TestFlight](/docs/native-builds/testflight) and
+[Google Play](/docs/native-builds/google-play) upload a build to the stores.
 
 ## Command options
 
 `native-build ios` and `native-build android` take:
 
-| Option                    | Description                                                                               |
-| ------------------------- | ----------------------------------------------------------------------------------------- |
-| `-s, --scheme <scheme>`   | The `nativeBuild` scheme to build; without it, a prompt at a terminal                     |
-| `-o, --output-path <dir>` | Where to copy the build output                                                            |
-| `--submit testflight`     | `ios`: upload the `.ipa` to App Store Connect for TestFlight                              |
-| `--submit play-internal`  | `android`: release the `.aab` to Google Play's internal testing track                     |
-| `--dry-run`               | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))              |
+| Option                    | Description                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `-s, --scheme <scheme>`   | The `nativeBuild` scheme to build; without it, a prompt at a terminal                        |
+| `-o, --output-path <dir>` | Where to copy the build output                                                               |
+| `--submit testflight`     | `ios`: upload the `.ipa` to App Store Connect for TestFlight                                 |
+| `--submit play-internal`  | `android`: release the `.aab` to Google Play's internal testing track                        |
+| `--dry-run`               | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))                 |
 | `--no-cache`              | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build)) |
-| `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line |
+| `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line    |
 
 The commands of the registry, `native-build find`, `native-build delete`,
 and `native-build import`, are described in [Find a build](#find-a-build),

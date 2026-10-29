@@ -64,7 +64,7 @@ const SHORTCUTS = [
       "The scheme simulator builds a simulator .app, not an .ipa for TestFlight.",
       "The scheme debug builds Debug; TestFlight takes a release build.",
     ],
-    docs: "https://hot-updater.dev/docs/guides/native-build#upload-to-testflight",
+    docs: "https://hot-updater.dev/docs/native-builds/testflight#upload-to-testflight",
   },
   {
     command: "google-play upload",
@@ -81,7 +81,7 @@ const SHORTCUTS = [
       "The scheme apk builds an .apk (aab: false); Google Play takes an .aab.",
       "The scheme debug builds Debug; Google Play takes a release build.",
     ],
-    docs: "https://hot-updater.dev/docs/guides/native-build#upload-to-google-play",
+    docs: "https://hot-updater.dev/docs/native-builds/google-play#upload-to-google-play",
   },
 ] as const;
 

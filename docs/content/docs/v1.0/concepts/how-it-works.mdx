@@ -1,0 +1,74 @@
+---
+title: "How does it work?"
+description: Understanding the core infrastructure and update decision logic
+icon: Cog
+---
+
+## The Bundle model
+
+A deployment creates a Bundle with one ID. The deployment result, Console,
+`hotUpdater.getBundleId()`, and every `hot-updater bundle` command use that
+same ID.
+
+A Bundle belongs to a channel, platform, and compatibility scope. Supported
+policy edits keep the same ID: app-version range, enabled state, rollout,
+target cohorts, force-update value, and message. Channel, platform, and
+fingerprint targets cannot be changed with a policy edit. Promoting a Bundle
+creates a new ID in the target channel without uploading the same bytes again.
+
+```text
+deploy → ID → bundle show/update/enable/disable/delete/promote
+```
+
+## Infrastructure
+
+- **Storage** holds immutable manifests, assets, and patch objects.
+- **Database** holds Bundle delivery settings and internal catalog rows.
+- **Server** serves a shared, cacheable Release Catalog for an app's channel,
+  platform, and app-version or fingerprint scope.
+- **Client** selects a compatible Bundle from that catalog using its local
+  state, rollout cohort, and target cohorts.
+
+Storage and Database are adapters in `hot-updater.config.ts` and in the
+server's `createHotUpdater`; see
+[Adapters and Plugins](/docs/v1.0/concepts/plugin-system).
+Start with [agent setup](/docs/v1.0/guides/ai-agents) or
+[manual setup](/docs/v1.0/get-started/basic-usage), then
+[verify an OTA update](/docs/v1.0/get-started/test-ota).
+
+Internally, Hot Updater can reuse one immutable artifact across multiple public
+Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes
+recompile the delivery catalog without rebuilding artifact files. The internal
+artifact identity is shown only as **Artifact ID** in Advanced diagnostics and
+artifact commands.
+
+## Deployment and selection
+
+1. `hot-updater deploy` builds and uploads an immutable artifact.
+2. The database creates the public Bundle ID and compiles its delivery catalog.
+3. The app requests the catalog for its channel, platform, and app-version or
+   fingerprint scope.
+4. The client evaluates compatibility, chronology, rollout, and target cohorts,
+   then resolves the selected artifact.
+5. When no compatible enabled Bundle remains, the app uses its built-in Bundle
+   (`BUILTIN`).
+
+Changing rollout, enabled, force update, cohorts, or message never rewrites the
+uploaded bytes.
+
+`hotUpdater.getBundleId()` identifies the selected update and can change before
+downloaded code starts running. Use a visible app change and
+[`getActiveUpdateState()`](/docs/v1.0/react-native-api/getActiveUpdateState) when
+verifying delivery. See the [Release Catalog contract](/docs/v1.0/concepts/release-catalog-contract)
+for how catalogs are written and how the client routes answer.
+
+## Two rollback mechanisms
+
+Operational rollback disables a Bundle with `hot-updater bundle disable <id>`.
+Affected installations select a previous compatible enabled Bundle or
+`BUILTIN`; the result can differ by app version, fingerprint, and cohort.
+
+Automatic crash rollback is a separate native safety mechanism. It rejects an
+artifact that failed startup and restores the last safe local Bundle. Crash
+history therefore records Artifact IDs. See
+[Automatic Rollback](/docs/v1.0/concepts/automatic-rollback) for that lifecycle.

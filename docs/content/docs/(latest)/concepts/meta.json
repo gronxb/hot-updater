@@ -1,6 +1,11 @@
 {
   "title": "Concepts",
-  "description": "Understand the update lifecycle, automatic rollback, and the Release Catalog contract.",
+  "description": "Understand the update lifecycle, automatic rollback, the Release Catalog contract, and where secrets live.",
   "icon": "BookOpen",
-  "pages": ["how-it-works", "automatic-rollback", "release-catalog-contract"]
+  "pages": [
+    "how-it-works",
+    "automatic-rollback",
+    "release-catalog-contract",
+    "secrets"
+  ]
 }

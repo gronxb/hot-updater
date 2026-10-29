@@ -114,7 +114,7 @@ const stages: Record<string, () => Promise<void>> = {
     // sets.
     expectIncludes(
       log,
-      "Google Play isn't ready for com.hotupdaterexample: ✗ Service account key npx hot-updater secrets put play-service-account <key.json> ✓ Upload keystore · Play access checked once the key is stored Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
+      "Google Play isn't ready for com.hotupdaterexample: ✗ Service account key npx hot-updater secrets put play-service-account <key.json> ✓ Upload keystore · Play access checked once the key is stored Guide: https://hot-updater.dev/docs/native-builds/google-play",
     );
     expectNothingBuilt(log);
     const { count } = await nativeBuildCount();

@@ -1,0 +1,44 @@
+---
+title: "getBundleId"
+description: "Read the current update ID shown in the console."
+icon: Tag
+---
+
+## Usage
+
+`hotUpdater.getBundleId()` returns the currently selected update's ID,
+matching the ID shown in the console. Use it in support logs or a settings
+screen to find the update selected on a device.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+console.log("ID:", hotUpdater.getBundleId());
+```
+
+You can inspect that update from the CLI:
+
+```bash
+npx hot-updater bundle show <id>
+```
+
+## Return value
+
+```ts
+getBundleId(): string
+```
+
+The getter is synchronous and does not make a network request. Before an OTA
+update is active, it returns the identifier embedded in the native build.
+
+After an update is staged, this ID can change before the app reloads. It
+identifies the selected update; it does not confirm that its code is already
+running. Call `hotUpdater.reload()` to start a staged update.
+
+Promoting the same files to another channel creates a new ID. Changing delivery
+settings does not require uploading the files again.
+
+For the selected artifact ID and native verification state, use
+[`getActiveUpdateState()`](/docs/v1.0/react-native-api/getActiveUpdateState).
+[`getCrashHistory()`](/docs/v1.0/react-native-api/getCrashHistory) returns artifact
+IDs, which differ from the Console update ID.

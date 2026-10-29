@@ -1,0 +1,170 @@
+---
+title: "Google Play"
+description: "Store the Play service account key and the upload keystore once, then build the .aab and release it to Google Play's internal testing track."
+icon: Play
+---
+
+## Set up Google Play
+
+Store two files once, check Play access, then upload:
+
+```package-install
+npx hot-updater secrets put play-service-account ~/Downloads/key.json
+npx hot-updater secrets put android-keystore ./upload.jks
+npx hot-updater doctor
+npx hot-updater google-play upload
+```
+
+### Create the Play service account key
+
+1. In Google Cloud, [create a service account](https://console.cloud.google.com/iam-admin/serviceaccounts/create)
+   in a project. It needs no Google Cloud role.
+2. In the same project, enable the
+   [Google Play Android Developer API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com).
+3. Open the service account, then **Keys** > **Add key** > **Create new key**
+   > **JSON**. Google Cloud downloads its JSON key file.
+4. Store it with `secrets put play-service-account <file>`. The CLI checks
+   that the file is a service account key (`google-services.json` is not),
+   stores it through the config's `secrets` adapter, and reads it back.
+
+When Google Cloud refuses to create the key, an organization policy forbids
+keys. Organizations enforce two constraints for it:
+`iam.disableServiceAccountKeyCreation`, and the managed
+`iam.managed.disableServiceAccountKeyCreation`, which fails with
+`CUSTOM_ORG_POLICY_VIOLATION`. Turning off only the first is not enough. With
+the Organization Policy Administrator role (`roles/orgpolicy.policyAdmin`) on
+the organization, turn both off for that project only, or use a project
+outside the organization:
+
+```bash
+gcloud resource-manager org-policies disable-enforce iam.disableServiceAccountKeyCreation --project=<project>
+gcloud org-policies set-policy policy.yaml
+```
+
+`policy.yaml` turns off the managed constraint. The second command needs the
+Organization Policy API enabled in the project:
+
+```yaml title="policy.yaml"
+name: projects/<project>/policies/iam.managed.disableServiceAccountKeyCreation
+spec:
+  rules:
+    - enforce: false
+```
+
+### Invite the service account in Play Console
+
+In Play Console, open **Users and permissions** and invite the key's
+`client_email` to the app with the app permission **Release apps to testing
+tracks**. Set it under App permissions, not account-wide. `hot-updater doctor`
+prints the email and a link that opens the invite with it filled in.
+
+A new app takes its first `.aab` only in Play Console: create the app there
+and upload one `.aab` by hand. Until then, the access check reports
+`✗ App in Play   upload the first .aab in Play Console`.
+
+### Store the upload keystore
+
+`secrets put android-keystore <file>` stores the keystore Google Play knows as
+the app's upload key, a `.jks`, `.keystore`, or `.p12` file. At a terminal it
+asks for the keystore's password, three tries, picks its alias when it holds
+one key, tries that password for the key before asking for the key's own, and
+checks with `keytool` that they open the key as Gradle signs. Without a
+terminal, pass `--key-alias` and set `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`
+and `HOT_UPDATER_ANDROID_KEY_PASSWORD`. A scheme signs with it through
+`signing: { keystore: "secret:android-keystore" }`.
+
+Google Play keeps the key of an app's first upload. For an app that has never
+uploaded an `.aab`,
+[`secrets issue android-keystore`](/docs/concepts/secrets#create-an-android-upload-key)
+creates a new upload key instead.
+
+### Check Play access
+
+`hot-updater doctor` shows a Google Play row when `play-service-account`
+resolves: for each package a release `nativeBuild.android` scheme builds, it
+opens an edit and deletes it, changing nothing, and names the invite or the
+first upload when the key can't reach the app. `google-play upload` and
+`native-build android --submit play-internal` run the same check before they
+build.
+
+## Upload to Google Play
+
+`google-play upload` builds the `.aab`, tracks it, and releases it to Google
+Play's internal testing track:
+
+```package-install
+npx hot-updater google-play upload
+```
+
+It is the shortcut for `native-build android --scheme <scheme> --submit
+play-internal`, which runs the same build. It builds the one
+`nativeBuild.android` scheme whose build Google Play takes, skipping `.apk`
+(`aab: false`) and `Debug` schemes, and says which; with several, it asks which
+one at a terminal, and in CI or without a terminal it stops and lists them. It
+takes only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the
+full command:
+
+```package-install
+npx hot-updater native-build android --scheme release --submit play-internal
+```
+
+The upload authenticates with the `secrets` adapter's `play-service-account`, the
+JSON key file of a Google Cloud service account.
+`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or
+`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the file's contents) overrides it.
+The CLI resolves it before the build adapter's prebuild (such as
+`expo prebuild`) and the build, so a missing one fails before either runs, and
+keeps it in memory: it writes the service account to no file.
+
+Before the prebuild, the CLI checks everything the upload needs: the
+`play-service-account` key, the upload keystore the scheme's
+`signing.keystore` names, and, with the key, Play access, by opening an edit
+of the app and deleting it. When anything is missing it lists every item,
+then exits without building:
+
+```txt
+Google Play isn't ready for com.example.app:
+✗ Service account key
+  npx hot-updater secrets put play-service-account <key.json>
+✓ Upload keystore
+· Play access          checked once the key is stored
+Guide: https://hot-updater.dev/docs/native-builds/google-play
+```
+
+A `--dry-run` builds anyway and fails at the end with the same lines. The
+CLI never creates a key or a keystore on its own: [Set up Google
+Play](#set-up-google-play) stores both once.
+
+Before the prebuild, the CLI also refuses a scheme whose build Google Play
+would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
+ends in `Debug`. Before it uploads, it refuses an `.aab` signed with the Android
+debug keystore, as a release build type left on `signingConfigs.debug` is: set
+the scheme's `signing.keystore`, or a release signing config in Gradle.
+
+After the build is tracked, the CLI:
+
+1. Reads the application ID from the `.aab`'s manifest with `aapt2`, with the
+   suffixes flavors and build types add, or else uses the scheme's
+   `applicationId`.
+2. Opens an edit with the Google Play Developer API and uploads the `.aab`.
+3. Releases the bundle's version code to the `internal` track and commits the
+   edit. When any step fails, it deletes the edit, so nothing is released.
+
+Create the app in Play Console and upload its first `.aab` there by hand:
+Google takes a new app's first `.aab` only in Play Console, and the API
+releases the builds after it.
+
+Google Play takes each version code once: raise `versionCode` for every build
+you upload. On an app Play Console has not published yet, Google Play takes
+only draft releases, so the internal release is a draft that you roll out in
+Play Console. When the app's state requires it, the CLI commits without
+sending the changes for review, and you send them for review in Play Console.
+When an upload fails, the build stays at its output path, and nothing is
+recorded. Once Google Play takes the bundle, the CLI records it on the tracked
+build, and the Console's [Native builds](/docs/guides/native-build#native-builds-in-the-console) tab
+shows it as on Play internal with its version name and code, such as
+`1.7.0 (66)`. A version code Google Play already has is skipped with
+`Already on Google Play internal testing` and its version, such as
+`1.7.0 (66)`; see [Reuse a build](/docs/guides/native-build#reuse-a-build).
+[Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
+with the stored service account.

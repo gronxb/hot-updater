@@ -1,10 +1,12 @@
 # Hot Updater documentation
 
 The Waku/Fumadocs site serves the current documentation from
-`content/docs/(latest)` at `/docs/...`, and the frozen v0 documentation from
-`content/docs/v0` at `/docs/v0/...`. The sidebar's version selector switches
-between the two (`v1.0` and `v0.36`). Don't edit the v0 archive; change
-content for current behavior and keep
+`content/docs/(latest)` at `/docs/...`, and two frozen archives: the 1.0 and
+1.1 documentation from `content/docs/v1.0` at `/docs/v1.0/...`, and the v0
+documentation from `content/docs/v0` at `/docs/v0/...`. The sidebar's version
+selector switches between them (`v1.2`, `v1.0` and `v0.36`). An archive links
+only within itself, and stays out of `llms.txt` and the latest search. Don't
+edit the archives; change content for current behavior and keep
 v0-to-v1 transition instructions in `guides/upgrade-to-v1.mdx`. Current guides
 describe the stable release; do not include release-candidate setup or
 migration procedures. Use “Hot Updater” without a major-version label in
@@ -20,7 +22,11 @@ the branch.
 
 The sidebar starts with **Start here** and **Concepts**, followed by the
 independent **Self Hosting (Managed)** and **Self Hosting (Custom)** groups.
-Delivery, operation and security have their own groups. Start here stays short:
+The Workflows section holds **OTA updates**, **Native builds**, **Operate** and
+**Security**. Concepts owns Secrets: who shares the CLI's keys, this machine or
+the team. Native builds splits building and tracking (Build), the store
+credentials, TestFlight, Google Play and CI into one page each, under its
+Overview. Start here stays short:
 the introduction, the agent path, the manual path (a group of its steps:
 Choose infrastructure, Install packages, Connect your app), Test an OTA update,
 and the v0 migration. Workflows such as Control update timing belong to their
@@ -41,7 +47,7 @@ group need not be the physical directory containing its pages.
   selection; App Setup owns shared runtime/native integration; Test an OTA
   update owns release-build verification. Provider recipes link to those tasks.
   Control update timing, the app-side half of delivering an update, follows
-  Deploy in Deliver updates.
+  Deploy in OTA updates.
 - Use `init + checkForUpdate` as the default app flow; the app controls download
   and restart timing. `wrap` remains the optional automatic startup integration.
 - Infrastructure recipes own provider-specific resources, configuration and

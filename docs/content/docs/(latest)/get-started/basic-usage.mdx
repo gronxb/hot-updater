@@ -65,6 +65,11 @@ If it cannot safely merge an existing config, it keeps the file and prints the
 imports and settings to add. A later spread or computed property must not
 override the `plugins` list.
 
+`init` also writes `secrets: localSecrets()`, which keeps the CLI's keys on
+this machine only. Working alone, keep it; when teammates or CI must share the
+same keys, switch to a
+[team store](/docs/concepts/secrets#this-machine-or-the-team).
+
 The server URL and **client** API key connect the app to the server.
 `.env.hotupdater` is not automatically loaded into the mobile app. Provider,
 service-role and admin credentials remain in the CLI/server environment.
