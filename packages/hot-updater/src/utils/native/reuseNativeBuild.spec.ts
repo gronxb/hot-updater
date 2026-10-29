@@ -10,7 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
-  p: { log: { info: vi.fn(), success: vi.fn(), warn: vi.fn() } },
+  p: {
+    log: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), message: vi.fn() },
+  },
 }));
 vi.mock("../setChannel", () => ({
   getChannel: vi.fn(async () => ({ value: "production" })),
@@ -89,8 +91,21 @@ const lines = (log: (message: string) => void) =>
     .mocked(log)
     .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
 
+let stdout: string;
+/** The cache step's lines, without their symbol and duration. */
+const stepLines = () =>
+  stripVTControlCharacters(stdout)
+    .split("\n")
+    .filter((line) => line.length > 3 && !line.startsWith("│"))
+    .map((line) => line.slice(3).replace(/ {2,}\S+$/, ""));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  stdout = "";
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    stdout += String(chunk);
+    return true;
+  });
   vi.mocked(computeNativeBuildKey).mockResolvedValue({
     key: KEY,
     components: components({ "src/App.tsx": "2" }, { EXPO_PUBLIC_A: "2" }),
@@ -122,8 +137,12 @@ describe("reuseNativeBuild", () => {
       uncacheable: null,
       changed: ["file:src/App.tsx", "env:EXPO_PUBLIC_A"],
     });
-    expect(lines(p.log.info)).toEqual([
-      "Cache miss: no build has this key\nKey      nbk1:aaaaaaaaaaaa…\nChanged  src/App.tsx\n         $EXPO_PUBLIC_A",
+    expect(stepLines()).toEqual(["Cache miss · src/App.tsx +1 changed"]);
+    // The whole key and every change are the build log's.
+    expect(cache.logHeader).toEqual([
+      `Native build key  ${KEY}`,
+      "Changed           src/App.tsx",
+      "Changed           $EXPO_PUBLIC_A",
     ]);
     expect(findCachedNativeBuild).toHaveBeenCalledWith({
       key: KEY,
@@ -156,9 +175,10 @@ describe("reuseNativeBuild", () => {
     const cache = await reuse();
 
     expect(cache.hit).toBeNull();
-    expect(lines(p.log.info)).toEqual([
-      `Cache miss: the cached build's MIN_BUNDLE_ID is taken\nMIN_BUNDLE_ID  ${result.minBundleId}\nKey            nbk1:aaaaaaaaaaaa…`,
-    ]);
+    expect(stepLines()).toEqual(["Cache miss · its MIN_BUNDLE_ID is taken"]);
+    expect(cache.logHeader).toContain(
+      `MIN_BUNDLE_ID     ${result.minBundleId} (taken)`,
+    );
   });
 
   it("reuses a tracked build, keeping it on this machine for the next run", async () => {
@@ -173,9 +193,7 @@ describe("reuseNativeBuild", () => {
     const cache = await reuse();
 
     expect(cache.report.hit).toBe("storage");
-    expect(lines(p.log.success)[0]).toBe(
-      "Cache hit: reusing a native build\nID        build-1\nFrom      storage\nKey       nbk1:aaaaaaaaaaaa…\nArtifact  out/app.apk",
-    );
+    expect(stepLines()).toEqual(["Cache hit · storage · build-1"]);
     expect(saveCachedNativeBuild).toHaveBeenCalledWith(
       expect.objectContaining({ key: KEY, nativeBuildId: "build-1" }),
     );
@@ -225,9 +243,10 @@ describe("reuseNativeBuild", () => {
       uncacheable: "--no-cache",
     });
     expect(findCachedNativeBuild).not.toHaveBeenCalled();
-    expect(lines(p.log.info)[0]).toBe(
-      "Cache skipped\nReason  a Debug build loads its JavaScript from Metro",
-    );
+    expect(stepLines()).toEqual([
+      "Cache skipped · a Debug build loads its JavaScript from Metro",
+      "Cache skipped · --no-cache",
+    ]);
     // The new build is still cached with its key.
     await noCache.remember(result, null);
     expect(saveCachedNativeBuild).toHaveBeenCalledWith(
@@ -242,14 +261,18 @@ describe("reuseNativeBuild", () => {
     expect((await reuse()).report.uncacheable).toBe(
       "the native build key could not be computed (git crashed)",
     );
+    // A reason too long for the step's line follows it.
+    expect(stepLines()).toEqual(["Cache skipped"]);
+    expect(lines(p.log.message)).toEqual([
+      "the native build key could not be computed (git crashed)",
+    ]);
 
     vi.mocked(findCachedNativeBuild).mockRejectedValueOnce(
       new Error("storage unreachable"),
     );
     expect((await reuse()).hit).toBeNull();
-    expect(lines(p.log.warn)[0]).toBe(
-      "Couldn't reuse the build with key nbk1:aaaaaaaaaaaa…:\nstorage unreachable",
-    );
+    expect(stepLines().at(-1)).toBe("Cache unavailable · building");
+    expect(lines(p.log.warn)[0]).toBe("storage unreachable");
   });
 });
 
@@ -258,4 +281,8 @@ afterEach(() => {
   expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
     [],
   );
+  expect(linesWiderThan(stripVTControlCharacters(stdout).split("\n"))).toEqual(
+    [],
+  );
+  vi.restoreAllMocks();
 });

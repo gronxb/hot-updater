@@ -63,7 +63,9 @@ const writeFile = vi.spyOn(fs.promises, "writeFile");
 const cp = vi.spyOn(fs.promises, "cp");
 
 beforeEach(() => {
-  vi.mocked(runXcodebuildWithLogging).mockReset();
+  vi.mocked(runXcodebuildWithLogging)
+    .mockReset()
+    .mockResolvedValue({ logFilePath: null });
   vi.mocked(removeTmpDir).mockClear();
   writeFile.mockReset().mockResolvedValue(undefined);
   cp.mockReset().mockResolvedValue(undefined);
@@ -174,6 +176,7 @@ describe("xcodebuild arguments", () => {
       sourceDir: "/app/ios",
       exportOptionsPlist: "/tmp/ExportOptions.plist",
       logPrefix: "ios-release-build-export",
+      title: "App",
       authenticationArgs: AUTHENTICATION_ARGS,
     });
 

@@ -54,7 +54,7 @@ const { log, uploads, scheme, home } = vi.hoisted(() => ({
 vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/apple-helper")>()),
   assertTestFlightExportOptions: vi.fn(async () => {}),
-  buildIos: vi.fn(),
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
   issueAscApiKey: vi.fn(async (request: { name: string }) => ({
     p8: P8,
     keyId: "KEY1234567",
@@ -80,7 +80,7 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
 }));
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
-  buildAndroid: vi.fn(),
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
   checkPlayAccess: vi.fn(async () => ({ status: "ready" })),
   readBuiltPackageName: vi.fn(async () => "com.example.app"),
   resolvePlayUploadServiceAccount: vi.fn(() => ({
@@ -97,6 +97,7 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: {
+    outro: vi.fn(),
     log,
     isCancel: vi.fn(() => false),
     text: vi.fn(async ({ message }: { message: string }) =>

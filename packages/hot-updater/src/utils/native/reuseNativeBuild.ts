@@ -7,11 +7,12 @@ import {
   getCwd,
   p,
   parseSecretReference,
+  startStep,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildScope, Platform } from "@hot-updater/plugin-core";
 
 import { version } from "../../packageJson";
-import { ARTIFACT_PATH_WIDTH, ui } from "../cli-ui";
+import { ui } from "../cli-ui";
 import { getChannel } from "../setChannel";
 import {
   computeNativeBuildKey,
@@ -44,9 +45,6 @@ export interface NativeBuildCacheReport {
   readonly changed: readonly string[];
 }
 
-/** The key's start, enough to tell two keys apart in a log line. */
-const shortKey = (key: string) => `${key.slice(0, 17)}…`;
-
 /** A changed component as a log line names it, such as `src/App.tsx`. */
 const describeChange = (change: string) => {
   const [component, ...rest] = change.split(":");
@@ -59,18 +57,38 @@ const describeChange = (change: string) => {
     case "env":
       return `$${name}`;
     case "engine":
-      return "the key's engine";
+      return "engine";
     default:
       return `${component} ${name}`;
   }
 };
 
-/** Up to five changes, one per line. */
-const describeChanges = (changed: readonly string[]) =>
-  [
-    ...changed.slice(0, 5).map(describeChange),
-    ...(changed.length > 5 ? [`(+${changed.length - 5} more)`] : []),
-  ].join("\n");
+/** The longest reason a build is uncacheable that its line holds. */
+const SHORT_REASON_WIDTH = 48;
+
+/** The widest a changed component's name is on the cache's line. */
+const CHANGE_WIDTH = 32;
+
+/** The changes in a few words: `engine changed`, `App.tsx +2 changed`. */
+const summarizeChanges = (changed: readonly string[]) => {
+  const first = describeChange(changed[0]!);
+  const name =
+    first.length > CHANGE_WIDTH
+      ? `…${first.slice(-(CHANGE_WIDTH - 1))}`
+      : first;
+  return changed.length > 1
+    ? `${name} +${changed.length - 1} changed`
+    : `${name} changed`;
+};
+
+/** What the build log says of the cache, which the terminal shortens. */
+const cacheLogLines = (
+  key: string | null,
+  changed: readonly string[] = [],
+): string[] => [
+  `Native build key  ${key ?? "none"}`,
+  ...changed.map((change) => `Changed           ${describeChange(change)}`),
+];
 
 /** The artifact a scheme builds. */
 const artifactKindOf = (
@@ -124,6 +142,8 @@ export interface NativeBuildCache {
   readonly slot: string | null;
   readonly hit: NativeBuildCacheHit | null;
   readonly report: NativeBuildCacheReport;
+  /** The build log's lines of the cache: the whole key and what changed. */
+  readonly logHeader: readonly string[];
   /**
    * Keeps a new build in the slot, and the registry's ID once it is
    * tracked, for the next run on this machine.
@@ -171,7 +191,7 @@ export const reuseNativeBuild = async ({
     cacheDir === null ? null : path.resolve(cwd, cacheDir);
   // The channel the build falls back to, as createNativeBuild reads it.
   const channel = (await getChannel(platform)).value;
-  const startedAt = performance.now();
+  const step = startStep("Checking the build cache");
   // A key that can't be computed only costs the reuse: the command builds.
   const key: NativeBuildKey = await computeNativeBuildKey({
     cwd,
@@ -198,7 +218,6 @@ export const reuseNativeBuild = async ({
     components: null,
     uncacheable: `the native build key could not be computed (${error instanceof Error ? error.message : String(error)})`,
   }));
-  const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   const slot =
     resolvedCacheDir === null || key.key === null
       ? null
@@ -233,18 +252,21 @@ export const reuseNativeBuild = async ({
     changed,
   });
 
+  const logHeader = cacheLogLines(key.key);
   if (key.key === null) {
-    p.log.info(ui.block("Cache skipped", [ui.kv("Reason", key.uncacheable)]));
-    return { key, slot, hit: null, report: report(null), remember };
+    const reason = key.uncacheable ?? "";
+    // A short reason fits the line; a long one, such as an error, follows.
+    if (reason.length <= SHORT_REASON_WIDTH) {
+      step.succeed(`Cache skipped · ${reason}`, { level: "info" });
+    } else {
+      step.succeed("Cache skipped", { level: "info" });
+      p.log.message(ui.prose(reason));
+    }
+    return { key, slot, hit: null, report: report(null), logHeader, remember };
   }
   if (noCache) {
-    p.log.info(
-      ui.block("Cache skipped (--no-cache)", [
-        ui.kv("Key", shortKey(key.key)),
-        ui.kv("Computed", `${seconds} s`),
-      ]),
-    );
-    return { key, slot, hit: null, report: report(null), remember };
+    step.succeed("Cache skipped · --no-cache", { level: "info" });
+    return { key, slot, hit: null, report: report(null), logHeader, remember };
   }
 
   const predictedScope: NativeBuildScope =
@@ -271,10 +293,9 @@ export const reuseNativeBuild = async ({
       outputPath,
     });
   } catch (error) {
-    p.log.warn(
-      `Couldn't reuse the build with key ${shortKey(key.key)}:\n${error instanceof Error ? error.message : String(error)}`,
-    );
-    return { key, slot, hit: null, report: report(null), remember };
+    step.succeed("Cache unavailable · building", { level: "warn" });
+    p.log.warn(error instanceof Error ? error.message : String(error));
+    return { key, slot, hit: null, report: report(null), logHeader, remember };
   }
   const { hit, cached, missingArtifact, takenMinBundleId } = lookup;
   if (hit !== null) {
@@ -282,19 +303,8 @@ export const reuseNativeBuild = async ({
       hit.source === "storage"
         ? hit.nativeBuild.id
         : (hit.nativeBuildId ?? hit.result.minBundleId);
-    p.log.success(
-      ui.block("Cache hit: reusing a native build", [
-        ui.kv("ID", ui.id(id)),
-        ui.kv("From", hit.source === "storage" ? "storage" : "this machine"),
-        ui.kv("Key", shortKey(key.key)),
-        ui.kv(
-          "Artifact",
-          ui.fitPath(
-            path.resolve(cwd, hit.result.artifactPath),
-            ARTIFACT_PATH_WIDTH,
-          ),
-        ),
-      ]),
+    step.succeed(
+      `Cache hit · ${hit.source === "storage" ? "storage" : "this machine"} · ${ui.id(id)}`,
     );
     // A build downloaded from storage is kept here for the next run, and
     // one copied from here is marked tracked.
@@ -304,35 +314,29 @@ export const reuseNativeBuild = async ({
         cached.build.minBundleId === hit.nativeBuild.min_bundle_id
       ) {
         await rememberTrackedBuild(
-          { key, slot, hit, report: report(hit), remember },
+          { key, slot, hit, report: report(hit), logHeader, remember },
           hit.nativeBuild.id,
         );
       } else {
         await remember(hit.result, hit.nativeBuild.id);
       }
     }
-    return { key, slot, hit, report: report(hit), remember };
+    return { key, slot, hit, report: report(hit), logHeader, remember };
   }
 
   const changed =
     cached === null
       ? []
       : diffNativeBuildKeyComponents(cached.components, key.components);
-  p.log.info(
+  step.succeed(
     missingArtifact
-      ? ui.block("Cache miss: the tracked build has no artifact", [
-          ui.kv("Build", ui.id(missingArtifact.id)),
-          ui.kv("Key", shortKey(key.key)),
-        ])
+      ? "Cache miss · the tracked build has no artifact"
       : takenMinBundleId
-        ? ui.block("Cache miss: the cached build's MIN_BUNDLE_ID is taken", [
-            ui.kv("MIN_BUNDLE_ID", ui.id(cached!.build.minBundleId)),
-            ui.kv("Key", shortKey(key.key)),
-          ])
-        : ui.block("Cache miss: no build has this key", [
-            ui.kv("Key", shortKey(key.key)),
-            changed.length > 0 && ui.kv("Changed", describeChanges(changed)),
-          ]),
+        ? "Cache miss · its MIN_BUNDLE_ID is taken"
+        : changed.length > 0
+          ? `Cache miss · ${summarizeChanges(changed)}`
+          : "Cache miss · no build has this key",
+    { level: "info" },
   );
   return {
     key,
@@ -342,6 +346,13 @@ export const reuseNativeBuild = async ({
     slot,
     hit: null,
     report: report(null, changed),
+    logHeader: [
+      ...cacheLogLines(key.key, changed),
+      ...(missingArtifact ? [`Tracked build     ${missingArtifact.id}`] : []),
+      ...(takenMinBundleId
+        ? [`MIN_BUNDLE_ID     ${cached!.build.minBundleId} (taken)`]
+        : []),
+    ],
     remember,
   };
 };

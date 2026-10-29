@@ -2,6 +2,7 @@ import * as clack from "@clack/prompts";
 
 import { nonInteractiveReason } from "./interactive";
 import { maskSecretValues } from "./secretMasking";
+import { type StepCapture, stepCapture } from "./stepCapture";
 
 type SpinnerOptions = NonNullable<Parameters<typeof clack.spinner>[0]>;
 type Spinner = ReturnType<typeof clack.spinner>;
@@ -10,27 +11,78 @@ type Progress = ReturnType<typeof clack.progress>;
 const maskMessage = (message: string | undefined) =>
   message === undefined ? message : maskSecretValues(message);
 
+/**
+ * Prints a log line, or, while a step runs, holds it until the step's line
+ * prints. An info line says what the step is doing, so it shows as the
+ * step's detail instead; an error ends the step first and prints at once,
+ * since the process may exit right after it.
+ */
+const logThroughStep =
+  <Args extends unknown[]>(
+    write: (...args: Args) => void,
+    { inStep = "hold" }: { inStep?: "hold" | "detail" | "interrupt" } = {},
+  ) =>
+  (...args: Args): void => {
+    const capture = stepCapture();
+    if (!capture) return write(...args);
+    if (inStep === "interrupt") {
+      capture.interrupt();
+      return write(...args);
+    }
+    if (inStep === "detail") {
+      const message = args[0] as string | string[] | undefined;
+      const text = Array.isArray(message)
+        ? message.join("\n")
+        : (message ?? "");
+      capture.update(maskSecretValues(text.split("\n")[0] ?? ""));
+      return;
+    }
+    capture.hold(() => write(...args));
+  };
+
 const log: typeof clack.log = {
-  message: (message, options) =>
+  message: logThroughStep((message, options) =>
     clack.log.message(
       Array.isArray(message)
         ? message.map(maskSecretValues)
         : maskMessage(message),
       options,
     ),
-  info: (message, options) =>
-    clack.log.info(maskSecretValues(message), options),
-  success: (message, options) =>
+  ),
+  info: logThroughStep(
+    (message, options) => clack.log.info(maskSecretValues(message), options),
+    { inStep: "detail" },
+  ),
+  success: logThroughStep((message, options) =>
     clack.log.success(maskSecretValues(message), options),
-  step: (message, options) =>
+  ),
+  step: logThroughStep((message, options) =>
     clack.log.step(maskSecretValues(message), options),
-  warn: (message, options) =>
+  ),
+  warn: logThroughStep((message, options) =>
     clack.log.warn(maskSecretValues(message), options),
-  warning: (message, options) =>
+  ),
+  warning: logThroughStep((message, options) =>
     clack.log.warning(maskSecretValues(message), options),
-  error: (message, options) =>
-    clack.log.error(maskSecretValues(message), options),
+  ),
+  error: logThroughStep(
+    (message, options) => clack.log.error(maskSecretValues(message), options),
+    { inStep: "interrupt" },
+  ),
 };
+
+/** A spinner inside a running step, whose messages are the step's detail. */
+const spinnerInStep = (capture: StepCapture): Spinner => ({
+  start: (message) => capture.update(message),
+  message: (message) => capture.update(message),
+  stop: () => capture.update(undefined),
+  cancel: () => capture.update(undefined),
+  error: (message) => capture.interrupt(message || undefined),
+  clear: () => capture.update(undefined),
+  get isCancelled() {
+    return false;
+  },
+});
 
 const maskSpinner = (target: Spinner): Spinner => ({
   start: (message) => target.start(maskMessage(message)),
@@ -98,6 +150,8 @@ const createStaticSpinner = ({
 };
 
 const spinner: typeof clack.spinner = (options = {}) => {
+  const capture = stepCapture();
+  if (capture) return spinnerInStep(capture);
   const output = options.output ?? process.stdout;
   const isInteractive = clack.isTTY(output) && !clack.isCI();
   return maskSpinner(
@@ -106,6 +160,19 @@ const spinner: typeof clack.spinner = (options = {}) => {
 };
 
 const progress: typeof clack.progress = (options = {}) => {
+  const capture = stepCapture();
+  if (capture) {
+    const inStep = spinnerInStep(capture);
+    return {
+      ...inStep,
+      advance: (_step, message) => {
+        if (message) capture.update(message);
+      },
+      get isCancelled() {
+        return false;
+      },
+    };
+  }
   const output = options.output ?? process.stdout;
   const isInteractive = clack.isTTY(output) && !clack.isCI();
   if (isInteractive) return maskProgress(clack.progress(options));

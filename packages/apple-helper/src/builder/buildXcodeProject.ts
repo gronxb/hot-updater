@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
 import type {
   ApplePlatform,
   IosBuildDestination,
@@ -15,7 +14,6 @@ import {
   getDefaultDestination,
   resolveDestinations,
 } from "../utils/destination";
-import { formatCommand } from "../utils/formatCommand";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
@@ -47,6 +45,7 @@ export const buildXcodeProject = async ({
   extraParams,
   minBundleId,
   authenticationArgs,
+  header = [],
 }: {
   /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
   authenticationArgs?: string[];
@@ -64,7 +63,9 @@ export const buildXcodeProject = async ({
   extraParams?: string[];
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
-}): Promise<{ appPath: string }> => {
+  /** Lines the build log starts with, such as the native build key. */
+  header?: string[];
+}): Promise<{ appPath: string; logFilePath: string | null }> => {
   if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
@@ -114,22 +115,10 @@ export const buildXcodeProject = async ({
       xcodeProject,
     });
 
-    p.log.info(
-      [
-        "Xcode build",
-        `Project        ${xcodeProject.name}`,
-        `Scheme         ${xcodeScheme}`,
-        `Configuration  ${configuration}`,
-        `Platform       ${platform}`,
-        `Device type    ${deviceType}`,
-        "Command",
-        formatCommand(["xcodebuild", ...buildArgs]),
-      ].join("\n"),
-    );
-
     let builtAppPath: string;
+    let logFilePath: string | null;
     try {
-      await runXcodebuildWithLogging({
+      ({ logFilePath } = await runXcodebuildWithLogging({
         args: buildArgs,
         // The build setting reaches the podspec's script phase, and the
         // environment reaches Package.swift's build tool plugin, which
@@ -137,9 +126,18 @@ export const buildXcodeProject = async ({
         env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
         sourceDir,
         logPrefix,
-        successMessage: "Build completed successfully",
+        header: [
+          ...header,
+          `Project        ${xcodeProject.name}`,
+          `Scheme         ${xcodeScheme}`,
+          `Configuration  ${configuration}`,
+          `Platform       ${platform}`,
+          `Device type    ${deviceType}`,
+        ],
+        title: `Building ${xcodeScheme}`,
+        successMessage: `Built ${xcodeScheme}`,
         failureMessage: "Build failed",
-      });
+      }));
 
       ({ appPath: builtAppPath } = await getBuildSettings({
         configuration,
@@ -155,7 +153,7 @@ export const buildXcodeProject = async ({
 
     const appPath = path.join(outputDirectory, path.basename(builtAppPath));
     await fs.promises.cp(builtAppPath, appPath, { recursive: true });
-    return { appPath };
+    return { appPath, logFilePath };
   } finally {
     await removeTmpDir(tmpDir);
   }

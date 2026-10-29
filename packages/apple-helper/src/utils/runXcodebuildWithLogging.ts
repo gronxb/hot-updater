@@ -2,26 +2,11 @@ import { BuildFailedError } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
+import { formatCommand } from "./formatCommand";
 
-let cachedXcbeautifyAvailability: boolean | null = null;
 const TERMINATION_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 type KillableProcess = {
   kill: (signal?: number | NodeJS.Signals) => boolean;
-};
-
-export const isXcbeautifyAvailable = async () => {
-  if (cachedXcbeautifyAvailability !== null) {
-    return cachedXcbeautifyAvailability;
-  }
-
-  try {
-    await execa("which", ["xcbeautify"]);
-    cachedXcbeautifyAvailability = true;
-    return true;
-  } catch {
-    cachedXcbeautifyAvailability = false;
-    return false;
-  }
 };
 
 const createRawXcodebuildProcess = ({
@@ -43,14 +28,6 @@ const createRawXcodebuildProcess = ({
   });
 };
 
-const createXcbeautifyProcess = ({ cwd }: { cwd: string }) => {
-  return execa("xcbeautify", [], {
-    cwd,
-    all: true,
-    buffer: false,
-  });
-};
-
 /** Why xcodebuild failed, without its command line. */
 const describeFailure = (error: unknown) => {
   if (error instanceof ExecaError) {
@@ -62,24 +39,40 @@ const describeFailure = (error: unknown) => {
   return error instanceof Error ? error.message : String(error);
 };
 
+/**
+ * Runs xcodebuild as a step titled `title`: its live line shows the build's
+ * phase, the log file keeps the command and the whole output, and a failure
+ * prints the output's errors and the log's path on stderr.
+ */
 export const runXcodebuildWithLogging = async ({
   args,
   env,
   sourceDir,
+  title,
   successMessage,
   failureMessage,
   logPrefix,
+  logFilePath,
+  header = [],
 }: {
   args: string[];
   env?: Record<string, string>;
+  /** The step's title while it runs, such as `Archiving App`. */
+  title: string;
   failureMessage: string;
   logPrefix: string;
+  /** The log to append to, such as the archive's for its export. */
+  logFilePath?: string;
+  /** Lines the log starts with, before the command line. */
+  header?: string[];
   sourceDir: string;
   successMessage: string;
-}) => {
-  const useXcbeautify = await isXcbeautifyAvailable();
-  const logger = createXcodebuildLogger({ logPrefix });
-  await logger.start();
+}): Promise<{ logFilePath: string | null }> => {
+  const logger = createXcodebuildLogger({ logPrefix, logFilePath });
+  await logger.start({
+    title,
+    header: [...header, `$ ${formatCommand(["xcodebuild", ...args])}`, ""],
+  });
   const activeProcesses: KillableProcess[] = [];
   const terminateActiveProcesses = () => {
     for (const activeProcess of activeProcesses) {
@@ -92,7 +85,6 @@ export const runXcodebuildWithLogging = async ({
   }
 
   try {
-    // Keep both processes as direct children so Ctrl+C cleanup can kill them explicitly.
     const xcodebuildProcess = createRawXcodebuildProcess({
       args,
       env,
@@ -101,39 +93,17 @@ export const runXcodebuildWithLogging = async ({
     activeProcesses.push(xcodebuildProcess);
     const xcodebuildOutput = xcodebuildProcess.all ?? xcodebuildProcess.stdout;
 
-    let xcbeautifyProcess: ReturnType<typeof createXcbeautifyProcess> | null =
-      null;
-    if (useXcbeautify && xcodebuildOutput) {
-      xcbeautifyProcess = createXcbeautifyProcess({ cwd: sourceDir });
-      activeProcesses.push(xcbeautifyProcess);
-    }
-
-    // The log file and the failure summary read xcodebuild's raw output;
-    // xcbeautify's only shows progress.
+    // The log file, the failure summary, and the step's phase read
+    // xcodebuild's raw output.
     const logging = xcodebuildOutput
-      ? logger.processStream(xcodebuildOutput, {
-          display: xcbeautifyProcess
-            ? (xcbeautifyProcess.all ?? xcbeautifyProcess.stdout ?? undefined)
-            : undefined,
-        })
+      ? logger.processStream(xcodebuildOutput)
       : Promise.resolve();
-    const xcbeautifyInput = xcbeautifyProcess?.stdin;
-    if (xcodebuildOutput && xcbeautifyInput) {
-      // xcbeautify exiting early must not end xcodebuild's output, which
-      // the log still reads.
-      xcbeautifyInput.on("error", () => {
-        xcodebuildOutput.unpipe(xcbeautifyInput);
-      });
-      xcodebuildOutput.pipe(xcbeautifyInput);
-    }
 
-    // Settled together: xcodebuild exits before xcbeautify and the log
-    // finish reading its output, and its failure must wait for them.
+    // Settled together: xcodebuild exits before the log finishes reading
+    // its output, and its failure must wait for it.
     const [xcodebuildResult, loggingResult] = await Promise.allSettled([
       xcodebuildProcess,
       logging,
-      // Only formats the terminal's progress.
-      xcbeautifyProcess,
     ]);
     if (xcodebuildResult.status === "rejected") {
       throw xcodebuildResult.reason;
@@ -143,6 +113,7 @@ export const runXcodebuildWithLogging = async ({
     }
 
     logger.stop(successMessage);
+    return { logFilePath: logger.logFilePath };
   } catch (error) {
     logger.writeError(error);
     logger.stop(failureMessage, false);

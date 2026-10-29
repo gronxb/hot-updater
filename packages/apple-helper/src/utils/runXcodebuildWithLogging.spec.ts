@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { runXcodebuildWithLogging } from "./runXcodebuildWithLogging";
+
 // What xcodebuild prints when a build fails: the command line and the target
 // dependency graph first, then warnings, the error, and the failure block.
 const FAKE_XCODEBUILD = `#!/bin/sh
@@ -25,17 +27,6 @@ echo "	SwiftCompile normal arm64 /src/App/AppDelegate.swift (in target 'App' fro
 echo "(1 failure)"
 echo "last line of xcodebuild"
 exit 65
-`;
-
-// xcbeautify drops "error:" as it formats, and drains after xcodebuild exits.
-const FAKE_XCBEAUTIFY = `#!/bin/sh
-while IFS= read -r line; do
-  case "$line" in
-    *"error: "*) echo "[x] \${line#*error: }" ;;
-    *) echo "> $line" ;;
-  esac
-done
-sleep 0.3
 `;
 
 const ERROR_LINE =
@@ -60,7 +51,7 @@ beforeEach(async () => {
   await fs.mkdir(binDir);
   await writeExecutable("xcodebuild", FAKE_XCODEBUILD);
   vi.spyOn(process, "cwd").mockReturnValue(projectDir);
-  // No real xcbeautify, nor anything else from the machine's PATH.
+  // Nothing else from the machine's PATH.
   process.env["PATH"] = `${binDir}:/usr/bin:/bin`;
   stderr = "";
   vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
@@ -72,8 +63,6 @@ beforeEach(async () => {
     stdout += String(chunk);
     return true;
   });
-  // isXcbeautifyAvailable caches what it found.
-  vi.resetModules();
 });
 
 afterEach(async () => {
@@ -82,16 +71,25 @@ afterEach(async () => {
   await fs.rm(projectDir, { recursive: true, force: true });
 });
 
-const runFailingBuild = async () => {
-  const { runXcodebuildWithLogging } =
-    await import("./runXcodebuildWithLogging");
-  const error = await runXcodebuildWithLogging({
-    args: ["-scheme", "App"],
+const runBuild = () =>
+  runXcodebuildWithLogging({
+    args: ["-scheme", "App", "-authenticationKeyPath", "/tmp/AuthKey_ABC.p8"],
     sourceDir: projectDir,
     logPrefix: "ios-simulator-build",
-    successMessage: "Build completed successfully",
+    header: ["Key  nbk1:0123456789abcdef"],
+    title: "Building App",
+    successMessage: "Built App",
     failureMessage: "Build failed",
-  }).then(
+  });
+
+const readLog = async () => {
+  const logDir = path.join(projectDir, ".hot-updater", "log");
+  const [logFile] = await fs.readdir(logDir);
+  return fs.readFile(path.join(logDir, String(logFile)), "utf8");
+};
+
+const runFailingBuild = async () => {
+  const error = await runBuild().then(
     () => {
       throw new Error("Expected the build to fail.");
     },
@@ -100,16 +98,7 @@ const runFailingBuild = async () => {
   return error as Error & { logPath: string | null; summary: string[] };
 };
 
-describe.each([
-  ["without xcbeautify", false],
-  ["with xcbeautify on PATH", true],
-])("a failed xcodebuild %s", (_, withXcbeautify) => {
-  beforeEach(async () => {
-    if (withXcbeautify) {
-      await writeExecutable("xcbeautify", FAKE_XCBEAUTIFY);
-    }
-  });
-
+describe("a failed xcodebuild", () => {
   it("prints its error lines and the log's path, not its first lines", async () => {
     const error = await runFailingBuild();
 
@@ -132,18 +121,16 @@ describe.each([
     // A --json command's stdout stays its JSON.
     expect(stdout).not.toContain("missingSymbol");
     expect(stdout).not.toContain("Build log:");
+    // The step's line says which step failed, with its duration.
+    expect(stdout).toMatch(/Build failed +\d+\.\ds/);
   });
 
   it("keeps xcodebuild's raw output in the log, through its last line", async () => {
     await runFailingBuild();
 
-    const logDir = path.join(projectDir, ".hot-updater", "log");
-    const [logFile] = await fs.readdir(logDir);
-    const log = await fs.readFile(path.join(logDir, String(logFile)), "utf8");
+    const log = await readLog();
     expect(log).toContain(ERROR_LINE);
     expect(log).toContain("note: Target dependency graph (2 targets)");
-    expect(log).not.toContain("[x] ");
-    expect(log).not.toContain("> ");
     // Through xcodebuild's last line, then the failure.
     expect(log).toMatch(/last line of xcodebuild\n[^]*exit code 65/);
   });
@@ -163,8 +150,34 @@ exit 70
 
   expect(error.message).toBe("Build failed: xcodebuild exited with code 70.");
   expect(error.summary).toEqual(
-    Array.from({ length: 40 }, (_, i) => `line ${i + 60}`),
+    Array.from({ length: 15 }, (_, i) => `line ${i + 85}`),
   );
   expect(stderr).toContain("line 99");
-  expect(stderr).not.toContain("line 59\n");
+  expect(stderr).not.toContain("line 84\n");
+});
+
+it("writes the command to the log, and one line with its duration to the terminal", async () => {
+  await writeExecutable(
+    "xcodebuild",
+    `#!/bin/sh
+echo "CompileC /dd/A.o /src/A.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'React-Core' from project 'Pods')"
+echo "Ld /dd/App.app/App normal (in target 'App' from project 'App')"
+echo "** BUILD SUCCEEDED **"
+`,
+  );
+
+  const { logFilePath } = await runBuild();
+
+  expect(logFilePath).toMatch(/ios-simulator-build\.log$/);
+  const log = await readLog();
+  expect(log).toContain("Key  nbk1:0123456789abcdef");
+  expect(log).toMatch(
+    /\$ xcodebuild -scheme App -authenticationKeyPath[^]*AuthKey_ABC\.p8/,
+  );
+  expect(log).toContain("** BUILD SUCCEEDED **");
+  // Not a TTY: no spinner, only the finished step.
+  expect(stdout).toMatch(/Built App +\d+\.\ds\n/);
+  expect(stdout).not.toContain("xcodebuild");
+  expect(stdout).not.toContain("AuthKey");
+  expect(stdout).not.toContain("Building App");
 });

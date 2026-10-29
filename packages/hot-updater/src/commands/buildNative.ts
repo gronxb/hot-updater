@@ -31,10 +31,13 @@ import {
   getCwd,
   BuildFailedError,
   CredentialUnavailableError,
+  createStep,
+  failActiveStep,
   loadConfig,
   p,
   parseSecretReference,
   withCredentialResolver,
+  withStep,
 } from "@hot-updater/cli-tools";
 import type {
   BuildAdapter,
@@ -66,7 +69,7 @@ import {
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
-import { type Row, ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
+import { ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
@@ -75,6 +78,10 @@ import {
   recordNativeBuildSubmission,
   storeVersionLabel,
 } from "../utils/native/nativeBuildSubmission";
+import {
+  formatNativeBuildSummary,
+  readArtifactSize,
+} from "../utils/native/nativeBuildSummary";
 import {
   checkGooglePlay,
   formatGooglePlayReadiness,
@@ -150,6 +157,8 @@ const buildNativeInternal = async ({
   };
   printBanner();
   const platformName = platform === "android" ? "Android" : "iOS";
+  // One line from the prebuild through the pods, once nothing asks more.
+  const preparing = createStep(`Preparing ${platformName}`);
 
   try {
     // Signing and upload credentials are resolved only by a build that uses
@@ -165,9 +174,12 @@ const buildNativeInternal = async ({
         let trackingSkipped: NativeBuildTrackingSkip | null = null;
         // A dry run's missing store key: reported, and the run fails at the end.
         let missingSubmitKey: string | undefined;
+        // The store's page of the build this run submitted.
+        let storeUrl: string | undefined;
         const preparedConfig = await prepareNativeBuild({
           ...options,
           platform,
+          preparing,
           // A scheme the store would refuse, or a missing signing or upload
           // credential, fails before the prebuild and the build, so a CI run
           // without one stops at once. The resolver keeps each credential for
@@ -304,9 +316,19 @@ const buildNativeInternal = async ({
         // whose ios/ the prebuild generates has no other way to have. The
         // build then uses them as installed.
         const installsPods = platform === "ios" && iosSchemeConfig!.installPods;
-        if (installsPods) {
-          await installPodsIfNeeded(path.join(getCwd(), "ios"));
-        }
+        const pods = installsPods
+          ? await installPodsIfNeeded(path.join(getCwd(), "ios"))
+          : null;
+        preparing.succeed(
+          [
+            `Prepared ${platformName} ${target.appVersion ?? `fingerprint ${target.fingerprintHash.slice(0, 8)}`}`,
+            buildAdapter.nativeBuild?.prebuild && "prebuild",
+            pods?.codegen && "codegen",
+            pods?.pods && "pods",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        );
         // Debug builds are neither tracked nor cached.
         const cache: NativeBuildCache | null =
           trackingSkipped === "debug"
@@ -324,6 +346,8 @@ const buildNativeInternal = async ({
                 buildAdapter: buildAdapter.name,
               });
         const reused = cache?.hit ?? null;
+        // The build's log, which the summary names.
+        const buildLog: { path: string | null } = { path: null };
         const result = reused
           ? reused.result
           : await buildNow({
@@ -339,6 +363,10 @@ const buildNativeInternal = async ({
                 : iosSchemeConfig,
               credentials,
               tracked: trackingSkipped === null,
+              logHeader: [...(cache?.logHeader ?? []), ""],
+              onLog: (file) => {
+                buildLog.path = file;
+              },
             });
         if (!reused) await cache?.remember(result, null);
         if (dryRun) trackingSkipped = "dry-run";
@@ -395,10 +423,16 @@ const buildNativeInternal = async ({
           const uploaded = await storeRefusal(
             reportUploadFailure(
               () =>
-                uploadToTestFlight({
-                  ipaPath: result.artifactPath,
-                  apiKey,
-                }),
+                withStep(
+                  "Uploading to TestFlight",
+                  () =>
+                    uploadToTestFlight({
+                      ipaPath: result.artifactPath,
+                      apiKey,
+                    }),
+                  (uploaded) =>
+                    `Uploaded ${storeVersionLabel(uploaded.shortVersion, uploaded.bundleVersion)} to TestFlight${uploaded.state === "COMPLETE" ? "" : " · processing"}`,
+                ),
               stays(result.artifactPath),
             ),
             (cause) =>
@@ -410,18 +444,7 @@ const buildNativeInternal = async ({
           if ("refused" in uploaded) {
             existingSubmission = uploaded.refused;
           } else if (uploaded.state === "COMPLETE") {
-            p.log.success(
-              ui.block("Uploaded to TestFlight", [
-                ui.kv(
-                  "Version",
-                  storeVersionLabel(
-                    uploaded.shortVersion,
-                    uploaded.bundleVersion,
-                  ),
-                ),
-                ui.kv("Open", uploaded.testFlightUrl),
-              ]),
-            );
+            storeUrl = uploaded.testFlightUrl;
             // Recorded once App Store Connect accepted the build. A build
             // still processing stays unrecorded: a later run that finds it
             // can't tell it is this artifact.
@@ -486,11 +509,17 @@ const buildNativeInternal = async ({
             const uploaded = await storeRefusal(
               reportUploadFailure(
                 async () =>
-                  uploadToPlay({
-                    aabPath: result.artifactPath,
-                    packageName,
-                    serviceAccount: playServiceAccount,
-                  }),
+                  withStep(
+                    "Uploading to Google Play",
+                    () =>
+                      uploadToPlay({
+                        aabPath: result.artifactPath,
+                        packageName,
+                        serviceAccount: playServiceAccount,
+                      }),
+                    ({ versionCode, status }) =>
+                      `Uploaded ${versionCode} to Play internal testing${status === "draft" ? " · draft" : ""}`,
+                  ),
                 stays(result.artifactPath),
               ),
               // The version code is read only once Google Play refused it.
@@ -505,15 +534,7 @@ const buildNativeInternal = async ({
             if ("refused" in uploaded) {
               existingSubmission = uploaded.refused;
             } else {
-              const { versionCode, status } = uploaded;
-              p.log.success(
-                ui.block(
-                  status === "draft"
-                    ? "Uploaded to Google Play internal testing as a draft"
-                    : "Uploaded to Google Play internal testing",
-                  [ui.kv("Version code", versionCode)],
-                ),
-              );
+              const { versionCode } = uploaded;
               // Google Play took the bundle on the internal track, as a draft
               // release when the app is not published yet.
               registered = await recordSubmission(
@@ -527,6 +548,21 @@ const buildNativeInternal = async ({
         const alreadySubmitted = existingSubmission !== null;
         if (dryRun) {
           p.log.step(summarizeDryRun(result, upload, reused));
+        }
+        if (missingSubmitKey === undefined) {
+          p.outro(
+            formatNativeBuildSummary({
+              platformName,
+              result,
+              reused: reused !== null,
+              elapsedMs: preparing.elapsedMs,
+              byteSize: await readArtifactSize(
+                path.resolve(getCwd(), result.artifactPath),
+              ),
+              logFilePath: buildLog.path,
+              storeUrl,
+            }),
+          );
         }
         if (json) {
           console.log(
@@ -586,6 +622,8 @@ const buildNow = async ({
   iosSchemeConfig,
   credentials,
   tracked,
+  logHeader,
+  onLog,
 }: {
   platform: Platform;
   platformName: string;
@@ -597,6 +635,10 @@ const buildNow = async ({
   iosSchemeConfig?: EnrichedNativeBuildIosScheme;
   credentials: CredentialResolver;
   tracked: boolean;
+  /** Lines the build log starts with: the cache's key and what changed. */
+  logHeader: string[];
+  /** Receives the build log's path once the build has one. */
+  onLog: (logFilePath: string | null) => void;
 }): Promise<NativeBuildResult> => {
   let minBundleId: string;
   try {
@@ -612,7 +654,6 @@ const buildNow = async ({
     );
   }
 
-  p.log.info(`Building ${platformName} ${ui.muted(`(${buildAdapter.name})`)}`);
   const result = await createNativeBuild({
     platform,
     scheme,
@@ -630,27 +671,30 @@ const buildNow = async ({
     readChannel: async () => (await getChannel(platform)).value,
     buildAdapter,
     outputPath,
-    builder:
-      platform === "android"
-        ? () =>
-            buildAndroid({
+    builder: async () => {
+      const header = [
+        `${platformName} ${scheme} with ${buildAdapter.name}`,
+        `MIN_BUNDLE_ID     ${minBundleId}`,
+        ...logHeader,
+      ];
+      const built =
+        platform === "android"
+          ? await buildAndroid({
               schemeConfig: androidSchemeConfig!,
               minBundleId,
               credentials,
+              logHeader: header,
             })
-        : () =>
-            buildIos({
+          : await buildIos({
               schemeConfig: iosSchemeConfig!,
               minBundleId,
               credentials,
-            }),
+              logHeader: header,
+            });
+      onLog(built.logFilePath);
+      return built;
+    },
   });
-  p.log.success(
-    ui.block(
-      `Built ${platformName} ${ui.muted(`(${buildAdapter.name})`)}`,
-      nativeBuildRows(result),
-    ),
-  );
   return result;
 };
 
@@ -875,16 +919,6 @@ const summarizeDryRun = (
     : `Dry run: not ${skipped.join(" or ")}`;
 };
 
-const nativeBuildRows = (result: NativeBuildResult): Row[] => [
-  ui.kv("Artifact", ui.fitPath(result.artifactPath, ARTIFACT_PATH_WIDTH)),
-  ui.kv("Kind", result.artifactKind),
-  ui.kv("Min bundle ID", ui.id(result.minBundleId)),
-  result.fingerprintHash === null
-    ? ui.kv("App version", ui.version(result.appVersion))
-    : ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
-  ui.kv("Channel", ui.channel(result.channel)),
-];
-
 /**
  * Resolves the credentials the build signs with: an iOS device build's
  * `signing.ascApiKey`, and a release variant's `signing.keystore`, as
@@ -953,6 +987,8 @@ const reportUploadFailure = async <T>(
 };
 
 const catchError = (e: unknown): never => {
+  // A step still running, such as the preparation, ends before the error.
+  failActiveStep();
   if (e instanceof CredentialSetupRefusedError) {
     // canSignIn or canPrompt reported why, with the command to run.
   } else if (e instanceof ExecaError) {

@@ -18,14 +18,14 @@ const { events, prebuildScheme, resolve } = vi.hoisted(() => {
 });
 
 vi.mock("@hot-updater/android-helper", () => ({
-  buildAndroid: vi.fn(),
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
   readBuiltPackageName: vi.fn(),
   resolvePlayUploadServiceAccount: vi.fn(),
   uploadToPlay: vi.fn(),
 }));
 vi.mock("@hot-updater/apple-helper", () => ({
   assertTestFlightExportOptions: vi.fn(),
-  buildIos: vi.fn(),
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
   resolveTestFlightUploadKey: vi.fn(),
   uploadToTestFlight: vi.fn(),
 }));
@@ -33,6 +33,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
   p: {
+    outro: vi.fn(),
     log: {
       info: vi.fn(),
       step: vi.fn(),

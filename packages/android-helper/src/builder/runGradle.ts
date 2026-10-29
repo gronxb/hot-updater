@@ -15,6 +15,8 @@ type RunGradleArgs = {
   /** Added to the Gradle environment, for values kept off the command line. */
   env?: Record<string, string>;
   androidProjectPath: string;
+  /** Lines the build log starts with, such as the native build key. */
+  logHeader?: string[];
 };
 
 /** Why Gradle failed, without its command line. */
@@ -51,9 +53,12 @@ export async function runGradle({
   env,
   androidProjectPath,
   appModuleName,
+  logHeader = [],
 }: RunGradleArgs): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
+  /** The build log, or null without one. */
+  logFilePath: string | null;
 }> {
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
@@ -63,23 +68,23 @@ export async function runGradle({
     gradleArgs.push(...args.extraParams);
   }
 
-  p.log.info(
-    [
-      "Gradle build",
-      `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
-      `App module  ${appModuleName}`,
-      `Tasks       ${tasks.join(", ")}`,
-      "Command",
-      formatCommand([path.basename(getGradleWrapper()), ...gradleArgs]),
-    ].join("\n"),
-  );
-
   if ("port" in args && args.port != null) {
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
 
   const logger = createGradleLogger({ logPrefix });
-  await logger.start();
+  await logger.start({
+    title: `Building ${tasks.join(", ")}`,
+    header: [
+      ...logHeader,
+      `Project     ${path.relative(getCwd(), androidProjectPath) || "."}`,
+      `App module  ${appModuleName}`,
+      `Tasks       ${tasks.join(", ")}`,
+      `$ ${formatCommand([path.basename(getGradleWrapper()), ...gradleArgs])}`,
+      "",
+    ],
+  });
+  let logFilePath: string | null = null;
 
   try {
     const gradle = execa(getGradleWrapper(), gradleArgs, {
@@ -100,7 +105,8 @@ export async function runGradle({
     if (gradleResult.status === "rejected") throw gradleResult.reason;
     if (loggingResult.status === "rejected") throw loggingResult.reason;
 
-    logger.stop();
+    logger.stop(`Built ${tasks.join(", ")}`);
+    logFilePath = logger.logFilePath;
   } catch (e) {
     logger.writeError(e);
     logger.stop("Build failed", false);
@@ -113,11 +119,14 @@ export async function runGradle({
     await logger.close();
   }
 
-  return findBuildDirectory({
-    androidProjectPath,
-    moduleName: appModuleName,
-    tasks,
-  });
+  return {
+    ...(await findBuildDirectory({
+      androidProjectPath,
+      moduleName: appModuleName,
+      tasks,
+    })),
+    logFilePath,
+  };
 }
 
 /**
