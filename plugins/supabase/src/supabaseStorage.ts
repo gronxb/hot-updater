@@ -4,6 +4,7 @@ import {
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
+  type StorageObject,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
@@ -63,7 +64,15 @@ const isMissingObjectError = async (error: unknown) => {
 
 /** A character Storage rejects in an object name, `?`, or `!`. */
 const ESCAPED_CHARACTER = /[^A-Za-z0-9_/.*'() &$=@;:+,-]/gu;
+const ESCAPE_SEQUENCE = /!([0-9A-F]{2})/gu;
 const utf8 = new TextEncoder();
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+/** Objects Storage lists a page at a time. */
+const LIST_PAGE_SIZE = 1000;
+/** Names Storage removes in one request. */
+const DELETE_BATCH_SIZE = 1000;
+/** The object the Supabase dashboard keeps in a folder it creates. */
+const EMPTY_FOLDER_PLACEHOLDER = ".emptyFolderPlaceholder";
 
 /**
  * The object name Storage keeps a key under. Storage accepts names of ASCII
@@ -82,6 +91,35 @@ const toObjectName = (key: string) =>
     ).join(""),
   );
 
+/** The key `toObjectName` stored under `name`, or null for a name it never makes. */
+const fromObjectName = (name: string): string | null => {
+  const bytes: number[] = [];
+  const parts: string[] = [];
+  const flush = () => {
+    if (bytes.length === 0) return true;
+    try {
+      parts.push(utf8Decoder.decode(new Uint8Array(bytes)));
+    } catch {
+      return false;
+    }
+    bytes.length = 0;
+    return true;
+  };
+  let index = 0;
+  for (const match of name.matchAll(ESCAPE_SEQUENCE)) {
+    if (match.index !== index) {
+      if (!flush()) return null;
+      parts.push(name.slice(index, match.index));
+    }
+    bytes.push(Number.parseInt(match[1] as string, 16));
+    index = match.index + match[0].length;
+  }
+  if (!flush()) return null;
+  parts.push(name.slice(index));
+  const key = parts.join("");
+  return toObjectName(key) === name ? key : null;
+};
+
 export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
@@ -93,7 +131,13 @@ export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
 export const supabaseStorage = (
   config: SupabaseStorageConfig,
 ): StorageAdapterWith<
-  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+  | "put"
+  | "get"
+  | "getDownloadUrl"
+  | "exists"
+  | "delete"
+  | "listObjects"
+  | "deleteObjects"
 > => {
   // Created on first use, so a config loads without the service role key.
   let client: Promise<ReturnType<typeof createClient>> | undefined;
@@ -108,6 +152,7 @@ export const supabaseStorage = (
       ))
     ).storage.from(config.bucketName);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
+  const basePrefix = getStorageKey() ? `${getStorageKey()}/` : "";
   const resolveSignedUrl = createSupabaseSignedUrlBatcher({
     createSignedUrls: async (_bucketName, keys, expiresIn) =>
       (await bucket()).createSignedUrls(keys, expiresIn),
@@ -183,6 +228,61 @@ export const supabaseStorage = (
         throw new Error(`Failed to delete storage object: ${error.message}`);
       }
       return { deleted: true };
+    },
+    async listObjects(prefix) {
+      const objects: StorageObject[] = [];
+      const folder = toObjectName(getStorageKey(prefix ?? ""));
+      let cursor: string | undefined;
+      do {
+        const { data, error } = await (
+          await bucket()
+        ).listV2({
+          prefix: folder ? `${folder}/` : "",
+          limit: LIST_PAGE_SIZE,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        if (error) {
+          throw new Error(`Failed to list storage objects: ${error.message}`);
+        }
+        for (const entry of data.objects) {
+          // Storage names an object by its full path in `name`; supabase-js
+          // types it as `key`.
+          const name: string = entry.key ?? entry.name;
+          if (name.split("/").at(-1) === EMPTY_FOLDER_PLACEHOLDER) continue;
+          const key = fromObjectName(name);
+          if (key === null || !key.startsWith(basePrefix)) continue;
+          let storageUri: string;
+          try {
+            storageUri = createStorageUri({
+              protocol: "supabase-storage",
+              bucket: config.bucketName,
+              key,
+            });
+          } catch {
+            continue;
+          }
+          const updatedAt = entry.updated_at ?? entry.created_at;
+          objects.push({
+            key: key.slice(basePrefix.length),
+            ...(updatedAt ? { lastModifiedAt: new Date(updatedAt) } : {}),
+            size: Number(entry.metadata?.size ?? 0),
+            storageUri,
+          });
+        }
+        cursor = data.hasNext ? data.nextCursor : undefined;
+      } while (cursor !== undefined);
+      return objects;
+    },
+    async deleteObjects(relativeKeys) {
+      const names = relativeKeys.map((key) => toObjectName(getStorageKey(key)));
+      for (let offset = 0; offset < names.length; offset += DELETE_BATCH_SIZE) {
+        const { error } = await (
+          await bucket()
+        ).remove(names.slice(offset, offset + DELETE_BATCH_SIZE));
+        if (error && !isNotFoundError(error)) {
+          throw new Error(`Failed to delete storage objects: ${error.message}`);
+        }
+      }
     },
   });
 };

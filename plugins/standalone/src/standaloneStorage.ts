@@ -5,6 +5,7 @@ import {
   type StorageDeleteInput,
   type StorageExistsInput,
   type StorageGetInput,
+  type StorageObject,
   type StoragePutInput,
 } from "@hot-updater/plugin-core";
 
@@ -21,6 +22,10 @@ export interface StorageRoutes {
   get: (input: StorageGetInput) => RouteConfig;
   exists: (input: StorageExistsInput) => RouteConfig;
   delete: (input: StorageDeleteInput) => RouteConfig;
+  /** Lists objects for `hot-updater storage prune`. */
+  listObjects: (input: { readonly prefix?: string }) => RouteConfig;
+  /** Deletes exact keys for `hot-updater storage prune --yes`. */
+  deleteObjects: (input: { readonly keys: readonly string[] }) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
@@ -28,7 +33,19 @@ const defaultRoutes: StorageRoutes = {
   get: () => ({ path: "/get" }),
   exists: () => ({ path: "/exists" }),
   delete: () => ({ path: "/delete" }),
+  listObjects: () => ({ path: "/list" }),
+  deleteObjects: () => ({ path: "/delete-objects" }),
 };
+
+/** Keys sent in one `deleteObjects` request. */
+const DELETE_BATCH_SIZE = 1000;
+
+interface ListedObject {
+  readonly key: string;
+  readonly storageUri: string;
+  readonly size: number;
+  readonly lastModifiedAt?: string;
+}
 
 const createRoute = (
   defaultRoute: RouteConfig,
@@ -72,6 +89,20 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
       | undefined;
     return createRoute(fallback(...args), custom?.(...args));
   };
+
+  const postJson = async (
+    path: string,
+    headers: Record<string, string> | undefined,
+    body: unknown,
+  ) =>
+    fetch(`${config.baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await getHeaders(headers)),
+      },
+      body: JSON.stringify(body),
+    });
 
   const requestStorageUri = async (
     routeName: "get" | "exists" | "delete",
@@ -145,6 +176,57 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
     async delete({ storageUri }) {
       await requestStorageUri("delete", storageUri);
       return { deleted: true };
+    },
+    async listObjects(prefix?: string) {
+      const { path, headers } = resolveRoute("listObjects", [
+        { prefix },
+      ] as const);
+      const objects: StorageObject[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await postJson(path, headers, { prefix, cursor });
+        if (response.status === 404) {
+          throw new Error(
+            `The storage service has no ${path} route, which storage prune needs.`,
+          );
+        }
+        if (!response.ok) {
+          throw new Error(
+            `Failed to list storage objects: ${response.statusText}`,
+          );
+        }
+        const page = (await response.json()) as {
+          objects: ListedObject[];
+          cursor?: string;
+        };
+        for (const object of page.objects) {
+          parseStorageUri(object.storageUri, config.protocol);
+          objects.push({
+            key: object.key,
+            storageUri: object.storageUri,
+            size: object.size,
+            ...(object.lastModifiedAt === undefined
+              ? {}
+              : { lastModifiedAt: new Date(object.lastModifiedAt) }),
+          });
+        }
+        cursor = page.cursor;
+      } while (cursor !== undefined);
+      return objects;
+    },
+    async deleteObjects(keys) {
+      for (let offset = 0; offset < keys.length; offset += DELETE_BATCH_SIZE) {
+        const batch = keys.slice(offset, offset + DELETE_BATCH_SIZE);
+        const { path, headers } = resolveRoute("deleteObjects", [
+          { keys: batch },
+        ] as const);
+        const response = await postJson(path, headers, { keys: batch });
+        if (!response.ok) {
+          throw new Error(
+            `Failed to delete storage objects: ${response.statusText}`,
+          );
+        }
+      }
     },
   });
 };

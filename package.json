@@ -37,6 +37,8 @@
     "@cloudflare/vitest-pool-workers": "0.13.0",
     "@e2e-dev/mobile": "0.10.0",
     "@hono/node-server": "catalog:hono",
+    "@hot-updater/standalone": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@nx/js": "22.6.3",
     "@shadcn/lint": "^0.1.1",
     "@swc/helpers": "^0.5.17",

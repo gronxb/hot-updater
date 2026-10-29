@@ -496,7 +496,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
         basePath,
       };
     },
-    operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+    operations: [
+      "put",
+      "get",
+      "getDownloadUrl",
+      "exists",
+      "delete",
+      "listObjects",
+      "deleteObjects",
+    ],
   });
 
   it("returns one canonical Channel row under concurrent inserts", async () => {

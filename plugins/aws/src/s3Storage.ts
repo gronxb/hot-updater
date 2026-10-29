@@ -1,24 +1,14 @@
-import {
-  DeleteObjectCommand,
-  DeleteObjectsCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  ListObjectsV2Command,
-  S3Client,
-  type S3ClientConfig,
-} from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
-import {
-  createStorageAdapter,
-  createStorageKeyBuilder,
-  createStorageUri,
-  parseStorageUri,
-  type StorageAdapter,
-  type StorageAdapterWith,
-  type StorageObject,
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+import type {
+  StorageAdapter,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
+import {
+  createS3Storage,
+  type S3StorageOperations,
+} from "@hot-updater/storage-s3";
 
-import { type AwsCredentialsOption, toSdkCredentials } from "./lazyCredentials";
+import type { AwsCredentialsOption } from "./lazyCredentials";
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 
 export interface S3StorageConfig extends Omit<S3ClientConfig, "credentials"> {
@@ -35,220 +25,19 @@ export interface S3StorageConfig extends Omit<S3ClientConfig, "credentials"> {
   getDownloadUrl?: StorageAdapter["getDownloadUrl"];
 }
 
-type S3StorageOperations =
-  | "put"
-  | "get"
-  | "getDownloadUrl"
-  | "exists"
-  | "delete"
-  | "listObjects"
-  | "deleteObjects";
-
-/** Devices download right after the update check that returns the URL. */
-const PRESIGNED_URL_EXPIRES_IN_SECONDS = 3600;
-
-const isObjectNotFoundError = (error: unknown) =>
-  error instanceof Error &&
-  (error.name === "NotFound" || error.name === "NoSuchKey");
-
 export function s3Storage(
   config: S3StorageConfig,
 ): StorageAdapterWith<S3StorageOperations> {
   const { bucketName, basePath, getDownloadUrl, credentials, ...s3Config } =
     config;
-  const client = new S3Client(
-    applyS3RuntimeAwsConfig({
-      ...s3Config,
-      credentials: toSdkCredentials(credentials),
-    }),
+  return createS3Storage(
+    { name: "s3Storage", protocol: "s3" },
+    {
+      ...applyS3RuntimeAwsConfig(s3Config),
+      credentials,
+      bucketName,
+      basePath,
+      getDownloadUrl,
+    },
   );
-  const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "") ?? "";
-  const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
-
-  const getListPrefix = (prefix = "") => {
-    const normalizedPrefix = prefix.replace(/^\/+|\/+$/g, "");
-    const value = [normalizedBasePath, normalizedPrefix]
-      .filter(Boolean)
-      .join("/");
-    return value ? `${value}/` : "";
-  };
-
-  /**
-   * The URI `put` returns for the key, or null for a key no `put` writes,
-   * such as a folder marker that ends in "/".
-   */
-  const getListedStorageUri = (key: string) => {
-    try {
-      return createStorageUri({ bucket: bucketName, key, protocol: "s3" });
-    } catch {
-      return null;
-    }
-  };
-
-  const getRelativeKey = (key: string) => {
-    if (!normalizedBasePath) {
-      return key;
-    }
-
-    const basePrefix = `${normalizedBasePath}/`;
-    return key.startsWith(basePrefix) ? key.slice(basePrefix.length) : key;
-  };
-
-  const parseAndValidate = (storageUri: string) => {
-    const parsed = parseStorageUri(storageUri, "s3");
-    if (parsed.bucket !== bucketName) {
-      throw new Error(
-        `Bucket name mismatch: expected "${bucketName}", but found "${parsed.bucket}".`,
-      );
-    }
-    return parsed;
-  };
-
-  return createStorageAdapter({
-    name: "s3Storage",
-    protocol: "s3",
-    async listObjects(prefix) {
-      const objects: StorageObject[] = [];
-      let continuationToken: string | undefined;
-
-      do {
-        const response = await client.send(
-          new ListObjectsV2Command({
-            Bucket: bucketName,
-            ContinuationToken: continuationToken,
-            Prefix: getListPrefix(prefix),
-          }),
-        );
-
-        for (const object of response.Contents ?? []) {
-          if (!object.Key) {
-            continue;
-          }
-          const storageUri = getListedStorageUri(object.Key);
-          if (storageUri === null) {
-            continue;
-          }
-
-          objects.push({
-            key: getRelativeKey(object.Key),
-            lastModifiedAt: object.LastModified,
-            size: object.Size ?? 0,
-            storageUri,
-          });
-        }
-
-        continuationToken = response.NextContinuationToken;
-      } while (continuationToken);
-
-      return objects;
-    },
-    async deleteObjects(relativeKeys) {
-      const keys = relativeKeys.map((key) => getStorageKey(key));
-
-      for (let offset = 0; offset < keys.length; offset += 1000) {
-        const batch = keys.slice(offset, offset + 1000);
-        if (batch.length === 0) {
-          continue;
-        }
-
-        const response = await client.send(
-          new DeleteObjectsCommand({
-            Bucket: bucketName,
-            Delete: {
-              Objects: batch.map((Key) => ({ Key })),
-              Quiet: true,
-            },
-          }),
-        );
-        if (response.Errors && response.Errors.length > 0) {
-          throw new Error(
-            `Failed to delete ${response.Errors.length} S3 object(s).`,
-          );
-        }
-      }
-    },
-    async put({ key, body, contentLength, contentType }) {
-      const storageKey = getStorageKey(key);
-      const upload = new Upload({
-        client,
-        params: {
-          Body: body,
-          Bucket: bucketName,
-          CacheControl: "max-age=31536000",
-          ...(contentLength === undefined
-            ? {}
-            : { ContentLength: contentLength }),
-          ContentType: contentType,
-          Key: storageKey,
-        },
-      });
-      const response = await upload.done();
-      if (!response.Bucket || !response.Key) {
-        throw new Error("Upload failed");
-      }
-      return {
-        storageUri: createStorageUri({
-          bucket: bucketName,
-          key: storageKey,
-          protocol: "s3",
-        }),
-      };
-    },
-    async get({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
-      try {
-        const response = await client.send(
-          new GetObjectCommand({ Bucket: bucketName, Key: key }),
-        );
-        if (!response.Body) return { response: null };
-        const headers = new Headers();
-        if (response.ContentType)
-          headers.set("content-type", response.ContentType);
-        if (response.ContentLength !== undefined) {
-          headers.set("content-length", String(response.ContentLength));
-        }
-        return {
-          response: new Response(response.Body.transformToWebStream(), {
-            headers,
-          }),
-        };
-      } catch (error) {
-        if (isObjectNotFoundError(error)) return { response: null };
-        throw error;
-      }
-    },
-    async getDownloadUrl({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
-      if (getDownloadUrl) return getDownloadUrl({ storageUri });
-      // Loaded on the first presign: a server that passes getDownloadUrl,
-      // such as the managed Lambda with CloudFront, never loads it.
-      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
-      return {
-        url: await getSignedUrl(
-          client,
-          new GetObjectCommand({ Bucket: bucketName, Key: key }),
-          { expiresIn: PRESIGNED_URL_EXPIRES_IN_SECONDS },
-        ),
-      };
-    },
-    async exists({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
-      try {
-        await client.send(
-          new HeadObjectCommand({ Bucket: bucketName, Key: key }),
-        );
-        return { exists: true };
-      } catch (error) {
-        if (isObjectNotFoundError(error)) return { exists: false };
-        throw error;
-      }
-    },
-    async delete({ storageUri }) {
-      const { key } = parseAndValidate(storageUri);
-      await client.send(
-        new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
-      );
-      return { deleted: true };
-    },
-  });
 }

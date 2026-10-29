@@ -9,6 +9,9 @@ catalogs:
     '@aws-sdk/client-s3':
       specifier: 3.1066.0
       version: 3.1066.0
+    '@aws-sdk/lib-storage':
+      specifier: 3.1066.0
+      version: 3.1066.0
     '@aws-sdk/s3-request-presigner':
       specifier: 3.1066.0
       version: 3.1066.0
@@ -146,6 +149,12 @@ importers:
       '@hono/node-server':
         specifier: catalog:hono
         version: 1.19.17(hono@4.12.34)
+      '@hot-updater/standalone':
+        specifier: workspace:*
+        version: link:plugins/standalone
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:packages/test-utils
       '@nx/js':
         specifier: 22.6.3
         version: 22.6.3(@babel/traverse@7.29.7)(nx@22.6.3)
@@ -2141,12 +2150,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@hot-updater/standalone':
-        specifier: workspace:*
-        version: link:../../plugins/standalone
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../test-utils
       '@libsql/client':
         specifier: catalog:db
         version: 0.15.15
@@ -2295,7 +2298,7 @@ importers:
         specifier: 3.1066.0
         version: 3.1066.0(@aws-sdk/client-dynamodb@3.1066.0)
       '@aws-sdk/lib-storage':
-        specifier: 3.1066.0
+        specifier: catalog:aws
         version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
       '@aws-sdk/s3-request-presigner':
         specifier: catalog:aws
@@ -2309,6 +2312,9 @@ importers:
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@hot-updater/storage-s3':
+        specifier: workspace:*
+        version: link:../storage-s3
       hono:
         specifier: catalog:hono
         version: 4.12.34
@@ -2430,15 +2436,6 @@ importers:
 
   plugins/cloudflare:
     dependencies:
-      '@aws-sdk/client-s3':
-        specifier: catalog:aws
-        version: 3.1066.0
-      '@aws-sdk/lib-storage':
-        specifier: 3.1008.0
-        version: 3.1008.0(@aws-sdk/client-s3@3.1066.0)
-      '@aws-sdk/s3-request-presigner':
-        specifier: catalog:aws
-        version: 3.1066.0
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2451,6 +2448,9 @@ importers:
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@hot-updater/storage-s3':
+        specifier: workspace:*
+        version: link:../storage-s3
       cloudflare:
         specifier: 4.2.0
         version: 4.2.0
@@ -2461,6 +2461,15 @@ importers:
         specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@aws-sdk/lib-storage':
+        specifier: catalog:aws
+        version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
+      '@aws-sdk/s3-request-presigner':
+        specifier: catalog:aws
+        version: 3.1066.0
       '@cloudflare/vitest-pool-workers':
         specifier: 0.13.0
         version: 0.13.0(@cloudflare/workers-types@4.20260611.1)(@vitest/runner@4.1.4)(@vitest/snapshot@4.1.4)(vitest@4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(@typescript/typescript6@6.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0)))
@@ -2624,9 +2633,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2656,6 +2662,34 @@ importers:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
 
+  plugins/neon:
+    dependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+      '@hot-updater/postgres':
+        specifier: workspace:*
+        version: link:../postgres
+      '@hot-updater/storage-s3':
+        specifier: workspace:*
+        version: link:../storage-s3
+    devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@aws-sdk/lib-storage':
+        specifier: catalog:aws
+        version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
+
   plugins/plugin-core:
     dependencies:
       '@hot-updater/protocol':
@@ -2674,9 +2708,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2739,9 +2770,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2814,6 +2842,31 @@ importers:
       verkit:
         specifier: 'catalog:'
         version: 0.4.0
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
+
+  plugins/storage-s3:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@aws-sdk/lib-storage':
+        specifier: catalog:aws
+        version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
+      '@aws-sdk/s3-request-presigner':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+    devDependencies:
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
@@ -3111,12 +3164,6 @@ packages:
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@aws-sdk/client-dynamodb': ^3.1066.0
-
-  '@aws-sdk/lib-storage@3.1008.0':
-    resolution: {integrity: sha512-SWIzixPt9VG6jz8+tR8VklOi3FXY1J6WMfd1JEtY9gVtJaLGF5tWexIkjUnGHP8B6M6Uk+qC5zdr2Caome5Gfg==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      '@aws-sdk/client-s3': ^3.1008.0
 
   '@aws-sdk/lib-storage@3.1066.0':
     resolution: {integrity: sha512-KH3KHhfS2BhdLwEANbaOtslqwFEPaowoMckB9ELvu8UCOrwVXOrbU8/yrk4SNN+gzcB+n3EgihYUbvavjJOqVg==}
@@ -9700,10 +9747,6 @@ packages:
   '@sinonjs/samsam@8.0.3':
     resolution: {integrity: sha512-hw6HbX+GyVZzmaYNh82Ecj1vdGZrqVIn/keDTg63IgAwiQPO+xCz99uG6Woqgb4tM0mUiFENKZ4cqd7IX94AXQ==}
 
-  '@smithy/abort-controller@4.2.16':
-    resolution: {integrity: sha512-YH0c/t1n8dhzz/NyIEoqoHyn4tBvrtESNRUV+ar6to4eqA3jN2OGqhe9hAicmVCokd+EC3puYXsMAG6PDZVEgg==}
-    engines: {node: '>=18.0.0'}
-
   '@smithy/core@3.24.6':
     resolution: {integrity: sha512-wBXDRup6UU97VKyaiRo8AssnfStPtG0oAAfpq/bC0a1YYau8pM86YB4kM6ccoVi1mS8l/UHbn9oDM+7uozr/ug==}
     engines: {node: '>=18.0.0'}
@@ -9728,10 +9771,6 @@ packages:
     resolution: {integrity: sha512-GGP3O9QFD24uGeAXYUjwSTXARoqpZykHadOmA8G5vfJPK0/DC67qa//0qvqrJzL1xc8WQWX7/yc7fwudjPHPhA==}
     engines: {node: '>=14.0.0'}
 
-  '@smithy/middleware-endpoint@4.5.6':
-    resolution: {integrity: sha512-zdG5bJZOiM2PRgL2lwcgui6uwZ+s5y6Qsk/rk05Q69sZJT6oi1x+v8Kn++V/q9VY94EgOtEe5kivpu+eGau0wQ==}
-    engines: {node: '>=18.0.0'}
-
   '@smithy/node-http-handler@4.7.7':
     resolution: {integrity: sha512-ZAFvHXrEk6K180EVhmZVg8GU5pUH5BSFqRs27JW3j1qEFx9YyYwWFx17x/MHcjALYimGAji7qEOlF1++be+G5A==}
     engines: {node: '>=18.0.0'}
@@ -9742,10 +9781,6 @@ packages:
 
   '@smithy/signature-v4@5.7.4':
     resolution: {integrity: sha512-tHy0K0VtqNd5Y7Y41h0a0Lhh0L1GzC08dTWg0F7vRJWFtTENg7IZikf3wQkanYIRdb7ngoIPMTmqgUi401fEeQ==}
-    engines: {node: '>=18.0.0'}
-
-  '@smithy/smithy-client@4.13.6':
-    resolution: {integrity: sha512-tAf35/JW/DvMlACcazcoIOKOV0JBqyOvxjPTEME9W+m9wLcE0G1rwADc7Ntu38rY5C9OH8jZjpo4tbtjmIjEBQ==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/types@4.16.1':
@@ -21661,21 +21696,10 @@ snapshots:
       '@smithy/types': 4.16.1
       tslib: 2.8.1
 
-  '@aws-sdk/lib-storage@3.1008.0(@aws-sdk/client-s3@3.1066.0)':
-    dependencies:
-      '@aws-sdk/client-s3': 3.1066.0
-      '@smithy/abort-controller': 4.2.16
-      '@smithy/middleware-endpoint': 4.5.6
-      '@smithy/smithy-client': 4.13.6
-      buffer: 5.6.0
-      events: 3.3.0
-      stream-browserify: 3.0.0
-      tslib: 2.8.1
-
   '@aws-sdk/lib-storage@3.1066.0(@aws-sdk/client-s3@3.1066.0)':
     dependencies:
       '@aws-sdk/client-s3': 3.1066.0
-      '@smithy/core': 3.24.6
+      '@smithy/core': 3.36.2
       '@smithy/types': 4.16.1
       buffer: 5.6.0
       events: 3.3.0
@@ -31113,11 +31137,6 @@ snapshots:
       '@sinonjs/commons': 3.0.1
       type-detect: 4.1.0
 
-  '@smithy/abort-controller@4.2.16':
-    dependencies:
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
   '@smithy/core@3.24.6':
     dependencies:
       '@aws-crypto/crc32': 5.2.0
@@ -31150,11 +31169,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@smithy/middleware-endpoint@4.5.6':
-    dependencies:
-      '@smithy/core': 3.36.2
-      tslib: 2.8.1
-
   '@smithy/node-http-handler@4.7.7':
     dependencies:
       '@smithy/core': 3.36.2
@@ -31168,12 +31182,6 @@ snapshots:
       tslib: 2.8.1
 
   '@smithy/signature-v4@5.7.4':
-    dependencies:
-      '@smithy/core': 3.36.2
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
-  '@smithy/smithy-client@4.13.6':
     dependencies:
       '@smithy/core': 3.36.2
       '@smithy/types': 4.16.1

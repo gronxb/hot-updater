@@ -99,5 +99,6 @@ For example, `gs://my-bucket/releases/1.0.0/bundle%20ios.zip` is stored in the
 `firebaseStorage` implements the Web-stream upload and `Response` read contract,
 but the current Firebase Admin implementation buffers each complete upload and
 download in memory. It also implements download URL generation, existence
-checks, and exact deletion. `getDownloadUrl` returns a CDN URL when `cdnUrl` is
+checks, exact deletion, listing below a prefix, and deletion of exact keys,
+which `hot-updater storage prune` uses. `getDownloadUrl` returns a CDN URL when `cdnUrl` is
 configured and a Firebase signed URL otherwise.

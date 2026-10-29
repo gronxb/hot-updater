@@ -79,8 +79,6 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",
-    "@hot-updater/standalone": "workspace:*",
-    "@hot-updater/test-utils": "workspace:*",
     "@libsql/client": "catalog:db",
     "@types/express": "^5.0.0",
     "@types/node": "catalog:",
@@ -98,10 +96,5 @@
     "prisma": "catalog:db",
     "uuidv7": "catalog:",
     "wrangler": "^4.69.0"
-  },
-  "nx": {
-    "implicitDependencies": [
-      "!@hot-updater/test-utils"
-    ]
   }
 }
