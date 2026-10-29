@@ -561,34 +561,43 @@ export const handleSecretsIssue = async (
   });
 };
 
+/** The env file `secrets import` reads without one given. */
+const DEFAULT_IMPORT_FILE = ".env.hotupdater";
+
 /**
- * `secrets import`: stores the credentials hot-updater.config.ts reads with
- * `secretEnv`, and the app's API key, from `.env.hotupdater` through the
- * config's team `secrets` adapter, and reads them back. It deletes nothing:
- * the file's lines go on overriding the adapter on this machine.
+ * `secrets import [env-file]`: stores the credentials hot-updater.config.ts
+ * reads with `secretEnv`, and the app's API key, from `envFile`,
+ * `.env.hotupdater` by default, through the config's team `secrets`
+ * adapter, and reads them back. Only the file is read, never the
+ * environment. It deletes nothing: where the file is loaded, its lines go
+ * on overriding the adapter.
  */
-export const handleSecretsImport = async (): Promise<void> => {
+export const handleSecretsImport = async (envFile?: string): Promise<void> => {
   printBanner();
   await reportFailure(async () => {
     const config = await loadConfig(null);
     const adapter = getConfiguredAdapter(config.secrets);
     if (adapter === undefined) {
       throw new Error(
-        "hot-updater.config.ts sets no secrets adapter, so .env.hotupdater is already where secrets are read.\nSet secrets to a team store first.",
+        "hot-updater.config.ts sets no secrets adapter.\nSet secrets to a team store first.",
       );
     }
+    const file = envFile ?? DEFAULT_IMPORT_FILE;
     // A config with no secretEnv, such as Firebase's, still shares the
     // app's API key.
     const names = [...getSecretEnvNames(config), MANAGED_CLIENT_CREDENTIAL_ENV];
-    const stored = await storeEnvFileSecrets(adapter, names, getCwd());
+    const stored = await storeEnvFileSecrets(adapter, names, getCwd(), envFile);
     if (stored.length === 0) {
-      throw new Error(`.env.hotupdater sets none of ${listNames(names)}.`);
+      throw new Error([`${file} sets none of these:`, ...names].join("\n"));
     }
     p.log.success(
-      `Stored ${listNames(stored)} in the ${adapter.name} secrets adapter.`,
+      ui.block(`Stored in the ${adapter.name} secrets adapter`, stored),
     );
     p.log.info(
-      ".env.hotupdater still sets them: delete those lines, or keep them to override the adapter here.",
+      [
+        `${file} still sets them where it is loaded, over the adapter.`,
+        "Delete those lines to read them from the adapter.",
+      ].join("\n"),
     );
   });
 };

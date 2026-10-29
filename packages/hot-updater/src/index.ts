@@ -464,13 +464,14 @@ secretsCommand
 secretsCommand
   .command("import")
   .description(
-    "Store the deploy credentials .env.hotupdater sets in the team secrets adapter",
+    "Store the deploy credentials an env file sets in the team secrets adapter",
   )
+  .argument("[env-file]", "the env file to read (default: .env.hotupdater)")
   .addHelpText(
     "after",
-    "\nIt reads each back and deletes nothing: .env.hotupdater's lines still override the adapter on this machine.",
+    "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter.",
   )
-  .action(() => handleSecretsImport());
+  .action((envFile?: string) => handleSecretsImport(envFile));
 
 secretsCommand
   .command("issue")

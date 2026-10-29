@@ -10,6 +10,7 @@ import {
   keepsKeysOnThisMachine,
   p,
   readLoadedHotUpdaterEnv,
+  readSecrets,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -122,7 +123,7 @@ export const prepareIssuedCredential = async (
 
   const cwd = getCwd();
   if (!replace) {
-    const held = (await secrets.get([name], { cwd }))[name];
+    const held = (await readSecrets(secrets, [name], cwd))[name];
     if (typeof held === "string" && held) return { status: "stored" };
   }
 

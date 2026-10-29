@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { assembleServer } from "@hot-updater/cli-tools";
 import {
   createMemoryAdapter,
@@ -63,6 +67,33 @@ describe("loadServer", () => {
     await server.dispose();
     expect(remote.dispose).toHaveBeenCalledOnce();
     expect(remote.fetchAdmin).not.toHaveBeenCalled();
+  });
+
+  it("names a variable the config asserts with process.env that is unset, before any adapter reaches its provider, and closes the database", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-load-server-"),
+    );
+    await fs.writeFile(path.join(directory, "package.json"), "{}");
+    await fs.writeFile(
+      path.join(directory, "hot-updater.config.ts"),
+      "export default { database: d1Database({ cloudflareApiToken: process.env.HOT_UPDATER_SPEC_API_TOKEN! }) };\n",
+    );
+    vi.spyOn(process, "cwd").mockReturnValue(directory);
+    vi.stubEnv("HOT_UPDATER_SPEC_API_TOKEN", undefined);
+    const database = createDatabase();
+    try {
+      const loaded = loadServer({ database, storage, plugins: [] });
+
+      await expect(loaded).rejects.toBeInstanceOf(ServerConfigError);
+      await expect(loaded).rejects.toThrow(
+        "hot-updater.config reads this with process.env, and it is not set:\nHOT_UPDATER_SPEC_API_TOKEN\n",
+      );
+      expect(database.dispose).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+      await fs.rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("needs a database in hot-updater.config.ts", async () => {

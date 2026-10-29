@@ -263,14 +263,21 @@ nothing there.
    the default keychain ahead of the runner's, and restores the runner's
    keychains when the build ends. On a runner that starts empty, Xcode creates
    an Apple Development certificate for each build and keeps its private key
-   in that keychain, so the CLI revokes the certificates it finds there
-   through the App Store Connect API, then deletes the keychain with their
-   keys. The export signs with the cloud-managed distribution certificate,
+   in that keychain, so the CLI revokes the signing certificates whose
+   private key is there through the App Store Connect API, then deletes the
+   keychain with their keys. The CA certificates Xcode imports beside them
+   have no private key and are never revoked. The export signs with the cloud-managed distribution certificate,
    which never leaves Apple. A scheme whose `exportOptionsPlist` exports for
    another method, such as `development`, may be signed with the certificate
    Xcode creates, so it builds in the runner's own keychains and keeps it.
 5. It builds, tracks the build, submits it, and deletes the temporary files
    and the keychain.
+
+A certificate the CLI can't revoke is named with its serial number and the
+page to revoke it by hand. When App Store Connect answers 403 because the
+team's Apple Developer Program License Agreement changed, the build and the
+revocation say so: the Account Holder must accept it at
+https://developer.apple.com/account.
 
 A self-hosted macOS runner that keeps a signing identity in its login keychain
 still uses it: the build's keychain comes first in the search list, and Xcode

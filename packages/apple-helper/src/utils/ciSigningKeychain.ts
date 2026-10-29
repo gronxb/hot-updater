@@ -11,6 +11,10 @@ import {
 } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
+import {
+  isProgramLicenseAgreementError,
+  PROGRAM_LICENSE_AGREEMENT_HINT,
+} from "../asc/programLicenseAgreement";
 import { createAppStoreConnectToken } from "../uploadToTestFlight";
 
 const API_URL = "https://api.appstoreconnect.apple.com";
@@ -30,7 +34,7 @@ const runSecurity: RunSecurity = async (args) =>
 const parseKeychains = (stdout: string): string[] =>
   [...stdout.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
 
-/** A certificate Xcode created in the build's keychain. */
+/** A signing certificate Xcode created in the build's keychain. */
 export interface KeychainCertificate {
   /** Uppercase hex without leading zeros, as App Store Connect lists it. */
   readonly serialNumber: string;
@@ -50,7 +54,11 @@ const normalizeSerial = (serial: string) =>
  */
 export interface SigningKeychain {
   readonly path: string;
-  /** The certificates in the keychain: those Xcode created while building. */
+  /**
+   * The signing identities in the keychain, the certificates Xcode created
+   * while building, each with its private key there. The CA certificates
+   * Xcode imports beside them have no private key, and are not listed.
+   */
   certificates(): Promise<KeychainCertificate[]>;
   /**
    * Restores the default keychain and the search list the build found, and
@@ -273,21 +281,59 @@ export const createSigningKeychain = async ({
   return {
     path: keychainPath,
     certificates: async () => {
+      // Without -v: an identity whose chain the keychain can't verify yet is
+      // still one Xcode created.
+      const identities = new Set(
+        [
+          ...(
+            await security(["find-identity", "-p", "codesigning", keychainPath])
+          ).matchAll(/^\s*\d+\)\s+([0-9A-F]{40})\s/gm),
+        ].map((match) => match[1]!),
+      );
+      if (identities.size === 0) return [];
       const pems =
         (await security(["find-certificate", "-a", "-p", keychainPath])).match(
           /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g,
         ) ?? [];
-      return pems.map((pem) => {
+      return pems.flatMap((pem) => {
         const certificate = new crypto.X509Certificate(pem);
-        return {
-          serialNumber: normalizeSerial(certificate.serialNumber),
-          commonName:
-            certificate.subject.match(/^CN=(.*)$/m)?.[1] ?? certificate.subject,
-        };
+        if (!identities.has(certificate.fingerprint.replaceAll(":", ""))) {
+          return [];
+        }
+        return [
+          {
+            serialNumber: normalizeSerial(certificate.serialNumber),
+            commonName:
+              certificate.subject.match(/^CN=(.*)$/m)?.[1] ??
+              certificate.subject,
+          },
+        ];
       });
     },
     dispose,
   };
+};
+
+/** A request App Store Connect refused, in one line. */
+class AppStoreConnectRefusal extends Error {
+  /** Whether the team has a Program License Agreement to accept. */
+  readonly agreement: boolean;
+  constructor(message: string, agreement: boolean) {
+    super(message);
+    this.agreement = agreement;
+  }
+}
+
+const refusal = async (action: string, response: Response) => {
+  const body = (await response.json().catch(() => undefined)) as
+    | { errors?: { code?: string; detail?: string; title?: string }[] }
+    | undefined;
+  return new AppStoreConnectRefusal(
+    `${action} failed (HTTP ${response.status}).`,
+    isProgramLicenseAgreementError(
+      Array.isArray(body?.errors) ? body.errors : [],
+    ),
+  );
 };
 
 /**
@@ -296,7 +342,8 @@ export const createSigningKeychain = async ({
  * empty, Xcode creates a development certificate for every build, and App
  * Store Connect refuses new ones once a team has its maximum. Each is found
  * in the team's certificates by serial number. A revocation that fails is
- * reported with where to revoke it by hand, and never fails the build.
+ * reported with each certificate's name and serial and where to revoke it
+ * by hand, and never fails the build.
  */
 export const revokeKeychainCertificates = async ({
   certificates,
@@ -310,12 +357,13 @@ export const revokeKeychainCertificates = async ({
   privateKey?: crypto.KeyObject;
   fetch?: typeof globalThis.fetch;
 }): Promise<{ revoked: string[]; failed: string[] }> => {
-  const revoked: string[] = [];
-  const failed: string[] = [];
-  if (certificates.length === 0) return { revoked, failed };
+  const revoked: KeychainCertificate[] = [];
+  const failed: { certificate: KeychainCertificate; status?: number }[] = [];
+  /** Why none could be revoked: the token or the listing failed. */
+  let reason: string | undefined;
+  let agreement = false;
+  if (certificates.length === 0) return { revoked: [], failed: [] };
 
-  const describe = ({ commonName, serialNumber }: KeychainCertificate) =>
-    `${commonName} (serial ${serialNumber})`;
   try {
     const token = createAppStoreConnectToken({
       privateKey:
@@ -338,9 +386,7 @@ export const revokeKeychainCertificates = async ({
     while (next) {
       const response = await fetch(next, { headers });
       if (!response.ok) {
-        throw new Error(
-          `Listing the team's certificates failed (HTTP ${response.status}).`,
-        );
+        throw await refusal("Listing the team's certificates", response);
       }
       const body = (await response.json()) as {
         data?: { id: string; attributes?: { serialNumber?: string } }[];
@@ -365,25 +411,30 @@ export const revokeKeychainCertificates = async ({
         headers,
       });
       if (response.ok || response.status === 404) {
-        revoked.push(describe(certificate));
+        revoked.push(certificate);
       } else {
-        failed.push(`${describe(certificate)}: HTTP ${response.status}`);
+        agreement ||= (await refusal("Revoking", response)).agreement;
+        failed.push({ certificate, status: response.status });
       }
     }
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    reason = error instanceof Error ? error.message : String(error);
+    agreement ||= error instanceof AppStoreConnectRefusal && error.agreement;
     for (const certificate of certificates) {
-      if (!revoked.includes(describe(certificate))) {
-        failed.push(`${describe(certificate)}: ${reason}`);
-      }
+      if (!revoked.includes(certificate)) failed.push({ certificate });
     }
   }
 
+  const describe = ({ commonName, serialNumber }: KeychainCertificate) =>
+    `${commonName} (serial ${serialNumber})`;
   if (revoked.length > 0) {
     p.log.info(
       [
         "Revoked the certificates Xcode created for this build:",
-        ...revoked,
+        ...revoked.flatMap(({ commonName, serialNumber }) => [
+          commonName,
+          `Serial ${serialNumber}`,
+        ]),
       ].join("\n"),
     );
   }
@@ -391,13 +442,20 @@ export const revokeKeychainCertificates = async ({
     p.log.warn(
       [
         "Couldn't revoke the certificates Xcode created for this build.",
-        ...failed,
-        "Revoke them at:",
+        ...(reason === undefined ? [] : [reason]),
+        ...(agreement ? [PROGRAM_LICENSE_AGREEMENT_HINT] : []),
+        ...failed.flatMap(({ certificate, status }) => [
+          certificate.commonName,
+          `Serial ${certificate.serialNumber}${status === undefined ? "" : ` (HTTP ${status})`}`,
+        ]),
         CERTIFICATES_URL,
       ].join("\n"),
     );
   }
-  return { revoked, failed };
+  return {
+    revoked: revoked.map(describe),
+    failed: failed.map(({ certificate }) => describe(certificate)),
+  };
 };
 
 const TERMINATION_SIGNALS = ["SIGHUP", "SIGINT", "SIGTERM"] as const;

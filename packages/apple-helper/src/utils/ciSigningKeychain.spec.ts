@@ -44,15 +44,69 @@ hkjOPQQDAgNIADBFAiBdmDV0kDR3U6TLxMUOPKDrfOB6mWSCrwudkZwqdUKgUQIh
 AIuXK3FrmQrp/cVXu+yfChxvGgzf6JlHqDclVa3JkPpT
 -----END CERTIFICATE-----`;
 
+/**
+ * The Apple WWDR intermediate CA Xcode imports into the keychain beside the
+ * certificate it creates: no private key, so no signing identity.
+ */
+const WWDR_INTERMEDIATE = `-----BEGIN CERTIFICATE-----
+MIIEUTCCAzmgAwIBAgIQfK9pCiW3Of57m0R6wXjF7jANBgkqhkiG9w0BAQsFADBi
+MQswCQYDVQQGEwJVUzETMBEGA1UEChMKQXBwbGUgSW5jLjEmMCQGA1UECxMdQXBw
+bGUgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxFjAUBgNVBAMTDUFwcGxlIFJvb3Qg
+Q0EwHhcNMjAwMjE5MTgxMzQ3WhcNMzAwMjIwMDAwMDAwWjB1MUQwQgYDVQQDDDtB
+cHBsZSBXb3JsZHdpZGUgRGV2ZWxvcGVyIFJlbGF0aW9ucyBDZXJ0aWZpY2F0aW9u
+IEF1dGhvcml0eTELMAkGA1UECwwCRzMxEzARBgNVBAoMCkFwcGxlIEluYy4xCzAJ
+BgNVBAYTAlVTMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2PWJ/KhZ
+C4fHTJEuLVaQ03gdpDDppUjvC0O/LYT7JF1FG+XrWTYSXFRknmxiLbTGl8rMPPbW
+BpH85QKmHGq0edVny6zpPwcR4YS8Rx1mjjmi6LRJ7TrS4RBgeo6TjMrA2gzAg9Dj
++ZHWp4zIwXPirkbRYp2SqJBgN31ols2N4Pyb+ni743uvLRfdW/6AWSN1F7gSwe0b
+5TTO/iK1nkmw5VW/j4SiPKi6xYaVFuQAyZ8D0MyzOhZ71gVcnetHrg21LYwOaU1A
+0EtMOwSejSGxrC5DVDDOwYqGlJhL32oNP/77HK6XF8J4CjDgXx9UO0m3JQAaN4LS
+VpelUkl8YDib7wIDAQABo4HvMIHsMBIGA1UdEwEB/wQIMAYBAf8CAQAwHwYDVR0j
+BBgwFoAUK9BpR5R2Cf70a40uQKb3R01/CF4wRAYIKwYBBQUHAQEEODA2MDQGCCsG
+AQUFBzABhihodHRwOi8vb2NzcC5hcHBsZS5jb20vb2NzcDAzLWFwcGxlcm9vdGNh
+MC4GA1UdHwQnMCUwI6AhoB+GHWh0dHA6Ly9jcmwuYXBwbGUuY29tL3Jvb3QuY3Js
+MB0GA1UdDgQWBBQJ/sAVkPmvZAqSErkmKGMMl+ynsjAOBgNVHQ8BAf8EBAMCAQYw
+EAYKKoZIhvdjZAYCAQQCBQAwDQYJKoZIhvcNAQELBQADggEBAK1lE+j24IF3RAJH
+Qr5fpTkg6mKp/cWQyXMT1Z6b0KoPjY3L7QHPbChAW8dVJEH4/M/BtSPp3Ozxb8qA
+HXfCxGFJJWevD8o5Ja3T43rMMygNDi6hV0Bz+uZcrgZRKe3jhQxPYdwyFot30ETK
+XXIDMUacrptAGvr04NM++i+MZp+XxFRZ79JI9AeZSWBZGcfdlNHAwWx/eCHvDOs7
+bJmCS1JgOLU5gm3sUjFTvg+RTElJdI+mUcuER04ddSduvfnSXPN/wmwLCTbiZOTC
+NwMUGdXqapSqqdv+9poIZ4vvK7iqF0mDr8/LvOnP6pVxsLRFoszlh6oKw0E6eVza
+UDSdlTs=
+-----END CERTIFICATE-----`;
+
+/** A signing identity's SHA-1 hash, as `security find-identity` prints it. */
+const identityHash = (pem: string) =>
+  new crypto.X509Certificate(pem).fingerprint.replaceAll(":", "");
+
+/** What `security find-identity -p codesigning` prints for `identities`. */
+const findIdentityOutput = (identities: readonly string[]) =>
+  [
+    "",
+    "Policy: Code Signing",
+    "  Matching identities",
+    ...identities.map(
+      (pem, index) =>
+        `  ${index + 1}) ${identityHash(pem)} "${new crypto.X509Certificate(pem).subject.match(/^CN=(.*)$/m)?.[1]}"`,
+    ),
+    `     ${identities.length} identities found`,
+    "",
+  ].join("\n");
+
 const LOGIN = "/Users/runner/Library/Keychains/login.keychain-db";
 const SYSTEM = "/Library/Keychains/System.keychain";
 
 /** A fake `security`, recording each call, that prints what macOS would. */
 const fakeSecurity = ({
   certificates = "",
+  identities = certificates.includes(XCODE_CERTIFICATE)
+    ? [XCODE_CERTIFICATE]
+    : [],
   fail,
 }: {
   certificates?: string;
+  /** The certificates with their private key in the keychain. */
+  identities?: readonly string[];
   fail?: (args: readonly string[]) => boolean;
 } = {}) => {
   const calls: string[][] = [];
@@ -65,6 +119,7 @@ const fakeSecurity = ({
     if (args[0] === "list-keychains" && args.length === 3) {
       return `    "${LOGIN}"\n    "${SYSTEM}"`;
     }
+    if (args[0] === "find-identity") return findIdentityOutput(identities);
     if (args[0] === "find-certificate") return certificates;
     return "";
   });
@@ -267,7 +322,7 @@ describe("createSigningKeychain", () => {
 
   it("lists the certificates Xcode created in it by serial number", async () => {
     const { security } = fakeSecurity({
-      certificates: `${XCODE_CERTIFICATE}\n`,
+      certificates: `${WWDR_INTERMEDIATE}\n${XCODE_CERTIFICATE}\n`,
     });
     const keychain = await createSigningKeychain({
       security,
@@ -281,6 +336,27 @@ describe("createSigningKeychain", () => {
         serialNumber: "A1B2C3D4E5F",
         commonName: "Apple Development: Created via API (ABCDE12345)",
       },
+    ]);
+    await keychain.dispose();
+  });
+
+  it("lists no intermediate CA certificate, which has no private key in it", async () => {
+    const { security, calls } = fakeSecurity({
+      certificates: `${WWDR_INTERMEDIATE}\n`,
+    });
+    const keychain = await createSigningKeychain({
+      security,
+      directory,
+      lockPath: lock(),
+      acquireLock: fakeLock().acquireLock,
+    });
+
+    await expect(keychain.certificates()).resolves.toEqual([]);
+    expect(calls.at(-1)).toEqual([
+      "find-identity",
+      "-p",
+      "codesigning",
+      keychain.path,
     ]);
     await keychain.dispose();
   });
@@ -346,7 +422,11 @@ describe("revokeKeychainCertificates", () => {
     ]);
     expect(requests[0]!.headers.get("authorization")).toMatch(/^Bearer ey/);
     expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining("Revoked the certificates Xcode created"),
+      [
+        "Revoked the certificates Xcode created for this build:",
+        "Apple Development: Created via API (ABCDE12345)",
+        "Serial A1B2C3D4E5F",
+      ].join("\n"),
     );
   });
 
@@ -377,13 +457,59 @@ describe("revokeKeychainCertificates", () => {
     });
 
     expect(result.failed).toEqual([
-      "Apple Development: Created via API (ABCDE12345) (serial A1B2C3D4E5F): HTTP 403",
+      "Apple Development: Created via API (ABCDE12345) (serial A1B2C3D4E5F)",
     ]);
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Revoke them at:\nhttps://developer.apple.com/account/resources/certificates/list",
-      ),
+      [
+        "Couldn't revoke the certificates Xcode created for this build.",
+        "Apple Development: Created via API (ABCDE12345)",
+        "Serial A1B2C3D4E5F (HTTP 403)",
+        "https://developer.apple.com/account/resources/certificates/list",
+      ].join("\n"),
     );
+  });
+
+  it("names each certificate it couldn't revoke and the agreement to accept, in lines of 73 columns at most", async () => {
+    const { fetch } = mockAppStoreConnect((request) =>
+      request.method === "GET"
+        ? Response.json(
+            {
+              errors: [
+                {
+                  code: "FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED",
+                  detail:
+                    "To resolve this issue, your team's Account Holder must agree to the latest Program License Agreement.",
+                },
+              ],
+            },
+            { status: 403 },
+          )
+        : undefined,
+    );
+
+    const result = await revokeKeychainCertificates({
+      certificates: [CERTIFICATE],
+      apiKey,
+      fetch,
+    });
+
+    expect(result.failed).toHaveLength(1);
+    const warning = log.warn.mock.calls[0]![0] as string;
+    expect(warning).toBe(
+      [
+        "Couldn't revoke the certificates Xcode created for this build.",
+        "Listing the team's certificates failed (HTTP 403).",
+        "The Account Holder must accept the latest Program License Agreement:",
+        "https://developer.apple.com/account",
+        "Apple Development: Created via API (ABCDE12345)",
+        "Serial A1B2C3D4E5F",
+        "https://developer.apple.com/account/resources/certificates/list",
+      ].join("\n"),
+    );
+    // Clack's gutter takes 3 of 76 columns.
+    for (const line of warning.split("\n")) {
+      expect(line.length).toBeLessThanOrEqual(73);
+    }
   });
 
   it("asks App Store Connect nothing when Xcode created no certificate", async () => {
@@ -447,6 +573,30 @@ describe("withSigningKeychain", () => {
       ["delete-keychain", keychainPath],
     ]);
     expect(requests.at(-1)!.method).toBe("DELETE");
+  });
+
+  it("asks App Store Connect nothing and warns of nothing when the keychain holds only intermediate CAs", async () => {
+    const { security } = fakeSecurity({
+      certificates: `${WWDR_INTERMEDIATE}\n`,
+    });
+    const { fetch, requests } = mockAppStoreConnect();
+
+    await expect(
+      withSigningKeychain({
+        enabled: true,
+        apiKey,
+        run: async () => {
+          throw new Error("Export failed");
+        },
+        security,
+        lockPath: lock(),
+        acquireLock: fakeLock().acquireLock,
+        fetch,
+      }),
+    ).rejects.toThrow("Export failed");
+
+    expect(requests).toEqual([]);
+    expect(log.warn).not.toHaveBeenCalled();
   });
   it("revokes and restores before a termination signal ends the build, with the key file already gone", async () => {
     const { security, calls } = fakeSecurity({

@@ -303,7 +303,7 @@ describe("ensureAscApiKey", () => {
       String(log.success.mock.calls[0]![0]),
     );
     expect(stored).toMatch(
-      /^App Store Connect API key stored\nKey ID  KEY1234567\nSource  \S*asc-api-key\.json$/u,
+      /^App Store Connect API key stored\nKey ID  KEY1234567\nTeam    Acme \(team-1\)\nSource  \S*asc-api-key\.json$/u,
     );
     // The key is in the file alone: nothing printed or asked holds it.
     expect(printed()).not.toContain("MIGHAgEA");

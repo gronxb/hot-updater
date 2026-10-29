@@ -690,7 +690,7 @@ describe("createAscKeyIssuer", () => {
       {
         errors: [{ detail: "The Program License Agreement has been updated." }],
       },
-      "The Account Holder must accept the new Apple Developer Program License\nAgreement",
+      "The Account Holder must accept the latest Program License Agreement:\nhttps://developer.apple.com/account",
     ],
     [
       409,

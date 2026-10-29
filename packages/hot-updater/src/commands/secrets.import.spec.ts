@@ -103,11 +103,28 @@ describe("hot-updater secrets import", () => {
     });
     expect(store.get).toHaveBeenCalledTimes(1);
     expect(log.success).toHaveBeenCalledWith(
-      "Stored HOT_UPDATER_CLOUDFLARE_API_TOKEN, HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID, and HOT_UPDATER_API_KEY in the teamStore secrets adapter.",
+      [
+        "Stored in the teamStore secrets adapter",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+        "HOT_UPDATER_API_KEY",
+      ].join("\n"),
     );
     expect(log.info).toHaveBeenCalledWith(
-      ".env.hotupdater still sets them: delete those lines, or keep them to override the adapter here.",
+      [
+        ".env.hotupdater still sets them where it is loaded, over the adapter.",
+        "Delete those lines to read them from the adapter.",
+      ].join("\n"),
     );
+    // One idea per line, inside clack's gutter on 76 columns.
+    for (const [message] of [
+      ...log.success.mock.calls,
+      ...log.info.mock.calls,
+    ]) {
+      for (const line of String(message).split("\n")) {
+        expect(line.length).toBeLessThanOrEqual(73);
+      }
+    }
     expect(
       await fs.readFile(path.join(directory, ".env.hotupdater"), "utf8"),
     ).toBe(ENV_FILE);
@@ -120,7 +137,7 @@ describe("hot-updater secrets import", () => {
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      "hot-updater.config.ts sets no secrets adapter, so .env.hotupdater is already where secrets are read.\nSet secrets to a team store first.",
+      "hot-updater.config.ts sets no secrets adapter.\nSet secrets to a team store first.",
     );
   });
 
@@ -149,7 +166,47 @@ describe("hot-updater secrets import", () => {
     expect(process.exitCode).toBe(1);
     expect(store.set).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      ".env.hotupdater sets none of HOT_UPDATER_API_KEY.",
+      ".env.hotupdater sets none of these:\nHOT_UPDATER_API_KEY",
+    );
+  });
+
+  it("reads the env file it is given instead, and never the environment", async () => {
+    const { store, held } = teamStore();
+    configure(store, [
+      "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+    ]);
+    await fs.writeFile(
+      path.join(directory, ".env.hotupdater.rc22"),
+      "HOT_UPDATER_CLOUDFLARE_API_TOKEN=rc22-token\n",
+    );
+    vi.stubEnv("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY", "shell-secret");
+
+    try {
+      await handleSecretsImport(".env.hotupdater.rc22");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(process.exitCode).toBeUndefined();
+    expect(Object.fromEntries(held)).toEqual({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "rc22-token",
+    });
+    expect(log.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^\.env\.hotupdater\.rc22 still sets them/u),
+    );
+  });
+
+  it("refuses an env file it is given that can't be read", async () => {
+    const { store } = teamStore();
+    configure(store, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
+
+    await handleSecretsImport(".env.missing");
+
+    expect(process.exitCode).toBe(1);
+    expect(store.set).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringMatching(/^Can't read \.env\.missing\.\nENOENT/u),
     );
   });
 });

@@ -1,5 +1,6 @@
 import {
   ASC_INTEGRATIONS_URL,
+  type AscTeam,
   type IssueAscApiKey,
   type IssuedAscApiKey,
   issueAscApiKey,
@@ -84,6 +85,13 @@ const today = () => new Date().toISOString().slice(0, 10);
  * picks: a team key serves every app in the team anyway.
  */
 const issuedKeyName = () => `hot-updater ${today()}`;
+
+/**
+ * The team the key was issued in, `<name> (<team ID>)`: named even when the
+ * Apple Account has only that one, which is picked without a prompt.
+ */
+const describeTeam = ({ name, teamId }: AscTeam) =>
+  name && teamId ? `${name} (${teamId})` : (name ?? teamId);
 
 /** Throws `CredentialSetupRefusedError` for a cancelled prompt. */
 const answered = <T>(answer: T | symbol): T => {
@@ -233,10 +241,12 @@ export const ensureAscApiKey = async ({
   });
   try {
     await storeIssued(store, name, key);
+    const team = describeTeam(key.team);
     p.log.success(
       ui.block("App Store Connect API key stored", [
         name !== POLICY.kind && ui.kv("Name", name),
         ui.kv("Key ID", key.keyId),
+        team && ui.kv("Team", team),
         ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
       ]),
     );
