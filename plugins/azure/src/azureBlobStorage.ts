@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { isTokenCredential, type TokenCredential } from "@azure/core-auth";
 import {
   BlobSASPermissions,
@@ -227,12 +229,9 @@ export function azureBlobStorage(
         if (download.contentLength !== undefined) {
           headers.set("content-length", String(download.contentLength));
         }
-        const { Readable } = await import("node:stream");
         return {
           response: new Response(
-            Readable.toWeb(
-              body as import("node:stream").Readable,
-            ) as ReadableStream,
+            Readable.toWeb(body as Readable) as ReadableStream,
             { headers },
           ),
         };
