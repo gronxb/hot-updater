@@ -1,5 +1,81 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.8
+
+### Minor Changes
+
+- 2e3f250: Add `infisical()`, a built-in secrets adapter exported from `hot-updater` beside `localSecrets()`: the CLI reads and stores its secrets in an Infisical project, on Infisical Cloud (`https://us.infisical.com` by default, `https://eu.infisical.com` for EU) or a self-hosted instance, whatever provider you deploy to. It calls Infisical's REST API with `fetch` and installs nothing.
+
+  ```ts
+  secrets: infisical({ projectId: "…" }),
+  ```
+
+  - It signs in with `INFISICAL_TOKEN` (such as `infisical user get token --plain`), a machine identity's Universal Auth (`INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`), or GitHub Actions OIDC (`INFISICAL_MACHINE_IDENTITY_ID` with `id-token: write`), from the environment or `.env.hotupdater`. `secret()` refuses `INFISICAL_*` names.
+  - `get` lists the folder, its imports included, and reads each name it holds as stored; a missing name reads as `undefined`, and a wrong project, environment, or folder fails with Infisical's reason. `set` updates the secret, or creates it.
+  - `set` refuses a value Infisical would trim, which would not read back as stored, and a request over Infisical's 1 MiB limit. Values, tokens, and client secrets are masked in the CLI's output.
+  - The Infisical docs snippet is gone: the guide now covers the built-in adapter, with project and machine identity setup, local sign-in, CI with GitHub OIDC or Universal Auth, and self-hosted instances.
+
+- c463534: `secret("<name>")` from `hot-updater` names every credential in `hot-updater.config.ts`. It replaces the `"secret:<name>"` strings and `secretEnv([...])` of earlier 1.2 RCs, so configs written for those RCs break: rerun `init` for a managed config, or edit it as below.
+
+  ```ts
+  import { defineConfig, secret } from "hot-updater";
+
+  export default defineConfig({
+    storage: r2Storage({
+      bucketName: "bundles",
+      accountId: "…",
+      credentials: {
+        accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+        secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+      },
+    }),
+    database: d1Database({
+      databaseId: "…",
+      accountId: "…",
+      cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
+    }),
+    signing: { enabled: true, privateKey: secret("bundle-signing-key") },
+    nativeBuild: {
+      android: {
+        release: { signing: { keystore: secret("release-keystore") } },
+      },
+      ios: { release: { signing: { ascApiKey: secret("asc-api-key") } } },
+    },
+  });
+  ```
+
+  - `secret()` returns a function an adapter calls on first use, so loading the config reads no secret. Called, it reads the environment or `.env.hotupdater` first, then the config's `secrets` adapter: one call reads every name of the config the environment doesn't set. With `localSecrets()`, an adapter credential must be set in the environment. Values are masked, and reserved names, such as `NODE_OPTIONS`, are refused.
+  - `signing.privateKey`, `signing.keystore`, and `signing.ascApiKey` take only `secret()`: a string is a type error, and the CLI refuses it in one line.
+  - Storage and database adapters take each credential as a string or a function (plugin-core's `Lazy<T>`), so servers keep passing their own environment's values. `s3Storage`, `dynamoDB`, and `r2Storage` also take access keys whose fields are lazy, and the header values of `standaloneRepository` and `standaloneStorage` may be lazy.
+  - `init` writes `secret()` inline and moves an earlier RC config's `secretEnv` helpers to it. `doctor` and `secrets import` find the names in the adapters' `secret()`s.
+  - `secrets put bundle-signing-key <key.pem>` moves an existing RSA key (PKCS#1 or PKCS#8, 2048 bits or more) into the secrets store as PKCS#8, reads it back, and prints its public key's SHA-256 fingerprint. A `privateKeyPath` key moves this way without a new trust anchor.
+
+- 5358377: Bundle signing reads one secret, and the signing adapters are removed.
+
+  ```ts
+  import { defineConfig, secret } from "hot-updater";
+
+  export default defineConfig({
+    signing: secret("bundle-signing-key"),
+  });
+  ```
+
+  - `signing: secret("bundle-signing-key")` is the shorthand of `{ enabled: true, privateKey: secret("bundle-signing-key") }`: the secret holds the RSA private key in PEM. 1.1's `{ enabled: true, privateKeyPath }` keeps working as it is, and `{ enabled: false }` turns signing off.
+  - `npx hot-updater secrets issue bundle-signing-key` creates an RSA 4096 key, stores it as PKCS#8 through the config's `secrets` adapter, reads it back, prints its public key's SHA-256 fingerprint, and adds the shorthand to a config without `signing`. It keeps a stored key unless `--replace`, since apps already shipped reject bundles signed with a new key, and without a terminal it creates one only in a team store. `keys generate` is removed; `keys export-public` and `keys remove` read the key through `signing`.
+  - Without `signing`, `deploy` warns once a run, and `doctor` shows the same warning row: `Bundles are unsigned.`, then `To sign them, run: npx hot-updater secrets issue bundle-signing-key`.
+  - `awsKmsSigning`, `googleCloudKmsSigning`, and `remoteSigning`, the `hot-updater/signing` entry, plugin-core's `BundleSigningAdapter` and its remote signing protocol, and the reserved `HOT_UPDATER_SIGNING_TOKEN` are removed, with the optional `@aws-sdk/client-kms` and `@google-cloud/kms` peers. A signing adapter, or any other `signing` value, is a type error, and `deploy` refuses it, before it connects or builds, rather than deploy unsigned bundles: `signing takes secret("bundle-signing-key").`, then `Store your key: npx hot-updater secrets put bundle-signing-key <key.pem>`. `doctor` shows it as an error row.
+  - `@hot-updater/cli-tools`: `prepareBundleSigning(signing, { cwd, secrets })` and `getBundleSigningPublicKey(signing, { cwd, secrets })` take the config's `signing` as it is; `readBundleSigningState(signing)` tells signing on, off, unsigned, and refused apart. `DEFAULT_SIGNING_KEY_SECRET` is `BUNDLE_SIGNING_KEY_SECRET`. `addSigningSecretToConfig(cwd, name)` adds the shorthand to `hot-updater.config.ts`.
+
+### Patch Changes
+
+- 8a440e3: Google Play is set up with `secrets put`, and checked before a build. `hot-updater google-play login` and its gcloud flow are removed, along with `secrets issue play-service-account`. Store the service account's JSON key with `secrets put play-service-account <key.json>`, which checks that the file is a service account key and names `google-services.json` when you pick that one by mistake. Store the app's upload keystore with `secrets put android-keystore <file>`, which asks for its passwords at a terminal and checks them with keytool. `secrets put` takes the file as its second argument and defaults the kind to the name, and every value it stores is read back exactly. `native-build android --submit play-internal` and `google-play upload` check the key, the keystore, and Play access (an edit opened and deleted) before the prebuild. They list every unmet item at once, with the command, the Play Console invite, or the first `.aab` upload that fixes it. `hot-updater doctor` adds a Google Play row with the same access check for each Android package. `secrets issue android-keystore` now says its new key fits only an app with no `.aab` on Google Play yet. The native build guide has a new "Set up Google Play" section.
+- 21cfeec: `native-build ios` and `native-build android` print a few lines with live progress. One `Preparing` line covers the prebuild, the app version or fingerprint, codegen, Ruby gems, and pods, showing the current sub-step, and ends as `Prepared iOS 1.7.0 · prebuild · codegen · pods` with its duration. The cache result is one line with its reason, such as `Cache miss · engine changed`. Archive, export, and Gradle each show one live line with the phase read from the tool's output (`Compiling React-Core · 412 files`, `Linking`, `Signing`, `Bundling JavaScript`, or Gradle's current task) and the elapsed time, and each ends as one line with its duration. Registering the build and uploading it to TestFlight or Google Play are also one line each. The run ends with a summary: the artifact's path and size, the version and build number, the MIN_BUNDLE_ID, the channel, the total time, and the build log. The xcodebuild or Gradle command line, the full native build key, and what changed since the cached build go to the build log, so credential file paths stay off the terminal. iOS writes the archive and its export to one log. In CI and without a terminal, no spinner runs: each finished step prints one line. A failure ends its step's line as failed, then prints up to 20 of the tool's error lines (an export's errors with the lines that explain them), or else its last 15 lines, and the log's path on stderr. A failed `pod install`, `bundle install`, or codegen names the command and the last lines of its output. `xcbeautify` is no longer used. `expo prebuild` now reports done after it finishes, not before it starts. `@hot-updater/cli-tools` exports `startStep`, `createStep`, `withStep`, `failActiveStep`, `formatDuration`, and `withDuration`; while a step runs, `p` spinners and info lines become its detail, and other logs print after its line. `BuildLogger` takes a `createPhaseReader` instead of `importantLogPatterns` and `progressStages`.
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/server@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
 ## 1.2.0-rc.7
 
 ### Patch Changes

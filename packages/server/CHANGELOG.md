@@ -1,5 +1,17 @@
 # @hot-updater/server
 
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/plugin-api-keys@1.2.0-rc.8
+  - @hot-updater/plugin-insights@1.2.0-rc.8
+  - @hot-updater/plugin-remote-config@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
 ## 1.2.0-rc.7
 
 ### Patch Changes

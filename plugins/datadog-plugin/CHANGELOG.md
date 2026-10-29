@@ -1,5 +1,14 @@
 # @hot-updater/datadog-plugin
 
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
 ## 1.2.0-rc.7
 
 ### Patch Changes
