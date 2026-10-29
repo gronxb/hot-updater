@@ -18,7 +18,7 @@ import { ui } from "../cli-ui";
 
 /** The docs section that sets up Google Play: the key, the invite, the first .aab. */
 export const GOOGLE_PLAY_GUIDE_URL =
-  "https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play";
+  "https://hot-updater.dev/docs/native-builds/google-play";
 
 /**
  * The least Play Console permission the service account needs: the CLI

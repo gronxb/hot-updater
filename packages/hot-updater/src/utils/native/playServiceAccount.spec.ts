@@ -43,7 +43,7 @@ const KEYSTORE = JSON.stringify({
 });
 const INVITE_URL = `https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(EMAIL)}`;
 const GUIDE =
-  "Guide: https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play";
+  "Guide: https://hot-updater.dev/docs/native-builds/google-play";
 
 const fakeSecrets = (values: Record<string, string>): SecretsAdapter => ({
   name: "spec-store",
@@ -114,7 +114,7 @@ describe("parseServiceAccountKey", () => {
     ).toThrow(
       [
         "google-services.json is google-services.json, not a service account key.",
-        "https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play",
+        "https://hot-updater.dev/docs/native-builds/google-play",
       ].join("\n"),
     );
   });
