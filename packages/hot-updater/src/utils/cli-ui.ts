@@ -148,7 +148,8 @@ export const ui = {
         continue;
       }
       if (laidOut && line.length <= width) {
-        lines.push(line);
+        // A line of its own, with a `command` in it still highlighted.
+        lines.push(...(line.includes("`") ? wrapWords(line, width) : [line]));
         continue;
       }
       lines.push(

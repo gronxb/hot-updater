@@ -54,7 +54,6 @@ const { checkPlayAccess } = vi.hoisted(() => ({ checkPlayAccess: vi.fn() }));
 vi.mock("@hot-updater/android-helper", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@hot-updater/android-helper")>();
-  checkPlayAccess.mockImplementation(original.checkPlayAccess);
   return { ...original, checkPlayAccess };
 });
 
@@ -519,12 +518,23 @@ describe("doctor", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // No Play key from this machine, and no request to Google: a spec that
+    // checks Play access stores its key and answers for it.
+    for (const name of [
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
+    ]) {
+      vi.stubEnv(name, "");
+    }
+    checkPlayAccess.mockReset();
+    checkPlayAccess.mockRejectedValue(new Error("No Play request in specs."));
     packageJsonData.version = "1.0.0";
     mockGetCwd.mockReturnValue("/mock/cwd");
     mockLoadConfig.mockResolvedValue(createConfig());
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await Promise.all(
       tempProjects.map((project) =>
         fs.rm(project, { recursive: true, force: true }),
@@ -789,7 +799,6 @@ describe("doctor", () => {
     });
     logSpy.mockRestore();
     exitSpy.mockRestore();
-    checkPlayAccess.mockReset();
     vi.unstubAllEnvs();
   });
 
@@ -1837,7 +1846,8 @@ describe("doctor", () => {
       privateKeyEncoding: { format: "pem", type: "pkcs8" },
       publicKeyEncoding: { format: "pem", type: "spki" },
     });
-    // A key only CI holds: this machine's secrets adapter has none.
+    // A key this machine's secrets adapter lacks: the Secrets rows fail on
+    // it, and the native keys go unchecked rather than mismatched.
     mockLoadConfig.mockResolvedValue(
       createConfig({
         signing: secret("bundle-signing-key"),
