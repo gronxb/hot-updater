@@ -571,9 +571,10 @@ describe("secret", () => {
       }),
     );
 
-    const error = await secret(name)().catch(
-      (thrown: unknown) => thrown as Error,
-    );
+    const error = (await secret(name)().then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    )) as Error;
 
     expect(error.message.replaceAll("\n", " ")).toBe(
       [

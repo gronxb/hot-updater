@@ -24,7 +24,7 @@ describe("fitMessage", () => {
   });
 
   it("gives a URL longer than a line a line of its own: it can't be broken", () => {
-    const url = `https://hot-updater.dev/docs/guides/secrets-adapters/${"x".repeat(40)}`;
+    const url = `https://example.com/a-very-long-path/${"x".repeat(60)}`;
 
     expect(fitMessage([`Read ${url} first.`]).split("\n")).toEqual([
       "Read",

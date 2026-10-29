@@ -113,9 +113,10 @@ describe("localSecrets({ path })", () => {
     const app = await project("committable", { git: true });
     const store = createLocalSecretsStore({ path: "secrets" });
 
-    const refused = await store
-      .write("asc-api-key", "value", app)
-      .catch((error: unknown) => error as Error);
+    const refused = (await store.write("asc-api-key", "value", app).then(
+      () => undefined,
+      (error: unknown) => error,
+    )) as Error;
     // Broken at spaces: a long path gets a line of its own.
     expect(refused.message.replaceAll("\n", " ")).toBe(
       [
@@ -140,9 +141,10 @@ describe("localSecrets({ path })", () => {
     await fs.writeFile(path.join(app, "secrets"), "");
     const store = createLocalSecretsStore({ path: "secrets" });
 
-    const refused = await store
-      .write("asc-api-key", "value", app)
-      .catch((error: unknown) => error as Error);
+    const refused = (await store.write("asc-api-key", "value", app).then(
+      () => undefined,
+      (error: unknown) => error,
+    )) as Error;
     expect(refused.message.replaceAll("\n", " ")).toBe(
       [
         `localSecrets() can't keep secrets in ${path.join(app, "secrets")}.`,

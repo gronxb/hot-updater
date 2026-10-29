@@ -137,7 +137,7 @@ export const ui = {
     const laidOut = text.includes("\n");
     let continued = false;
     for (const line of text.split("\n")) {
-      if (continued || /^npx /u.test(line)) {
+      if (continued || line.startsWith("npx ")) {
         // One the text didn't break is broken as a command is.
         lines.push(
           continued || line.endsWith(" \\") || line.length <= width
