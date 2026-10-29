@@ -44,7 +44,37 @@ echo "${CAUSE}"
 exit 1
 `;
 
+// What `pod install` prints when CocoaPods crashes (CocoaPods#12798, seen
+// on CI): its issue template with the exception, then links to issues.
+const CRASH_REPORT = [
+  "Installing hermes-engine (260318099.0.4)",
+  "Generating Pods project",
+  "### Error",
+  "",
+  "```",
+  "ArgumentError - pathname contains null byte",
+  "/gems/cocoapods-1.15.2/lib/cocoapods/project.rb:452:in 'realdirpath'",
+  "/bin/bundle:25:in '<main>'",
+  "```",
+  "",
+  "――― TEMPLATE END ――――――――――――――――――――――――――――――――――――――――――――――――",
+  "",
+  "[!] Oh no, an error occurred.",
+  "",
+  "Search for existing GitHub issues similar to yours:",
+  "https://github.com/CocoaPods/CocoaPods/search?q=pathname+contains+null+byte",
+  "    https://github.com/CocoaPods/CocoaPods/pull/12009 [closed] [94 comments]",
+  "    04 Dec 2023",
+];
+const CRASHING_POD = `#!/bin/sh
+cat <<'EOF'
+${CRASH_REPORT.join("\n")}
+EOF
+exit 1
+`;
+
 let projectDir: string;
+let binDir: string;
 let stderr: string;
 const originalPath = process.env["PATH"];
 
@@ -54,7 +84,7 @@ beforeEach(async () => {
   await fs.writeFile(path.join(projectDir, "package.json"), "{}");
   await fs.mkdir(path.join(projectDir, "ios"));
   await fs.writeFile(path.join(projectDir, "ios", "Podfile"), "");
-  const binDir = path.join(projectDir, "bin");
+  binDir = path.join(projectDir, "bin");
   await fs.mkdir(binDir);
   await fs.writeFile(path.join(binDir, "pod"), FAKE_POD, { mode: 0o755 });
   vi.spyOn(process, "cwd").mockReturnValue(projectDir);
@@ -121,5 +151,18 @@ describe("a failed pod install", () => {
     expect(log).toContain("100 96.7M  100 96.7M");
     expect(log).toContain(REASON);
     expect(log).toContain(CAUSE);
+  });
+
+  it("prints a crash's exception, without CocoaPods' links to issues", async () => {
+    await fs.writeFile(path.join(binDir, "pod"), CRASHING_POD, {
+      mode: 0o755,
+    });
+
+    const error = await failPodInstall();
+
+    expect(error.summary).toEqual([
+      "ArgumentError - pathname contains null byte",
+      "[!] Oh no, an error occurred.",
+    ]);
   });
 });

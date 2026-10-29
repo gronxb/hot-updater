@@ -35,12 +35,6 @@ jobs:
   build-ios-cli:
     runs-on: macos-15
     timeout-minutes: 60
-    # TEMP(repro): parallel copies to catch the flaky pod install.
-    strategy:
-      fail-fast: false
-      matrix:
-        copy: [1, 2, 3]
-        variant: [new, old]
     # The newest React Native, built by `hot-updater native-build ios` from
     # the committed ios/, which has no workspace and no codegen output: the
     # CLI's pod install and codegen must produce them. The build is tracked
@@ -61,9 +55,6 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - name: TEMP(repro) use next's pod install
-        if: matrix.variant == 'old'
-        run: git fetch --depth=1 origin 700d4b2b479861425fea5a31ae7019fef43f9cf0 && git checkout FETCH_HEAD -- packages/apple-helper/src/utils/cocoapods.ts
       - run: pnpm install --frozen-lockfile
       - name: Install Ruby dependencies
         working-directory: examples/v0.88.0
@@ -87,14 +78,25 @@ jobs:
           # The example's scheme, on an in-memory database and storage.
           printf 'export { default } from "../../examples-server/preview-action/ios-cli.config.ts";\n' \
             > hot-updater.config.ts
-          # The CLI's bin is not linked: its dist did not exist at install.
-          node ../../packages/hot-updater/dist/index.mjs native-build ios \
-            --scheme releaseSimulator \
-            --output-path "$RUNNER_TEMP/ios-build" --json | tee "$RUNNER_TEMP/build.log" || {
-            # TEMP(repro): pod install's output, run the same way by hand.
-            (cd ios && RCT_IGNORE_PODS_DEPRECATION=1 RCT_USE_RN_DEP=1 RCT_USE_PREBUILT_RNCORE=1 bundle exec pod install 2>&1 | grep -v -E '^ *[0-9]+ +[0-9.]+[kMG]? ' | tail -60) || true
-            exit 1
+          build_ios() {
+            # The CLI's bin is not linked: its dist did not exist at install.
+            node ../../packages/hot-updater/dist/index.mjs native-build ios \
+              --scheme releaseSimulator \
+              --output-path "$RUNNER_TEMP/ios-build" --json | tee "$RUNNER_TEMP/build.log"
           }
+          # CocoaPods crashes at random with "pathname contains null byte"
+          # while it generates the Pods project of pods that pnpm symlinks
+          # (CocoaPods/CocoaPods#12798, #12866). Only that crash is retried,
+          # once; its log is kept.
+          if ! build_ios; then
+            log=$(ls -t .hot-updater/log/*-pod-install.log 2>/dev/null | head -n 1)
+            if [ -z "$log" ] || ! grep -q "pathname contains null byte" "$log"; then
+              exit 1
+            fi
+            mv "$log" "${log%.log}-attempt1.log"
+            echo "pod install hit CocoaPods#12798; retrying once."
+            build_ios
+          fi
           build=$(tail -n 1 "$RUNNER_TEMP/build.log")
           app=$(jq -r .build.artifactPath <<<"$build")
           echo "Artifact: $app"
@@ -118,7 +120,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ios-cli-build-logs-${{ matrix.variant }}-${{ matrix.copy }}
+          name: ios-cli-build-logs
           path: examples/v0.88.0/.hot-updater/log/
           include-hidden-files: true
           if-no-files-found: ignore

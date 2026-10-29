@@ -82,6 +82,8 @@ const createPodInstallLogger = () =>
       blocks: [{ start: /^\[!\] /, end: /^$/, includeEnd: false }],
       ignore: DOWNLOAD_PROGRESS,
       tail: 4,
+      // A crash's report ends here; links to CocoaPods' issues follow.
+      stopAfter: /^\[!\] Oh no, an error occurred\.$/,
       maxWidth: 76,
     },
   });

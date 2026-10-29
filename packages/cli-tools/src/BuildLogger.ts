@@ -35,6 +35,12 @@ export interface BuildFailureSummaryConfig {
   tail?: number;
   /** The widest a printed line is, cut with `…`: the log has it whole. */
   maxWidth?: number;
+  /**
+   * The line that ends the tool's report of its error, after which its
+   * output is boilerplate, such as a crash report's links: the summary is
+   * the kept lines, without the last lines.
+   */
+  stopAfter?: LinePattern;
 }
 
 /**
@@ -123,6 +129,7 @@ export class BuildLogger {
   private summaryLines: OutputLine[] = [];
   private tailLines: OutputLine[] = [];
   private lineCount = 0;
+  private stopped = false;
   private openBlock?: BuildFailureSummaryConfig["blocks"][number];
 
   constructor(private readonly config: BuildLoggerConfig) {}
@@ -135,6 +142,7 @@ export class BuildLogger {
     this.summaryLines = [];
     this.tailLines = [];
     this.lineCount = 0;
+    this.stopped = false;
     this.openBlock = undefined;
     this.logWriter = await createLogWriter({
       prefix: this.config.logPrefix,
@@ -181,8 +189,8 @@ export class BuildLogger {
 
   /**
    * The lines of the raw output a failure prints: the ones the config's
-   * `failureSummary` keeps, deduplicated, then its `tail`, or the last lines
-   * without any.
+   * `failureSummary` keeps, deduplicated, with its `tail` unless the output
+   * reached `stopAfter`, or the last lines without any.
    */
   get failureSummary(): string[] {
     const { tail = 0, maxWidth } = this.config.failureSummary;
@@ -192,7 +200,7 @@ export class BuildLogger {
     const lines = kept.length
       ? [
           ...kept,
-          ...(tail ? lastLines.slice(-tail) : []).filter(
+          ...(tail && !this.stopped ? lastLines.slice(-tail) : []).filter(
             ({ line }) => !keptText.has(line),
           ),
         ]
@@ -225,10 +233,23 @@ export class BuildLogger {
   }
 
   private processSummaryLine(line: string) {
-    const { lines, blocks, ignore = [], tail = 0 } = this.config.failureSummary;
+    const {
+      lines,
+      blocks,
+      ignore = [],
+      tail = 0,
+      stopAfter,
+    } = this.config.failureSummary;
     const trimmedLine = line.trim();
-    if (ignore.some((pattern) => matchesSummaryPattern(trimmedLine, pattern))) {
+    if (
+      this.stopped ||
+      ignore.some((pattern) => matchesSummaryPattern(trimmedLine, pattern))
+    ) {
       return;
+    }
+    if (stopAfter && matchesSummaryPattern(trimmedLine, stopAfter)) {
+      this.stopped = true;
+      this.openBlock = undefined;
     }
 
     const index = this.lineCount++;
