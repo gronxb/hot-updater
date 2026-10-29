@@ -35,6 +35,11 @@
       ]
     }
   },
+  "pluginsConfig": {
+    "@nx/js": {
+      "analyzeSourceFiles": false
+    }
+  },
   "defaultBase": "main",
   "analytics": false
 }

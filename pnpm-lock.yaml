@@ -143,6 +143,12 @@ importers:
       '@hono/node-server':
         specifier: catalog:hono
         version: 1.19.17(hono@4.12.34)
+      '@hot-updater/standalone':
+        specifier: workspace:*
+        version: link:plugins/standalone
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:packages/test-utils
       '@nx/js':
         specifier: 22.6.3
         version: 22.6.3(@babel/traverse@7.29.7)(nx@22.6.3)
@@ -2071,12 +2077,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@hot-updater/standalone':
-        specifier: workspace:*
-        version: link:../../plugins/standalone
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../test-utils
       '@libsql/client':
         specifier: catalog:db
         version: 0.15.15
@@ -2545,9 +2545,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2623,9 +2620,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2688,9 +2682,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43

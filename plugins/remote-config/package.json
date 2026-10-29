@@ -47,13 +47,7 @@
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "vitest": "catalog:"
-  },
-  "nx": {
-    "implicitDependencies": [
-      "!@hot-updater/test-utils"
-    ]
   }
 }
