@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -122,7 +123,7 @@ describe("a failed xcodebuild", () => {
     expect(stdout).not.toContain("missingSymbol");
     expect(stdout).not.toContain("Build log:");
     // The step's line says which step failed, with its duration.
-    expect(stdout).toMatch(
+    expect(stripVTControlCharacters(stdout)).toMatch(
       /Build failed · xcodebuild exited with code 65 +\d+\.\ds/,
     );
   });
@@ -178,7 +179,7 @@ echo "** BUILD SUCCEEDED **"
   );
   expect(log).toContain("** BUILD SUCCEEDED **");
   // Not a TTY: no spinner, only the finished step.
-  expect(stdout).toMatch(/Built App +\d+\.\ds\n/);
+  expect(stripVTControlCharacters(stdout)).toMatch(/Built App +\d+\.\ds\n/);
   expect(stdout).not.toContain("xcodebuild");
   expect(stdout).not.toContain("AuthKey");
   expect(stdout).not.toContain("Building App");
