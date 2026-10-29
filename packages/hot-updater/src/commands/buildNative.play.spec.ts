@@ -269,7 +269,7 @@ describe("native-build android --submit play-internal", () => {
         "  npx hot-updater secrets put play-service-account <key.json>",
         "✓ Upload keystore",
         "· Play access          checked once the key is stored",
-        "Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
+        "Guide: https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play",
       ].join("\n"),
     );
     expect(events).not.toContain("prebuild");

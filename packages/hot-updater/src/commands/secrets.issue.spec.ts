@@ -539,7 +539,7 @@ describe("hot-updater secrets put play-service-account <file>", () => {
     expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
       [
         "google-services.json is google-services.json, not a service account key.",
-        "https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
+        "https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play",
       ].join("\n"),
     );
     expect(store.set).not.toHaveBeenCalled();
@@ -637,7 +637,7 @@ describe("hot-updater secrets put without the key's files", () => {
       [
         "secrets put needs the JSON key file:",
         "npx hot-updater secrets put play-service-account <key.json>",
-        "https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
+        "https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play",
       ].join("\n"),
       [
         "secrets put needs the keystore file:",

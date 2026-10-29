@@ -111,7 +111,7 @@ describe("doctor's Google Play check", () => {
         "  App permission: Release apps to testing tracks",
         `  https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(EMAIL)}`,
         "✗ com.example.app.staging  upload the first .aab in Play Console",
-        "Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
+        "Guide: https://hot-updater.dev/docs/native-builds/google-play#set-up-google-play",
       ].join("\n"),
     );
     expect(text).not.toContain("MIIBdoctor");
