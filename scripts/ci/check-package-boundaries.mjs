@@ -13,7 +13,10 @@
  *   packages it pulls in (dependencies, optional dependencies, and peers that
  *   are not optional) depend on @hot-updater/plugin-core or
  *   @hot-updater/server;
- * - @hot-updater/test-utils is only ever a devDependency;
+ * - @hot-updater/test-utils is only ever a devDependency, and no workspace
+ *   package depends on itself through dependencies, devDependencies,
+ *   optional dependencies or peers: a package that test-utils peers on, or
+ *   that one of those depends on, takes test-utils from the workspace root;
  * - every import of a @hot-updater/* package, `vi.mock` included, names one
  *   of its exports, no relative import reaches into another package, and an
  *   import() or `vi` load whose specifier is computed is one this script
@@ -158,8 +161,7 @@ if (server) {
 }
 
 /** Export keys that name test code. */
-const TEST_EXPORT =
-  /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
+const TEST_EXPORT = /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
 
 // No internal or test exports, in any workspace package.
 for (const pkg of packages) {
@@ -212,7 +214,9 @@ const installed = (/** @type {Package} */ pkg) => {
 // React Native: its root only, and no server code through what it pulls in.
 const reactNative = byName.get("@hot-updater/react-native");
 if (reactNative) {
-  const keys = exportKeys(reactNative).filter((key) => key !== "./package.json");
+  const keys = exportKeys(reactNative).filter(
+    (key) => key !== "./package.json",
+  );
   if (keys.length !== 1 || keys[0] !== ".") {
     fail(
       "react-native-root",
@@ -253,6 +257,53 @@ for (const pkg of packages) {
         "test-utils-dev-only",
         `${pkg.name} lists ${TEST_UTILS} in ${field}; a package's own specs use it as a devDependency.`,
       );
+    }
+  }
+}
+
+// The workspace graph has no cycle. test-utils peers on the packages it tests
+// (protocol, plugin-core, plugin-insights, server), so those and everything
+// they depend on take test-utils, and any other package their specs use,
+// from the root package.json; pnpm and nx then order the workspace.
+{
+  /** @param {Package} pkg */
+  const edgesOf = (pkg) =>
+    [
+      "dependencies",
+      "devDependencies",
+      "optionalDependencies",
+      "peerDependencies",
+    ].flatMap((field) =>
+      namesOf(pkg.json[field]).filter((name) => byName.has(name)),
+    );
+  /** @type {Map<string, "visiting" | "done">} */
+  const state = new Map();
+  /** @type {string[]} */
+  const trail = [];
+  /** @param {string} name @returns {string[] | undefined} */
+  const cycleFrom = (name) => {
+    if (state.get(name) === "done") return undefined;
+    if (state.get(name) === "visiting") {
+      return [...trail.slice(trail.indexOf(name)), name];
+    }
+    state.set(name, "visiting");
+    trail.push(name);
+    for (const next of edgesOf(/** @type {Package} */ (byName.get(name)))) {
+      const cycle = cycleFrom(next);
+      if (cycle) return cycle;
+    }
+    trail.pop();
+    state.set(name, "done");
+    return undefined;
+  };
+  for (const pkg of packages) {
+    const cycle = cycleFrom(pkg.name);
+    if (cycle) {
+      fail(
+        "acyclic-workspace",
+        `${cycle.join(" -> ")} is a dependency cycle; list the package a spec needs in the root package.json instead.`,
+      );
+      break;
     }
   }
 }

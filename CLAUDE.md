@@ -54,6 +54,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - Nothing in its install closure pulls plugin-core or server.
 - `@hot-updater/test-utils` holds all test-only code: adapter and plugin test suites, fixtures, `createMeasuredDatabase`, and test stores and executors.
   - It uses other packages' public API only.
+  - It peers on the packages it tests (protocol, plugin-core, plugin-insights, server), so the workspace graph stays acyclic: those packages, and everything they depend on, take test-utils, and any other package their specs use, from the root `package.json`, never their own. nx builds its project graph from `package.json` alone (`analyzeSourceFiles: false` in `nx.json`), so pnpm and nx see the same acyclic graph.
   - No other package ships a test export or test helper, or keeps a path or hook that exists only for test-utils.
 - Each managed provider package (`plugins/aws`, `azure`, `cloudflare`, `firebase`, `supabase`, `vercel`) exposes one `./init` entry, which the CLI loads after installing the package, plus its runtime builds.
 - Dependencies are cut cleanly:
