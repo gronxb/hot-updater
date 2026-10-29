@@ -8,6 +8,7 @@
     "aws",
     "firebase",
     "vercel",
+    "neon",
     "azure",
     "standalone"
   ]

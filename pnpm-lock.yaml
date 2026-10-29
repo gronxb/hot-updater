@@ -2568,6 +2568,34 @@ importers:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
 
+  plugins/neon:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@aws-sdk/lib-storage':
+        specifier: 3.1066.0
+        version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
+      '@aws-sdk/s3-request-presigner':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+      '@hot-updater/postgres':
+        specifier: workspace:*
+        version: link:../postgres
+    devDependencies:
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
+
   plugins/plugin-core:
     dependencies:
       '@hot-updater/protocol':
