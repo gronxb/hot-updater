@@ -1,0 +1,47 @@
+{
+  "name": "@hot-updater/neon",
+  "type": "module",
+  "version": "1.2.0-rc.8",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "!**/*.spec.ts",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/postgres": "workspace:*",
+    "@hot-updater/storage-s3": "workspace:*"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "catalog:aws",
+    "@aws-sdk/lib-storage": "catalog:aws",
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

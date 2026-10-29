@@ -62,6 +62,10 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/plugin-insights@1.2.0-rc.0
 
+## 1.1.5
+
+## 1.1.4
+
 ## 1.1.3
 
 ## 1.1.2

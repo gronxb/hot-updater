@@ -160,6 +160,22 @@
   - @hot-updater/server@1.2.0-rc.0
   - @hot-updater/protocol@1.2.0-rc.0
 
+## 1.1.5
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.5
+  - @hot-updater/server@1.1.5
+  - @hot-updater/plugin-core@1.1.5
+
+## 1.1.4
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.4
+  - @hot-updater/server@1.1.4
+  - @hot-updater/plugin-core@1.1.4
+
 ## 1.1.3
 
 ### Patch Changes

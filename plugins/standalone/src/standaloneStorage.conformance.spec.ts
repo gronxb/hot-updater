@@ -19,6 +19,8 @@ const BASE_URL = "https://storage.example.com/hot-updater";
  */
 const objects = new Map<string, Uint8Array<ArrayBuffer>>();
 const objectKey = createStorageKeyBuilder("ota");
+/** Objects a `/list` page returns, so listing takes several pages. */
+const LIST_PAGE_SIZE = 3;
 
 const keyOf = async (request: Request) => {
   const { storageUri } = (await request.json()) as { storageUri: string };
@@ -59,6 +61,35 @@ const server = setupServer(
     if (key === null) return anotherBucket();
     return new HttpResponse(null, { status: objects.delete(key) ? 204 : 404 });
   }),
+  http.post(`${BASE_URL}/list`, async ({ request }) => {
+    const { prefix, cursor } = (await request.json()) as {
+      prefix?: string;
+      cursor?: string;
+    };
+    const folder = objectKey(prefix ?? "");
+    const keys = [...objects.keys()]
+      .filter((key) => key.startsWith(`${folder}/`))
+      .sort();
+    const start = Number(cursor ?? 0);
+    const end = start + LIST_PAGE_SIZE;
+    return HttpResponse.json({
+      objects: keys.slice(start, end).map((key) => ({
+        key: key.slice("ota/".length),
+        storageUri: createStorageUri({
+          protocol: "s3",
+          bucket: "updates",
+          key,
+        }),
+        size: objects.get(key)!.byteLength,
+      })),
+      ...(end < keys.length ? { cursor: String(end) } : {}),
+    });
+  }),
+  http.post(`${BASE_URL}/delete-objects`, async ({ request }) => {
+    const { keys } = (await request.json()) as { keys: string[] };
+    for (const key of keys) objects.delete(objectKey(key));
+    return new HttpResponse(null, { status: 204 });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -73,5 +104,12 @@ setupStorageAdapterTestSuite({
       basePath: "ota",
     };
   },
-  operations: ["put", "get", "exists", "delete"],
+  operations: [
+    "put",
+    "get",
+    "exists",
+    "delete",
+    "listObjects",
+    "deleteObjects",
+  ],
 });

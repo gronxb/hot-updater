@@ -61,7 +61,9 @@ For example,
 
 `supabaseStorage` passes the upload stream to Supabase, but downloads resolve to
 a complete `Blob` before the adapter constructs its Web `Response`. It also
-implements signed download URL generation, existence checks, and exact deletion.
+implements signed download URL generation, existence checks, exact deletion,
+listing below a prefix, and batched deletion of exact keys, which
+`hot-updater storage prune` uses.
 For Supabase Edge Functions, import the same `supabaseStorage` name from
 `@hot-updater/supabase/edge`; that implementation captures the edge-compatible
 client configuration without changing the core contract.

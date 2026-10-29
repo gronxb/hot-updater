@@ -71,7 +71,7 @@ export default defineConfig({
 ## Runtime usage
 
 The root `r2Storage` adapter implements upload, read, download URL,
-existence-check, and exact-delete operations. A download URL is an R2
+existence-check, exact-delete, listing, and batch-delete operations. A download URL is an R2
 presigned URL that expires in an hour, signed with the adapter's S3-compatible
 credentials, so a self-hosted `createHotUpdater` server can take the same
 adapter: devices download from the bucket, which stays private.
@@ -123,3 +123,14 @@ already captured by the adapters; invoke a handler with only the `Request`.
 
 For example, `r2://updates/releases/1.0.0/bundle%20ios.zip` is stored in the
 `storageUri` field. Keys retain their slash hierarchy and encode each segment.
+
+## Maintenance
+
+The root `r2Storage` provides the object listing and exact deletion
+capabilities used by `hot-updater storage prune`. Follow the
+[Storage Cleanup](/docs/guides/storage-cleanup) guide to remove unreferenced
+bundle objects and shared assets safely.
+
+Use a separate `basePath` for every database or environment that shares a
+bucket. Pruning assumes that the configured database owns every object below
+its storage prefix; without `basePath`, that is the whole bucket.

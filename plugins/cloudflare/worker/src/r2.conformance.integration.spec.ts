@@ -39,5 +39,13 @@ setupStorageAdapterTestSuite({
       cleanup: () => deleteBelow(basePath),
     };
   },
-  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+  operations: [
+    "put",
+    "get",
+    "getDownloadUrl",
+    "exists",
+    "delete",
+    "listObjects",
+    "deleteObjects",
+  ],
 });

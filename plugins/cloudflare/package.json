@@ -52,18 +52,19 @@
     "dev": "wrangler dev worker/src/index.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "catalog:aws",
-    "@aws-sdk/lib-storage": "3.1008.0",
-    "@aws-sdk/s3-request-presigner": "catalog:aws",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@hot-updater/storage-s3": "workspace:*",
     "cloudflare": "4.2.0",
     "hono": "catalog:hono",
     "uuidv7": "catalog:"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "catalog:aws",
+    "@aws-sdk/lib-storage": "catalog:aws",
+    "@aws-sdk/s3-request-presigner": "catalog:aws",
     "@cloudflare/vitest-pool-workers": "0.13.0",
     "@cloudflare/workers-types": "^4.20260312.1",
     "@hot-updater/test-utils": "workspace:*",

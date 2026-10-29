@@ -77,8 +77,9 @@ with another database adapter. List the server's plugins in `plugins` as well;
 see [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 `commonHeaders` applies to every storage request. Optional `routes.put`,
-`routes.get`, `routes.exists` and `routes.delete` callbacks can return
-`{ path, headers }` to customize a route; route headers override common headers.
+`routes.get`, `routes.exists`, `routes.delete`, `routes.listObjects` and
+`routes.deleteObjects` callbacks can return `{ path, headers }` to customize a
+route; route headers override common headers.
 Keep the method and body contract below. Let the adapter set the multipart
 content type for uploads.
 
@@ -87,22 +88,33 @@ content type for uploads.
 Authenticate these routes in your service before reading or changing objects.
 All paths are relative to `baseUrl`:
 
-| Method   | Default route | Request                             | Success response                                 |
-| -------- | ------------- | ----------------------------------- | ------------------------------------------------ |
-| `POST`   | `/upload`     | multipart `file` and `key` fields   | JSON `{ "storageUri": "s3://..." }`              |
-| `POST`   | `/get`        | JSON `{ "storageUri": "s3://..." }` | Object bytes, or `404` when missing              |
-| `POST`   | `/exists`     | JSON `{ "storageUri": "s3://..." }` | JSON `{ "exists": true }`, or `404` when missing |
-| `DELETE` | `/delete`     | JSON `{ "storageUri": "s3://..." }` | Any `2xx`, or `404` for an absent object         |
+| Method   | Default route     | Request                                           | Success response                                 |
+| -------- | ----------------- | ------------------------------------------------- | ------------------------------------------------ |
+| `POST`   | `/upload`         | multipart `file` and `key` fields                 | JSON `{ "storageUri": "s3://..." }`              |
+| `POST`   | `/get`            | JSON `{ "storageUri": "s3://..." }`               | Object bytes, or `404` when missing              |
+| `POST`   | `/exists`         | JSON `{ "storageUri": "s3://..." }`               | JSON `{ "exists": true }`, or `404` when missing |
+| `DELETE` | `/delete`         | JSON `{ "storageUri": "s3://..." }`               | Any `2xx`, or `404` for an absent object         |
+| `POST`   | `/list`           | JSON `{ "prefix"?: "bundles", "cursor"?: "..." }` | JSON `{ "objects": [...], "cursor"?: "..." }`    |
+| `POST`   | `/delete-objects` | JSON `{ "keys": ["bundles/..."] }`                | Any `2xx`; a missing key deletes nothing         |
 
 Return a validated [storage URI](/docs/storage-adapters/custom-storage#storage-uri-format)
 using the configured protocol. A storage URI identifies the persisted object;
 the runtime storage adapter resolves its mobile download URL separately.
 
-The built-in handlers from `createHotUpdater` do not implement these four
+`/list` and `/delete-objects` serve `hot-updater storage prune` only, so a
+service without them still deploys and serves updates. `/list` returns the
+objects below the folder `prefix` names, or all of them without one, each as
+`{ "key", "storageUri", "size", "lastModifiedAt"? }`: `key` is the key
+`/upload` received, and `lastModifiedAt` an ISO 8601 time. Return a `cursor`
+while more objects remain; the adapter sends it back for the next page.
+`/delete-objects` deletes exactly those keys, at most 1000 a request.
+
+The built-in handlers from `createHotUpdater` do not implement these
 storage-service routes. Its signed mobile-download route is a separate
 protocol. See [custom server storage composition](/docs/custom/overview#storage-adapters)
 for configuring the runtime adapter.
 
 Uploads buffer the input stream into a multipart file before sending it.
-Reads return a Web `Response`. The adapter supports `put`, `get`, `exists`
-and exact `delete`; it does not implement storage pruning operations.
+Reads return a Web `Response`. The adapter supports `put`, `get`, `exists`,
+exact `delete`, and the `listObjects` and `deleteObjects` operations of storage
+pruning.

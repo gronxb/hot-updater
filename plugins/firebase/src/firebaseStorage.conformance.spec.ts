@@ -12,7 +12,7 @@ import { firebaseStorage } from "./firebaseStorage";
 const { getStorage, objects } = vi.hoisted(() => {
   const objects = new Map<
     string,
-    { bytes: Uint8Array<ArrayBuffer>; contentType?: string }
+    { bytes: Uint8Array<ArrayBuffer>; contentType?: string; updated: string }
   >();
   const notFound = () =>
     Object.assign(new Error("No such object"), { code: 404 });
@@ -29,6 +29,7 @@ const { getStorage, objects } = vi.hoisted(() => {
           objects.set(key, {
             bytes: new Uint8Array(Buffer.concat(chunks)),
             contentType: options.metadata.contentType,
+            updated: new Date().toISOString(),
           });
           callback();
         },
@@ -61,8 +62,20 @@ const { getStorage, objects } = vi.hoisted(() => {
       ];
     },
   });
+  /** Every object whose name starts with `prefix`, with its metadata. */
+  const getFiles = async ({ prefix = "" }: { prefix?: string }) => [
+    [...objects]
+      .filter(([name]) => name.startsWith(prefix))
+      .map(([name, object]) => ({
+        name,
+        metadata: {
+          size: String(object.bytes.byteLength),
+          updated: object.updated,
+        },
+      })),
+  ];
   return {
-    getStorage: () => ({ bucket: () => ({ file }) }),
+    getStorage: () => ({ bucket: () => ({ file, getFiles }) }),
     objects,
   };
 });
@@ -87,5 +100,13 @@ setupStorageAdapterTestSuite({
       basePath: "ota",
     };
   },
-  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+  operations: [
+    "put",
+    "get",
+    "getDownloadUrl",
+    "exists",
+    "delete",
+    "listObjects",
+    "deleteObjects",
+  ],
 });

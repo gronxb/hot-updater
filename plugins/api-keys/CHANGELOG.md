@@ -34,6 +34,10 @@
 - Updated dependencies [5e7a045]
   - @hot-updater/plugin-core@1.2.0-rc.0
 
+## 1.1.5
+
+## 1.1.4
+
 ## 1.1.3
 
 ## 1.1.2
