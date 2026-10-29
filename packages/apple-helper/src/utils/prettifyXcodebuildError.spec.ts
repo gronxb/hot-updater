@@ -26,6 +26,8 @@ describe("prettifyXcodebuildError", () => {
     expect((error as BuildFailedError).logPath).toBe(
       ".hot-updater/log/export.log",
     );
+    // The one line a command prints after the summary.
+    expect((error as BuildFailedError).hint).toBe(error.message);
   });
 
   it("keeps xcodebuild's own failure otherwise", () => {
@@ -36,5 +38,6 @@ describe("prettifyXcodebuildError", () => {
     expect(error.message).toBe(
       "Export failed: xcodebuild exited with code 70.",
     );
+    expect((error as BuildFailedError).hint).toBeNull();
   });
 });

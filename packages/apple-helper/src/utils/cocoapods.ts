@@ -4,7 +4,36 @@ import path from "path";
 import { getCwd, getReactNativeMetadatas, p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
-export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
+/** What `installPodsIfNeeded` ran. */
+export interface PodInstallSteps {
+  /** React Native codegen, before `pod install`. */
+  readonly codegen: boolean;
+  /** `pod install`, which a project without a Podfile skips. */
+  readonly pods: boolean;
+}
+
+/** The last lines of a failed command's output, which say why. */
+const OUTPUT_TAIL_LINES = 12;
+
+/**
+ * A failed command's error: the command, then the last lines of its
+ * output, without execa's full message.
+ */
+const commandFailure = (command: string, error: unknown): Error => {
+  const { stderr, stdout } = (error ?? {}) as {
+    stderr?: unknown;
+    stdout?: unknown;
+  };
+  const output = String(stderr || stdout || "").trimEnd();
+  const tail = output.split("\n").slice(-OUTPUT_TAIL_LINES).join("\n");
+  const detail =
+    tail || (error instanceof Error ? error.message : String(error));
+  return new Error(`${command} failed.\n${detail}`, { cause: error });
+};
+
+export const installPodsIfNeeded = async (
+  sourceDir: string,
+): Promise<PodInstallSteps> => {
   const podfilePath = path.join(sourceDir, "Podfile");
 
   // Check if Podfile exists
@@ -12,7 +41,7 @@ export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
 
   if (!fileExist) {
     p.log.info("No Podfile found, skipping CocoaPods installation");
-    return;
+    return { codegen: false, pods: false };
   }
 
   const gemfilePaths = [
@@ -37,34 +66,34 @@ export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
     });
   }
 
-  try {
-    if (shouldUseBundler) {
-      p.log.info("Using bundler for CocoaPods installation");
-
-      const bundleSpinner = p.spinner();
-      bundleSpinner.start("Installing Ruby gems");
+  if (shouldUseBundler) {
+    const bundleSpinner = p.spinner();
+    bundleSpinner.start("Installing Ruby gems");
+    try {
       await execa("bundle", ["install"], { cwd: sourceDir });
-      bundleSpinner.stop("Ruby gems installed");
-
-      const podSpinner = p.spinner();
-      podSpinner.start("Installing CocoaPods dependencies");
-      await execa("bundle", ["exec", "pod", "install"], {
-        cwd: sourceDir,
-        env: plan.env,
-      });
-      podSpinner.stop("CocoaPods dependencies installed");
-    } else {
-      const spinner = p.spinner();
-      spinner.start("Installing CocoaPods dependencies");
-      await execa("pod", ["install"], {
-        cwd: sourceDir,
-        env: plan.env,
-      });
-      spinner.stop("CocoaPods dependencies installed");
+    } catch (error) {
+      bundleSpinner.error("bundle install failed");
+      throw commandFailure("bundle install", error);
     }
-  } catch (error) {
-    throw new Error(`pod install failed: ${error}`);
+    bundleSpinner.stop("Ruby gems installed");
   }
+
+  const podCommand = shouldUseBundler
+    ? ["bundle", "exec", "pod", "install"]
+    : ["pod", "install"];
+  const podSpinner = p.spinner();
+  podSpinner.start("Installing CocoaPods dependencies");
+  try {
+    await execa(podCommand[0]!, podCommand.slice(1), {
+      cwd: sourceDir,
+      env: plan.env,
+    });
+  } catch (error) {
+    podSpinner.error(`${podCommand.join(" ")} failed`);
+    throw commandFailure(podCommand.join(" "), error);
+  }
+  podSpinner.stop("CocoaPods dependencies installed");
+  return { codegen: plan.runCodegen, pods: true };
 };
 
 const checkShouldUseBundler = async (gemfilePath: string): Promise<boolean> => {
@@ -116,8 +145,8 @@ const runReactNativeCodegen = async ({
       { cwd: projectRoot },
     );
   } catch (error) {
-    spinner.stop("React Native codegen failed");
-    throw new Error(`React Native codegen failed: ${error}`);
+    spinner.error("React Native codegen failed");
+    throw commandFailure("React Native codegen", error);
   }
   spinner.stop("React Native codegen done");
 };

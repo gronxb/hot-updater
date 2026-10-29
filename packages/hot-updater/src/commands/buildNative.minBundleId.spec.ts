@@ -9,8 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /** The configuration of the scheme the config sets, per test. */
 let configuration = "Release";
 
-vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
-vi.mock("@hot-updater/apple-helper", () => ({ buildIos: vi.fn() }));
+vi.mock("@hot-updater/android-helper", () => ({
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
+}));
+vi.mock("@hot-updater/apple-helper", () => ({
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
+}));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: {

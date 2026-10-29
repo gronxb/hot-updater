@@ -37,6 +37,7 @@ export * from "./reservedVariables";
 export * from "./resolvePackageVersion";
 export * from "./secretMasking";
 export * from "./secrets";
+export * from "./step";
 export * from "./teamSecrets";
 export * from "./localKeyStore";
 export * from "./storageFiles";

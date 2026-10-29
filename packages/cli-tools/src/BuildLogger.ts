@@ -2,127 +2,16 @@ import path from "path";
 import { createInterface } from "readline";
 import { PassThrough, type Readable } from "stream";
 
-import { colors } from "./colors";
 import { getCwd } from "./cwd";
 import {
   createLogWriter,
   type HotUpdaterLogWriter,
   stripAnsi,
 } from "./LogWriter";
-import { type PromptProgress, p } from "./prompts";
+import { p } from "./prompts";
+import { type Step, startStep } from "./step";
 
 type LinePattern = string | RegExp;
-
-type BuildLoggerState = {
-  completedStages: number;
-  latestMessage: string;
-  started: boolean;
-  stopped: boolean;
-};
-
-const createInitialState = (): BuildLoggerState => ({
-  completedStages: 0,
-  latestMessage: "",
-  started: false,
-  stopped: false,
-});
-
-const normalizeLine = (line: string) => {
-  const truncated = line.length > 50 ? `${line.slice(0, 50)}...` : line;
-  return truncated.replace(/[\r\n]/g, " ").trim();
-};
-
-const matchesAnyPattern = ({
-  line,
-  patterns,
-}: {
-  line: string;
-  patterns: LinePattern[];
-}) => {
-  const trimmedLine = line.trim();
-  const normalizedLine = trimmedLine.toLowerCase();
-
-  return patterns.some((pattern) => {
-    if (pattern instanceof RegExp) {
-      pattern.lastIndex = 0;
-      return pattern.test(trimmedLine);
-    }
-
-    return normalizedLine.includes(pattern.toLowerCase());
-  });
-};
-
-// Is it worth doing?
-const getPatternMatchScore = ({
-  line,
-  patterns,
-}: {
-  line: string;
-  patterns: LinePattern[];
-}) => {
-  const trimmedLine = line.trim();
-  const normalizedLine = trimmedLine.toLowerCase();
-
-  // Score reflects how specific a match is: longer patterns win ties over generic ones.
-  return patterns.reduce((bestScore, pattern) => {
-    if (pattern instanceof RegExp) {
-      pattern.lastIndex = 0;
-      if (!pattern.test(trimmedLine)) {
-        return bestScore;
-      }
-
-      return Math.max(bestScore, pattern.source.length);
-    }
-
-    const normalizedPattern = pattern.toLowerCase();
-    if (!normalizedLine.includes(normalizedPattern)) {
-      return bestScore;
-    }
-
-    return Math.max(bestScore, normalizedPattern.length);
-  }, 0);
-};
-
-const resolveNextCompletedStage = ({
-  line,
-  progressStages,
-  completedStages,
-}: {
-  line: string;
-  progressStages: LinePattern[][];
-  completedStages: number;
-}) => {
-  let nextCompletedStages = completedStages;
-  let bestMatchScore = 0;
-
-  // Search all remaining stages in one line and jump to the strongest/latest match.
-  // This avoids missing progress when output emits multiple stage markers together.
-  for (
-    let stageIndex = completedStages;
-    stageIndex < progressStages.length;
-    stageIndex += 1
-  ) {
-    const matchScore = getPatternMatchScore({
-      line,
-      patterns: progressStages[stageIndex],
-    });
-
-    if (matchScore <= 0) {
-      continue;
-    }
-
-    const candidateStage = stageIndex + 1;
-    if (
-      matchScore > bestMatchScore ||
-      (matchScore === bestMatchScore && candidateStage > nextCompletedStages)
-    ) {
-      nextCompletedStages = candidateStage;
-      bestMatchScore = matchScore;
-    }
-  }
-
-  return nextCompletedStages;
-};
 
 /** The tool's output a failed build prints: its errors, else its last lines. */
 export interface BuildFailureSummaryConfig {
@@ -135,19 +24,29 @@ export interface BuildFailureSummaryConfig {
   blocks: { start: LinePattern; end: LinePattern; includeEnd: boolean }[];
 }
 
+/**
+ * Reads the short phase a live build line shows, such as `Compiling
+ * React-Core · 412 files`, from each line of the tool's raw output, or
+ * undefined for a line that starts no phase. One reader reads one run.
+ */
+export type BuildPhaseReader = (line: string) => string | undefined;
+
 export interface BuildLoggerConfig {
   logPrefix: string;
-  /** Lines that should be surfaced in prompt output as important events. */
-  importantLogPatterns: LinePattern[];
-  /** Progress stages: stage index advances when corresponding output patterns are observed. */
-  progressStages: LinePattern[][];
+  /**
+   * The log file to append to, such as an archive's for its export, instead
+   * of a new one.
+   */
+  logFilePath?: string;
+  /** A phase reader for each run. */
+  createPhaseReader: () => BuildPhaseReader;
   /** What a failure prints from the tool's raw output. */
   failureSummary: BuildFailureSummaryConfig;
 }
 
 /** The most lines a failure summary prints, and the tail it falls back to. */
-const MAX_SUMMARY_LINES = 60;
-const TAIL_LINES = 40;
+const MAX_SUMMARY_LINES = 20;
+const TAIL_LINES = 15;
 
 const matchesSummaryPattern = (line: string, pattern: LinePattern) => {
   if (pattern instanceof RegExp) {
@@ -167,60 +66,68 @@ export class BuildFailedError extends Error {
   readonly logPath: string | null;
   /** The lines of the tool's output the summary printed. */
   readonly summary: string[];
+  /**
+   * What to do about it, such as accepting an agreement, which the summary
+   * doesn't say: the one line a command prints after it, or null.
+   */
+  readonly hint: string | null;
 
   constructor(
     message: string,
     {
       logPath,
       summary,
+      hint = null,
       cause,
-    }: { logPath: string | null; summary: string[]; cause?: unknown },
+    }: {
+      logPath: string | null;
+      summary: string[];
+      hint?: string | null;
+      cause?: unknown;
+    },
   ) {
     super(message, { cause });
     this.logPath = logPath;
     this.summary = summary;
+    this.hint = hint;
   }
 }
 
+/**
+ * Runs a native build tool's output through a step: the step's live line
+ * shows the phase its reader finds, the log file keeps the raw output, and a
+ * failure prints the summary of it on stderr.
+ */
 export class BuildLogger {
-  private state = createInitialState();
   private logWriter?: HotUpdaterLogWriter;
+  private step?: Step;
   private summaryLines: string[] = [];
   private tailLines: string[] = [];
   private openBlock?: BuildFailureSummaryConfig["blocks"][number];
-  private readonly promptProgress: PromptProgress;
-  private readonly stageCount: number;
 
-  constructor(private readonly config: BuildLoggerConfig) {
-    this.stageCount = config.progressStages.length;
+  constructor(private readonly config: BuildLoggerConfig) {}
 
-    this.promptProgress = p.progress({
-      indicator: "timer",
-      max: config.progressStages.length,
-      delay: 500,
-    });
-  }
-
-  async start() {
-    this.state = { ...createInitialState(), started: true };
+  /**
+   * Opens the log, writes `header` to it, such as the tool's command line,
+   * which the terminal doesn't show, and starts the step titled `title`.
+   */
+  async start({ title, header = [] }: { title: string; header?: string[] }) {
     this.summaryLines = [];
     this.tailLines = [];
     this.openBlock = undefined;
     this.logWriter = await createLogWriter({
       prefix: this.config.logPrefix,
+      logFilePath: this.config.logFilePath,
     });
-    this.promptProgress.start();
+    if (header.length) this.logWriter.writeLines(header);
+    this.step = startStep(title);
   }
 
   /**
-   * Writes the tool's raw output to the log file and reads its failure
-   * summary from it, and shows progress from `display`, a formatter's
-   * output of it such as xcbeautify's, or from the raw output without one.
+   * Writes the tool's raw output to the log file, reads its failure summary
+   * from it, and shows its phases on the step's line.
    */
-  async processStream(
-    input: Readable,
-    { display }: { display?: Readable } = {},
-  ) {
+  async processStream(input: Readable) {
     if (!this.logWriter) {
       throw new Error("BuildLogger has not been started. Call start() first.");
     }
@@ -228,9 +135,7 @@ export class BuildLogger {
     const progressInput = new PassThrough();
     const logInput = new PassThrough();
     const summaryInput = new PassThrough();
-    // Fan out the raw stream to the log file writer and the summary, and
-    // the displayed one to prompt progress parsing.
-    (display ?? input).pipe(progressInput);
+    input.pipe(progressInput);
     input.pipe(logInput);
     input.pipe(summaryInput);
 
@@ -246,6 +151,11 @@ export class BuildLogger {
     return this.logWriter?.logFilePath
       ? path.relative(getCwd(), this.logWriter.logFilePath)
       : null;
+  }
+
+  /** The build log's absolute path, or null without one. */
+  get logFilePath(): string | null {
+    return this.logWriter?.logFilePath ?? null;
   }
 
   /**
@@ -323,52 +233,34 @@ export class BuildLogger {
       crlfDelay: Infinity,
       terminal: false,
     });
+    const readPhase = this.config.createPhaseReader();
+    let phase: string | undefined;
 
     for await (const line of lineReader) {
-      this.processProgressLine(line);
+      const next = readPhase(stripAnsi(line).replace(/\r/g, "").trim());
+      if (next !== undefined && next !== phase) {
+        phase = next;
+        this.step?.update(phase);
+      }
     }
   }
 
-  private processProgressLine(line: string) {
-    const normalizedLine = normalizeLine(line);
-
-    if (!normalizedLine) {
-      return;
-    }
-
-    const nextCompletedStages = resolveNextCompletedStage({
-      line: normalizedLine,
-      progressStages: this.config.progressStages,
-      completedStages: this.state.completedStages,
-    });
-
-    this.updateProgress({
-      nextCompletedStages,
-      latestMessage: normalizedLine,
-    });
-  }
-
+  /**
+   * Ends the step with `message` and its duration, or, for a failure, as
+   * failed, then prints the failure summary and the log's path.
+   */
   stop(message?: string, success = true) {
-    if (!this.state.started || this.state.stopped) {
+    const step = this.step;
+    if (!step?.active) {
       return;
     }
 
     if (success) {
-      this.finishRemainingProgress();
-    }
-
-    const finalMessage =
-      message || (success ? "Build completed successfully" : "Build failed");
-
-    if (success) {
-      this.promptProgress.stop(finalMessage);
-      this.showLogFileLocation();
+      step.succeed(message);
     } else {
-      this.promptProgress.error(finalMessage);
+      step.fail(message);
       this.showFailureSummary();
     }
-
-    this.state = { ...this.state, stopped: true };
   }
 
   writeError(error: unknown) {
@@ -382,56 +274,6 @@ export class BuildLogger {
 
     await this.logWriter.close();
     this.logWriter = undefined;
-  }
-
-  private updateProgress({
-    nextCompletedStages,
-    latestMessage,
-  }: {
-    nextCompletedStages: number;
-    latestMessage: string;
-  }) {
-    if (this.state.stopped) {
-      return;
-    }
-
-    const progressDelta = nextCompletedStages - this.state.completedStages;
-
-    if (progressDelta > 0) {
-      this.promptProgress.advance(progressDelta, latestMessage);
-    } else if (
-      latestMessage &&
-      latestMessage !== this.state.latestMessage &&
-      this.shouldLogLine(latestMessage)
-    ) {
-      this.promptProgress.message(latestMessage);
-    }
-
-    this.state = {
-      ...this.state,
-      completedStages: Math.max(
-        this.state.completedStages,
-        nextCompletedStages,
-      ),
-      latestMessage,
-    };
-  }
-
-  private finishRemainingProgress() {
-    if (!this.promptProgress || this.state.completedStages >= this.stageCount) {
-      return;
-    }
-
-    const remainingStages = this.stageCount - this.state.completedStages;
-    this.promptProgress.advance(remainingStages, this.state.latestMessage);
-    this.state = { ...this.state, completedStages: this.stageCount };
-  }
-
-  private shouldLogLine(line: string) {
-    return matchesAnyPattern({
-      line,
-      patterns: this.config.importantLogPatterns,
-    });
   }
 
   /**
@@ -450,15 +292,5 @@ export class BuildLogger {
     if (message) {
       p.log.error(message, { output: process.stderr });
     }
-  }
-
-  private showLogFileLocation() {
-    if (!this.logWriter?.logFilePath) {
-      return;
-    }
-
-    const relativePath = path.relative(getCwd(), this.logWriter.logFilePath);
-    const highlightedPath = colors.blueBright(relativePath);
-    p.log.info(`Build log stored at ${highlightedPath}`);
   }
 }

@@ -12,6 +12,7 @@ import {
   loadConfig,
   p,
   putStorageFile,
+  startStep,
 } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
@@ -222,6 +223,8 @@ export const registerNativeBuild = async (
   const workDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-native-build-"),
   );
+  // One line: what it uploads shows while it runs.
+  const step = startStep("Registering the native build");
   try {
     const { core, storage } = server;
     assertStorageOperations(storage, ["put", "exists"]);
@@ -287,7 +290,7 @@ export const registerNativeBuild = async (
       });
     }
 
-    p.log.info(`Uploading the native build to ${storage.name}`);
+    step.update(`uploading to ${storage.name}`);
     // The manifest's key names this registration: two imports of the same
     // MIN_BUNDLE_ID upload before the registry takes one, so a shared key
     // would let the refused one overwrite the registered build's manifest.
@@ -344,13 +347,11 @@ export const registerNativeBuild = async (
       await removeUnregisteredArtifact(server, registration);
       throw error;
     }
-    p.log.success(
-      ui.block("Native build registered", [
-        ui.kv("ID", ui.id(row.id)),
-        ui.kv("Built-in bundle", ui.id(row.min_bundle_id)),
-      ]),
-    );
+    step.succeed(`Registered native build ${ui.id(row.id)}`);
     return row;
+  } catch (error) {
+    step.fail("Couldn't register the native build");
+    throw error;
   } finally {
     await fs.promises.rm(workDir, { recursive: true, force: true });
     await server.dispose();

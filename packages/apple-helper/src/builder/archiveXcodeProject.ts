@@ -1,6 +1,5 @@
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
 import type {
   ApplePlatform,
   IosBuildDestination,
@@ -12,7 +11,6 @@ import {
   getDefaultDestination,
   resolveDestinations,
 } from "../utils/destination";
-import { formatCommand } from "../utils/formatCommand";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
@@ -40,6 +38,7 @@ export const archiveXcodeProject = async ({
   xcodeScheme,
   xcconfig,
   logPrefix,
+  header = [],
   minBundleId,
   authenticationArgs,
 }: {
@@ -56,9 +55,11 @@ export const archiveXcodeProject = async ({
   archiveDirectory: string;
   xcconfig?: string;
   logPrefix: string;
+  /** Lines the build log starts with, such as the native build key. */
+  header?: string[];
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
-}): Promise<{ archivePath: string }> => {
+}): Promise<{ archivePath: string; logFilePath: string | null }> => {
   if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
@@ -94,31 +95,27 @@ export const archiveXcodeProject = async ({
       xcodeScheme,
     });
 
-    p.log.info(
-      [
-        "Xcode archive",
-        `Project   ${xcodeProject.name}`,
-        `Scheme    ${xcodeScheme}`,
-        `Platform  ${platform}`,
-        "Command",
-        formatCommand(["xcodebuild", ...archiveArgs]),
-      ].join("\n"),
-    );
-
     try {
-      await runXcodebuildWithLogging({
+      const { logFilePath } = await runXcodebuildWithLogging({
         args: archiveArgs,
         // The build setting reaches the podspec's script phase, and the
         // environment reaches Package.swift's build tool plugin, which
         // can't read build settings.
         env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
+        title: `Archiving ${xcodeScheme}`,
+        successMessage: `Archived ${xcodeScheme}`,
         failureMessage: "Archive failed",
         logPrefix,
+        header: [
+          ...header,
+          `Project   ${xcodeProject.name}`,
+          `Scheme    ${xcodeScheme}`,
+          `Platform  ${platform}`,
+        ],
         sourceDir,
-        successMessage: "Archive completed successfully",
       });
 
-      return { archivePath };
+      return { archivePath, logFilePath };
     } catch (error) {
       throw prettifyXcodebuildError(error);
     }

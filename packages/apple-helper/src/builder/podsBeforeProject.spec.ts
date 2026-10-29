@@ -27,6 +27,7 @@ vi.mock("execa", () => ({
 vi.mock("../utils/cocoapods", () => ({
   installPodsIfNeeded: vi.fn(async (sourceDir: string) => {
     await fs.mkdir(path.join(sourceDir, "App.xcworkspace"));
+    return { codegen: false, pods: true };
   }),
 }));
 vi.mock("../utils/runXcodebuildWithLogging", () => ({
@@ -46,7 +47,9 @@ beforeEach(async () => {
   vi.spyOn(fs, "cp").mockResolvedValue(undefined);
   sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-ios-"));
   await fs.mkdir(path.join(sourceDir, "App.xcodeproj"));
-  vi.mocked(runXcodebuildWithLogging).mockClear();
+  vi.mocked(runXcodebuildWithLogging)
+    .mockClear()
+    .mockResolvedValue({ logFilePath: null });
 });
 
 afterEach(async () => {

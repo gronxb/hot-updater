@@ -62,7 +62,7 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
     await importOriginal<typeof import("@hot-updater/apple-helper")>()
   ).TestFlightBuildExistsError,
   assertTestFlightExportOptions: vi.fn(async () => {}),
-  buildIos: vi.fn(),
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
   installPodsIfNeeded: vi.fn(async () => {}),
   resolveTestFlightUploadKey: vi.fn(() => ({
     kind: "asc-api-key",
@@ -83,7 +83,7 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
     await importOriginal<typeof import("@hot-updater/android-helper")>()
   ).PlayVersionCodeUsedError,
   assertPlaySigned: vi.fn(async () => {}),
-  buildAndroid: vi.fn(),
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
   findPlayInternalRelease: vi.fn(async () => false),
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.7.0", channel: null })),
   readBuiltPackageName: vi.fn(async () => "com.example.app"),
