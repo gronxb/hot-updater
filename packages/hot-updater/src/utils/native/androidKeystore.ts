@@ -123,16 +123,28 @@ export class KeystoreRefusedError extends Error {
    * key, as it does in a PKCS12 keystore, which has one password.
    */
   readonly storePasswordUnlocks: boolean;
+  /**
+   * For a refused key password: the certificate, which the store password
+   * reads alone.
+   */
+  readonly certificate?: KeystoreCertificate;
 
   constructor(
     reason: KeystoreRefusedError["reason"],
     message: string,
-    { storePasswordUnlocks = false } = {},
+    {
+      storePasswordUnlocks = false,
+      certificate,
+    }: {
+      readonly storePasswordUnlocks?: boolean;
+      readonly certificate?: KeystoreCertificate;
+    } = {},
   ) {
     super(message);
     this.name = "KeystoreRefusedError";
     this.reason = reason;
     this.storePasswordUnlocks = storePasswordUnlocks;
+    if (certificate) this.certificate = certificate;
   }
 }
 
@@ -386,7 +398,7 @@ export const verifyKeystore = (
           ? "For PKCS12 keystores, the key password is the store password."
           : `Use the password "${entry.keyAlias}" was created with.`,
       ].join("\n"),
-      { storePasswordUnlocks },
+      { storePasswordUnlocks, certificate },
     );
   });
 };

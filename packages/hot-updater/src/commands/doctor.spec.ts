@@ -24,9 +24,14 @@ import {
   recordedClackCalls,
   renderClackLog,
 } from "@hot-updater/test-utils/node";
+import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
+import {
+  androidKeystoreValue,
+  findKeytool,
+} from "../utils/native/androidKeystore";
 import {
   areVersionsCompatible,
   checkInfrastructureStatus,
@@ -43,6 +48,9 @@ import type { NativeCheckIssue } from "./doctor/issues";
 import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
+
+/** The JDK's keytool, when this machine has one: CI's runners do. */
+const realKeytool = await findKeytool().catch(() => undefined);
 
 // Computing a fingerprint hashes the whole project; doctor/fingerprint.spec
 // covers the comparison itself.
@@ -73,20 +81,24 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   // The secrets check reads the environment and the adapter as the CLI does.
   ...(({
     CREDENTIAL_ENV_NAMES,
+    credentialPutCommand,
     getConfiguredAdapter,
     getDeploySecretNames,
     getHotUpdaterEnvValue,
     isSecretRef,
     readLoadedHotUpdaterEnv,
+    registerCredentialValue,
     secret,
     secretVariableName,
   }) => ({
     CREDENTIAL_ENV_NAMES,
+    credentialPutCommand,
     getConfiguredAdapter,
     getDeploySecretNames,
     getHotUpdaterEnvValue,
     isSecretRef,
     readLoadedHotUpdaterEnv,
+    registerCredentialValue,
     secret,
     secretVariableName,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -612,6 +624,104 @@ describe("doctor", () => {
     logSpy.mockRestore();
     vi.unstubAllEnvs();
   });
+
+  it.skipIf(!realKeytool)(
+    "marks a stored upload keystore its passwords don't open, with how to store it again",
+    async () => {
+      mockReadPackageUp.mockResolvedValue({
+        packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+        path: "/mock/cwd/package.json",
+      });
+      const directory = await fs.mkdtemp(
+        path.join(os.tmpdir(), "hot-updater-doctor-keystore-"),
+      );
+      const file = path.join(directory, "upload.p12");
+      const created = await execa(
+        process.env["JAVA_HOME"]
+          ? path.join(process.env["JAVA_HOME"], "bin", "keytool")
+          : "keytool",
+        [
+          "-genkeypair",
+          "-noprompt",
+          "-keystore",
+          file,
+          "-storetype",
+          "PKCS12",
+          "-alias",
+          "upload",
+          "-keyalg",
+          "RSA",
+          "-keysize",
+          "2048",
+          "-validity",
+          "30",
+          "-dname",
+          "CN=spec",
+          "-storepass",
+          "store-secret-1",
+          "-keypass",
+          "store-secret-1",
+        ],
+        { reject: false },
+      );
+      expect(created.exitCode).toBe(0);
+      const value = androidKeystoreValue({
+        keystore: await fs.readFile(file),
+        storePassword: "store-secret-1",
+        keyAlias: "upload",
+        keyPassword: "eas-key-secret",
+      });
+      await fs.rm(directory, { recursive: true, force: true });
+      mockLoadConfig.mockResolvedValue(
+        createConfig({
+          secrets: {
+            name: "team-store",
+            get: vi.fn(async (names: readonly string[]) =>
+              Object.fromEntries(names.map((name) => [name, value])),
+            ),
+          },
+          nativeBuild: {
+            android: {
+              release: { signing: { keystore: secret("release-keystore") } },
+            },
+          },
+          signing: { enabled: false },
+        }),
+      );
+
+      await handleDoctor({ serverBaseUrl: undefined }).catch(() => {});
+
+      const printed = (level: "step" | "warn") =>
+        vi
+          .mocked(p.log[level])
+          .mock.calls.map(([message]) =>
+            stripVTControlCharacters(String(message)),
+          );
+      expect(
+        printed("step").find((message) => message.startsWith("Secrets")),
+      ).toBe(
+        [
+          "Secrets",
+          "Adapter           team-store",
+          "release-keystore  in the adapter, doesn't open",
+        ].join("\n"),
+      );
+      const warning = printed("warn").find((message) =>
+        message.startsWith("release-keystore:"),
+      );
+      expect(warning).toBe(
+        [
+          'release-keystore: The key password doesn\'t unlock "upload".',
+          "For PKCS12 keystores, the key password is the store password.",
+          "Store it again:",
+          "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+          "  <upload.jks>",
+        ].join("\n"),
+      );
+      expect(linesWiderThan(warning!.split("\n"), 76)).toEqual([]);
+    },
+    60_000,
+  );
 
   it("exits non-zero when the default output reports a doctor error", async () => {
     mockReadPackageUp.mockResolvedValue(null);

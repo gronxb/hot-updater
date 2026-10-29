@@ -89,8 +89,10 @@ const describeStoredKey = async (
   let refused: string | undefined;
   const certificate = keytool
     ? await verifyKeystore(keytool, entry).catch((error: unknown) => {
-        if (error instanceof KeystoreRefusedError) refused = error.message;
-        return undefined;
+        if (!(error instanceof KeystoreRefusedError)) return undefined;
+        refused = error.message;
+        // The store password reads the certificate alone.
+        return error.certificate;
       })
     : undefined;
   return {

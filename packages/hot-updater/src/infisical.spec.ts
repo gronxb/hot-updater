@@ -547,7 +547,15 @@ describe("infisical", () => {
     const secrets = adapter({ siteUrl });
 
     await expect(secrets.get(["a"], { cwd })).rejects.toThrow(
-      `infisical() can't use siteUrl ${JSON.stringify(siteUrl)}.\nUse an HTTPS URL, or HTTP on a loopback address.`,
+      "\nUse an HTTPS URL, or HTTP on a loopback address.",
+    );
+    const error = (await secrets
+      .get(["a"], { cwd })
+      .catch((thrown: unknown) => thrown)) as Error;
+    expect(error.message.split("\n")[0]).toBe(
+      siteUrl.includes("@")
+        ? "infisical() can't use siteUrl."
+        : `infisical() can't use siteUrl ${JSON.stringify(siteUrl)}.`,
     );
     expect(calls).toEqual([]);
   });

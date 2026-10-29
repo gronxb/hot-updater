@@ -91,7 +91,8 @@ const normalizeSiteUrl = (siteUrl: string, source: string) => {
   const invalid = () =>
     new Error(
       [
-        `${NAME}() can't use ${source} ${JSON.stringify(siteUrl)}.`,
+        // Not quoted when it holds credentials.
+        `${NAME}() can't use ${source}${/\/\/[^/]*@/u.test(siteUrl) ? "" : ` ${JSON.stringify(siteUrl)}`}.`,
         "Use an HTTPS URL, or HTTP on a loopback address.",
         "Leave out credentials, a query, and a fragment.",
       ].join("\n"),

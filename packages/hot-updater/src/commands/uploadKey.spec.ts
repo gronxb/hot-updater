@@ -491,6 +491,39 @@ describe("hot-updater secrets issue android-keystore", () => {
     expect(printed()).not.toContain("same-secret");
   });
 
+  it("names a stored key password that doesn't unlock the key, and --pem still exports its certificate", async () => {
+    const { contents } = await existingKeystore({
+      storePassword: "same-secret",
+      keyPassword: "same-secret",
+    });
+    writableStore({
+      "android-keystore": androidKeystoreValue({
+        keystore: contents,
+        storePassword: "same-secret",
+        keyAlias: "eas-upload",
+        keyPassword: "eas-key-secret",
+      }),
+    });
+    const pem = path.join(directory, "upload.pem");
+
+    await withTTY(true, () =>
+      handleUploadKeyIssue("android-keystore", { pem }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    const { certificate } = keystores.get(contents.toString("base64"))!;
+    expect(
+      (await fs.readFile(pem, "utf-8")).replace(/-----[A-Z ]+-----|\s/gu, ""),
+    ).toBe(certificate.toString("base64"));
+    expect(logged("step")).toContain(
+      [
+        'The key password doesn\'t unlock "eas-upload".',
+        "For PKCS12 keystores, the key password is the store password.",
+      ].join("\n"),
+    );
+    expect(printed()).not.toMatch(/same-secret|eas-key-secret/u);
+  });
+
   it("--replace overwrites it, naming the old key's fingerprint, which a key reset needs", async () => {
     const { contents } = await existingKeystore({
       storePassword: "old-secret",
