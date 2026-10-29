@@ -1,5 +1,22 @@
 # hot-updater
 
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- 5b13b16: `google-play login` asks which Google Account to use when gcloud already holds one: the accounts gcloud holds, the active one first, or "Sign in with another Google Account", which runs `gcloud auth login` and uses the account it adds. It reads the access token of the chosen account and leaves gcloud's active account as it was. The Play Console invite, and the refusal when the key never reaches the app, name the exact permission to grant: the app permission "Release apps to testing tracks", under App permissions rather than account-wide.
+- f3989de: rc.6 QA fixes. A CI iOS build revokes only the signing certificates Xcode created in its keychain, never the Apple CA intermediates imported beside them, and a certificate it can't revoke is named on one line with its serial on the next, then the page to revoke it. When Apple's Program License Agreement isn't accepted, the build failure, TestFlight uploads, the certificate revocation, and key issuing say the Account Holder must accept it at developer.apple.com/account. `secrets import` takes the env file to read, `.env.hotupdater` by default, reads only that file, and lists the names it stored one per line. A secrets adapter that can't be read names the secret and the adapter above its own error. `secrets issue asc-api-key` and `apple login` name the team the key was issued in.
+- Updated dependencies [5b13b16]
+- Updated dependencies [f3989de]
+  - @hot-updater/android-helper@1.2.0-rc.7
+  - @hot-updater/apple-helper@1.2.0-rc.7
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/bsdiff@1.2.0-rc.7
+  - @hot-updater/console@1.2.0-rc.7
+  - @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/server@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
 ## 1.2.0-rc.6
 
 ### Patch Changes

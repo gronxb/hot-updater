@@ -1,5 +1,12 @@
 # @hot-updater/standalone
 
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
 ## 1.2.0-rc.6
 
 ### Patch Changes
