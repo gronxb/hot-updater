@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "1.2.0-rc.8",
+  "version": "1.2.0-rc.9",
   "engines": {
     "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
