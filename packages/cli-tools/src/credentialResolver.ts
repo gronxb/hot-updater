@@ -121,10 +121,11 @@ const withLead = (lead: string, command: string): string =>
     : `${lead}\n${formatCommand(command)}`;
 
 /**
- * Why a build has no upload keystore, in three lines, steering away from a
- * second key: Play rejects builds signed with a key it does not have.
- * Under a team's adapter the keystore is someone's already, so it is
- * imported, never created; only `localSecrets()` alone offers a new one.
+ * Why a build has no upload keystore, steering away from a second key:
+ * Play rejects builds signed with a key it does not have. Under a team's
+ * adapter the keystore is someone's already, so it is imported, never
+ * created; only `localSecrets()` alone offers a new one, for an app with
+ * no `.aab` on Play yet.
  */
 const describeMissingKeystore = (
   store: SecretsAdapter,
@@ -136,23 +137,49 @@ const describeMissingKeystore = (
     return [
       `No ${item} in ${describeSecret(configured, name)}.`,
       "Ask whoever set it up to store it there, or import it with:",
-      "npx hot-updater google-play login",
+      formatCommand(credentialPutCommand("android-keystore", name)),
     ].join("\n");
   }
   return [
     `No ${item} in the ${store.name} secrets adapter.`,
-    "Play rejects a new key if the app has one: import it with google-play login.",
-    withLead("Otherwise:", credentialStoreCommand("android-keystore", name)),
+    withLead(
+      "Store the app's upload key:",
+      credentialPutCommand("android-keystore", name),
+    ),
+    withLead(
+      "No .aab on Play yet? Create one:",
+      credentialIssueCommand("android-keystore", name),
+    ),
   ].join("\n");
 };
 
 /** The credentials Hot Updater issues itself after a sign-in. */
-export type IssuedCredentialKind = Exclude<CredentialKind, "android-keystore">;
+export type IssuedCredentialKind = "asc-api-key";
+
+/** The credentials `secrets put <name> <file>` stores from one file. */
+export type FileCredentialKind = Exclude<CredentialKind, IssuedCredentialKind>;
+
+/** The file each `secrets put <name> <file>` command names. */
+const PUT_FILES: Readonly<Record<FileCredentialKind, string>> = {
+  "android-keystore": "<upload.jks>",
+  "play-service-account": "<key.json>",
+};
+
+/**
+ * The command that stores the file you have as `name`: the service
+ * account's JSON key, or the app's upload keystore. `--kind` is named only
+ * for a name that is not the kind.
+ */
+export const credentialPutCommand = (
+  kind: FileCredentialKind,
+  name: string = kind,
+): string =>
+  `npx hot-updater secrets put ${name}${name === kind ? "" : ` --kind ${kind}`} ${PUT_FILES[kind]}`;
 
 /**
  * The command that stores the key Hot Updater issues as `name`: an App
- * Store Connect API key after an Apple Account sign-in, a Play service
- * account after a Google one, and an upload keystore it creates.
+ * Store Connect API key after an Apple Account sign-in, and an upload
+ * keystore it creates.
  */
 export const credentialIssueCommand = (
   kind: CredentialKind,
@@ -163,14 +190,12 @@ export const credentialIssueCommand = (
 /** The command group of each issued kind's shortcut, `<group> login`. */
 export const CREDENTIAL_LOGIN_GROUPS = {
   "asc-api-key": "apple",
-  "play-service-account": "google-play",
 } as const satisfies Record<IssuedCredentialKind, string>;
 
 /**
  * The command people meet first that issues `kind` as `name`: its shortcut,
- * `apple login` for an App Store Connect API key or `google-play login`
- * for a Play service account, which takes nothing and stores the kind's
- * own name; for another name, `credentialIssueCommand`.
+ * `apple login` for an App Store Connect API key, which takes nothing and
+ * stores the kind's own name; for another name, `credentialIssueCommand`.
  */
 export const credentialLoginCommand = (
   kind: IssuedCredentialKind,
@@ -182,16 +207,15 @@ export const credentialLoginCommand = (
 
 /**
  * The command that stores a missing credential of `kind` as `name`: the
- * upload keystore Hot Updater creates, or the key it issues after a
- * sign-in.
+ * key Hot Updater issues after an Apple sign-in, or the file you have.
  */
 export const credentialStoreCommand = (
   kind: CredentialKind,
   name: string = kind,
 ): string =>
-  kind === "android-keystore"
-    ? credentialIssueCommand(kind, name)
-    : credentialLoginCommand(kind, name);
+  kind === "asc-api-key"
+    ? credentialLoginCommand(kind, name)
+    : credentialPutCommand(kind, name);
 
 export class CredentialUnavailableError extends Error {
   readonly kind: CredentialKind;

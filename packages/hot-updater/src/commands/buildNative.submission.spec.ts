@@ -120,8 +120,16 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("../utils/native/ascApiKey", () => ({
   ensureAscApiKey: vi.fn(async () => ({ status: "stored" })),
 }));
-vi.mock("../utils/native/playServiceAccount", () => ({
-  ensurePlayServiceAccount: vi.fn(async () => ({ status: "stored" })),
+// Google Play is ready: playServiceAccount.spec.ts covers its checks.
+vi.mock("../utils/native/playServiceAccount", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../utils/native/playServiceAccount")
+  >()),
+  checkGooglePlay: vi.fn(async ({ packageName }: { packageName: string }) => ({
+    packageName,
+    ready: true,
+    checks: [],
+  })),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));

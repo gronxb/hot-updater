@@ -92,18 +92,18 @@ describe("canSignIn", () => {
 
     await expect(
       canSignIn({
-        account: "Google Account",
+        account: "Apple Account",
         describeUnavailable: async () => ({
-          missing: "widget-play is missing.",
-          fix: "Run once in a terminal: npx hot-updater google-play login",
+          missing: "widget-asc is missing.",
+          fix: "Run once in a terminal: npx hot-updater apple login",
         }),
       }),
     ).resolves.toBe(false);
     expect(log.error).toHaveBeenCalledWith(
       [
-        "widget-play is missing.",
-        "Can't sign in to your Google Account without a terminal.",
-        "Run once in a terminal: npx hot-updater google-play login",
+        "widget-asc is missing.",
+        "Can't sign in to your Apple Account without a terminal.",
+        "Run once in a terminal: npx hot-updater apple login",
       ].join("\n"),
     );
   });

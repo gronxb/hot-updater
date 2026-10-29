@@ -29,9 +29,9 @@ import {
   verifyKeystore,
 } from "../utils/native/androidKeystore";
 import { handleSecretsPut } from "./secrets";
-import { handleGooglePlayUploadKey, handleUploadKeyIssue } from "./uploadKey";
+import { handleUploadKeyIssue } from "./uploadKey";
 
-const { log, text, select, password, hasPlayReleases } = vi.hoisted(() => ({
+const { log, text, select, password } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -43,10 +43,9 @@ const { log, text, select, password, hasPlayReleases } = vi.hoisted(() => ({
   text: vi.fn(),
   select: vi.fn(),
   password: vi.fn(),
-  hasPlayReleases: vi.fn(async () => false),
 }));
 
-// Only the config, the prompts, keytool, and Google Play are stood in for.
+// Only the config, the prompts, and keytool are stood in for.
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig: vi.fn(),
@@ -56,10 +55,6 @@ vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/native/githubSecret")>()),
   offerGitHubSecret: vi.fn(async () => "unavailable"),
-}));
-vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
-  hasPlayReleases,
 }));
 vi.mock("../utils/native/androidKeystore", async (importOriginal) => {
   const original =
@@ -169,15 +164,6 @@ const existingKeystore = async ({
   await fs.writeFile(file, contents);
   return { file, contents };
 };
-
-const SERVICE_ACCOUNT = JSON.stringify({
-  type: "service_account",
-  project_id: "my-app",
-  private_key_id: "key-1",
-  private_key:
-    "-----BEGIN PRIVATE KEY-----\nuploadKeySpec\n-----END PRIVATE KEY-----",
-  client_email: "uploader@my-app.iam.gserviceaccount.com",
-});
 
 const ENV_NAMES = [
   "HOT_UPDATER_ANDROID_KEYSTORE_PATH",
@@ -364,6 +350,7 @@ describe("hot-updater secrets issue android-keystore", () => {
     ]);
     expect(lines[5]).toMatch(/^Source {3}home\/.*android-keystore\.json$/u);
     expect(lines.slice(6)).toEqual([
+      "Fits only an app with no .aab on Play yet: Play keeps the first key.",
       "Back up this file: it is your Play upload key.",
       "Play has another upload key? Request a key reset with:",
       "npx hot-updater secrets issue android-keystore --pem upload.pem",
@@ -435,7 +422,7 @@ describe("hot-updater secrets issue android-keystore", () => {
     expect(process.exitCode).toBe(1);
     expect(logged("error")).toBe(
       [
-        "The write-only secrets adapter doesn't read android-keystore back as stored.",
+        "write-only doesn't read android-keystore back as stored.",
         "It reads back nothing.",
         "Nothing is kept on this machine: check wo://android-keystore.",
       ].join("\n"),
@@ -611,91 +598,21 @@ describe("hot-updater secrets issue android-keystore", () => {
   );
 });
 
-describe("hot-updater google-play login's upload key", () => {
-  it("reports the stored keystore the scheme names, and exits 0 without a terminal", async () => {
-    const { contents } = await existingKeystore({
-      storePassword: "same-secret",
-      keyPassword: "same-secret",
-    });
-    const { store } = writableStore({
-      "widget-keystore": androidKeystoreValue({
-        keystore: contents,
-        storePassword: "same-secret",
-        keyAlias: "eas-upload",
-        keyPassword: "same-secret",
-      }),
-    });
-    configure(store, {
-      android: {
-        widget: {
-          packageName: "com.example.widget",
-          signing: { keystore: "secret:widget-keystore" },
-        },
-      },
-    });
-
-    await withTTY(false, () => handleGooglePlayUploadKey());
-
-    expect(process.exitCode).toBeUndefined();
-    expect(select).not.toHaveBeenCalled();
-    const lines = logged("step").split("\n");
-    expect(lines.slice(0, 3)).toEqual([
-      "Upload key already stored",
-      "Name     widget-keystore",
-      "Alias    eas-upload",
-    ]);
-    expect(lines.at(-1)).toBe("Source   spec://widget-keystore");
-    // The config names it already: no line to add.
-    expect(log.info).not.toHaveBeenCalled();
-  });
-
-  it("fails in three lines without a terminal when nothing is stored", async () => {
-    writableStore();
-
-    await withTTY(false, () => handleGooglePlayUploadKey());
-
-    expect(process.exitCode).toBe(1);
-    expect(logged("error")).toBe(
-      [
-        "Can't set up the upload key without a terminal.",
-        "Run in a terminal: npx hot-updater google-play login",
-        "Or store yours: npx hot-updater secrets put --help",
-      ].join("\n"),
-    );
-  });
-
-  it("creates a new upload key when chosen, as secrets issue does", async () => {
-    const { held } = writableStore();
-    select.mockResolvedValue("create");
-
-    await withTTY(true, () => handleGooglePlayUploadKey());
-
-    expect(process.exitCode).toBeUndefined();
-    expect(select).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: "Upload key",
-        initialValue: "create",
-      }),
-    );
-    expect(JSON.parse(held.get("android-keystore")!).keyAlias).toBe("upload");
-    expect(logged("success")).toMatch(/^Upload key created\n/u);
-  });
-
-  it("stores the keystore you have, offering its alias and asking the key's password when it differs", async () => {
+describe("hot-updater secrets put android-keystore <file>", () => {
+  it("asks the passwords at a terminal, retrying a wrong one, takes its only alias, and stores what keytool opens", async () => {
     const { held } = writableStore();
     const { file, contents } = await existingKeystore();
-    select.mockResolvedValue("existing");
-    text.mockResolvedValue(file);
     password
       .mockResolvedValueOnce("wrong-store")
       .mockResolvedValueOnce("store-secret-1")
       .mockResolvedValueOnce("key-secret-22");
 
-    await withTTY(true, () => handleGooglePlayUploadKey());
+    await withTTY(true, () => handleSecretsPut("android-keystore", { file }));
 
     expect(process.exitCode).toBeUndefined();
-    // One alias: nothing to choose.
-    expect(select).toHaveBeenCalledTimes(1);
+    // The file is the argument, and one alias leaves nothing to choose.
+    expect(text).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
     expect(password.mock.calls.map(([options]) => options.message)).toEqual([
       "Keystore password",
       "Keystore password",
@@ -712,45 +629,57 @@ describe("hot-updater google-play login's upload key", () => {
     expect(printed()).not.toMatch(/store-secret-1|key-secret-22|wrong-store/u);
   });
 
-  it("suggests the keystore you have when Play already releases the app", async () => {
-    vi.stubEnv("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON", SERVICE_ACCOUNT);
-    writableStore();
-    hasPlayReleases.mockResolvedValue(true);
-    select.mockResolvedValue("create");
+  it("tries the key's password as the store's first, asking once when they are one", async () => {
+    const { held } = writableStore();
+    const { file } = await existingKeystore({
+      storePassword: "same-secret",
+      keyPassword: "same-secret",
+    });
+    password.mockResolvedValueOnce("same-secret");
 
-    await withTTY(true, () => handleGooglePlayUploadKey());
+    await withTTY(true, () =>
+      handleSecretsPut("release-keystore", { kind: "android-keystore", file }),
+    );
 
-    expect(hasPlayReleases).toHaveBeenCalledWith(
-      expect.objectContaining({ packageName: "com.example.app" }),
-    );
-    expect(logged("info")).toBe(
-      "com.example.app is on Play: use the keystore it was signed with.",
-    );
-    expect(select).toHaveBeenCalledWith(
-      expect.objectContaining({ initialValue: "existing" }),
+    expect(password).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(held.get("release-keystore")!).keyPassword).toBe(
+      "same-secret",
     );
   });
 
-  it("uses android-keystore when no scheme names one, and shows the signing config to add", async () => {
-    const { held, store } = writableStore();
-    configure(store, {
-      android: { release: { packageName: "com.example.app" } },
-    });
-    select.mockResolvedValue("create");
+  it("refuses in one line without a terminal and --key-alias, asking and storing nothing", async () => {
+    const { store } = writableStore();
+    const { file } = await existingKeystore();
 
-    await withTTY(true, () => handleGooglePlayUploadKey());
+    await withTTY(false, () => handleSecretsPut("android-keystore", { file }));
 
-    expect(held.has("android-keystore")).toBe(true);
-    expect(
-      stripVTControlCharacters(String(log.info.mock.calls.at(-1)?.[0])),
-    ).toBe(
-      'Sign builds with it: signing: { keystore: "secret:android-keystore" }',
+    expect(process.exitCode).toBe(1);
+    expect(logged("error")).toBe(
+      "Can't ask for the keystore's passwords without a terminal: pass --key-alias.",
+    );
+    expect(password).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("takes --key-alias and the password variables without a terminal", async () => {
+    const { held } = writableStore();
+    const { file } = await existingKeystore();
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "key-secret-22");
+
+    await withTTY(false, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "eas-upload" }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(JSON.parse(held.get("android-keystore")!).keyAlias).toBe(
+      "eas-upload",
     );
   });
 });
 
 describe("hot-updater secrets put android-keystore without the keystore", () => {
-  it("names the command that creates one", async () => {
+  it("names the command that stores one, and the one that creates one", async () => {
     writableStore();
 
     await withTTY(true, () =>
@@ -760,7 +689,8 @@ describe("hot-updater secrets put android-keystore without the keystore", () => 
     expect(process.exitCode).toBe(1);
     expect(logged("error")).toBe(
       [
-        "secrets put needs --keystore <file>, --key-alias <alias>.",
+        "secrets put needs the keystore file:",
+        "npx hot-updater secrets put android-keystore <upload.jks>",
         "To create a new key, run npx hot-updater secrets issue android-keystore",
       ].join("\n"),
     );

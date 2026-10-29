@@ -101,8 +101,8 @@ export default defineConfig({
 
 A name is the variable the environment would read it from:
 `secret:asc-api-key` is `HOT_UPDATER_ASC_API_KEY` in
-`hot-updater.secrets.env`. The first `apple login`, `google-play login`,
-or `secrets put` creates the file with its public key, and the private key
+`hot-updater.secrets.env`. The first `apple login` or `secrets put`
+creates the file with its public key, and the private key
 in `.env.keys` next to it.
 
 ## Keep the private key private
@@ -120,9 +120,9 @@ git add hot-updater.secrets.env .gitignore
 - Reading needs the private key: `.env.keys` on your machine, or
   `DOTENV_PRIVATE_KEY` in the environment. Keep it only in your CI's
   secrets and your password manager.
-- If the private key leaks, revoke the keys Hot Updater issued (the App Store
-  Connect API key, and the Play service account's key), then issue new ones
-  with a new file and key pair: the file's history in git stays decryptable
+- If the private key leaks, revoke the keys it held (the App Store Connect
+  API key, and the Play service account's key in Google Cloud), then store
+  new ones with a new file and key pair: the file's history in git stays decryptable
   with the leaked key.
 
 ## Read secrets in CI

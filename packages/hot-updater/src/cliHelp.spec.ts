@@ -267,19 +267,20 @@ describe("CLI commands", () => {
     // put stores a key you have: its help no longer offers a sign-in.
     expect(put).not.toMatch(/sign in with/i);
     expect(put).toContain(
-      "run apple login or google-play login (secrets issue)",
+      "To sign in and issue an App Store Connect API key, run apple login.",
     );
+    expect(put).toContain("secrets put play-service-account <key.json>");
+    expect(put).toContain("secrets put android-keystore <upload.jks>");
 
     const issue = help("secrets", "issue").replace(/\s+/gu, " ");
-    expect(issue).toContain(
-      'choices: "asc-api-key", "play-service-account", "android-keystore"',
-    );
+    expect(issue).toContain('choices: "asc-api-key", "android-keystore"');
+    // A Play service account is a file you store: nothing issues one.
+    expect(issue).not.toContain("play-service-account");
+    expect(issue).not.toContain("gcloud");
     expect(issue).toContain("--pem <file>");
     expect(issue).toContain("--replace");
     expect(issue).toContain("never revokes the old key");
-    expect(issue).toContain(
-      "play-service-account signs in to Google with gcloud",
-    );
+    expect(issue).toContain("only an app with no .aab on Google Play yet");
     expect(issue).not.toContain("OAuth client");
     // Hot Updater signs in to Apple itself: no asc binary is involved.
     expect(issue).toContain(
@@ -315,15 +316,19 @@ describe("CLI commands", () => {
 
     const missing = run("secrets", "put", "release-keystore");
     expect(missing.status).toBe(1);
-    expect(missing.stderr).toContain(
-      "required option '--kind <kind>' not specified",
+    expect(stripVTControlCharacters(missing.stdout + missing.stderr)).toContain(
+      "Pass --kind: release-keystore is not a kind.",
     );
   });
 
-  it.each([
-    ["apple", "asc-api-key", "Apple Account", "gcloud"],
-    ["google-play", "play-service-account", "Google", "Apple Account"],
-  ] as const)(
+  it("has no google-play login: Google Play's files are stored with secrets put", () => {
+    expect(help("google-play")).not.toMatch(/^\s+login\b/m);
+    const login = run("google-play", "login");
+    expect(login.status).toBe(1);
+    expect(login.stderr).toContain("unknown command 'login'");
+  });
+
+  it.each([["apple", "asc-api-key", "Apple Account", "Google"]] as const)(
     "has %s login as the alias of secrets issue %s, taking nothing, and keeps no session",
     (group, kind, account, otherKind) => {
       expect(help()).toMatch(new RegExp(`^\\s+${group}\\s+\\S`, "m"));
@@ -384,18 +389,18 @@ describe("CLI commands", () => {
       "ios",
       "testflight",
       "Shortcut for hot-updater native-build ios --submit\\s+testflight",
-      "apple login",
+      "run apple login once first",
     ],
     [
       ["google-play", "upload"],
       "android",
       "play-internal",
       "Shortcut for hot-updater native-build android\\s+--submit\\s+play-internal",
-      "google-play login",
+      "and lists everything missing",
     ],
   ] as const)(
     "has %j as the shortcut for native-build %s --submit %s, taking only --scheme",
-    (command, platform, destination, summary, login) => {
+    (command, platform, destination, summary, nextStep) => {
       const parent = command.length === 1 ? help() : help(command[0]);
       expect(parent).toMatch(
         new RegExp(`^\\s+${command.at(-1)} \\[options\\]\\s+${summary}`, "m"),
@@ -419,7 +424,7 @@ describe("CLI commands", () => {
           new RegExp(`^\\s+(-\\w, )?${removed}`, "m"),
         );
       }
-      expect(flat).toContain(`run ${login} once first`);
+      expect(flat).toContain(nextStep);
 
       for (const extra of [
         ["--json"],

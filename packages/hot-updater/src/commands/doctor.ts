@@ -39,6 +39,11 @@ import {
   checkUnusedFingerprintJson,
 } from "./doctor/fingerprint";
 import {
+  checkGooglePlay,
+  formatGooglePlayStatus,
+  type GooglePlayStatus,
+} from "./doctor/googlePlay";
+import {
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
@@ -137,6 +142,8 @@ interface DoctorDetails {
   secrets?: SecretsStatus;
   /** Where each name the config's `secretEnv` reads comes from. */
   secretEnv?: SecretEnvStatus;
+  /** The Play service account's access to each Android package. */
+  googlePlay?: GooglePlayStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -858,6 +865,11 @@ async function checkProject(
     if (config) {
       const secrets = await checkSecrets(config, cwd);
       if (secrets) details.secrets = secrets;
+      const googlePlay = await checkGooglePlay(config, {
+        cwd,
+        ...(fetchImpl ? { fetch: fetchImpl } : {}),
+      }).catch(() => undefined);
+      if (googlePlay) details.googlePlay = googlePlay;
       const secretEnv = await checkSecretEnv(config, {
         cwd,
         // Read only with a team store: the provider's own init lists them.
@@ -958,6 +970,7 @@ async function checkProject(
       details.releaseCatalogs ||
       details.secrets ||
       details.secretEnv ||
+      details.googlePlay ||
       details.infrastructureUnchecked
     ) {
       return {
@@ -1294,6 +1307,11 @@ export const handleDoctor = async ({
         ].join("\n"),
       );
     }
+  }
+
+  if (details?.googlePlay) {
+    const { ready, text } = formatGooglePlayStatus(details.googlePlay);
+    (ready ? p.log.step : p.log.warn)(text);
   }
 
   if (details?.schema) {

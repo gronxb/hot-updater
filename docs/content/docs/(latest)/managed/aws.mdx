@@ -277,7 +277,7 @@ export default defineConfig({
     cloudfrontDistributionId: "your-distribution-id",
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  secrets: localSecrets(), // keys from apple login and google-play login
+  secrets: localSecrets(), // keys from apple login and secrets put
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
