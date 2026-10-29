@@ -1,5 +1,6 @@
 import type { TokenCredential } from "@azure/core-auth";
 import { maskSecretValues } from "@hot-updater/cli-tools";
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { keyVault } from "./keyVault";
@@ -186,7 +187,7 @@ describe("keyVault get", () => {
         context,
       ),
     ).rejects.toThrow(
-      'Azure Key Vault failed to read "hot-updater-asc-api-key", RestError (404): Unexpected status code: 404.',
+      "Azure Key Vault failed to read a secret.\nSecret: hot-updater-asc-api-key\nRestError (404): Unexpected status code: 404.",
     );
   });
 
@@ -208,7 +209,15 @@ describe("keyVault get", () => {
     );
 
     expect(error.message).toBe(
-      'Azure Key Vault refused to read "hot-updater-asc-api-key", ForbiddenByRbac (403): Caller is not authorized to perform action on resource. The Azure identity needs the Key Vault Secrets User role on the vault, or, on a vault with access policies, the secret permissions get; a firewall may also refuse this network.',
+      [
+        "Azure Key Vault refused to read a secret.",
+        "Secret: hot-updater-asc-api-key",
+        "ForbiddenByRbac (403): Caller is not authorized to perform action on",
+        "resource.",
+        "The Azure identity needs the Key Vault Secrets User role on the vault.",
+        "With access policies, it needs the secret permissions get.",
+        "A firewall may also refuse this network.",
+      ].join("\n"),
     );
   });
 
@@ -228,7 +237,7 @@ describe("keyVault get", () => {
         context,
       ),
     ).rejects.toThrow(
-      'Azure Key Vault cannot read "hot-updater-asc-api-key": its current version is disabled.',
+      "Azure Key Vault can't read a secret.\nSecret: hot-updater-asc-api-key\nIts current version is disabled. Enable it, or store a new value.",
     );
   });
 
@@ -246,7 +255,13 @@ describe("keyVault get", () => {
         context,
       ),
     ).rejects.toThrow(
-      'keyVault found no usable Azure identity to read "hot-updater-asc-api-key" (DefaultAzureCredential failed to retrieve a token). In CI, sign in with azure/login; on your machine, run az login',
+      [
+        "keyVault found no Azure identity to read a secret.",
+        "Secret: hot-updater-asc-api-key",
+        "DefaultAzureCredential failed to retrieve a token.",
+        "In CI, sign in with azure/login.",
+        "On your machine, run az login.",
+      ].join("\n"),
     );
   });
 
@@ -271,17 +286,17 @@ describe("keyVault get", () => {
       check({ vaultName: "my-vault", vaultUrl: VAULT_URL }),
     ).rejects.toThrow("and not both");
     await expect(check({ vaultName: "my_vault" })).rejects.toThrow(
-      'needs a vault name of 3 to 24 letters, digits, and single hyphens, starting with a letter, and "my_vault" is not one.',
+      'keyVault can\'t use the vault name "my_vault".\nUse 3 to 24 letters, digits, and single hyphens; start with a letter.',
     );
     await expect(check({ vaultName: "my--vault" })).rejects.toThrow(
       "single hyphens",
     );
     await expect(
       check({ vaultUrl: "http://my-vault.vault.azure.net" }),
-    ).rejects.toThrow("vaultUrl must be an HTTPS origin");
+    ).rejects.toThrow("Use an HTTPS origin");
     await expect(
       check({ vaultUrl: `${VAULT_URL}/secrets?x=1` }),
-    ).rejects.toThrow("vaultUrl must be an HTTPS origin");
+    ).rejects.toThrow("Use an HTTPS origin");
     await expect(
       check({ vaultName: "my-vault", prefix: "hot_updater_" }),
     ).rejects.toThrow("prefix takes letters, digits, and - only.");
@@ -379,7 +394,15 @@ describe("keyVault set", () => {
         context,
       ),
     ).rejects.toThrow(
-      'Azure Key Vault cannot write "hot-updater-asc-api-key": it was deleted and is still recoverable. Recover it with az keyvault secret recover --vault-name my-vault --name hot-updater-asc-api-key, or purge it with az keyvault secret purge --vault-name my-vault --name hot-updater-asc-api-key.',
+      [
+        "Azure Key Vault can't write a secret: it was deleted.",
+        "Secret: hot-updater-asc-api-key",
+        "Recover it, or purge it:",
+        "az keyvault secret recover --vault-name my-vault \\",
+        "  --name hot-updater-asc-api-key",
+        "az keyvault secret purge --vault-name my-vault \\",
+        "  --name hot-updater-asc-api-key",
+      ].join("\n"),
     );
   });
 
@@ -396,7 +419,7 @@ describe("keyVault set", () => {
     await expect(
       keyVault({ vaultName: "my-vault", credential }).set("n", "v", context),
     ).rejects.toThrow(
-      'Azure Key Vault cannot write "hot-updater-n": it is being deleted. Try again in a minute.',
+      "Azure Key Vault can't write a secret: it is being deleted.\nSecret: hot-updater-n\nTry again in a minute.",
     );
   });
 
@@ -413,7 +436,7 @@ describe("keyVault set", () => {
     await expect(
       keyVault({ vaultName: "my-vault", credential }).set("n", "v", context),
     ).rejects.toThrow(
-      "The Azure identity needs the Key Vault Secrets Officer role on the vault, or, on a vault with access policies, the secret permissions get and set",
+      "The Azure identity needs the Key Vault Secrets Officer role on the vault.\nWith access policies, it needs the secret permissions get and set.",
     );
   });
 
@@ -434,13 +457,59 @@ describe("keyVault set", () => {
 
     vaults.setSecret.mockClear();
     await expect(adapter.set("name", "", context)).rejects.toThrow(
-      "keyVault cannot store an empty hot-updater-name.",
+      "keyVault can't store an empty hot-updater-name.",
     );
     await expect(
       adapter.set("name", "x".repeat(25_601), context),
     ).rejects.toThrow(
-      "keyVault cannot store hot-updater-name: Key Vault takes up to 25600 characters per secret, and this value has 25601.",
+      "keyVault can't store hot-updater-name: it has 25601 characters.\nKey Vault takes up to 25600 characters per secret.",
     );
     expect(vaults.setSecret).not.toHaveBeenCalled();
+  });
+});
+
+describe("keyVault messages", () => {
+  it("prints every failure in lines of at most 76 columns", async () => {
+    const long =
+      "Caller is not authorized to perform action on resource. If role assignments, deny assignments or role definitions were changed recently, please observe propagation time. Caller: appid=00000000-0000-0000-0000-000000000000;oid=11111111-1111-1111-1111-111111111111";
+    const messages: string[] = [];
+    const record = async (promise: Promise<unknown> | undefined) => {
+      messages.push((await rejectionOf(promise)).message);
+    };
+    for (const error of [
+      restError(403, "Forbidden", long, "ForbiddenByRbac"),
+      restError(401, "Unauthorized", long),
+      restError(403, "Forbidden", long, "SecretDisabled"),
+      restError(409, "Conflict", long, "ObjectIsBeingDeleted"),
+      restError(409, "Conflict", long, "ObjectIsDeletedButRecoverable"),
+      restError(500, "InternalServerError", long),
+      Object.assign(new Error(long), { name: "CredentialUnavailableError" }),
+    ]) {
+      vaults.getSecret.mockReset();
+      vaults.getSecret.mockRejectedValue(error);
+      vaults.setSecret.mockReset();
+      vaults.setSecret.mockRejectedValue(error);
+      const adapter = keyVault({ vaultName: "my-vault", credential });
+      await record(adapter.get(["play-service-account"], context));
+      await record(adapter.set("play-service-account", "v", context));
+    }
+    await record(
+      keyVault({ vaultName: "my_vault", credential }).get(["n"], context),
+    );
+    await record(
+      keyVault({ vaultUrl: `${VAULT_URL}/x`, credential }).get(["n"], context),
+    );
+    await record(
+      keyVault({ vaultName: "my-vault", credential }).set(
+        "n",
+        "x".repeat(25_601),
+        context,
+      ),
+    );
+
+    expect(messages).toHaveLength(17);
+    for (const message of messages) {
+      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
+    }
   });
 });

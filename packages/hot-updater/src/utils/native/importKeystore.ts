@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 
-import { describeStoredSecret, p } from "@hot-updater/cli-tools";
+import {
+  describeStoredSecret,
+  nonInteractiveReason,
+  p,
+} from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { ui } from "../cli-ui";
@@ -66,6 +70,40 @@ const askPassword = async <T>(
       }
       throw error;
     }
+  }
+};
+
+/**
+ * The entry `secrets put android-keystore <file> --key-alias <alias>`
+ * stores, once its passwords open it as Gradle's signing does. When the
+ * key password doesn't unlock the key and the store password does, as in a
+ * PKCS12 keystore, which has one password, a terminal asks to use the
+ * store password; anywhere else, nothing is stored.
+ */
+export const checkKeystoreEntry = async (
+  entry: AndroidKeystoreEntry,
+  keytool?: RunKeytool,
+): Promise<AndroidKeystoreEntry> => {
+  keytool ??= await findKeytool();
+  try {
+    await verifyKeystore(keytool, entry);
+    return entry;
+  } catch (error) {
+    if (
+      !(error instanceof KeystoreRefusedError) ||
+      !error.storePasswordUnlocks ||
+      nonInteractiveReason() !== undefined
+    ) {
+      throw error;
+    }
+    p.log.warn(error.message);
+    const use = answered(
+      await p.confirm({
+        message: `Use the keystore password for "${entry.keyAlias}"?`,
+      }),
+    );
+    if (!use) throw error;
+    return { ...entry, keyPassword: entry.storePassword };
   }
 };
 

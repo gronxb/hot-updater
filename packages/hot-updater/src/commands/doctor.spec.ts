@@ -1530,7 +1530,7 @@ describe("doctor", () => {
         code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
         type: "warning",
         message: expect.stringContaining(
-          "which is not in the team-store secrets adapter",
+          "bundle-signing-key isn't in the team-store secrets adapter.",
         ),
       }),
     );

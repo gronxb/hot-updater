@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   type ConfigResponse,
+  credentialPutCommand,
   getBundleSigningPublicKey,
   getCwd,
   INVALID_SIGNING_NEXT_STEP,
@@ -1343,21 +1344,35 @@ export const handleDoctor = async ({
       p.log.step(
         ui.block("Secrets", [
           ui.kv("Adapter", adapter),
-          ...rows.map(({ name, source, inAdapter }) =>
+          ...rows.map((row) =>
             ui.kv(
-              name,
-              source === "environment"
-                ? inAdapter === false
+              row.name,
+              row.source === "environment"
+                ? row.inAdapter === false
                   ? ui.warning("set by the environment, none in the adapter")
                   : "set by the environment"
-                : source === "adapter"
-                  ? "in the adapter"
-                  : source === "missing"
+                : row.source === "adapter"
+                  ? "refused" in row && row.refused !== undefined
+                    ? ui.warning("in the adapter, doesn't open")
+                    : "in the adapter"
+                  : row.source === "missing"
                     ? ui.warning("missing")
                     : "not checked",
             ),
           ),
         ]),
+      );
+    }
+    for (const { name, refused } of secrets?.references ?? []) {
+      if (refused === undefined) continue;
+      p.log.warn(
+        [
+          `${name}: ${refused}`,
+          ui.withCommand(
+            "Store it again:",
+            credentialPutCommand("android-keystore", name),
+          ),
+        ].join("\n"),
       );
     }
     for (const error of new Set(

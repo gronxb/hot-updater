@@ -304,25 +304,33 @@ describe("prepareBundleSigning", () => {
     ).resolves.toBe(publicKey);
   });
 
-  it("names the missing secret, where it is read, and how to create one", async () => {
+  it("points a missing key at importing it, never at a new key shipped apps reject", async () => {
     const { secrets } = fakeSecrets({});
 
-    await expect(
-      prepareBundleSigning(secret("bundle-signing-key"), {
-        cwd: "/project",
-        secrets,
-      }),
-    ).rejects.toThrow(
-      "signing reads the bundle signing key bundle-signing-key, which is not in the fake secrets adapter (fake://store/bundle-signing-key).\nTo create one, run: npx hot-updater secrets issue bundle-signing-key",
+    const missing = (await prepareBundleSigning(secret("bundle-signing-key"), {
+      cwd: "/project",
+      secrets,
+    }).catch((error: unknown) => error)) as Error;
+    expect(missing.message).toBe(
+      [
+        "bundle-signing-key isn't in the fake secrets adapter.",
+        "Check the name and your access, or import your key:",
+        "npx hot-updater secrets put bundle-signing-key <key.pem>",
+      ].join("\n"),
     );
-    await expect(
-      prepareBundleSigning(secret("release-signing-key"), {
-        cwd: "/project",
-        secrets,
-      }),
-    ).rejects.toThrow(
-      "npx hot-updater secrets issue bundle-signing-key release-signing-key",
+    const named = (await prepareBundleSigning(secret("release-signing-key"), {
+      cwd: "/project",
+      secrets,
+    }).catch((error: unknown) => error)) as Error;
+    expect(named.message).toContain(
+      "npx hot-updater secrets put release-signing-key --kind \\\n  bundle-signing-key <key.pem>",
     );
+    for (const { message } of [missing, named]) {
+      expect(message).not.toContain("secrets issue");
+      expect(message.split("\n").filter((line) => line.length > 76)).toEqual(
+        [],
+      );
+    }
   });
 
   it("names localSecrets()'s variable and file when neither has the key", async () => {
@@ -334,7 +342,11 @@ describe("prepareBundleSigning", () => {
         secrets: resolveSecretsAdapter(),
       }),
     ).rejects.toThrow(
-      "(HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or ",
+      [
+        "bundle-signing-key isn't on this machine.",
+        "Check the name, set HOT_UPDATER_BUNDLE_SIGNING_KEY, or import your key:",
+        "npx hot-updater secrets put bundle-signing-key <key.pem>",
+      ].join("\n"),
     );
   });
 
@@ -352,7 +364,7 @@ describe("prepareBundleSigning", () => {
         secrets: failing,
       }),
     ).rejects.toThrow(
-      "The fake secrets adapter could not read the bundle signing key bundle-signing-key: permission denied",
+      "Couldn't read bundle-signing-key from the fake secrets adapter.\npermission denied",
     );
 
     for (const value of [
@@ -364,7 +376,7 @@ describe("prepareBundleSigning", () => {
         secrets: fakeSecrets({ "bundle-signing-key": value }).secrets,
       }).catch((caught: unknown) => caught as Error);
       expect((error as Error).message).toBe(
-        "The bundle signing key bundle-signing-key in the fake secrets adapter is not an RSA private key in PEM of at least 2048 bits.",
+        "bundle-signing-key in the fake secrets adapter is no signing key.\nStore an RSA private key in PEM, of 2048 bits or more.",
       );
       expect((error as Error).message).not.toContain(value.slice(0, 20));
     }
@@ -377,7 +389,7 @@ describe("prepareBundleSigning", () => {
     const signing = secret("bundle-signing-key");
     await expect(
       getBundleSigningPublicKey(signing, { cwd: "/project", secrets }),
-    ).rejects.toThrow("not in the fake secrets adapter");
+    ).rejects.toThrow("isn't in the fake secrets adapter");
 
     values["bundle-signing-key"] = privateKey;
     await expect(

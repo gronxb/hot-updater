@@ -137,38 +137,78 @@ const trackedVersions = (secret: GoogleSecret): string[] =>
 const versionOf = (name: unknown) =>
   typeof name === "string" ? name.slice(name.lastIndexOf("/") + 1) : "";
 
-const hint = (response: GoogleResponse, permission: string) => {
+/** The widest line a message has: the CLI prints no wider. */
+const LINE_WIDTH = 76;
+
+/** `text`, such as Google's own message, in lines that fit, broken at spaces. */
+const wrap = (text: string): string[] => {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/u).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > LINE_WIDTH) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+};
+
+/** An error of one line each, for a terminal. */
+const failure = (lines: readonly string[], cause?: unknown) =>
+  new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
+
+const hint = (response: GoogleResponse, permission: string): string[] => {
   const { status, error } = response;
   if (error.details?.some((detail) => detail.reason === "SERVICE_DISABLED")) {
-    return " Enable the Secret Manager API (secretmanager.googleapis.com) in the project: gcloud services enable secretmanager.googleapis.com --project <project>.";
+    return [
+      "Enable the Secret Manager API in the project:",
+      "gcloud services enable secretmanager.googleapis.com --project <project>",
+    ];
   }
   if (status === 401) {
-    return " Google rejected the access token: sign in again with `gcloud auth application-default login`, or check the job's Workload Identity Federation.";
+    return [
+      "Google rejected the access token.",
+      "Sign in again with gcloud auth application-default login.",
+      "In CI, check the job's Workload Identity Federation.",
+    ];
   }
   if (status === 403) {
-    return ` The Google identity needs ${permission}.`;
+    return wrap(`The Google identity needs ${permission}.`);
   }
   if (status === 429) {
-    return " Secret Manager's quota is exhausted: try again later.";
+    return ["Secret Manager's quota is exhausted: try again later."];
   }
-  return "";
+  return [];
 };
 
 /**
- * An error for a failed request: the HTTP status, Google's status and
- * message, which name resources but never a value, and what to fix.
+ * An error for a failed request on `resource`, a line each: the HTTP
+ * status, the resource, Google's status and message, which name resources
+ * but never a value, `notes`, and what to fix.
  */
 const requestError = (
   action: string,
+  resource: string,
   response: GoogleResponse,
   permission: string,
+  notes: readonly string[] = [],
 ) => {
   const { status, message } = response.error;
   const detail = [status, message?.slice(0, 300)].filter(Boolean).join(": ");
-  return new Error(
-    `${ADAPTER_NAME} could not ${action} (${response.status}${detail ? ` ${detail}` : ""}).${hint(response, permission)}`,
-  );
+  return failure([
+    `${ADAPTER_NAME} couldn't ${action} (${response.status}).`,
+    resourceLine(resource),
+    ...wrap(detail),
+    ...notes,
+    ...hint(response, permission),
+  ]);
 };
+
+/** The line that names a secret: its resource name is a line's worth. */
+const resourceLine = (secret: string) => `Secret: ${secret}`;
 
 /** Masks a value in the CLI's output, which loads `@hot-updater/cli-tools`. */
 const mask = async (value: string) => {
@@ -227,9 +267,20 @@ const createAccessToken = (
     try {
       return (await client.getAccessToken()) ?? undefined;
     } catch (error) {
-      throw new Error(
-        `${ADAPTER_NAME} found no Google credentials (${error instanceof Error ? error.message.split("\n")[0] : String(error)}). Sign in with \`gcloud auth application-default login\`, use google-github-actions/auth in CI, set GOOGLE_APPLICATION_CREDENTIALS, or set ${ACCESS_TOKEN_ENV_NAMES.join(" or ")} to an access token.`,
-        { cause: error },
+      throw failure(
+        [
+          `${ADAPTER_NAME} found no Google credentials.`,
+          ...wrap(
+            error instanceof Error
+              ? error.message.split("\n")[0]!
+              : String(error),
+          ),
+          "On your machine, run gcloud auth application-default login.",
+          "In CI, use google-github-actions/auth.",
+          "Or set GOOGLE_APPLICATION_CREDENTIALS to a service account key.",
+          `Or set ${ACCESS_TOKEN_ENV_NAMES.join(" or ")} to a token.`,
+        ],
+        error,
       );
     }
   };
@@ -264,14 +315,16 @@ export const secretManager = ({
   // Checked on first use, so a config loads without its options.
   const projectPath = () => {
     if (typeof projectId !== "string" || !PROJECT_PATTERN.test(projectId)) {
-      throw new Error(
-        `${ADAPTER_NAME} needs the Google Cloud project ID or number as projectId, and ${JSON.stringify(projectId)} is not one.`,
-      );
+      throw failure([
+        `${ADAPTER_NAME} can't use the projectId ${JSON.stringify(projectId)}.`,
+        "Set the Google Cloud project's ID or number.",
+      ]);
     }
     if (!PREFIX_PATTERN.test(prefix)) {
-      throw new Error(
-        `${ADAPTER_NAME}'s prefix takes letters, digits, "-", and "_", and ${JSON.stringify(prefix)} has others.`,
-      );
+      throw failure([
+        `${ADAPTER_NAME} can't use the prefix ${JSON.stringify(prefix)}.`,
+        'It takes letters, digits, "-", and "_".',
+      ]);
     }
     return `projects/${projectId}`;
   };
@@ -279,9 +332,11 @@ export const secretManager = ({
   const secretId = (name: string) => {
     const id = `${prefix}${name}`;
     if (!SECRET_ID_PATTERN.test(id)) {
-      throw new Error(
-        `${ADAPTER_NAME} keeps ${JSON.stringify(name)} as the secret ID ${JSON.stringify(id)}, and Secret Manager's IDs take only letters, digits, "-", and "_", up to 255 characters.`,
-      );
+      throw failure([
+        `${ADAPTER_NAME} can't name a secret ${JSON.stringify(name)}.`,
+        `Secret: ${id}`,
+        'Secret Manager\'s IDs take up to 255 letters, digits, "-", and "_".',
+      ]);
     }
     return id;
   };
@@ -334,7 +389,8 @@ export const secretManager = ({
     if (response.status === 404) return undefined;
     if (!response.ok) {
       throw requestError(
-        `read ${secret}`,
+        "read",
+        secret,
         response,
         "roles/secretmanager.secretAccessor on the secret",
       );
@@ -343,14 +399,16 @@ export const secretManager = ({
     const payload = body?.payload;
     const data = isRecord(payload) ? payload.data : undefined;
     if (typeof data !== "string") {
-      throw new Error(`${ADAPTER_NAME} read no payload for ${secret}.`);
+      throw failure([`${ADAPTER_NAME} read no payload.`, resourceLine(secret)]);
     }
     const bytes = Buffer.from(data, "base64");
     const checksum = isRecord(payload) ? payload.dataCrc32c : undefined;
     if (checksum !== undefined && Number(checksum) !== crc32c(bytes)) {
-      throw new Error(
-        `${ADAPTER_NAME} read ${secret} with a checksum that does not match its payload.`,
-      );
+      throw failure([
+        `${ADAPTER_NAME} can't trust what it read.`,
+        resourceLine(secret),
+        "Its checksum doesn't match its payload.",
+      ]);
     }
     const value = bytes.toString("utf8");
     await mask(value);
@@ -403,7 +461,8 @@ export const secretManager = ({
     if (response.status === 404) return undefined;
     if (!response.ok) {
       throw requestError(
-        `read ${secret}`,
+        "read",
+        secret,
         response,
         "secretmanager.secrets.get on the secret",
       );
@@ -432,7 +491,8 @@ export const secretManager = ({
       if (raced) return raced;
     }
     throw requestError(
-      `create ${secret}`,
+      "create",
+      secret,
       created,
       `secretmanager.secrets.create on ${parent}`,
     );
@@ -447,7 +507,8 @@ export const secretManager = ({
     );
     if (!response.ok) {
       throw requestError(
-        `check its permissions on ${secret}`,
+        "check its permissions",
+        secret,
         response,
         SET_PERMISSIONS.join(", "),
       );
@@ -458,9 +519,16 @@ export const secretManager = ({
         : [];
     const missing = SET_PERMISSIONS.filter((name) => !held.includes(name));
     if (missing.length > 0) {
-      throw new Error(
-        `${ADAPTER_NAME} stores a value as a new version of ${secret} and destroys the versions it added before, and the Google identity lacks ${missing.join(", ")} on it: grant a custom role with secretmanager.secrets.get, secretmanager.secrets.update, secretmanager.versions.add, secretmanager.versions.destroy, and secretmanager.versions.access on it, or roles/secretmanager.admin.`,
-      );
+      throw failure([
+        `${ADAPTER_NAME} can't store a value.`,
+        resourceLine(secret),
+        ...wrap(`The Google identity lacks ${missing.join(", ")} on it.`),
+        "It adds a version, then destroys the versions it added before.",
+        "Grant roles/secretmanager.admin, or a custom role with:",
+        ...wrap(
+          "secretmanager.secrets.get, secretmanager.secrets.update, secretmanager.versions.add, secretmanager.versions.destroy, secretmanager.versions.access",
+        ),
+      ]);
     }
   };
 
@@ -525,7 +593,10 @@ export const secretManager = ({
       const id = secretId(name);
       const secret = `${parent}/secrets/${id}`;
       if (typeof value !== "string" || value === "") {
-        throw new Error(`${ADAPTER_NAME} cannot store an empty ${secret}.`);
+        throw failure([
+          `${ADAPTER_NAME} can't store an empty value.`,
+          resourceLine(secret),
+        ]);
       }
       await mask(value);
       const token = await accessToken();
@@ -544,7 +615,8 @@ export const secretManager = ({
       );
       if (!added.ok || !VERSION_ID_PATTERN.test(version)) {
         throw requestError(
-          `add a version to ${secret}`,
+          "add a version",
+          secret,
           added,
           "secretmanager.versions.add on the secret",
         );
@@ -566,7 +638,8 @@ export const secretManager = ({
         });
       }
 
-      const notListed = `list version ${version}, which it stored, in ${secret}'s ${VERSIONS_ANNOTATION} annotation, so the next set will not destroy it`;
+      const notListed = `record version ${version}, which it stored`;
+      const notDestroyed = `The next set won't destroy it: ${VERSIONS_ANNOTATION} misses it.`;
       let base = current;
       let updated: GoogleResponse | undefined;
       try {
@@ -594,22 +667,32 @@ export const secretManager = ({
           if (updated.error.status !== "FAILED_PRECONDITION") break;
         }
       } catch (error) {
-        throw new Error(
-          `${ADAPTER_NAME} could not ${notListed} (${error instanceof Error ? error.message : String(error)}).`,
-          { cause: error },
+        throw failure(
+          [
+            `${ADAPTER_NAME} couldn't ${notListed}.`,
+            resourceLine(secret),
+            ...wrap(error instanceof Error ? error.message : String(error)),
+            notDestroyed,
+          ],
+          error,
         );
       }
       if (!updated?.ok) {
         throw requestError(
           notListed,
+          secret,
           updated as GoogleResponse,
           "secretmanager.secrets.update on the secret",
+          [notDestroyed],
         );
       }
       if (!visible) {
-        throw new Error(
-          `${ADAPTER_NAME} stored ${secret} as version ${version}, and its latest alias does not resolve to that version yet, so it kept the versions it added before; the next set destroys them.`,
-        );
+        throw failure([
+          `${ADAPTER_NAME} stored version ${version}.`,
+          resourceLine(secret),
+          "Its latest alias doesn't resolve to that version yet.",
+          "It kept the versions it added before: the next set destroys them.",
+        ]);
       }
     },
     describe: (name) => {

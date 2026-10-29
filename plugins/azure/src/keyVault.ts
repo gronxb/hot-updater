@@ -53,8 +53,34 @@ const NO_CREDENTIAL_ERRORS = new Set([
   "CredentialUnavailableError",
 ]);
 
-const SIGN_IN_HINT =
-  "In CI, sign in with azure/login; on your machine, run az login, or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET";
+const SIGN_IN_HINT = [
+  "In CI, sign in with azure/login.",
+  "On your machine, run az login.",
+  "Or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.",
+];
+
+/** The widest line a message has: the CLI prints no wider. */
+const LINE_WIDTH = 76;
+
+/** `text`, such as Azure's own message, in lines that fit, broken at spaces. */
+const wrap = (text: string): string[] => {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/u).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > LINE_WIDTH) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+};
+
+/** An error of one line each, for a terminal. */
+const failure = (lines: readonly string[], cause?: unknown) =>
+  new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
 
 const READ_ROLE = "Key Vault Secrets User";
 const WRITE_ROLE = "Key Vault Secrets Officer";
@@ -99,9 +125,10 @@ const resolveVaultUrl = (vaultName?: string, vaultUrl?: string) => {
   }
   if (vaultName !== undefined) {
     if (typeof vaultName !== "string" || !VAULT_NAME_PATTERN.test(vaultName)) {
-      throw new Error(
-        `${NAME} needs a vault name of 3 to 24 letters, digits, and single hyphens, starting with a letter, and ${JSON.stringify(vaultName)} is not one.`,
-      );
+      throw failure([
+        `${NAME} can't use the vault name ${JSON.stringify(vaultName)}.`,
+        "Use 3 to 24 letters, digits, and single hyphens; start with a letter.",
+      ]);
     }
     return new URL(`https://${vaultName.toLowerCase()}.vault.azure.net`);
   }
@@ -119,9 +146,11 @@ const resolveVaultUrl = (vaultName?: string, vaultUrl?: string) => {
     url.hash ||
     (url.pathname !== "/" && url.pathname !== "")
   ) {
-    throw new Error(
-      `${NAME} vaultUrl must be an HTTPS origin, such as https://my-vault.vault.azure.net, without credentials, a path, a query, or a fragment.`,
-    );
+    throw failure([
+      `${NAME} can't use its vaultUrl.`,
+      "Use an HTTPS origin, such as https://my-vault.vault.azure.net.",
+      "Leave out credentials, a path, a query, and a fragment.",
+    ]);
   }
   return url;
 };
@@ -202,9 +231,10 @@ export const keyVault = ({
     vault();
     const id = keyVaultSecretName(name, prefix);
     if (id.length > MAX_SECRET_NAME_LENGTH) {
-      throw new Error(
-        `${NAME} cannot name a secret ${JSON.stringify(id)} for ${JSON.stringify(name)}: Key Vault takes up to ${MAX_SECRET_NAME_LENGTH} characters.`,
-      );
+      throw failure([
+        `${NAME} can't name a secret ${JSON.stringify(id)} for ${JSON.stringify(name)}.`,
+        `Key Vault takes up to ${MAX_SECRET_NAME_LENGTH} characters.`,
+      ]);
     }
     return id;
   };
@@ -250,49 +280,89 @@ export const keyVault = ({
     const name = errorName(error);
     const status = statusOf(error);
     const code = innerCode(error) ?? (error as RestErrorLike)?.code;
-    const detail = `${code || name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}`;
+    const detail = wrap(
+      `${code || name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}.`,
+    );
+    // On a line of its own: a name and its prefix are a line's worth.
+    const secret = `Secret: ${id}`;
     if (NO_CREDENTIAL_ERRORS.has(name)) {
-      return new Error(
-        `${NAME} found no usable Azure identity to ${verb} ${JSON.stringify(id)} (${errorMessage(error)}). ${SIGN_IN_HINT}.`,
-        { cause: error },
+      return failure(
+        [
+          `${NAME} found no Azure identity to ${verb} a secret.`,
+          secret,
+          ...wrap(`${errorMessage(error)}.`),
+          ...SIGN_IN_HINT,
+        ],
+        error,
       );
     }
     if (status === 401) {
-      return new Error(
-        `Azure Key Vault refused the sign-in to ${verb} ${JSON.stringify(id)}, ${detail}. Sign in again. ${SIGN_IN_HINT}.`,
-        { cause: error },
+      return failure(
+        [
+          `Azure Key Vault refused the sign-in to ${verb} a secret.`,
+          secret,
+          ...detail,
+          "Sign in again.",
+          ...SIGN_IN_HINT,
+        ],
+        error,
       );
     }
     if (code === "SecretDisabled") {
-      return new Error(
-        `Azure Key Vault cannot ${verb} ${JSON.stringify(id)}: its current version is disabled. Enable it, or store a new value.`,
-        { cause: error },
+      return failure(
+        [
+          `Azure Key Vault can't ${verb} a secret.`,
+          secret,
+          "Its current version is disabled. Enable it, or store a new value.",
+        ],
+        error,
       );
     }
     if (status === 403) {
-      return new Error(
-        `Azure Key Vault refused to ${verb} ${JSON.stringify(id)}, ${detail}. The Azure identity needs the ${role} role on the vault, or, on a vault with access policies, the secret permissions ${role === READ_ROLE ? "get" : "get and set"}; a firewall may also refuse this network.`,
-        { cause: error },
+      return failure(
+        [
+          `Azure Key Vault refused to ${verb} a secret.`,
+          secret,
+          ...detail,
+          `The Azure identity needs the ${role} role on the vault.`,
+          `With access policies, it needs the secret permissions ${role === READ_ROLE ? "get" : "get and set"}.`,
+          "A firewall may also refuse this network.",
+        ],
+        error,
       );
     }
     if (
       code === "ObjectIsBeingDeleted" ||
       /being deleted/iu.test(errorMessage(error))
     ) {
-      return new Error(
-        `Azure Key Vault cannot ${verb} ${JSON.stringify(id)}: it is being deleted. Try again in a minute.`,
-        { cause: error },
+      return failure(
+        [
+          `Azure Key Vault can't ${verb} a secret: it is being deleted.`,
+          secret,
+          "Try again in a minute.",
+        ],
+        error,
       );
     }
     if (status === 409 || code === "ObjectIsDeletedButRecoverable") {
-      return new Error(
-        `Azure Key Vault cannot ${verb} ${JSON.stringify(id)}: it was deleted and is still recoverable. Recover it with az keyvault secret recover --vault-name ${vaultLabel()} --name ${id}, or purge it with az keyvault secret purge --vault-name ${vaultLabel()} --name ${id}.`,
-        { cause: error },
+      const vaultName = vaultLabel();
+      return failure(
+        [
+          `Azure Key Vault can't ${verb} a secret: it was deleted.`,
+          secret,
+          "Recover it, or purge it:",
+          // Broken with \ so neither command passes 76 columns.
+          `az keyvault secret recover --vault-name ${vaultName} \\`,
+          `  --name ${id}`,
+          `az keyvault secret purge --vault-name ${vaultName} \\`,
+          `  --name ${id}`,
+        ],
+        error,
       );
     }
-    return new Error(
-      `Azure Key Vault failed to ${verb} ${JSON.stringify(id)}, ${detail}.`,
-      { cause: error },
+    return failure(
+      [`Azure Key Vault failed to ${verb} a secret.`, secret, ...detail],
+      error,
     );
   };
 
@@ -338,12 +408,13 @@ export const keyVault = ({
     set: async (name, value) => {
       const id = secretName(name);
       if (typeof value !== "string" || value === "") {
-        throw new Error(`${NAME} cannot store an empty ${id}.`);
+        throw new Error(`${NAME} can't store an empty ${id}.`);
       }
       if (value.length > MAX_SECRET_LENGTH) {
-        throw new Error(
-          `${NAME} cannot store ${id}: Key Vault takes up to ${MAX_SECRET_LENGTH} characters per secret, and this value has ${value.length}.`,
-        );
+        throw failure([
+          `${NAME} can't store ${id}: it has ${value.length} characters.`,
+          `Key Vault takes up to ${MAX_SECRET_LENGTH} characters per secret.`,
+        ]);
       }
       await mask([value]);
       const client = await open();

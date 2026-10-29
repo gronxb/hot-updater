@@ -11,7 +11,8 @@ const DEFAULT_SITE_URL = "https://us.infisical.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 /** A token this close to its expiry is renewed before a request. */
 const TOKEN_RENEW_MARGIN_MS = 60_000;
-const MESSAGE_LIMIT = 200;
+/** Infisical's own message is one line of a message: at most 76 columns. */
+const MESSAGE_LIMIT = 76;
 /** Infisical's limit on a request body, which holds the value as JSON. */
 const MAX_BODY_BYTES = 1_048_576;
 const DOCS_URL =
@@ -89,7 +90,11 @@ const isSafeUrl = (url: URL) =>
 const normalizeSiteUrl = (siteUrl: string, source: string) => {
   const invalid = () =>
     new Error(
-      `${NAME}() takes ${source} as an HTTPS URL, or HTTP on a loopback address, without credentials, a query, or a fragment, and ${JSON.stringify(siteUrl)} is not one.`,
+      [
+        `${NAME}() can't use ${source} ${JSON.stringify(siteUrl)}.`,
+        "Use an HTTPS URL, or HTTP on a loopback address.",
+        "Leave out credentials, a query, and a fragment.",
+      ].join("\n"),
     );
   let url: URL;
   try {
@@ -163,10 +168,12 @@ export const infisical = ({
   siteUrl,
 }: InfisicalOptions): SecretsAdapter => {
   const folder = normalizeFolder(path);
-  const where = `project ${projectId}, environment ${environment}, folder ${folder}`;
+  const where = `Project ${projectId}, environment ${environment}, folder ${folder}.`;
 
   // Checked on first use, so a config loads without its options.
   let checkedUrl: string | undefined;
+  /** Whether the user set the URL: only then do messages name it. */
+  let urlSet = false;
   const prepare = async (cwd: string) => {
     if (checkedUrl !== undefined) return;
     if (typeof projectId !== "string" || !projectId.trim()) {
@@ -179,6 +186,7 @@ export const infisical = ({
     }
     if (siteUrl !== undefined) {
       checkedUrl = normalizeSiteUrl(siteUrl, "siteUrl");
+      urlSet = true;
       return;
     }
     const fileEnv = await readLoadedHotUpdaterEnv(cwd);
@@ -188,15 +196,29 @@ export const infisical = ({
     checkedUrl = source
       ? normalizeSiteUrl(getHotUpdaterEnvValue(fileEnv, source)!, source)
       : DEFAULT_SITE_URL;
+    urlSet = source !== undefined;
   };
   /** The checked URL: every request runs after `prepare`. */
   const baseUrl = () => checkedUrl ?? DEFAULT_SITE_URL;
+  /**
+   * An error of `reason` and the lines after it, with the instance's URL
+   * second when the user set one: messages never name a URL they didn't.
+   */
+  const fail = (reason: string, ...lines: (string | undefined)[]) =>
+    new Error(
+      [reason, urlSet ? `Instance: ${baseUrl()}` : undefined, ...lines]
+        .filter(Boolean)
+        .join("\n"),
+    );
 
   const checkName = (name: string) => {
     // Infisical answers 500 to __proto__, and 422 to a colon or slash.
     if (!name.trim() || name === "__proto__" || /[:/]/u.test(name)) {
       throw new Error(
-        `${NAME}() cannot name a secret ${JSON.stringify(name)}: Infisical takes no colon or slash, and no __proto__.`,
+        [
+          `${NAME}() can't name a secret ${JSON.stringify(name)}.`,
+          "Infisical takes no colon, no slash, and no __proto__.",
+        ].join("\n"),
       );
     }
   };
@@ -205,6 +227,7 @@ export const infisical = ({
     url: string,
     init: RequestInit,
     action: string,
+    host = "Infisical",
   ): Promise<Response> => {
     try {
       return await fetch(url, {
@@ -214,13 +237,16 @@ export const infisical = ({
       });
     } catch {
       // What fetch threw may quote the request: name only the host.
-      throw new Error(`Could not reach ${new URL(url).origin} to ${action}.`);
+      throw host === "Infisical"
+        ? fail(`Couldn't reach Infisical to ${action}.`)
+        : new Error(`Couldn't reach ${host} to ${action}.`);
     }
   };
 
   /**
-   * The error for a refusal. A sign-in's 403 or 404 concerns no project, so
-   * it names `siteUrl` instead.
+   * The error for a refusal, a line each: what Infisical refused, its own
+   * message, where, and what to check. A sign-in's 403 or 404 concerns no
+   * project, so it names the URL's setting instead, when there is one.
    */
   const refuse = async (
     response: Response,
@@ -228,34 +254,41 @@ export const infisical = ({
     signingIn = false,
   ) => {
     const { error, message } = await readRefusal(response);
-    const detail = message
-      ? `: ${message}${/[.!?]$/u.test(message) ? "" : "."}`
-      : ".";
-    const site = `Infisical at ${baseUrl()}`;
+    const { status } = response;
     // Infisical answers a malformed or revoked token with 403 TokenError.
-    if (response.status === 401 || error === "TokenError") {
-      return new Error(
-        `${site} rejected the credentials to ${action} (${response.status})${detail} Check the identity's credentials or the access token.`,
+    if (status === 401 || error === "TokenError") {
+      return fail(
+        `Infisical rejected the credentials to ${action} (${status}).`,
+        message,
+        "Check the identity's credentials or the access token.",
       );
     }
     if (signingIn) {
-      return new Error(
-        `${site} answered ${response.status} to ${action}${detail} Check siteUrl and the identity's authentication settings.`,
+      return fail(
+        `Infisical answered ${status} to ${action}.`,
+        message,
+        urlSet
+          ? "Check the URL and the identity's sign-in settings."
+          : "Check the identity's sign-in settings.",
       );
     }
-    if (response.status === 403) {
-      return new Error(
-        `${site} does not let the identity ${action} in ${where} (403)${detail} Give it a project role that allows it: Viewer reads, Member stores.`,
+    if (status === 403) {
+      return fail(
+        `Infisical doesn't let the identity ${action} (403).`,
+        message,
+        where,
+        "Give it a project role that can: Viewer reads, Member stores.",
       );
     }
-    if (response.status === 404) {
-      return new Error(
-        `${site} found no ${where} to ${action} (404)${detail} Check projectId, environment, and path.`,
+    if (status === 404) {
+      return fail(
+        `Infisical found nothing to ${action} (404).`,
+        message,
+        where,
+        "Check projectId, environment, and path.",
       );
     }
-    return new Error(
-      `${site} answered ${response.status} to ${action}${detail}`,
-    );
+    return fail(`Infisical answered ${status} to ${action}.`, message);
   };
 
   const signIn = async (
@@ -279,9 +312,7 @@ export const infisical = ({
     const answer: unknown = await response.json().catch(() => undefined);
     const token = field(answer, "accessToken");
     if (typeof token !== "string" || !token) {
-      throw new Error(
-        `Infisical at ${baseUrl()} answered ${action} without an access token.`,
-      );
+      throw fail(`Infisical answered ${action} without an access token.`);
     }
     registerSecretValue(token);
     const expiresIn = field(answer, "expiresIn");
@@ -317,10 +348,14 @@ export const infisical = ({
         },
       },
       action,
+      "GitHub",
     );
     if (!response.ok) {
       throw new Error(
-        `GitHub answered ${response.status} to ${action}: give the job \`permissions: id-token: write\`.`,
+        [
+          `GitHub answered ${response.status} to ${action}.`,
+          "Give the job `permissions: id-token: write`.",
+        ].join("\n"),
       );
     }
     const answer: unknown = await response.json().catch(() => undefined);
@@ -366,7 +401,10 @@ export const infisical = ({
         const requestToken = read(OIDC_REQUEST_TOKEN_ENV);
         if (!requestUrl || !requestToken) {
           throw new Error(
-            `${NAME}() found ${IDENTITY_ID_ENV} outside a GitHub Actions job with \`permissions: id-token: write\`.`,
+            [
+              `${NAME}() can't use ${IDENTITY_ID_ENV} here.`,
+              "It signs in from a GitHub Actions job with `id-token: write`.",
+            ].join("\n"),
           );
         }
         const jwt = await githubIdToken(requestUrl, requestToken);
@@ -378,7 +416,14 @@ export const infisical = ({
       }
       default:
         throw new Error(
-          `${NAME}() found no Infisical sign-in: set ${TOKEN_ENV}, ${CLIENT_ID_ENV} and ${CLIENT_SECRET_ENV}, or ${IDENTITY_ID_ENV}.\n${DOCS_URL}`,
+          [
+            `${NAME}() found no Infisical sign-in. Set one of:`,
+            `- ${TOKEN_ENV}`,
+            `- ${CLIENT_ID_ENV}`,
+            `  with ${CLIENT_SECRET_ENV}`,
+            `- ${IDENTITY_ID_ENV}, in GitHub Actions`,
+            DOCS_URL,
+          ].join("\n"),
         );
     }
   };
@@ -445,9 +490,7 @@ export const infisical = ({
       return true;
     };
     if (!collect(field(answer, "secrets"))) {
-      throw new Error(
-        `Infisical at ${baseUrl()} answered ${action} without the secrets.`,
-      );
+      throw fail(`Infisical answered ${action} without the secrets.`);
     }
     const imports = field(answer, "imports");
     if (Array.isArray(imports)) {
@@ -476,15 +519,15 @@ export const infisical = ({
     const answer: unknown = await response.json().catch(() => undefined);
     const secret = field(answer, "secret");
     if (field(secret, "secretValueHidden") === true) {
-      throw new Error(
-        `Infisical at ${baseUrl()} hides the value of ${name} from the identity in ${where}: give it a project role that reads secret values.`,
+      throw fail(
+        `Infisical hides the value of ${name} from the identity.`,
+        where,
+        "Give it a project role that reads secret values.",
       );
     }
     const value = field(secret, "secretValue");
     if (typeof value !== "string") {
-      throw new Error(
-        `Infisical at ${baseUrl()} answered ${action} without its value.`,
-      );
+      throw fail(`Infisical answered ${action} without its value.`);
     }
     registerSecretValue(value);
     return value;
@@ -527,13 +570,16 @@ export const infisical = ({
     set: async (name, value, { cwd }) => {
       checkName(name);
       if (typeof value !== "string" || value.trim() === "") {
-        throw new Error(`${NAME}() cannot store an empty ${name}.`);
+        throw new Error(`${NAME}() can't store an empty ${name}.`);
       }
       registerSecretValue(value);
       // Infisical would read back another value.
       if (storedForm(value) !== value) {
         throw new Error(
-          `${NAME}() cannot store ${name} as it is: Infisical trims whitespace around a value.`,
+          [
+            `${NAME}() can't store ${name} as it is.`,
+            "Infisical trims whitespace around a value.",
+          ].join("\n"),
         );
       }
       const body = JSON.stringify({
@@ -545,7 +591,10 @@ export const infisical = ({
       });
       if (Buffer.byteLength(body, "utf8") > MAX_BODY_BYTES) {
         throw new Error(
-          `${NAME}() cannot store ${name}: Infisical takes requests up to 1 MiB.`,
+          [
+            `${NAME}() can't store ${name}.`,
+            "Infisical takes requests up to 1 MiB.",
+          ].join("\n"),
         );
       }
       await prepare(cwd);

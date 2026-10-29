@@ -34,7 +34,28 @@ const { log, password, printBanner, text } = vi.hoisted(() => ({
   text: vi.fn(),
 }));
 
-// Only the config and the prompts are mocked.
+// Only the config, the prompts, and the JDK are mocked.
+const jdkRuns = vi.hoisted(
+  () => [] as { args: readonly string[]; tool: string }[],
+);
+vi.mock("../utils/native/androidKeystore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/native/androidKeystore")>()),
+  // A JDK that opens any keystore: uploadKey.spec.ts checks the passwords.
+  findKeytool: vi.fn(
+    async () =>
+      async (args: readonly string[], _env?: unknown, tool = "keytool") => {
+        jdkRuns.push({ args, tool });
+        return {
+          exitCode: 0,
+          stdout:
+            args[0] === "-exportcert"
+              ? "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
+              : "",
+          stderr: "",
+        };
+      },
+  ),
+}));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig: vi.fn(),
@@ -304,6 +325,8 @@ describe("hot-updater secrets put", () => {
       keyPassword: "put-key-password",
     });
     expect(password).not.toHaveBeenCalled();
+    // Checked as Gradle signs before it is stored.
+    expect(jdkRuns.map(({ tool }) => tool)).toContain("jarsigner");
   });
 
   it("stores a service account's own JSON", async () => {

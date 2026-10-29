@@ -424,7 +424,10 @@ describe("secret", () => {
     "refuses the name %j",
     (name) => {
       expect(() => secret(name)).toThrow(
-        `secret() takes up to 64 letters, digits, ".", "_", and "-", starting with a letter or digit, and ${JSON.stringify(name)} is not that.`,
+        [
+          `secret() can't take the name ${JSON.stringify(name)}.`,
+          'Use up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.',
+        ].join("\n"),
       );
     },
   );
@@ -439,7 +442,10 @@ describe("secret", () => {
     "refuses the reserved name %s when the config loads",
     (name) => {
       expect(() => secret(name)).toThrow(
-        `secret() refuses ${name}: it changes how a process loads code or which credentials Hot Updater uses.`,
+        [
+          `secret() refuses ${name}.`,
+          "It changes how a process loads code, or the credentials Hot Updater uses.",
+        ].join("\n"),
       );
     },
   );
@@ -536,7 +542,11 @@ describe("secret", () => {
     setConfiguredSecrets(storeOf({}));
 
     await expect(secret("SPEC_MISSING")()).rejects.toThrow(
-      'secret("SPEC_MISSING") has no value: SPEC_MISSING is not set in the environment or .env.hotupdater, and the spec-store secrets adapter does not hold it (spec://SPEC_MISSING).',
+      [
+        'secret("SPEC_MISSING") has no value.',
+        "It isn't in spec://SPEC_MISSING.",
+        "Store it there, or set SPEC_MISSING.",
+      ].join("\n"),
     );
   });
 
@@ -545,7 +555,11 @@ describe("secret", () => {
     await writeLocalKey("SPEC_MISSING", "machine-value", directory);
 
     await expect(secret("SPEC_MISSING")()).rejects.toThrow(
-      'secret("SPEC_MISSING") has no value: set SPEC_MISSING in the environment or .env.hotupdater, or set the config\'s secrets to a team store.',
+      [
+        'secret("SPEC_MISSING") has no value.',
+        "Set SPEC_MISSING in the environment or .env.hotupdater.",
+        "Or set the config's secrets to a team store.",
+      ].join("\n"),
     );
   });
 });

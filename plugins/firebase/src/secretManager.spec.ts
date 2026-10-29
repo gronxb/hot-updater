@@ -1,4 +1,5 @@
 import { maskSecretValues } from "@hot-updater/cli-tools";
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -285,7 +286,7 @@ describe("secretManager get", () => {
         ["name"],
         context,
       ),
-    ).rejects.toThrow("checksum that does not match");
+    ).rejects.toThrow("Its checksum doesn't match its payload.");
   });
 
   it("checks names and the project before any request", async () => {
@@ -295,17 +296,17 @@ describe("secretManager get", () => {
         context,
       ),
     ).rejects.toThrow(
-      'Secret Manager\'s IDs take only letters, digits, "-", and "_"',
+      'Secret Manager\'s IDs take up to 255 letters, digits, "-", and "_".',
     );
     await expect(
       secretManager({ projectId: "Demo Project" }).get(["name"], context),
-    ).rejects.toThrow("project ID or number");
+    ).rejects.toThrow("Set the Google Cloud project's ID or number.");
     await expect(
       secretManager({ projectId: "demo-project", prefix: "a/b" }).get(
         ["name"],
         context,
       ),
-    ).rejects.toThrow("prefix takes letters");
+    ).rejects.toThrow('It takes letters, digits, "-", and "_".');
     expect(fake.fetchMock).not.toHaveBeenCalled();
   });
 
@@ -316,7 +317,13 @@ describe("secretManager get", () => {
         "PERMISSION_DENIED",
         "Permission 'secretmanager.versions.access' denied for resource.",
       ),
-      "(403 PERMISSION_DENIED: Permission 'secretmanager.versions.access' denied for resource.). The Google identity needs roles/secretmanager.secretAccessor on the secret.",
+      [
+        "secretManager couldn't read (403).",
+        "Secret: projects/demo-project/secrets/name",
+        "PERMISSION_DENIED: Permission 'secretmanager.versions.access' denied for",
+        "resource.",
+        "The Google identity needs roles/secretmanager.secretAccessor on the secret.",
+      ].join("\n"),
     ],
     [
       Response.json(
@@ -330,7 +337,7 @@ describe("secretManager get", () => {
         },
         { status: 403 },
       ),
-      "Enable the Secret Manager API (secretmanager.googleapis.com)",
+      "Enable the Secret Manager API in the project:\ngcloud services enable secretmanager.googleapis.com --project <project>",
     ],
     [
       googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
@@ -340,7 +347,10 @@ describe("secretManager get", () => {
       googleError(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
       "quota is exhausted",
     ],
-    [new Response("bad gateway", { status: 502 }), "(502)."],
+    [
+      new Response("bad gateway", { status: 502 }),
+      "secretManager couldn't read (502).\nSecret: projects/demo-project/secrets/name",
+    ],
   ])(
     "maps a failed read to an error without the token",
     async (response, message) => {
@@ -351,13 +361,13 @@ describe("secretManager get", () => {
         prefix: "",
       })
         .get(["name"], context)
-        .catch((caught: unknown) => caught as Error);
+        .catch((caught: unknown) => caught);
 
       expect(error).toBeInstanceOf(Error);
-      expect(error.message).toContain(
-        "secretManager could not read projects/demo-project/secrets/name",
-      );
+      if (!(error instanceof Error)) return;
+      expect(error.message).toContain("secretManager couldn't read (");
       expect(error.message).toContain(message);
+      expect(linesWiderThan(error.message.split("\n"), 76)).toEqual([]);
       expect(error.message).not.toContain(TOKEN);
     },
   );
@@ -410,7 +420,14 @@ describe("secretManager credentials", () => {
     );
 
     await expect(read()).rejects.toThrow(
-      "secretManager found no Google credentials (Could not load the default credentials.). Sign in with `gcloud auth application-default login`, use google-github-actions/auth in CI, set GOOGLE_APPLICATION_CREDENTIALS, or set CLOUDSDK_AUTH_ACCESS_TOKEN or GOOGLE_OAUTH_ACCESS_TOKEN to an access token.",
+      [
+        "secretManager found no Google credentials.",
+        "Could not load the default credentials.",
+        "On your machine, run gcloud auth application-default login.",
+        "In CI, use google-github-actions/auth.",
+        "Or set GOOGLE_APPLICATION_CREDENTIALS to a service account key.",
+        "Or set CLOUDSDK_AUTH_ACCESS_TOKEN or GOOGLE_OAUTH_ACCESS_TOKEN to a token.",
+      ].join("\n"),
     );
     expect(fake.fetchMock).not.toHaveBeenCalled();
   });
@@ -447,7 +464,7 @@ describe("secretManager set", () => {
     await expect(
       secretManager({ projectId: "demo-project" }).set?.("name", "", context),
     ).rejects.toThrow(
-      "secretManager cannot store an empty projects/demo-project/secrets/hot-updater-name.",
+      "secretManager can't store an empty value.\nSecret: projects/demo-project/secrets/hot-updater-name",
     );
     expect(fake.fetchMock).not.toHaveBeenCalled();
   });
@@ -559,7 +576,14 @@ describe("secretManager set", () => {
         context,
       ),
     ).rejects.toThrow(
-      "lacks secretmanager.versions.access, secretmanager.versions.destroy, secretmanager.secrets.update on it: grant a custom role with",
+      [
+        "secretManager can't store a value.",
+        "Secret: projects/demo-project/secrets/asc-api-key",
+        "The Google identity lacks secretmanager.versions.access,",
+        "secretmanager.versions.destroy, secretmanager.secrets.update on it.",
+        "It adds a version, then destroys the versions it added before.",
+        "Grant roles/secretmanager.admin, or a custom role with:",
+      ].join("\n"),
     );
     expect(fake.enabled(key)).toEqual([]);
     expect(fake.requests.some(({ url }) => url.endsWith(":addVersion"))).toBe(
@@ -579,7 +603,12 @@ describe("secretManager set", () => {
     });
 
     await expect(secrets.set?.("asc-api-key", "two", context)).rejects.toThrow(
-      "secretManager could not list version 2, which it stored, in projects/demo-project/secrets/asc-api-key's hot-updater-versions annotation, so the next set will not destroy it (fetch failed: ECONNRESET).",
+      [
+        "secretManager couldn't record version 2, which it stored.",
+        "Secret: projects/demo-project/secrets/asc-api-key",
+        "fetch failed: ECONNRESET",
+        "The next set won't destroy it: hot-updater-versions misses it.",
+      ].join("\n"),
     );
   });
 
@@ -589,7 +618,7 @@ describe("secretManager set", () => {
     fake.state.failPatch = true;
 
     await expect(secrets.set?.("asc-api-key", "two", context)).rejects.toThrow(
-      "could not list version 2, which it stored, in projects/demo-project/secrets/asc-api-key's hot-updater-versions annotation",
+      "The next set won't destroy it: hot-updater-versions misses it.",
     );
     await expect(secrets.get(["asc-api-key"], context)).resolves.toEqual({
       "asc-api-key": "two",
@@ -642,7 +671,12 @@ describe("secretManager set", () => {
       await vi.runAllTimersAsync();
 
       expect((await second)?.message).toBe(
-        "secretManager stored projects/demo-project/secrets/asc-api-key as version 2, and its latest alias does not resolve to that version yet, so it kept the versions it added before; the next set destroys them.",
+        [
+          "secretManager stored version 2.",
+          "Secret: projects/demo-project/secrets/asc-api-key",
+          "Its latest alias doesn't resolve to that version yet.",
+          "It kept the versions it added before: the next set destroys them.",
+        ].join("\n"),
       );
       expect(fake.enabled(key)).toEqual([1, 2]);
       expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
@@ -676,5 +710,32 @@ describe("secretManager set", () => {
 
     await secrets.set?.("asc-api-key", "four", context);
     expect(fake.enabled(key)).toEqual([4]);
+  });
+});
+
+describe("secretManager messages", () => {
+  it("prints settings and write failures in lines of at most 76 columns", async () => {
+    const messages: string[] = [];
+    const record = async (promise: Promise<unknown> | undefined) => {
+      const error = await promise?.then(
+        () => undefined,
+        (caught: unknown) => caught as Error,
+      );
+      messages.push(error!.message);
+    };
+    const adapter = (options: { projectId?: string; prefix?: string } = {}) =>
+      secretManager({ projectId: "demo-project", ...options });
+
+    await record(adapter({ projectId: "Demo Project" }).get(["n"], context));
+    await record(adapter({ prefix: "a/b" }).get(["n"], context));
+    await record(adapter().get(["deploy.credentials"], context));
+    await record(adapter().set?.("play-service-account", "", context));
+    fake.state.permissions = ["secretmanager.versions.add"];
+    await record(adapter().set?.("play-service-account", "one", context));
+
+    expect(messages).toHaveLength(5);
+    for (const message of messages) {
+      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
+    }
   });
 });

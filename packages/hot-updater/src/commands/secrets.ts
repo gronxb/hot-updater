@@ -32,7 +32,10 @@ import { printBanner } from "@/utils/printBanner";
 import { type Row, ui } from "../utils/cli-ui";
 import { androidKeystoreValue } from "../utils/native/androidKeystore";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
-import { importKeystore } from "../utils/native/importKeystore";
+import {
+  checkKeystoreEntry,
+  importKeystore,
+} from "../utils/native/importKeystore";
 import {
   GOOGLE_PLAY_GUIDE_URL,
   parseServiceAccountKey,
@@ -214,18 +217,22 @@ const readSecretValue = async (options: PutValues): Promise<string> => {
     case "android-keystore": {
       const keystore = await readFile(required("keystore"), "--keystore");
       const keyAlias = required("keyAlias");
-      return androidKeystoreValue({
-        keystore,
-        storePassword: await readPassword(
-          "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
-          "Keystore password",
-        ),
-        keyAlias,
-        keyPassword: await readPassword(
-          "HOT_UPDATER_ANDROID_KEY_PASSWORD",
-          `Password of the key ${keyAlias}`,
-        ),
-      });
+      // Checked before it is stored: a key password that doesn't unlock
+      // the key fails a build only at its last step.
+      return androidKeystoreValue(
+        await checkKeystoreEntry({
+          keystore,
+          storePassword: await readPassword(
+            "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
+            "Keystore password",
+          ),
+          keyAlias,
+          keyPassword: await readPassword(
+            "HOT_UPDATER_ANDROID_KEY_PASSWORD",
+            `Password of the key ${keyAlias}`,
+          ),
+        }),
+      );
     }
     case "play-service-account": {
       const file = required("serviceAccount");
@@ -330,7 +337,7 @@ export const handleSecretsPut = async (
     }
     if (kind === "android-keystore" && !options.keystore) {
       throw new Error(
-        `${ui.withCommand("secrets put needs the keystore file:", credentialPutCommand(kind, name))}\n${ui.withCommand("To create a new key, run", credentialIssueCommand(kind, name))}`,
+        `${ui.withCommand("secrets put needs the keystore file:", credentialPutCommand(kind, name))}\n${ui.withCommand("No .aab on Play yet? Create one:", credentialIssueCommand(kind, name))}`,
       );
     }
     // The alias and passwords of a keystore are asked at a terminal only.

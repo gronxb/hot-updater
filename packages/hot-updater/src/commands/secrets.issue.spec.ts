@@ -642,7 +642,8 @@ describe("hot-updater secrets put without the key's files", () => {
       [
         "secrets put needs the keystore file:",
         "npx hot-updater secrets put android-keystore <upload.jks>",
-        "To create a new key, run npx hot-updater secrets issue android-keystore",
+        "No .aab on Play yet? Create one:",
+        "npx hot-updater secrets issue android-keystore",
       ].join("\n"),
     ]);
     expect(store.set).not.toHaveBeenCalled();
