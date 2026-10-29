@@ -72,6 +72,15 @@ describe("formatNativeBuildSummary", () => {
     ]);
   });
 
+  it("puts a store link too long for its row on a line of its own", () => {
+    const url =
+      "https://appstoreconnect.apple.com/apps/6738201945/testflight/ios";
+    const text = summary({ storeUrl: url });
+
+    expect(text.split("\n").at(-2)).toBe(url);
+    expect(linesWiderThan(renderClackLog([["success", text]]))).toEqual([]);
+  });
+
   it("names a fingerprint build's fingerprint, and leaves out what it can't read", () => {
     const lines = summary({
       platformName: "Android",

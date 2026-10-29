@@ -89,7 +89,10 @@ export const formatNativeBuildSummary = ({
       ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
     ui.kv("Min bundle ID", ui.id(result.minBundleId)),
     ui.kv("Channel", ui.channel(result.channel)),
-    storeUrl !== undefined && ui.kv("Open", storeUrl),
+    // A URL is never shortened: one too long for its row, such as
+    // TestFlight's, takes a line of its own.
+    storeUrl !== undefined &&
+      (storeUrl.length <= pathWidth ? ui.kv("Open", storeUrl) : storeUrl),
     logFilePath !== null &&
       ui.kv("Log", ui.path(ui.fitPath(logFilePath, pathWidth))),
   ]);
