@@ -92,7 +92,8 @@ const isLive = (output: Output) => clack.isTTY(output) && !clack.isCI();
 
 /**
  * A step that shows nothing until `start()`. A step created while another
- * runs is part of it: its title and detail become the running step's detail.
+ * runs is part of it: its title and detail become the running step's detail,
+ * and its failure fails the running step.
  */
 export const createStep = (
   title: string,
@@ -180,6 +181,13 @@ export const createStep = (
     },
     fail(message = `${title} failed`) {
       const elapsed = step.elapsedMs;
+      if (outer && startedAt !== undefined && !ended) {
+        // Part of a running step, it ends that step as failed with its
+        // message, as an inner spinner's error does.
+        ended = true;
+        outer.interrupt(message);
+        return;
+      }
       finish(() => {
         clack.log.error(
           maskSecretValues(withDuration(message, elapsed)),

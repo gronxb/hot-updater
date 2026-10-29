@@ -1,8 +1,16 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, getReactNativeMetadatas, p } from "@hot-updater/cli-tools";
-import { execa } from "execa";
+import {
+  BuildFailedError,
+  BuildLogger,
+  getCwd,
+  getReactNativeMetadatas,
+  p,
+} from "@hot-updater/cli-tools";
+import { ExecaError, execa } from "execa";
+
+import { formatCommand } from "./formatCommand";
 
 /** What `installPodsIfNeeded` ran. */
 export interface PodInstallSteps {
@@ -17,18 +25,130 @@ const OUTPUT_TAIL_LINES = 12;
 
 /**
  * A failed command's error: the command, then the last lines of its
- * output, without execa's full message.
+ * output, stdout and stderr as printed, without execa's full message.
  */
 const commandFailure = (command: string, error: unknown): Error => {
-  const { stderr, stdout } = (error ?? {}) as {
+  const { all, stderr, stdout } = (error ?? {}) as {
+    all?: unknown;
     stderr?: unknown;
     stdout?: unknown;
   };
-  const output = String(stderr || stdout || "").trimEnd();
-  const tail = output.split("\n").slice(-OUTPUT_TAIL_LINES).join("\n");
+  const output = String(
+    all || [stdout, stderr].filter(Boolean).join("\n") || "",
+  ).trimEnd();
+  const tail = output
+    .split("\n")
+    .filter((line) => line.trim())
+    .slice(-OUTPUT_TAIL_LINES)
+    .join("\n");
   const detail =
     tail || (error instanceof Error ? error.message : String(error));
   return new Error(`${command} failed.\n${detail}`, { cause: error });
+};
+
+/**
+ * A line of the progress meter curl prints on stderr for each pod it
+ * downloads, such as React Native's prebuilt core.
+ */
+const DOWNLOAD_PROGRESS = [
+  /^% Total +% Received/,
+  /^Dload +Upload/,
+  /^\d{1,3} +[\d.]+[kMGT]? +\d{1,3} +[\d.]+[kMGT]? /,
+];
+
+/**
+ * `pod install`'s output: its live line shows the pod it installs, its log
+ * keeps the whole output, and a failure prints CocoaPods' `[!]` errors and a
+ * crash's `SomeError - …` line with its last lines, without the download
+ * progress CocoaPods' curl prints on stderr.
+ */
+const createPodInstallLogger = () =>
+  new BuildLogger({
+    logPrefix: "pod-install",
+    createPhaseReader: () => (line) => {
+      const installing = /^Installing (\S+)/.exec(line);
+      if (installing) return `Installing ${installing[1]}`;
+      return /^(Analyzing dependencies|Downloading dependencies|Generating Pods project|Integrating client project)$/.test(
+        line,
+      )
+        ? line
+        : undefined;
+    },
+    failureSummary: {
+      // A crash's exception, which CocoaPods prints in its issue template.
+      lines: [/^[A-Z]\w*(::\w+)*Error - /],
+      // An error and the lines that explain it, such as the pods whose
+      // versions conflict.
+      blocks: [{ start: /^\[!\] /, end: /^$/, includeEnd: false }],
+      ignore: DOWNLOAD_PROGRESS,
+      tail: 4,
+      maxWidth: 76,
+    },
+  });
+
+/**
+ * Runs `pod install` as a step whose failure prints CocoaPods' errors and
+ * the log's path, then throws a `BuildFailedError`.
+ */
+const runPodInstall = async ({
+  command,
+  env,
+  sourceDir,
+}: {
+  command: string[];
+  env: Record<string, string>;
+  sourceDir: string;
+}): Promise<void> => {
+  const logger = createPodInstallLogger();
+  const failureMessage = `${command.join(" ")} failed`;
+  await logger.start({
+    title: "Installing CocoaPods dependencies",
+    header: [
+      `$ ${formatCommand([
+        ...Object.entries(env).map(([name, value]) => `${name}=${value}`),
+        ...command,
+      ])}`,
+      "",
+    ],
+  });
+  try {
+    const podProcess = execa(command[0]!, command.slice(1), {
+      cwd: sourceDir,
+      env,
+      all: true,
+      // The output streams to the log file; buffered, it would fill the
+      // error's message.
+      buffer: false,
+    });
+    const logging = podProcess.all
+      ? logger.processStream(podProcess.all)
+      : Promise.resolve();
+    // Settled together: pod exits before the log finishes reading its
+    // output, and its failure must wait for it.
+    const [podResult, loggingResult] = await Promise.allSettled([
+      podProcess,
+      logging,
+    ]);
+    if (podResult.status === "rejected") throw podResult.reason;
+    if (loggingResult.status === "rejected") throw loggingResult.reason;
+    logger.stop("CocoaPods dependencies installed");
+  } catch (error) {
+    logger.writeError(error);
+    const reason =
+      error instanceof ExecaError && error.exitCode !== undefined
+        ? `exited with code ${error.exitCode}`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    logger.stop(`${failureMessage} · ${reason}`, false);
+    throw new BuildFailedError(`${failureMessage}: ${reason}`, {
+      logPath: logger.logPath,
+      summary: logger.failureSummary,
+      cause: error,
+    });
+  } finally {
+    await logger.close();
+  }
 };
 
 export const installPodsIfNeeded = async (
@@ -70,7 +190,7 @@ export const installPodsIfNeeded = async (
     const bundleSpinner = p.spinner();
     bundleSpinner.start("Installing Ruby gems");
     try {
-      await execa("bundle", ["install"], { cwd: sourceDir });
+      await execa("bundle", ["install"], { cwd: sourceDir, all: true });
     } catch (error) {
       bundleSpinner.error("bundle install failed");
       throw commandFailure("bundle install", error);
@@ -81,18 +201,7 @@ export const installPodsIfNeeded = async (
   const podCommand = shouldUseBundler
     ? ["bundle", "exec", "pod", "install"]
     : ["pod", "install"];
-  const podSpinner = p.spinner();
-  podSpinner.start("Installing CocoaPods dependencies");
-  try {
-    await execa(podCommand[0]!, podCommand.slice(1), {
-      cwd: sourceDir,
-      env: plan.env,
-    });
-  } catch (error) {
-    podSpinner.error(`${podCommand.join(" ")} failed`);
-    throw commandFailure(podCommand.join(" "), error);
-  }
-  podSpinner.stop("CocoaPods dependencies installed");
+  await runPodInstall({ command: podCommand, env: plan.env, sourceDir });
   return { codegen: plan.runCodegen, pods: true };
 };
 
@@ -142,7 +251,7 @@ const runReactNativeCodegen = async ({
         "-t",
         "ios",
       ],
-      { cwd: projectRoot },
+      { cwd: projectRoot, all: true },
     );
   } catch (error) {
     spinner.error("React Native codegen failed");

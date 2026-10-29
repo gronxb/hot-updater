@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 let root: string;
 let reactNativeVersion: { major: number; minor: number };
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => root,
   getReactNativeMetadatas: () => ({
     packagePath: path.join(root, "node_modules", "react-native"),
@@ -19,7 +20,10 @@ vi.mock("@hot-updater/cli-tools", () => ({
     spinner: () => ({ start: vi.fn(), stop: vi.fn(), error: vi.fn() }),
   },
 }));
-vi.mock("execa", () => ({ execa: vi.fn(async () => ({})) }));
+vi.mock("execa", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("execa")>()),
+  execa: vi.fn(async () => ({})),
+}));
 
 import { execa } from "execa";
 
@@ -112,6 +116,10 @@ describe("installPodsIfNeeded", () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "apple-helper-pods-"));
+    // pod install's log lands in the project's .hot-updater/log.
+    await fs.writeFile(path.join(root, "package.json"), "{}");
+    vi.spyOn(process, "cwd").mockReturnValue(root);
+    vi.spyOn(process.stdout, "write").mockReturnValue(true);
     sourceDir = path.join(root, "ios");
     await fs.mkdir(sourceDir);
     await fs.writeFile(path.join(sourceDir, "Podfile"), "");
@@ -123,6 +131,7 @@ describe("installPodsIfNeeded", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
   });
@@ -154,7 +163,7 @@ describe("installPodsIfNeeded", () => {
           "-t",
           "ios",
         ],
-        { cwd: root },
+        { cwd: root, all: true },
       ],
       [
         "pod",
@@ -162,6 +171,8 @@ describe("installPodsIfNeeded", () => {
         {
           cwd: sourceDir,
           env: expect.objectContaining({ RCT_IGNORE_PODS_DEPRECATION: "1" }),
+          all: true,
+          buffer: false,
         },
       ],
     ]);
@@ -181,6 +192,8 @@ describe("installPodsIfNeeded", () => {
         {
           cwd: sourceDir,
           env: { RCT_USE_RN_DEP: "0", RCT_USE_PREBUILT_RNCORE: "0" },
+          all: true,
+          buffer: false,
         },
       ],
     ]);
