@@ -171,6 +171,11 @@ describe("packed provider entrypoints", () => {
       exports: ["postgres"],
     },
     {
+      directory: "storage-s3",
+      packageName: "@hot-updater/storage-s3",
+      exports: ["createS3Storage"],
+    },
+    {
       directory: "supabase",
       packageName: "@hot-updater/supabase",
       exports: ["supabaseDatabase", "supabaseStorage"],

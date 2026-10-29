@@ -4,6 +4,7 @@ import {
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
+  type StorageObject,
 } from "@hot-updater/plugin-core";
 import {
   getApp,
@@ -25,15 +26,24 @@ export interface FirebaseStorageConfig extends AppOptions {
 
 /** Signed URLs kept per adapter, enough for a few Bundles' assets. */
 const MAX_CACHED_SIGNED_URLS = 10_000;
+/** Objects deleted at once: Cloud Storage deletes one object a request. */
+const DELETE_CONCURRENCY = 16;
 
 export const firebaseStorage = (
   config: FirebaseStorageConfig,
 ): StorageAdapterWith<
-  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+  | "put"
+  | "get"
+  | "getDownloadUrl"
+  | "exists"
+  | "delete"
+  | "listObjects"
+  | "deleteObjects"
 > => {
   const app = getApps().length ? getApp() : initializeApp(config);
   const bucket = getStorage(app).bucket(config.storageBucket);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
+  const basePrefix = getStorageKey() ? `${getStorageKey()}/` : "";
   /**
    * Signed URLs by object. Without a private key, as in Cloud Functions, each
    * signature is an IAM signBlob request, and an update check returns a URL
@@ -152,6 +162,46 @@ export const firebaseStorage = (
       const { key } = parseAndValidate(storageUri);
       await bucket.file(key).delete({ ignoreNotFound: true });
       return { deleted: true };
+    },
+    async listObjects(prefix) {
+      const folder = getStorageKey(prefix ?? "");
+      const [files] = await bucket.getFiles({
+        autoPaginate: true,
+        prefix: folder ? `${folder}/` : "",
+      });
+      const objects: StorageObject[] = [];
+      for (const file of files) {
+        if (!file.name.startsWith(basePrefix)) continue;
+        let storageUri: string;
+        // A key no `put` writes, such as a folder marker, has no URI.
+        try {
+          storageUri = createStorageUri({
+            bucket: config.storageBucket,
+            key: file.name,
+            protocol: "gs",
+          });
+        } catch {
+          continue;
+        }
+        const { size, updated } = file.metadata;
+        objects.push({
+          key: file.name.slice(basePrefix.length),
+          ...(updated ? { lastModifiedAt: new Date(updated) } : {}),
+          size: Number(size ?? 0),
+          storageUri,
+        });
+      }
+      return objects;
+    },
+    async deleteObjects(relativeKeys) {
+      const keys = relativeKeys.map((key) => getStorageKey(key));
+      for (let offset = 0; offset < keys.length; offset += DELETE_CONCURRENCY) {
+        await Promise.all(
+          keys
+            .slice(offset, offset + DELETE_CONCURRENCY)
+            .map((key) => bucket.file(key).delete({ ignoreNotFound: true })),
+        );
+      }
     },
   });
 };

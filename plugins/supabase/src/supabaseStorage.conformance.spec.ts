@@ -12,6 +12,7 @@ import { supabaseStorage } from "./supabaseStorage";
  */
 const { bucket, objects } = vi.hoisted(() => {
   const objects = new Map<string, Uint8Array<ArrayBuffer>>();
+  const updatedAt = new Map<string, string>();
   const validName = /^[A-Za-z0-9_/!.*'() &$=@;:+,?-]+$/;
   /** The name Storage reads from a request URL with `name` in it unencoded. */
   const nameInUrl = (name: string) => {
@@ -60,6 +61,7 @@ const { bucket, objects } = vi.hoisted(() => {
         };
       }
       objects.set(stored, bytes);
+      updatedAt.set(stored, new Date().toISOString());
       return {
         data: { path: name, fullPath: `updates/${stored}` },
         error: null,
@@ -85,6 +87,36 @@ const { bucket, objects } = vi.hoisted(() => {
     async exists(name: string) {
       if (objects.has(nameInUrl(name))) return { data: true, error: null };
       return { data: false, error: unknownError(400) };
+    },
+    /** Every object below `prefix`, three a page, as list-v2 does. */
+    async listV2({
+      prefix = "",
+      limit,
+      cursor,
+    }: {
+      prefix?: string;
+      limit: number;
+      cursor?: string;
+    }) {
+      const names = [...objects.keys()]
+        .filter((name) => name.startsWith(prefix))
+        .sort();
+      const start = Number(cursor ?? 0);
+      const end = start + Math.min(limit, 3);
+      return {
+        data: {
+          hasNext: end < names.length,
+          nextCursor: end < names.length ? String(end) : undefined,
+          folders: [],
+          // Storage v1.44 names each object by its full path.
+          objects: names.slice(start, end).map((name) => ({
+            name,
+            updated_at: updatedAt.get(name),
+            metadata: { size: objects.get(name)!.byteLength },
+          })),
+        },
+        error: null,
+      };
     },
     async remove(names: string[]) {
       const removed = names.filter((name) => objects.delete(name));
@@ -131,5 +163,13 @@ setupStorageAdapterTestSuite({
       basePath: "ota",
     };
   },
-  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+  operations: [
+    "put",
+    "get",
+    "getDownloadUrl",
+    "exists",
+    "delete",
+    "listObjects",
+    "deleteObjects",
+  ],
 });

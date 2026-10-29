@@ -21,6 +21,7 @@ export default defineConfig([
         "@hot-updater/plugin-api-keys/server",
         "@hot-updater/plugin-insights/server",
         "@hot-updater/plugin-remote-config/server",
+        "@hot-updater/storage-s3",
         "hono/lambda-edge",
         "hono",
       ],
