@@ -1490,6 +1490,23 @@ const readTextFile = (filePath: string) =>
  * existing config with the scaffold's build, storage, database, plugins, and
  * helpers merged in, keeping the project's own settings.
  */
+/**
+ * Whether `hot-updater.config.ts` in `cwd` sets a team `secrets` adapter,
+ * read from its text: a `secrets` property other than `localSecrets(...)`,
+ * or a config whose shape init can't read. False without the file. Init
+ * reads the store through the loaded config, so one that sets a store but
+ * doesn't load must be fixed first.
+ */
+export const configSetsTeamSecrets = async (cwd: string): Promise<boolean> => {
+  const text = await readTextFile(path.join(cwd, HOT_UPDATER_CONFIG_PATH));
+  if (text === null) return false;
+  const source = parseConfigSource(text);
+  const config = source && findDefineConfigObject(source);
+  if (!config) return true;
+  const secrets = findAnyProperty(config.objectExpression, "secrets");
+  return secrets !== null && getCallCallee(secrets.value) !== "localSecrets";
+};
+
 export const writeHotUpdaterConfig = async (
   scaffold: HotUpdaterConfigScaffold,
   filePath = HOT_UPDATER_CONFIG_PATH,

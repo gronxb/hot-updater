@@ -1,4 +1,5 @@
 import {
+  configSetsTeamSecrets,
   InitError,
   type InitProviderDefinition,
   loadTeamSecrets,
@@ -29,8 +30,9 @@ export interface InitTeamSecrets {
 /**
  * The config's team `secrets` adapter, when it sets one, with the
  * provider's credentials `env` (the environment and init's env files) lacks
- * read from it in one call. Undefined with `localSecrets()`, and when the
- * config can't load, which init says.
+ * read from it in one call. Undefined with `localSecrets()`, and when a
+ * config that sets no team store can't load, which init says; a config
+ * that sets one and can't load stops init.
  */
 export const openInitTeamSecrets = async ({
   provider,
@@ -45,6 +47,17 @@ export const openInitTeamSecrets = async ({
   try {
     adapter = await loadTeamSecrets();
   } catch (error) {
+    // A store the config sets but init can't read may hold the credentials
+    // init would otherwise ask for or create again.
+    if (await configSetsTeamSecrets(cwd)) {
+      throw new InitError(
+        [
+          "hot-updater.config.ts sets a secrets adapter, but doesn't load:",
+          message(error),
+          "Fix it, then run init again.",
+        ].join("\n"),
+      );
+    }
     p.log.warn(
       `Couldn't load hot-updater.config.ts for its secrets adapter, so credentials stay in .env.hotupdater: ${message(error)}`,
     );
