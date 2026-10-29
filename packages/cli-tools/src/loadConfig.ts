@@ -13,7 +13,6 @@ import { mergeWith } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
-import { recordUnsetEnvReads, trackUnsetEnvReads } from "./configEnv.js";
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
 import {
@@ -182,26 +181,19 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
-/**
- * A loaded config file: its export, the scope of the `secretEnv` its top
- * level creates, and the variables its top level read while they were unset.
- */
+/** A loaded config file: its export, and the scope of the `secretEnv` its top level creates. */
 type LoadedConfigFile = {
   readonly source: ConfigFileExport | undefined;
   readonly scope: SecretsScope;
-  readonly unsetEnvReads: ReadonlySet<string>;
 };
 
 /** Each load runs the config file again, which creates its adapters again. */
 const loadConfigFile = async (): Promise<LoadedConfigFile> => {
   const scope: SecretsScope = {};
-  const unsetEnvReads = new Set<string>();
-  const { config } = await trackUnsetEnvReads(unsetEnvReads, () =>
-    withSecretsScope(scope, () =>
-      loadUnconfig<ConfigFileExport>(getConfigLoaderOptions()),
-    ),
+  const { config } = await withSecretsScope(scope, () =>
+    loadUnconfig<ConfigFileExport>(getConfigLoaderOptions()),
   );
-  return { source: config, scope, unsetEnvReads };
+  return { source: config, scope };
 };
 
 /**
@@ -210,18 +202,15 @@ const loadConfigFile = async (): Promise<LoadedConfigFile> => {
  * and the file's top-level `secretEnv` reads the first config's.
  */
 const configFor = async (
-  { source, scope: fileScope, unsetEnvReads: fileReads }: LoadedConfigFile,
+  { source, scope: fileScope }: LoadedConfigFile,
   options: HotUpdaterConfigOptions,
 ): Promise<ConfigResponse> => {
   if (typeof source !== "function") {
-    return resolveConfig(source, [fileScope], fileReads);
+    return resolveConfig(source, [fileScope]);
   }
   const scope: SecretsScope = {};
-  const unsetEnvReads = new Set(fileReads);
-  const config = await trackUnsetEnvReads(unsetEnvReads, () =>
-    withSecretsScope(scope, () => source(options)),
-  );
-  return resolveConfig(config, [scope, fileScope], unsetEnvReads);
+  const config = await withSecretsScope(scope, () => source(options));
+  return resolveConfig(config, [scope, fileScope]);
 };
 
 export const loadConfig = async (
@@ -259,7 +248,6 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
 const resolveConfig = (
   config: ConfigInput | undefined,
   scopes: readonly SecretsScope[],
-  unsetEnvReads: ReadonlySet<string>,
 ): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const secrets = resolveSecretsAdapter(mergedConfig.secrets);
@@ -274,7 +262,6 @@ const resolveConfig = (
   Object.defineProperty(resolved, SECRET_ENV_NAMES, {
     value: [...new Set(scopes.flatMap((scope) => [...(scope.names ?? [])]))],
   });
-  recordUnsetEnvReads(resolved, unsetEnvReads);
   return resolved;
 };
 

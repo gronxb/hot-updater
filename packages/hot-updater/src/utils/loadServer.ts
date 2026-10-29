@@ -1,9 +1,7 @@
 import {
   type AssembledServer,
   assembleServer,
-  assertConfigEnvSet,
   type ConfigResponse,
-  getCwd,
   loadConfig,
 } from "@hot-updater/cli-tools";
 import type { StorageAdapter } from "@hot-updater/plugin-core";
@@ -26,23 +24,13 @@ export class ServerConfigError extends Error {
 /**
  * The server hot-updater.config.ts describes: core and the plugins over its
  * database and storage, assembled as the server assembles them, so the
- * CLI's writes take the server's path. A config that read a variable it
- * asserts with `process.env.<name>!` while it was unset is refused first,
- * by name, for every provider, before its adapters reach the provider's
- * SDK. A database the config opened is
+ * CLI's writes take the server's path. A database the config opened is
  * closed before an error about the config is thrown.
  */
 export const loadServer = async (
   config?: Pick<ConfigResponse, "database" | "storage" | "plugins">,
 ): Promise<LoadedServer> => {
-  const loaded = config ?? (await loadConfig(null));
-  const { database, storage, plugins } = loaded;
-  try {
-    await assertConfigEnvSet(loaded, getCwd());
-  } catch (error) {
-    await database?.dispose?.();
-    throw new ServerConfigError((error as Error).message, { cause: error });
-  }
+  const { database, storage, plugins } = config ?? (await loadConfig(null));
   if (database === undefined) {
     throw new ServerConfigError(
       "Set database in hot-updater.config.ts: the database your server runs on, such as d1Database(...), or standaloneRepository({ baseUrl }) to reach a self-hosted server through its admin API.",

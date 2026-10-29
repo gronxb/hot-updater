@@ -69,10 +69,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,
-  // The server refuses unset process.env reads as the CLI does.
-  assertConfigEnvSet: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).assertConfigEnvSet,
   // The secrets check reads the environment and the adapter as the CLI does.
   ...(({
     CREDENTIAL_ENV_NAMES,
