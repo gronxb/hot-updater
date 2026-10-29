@@ -4,12 +4,12 @@
   "icon": "LockKeyhole",
   "pages": [
     "local-secrets",
-    "dotenvx",
-    "bitwarden",
     "aws-secrets-manager",
     "google-secret-manager",
     "azure-key-vault",
+    "infisical",
     "1password",
-    "infisical"
+    "bitwarden",
+    "dotenvx"
   ]
 }

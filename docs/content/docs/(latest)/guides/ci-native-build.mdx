@@ -1,5 +1,5 @@
 ---
-title: "Build and Upload from CI"
+title: "CI"
 description: "Build, track, and submit native apps to TestFlight and Google Play from CI, with credentials from the job's environment or a secrets store, without signing in."
 icon: Workflow
 ---
@@ -51,7 +51,7 @@ Store the keys you have with
 [`secrets put`](/docs/concepts/secrets#store-a-secret), on your machine: in
 CI the CLI never signs in or creates a key. For Google Play, store the
 service account's JSON key and the upload keystore, then check Play access,
-as [Set up Google Play](/docs/guides/native-build#set-up-google-play)
+as [Set up Google Play](/docs/native-builds/google-play#set-up-google-play)
 describes:
 
 ```package-install
@@ -62,7 +62,7 @@ npx hot-updater doctor
 
 For the App Store Connect API key, `apple login` signs you in with your
 Apple Account once, as
-[Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
+[Sign in with your Apple Account](/docs/native-builds/credentials#sign-in-with-your-apple-account)
 describes, and Hot Updater issues the key:
 
 ```package-install
@@ -75,7 +75,7 @@ to revoke once CI no longer uses it. With
 `localSecrets()`, the key stays in a file on your machine, and the CLI offers
 to store it as the GitHub Actions secret CI reads; another adapter stores it
 where CI reads it
-([where an issued key goes](/docs/guides/native-build#where-an-issued-key-goes)).
+([where an issued key goes](/docs/native-builds/credentials#where-an-issued-key-goes)).
 With a [team store](/docs/concepts/secrets#this-machine-or-the-team), one
 person stores them once, and every teammate and CI read the same keys.
 
@@ -176,7 +176,7 @@ jobs:
 A credential's own variables work too, such as `HOT_UPDATER_ASC_KEY`,
 `HOT_UPDATER_ASC_KEY_ID`, and `HOT_UPDATER_ASC_ISSUER_ID`, or
 `HOT_UPDATER_ANDROID_KEYSTORE_BASE64` and its passwords:
-[Provide signing credentials](/docs/guides/native-build#provide-signing-credentials)
+[Provide signing credentials](/docs/native-builds/credentials#provide-signing-credentials)
 lists them. `HOT_UPDATER_ASC_KEY` also takes a key whose line breaks are
 written as `\n`.
 
@@ -300,7 +300,7 @@ A `--submit play-internal` job that Google Play isn't ready for stops
 before the build and lists every item at once: the service account key and
 the upload keystore, each with the `secrets put` command that stores it, and
 Play access, with the invite or the app's first upload it needs
-([Set up Google Play](/docs/guides/native-build#set-up-google-play)). A
+([Set up Google Play](/docs/native-builds/google-play#set-up-google-play)). A
 missing App Store Connect API key stops the same way, saying that Hot
 Updater signs in only at a terminal and never in CI. A missing keystore
 never suggests a second one: under a team's adapter it says to ask whoever

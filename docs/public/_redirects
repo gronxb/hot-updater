@@ -21,9 +21,6 @@
 /api/markdown/storage-plugins/* /api/markdown/storage-adapters/:splat 301
 /api/markdown/database-plugins/* /api/markdown/database-adapters/:splat 301
 
-# Native Build (alpha) is not ready, so its page is removed
-/docs/guides/native-build /docs 301
-
 # Artifact Compression merged into Bundle Diffing
 /docs/guides/compression /docs/guides/bundle-diffing 301
 /docs/guides/compression.md /docs/guides/bundle-diffing.md 301

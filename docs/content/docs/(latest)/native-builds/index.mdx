@@ -1,0 +1,33 @@
+---
+title: "Overview"
+description: "Why Hot Updater builds and tracks your native apps: an OTA patch base, preview builds, and store uploads."
+icon: Smartphone
+---
+
+## Why native builds are tracked
+
+`hot-updater native-build ios` and `native-build android` build the native
+app from a scheme in `hot-updater.config.ts` and record the build with your
+server. A tracked build is three things at once:
+
+- **An OTA patch base.** The JavaScript bundle built into the app is kept, so
+  a fresh install's first OTA downloads a small patch instead of the complete
+  bundle. See [Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
+- **A preview build.** The Console lists each build with an install link, and
+  [pull request previews](/docs/guides/pull-request-previews) find the build a
+  pull request's update runs on.
+- **A store upload.** `testflight` and `google-play upload` build, track, and
+  upload in one command, and the Console shows which builds are on a store.
+
+A build made elsewhere can be tracked too, by
+[importing it](/docs/guides/native-build#import-a-build-made-elsewhere).
+
+## Where to go next
+
+1. [Build](/docs/guides/native-build): configure schemes, build, and find,
+   reuse, or delete tracked builds.
+2. [Credentials](/docs/native-builds/credentials): store the signing and store
+   keys once.
+3. [TestFlight](/docs/native-builds/testflight) and
+   [Google Play](/docs/native-builds/google-play): upload to the stores.
+4. [CI](/docs/guides/ci-native-build): build and upload from a CI job.
