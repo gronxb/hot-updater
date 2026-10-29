@@ -785,7 +785,8 @@ Google Play isn't ready for com.example.app:
 Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play
 ```
 
-It never creates a key or a keystore on its own: [Set up Google
+A `--dry-run` builds anyway and fails at the end with the same lines. The
+CLI never creates a key or a keystore on its own: [Set up Google
 Play](#set-up-google-play) stores both once.
 
 Before the prebuild, the CLI also refuses a scheme whose build Google Play

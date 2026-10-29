@@ -201,7 +201,8 @@ const buildNativeInternal = async ({
                 : undefined;
             if (uploadServiceAccount) {
               // Everything Google Play needs, each line passed or not,
-              // before anything is tracked or built.
+              // before anything is tracked or built. A dry run builds
+              // anyway, and fails at the end with the same lines.
               const keystore = androidSigningKeystore(androidScheme);
               const readiness = await checkGooglePlay({
                 credentials,
@@ -211,9 +212,12 @@ const buildNativeInternal = async ({
                 ...(keystore ? { keystore } : {}),
               });
               if (!readiness.ready) {
-                throw new NativeBuildFailure(
-                  formatGooglePlayReadiness(readiness),
-                );
+                if (!dryRun) {
+                  throw new NativeBuildFailure(
+                    formatGooglePlayReadiness(readiness),
+                  );
+                }
+                missingSubmitKey = formatGooglePlayReadiness(readiness);
               }
             }
             trackingSkipped = await prepareTracking({
@@ -261,7 +265,7 @@ const buildNativeInternal = async ({
                 return await resolve();
               } catch (error) {
                 if (!(error instanceof CredentialUnavailableError)) throw error;
-                missingSubmitKey = error.message;
+                missingSubmitKey ??= error.message;
                 return undefined;
               }
             };

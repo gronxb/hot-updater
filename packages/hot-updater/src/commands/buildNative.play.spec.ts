@@ -278,6 +278,45 @@ describe("native-build android --submit play-internal", () => {
     exit.mockRestore();
   });
 
+  it("a dry run still builds when Google Play isn't ready, and fails at the end with the same lines", async () => {
+    vi.mocked(checkGooglePlay).mockResolvedValueOnce({
+      packageName: "com.example.app",
+      ready: false,
+      checks: [
+        { ok: true, label: "Service account key" },
+        { ok: true, label: "Upload keystore" },
+        {
+          ok: false,
+          label: "App in Play",
+          detail: "upload the first .aab in Play Console",
+        },
+      ],
+    });
+    const exit = mockExit();
+
+    await expect(
+      handleNativeBuildCreate("android", {
+        scheme: "release",
+        submit: "play-internal",
+        dryRun: true,
+      }),
+    ).rejects.toThrow("exit");
+
+    expect(events).toContain("build");
+    expect(uploadToPlay).not.toHaveBeenCalled();
+    expect(
+      stripVTControlCharacters(
+        vi.mocked(p.log.error).mock.calls.flat().join("\n"),
+      ),
+    ).toContain(
+      [
+        "A real run couldn't submit to Google Play.",
+        "Google Play isn't ready for com.example.app:",
+      ].join("\n"),
+    );
+    exit.mockRestore();
+  });
+
   it("uploads under the scheme's applicationId without aapt2", async () => {
     vi.mocked(readBuiltPackageName).mockResolvedValueOnce(undefined);
 

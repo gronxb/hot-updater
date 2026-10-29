@@ -13,6 +13,9 @@ import {
   type PlayCheck,
 } from "../../utils/native/playServiceAccount";
 
+/** How long doctor waits for each Google request. */
+const PLAY_TIMEOUT_MS = 10_000;
+
 /** What doctor found for one Android package, or why it couldn't check. */
 export type GooglePlayPackageAccess =
   | PlayAccess
@@ -55,6 +58,12 @@ export const checkGooglePlay = async (
 ): Promise<GooglePlayStatus | undefined> => {
   const packageNames = playPackageNames(config);
   if (packageNames.length === 0) return undefined;
+  // A report never waits on a slow endpoint.
+  const fetchWithTimeout: typeof globalThis.fetch = (input, init) =>
+    (fetch ?? globalThis.fetch)(input, {
+      ...init,
+      signal: AbortSignal.timeout(PLAY_TIMEOUT_MS),
+    });
   return withCredentialResolver(
     async (resolver) => {
       const serviceAccount = await resolver
@@ -68,7 +77,7 @@ export const checkGooglePlay = async (
             access: await checkPlayAccess({
               serviceAccount,
               packageName,
-              ...(fetch ? { fetch } : {}),
+              fetch: fetchWithTimeout,
             }).catch(
               (error: unknown): GooglePlayPackageAccess => ({
                 status: "unchecked",
