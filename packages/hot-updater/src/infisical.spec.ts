@@ -908,10 +908,62 @@ describe("infisical", () => {
     await record(() => adapter().set("a:b", "1", { cwd }));
     await record(() => adapter().set("a", " 1", { cwd }));
 
-    expect(messages).toHaveLength(15);
+    // What rc.9's QA met: a Viewer's write of a long name, a projectId
+    // Infisical doesn't know, a deep folder, and a long instance URL.
+    universalAuthEnv();
+    const longName = "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY";
+    route = server(
+      {},
+      {
+        [`POST /api/v4/secrets/${longName}`]: () =>
+          refusal(
+            403,
+            "PermissionDenied",
+            "You are not allowed to create on secrets",
+          ),
+      },
+    );
+    await record(() => adapter().set(longName, "1", { cwd }));
+    route = server(
+      {},
+      {
+        "GET /api/v4/secrets": () =>
+          refusal(
+            404,
+            "NotFound",
+            "Project with ID '00000000-0000-4000-8000-000000000000' not found during bot authorization",
+          ),
+      },
+    );
+    await record(() =>
+      adapter({
+        projectId: "00000000-0000-4000-8000-000000000000",
+        environment: "production-codex-relay",
+        path: "/hot-updater/codex-relay/android/release",
+        siteUrl:
+          "https://secrets-infisical.internal.codex-relay-mobile-team.example.com",
+      }).get(["a"], { cwd }),
+    );
+    await record(() =>
+      adapter().set(`${longName}_WITH_A_SUFFIX`, " 1", { cwd }),
+    );
+
+    expect(messages).toHaveLength(18);
     for (const message of messages) {
+      // A URL longer than a line is the one word that can't be broken.
       expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
     }
+    expect(messages[15]!.split("\n")[0]).toBe(
+      "Infisical doesn't let the identity create",
+    );
+    expect(messages[16]!.split("\n").slice(0, 3)).toEqual([
+      "Infisical found nothing to list the secrets (404).",
+      "Instance:",
+      "https://secrets-infisical.internal.codex-relay-mobile-team.example.com",
+    ]);
+    expect(messages[16]).toContain(
+      "Project with ID '00000000-0000-4000-8000-000000000000' not found during bot…",
+    );
   });
 
   it("describes where a name is", () => {

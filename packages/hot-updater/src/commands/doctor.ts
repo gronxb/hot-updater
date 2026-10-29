@@ -67,7 +67,11 @@ import {
   recordedBaseUrls,
 } from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
-import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
+import {
+  checkSecrets,
+  missingRequiredSecrets,
+  type SecretsStatus,
+} from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
   hasVerificationOptions,
@@ -554,7 +558,8 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
 
 /**
  * The configured signing key's public key, or, when doctor cannot read it,
- * such as a secret only CI holds, a warning with the reason: the native
+ * such as a secret this machine lacks, which the Secrets rows report as
+ * an error, a warning with the reason: the native
  * public keys are then not compared, rather than reported as a mismatch
  * whose resolution is a new native release. A `signing` value deploy
  * refuses is the signing row's (`checkSigning`): its native keys are not
@@ -929,6 +934,7 @@ async function checkProject(
       const googlePlay = await checkGooglePlay(config, {
         cwd,
         ...(fetchImpl ? { fetch: fetchImpl } : {}),
+        ...(secrets ? { secrets } : {}),
       }).catch(() => undefined);
       if (googlePlay) details.googlePlay = googlePlay;
       const deploySecrets = await checkDeploySecrets(config, {
@@ -1011,6 +1017,7 @@ async function checkProject(
       hasInfrastructureIssue ||
       hasNativeIssue ||
       details.signing?.type === "error" ||
+      missingRequiredSecrets(details.secrets).length > 0 ||
       hasServerDataIssue;
     // Future: || configurationIssues.length > 0 || etc.
 
@@ -1307,7 +1314,19 @@ export const handleDoctor = async ({
       ]),
     );
 
+    // A signing key this machine lacks is the Secrets rows' error, with
+    // the command that imports it: here it only explains the unchecked keys.
+    const signingKeyMissing = missingRequiredSecrets(details.secrets).some(
+      ({ fields }) => fields.some((field) => field.startsWith("signing")),
+    );
     for (const issue of native.issues) {
+      if (
+        issue.code === "SIGNING_PUBLIC_KEY_UNAVAILABLE" &&
+        signingKeyMissing
+      ) {
+        p.log.warn("Native public keys not checked without the signing key.");
+        continue;
+      }
       const message = ui.prose(`${issue.platform}: ${issue.message}`);
       const report = issue.type === "error" ? p.log.error : p.log.warn;
       if (issue.changes) {
@@ -1356,12 +1375,19 @@ export const handleDoctor = async ({
                     ? ui.warning("in the adapter, doesn't open")
                     : "in the adapter"
                   : row.source === "missing"
-                    ? ui.warning("missing")
+                    ? !("required" in row)
+                      ? ui.warning("missing")
+                      : row.required
+                        ? ui.danger("missing")
+                        : ui.warning("missing, unused")
                     : "not checked",
             ),
           ),
         ]),
       );
+    }
+    for (const { message } of missingRequiredSecrets(secrets)) {
+      if (message !== undefined) p.log.error(message);
     }
     for (const { name, refused } of secrets?.references ?? []) {
       if (refused === undefined) continue;
@@ -1381,7 +1407,7 @@ export const handleDoctor = async ({
       ),
     )) {
       p.log.warn(
-        ui.prose(`Couldn't read the ${adapter} secrets adapter: ${error}`),
+        ui.prose(`Couldn't read the ${adapter} secrets adapter.\n${error}`),
       );
     }
     const processEnvReads = deploySecrets?.processEnvReads ?? [];

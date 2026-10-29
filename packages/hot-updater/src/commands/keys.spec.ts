@@ -317,6 +317,73 @@ describe("keysExportPublic", () => {
   });
 });
 
+describe("keysExportPublic without the signing key", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await Promise.all(
+      tempProjects
+        .splice(0)
+        .map((project) => fs.rm(project, { force: true, recursive: true })),
+    );
+  });
+
+  /** What export prints, and its exit code, for a `secrets` adapter's `get`. */
+  const exportWith = async (get: () => Promise<Record<string, string>>) => {
+    const cwd = await createProject();
+    mocks.getCwd.mockReturnValue(cwd);
+    mocks.loadConfig.mockResolvedValue({
+      signing: secret("qa-missing-key"),
+      secrets: { name: "infisical", get, set: async () => {} },
+      platform: { android: { androidManifestPaths: [] }, ios: {} },
+    });
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+    await expect(keysExportPublic({ yes: true })).rejects.toThrow(
+      "process.exit:1",
+    );
+    return renderClackLog(recordedClackCalls(p.log));
+  };
+
+  it("puts a missing key's cause and command on lines of their own", async () => {
+    const lines = await exportWith(async () => ({}));
+
+    expect(lines).toEqual([
+      "│",
+      "■  Public key not exported.",
+      "│  qa-missing-key isn't in the infisical secrets adapter.",
+      "│  Check the name and your access, or import your key:",
+      "│  npx hot-updater secrets put qa-missing-key --kind bundle-signing-key \\",
+      "│    <key.pem>",
+    ]);
+    expect(linesWiderThan(lines)).toEqual([]);
+  });
+
+  it("puts an adapter's refusal under a short head line", async () => {
+    const lines = await exportWith(async () => {
+      throw new Error(
+        [
+          "Infisical found nothing to list the secrets (404).",
+          "Project with ID '00000000-0000-4000-8000-000000000000' not found during bot…",
+          "Project 00000000-0000-4000-8000-000000000000, environment prod, folder /.",
+          "Check projectId, environment, and path.",
+        ].join("\n"),
+      );
+    });
+
+    expect(lines.slice(1, 4)).toEqual([
+      "■  Public key not exported.",
+      "│  Couldn't read qa-missing-key from the infisical secrets adapter.",
+      "│  Infisical found nothing to list the secrets (404).",
+    ]);
+    expect(linesWiderThan(lines)).toEqual([]);
+  });
+});
+
 describe("keysRemove", () => {
   afterEach(() => {
     vi.restoreAllMocks();

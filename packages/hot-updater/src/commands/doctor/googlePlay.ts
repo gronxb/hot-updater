@@ -1,6 +1,7 @@
 import { checkPlayAccess, type PlayAccess } from "@hot-updater/android-helper";
 import {
   type ConfigResponse,
+  isSecretRef,
   readLoadedHotUpdaterEnv,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
@@ -12,6 +13,8 @@ import {
   GOOGLE_PLAY_GUIDE_URL,
   type PlayCheck,
 } from "../../utils/native/playServiceAccount";
+import { signsWithKeystore } from "../../utils/native/signingCredentials";
+import { missingRequiredSecrets, type SecretsStatus } from "./secrets";
 
 /** How long doctor waits for each Google request. */
 const PLAY_TIMEOUT_MS = 10_000;
@@ -26,24 +29,44 @@ export interface GooglePlayStatus {
   readonly packages: readonly {
     readonly packageName: string;
     readonly access: GooglePlayPackageAccess;
+    /**
+     * The `secret()` of the upload keystore a release of it signs with,
+     * when no store or environment holds it: no `.aab` to upload.
+     */
+    readonly missingKeystore?: string;
   }[];
 }
 
+/** The schemes that release to Google Play: each that builds a release `.aab`. */
+const playSchemes = (config: ConfigResponse) =>
+  Object.values(config.nativeBuild?.android ?? {}).flatMap((scheme) =>
+    scheme && scheme.aab !== false && signsWithKeystore(scheme) ? [scheme] : [],
+  );
+
+/** The application ID a scheme releases to Google Play as. */
+const playPackageName = (
+  scheme: ReturnType<typeof playSchemes>[number],
+): string => scheme.applicationId ?? scheme.packageName;
+
 /**
- * The packages the config's Android schemes release to Google Play: each
- * scheme that builds a release `.aab`, by its application ID.
+ * The upload keystore `secret()` a release of `packageName` signs with
+ * that `secrets` found nowhere, as the Secrets rows report it.
  */
-const playPackageNames = (config: ConfigResponse): string[] => [
-  ...new Set(
-    Object.values(config.nativeBuild?.android ?? {}).flatMap((scheme) =>
-      scheme &&
-      scheme.aab !== false &&
-      !/debug$/iu.test(scheme.variant ?? "Release")
-        ? [scheme.applicationId ?? scheme.packageName]
-        : [],
-    ),
-  ),
-];
+const missingKeystore = (
+  config: ConfigResponse,
+  packageName: string,
+  secrets: SecretsStatus | undefined,
+): string | undefined => {
+  const missing = new Set(
+    missingRequiredSecrets(secrets).map(({ name }) => name),
+  );
+  return playSchemes(config)
+    .filter((scheme) => playPackageName(scheme) === packageName)
+    .map(({ signing }) =>
+      isSecretRef(signing?.keystore) ? signing.keystore.name : undefined,
+    )
+    .find((name) => name !== undefined && missing.has(name));
+};
 
 /**
  * When `play-service-account` resolves, from the environment or the
@@ -54,9 +77,18 @@ const playPackageNames = (config: ConfigResponse): string[] => [
  */
 export const checkGooglePlay = async (
   config: ConfigResponse,
-  { cwd, fetch }: { cwd: string; fetch?: typeof globalThis.fetch },
+  {
+    cwd,
+    fetch,
+    secrets,
+  }: {
+    cwd: string;
+    fetch?: typeof globalThis.fetch;
+    /** The Secrets rows, whose missing upload keystores mark a package. */
+    secrets?: SecretsStatus;
+  },
 ): Promise<GooglePlayStatus | undefined> => {
-  const packageNames = playPackageNames(config);
+  const packageNames = [...new Set(playSchemes(config).map(playPackageName))];
   if (packageNames.length === 0) return undefined;
   // A report never waits on a slow endpoint.
   const fetchWithTimeout: typeof globalThis.fetch = (input, init) =>
@@ -72,19 +104,24 @@ export const checkGooglePlay = async (
       if (!serviceAccount) return undefined;
       return {
         packages: await Promise.all(
-          packageNames.map(async (packageName) => ({
-            packageName,
-            access: await checkPlayAccess({
-              serviceAccount,
+          packageNames.map(async (packageName) => {
+            const keystore = missingKeystore(config, packageName, secrets);
+            return {
               packageName,
-              fetch: fetchWithTimeout,
-            }).catch(
-              (error: unknown): GooglePlayPackageAccess => ({
-                status: "unchecked",
-                reason: error instanceof Error ? error.message : String(error),
-              }),
-            ),
-          })),
+              access: await checkPlayAccess({
+                serviceAccount,
+                packageName,
+                fetch: fetchWithTimeout,
+              }).catch(
+                (error: unknown): GooglePlayPackageAccess => ({
+                  status: "unchecked",
+                  reason:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              ),
+              ...(keystore === undefined ? {} : { missingKeystore: keystore }),
+            };
+          }),
         ),
       };
     },
@@ -104,15 +141,28 @@ export const formatGooglePlayStatus = ({
   packages,
 }: GooglePlayStatus): { readonly ready: boolean; readonly text: string } => {
   const checks = packages.map(
-    ({ packageName, access }): PlayCheck =>
-      access.status === "unchecked"
-        ? {
-            ok: false,
-            label: packageName,
-            detail: "can't check",
-            lines: access.reason.split("\n"),
-          }
-        : describePlayAccess(access, packageName),
+    ({ packageName, access, missingKeystore }): PlayCheck => {
+      const check: PlayCheck =
+        access.status === "unchecked"
+          ? {
+              ok: false,
+              label: packageName,
+              detail: "can't check",
+              lines: access.reason.split("\n"),
+            }
+          : describePlayAccess(access, packageName);
+      if (missingKeystore === undefined) return check;
+      // Play access alone doesn't upload: the build has nothing to sign with.
+      return check.ok
+        ? { ok: false, label: packageName, detail: "upload keystore missing" }
+        : {
+            ...check,
+            lines: [
+              ...(check.lines ?? []),
+              `Upload keystore ${missingKeystore} is missing too.`,
+            ],
+          };
+    },
   );
   const ready = checks.every(({ ok }) => ok);
   return {

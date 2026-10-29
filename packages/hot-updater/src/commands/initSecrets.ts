@@ -13,11 +13,6 @@ import type { SecretsAdapter } from "@hot-updater/plugin-core";
 const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-const list = (names: readonly string[]) =>
-  names.length <= 2
-    ? names.join(" and ")
-    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
-
 /** The team secrets store an init run reads from and stores in. */
 export interface InitTeamSecrets {
   readonly adapter: SecretsAdapter;
@@ -59,7 +54,11 @@ export const openInitTeamSecrets = async ({
       );
     }
     p.log.warn(
-      `Couldn't load hot-updater.config.ts for its secrets adapter, so credentials stay in .env.hotupdater: ${message(error)}`,
+      [
+        "Couldn't load hot-updater.config.ts for its secrets adapter.",
+        message(error),
+        "Credentials stay in .env.hotupdater.",
+      ].join("\n"),
     );
     return undefined;
   }
@@ -73,7 +72,7 @@ export const openInitTeamSecrets = async ({
     });
   } catch (error) {
     throw new InitError(
-      `Couldn't read the ${adapter.name} secrets adapter: ${message(error)}`,
+      `Couldn't read the ${adapter.name} secrets adapter.\n${message(error)}`,
     );
   }
   return { adapter, names, secretsEnv };
@@ -98,10 +97,16 @@ export const storeInitTeamSecrets = async (
     return;
   }
   if (stored.length === 0) return;
+  // One name a line: credential names are long.
   p.log.success(
-    `Stored ${list(stored)} in the ${team.adapter.name} secrets adapter.`,
+    [`Stored in the ${team.adapter.name} secrets adapter:`, ...stored].join(
+      "\n",
+    ),
   );
   p.log.info(
-    ".env.hotupdater still sets them: delete those lines, or keep them to override the adapter here.",
+    [
+      ".env.hotupdater still sets them, overriding the adapter here.",
+      "Delete those lines to read them from the adapter.",
+    ].join("\n"),
   );
 };

@@ -357,7 +357,10 @@ export const keysExportPublic = async (
       process.exit(1);
     }
   } catch (error) {
-    p.log.error(`Failed to export public key: ${(error as Error).message}`);
+    // The cause on lines of its own: a secrets adapter's says what to do.
+    p.log.error(
+      `Public key not exported.\n${ui.prose(error instanceof Error ? error.message : String(error))}`,
+    );
     process.exit(1);
   }
 };

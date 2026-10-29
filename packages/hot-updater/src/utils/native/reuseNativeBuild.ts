@@ -32,6 +32,7 @@ import {
   nativeBuildCacheSlot,
   saveCachedNativeBuild,
 } from "./nativeBuildCache";
+import { resolvesAscApiKey, signsWithKeystore } from "./signingCredentials";
 
 /**
  * What `--json` prints of the cache: where the build came from (`hit`), its
@@ -118,16 +119,16 @@ const resolveSigningIdentity = async (
   androidScheme?: EnrichedNativeBuildAndroidScheme,
 ): Promise<NativeBuildKeySigning> => {
   const keystore = androidScheme?.signing?.keystore;
-  if (keystore && !/debug$/i.test(androidScheme.variant)) {
+  if (keystore && signsWithKeystore(androidScheme)) {
     const { storeFile, storePassword, keyAlias } = await credentials.resolve({
       kind: "android-keystore",
       name: parseSecretReference(keystore, "signing.keystore"),
     });
     return { androidKeystore: { storeFile, storePassword, keyAlias } };
   }
-  const ascApiKey = iosScheme?.simulator
-    ? undefined
-    : iosScheme?.signing?.ascApiKey;
+  const ascApiKey = resolvesAscApiKey(iosScheme)
+    ? iosScheme?.signing?.ascApiKey
+    : undefined;
   if (ascApiKey) {
     const { keyId, issuerId } = await credentials.resolve({
       kind: "asc-api-key",

@@ -37,6 +37,7 @@ import {
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
 import { currentE2eTarget, nativeAppPath } from "../targets.ts";
+import { readWithRetries, waitSync } from "./android-file-read.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -2078,47 +2079,43 @@ function androidRunAsReadablePath(remotePath: string) {
 
 function readAndroidFileBuffer(remotePath: string) {
   const runAsPath = androidRunAsReadablePath(remotePath);
-  const readAttempts = [
+  return readWithRetries(
     [
-      "-s",
-      deviceId as string,
-      "exec-out",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
+      // A large file read over exec-out can fail fast once: read it again
+      // before falling back.
+      {
+        args: [
+          "-s",
+          deviceId as string,
+          "exec-out",
+          "run-as",
+          fixtureSession.appId,
+          "cat",
+          runAsPath,
+        ],
+        retries: 1,
+      },
+      {
+        args: [
+          "-s",
+          deviceId as string,
+          "shell",
+          "run-as",
+          fixtureSession.appId,
+          "cat",
+          runAsPath,
+        ],
+      },
+      { args: ["-s", deviceId as string, "shell", "cat", remotePath] },
     ],
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
-    ],
-    ["-s", deviceId as string, "shell", "cat", remotePath],
-  ];
-  const readErrors: string[] = [];
-
-  for (const args of readAttempts) {
-    const result = spawnSync("adb", args, {
-      // Final-file assertions also read multi-megabyte Hermes bundles.
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status === 0) {
-      return { fileBuffer: result.stdout, readError: null };
-    }
-
-    readErrors.push(
-      result.stderr.toString().trim() ||
-        result.error?.message ||
-        `adb exited ${String(result.status)}`,
-    );
-  }
-
-  return { fileBuffer: null, readError: readErrors.join(" | ") };
+    (args) =>
+      spawnSync("adb", args, {
+        // Final-file assertions also read multi-megabyte Hermes bundles.
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    waitSync,
+  );
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {
@@ -4277,6 +4274,25 @@ export function handleAssertBundleArtifactTransfers(input: {
     transferBytesPresent &&
     (finalFiles === null || finalFiles.ok);
   if (!matches) {
+    // The evidence a failure needs, such as the file whose read failed and
+    // its readError, as the success path keeps it.
+    fs.writeFileSync(
+      path.join(
+        fixtureSession.resultsDir,
+        `artifact-transfers-${input.targetBundleId}-failed.json`,
+      ),
+      JSON.stringify(
+        {
+          currentBundleId: input.currentBundleId,
+          expected: input,
+          observed,
+          platform: fixtureSession.platform,
+          targetBundleId: input.targetBundleId,
+        },
+        null,
+        2,
+      ),
+    );
     throw new ProxyAssertionError("Unexpected Bundle artifact transfers", {
       expected: input,
       observed,

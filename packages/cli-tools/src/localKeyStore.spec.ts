@@ -113,15 +113,25 @@ describe("localSecrets({ path })", () => {
     const app = await project("committable", { git: true });
     const store = createLocalSecretsStore({ path: "secrets" });
 
-    await expect(store.write("asc-api-key", "value", app)).rejects.toThrow(
+    const refused = (await store.write("asc-api-key", "value", app).then(
+      () => undefined,
+      (error: unknown) => error,
+    )) as Error;
+    // Broken at spaces: a long path gets a line of its own.
+    expect(refused.message.replaceAll("\n", " ")).toBe(
       [
         `localSecrets() refuses ${path.join(app, "secrets")}: its secrets could be committed.`,
         `The git repository ${app} doesn't ignore it.`,
         "Add secrets/ to its .gitignore, or set localSecrets({ path }).",
-      ].join("\n"),
+      ].join(" "),
     );
+    expect(
+      refused.message
+        .split("\n")
+        .filter((line) => line.length > 76 && line.includes(" ")),
+    ).toEqual([]);
     await expect(store.read("asc-api-key", app)).rejects.toThrow(
-      "could be committed",
+      /could\s+be\s+committed/u,
     );
     await expect(fs.access(path.join(app, "secrets"))).rejects.toThrow();
   });
@@ -131,12 +141,21 @@ describe("localSecrets({ path })", () => {
     await fs.writeFile(path.join(app, "secrets"), "");
     const store = createLocalSecretsStore({ path: "secrets" });
 
-    await expect(store.write("asc-api-key", "value", app)).rejects.toThrow(
+    const refused = (await store.write("asc-api-key", "value", app).then(
+      () => undefined,
+      (error: unknown) => error,
+    )) as Error;
+    expect(refused.message.replaceAll("\n", " ")).toBe(
       [
         `localSecrets() can't keep secrets in ${path.join(app, "secrets")}.`,
         "It is not a directory: set its path to one.",
-      ].join("\n"),
+      ].join(" "),
     );
+    expect(
+      refused.message
+        .split("\n")
+        .filter((line) => line.length > 76 && line.includes(" ")),
+    ).toEqual([]);
   });
 
   it("stores outside any git work tree as it is", async () => {

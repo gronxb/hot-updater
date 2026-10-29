@@ -1018,17 +1018,15 @@ describe("E2E scenario contract", () => {
       "",
       "",
     ].join("\n");
-    // A deploy refused for its signing key, as deploy prints the refusal.
-    const refused = [
-      "■  signing reads the bundle signing key bundle-signing-key, which",
-      "│  is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in",
-      "│  the environment, or",
-      "│  /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on",
-      "│  this machine).",
-      "│  To create one, run: npx hot-updater secrets issue bundle-signing-key",
-      "│",
-      "■  \u001b[31mDeployment blocked. Fix the signing configuration and try again.\u001b[39m",
-    ].join("\n");
+    // A deploy refused for its signing key, as deploy prints the refusal
+    // (hot-updater's signingRefusal.spec.ts renders it from the CLI).
+    const refused = await fs.readFile(
+      path.join(
+        import.meta.dirname,
+        "control-server/__fixtures__/missing-signing-secret-refusal.txt",
+      ),
+      "utf8",
+    );
 
     expect(release!.id).not.toBe(file.id);
     expect(controller.extractDeployReleaseId(buildOutput)).toBeNull();

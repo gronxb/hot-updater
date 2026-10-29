@@ -112,10 +112,18 @@ describe("init with a team secrets store", () => {
     // and .env.hotupdater keeps what init wrote, which the app's build reads
     expect(await envFile()).toContain("HOT_UPDATER_API_KEY=stored-app-key");
     expect(mocks.success).toHaveBeenCalledWith(
-      "Stored HOT_UPDATER_CLOUDFLARE_API_TOKEN, HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID, and HOT_UPDATER_API_KEY in the teamStore secrets adapter.",
+      [
+        "Stored in the teamStore secrets adapter:",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+        "HOT_UPDATER_API_KEY",
+      ].join("\n"),
     );
     expect(mocks.info).toHaveBeenCalledWith(
-      ".env.hotupdater still sets them: delete those lines, or keep them to override the adapter here.",
+      [
+        ".env.hotupdater still sets them, overriding the adapter here.",
+        "Delete those lines to read them from the adapter.",
+      ].join("\n"),
     );
   });
 
@@ -186,7 +194,11 @@ describe("init with a team secrets store", () => {
         openInitTeamSecrets({ provider: PROVIDER, env: {}, cwd: directory }),
       ).resolves.toBeUndefined();
       expect(mocks.warn).toHaveBeenCalledWith(
-        "Couldn't load hot-updater.config.ts for its secrets adapter, so credentials stay in .env.hotupdater: broken",
+        [
+          "Couldn't load hot-updater.config.ts for its secrets adapter.",
+          "broken",
+          "Credentials stay in .env.hotupdater.",
+        ].join("\n"),
       );
     },
   );

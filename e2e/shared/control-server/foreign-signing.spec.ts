@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -91,38 +94,75 @@ describe("withSecretSigning", () => {
   });
 });
 
-describe("refusedForMissingSigningSecret", () => {
-  it("accepts only the CLI's refusal for the missing secret", () => {
-    const refusal = [
-      "Signing configuration error:",
-      "  signing reads the bundle signing key bundle-signing-key, which is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on this machine).",
-      "  To create one, run: npx hot-updater secrets issue bundle-signing-key",
-      "Deployment blocked. Fix the signing configuration and try again.",
-    ].join("\n");
+/**
+ * What the CLI prints for the refusal, rendered from its own message and
+ * printer by hot-updater's signingRefusal.spec.ts, which fails when the
+ * wording or the layout changes.
+ */
+const printedRefusal = await fs.readFile(
+  path.join(
+    import.meta.dirname,
+    "__fixtures__/missing-signing-secret-refusal.txt",
+  ),
+  "utf8",
+);
 
-    expect(refusedForMissingSigningSecret(refusal)).toBe(true);
-    // As deploy prints prepareBundleSigning's refusal: wrapped at spaces in
-    // the prompt frame, colored.
-    const printed = [
-      "■  signing reads the bundle signing key bundle-signing-key, which",
-      "│  is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in",
-      "│  the environment, or",
-      "│  /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on",
-      "│  this machine).",
-      "│",
-      "■  \u001b[31mDeployment blocked. Fix the signing configuration and try again.\u001b[39m",
+describe("refusedForMissingSigningSecret", () => {
+  it("accepts the refusal the CLI prints, plain or colored", () => {
+    expect(refusedForMissingSigningSecret(printedRefusal)).toBe(true);
+    // As a deploy log has it: colored, after the deploy's other lines.
+    const colored = [
+      "┌  Hot Updater deploy",
+      ...printedRefusal
+        .split("\n")
+        .map((line) =>
+          line.startsWith("■  ")
+            ? `\u001b[31m■\u001b[39m  ${line.slice(3)}`
+            : line,
+        ),
     ].join("\n");
-    expect(refusedForMissingSigningSecret(printed)).toBe(true);
+    expect(refusedForMissingSigningSecret(colored)).toBe(true);
+  });
+
+  it("refuses anything but that refusal", () => {
+    // Not blocked.
     expect(
       refusedForMissingSigningSecret(
-        "Signing configuration error:\n  Failed to load the bundle signing private key from privateKeyPath.\nDeployment blocked.",
+        printedRefusal.replace("Deployment blocked.", "Deploying."),
+      ),
+    ).toBe(false);
+    // A release was recorded after all.
+    expect(
+      refusedForMissingSigningSecret(
+        `${printedRefusal}│  ID       0199c1d2-3e4f-7a5b-8c6d-9e0f1a2b3c4d\n`,
+      ),
+    ).toBe(false);
+    // Another secret, or the command wrapped into the prose before it.
+    expect(
+      refusedForMissingSigningSecret(
+        printedRefusal.replaceAll("bundle-signing-key", "other-key"),
+      ),
+    ).toBe(false);
+    expect(
+      refusedForMissingSigningSecret(
+        [
+          "■  bundle-signing-key isn't on this machine.",
+          "│  Check the name, set HOT_UPDATER_BUNDLE_SIGNING_KEY, or import your key: npx",
+          "│  hot-updater secrets put bundle-signing-key <key.pem>",
+          "│",
+          "■  Deployment blocked. Fix the signing configuration and try again.",
+        ].join("\n"),
+      ),
+    ).toBe(false);
+    // The block before the reason is another refusal's.
+    expect(
+      refusedForMissingSigningSecret(
+        [
+          "■  Deployment blocked. Fix the signing configuration and try again.",
+          ...printedRefusal.split("\n").slice(0, 4),
+        ].join("\n"),
       ),
     ).toBe(false);
     expect(refusedForMissingSigningSecret("Deployed release 0199")).toBe(false);
-    expect(
-      refusedForMissingSigningSecret(
-        "which is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or /tmp/secrets/x/other-key.json on this machine)\nDeployment blocked.",
-      ),
-    ).toBe(false);
   });
 });
