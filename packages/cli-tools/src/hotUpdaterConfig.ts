@@ -1595,3 +1595,106 @@ export const writeHotUpdaterFiles = async (
   }
   return { config };
 };
+
+/** What `addSigningSecretToConfigText` did. */
+export type AddSigningSecretResult =
+  | { readonly status: "added"; readonly text: string }
+  /** The config already sets `signing`, which stays as it is. */
+  | { readonly status: "kept" }
+  /** The file is no `export default defineConfig({ ... })` it can edit. */
+  | { readonly status: "unsupported" };
+
+/**
+ * The config text with `signing: secret("<name>")` added, and `secret` in
+ * its `hot-updater` import, once. A config that sets `signing` in any form,
+ * such as 1.1's `{ enabled: true, privateKeyPath }`, is kept.
+ */
+export const addSigningSecretToConfigText = (
+  text: string,
+  name: string,
+): AddSigningSecretResult => {
+  const source = parseConfigSource(text);
+  const config = source && findDefineConfigObject(source);
+  if (!source || !config) return { status: "unsupported" };
+  const { objectExpression } = config;
+  if (
+    objectExpression.properties.some(
+      (property) =>
+        property.type === "SpreadElement" ||
+        getObjectPropertyName(property) === "signing",
+    )
+  ) {
+    return { status: "kept" };
+  }
+
+  const edits: TextEdit[] = [];
+  const property = `signing: secret(${JSON.stringify(name)})`;
+  const last = objectExpression.properties.at(-1);
+  if (!last) {
+    edits.push({
+      start: objectExpression.start,
+      end: objectExpression.end,
+      text: `{\n  ${property},\n}`,
+    });
+  } else {
+    const lineStart = text.lastIndexOf("\n", last.start) + 1;
+    const indent = /^[ \t]*/u.exec(text.slice(lineStart, last.start))![0];
+    const between = text.slice(last.end, objectExpression.end - 1);
+    const comma = /^\s*,/u.exec(between);
+    // After the last property's line comment, such as `// optional`.
+    let at = last.end + (comma?.[0].length ?? 0);
+    const lineEnd = text.indexOf("\n", at);
+    if (lineEnd !== -1 && text.slice(at, lineEnd).trim().startsWith("//")) {
+      at = lineEnd;
+    }
+    // Listed first: at the same offset, the comma is applied after it, so
+    // it lands before it.
+    edits.push({ start: at, end: at, text: `\n${indent}${property},` });
+    if (!comma) edits.push({ start: last.end, end: last.end, text: "," });
+  }
+
+  const hotUpdaterImports = importDeclarationsOf(source).filter(
+    (declaration) =>
+      declaration.source.value === "hot-updater" &&
+      declaration.importKind !== "type",
+  );
+  const imported = hotUpdaterImports.some((declaration) =>
+    declaration.specifiers.some(
+      (specifier) =>
+        specifier.type === "ImportSpecifier" &&
+        specifier.local.name === "secret",
+    ),
+  );
+  if (!imported) {
+    const named = hotUpdaterImports.find((declaration) =>
+      declaration.specifiers.some(
+        (specifier) => specifier.type === "ImportSpecifier",
+      ),
+    );
+    const lastSpecifier = named?.specifiers.at(-1);
+    edits.push(
+      named && lastSpecifier
+        ? { start: lastSpecifier.end, end: lastSpecifier.end, text: ", secret" }
+        : { start: 0, end: 0, text: 'import { secret } from "hot-updater";\n' },
+    );
+  }
+  return { status: "added", text: applyTextEdits(text, edits) };
+};
+
+/**
+ * Adds `signing: secret("<name>")` to `hot-updater.config.ts` in `cwd`, as
+ * `addSigningSecretToConfigText` does. Without the file, nothing is written.
+ */
+export const addSigningSecretToConfig = async (
+  cwd: string,
+  name: string,
+): Promise<AddSigningSecretResult["status"] | "missing"> => {
+  const filePath = path.join(cwd, HOT_UPDATER_CONFIG_PATH);
+  const text = await readTextFile(filePath);
+  if (text === null) return "missing";
+  const result = addSigningSecretToConfigText(text, name);
+  if (result.status === "added") {
+    await fs.writeFile(filePath, result.text, "utf-8");
+  }
+  return result.status;
+};

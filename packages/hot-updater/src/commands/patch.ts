@@ -65,7 +65,9 @@ export const createPatch = async (options: PatchOptions) => {
       },
       {
         core: server.core,
-        signingPublicKey: await getBundleSigningPublicKey(config.signing),
+        signingPublicKey: await getBundleSigningPublicKey(config.signing, {
+          secrets: config.secrets,
+        }),
         storageAdapter,
       },
       {

@@ -90,6 +90,22 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     secret,
     secretVariableName,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  // The signing row says what deploy says.
+  ...(({
+    INVALID_SIGNING_NEXT_STEP,
+    ISSUE_SIGNING_KEY_COMMAND,
+    PUT_SIGNING_KEY_COMMAND,
+    readBundleSigningState,
+    UNSIGNED_BUNDLES_NEXT_STEP,
+    UNSIGNED_BUNDLES_WARNING,
+  }) => ({
+    INVALID_SIGNING_NEXT_STEP,
+    ISSUE_SIGNING_KEY_COMMAND,
+    PUT_SIGNING_KEY_COMMAND,
+    readBundleSigningState,
+    UNSIGNED_BUNDLES_NEXT_STEP,
+    UNSIGNED_BUNDLES_WARNING,
+  }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: vi.fn(() => "/mock/cwd"),
   loadConfig: vi.fn(),
   p: {
@@ -122,6 +138,22 @@ const HEALTHY_WITHOUT_SERVER = {
       commands: ["npx hot-updater doctor --server-base-url <url>"],
     },
   },
+};
+
+/** A team secrets adapter that holds `values`. */
+const holding = (values: Record<string, string>) => ({
+  name: "team-store",
+  get: async (names: readonly string[]) =>
+    Object.fromEntries(names.map((name) => [name, values[name]])),
+  set: async () => {},
+});
+
+/** The row of a config without `signing`: what deploy warns. */
+const UNSIGNED_SIGNING = {
+  type: "warning",
+  message: "Bundles are unsigned.",
+  next: "To sign them, run:",
+  command: "npx hot-updater secrets issue bundle-signing-key",
 };
 
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
@@ -671,6 +703,7 @@ describe("doctor", () => {
     const result = await doctor();
     expect(result).toEqual({
       details: {
+        signing: UNSIGNED_SIGNING,
         hotUpdaterVersion: "^0.18.2",
         infrastructureUnchecked: expect.objectContaining({
           commands: ["npx hot-updater doctor --server-base-url <url>"],
@@ -763,6 +796,7 @@ describe("doctor", () => {
     expect(result).toEqual({
       success: false,
       details: {
+        signing: UNSIGNED_SIGNING,
         hotUpdaterVersion: "^1.0.0",
         infrastructureUnchecked: expect.objectContaining({
           commands: ["npx hot-updater doctor --server-base-url <url>"],
@@ -932,6 +966,7 @@ describe("doctor", () => {
     expect(result).toEqual({
       success: true,
       details: {
+        signing: UNSIGNED_SIGNING,
         hotUpdaterVersion: "1.0.0",
         installedHotUpdaterPackages: [],
         packageJsonPath: "/mock/cwd/package.json",
@@ -1339,8 +1374,8 @@ describe("doctor", () => {
     });
   });
 
-  it.each(["plugin", "local"])(
-    "detects native signing keys that differ from the %s trust anchor",
+  it.each(["secret", "local"])(
+    "detects native signing keys that differ from the %s signing key",
     async (mode) => {
       const cwd = await createTempProject();
       tempProjects.push(cwd);
@@ -1364,19 +1399,13 @@ describe("doctor", () => {
         privateKeyEncoding: { format: "pem", type: "pkcs8" },
         publicKeyEncoding: { format: "pem", type: "spki" },
       });
-      const getPublicKey = vi.fn();
       mockLoadConfig.mockResolvedValue(
         createConfig({
           signing:
             mode === "local"
               ? { enabled: true, privateKeyPath: "keys/private-key.pem" }
-              : {
-                  name: "doctor-provider-test",
-                  getPublicKey: getPublicKey.mockResolvedValue({
-                    publicKey: configured.publicKey,
-                  }),
-                  sign: vi.fn(),
-                },
+              : secret("bundle-signing-key"),
+          secrets: holding({ "bundle-signing-key": configured.privateKey }),
           platform: {
             ios: {
               infoPlistPaths: ["ios/App/Info.plist"],
@@ -1435,7 +1464,6 @@ describe("doctor", () => {
           ]),
         );
       }
-      expect(getPublicKey).toHaveBeenCalledTimes(mode === "plugin" ? 1 : 0);
     },
   );
 
@@ -1457,20 +1485,11 @@ describe("doctor", () => {
       privateKeyEncoding: { format: "pem", type: "pkcs8" },
       publicKeyEncoding: { format: "pem", type: "spki" },
     });
-    // What remoteSigning throws where only CI holds HOT_UPDATER_SIGNING_TOKEN.
-    const missingToken = Object.assign(
-      new Error(
-        "Failed to load the remote bundle signing public key. remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
-      ),
-      { name: "HotUpdaterRemoteSigningError" },
-    );
+    // A key only CI holds: this machine's secrets adapter has none.
     mockLoadConfig.mockResolvedValue(
       createConfig({
-        signing: {
-          name: "remoteSigning",
-          getPublicKey: vi.fn().mockRejectedValue(missingToken),
-          sign: vi.fn(),
-        },
+        signing: secret("bundle-signing-key"),
+        secrets: holding({}),
         platform: {
           ios: { infoPlistPaths: ["ios/App/Info.plist"] },
           android: {
@@ -1511,13 +1530,58 @@ describe("doctor", () => {
         code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
         type: "warning",
         message: expect.stringContaining(
-          "remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
+          "which is not in the team-store secrets adapter",
         ),
       }),
     );
     expect(issues).not.toContainEqual(
       expect.objectContaining({ code: "PUBLIC_KEY_MISMATCH" }),
     );
+  });
+
+  it("shows a signing adapter as the error row deploy refuses with, checking no native key", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "1.0.0" } },
+      path: "/mock/cwd/package.json",
+    });
+    const getPublicKey = vi.fn();
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        signing: { name: "awsKmsSigning", getPublicKey, sign: vi.fn() },
+      }),
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        signing: {
+          type: "error",
+          message: 'signing takes secret("bundle-signing-key").',
+          next: "Store your key:",
+          command: "npx hot-updater secrets put bundle-signing-key <key.pem>",
+        },
+      },
+    });
+    expect(getPublicKey).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the shorthand", () => secret("bundle-signing-key")],
+    ["enabled: false", () => ({ enabled: false })],
+  ])("shows no signing row for %s", async (_label, signing) => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "1.0.0" } },
+      path: "/mock/cwd/package.json",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({ signing: signing(), secrets: holding({}) }),
+    );
+
+    const result = await doctor();
+
+    expect(result).not.toHaveProperty("details.signing");
   });
 
   it("detects an Expo CNG trust anchor that differs from the signer", async () => {
@@ -1554,11 +1618,8 @@ describe("doctor", () => {
             }),
           },
         }),
-        signing: {
-          getPublicKey: async () => ({ publicKey: signer.publicKey }),
-          name: "test-provider",
-          sign: vi.fn(),
-        },
+        signing: { enabled: true, privateKey: secret("bundle-signing-key") },
+        secrets: holding({ "bundle-signing-key": signer.privateKey }),
       }),
     );
 

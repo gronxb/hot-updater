@@ -447,25 +447,6 @@ export interface StorageAdapter {
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
-export interface BundleSigningAdapter {
-  readonly name: string;
-  /** Returns the RSA public key used by this provider in SPKI PEM format. */
-  readonly getPublicKey: (input?: {
-    readonly cwd?: string;
-  }) => Promise<{ readonly publicKey: string }>;
-  /**
-   * Signs `message` with RSA PKCS#1 v1.5 SHA-256.
-   *
-   * Hot Updater passes the 32 raw bytes decoded from a SHA-256 file hash.
-   * Remote signing services must treat this value as the raw message, not as
-   * an already-computed digest.
-   */
-  readonly sign: (input: {
-    readonly message: Uint8Array;
-    readonly cwd?: string;
-  }) => Promise<{ readonly signature: Uint8Array }>;
-}
-
 /**
  * What a secrets adapter is given with each call. It carries no secret: an
  * adapter reads its own credentials, such as a token or a CLI sign-in.
@@ -538,8 +519,13 @@ export type LocalSigningConfig =
       readonly privateKey?: SecretRef;
     };
 
-/** Local config or signing adapter. Signing is disabled when omitted. */
-export type SigningConfig = BundleSigningAdapter | LocalSigningConfig;
+/**
+ * Bundle signing with an RSA private key in PEM. `secret("<name>")` is the
+ * shorthand of `{ enabled: true, privateKey: secret("<name>") }`. Without
+ * `signing`, bundles are unsigned and deploy warns; `enabled: false` turns
+ * signing off without the warning.
+ */
+export type SigningConfig = SecretRef | LocalSigningConfig;
 
 /**
  * Extra fingerprint sources.
@@ -648,17 +634,16 @@ export type ConfigInput = {
   platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
   /**
-   * Code signing configuration for bundle verification.
-   * Enables RSA-SHA256 cryptographic signatures for bundle integrity.
-   *
-   * @optional Feature is opt-in.
+   * Signs each bundle with RSA-SHA256, which the app verifies with the
+   * public key it embeds. `secret("bundle-signing-key")` reads the RSA
+   * private key in PEM from the config's `secrets` adapter; the object
+   * forms take it from a secret (`privateKey`) or a file
+   * (`privateKeyPath`). Without `signing`, bundles are unsigned and deploy
+   * warns; `{ enabled: false }` turns signing off without the warning.
    *
    * @example
    * ```ts
-   * signing: {
-   *   enabled: true,
-   *   privateKey: secret("bundle-signing-key"),
-   * }
+   * signing: secret("bundle-signing-key"),
    * ```
    */
   signing?: SigningConfig;

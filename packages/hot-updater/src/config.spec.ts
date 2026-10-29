@@ -40,7 +40,7 @@ describe("hot-updater exports", () => {
     expect([...loaded]).toEqual([]);
   });
 
-  it("has no hot-updater/secrets entry: localSecrets() and infisical() are root exports", () => {
+  it("has no hot-updater/secrets or hot-updater/signing entry: localSecrets() and infisical() are root exports", () => {
     const { exports } = packageJsonData as {
       exports: Record<string, unknown>;
     };
@@ -48,7 +48,6 @@ describe("hot-updater exports", () => {
       ".",
       "./package.json",
       "./plugins",
-      "./signing",
     ]);
   });
 });

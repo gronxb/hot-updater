@@ -92,7 +92,7 @@
 
   ## Adapters and Plugins
 
-  Hot Updater is extensible through adapters and plugins. Build, storage, database, and signing are adapters: pick one for each slot of your config. Server and client plugins add features such as Insights and API keys.
+  Hot Updater is extensible through adapters and plugins. Build, storage, database, and secrets are adapters: pick one for each slot of your config. Server and client plugins add features such as Insights and API keys.
 
   ### Adapters
 

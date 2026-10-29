@@ -62,12 +62,25 @@ describe("withSecretSigning", () => {
         'import { defineConfig, secret } from "hot-updater";',
         "",
         "export default defineConfig({",
-        '  signing: { enabled: true, privateKey: secret("bundle-signing-key") },',
+        '  signing: secret("bundle-signing-key"),',
         "});",
       ].join("\n"),
     );
-    expect(withSecretSigning(withSecretSigning(source))).toBe(
-      withSecretSigning(source),
+  });
+
+  it("adds secret to the hot-updater import once", () => {
+    expect(
+      withSecretSigning(
+        [
+          'import { defineConfig, secret } from "hot-updater";',
+          'export default defineConfig({ signing: { enabled: true, privateKeyPath: "k.pem" } });',
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        'import { defineConfig, secret } from "hot-updater";',
+        'export default defineConfig({ signing: secret("bundle-signing-key") });',
+      ].join("\n"),
     );
   });
 
@@ -82,7 +95,8 @@ describe("refusedForMissingSigningSecret", () => {
   it("accepts only the CLI's refusal for the missing secret", () => {
     const refusal = [
       "Signing configuration error:",
-      "  Failed to resolve the bundle signing provider public key. signing.privateKey reads the bundle signing key bundle-signing-key, which is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on this machine). Set it to the RSA private key in PEM, or generate a key pair with `npx hot-updater keys generate --secret bundle-signing-key`.",
+      "  signing reads the bundle signing key bundle-signing-key, which is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on this machine).",
+      "  To create one, run: npx hot-updater secrets issue bundle-signing-key",
       "Deployment blocked. Fix the signing configuration and try again.",
     ].join("\n");
 
@@ -90,8 +104,7 @@ describe("refusedForMissingSigningSecret", () => {
     // As deploy prints prepareBundleSigning's refusal: wrapped at spaces in
     // the prompt frame, colored.
     const printed = [
-      "■  Failed to resolve the bundle signing provider public key.",
-      "│  signing.privateKey reads the bundle signing key bundle-signing-key, which",
+      "■  signing reads the bundle signing key bundle-signing-key, which",
       "│  is not in the localSecrets secrets adapter (HOT_UPDATER_BUNDLE_SIGNING_KEY in",
       "│  the environment, or",
       "│  /tmp/hot-updater-home/secrets/v0.85.0-0123456789ab/bundle-signing-key.json on",
@@ -102,7 +115,7 @@ describe("refusedForMissingSigningSecret", () => {
     expect(refusedForMissingSigningSecret(printed)).toBe(true);
     expect(
       refusedForMissingSigningSecret(
-        "Signing configuration error:\n  Failed to load the local bundle signing private key.\nDeployment blocked.",
+        "Signing configuration error:\n  Failed to load the bundle signing private key from privateKeyPath.\nDeployment blocked.",
       ),
     ).toBe(false);
     expect(refusedForMissingSigningSecret("Deployed release 0199")).toBe(false);

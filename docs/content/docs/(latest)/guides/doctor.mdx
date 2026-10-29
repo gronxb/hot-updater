@@ -134,11 +134,29 @@ script, run `hot-updater app-version --json`, which prints
 If a required native setting is missing, run the command shown by `doctor`,
 then rebuild the native app.
 
-When `doctor` cannot read the configured signer's public key, such as
-`remoteSigning` where only CI sets `HOT_UPDATER_SIGNING_TOKEN`, it reports the
-warning `SIGNING_PUBLIC_KEY_UNAVAILABLE` with the reason and does not compare
-the native public keys. Run it where the signer's credentials are set to check
-them.
+When `doctor` cannot read the signing key, such as a secret only CI sets, it
+reports the warning `SIGNING_PUBLIC_KEY_UNAVAILABLE` with the reason and does
+not compare the native public keys. Run it where the key's secret is set to
+check them.
+
+Without `signing`, `doctor` warns as `deploy` does:
+
+```txt
+Bundles are unsigned.
+To sign them, run: npx hot-updater secrets issue bundle-signing-key
+```
+
+A `signing` value `deploy` refuses, such as a removed signing adapter, is an
+error with the same line:
+
+```txt
+signing takes secret("bundle-signing-key").
+Store your key: npx hot-updater secrets put bundle-signing-key <key.pem>
+```
+
+`signing: { enabled: false }` turns signing off without a warning. `--json`
+reports both as `details.signing`, with `type`, `message`, `next`, and
+`command`.
 
 `doctor` does not require a default channel in native files. If
 `HOT_UPDATER_CHANNEL` in iOS `Info.plist` or `com.hotupdater.CHANNEL` in Android

@@ -24,7 +24,6 @@ export * from "./initOptions";
 export * from "./interactive";
 export * from "./interfaceFingerprint";
 export * from "./LogWriter";
-export { DEFAULT_SIGNING_KEY_SECRET } from "./localBundleSigning";
 export * from "./loadConfig";
 export * from "./serverDefinition";
 export * from "./log";

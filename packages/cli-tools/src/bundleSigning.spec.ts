@@ -3,27 +3,23 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type {
-  BundleSigningAdapter,
-  SecretsAdapter,
-  SigningConfig,
-} from "@hot-updater/plugin-core";
+import type { SecretsAdapter, SigningConfig } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getBundleSigningPublicKey,
   prepareBundleSigning,
   readBundleSigningPublicKeyFile,
+  readBundleSigningState,
 } from "./bundleSigning";
-import { normalizeSigningConfig } from "./localBundleSigning";
-import { setConfiguredSecrets, resolveSecretsAdapter } from "./secrets";
-import { secret } from "./secrets";
+import { maskSecretValues } from "./secretMasking";
+import { resolveSecretsAdapter, secret, setConfiguredSecrets } from "./secrets";
 
 const tempDirs: string[] = [];
 
-const createKeyPair = () =>
+const createKeyPair = (modulusLength = 2048) =>
   crypto.generateKeyPairSync("rsa", {
-    modulusLength: 2048,
+    modulusLength,
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
@@ -34,7 +30,31 @@ const createTempDir = async () => {
   return dir;
 };
 
+/** A secrets adapter holding `values`, recording each read. */
+const fakeSecrets = (values: Record<string, string>) => {
+  const get = vi.fn<SecretsAdapter["get"]>(async (names) =>
+    Object.fromEntries(names.map((name) => [name, values[name]])),
+  );
+  const secrets: SecretsAdapter = {
+    name: "fake",
+    set: async () => {},
+    get,
+    describe: (name) => `fake://store/${name}`,
+  };
+  return { get, secrets };
+};
+
+/** Whether `signature` verifies over `fileHash` with `publicKey`, by node:crypto. */
+const verifies = (fileHash: string, publicKey: string, signature: string) =>
+  crypto.verify(
+    "RSA-SHA256",
+    Buffer.from(fileHash, "hex"),
+    publicKey,
+    Buffer.from(signature, "base64"),
+  );
+
 afterEach(async () => {
+  setConfiguredSecrets(resolveSecretsAdapter());
   await Promise.all(
     tempDirs
       .splice(0)
@@ -42,8 +62,100 @@ afterEach(async () => {
   );
 });
 
+describe("readBundleSigningState", () => {
+  it("reads the shorthand as enabled signing with the secret's key", () => {
+    expect(readBundleSigningState(secret("bundle-signing-key"))).toEqual({
+      status: "on",
+      key: { secret: "bundle-signing-key" },
+    });
+    expect(
+      readBundleSigningState({
+        enabled: true,
+        privateKey: secret("bundle-signing-key"),
+      }),
+    ).toEqual({ status: "on", key: { secret: "bundle-signing-key" } });
+  });
+
+  it("keeps 1.1's privateKeyPath", () => {
+    expect(
+      readBundleSigningState({
+        enabled: true,
+        privateKeyPath: "./keys/private-key.pem",
+      }),
+    ).toEqual({
+      status: "on",
+      key: { privateKeyPath: "./keys/private-key.pem" },
+    });
+  });
+
+  it("tells an omitted signing from one turned off", () => {
+    expect(readBundleSigningState(undefined)).toEqual({ status: "unsigned" });
+    expect(readBundleSigningState({ enabled: false })).toEqual({
+      status: "off",
+    });
+    expect(
+      readBundleSigningState({
+        enabled: false,
+        privateKeyPath: "/missing/key.pem",
+      }),
+    ).toEqual({ status: "off" });
+  });
+
+  it("refuses a signing adapter and any other value in one line", () => {
+    const adapter = {
+      name: "awsKmsSigning",
+      getPublicKey: vi.fn(),
+      sign: vi.fn(),
+    };
+    for (const value of [adapter, "bundle-signing-key", null, true, () => ""]) {
+      expect(readBundleSigningState(value)).toEqual({
+        status: "invalid",
+        message: 'signing takes secret("bundle-signing-key").',
+      });
+    }
+    expect(adapter.getPublicKey).not.toHaveBeenCalled();
+    expect(adapter.sign).not.toHaveBeenCalled();
+  });
+
+  it("refuses a malformed object form", () => {
+    expect(
+      readBundleSigningState({ privateKeyPath: "/missing/key.pem" }),
+    ).toMatchObject({ status: "invalid" });
+    expect(
+      readBundleSigningState({
+        enabled: true,
+        privateKeyPath: "./private-key.pem",
+        publicKeyPath: "./public-key.pem",
+      }),
+    ).toMatchObject({ status: "invalid" });
+    expect(
+      readBundleSigningState({ enabled: true, privateKeyPath: "" }),
+    ).toEqual({
+      status: "invalid",
+      message:
+        'signing takes privateKeyPath, or privateKey as secret("<name>").',
+    });
+    expect(
+      readBundleSigningState({ enabled: true, privateKey: "key" }),
+    ).toEqual({
+      status: "invalid",
+      message: 'signing.privateKey takes secret("<name>").',
+    });
+    expect(
+      readBundleSigningState({
+        enabled: true,
+        privateKey: secret("bundle-signing-key"),
+        privateKeyPath: "./keys/private-key.pem",
+      }),
+    ).toEqual({
+      status: "invalid",
+      message: "signing takes privateKey or privateKeyPath, not both.",
+    });
+  });
+});
+
 describe("prepareBundleSigning", () => {
-  it("disables signing when omitted or explicitly disabled without reading keys", async () => {
+  it("signs nothing when omitted or turned off, reading no key", async () => {
     await expect(prepareBundleSigning(undefined)).resolves.toBeNull();
     await expect(
       prepareBundleSigning({
@@ -53,7 +165,19 @@ describe("prepareBundleSigning", () => {
     ).resolves.toBeNull();
   });
 
-  it("signs with a local private key config without requiring a public key file", async () => {
+  it("refuses a signing adapter with the next step, never deploying unsigned", async () => {
+    await expect(
+      prepareBundleSigning({
+        name: "remoteSigning",
+        getPublicKey: async () => ({ publicKey: "" }),
+        sign: async () => ({ signature: new Uint8Array() }),
+      }),
+    ).rejects.toThrow(
+      'signing takes secret("bundle-signing-key").\nStore your key: npx hot-updater secrets put bundle-signing-key <key.pem>',
+    );
+  });
+
+  it("signs with 1.1's privateKeyPath, memoizing each file hash", async () => {
     const cwd = await createTempDir();
     const { privateKey, publicKey } = createKeyPair();
     await fs.writeFile(path.join(cwd, "custom-private.pem"), privateKey);
@@ -63,304 +187,233 @@ describe("prepareBundleSigning", () => {
     );
     const fileHash = "ab".repeat(32);
     const signature = await session!.signFileHash(fileHash);
-    expect(session!.name).toBe("localSigning");
+
     expect(session!.publicKey).toBe(publicKey);
-    expect(signature).toBe(
-      crypto
-        .sign("RSA-SHA256", Buffer.from(fileHash, "hex"), privateKey)
-        .toString("base64"),
+    expect(verifies(fileHash, publicKey, signature)).toBe(true);
+    await expect(session!.signFileHash(fileHash.toUpperCase())).resolves.toBe(
+      signature,
+    );
+    await expect(session!.signFileHash("not-a-hash")).rejects.toThrow(
+      "64-character hexadecimal file hash",
     );
   });
 
-  it("uses the provider public key and memoizes each file hash", async () => {
-    const dir = await createTempDir();
-    const { privateKey, publicKey } = createKeyPair();
-    const sign = vi.fn(async ({ message }: { message: Uint8Array }) => ({
-      signature: crypto.sign("RSA-SHA256", message, privateKey),
-    }));
-    const provider = {
-      name: "test-provider",
-      getPublicKey: vi.fn(async () => ({ publicKey })),
-      sign,
-    } satisfies BundleSigningAdapter;
-    const session = await prepareBundleSigning(provider, { cwd: dir });
-    const fileHash = "ab".repeat(32);
-
-    const [first, second] = await Promise.all([
-      session?.signFileHash(fileHash),
-      session?.signFileHash(fileHash.toUpperCase()),
-    ]);
-
-    expect(first).toBe(second);
-    expect(sign).toHaveBeenCalledTimes(1);
-    expect(sign).toHaveBeenCalledWith({
-      cwd: dir,
-      message: new Uint8Array(Buffer.from(fileHash, "hex")),
-    });
-    expect(provider.getPublicKey).toHaveBeenCalledWith({ cwd: dir });
-    expect(provider.getPublicKey).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects non-SPKI provider public keys", async () => {
-    const dir = await createTempDir();
-    const keyPair = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    const pkcs1PublicKey = crypto
-      .createPublicKey(keyPair.privateKey)
-      .export({ type: "pkcs1", format: "pem" })
-      .toString();
-    const provider = {
-      name: "pkcs1-provider",
-      getPublicKey: async () => ({ publicKey: pkcs1PublicKey }),
-      sign: async () => ({ signature: new Uint8Array([1]) }),
-    } satisfies BundleSigningAdapter;
-
-    await expect(prepareBundleSigning(provider, { cwd: dir })).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key.",
+  it("redacts a privateKeyPath it can't read, and refuses a weak key", async () => {
+    const cwd = await createTempDir();
+    await fs.writeFile(
+      path.join(cwd, "weak.pem"),
+      createKeyPair(1024).privateKey,
     );
-  });
-
-  it("rejects RSA public keys weaker than 2048 bits", async () => {
-    const dir = await createTempDir();
-    const weakKeyPair = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 1024,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    const provider = {
-      name: "weak-provider",
-      getPublicKey: async () => ({ publicKey: weakKeyPair.publicKey }),
-      sign: async ({ message }) => ({
-        signature: crypto.sign("RSA-SHA256", message, weakKeyPair.privateKey),
-      }),
-    } satisfies BundleSigningAdapter;
-
-    await expect(prepareBundleSigning(provider, { cwd: dir })).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key.",
-    );
-  });
-
-  it("validates hashes and verifies every provider signature", async () => {
-    const dir = await createTempDir();
-    const { publicKey } = createKeyPair();
-    const provider = {
-      name: "invalid-signature",
-      getPublicKey: async () => ({ publicKey }),
-      sign: vi.fn(async () => ({ signature: new Uint8Array([1, 2, 3]) })),
-    } satisfies BundleSigningAdapter;
-    const session = await prepareBundleSigning(provider, { cwd: dir });
-
-    await expect(session?.signFileHash("not-a-hash")).rejects.toThrow(
-      "Bundle signing requires a 64-character hexadecimal file hash.",
-    );
-    expect(provider.sign).not.toHaveBeenCalled();
-    await expect(session?.signFileHash("ff".repeat(32))).rejects.toThrow(
-      "Bundle signing provider returned a signature that does not match the configured public key.",
-    );
-  });
-
-  it("does not include provider key material in errors", async () => {
-    const provider = {
-      name: "test-provider",
-      getPublicKey: async () => {
-        throw new Error("PRIVATE KEY CANARY");
-      },
-      sign: async () => ({ signature: new Uint8Array([1]) }),
-    } satisfies BundleSigningAdapter;
-
-    let error: unknown;
-    try {
-      await prepareBundleSigning(provider);
-    } catch (caught) {
-      error = caught;
+    for (const privateKeyPath of ["private-key-canary.pem", "weak.pem"]) {
+      const error = await prepareBundleSigning(
+        { enabled: true, privateKeyPath },
+        { cwd },
+      ).catch((caught: unknown) => caught as Error);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(
+        "Failed to load the bundle signing private key from privateKeyPath.",
+      );
     }
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe(
-      "Failed to resolve the bundle signing provider public key.",
-    );
-    expect((error as Error).message).not.toContain("PRIVATE KEY CANARY");
   });
 
-  it("shows the reasons remoteSigning names, and redacts every other provider error", async () => {
-    const dir = await createTempDir();
-    const { publicKey } = createKeyPair();
-    const refusal = (message: string) =>
-      Object.assign(new Error(message), {
-        name: "HotUpdaterRemoteSigningError",
-      });
-    const refusing = {
-      name: "remoteSigning",
-      getPublicKey: async () => {
-        throw refusal(
-          "Failed to load the remote bundle signing public key. https://signer.example.com/sign answered 401 unauthorized: The signing token was revoked.",
-        );
-      },
-      sign: async () => ({ signature: new Uint8Array([1]) }),
-    } satisfies BundleSigningAdapter;
-    await expect(prepareBundleSigning(refusing, { cwd: dir })).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key. Failed to load the remote bundle signing public key. https://signer.example.com/sign answered 401 unauthorized: The signing token was revoked.",
+  it("signs with the shorthand's key, read once from the config's secrets", async () => {
+    const { privateKey, publicKey } = createKeyPair();
+    const { get, secrets } = fakeSecrets({ "bundle-signing-key": privateKey });
+    const signing: SigningConfig = secret("bundle-signing-key");
+
+    await expect(
+      getBundleSigningPublicKey(signing, { cwd: "/project", secrets }),
+    ).resolves.toBe(publicKey);
+    const session = await prepareBundleSigning(signing, {
+      cwd: "/project",
+      secrets,
+    });
+    const fileHash = "a".repeat(64);
+
+    expect(session?.publicKey).toBe(publicKey);
+    expect(
+      verifies(fileHash, publicKey, await session!.signFileHash(fileHash)),
+    ).toBe(true);
+    expect(get).toHaveBeenCalledOnce();
+    expect(get).toHaveBeenCalledWith(["bundle-signing-key"], {
+      cwd: "/project",
+    });
+  });
+
+  it("reads the key from the configured secrets without one given", async () => {
+    const { privateKey, publicKey } = createKeyPair();
+    setConfiguredSecrets(
+      fakeSecrets({ "bundle-signing-key": privateKey }).secrets,
     );
 
-    const signRefusing = {
-      name: "remoteSigning",
-      getPublicKey: async () => ({ publicKey }),
-      sign: async () => {
-        throw refusal(
-          "Remote bundle signer failed to sign the message. https://signer.example.com/sign answered 503 unavailable: The signer is down.",
-        );
-      },
-    } satisfies BundleSigningAdapter;
-    const session = await prepareBundleSigning(signRefusing, { cwd: dir });
-    await expect(session?.signFileHash("ff".repeat(32))).rejects.toThrow(
-      "Bundle signing provider failed to sign the file hash. Remote bundle signer failed to sign the message. https://signer.example.com/sign answered 503 unavailable: The signer is down.",
+    await expect(
+      getBundleSigningPublicKey(
+        { enabled: true, privateKey: secret("bundle-signing-key") },
+        { cwd: "/project" },
+      ),
+    ).resolves.toBe(publicKey);
+  });
+
+  it("reads each platform's key from that config's secrets", async () => {
+    const ios = createKeyPair();
+    const android = createKeyPair();
+    const signing = secret("bundle-signing-key");
+
+    await expect(
+      getBundleSigningPublicKey(signing, {
+        cwd: "/project",
+        secrets: fakeSecrets({ "bundle-signing-key": ios.privateKey }).secrets,
+      }),
+    ).resolves.toBe(ios.publicKey);
+    await expect(
+      getBundleSigningPublicKey(signing, {
+        cwd: "/project",
+        secrets: fakeSecrets({ "bundle-signing-key": android.privateKey })
+          .secrets,
+      }),
+    ).resolves.toBe(android.publicKey);
+  });
+
+  it("masks the key it reads in the CLI's output", async () => {
+    const { privateKey } = createKeyPair();
+    const { secrets } = fakeSecrets({ "masked-key": privateKey });
+    const body = privateKey.split("\n")[1]!;
+    expect(maskSecretValues(`line ${body}`)).toContain(body);
+
+    await getBundleSigningPublicKey(secret("masked-key"), {
+      cwd: "/project",
+      secrets,
+    });
+
+    expect(maskSecretValues(`line ${body}`)).toBe("line ********");
+  });
+
+  it("reads a one-line PEM from .env.hotupdater, with \\n for its line breaks", async () => {
+    const cwd = await createTempDir();
+    const { privateKey, publicKey } = createKeyPair();
+    await fs.writeFile(
+      path.join(cwd, ".env.hotupdater"),
+      `HOT_UPDATER_ENV_SIGNING_KEY=${JSON.stringify(privateKey)}\n`,
     );
 
-    const leaking = {
-      name: "test-provider",
-      getPublicKey: async () => {
-        throw new Error("PRIVATE KEY CANARY");
-      },
-      sign: async () => ({ signature: new Uint8Array([1]) }),
-    } satisfies BundleSigningAdapter;
-    const error = await prepareBundleSigning(leaking, { cwd: dir }).catch(
-      (caught: unknown) => caught,
+    await expect(
+      getBundleSigningPublicKey(secret("env-signing-key"), {
+        cwd,
+        secrets: resolveSecretsAdapter(),
+      }),
+    ).resolves.toBe(publicKey);
+  });
+
+  it("names the missing secret, where it is read, and how to create one", async () => {
+    const { secrets } = fakeSecrets({});
+
+    await expect(
+      prepareBundleSigning(secret("bundle-signing-key"), {
+        cwd: "/project",
+        secrets,
+      }),
+    ).rejects.toThrow(
+      "signing reads the bundle signing key bundle-signing-key, which is not in the fake secrets adapter (fake://store/bundle-signing-key).\nTo create one, run: npx hot-updater secrets issue bundle-signing-key",
     );
-    expect((error as Error).message).toBe(
-      "Failed to resolve the bundle signing provider public key.",
+    await expect(
+      prepareBundleSigning(secret("release-signing-key"), {
+        cwd: "/project",
+        secrets,
+      }),
+    ).rejects.toThrow(
+      "npx hot-updater secrets issue bundle-signing-key release-signing-key",
     );
   });
 
-  it("redacts signing provider failures", async () => {
-    const dir = await createTempDir();
-    const { publicKey } = createKeyPair();
-    const provider = {
-      name: "test-provider",
-      getPublicKey: async () => ({ publicKey }),
-      sign: async () => {
-        throw new Error("PRIVATE KEY CANARY");
-      },
-    } satisfies BundleSigningAdapter;
-    const session = await prepareBundleSigning(provider, { cwd: dir });
+  it("names localSecrets()'s variable and file when neither has the key", async () => {
+    const cwd = await createTempDir();
 
-    await expect(session?.signFileHash("ab".repeat(32))).rejects.toThrow(
-      "Bundle signing provider failed to sign the file hash.",
+    await expect(
+      prepareBundleSigning(secret("bundle-signing-key"), {
+        cwd,
+        secrets: resolveSecretsAdapter(),
+      }),
+    ).rejects.toThrow(
+      "(HOT_UPDATER_BUNDLE_SIGNING_KEY in the environment, or ",
     );
-    await expect(session?.signFileHash("ab".repeat(32))).rejects.not.toThrow(
-      "PRIVATE KEY CANARY",
+  });
+
+  it("reports an unreadable store, and refuses a value that is no key without quoting it", async () => {
+    const failing: SecretsAdapter = {
+      name: "fake",
+      set: async () => {},
+      get: async () => {
+        throw new Error("permission denied");
+      },
+    };
+    await expect(
+      prepareBundleSigning(secret("bundle-signing-key"), {
+        cwd: "/project",
+        secrets: failing,
+      }),
+    ).rejects.toThrow(
+      "The fake secrets adapter could not read the bundle signing key bundle-signing-key: permission denied",
     );
+
+    for (const value of [
+      "not-a-pem-canary-value",
+      createKeyPair(1024).privateKey,
+    ]) {
+      const error = await prepareBundleSigning(secret("bundle-signing-key"), {
+        cwd: "/project",
+        secrets: fakeSecrets({ "bundle-signing-key": value }).secrets,
+      }).catch((caught: unknown) => caught as Error);
+      expect((error as Error).message).toBe(
+        "The bundle signing key bundle-signing-key in the fake secrets adapter is not an RSA private key in PEM of at least 2048 bits.",
+      );
+      expect((error as Error).message).not.toContain(value.slice(0, 20));
+    }
+  });
+
+  it("reads the secret again after a failed read", async () => {
+    const { privateKey } = createKeyPair();
+    const values: Record<string, string> = {};
+    const { get, secrets } = fakeSecrets(values);
+    const signing = secret("bundle-signing-key");
+    await expect(
+      getBundleSigningPublicKey(signing, { cwd: "/project", secrets }),
+    ).rejects.toThrow("not in the fake secrets adapter");
+
+    values["bundle-signing-key"] = privateKey;
+    await expect(
+      getBundleSigningPublicKey(signing, { cwd: "/project", secrets }),
+    ).resolves.toContain("BEGIN PUBLIC KEY");
+    expect(get).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("getBundleSigningPublicKey", () => {
-  it("derives the local public key only from the configured private key", async () => {
+  it("derives the public key only from the private key", async () => {
     const cwd = await createTempDir();
     const { privateKey, publicKey } = createKeyPair();
-    const signing = {
-      enabled: true,
-      privateKeyPath: "private-key.pem",
-    } as const;
     await fs.writeFile(path.join(cwd, "private-key.pem"), privateKey);
-    await expect(getBundleSigningPublicKey(signing, { cwd })).resolves.toBe(
-      publicKey,
-    );
+
+    await expect(
+      getBundleSigningPublicKey(
+        { enabled: true, privateKeyPath: "private-key.pem" },
+        { cwd },
+      ),
+    ).resolves.toBe(publicKey);
     await fs.unlink(path.join(cwd, "private-key.pem"));
     await fs.writeFile(path.join(cwd, "public-key.pem"), publicKey);
-    await expect(getBundleSigningPublicKey(signing, { cwd })).rejects.toThrow(
-      "Failed to resolve",
-    );
+    await expect(
+      getBundleSigningPublicKey(
+        { enabled: true, privateKeyPath: "private-key.pem" },
+        { cwd },
+      ),
+    ).rejects.toThrow("Failed to load the bundle signing private key");
   });
 
-  it("returns null when signing is disabled", async () => {
-    const cwd = await createTempDir();
+  it("returns null when signing is off or omitted", async () => {
     await expect(
-      getBundleSigningPublicKey({ enabled: false }, { cwd }),
+      getBundleSigningPublicKey({ enabled: false }),
     ).resolves.toBeNull();
-  });
-});
-
-describe("local signing with privateKey from the config's secrets", () => {
-  afterEach(() => setConfiguredSecrets(resolveSecretsAdapter()));
-
-  const configure = (values: Record<string, string>) => {
-    const get = vi.fn<SecretsAdapter["get"]>(async (names) =>
-      Object.fromEntries(names.map((name) => [name, values[name]])),
-    );
-    setConfiguredSecrets({ name: "fake", get, set: async () => {} });
-    return get;
-  };
-
-  it("reads the key once for the public key and every signature of a run", async () => {
-    const { privateKey, publicKey } = createKeyPair();
-    const get = configure({ "bundle-signing-key": privateKey });
-    const signing: SigningConfig = {
-      enabled: true,
-      privateKey: secret("bundle-signing-key"),
-    };
-
-    await expect(
-      getBundleSigningPublicKey(signing, { cwd: "/project" }),
-    ).resolves.toBe(publicKey);
-    const session = await prepareBundleSigning(signing, { cwd: "/project" });
-    const fileHash = "a".repeat(64);
-    const signature = await session!.signFileHash(fileHash);
-
-    expect(session?.publicKey).toBe(publicKey);
-    expect(
-      crypto.verify(
-        "RSA-SHA256",
-        Buffer.from(fileHash, "hex"),
-        publicKey,
-        Buffer.from(signature, "base64"),
-      ),
-    ).toBe(true);
-    expect(get).toHaveBeenCalledOnce();
-  });
-
-  it("reads each config's key from that config's secrets, whichever loaded last", async () => {
-    const ios = createKeyPair();
-    const android = createKeyPair();
-    const store = (name: string, privateKey: string): SecretsAdapter => ({
-      name,
-      set: async () => {},
-      get: async (names) =>
-        Object.fromEntries(names.map((entry) => [entry, privateKey])),
-    });
-    const raw = {
-      enabled: true,
-      privateKey: secret("bundle-signing-key"),
-    } as const;
-    const iosSigning = normalizeSigningConfig(raw, {
-      secrets: store("ios-store", ios.privateKey),
-    });
-    const androidSigning = normalizeSigningConfig(raw, {
-      secrets: store("android-store", android.privateKey),
-    });
-    // The global adapter is the last config's, as loadConfig leaves it.
-    configure({});
-
-    await expect(
-      getBundleSigningPublicKey(iosSigning, { cwd: "/project" }),
-    ).resolves.toBe(ios.publicKey);
-    await expect(
-      getBundleSigningPublicKey(androidSigning, { cwd: "/project" }),
-    ).resolves.toBe(android.publicKey);
-  });
-
-  it("refuses a deploy whose secret is missing, naming it", async () => {
-    configure({});
-
-    await expect(
-      prepareBundleSigning(
-        { enabled: true, privateKey: secret("bundle-signing-key") },
-        { cwd: "/project" },
-      ),
-    ).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key. signing.privateKey reads the bundle signing key bundle-signing-key, which is not in the fake secrets adapter (bundle-signing-key in fake).",
-    );
+    await expect(getBundleSigningPublicKey(undefined)).resolves.toBeNull();
   });
 });
 

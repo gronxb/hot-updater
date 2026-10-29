@@ -101,6 +101,26 @@ describe("checkSecrets", () => {
     });
   });
 
+  it("names the shorthand's secret as signing's", async () => {
+    const store = teamStore({ "bundle-signing-key": "pem" });
+    const config = {
+      secrets: store,
+      signing: secret("bundle-signing-key"),
+    } as unknown as ConfigResponse;
+
+    await expect(checkSecrets(config, cwd)).resolves.toEqual({
+      adapter: "team-store",
+      references: [
+        {
+          name: "bundle-signing-key",
+          fields: ["signing"],
+          source: "adapter",
+          inAdapter: true,
+        },
+      ],
+    });
+  });
+
   it("reports an adapter it can't read, keeping the environment's overrides", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ENVKEY0001");
     const store = {

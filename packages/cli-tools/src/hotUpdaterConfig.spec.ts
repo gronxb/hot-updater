@@ -14,6 +14,7 @@ import {
   type ManagedHelperStatement,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
+  addSigningSecretToConfigText,
 } from "./hotUpdaterConfig";
 import { p } from "./prompts";
 
@@ -1212,5 +1213,95 @@ const commonOptions = {
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],`);
+  });
+});
+
+describe("addSigningSecretToConfigText", () => {
+  it("adds the shorthand and secret to the existing hot-updater import", () => {
+    const text = [
+      'import { bare } from "@hot-updater/bare";',
+      'import { defineConfig } from "hot-updater";',
+      "",
+      "export default defineConfig({",
+      "  build: bare(),",
+      '  updateStrategy: "appVersion", // or fingerprint',
+      "});",
+      "",
+    ].join("\n");
+
+    expect(addSigningSecretToConfigText(text, "bundle-signing-key")).toEqual({
+      status: "added",
+      text: [
+        'import { bare } from "@hot-updater/bare";',
+        'import { defineConfig, secret } from "hot-updater";',
+        "",
+        "export default defineConfig({",
+        "  build: bare(),",
+        '  updateStrategy: "appVersion", // or fingerprint',
+        '  signing: secret("bundle-signing-key"),',
+        "});",
+        "",
+      ].join("\n"),
+    });
+  });
+
+  it("adds a comma after a last property without one, and imports secret once", () => {
+    const text = [
+      'import { defineConfig, secret } from "hot-updater";',
+      "export default defineConfig({",
+      '    storage: s3({ key: secret("KEY") })',
+      "});",
+    ].join("\n");
+
+    expect(addSigningSecretToConfigText(text, "release-key")).toEqual({
+      status: "added",
+      text: [
+        'import { defineConfig, secret } from "hot-updater";',
+        "export default defineConfig({",
+        '    storage: s3({ key: secret("KEY") }),',
+        '    signing: secret("release-key"),',
+        "});",
+      ].join("\n"),
+    });
+  });
+
+  it("imports secret from hot-updater when nothing does", () => {
+    const result = addSigningSecretToConfigText(
+      'import { defineConfig } from "./config";\nexport default defineConfig({});\n',
+      "bundle-signing-key",
+    );
+
+    expect(result).toEqual({
+      status: "added",
+      text: 'import { secret } from "hot-updater";\nimport { defineConfig } from "./config";\nexport default defineConfig({\n  signing: secret("bundle-signing-key"),\n});\n',
+    });
+  });
+
+  it.each([
+    '{ enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+    "{ enabled: false }",
+    'secret("bundle-signing-key")',
+  ])("keeps a config that sets signing: %s", (signing) => {
+    expect(
+      addSigningSecretToConfigText(
+        `import { defineConfig } from "hot-updater";\nexport default defineConfig({\n  signing: ${signing},\n});\n`,
+        "bundle-signing-key",
+      ),
+    ).toEqual({ status: "kept" });
+  });
+
+  it("edits no config it can't read", () => {
+    expect(
+      addSigningSecretToConfigText(
+        "export default (options) => ({});",
+        "bundle-signing-key",
+      ),
+    ).toEqual({ status: "unsupported" });
+    expect(
+      addSigningSecretToConfigText(
+        "export default defineConfig({ ...shared });",
+        "bundle-signing-key",
+      ),
+    ).toEqual({ status: "kept" });
   });
 });

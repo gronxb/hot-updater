@@ -261,8 +261,8 @@ describe("CLI commands", () => {
     const put = help("secrets", "put").replace(/\s+/gu, " ");
     expect(put).toContain('choices: "asc-api-key", "android-keystore"');
     expect(put).toContain("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD");
-    expect(help("keys", "generate")).not.toContain("--vault");
-    expect(help("keys", "generate")).toContain("--secret [name]");
+    // secrets issue bundle-signing-key creates the signing key.
+    expect(help("keys")).not.toMatch(/^\s+generate\b/m);
 
     // put stores a key you have: its help no longer offers a sign-in.
     expect(put).not.toMatch(/sign in with/i);
@@ -273,7 +273,12 @@ describe("CLI commands", () => {
     expect(put).toContain("secrets put android-keystore <upload.jks>");
 
     const issue = help("secrets", "issue").replace(/\s+/gu, " ");
-    expect(issue).toContain('choices: "asc-api-key", "android-keystore"');
+    expect(issue).toContain(
+      'choices: "asc-api-key", "android-keystore", "bundle-signing-key"',
+    );
+    expect(issue).toContain(
+      "A stored key is kept: apps already shipped reject a new key's bundles.",
+    );
     // A Play service account is a file you store: nothing issues one.
     expect(issue).not.toContain("play-service-account");
     expect(issue).not.toContain("gcloud");
@@ -301,6 +306,13 @@ describe("CLI commands", () => {
     ).toContain(
       "Run in a terminal: npx hot-updater secrets issue android-keystore",
     );
+    // No terminal, and localSecrets(): a key the runner keeps would be lost.
+    const signingKey = run("secrets", "issue", "bundle-signing-key");
+    expect(signingKey.status).toBe(1);
+    expect(refusal(signingKey)).toEqual([
+      "Can't create a bundle signing key without a terminal.",
+      "Run in a terminal: npx hot-updater secrets issue bundle-signing-key",
+    ]);
     const pem = run("secrets", "issue", "asc-api-key", "--pem", "a.pem");
     expect(pem.status).toBe(1);
     expect(stripVTControlCharacters(pem.stdout + pem.stderr)).toContain(

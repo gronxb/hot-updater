@@ -22,11 +22,6 @@
       "types": "./dist/plugins.d.mts",
       "import": "./dist/plugins.mjs",
       "require": "./dist/plugins.mjs"
-    },
-    "./signing": {
-      "types": "./dist/signing.d.mts",
-      "import": "./dist/signing.mjs",
-      "require": "./dist/signing.mjs"
     }
   },
   "files": [
@@ -72,13 +67,11 @@
   },
   "devDependencies": {
     "@1password/sdk": "0.5.0",
-    "@aws-sdk/client-kms": "3.1066.0",
     "@bacons/xcode": "1.0.0-alpha.33",
     "@bitwarden/sdk-napi": "1.0.0",
     "@commander-js/extra-typings": "^14.0.0",
     "@dotenvx/dotenvx": "2.38.2",
     "@electric-sql/pglite": "catalog:db",
-    "@google-cloud/kms": "6.0.0",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/azure": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
@@ -111,8 +104,6 @@
     "verkit": "catalog:"
   },
   "peerDependencies": {
-    "@aws-sdk/client-kms": "^3.1066.0",
-    "@google-cloud/kms": "^6.0.0",
     "@hot-updater/aws": "workspace:^",
     "@hot-updater/azure": "workspace:^",
     "@hot-updater/cloudflare": "workspace:^",
@@ -121,12 +112,6 @@
     "@hot-updater/vercel": "workspace:^"
   },
   "peerDependenciesMeta": {
-    "@aws-sdk/client-kms": {
-      "optional": true
-    },
-    "@google-cloud/kms": {
-      "optional": true
-    },
     "@hot-updater/supabase": {
       "optional": true
     },

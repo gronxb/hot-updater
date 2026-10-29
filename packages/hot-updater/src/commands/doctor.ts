@@ -5,11 +5,17 @@ import {
   type ConfigResponse,
   getBundleSigningPublicKey,
   getCwd,
+  INVALID_SIGNING_NEXT_STEP,
+  ISSUE_SIGNING_KEY_COMMAND,
   loadConfig,
   LOCAL_SECRETS_NAME,
   p,
+  PUT_SIGNING_KEY_COMMAND,
+  readBundleSigningState,
   readPackageUp,
   nonInteractiveReason,
+  UNSIGNED_BUNDLES_NEXT_STEP,
+  UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
@@ -138,6 +144,8 @@ interface DoctorDetails {
   schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
+  /** No `signing`, or a value deploy refuses. */
+  signing?: SigningStatus;
   /** Where each build credential's `secret()` is read from. */
   secrets?: SecretsStatus;
   /** Where each name the config's adapter `secret()`s read comes from. */
@@ -152,6 +160,15 @@ interface DoctorDetails {
   // Future extensibility - can add more checks here
   // e.g., configurationIssues?: ConfigIssue[];
   // e.g., compatibilityWarnings?: Warning[];
+}
+
+/** What doctor says about `signing`, as deploy says it, with the next step. */
+interface SigningStatus {
+  readonly type: "error" | "warning";
+  readonly message: string;
+  /** The lead of the next-step line, before `command`. */
+  readonly next: string;
+  readonly command: string;
 }
 
 interface DoctorResult {
@@ -535,10 +552,12 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
 };
 
 /**
- * The configured signer's public key, or, when doctor cannot read it, such as
- * a `remoteSigning` token only CI holds, a warning with the reason: the
- * native public keys are then not compared, rather than reported as a
- * mismatch whose resolution is a new native release.
+ * The configured signing key's public key, or, when doctor cannot read it,
+ * such as a secret only CI holds, a warning with the reason: the native
+ * public keys are then not compared, rather than reported as a mismatch
+ * whose resolution is a new native release. A `signing` value deploy
+ * refuses is the signing row's (`checkSigning`): its native keys are not
+ * checked either.
  */
 const readSigningPublicKey = async (
   config: ConfigResponse,
@@ -546,12 +565,20 @@ const readSigningPublicKey = async (
 ): Promise<{
   publicKey: string | undefined;
   issues: NativeCheckIssue[];
+  checked: boolean;
 }> => {
+  if (readBundleSigningState(config.signing).status === "invalid") {
+    return { publicKey: undefined, issues: [], checked: false };
+  }
   try {
     return {
       publicKey:
-        (await getBundleSigningPublicKey(config.signing, { cwd })) ?? undefined,
+        (await getBundleSigningPublicKey(config.signing, {
+          cwd,
+          secrets: config.secrets,
+        })) ?? undefined,
       issues: [],
+      checked: true,
     };
   } catch (error) {
     return {
@@ -561,15 +588,42 @@ const readSigningPublicKey = async (
           type: "warning",
           platform: "project",
           code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
-          message: `The native public keys were not checked against the configured bundle signer: ${
+          message: `The native public keys were not checked against the configured bundle signing key: ${
             error instanceof Error ? error.message : String(error)
           }`,
           resolution:
-            "Run doctor where the signer's credentials are set, such as HOT_UPDATER_SIGNING_TOKEN for remoteSigning, to check the native public keys.",
+            "Run doctor where the signing key's secret is set to check the native public keys.",
         },
       ],
+      checked: true,
     };
   }
+};
+
+/**
+ * The signing row: a `signing` value deploy refuses, as an error, or no
+ * `signing`, which deploy warns about, as a warning. Nothing for a config
+ * that signs or sets `{ enabled: false }`.
+ */
+const checkSigning = (config: ConfigResponse): SigningStatus | undefined => {
+  const state = readBundleSigningState(config.signing);
+  if (state.status === "invalid") {
+    return {
+      type: "error",
+      message: state.message,
+      next: INVALID_SIGNING_NEXT_STEP,
+      command: PUT_SIGNING_KEY_COMMAND,
+    };
+  }
+  if (state.status === "unsigned") {
+    return {
+      type: "warning",
+      message: UNSIGNED_BUNDLES_WARNING,
+      next: UNSIGNED_BUNDLES_NEXT_STEP,
+      command: ISSUE_SIGNING_KEY_COMMAND,
+    };
+  }
+  return undefined;
 };
 
 async function checkNativeStatus({
@@ -615,7 +669,9 @@ async function checkNativeStatus({
         : {}),
       issues: [
         ...expectedSigningPublicKey.issues,
-        ...signing.issues.map(toNativeIssue),
+        ...(expectedSigningPublicKey.checked
+          ? signing.issues.map(toNativeIssue)
+          : []),
         ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
         ...(localFingerprint
           ? await checkFingerprintJson(
@@ -644,7 +700,9 @@ async function checkNativeStatus({
     ...ios.issues,
     ...android.issues,
     ...expectedSigningPublicKey.issues,
-    ...signing.issues.map(toNativeIssue),
+    ...(expectedSigningPublicKey.checked
+      ? signing.issues.map(toNativeIssue)
+      : []),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
   ];
 
@@ -863,6 +921,8 @@ async function checkProject(
     // by the checks that need it, and an adapter that can't be read is a row.
     const config = await loadConfig(null).catch(() => undefined);
     if (config) {
+      const signing = checkSigning(config);
+      if (signing) details.signing = signing;
       const secrets = await checkSecrets(config, cwd);
       if (secrets) details.secrets = secrets;
       const googlePlay = await checkGooglePlay(config, {
@@ -949,6 +1009,7 @@ async function checkProject(
       versionMismatches.length > 0 ||
       hasInfrastructureIssue ||
       hasNativeIssue ||
+      details.signing?.type === "error" ||
       hasServerDataIssue;
     // Future: || configurationIssues.length > 0 || etc.
 
@@ -970,6 +1031,7 @@ async function checkProject(
       details.native ||
       details.schema ||
       details.releaseCatalogs ||
+      details.signing ||
       details.secrets ||
       details.deploySecrets ||
       details.googlePlay ||
@@ -1258,6 +1320,13 @@ export const handleDoctor = async ({
         report(`${message}\n${ui.prose(issue.resolution)}`);
       }
     }
+  }
+
+  if (details?.signing) {
+    const { type, message, next, command } = details.signing;
+    (type === "error" ? p.log.error : p.log.warn)(
+      `${message}\n${ui.withCommand(next, command)}`,
+    );
   }
 
   if (details?.secrets || details?.deploySecrets) {

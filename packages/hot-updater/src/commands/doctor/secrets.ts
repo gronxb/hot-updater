@@ -65,7 +65,13 @@ const collectReferences = (config: ConfigResponse): Reference[] => {
     );
   }
   const signing: unknown = config.signing;
-  if (signing && typeof signing === "object" && "privateKey" in signing) {
+  if (isSecretRef(signing)) {
+    add("signing", signing);
+  } else if (
+    signing &&
+    typeof signing === "object" &&
+    "privateKey" in signing
+  ) {
     add("signing.privateKey", signing.privateKey);
   }
   return references;

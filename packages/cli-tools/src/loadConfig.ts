@@ -7,14 +7,15 @@ import type {
   Platform,
   RequiredDeep,
   SecretsAdapter,
+  SigningConfig,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
 import { mergeWith } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
+import { bundleSigningSecretRef } from "./bundleSigning.js";
 import { getCwd } from "./cwd.js";
-import { normalizeSigningConfig } from "./localBundleSigning.js";
 import {
   isSecretRef,
   type SecretsScope,
@@ -115,7 +116,12 @@ export type ConfigResponse = RequiredDeep<
   storage?: StorageAdapter;
   /** The plugins the server runs; none when the config lists none. */
   plugins: readonly AnyHotUpdaterPlugin[];
-  signing?: ReturnType<typeof normalizeSigningConfig>;
+  /**
+   * As the config sets it, read only when a command signs: deploy refuses a
+   * value it doesn't take (`readBundleSigningState`), and other commands,
+   * such as the `secrets put` that fixes it, still load the config.
+   */
+  signing?: SigningConfig;
   /**
    * Where `secret()` references and issued keys are read and stored: the
    * config's adapter alone, or `localSecrets()` when it sets none
@@ -243,12 +249,12 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
 
 /**
  * The names the config's build credentials reference, which the CLI reads
- * for their kind: `signing.privateKey`, and each scheme's
+ * for their kind: `signing`'s, and each scheme's
  * `signing.ascApiKey` and `signing.keystore`.
  */
 const buildSecretNames = (config: Partial<ConfigInput>): string[] => {
   const references: unknown[] = [
-    config.signing && Reflect.get(config.signing, "privateKey"),
+    bundleSigningSecretRef(config.signing),
     ...Object.values(config.nativeBuild?.ios ?? {}).map(
       (scheme) => scheme?.signing?.ascApiKey,
     ),
@@ -270,7 +276,6 @@ const resolveConfig = (
 ): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const secrets = resolveSecretsAdapter(mergedConfig.secrets);
-  const signing = normalizeSigningConfig(mergedConfig.signing, { secrets });
   const buildNames = buildSecretNames(mergedConfig);
   for (const scope of scopes) {
     scope.secrets ??= secrets;
@@ -280,7 +285,6 @@ const resolveConfig = (
   setConfiguredSecrets(secrets);
   const resolved = {
     ...mergedConfig,
-    signing,
     secrets,
   } as ConfigResponse;
   Object.defineProperty(resolved, DEPLOY_SECRET_NAMES, {

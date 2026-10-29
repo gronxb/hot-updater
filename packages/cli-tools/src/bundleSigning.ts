@@ -3,17 +3,123 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  BundleSigningAdapter,
-  SigningConfig,
+  LocalSigningConfig,
+  SecretRef,
+  SecretsAdapter,
 } from "@hot-updater/plugin-core";
 
 import { getCwd } from "./cwd.js";
+import { registerSecretValue } from "./secretMasking.js";
 import {
-  createLocalSigningAdapter,
-  getSigningSecrets,
-  LocalSigningKeyError,
-  normalizeSigningConfig,
-} from "./localBundleSigning.js";
+  describeSecret,
+  getConfiguredSecrets,
+  isSecretRef,
+} from "./secrets.js";
+
+/** The secret `signing: secret("bundle-signing-key")` names, which `secrets issue` creates. */
+export const BUNDLE_SIGNING_KEY_SECRET = "bundle-signing-key";
+
+/** The command that creates and stores a bundle signing key. */
+export const ISSUE_SIGNING_KEY_COMMAND = `npx hot-updater secrets issue ${BUNDLE_SIGNING_KEY_SECRET}`;
+
+/** The command that stores a bundle signing key you have. */
+export const PUT_SIGNING_KEY_COMMAND = `npx hot-updater secrets put ${BUNDLE_SIGNING_KEY_SECRET} <key.pem>`;
+
+/** What deploy and doctor say when the config sets no `signing`. */
+export const UNSIGNED_BUNDLES_WARNING = "Bundles are unsigned.";
+
+/** The next step after `UNSIGNED_BUNDLES_WARNING`. */
+export const UNSIGNED_BUNDLES_NEXT_STEP = "To sign them, run:";
+
+/** What deploy and doctor say when `signing` is no shape it takes. */
+export const INVALID_SIGNING_MESSAGE = `signing takes secret("${BUNDLE_SIGNING_KEY_SECRET}").`;
+
+/** The next step after `INVALID_SIGNING_MESSAGE`. */
+export const INVALID_SIGNING_NEXT_STEP = "Store your key:";
+
+/**
+ * The config's `signing`, read without reading any key:
+ * - `on`: signs, with the private key from a secret or a file. The
+ *   shorthand `secret("<name>")` is `{ enabled: true, privateKey }`;
+ * - `off`: `{ enabled: false }`, which turns signing off on purpose;
+ * - `unsigned`: no `signing`, which deploy and doctor warn about;
+ * - `invalid`: any other value, such as a signing adapter of earlier
+ *   releases, which deploy refuses rather than deploy unsigned.
+ */
+export type BundleSigningState =
+  | {
+      readonly status: "on";
+      readonly key:
+        | { readonly secret: string }
+        | { readonly privateKeyPath: string };
+    }
+  | { readonly status: "off" }
+  | { readonly status: "unsigned" }
+  | { readonly status: "invalid"; readonly message: string };
+
+const invalid = (message: string): BundleSigningState => ({
+  status: "invalid",
+  message,
+});
+
+const LOCAL_FIELDS = ["enabled", "privateKeyPath", "privateKey"];
+
+export const readBundleSigningState = (
+  signing: unknown,
+): BundleSigningState => {
+  if (signing === undefined) return { status: "unsigned" };
+  if (isSecretRef(signing)) {
+    return { status: "on", key: { secret: signing.name } };
+  }
+  if (
+    typeof signing !== "object" ||
+    signing === null ||
+    !Object.keys(signing).every((key) => LOCAL_FIELDS.includes(key))
+  ) {
+    return invalid(INVALID_SIGNING_MESSAGE);
+  }
+  const { enabled, privateKey, privateKeyPath } =
+    signing as Partial<LocalSigningConfig>;
+  if (enabled === false) return { status: "off" };
+  if (enabled !== true) return invalid(INVALID_SIGNING_MESSAGE);
+  if (privateKey !== undefined && privateKeyPath !== undefined) {
+    return invalid("signing takes privateKey or privateKeyPath, not both.");
+  }
+  if (privateKey !== undefined) {
+    return isSecretRef(privateKey)
+      ? { status: "on", key: { secret: privateKey.name } }
+      : invalid('signing.privateKey takes secret("<name>").');
+  }
+  if (typeof privateKeyPath !== "string" || !privateKeyPath.trim()) {
+    return invalid(
+      'signing takes privateKeyPath, or privateKey as secret("<name>").',
+    );
+  }
+  return { status: "on", key: { privateKeyPath } };
+};
+
+/** The `secret()` the config's `signing` reads its private key from, if any. */
+export const bundleSigningSecretRef = (
+  signing: unknown,
+): SecretRef | undefined => {
+  if (isSecretRef(signing)) return signing;
+  const privateKey =
+    typeof signing === "object" && signing !== null
+      ? Reflect.get(signing, "privateKey")
+      : undefined;
+  return isSecretRef(privateKey) ? privateKey : undefined;
+};
+
+/**
+ * A bundle signing failure whose message the CLI prints as it is: it names
+ * the secret and the next step, and quotes no key material.
+ */
+export class BundleSigningKeyError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "HotUpdaterBundleSigningKeyError";
+  }
+}
 
 const FILE_HASH_PATTERN = /^[a-f\d]{64}$/iu;
 
@@ -21,7 +127,6 @@ const resolvePath = (cwd: string, filePath: string) =>
   path.isAbsolute(filePath) ? filePath : path.resolve(cwd, filePath);
 
 export interface BundleSigningSession {
-  readonly name: string;
   readonly publicKey: string;
   readonly signFileHash: (fileHash: string) => Promise<string>;
 }
@@ -50,8 +155,11 @@ const parseRsaPublicKey = (publicKeyPEM: string): KeyObject => {
   }
 };
 
-const exportPublicKey = (publicKey: KeyObject) =>
-  publicKey.export({ type: "spki", format: "pem" }).toString();
+/** The SPKI PEM of `key`, a public key or the private key it derives from. */
+const exportPublicKey = (key: KeyObject) =>
+  (key.type === "private" ? crypto.createPublicKey(key) : key)
+    .export({ type: "spki", format: "pem" })
+    .toString();
 
 export const readBundleSigningPublicKeyFile = async (
   publicKeyPath: string,
@@ -71,166 +179,178 @@ export const readBundleSigningPublicKeyFile = async (
   }
 };
 
-/**
- * `remoteSigning`'s errors with a reason it wrote itself, by name, as it may
- * come from another copy of plugin-core, and the local signer's errors that
- * name its secret. Any other signing adapter error is redacted: it may quote
- * key material.
- */
-const REMOTE_SIGNING_ERROR_NAME = "HotUpdaterRemoteSigningError";
-
-const signingFailure = (summary: string, error: unknown) =>
-  new Error(
-    error instanceof Error &&
-      (error.name === REMOTE_SIGNING_ERROR_NAME ||
-        error instanceof LocalSigningKeyError)
-      ? `${summary} ${error.message}`
-      : summary,
-  );
-
-/**
- * The local signer of each config's `signing` that reads its private key
- * from a secret, so the commands of one run that sign and derive the public
- * key read the secret once.
- */
-const secretSigners = new WeakMap<object, BundleSigningAdapter>();
-
-const getSigningProvider = (
-  signing: SigningConfig | undefined,
-): BundleSigningAdapter | null => {
-  const normalized = normalizeSigningConfig(signing);
-  if (!normalized) return null;
-  if (!("enabled" in normalized)) return normalized;
-  if (normalized.privateKey === undefined) {
-    return createLocalSigningAdapter(normalized);
+const parsePrivateKey = (pem: string): KeyObject => {
+  const privateKey = crypto.createPrivateKey(pem);
+  if (
+    privateKey.asymmetricKeyType !== "rsa" ||
+    (privateKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+  ) {
+    throw new Error("not rsa");
   }
-  const key = signing as object;
-  const cached = secretSigners.get(key);
-  if (cached) return cached;
-  // The config's own adapter when loadConfig resolved `signing`, else the
-  // configured one.
-  const local = createLocalSigningAdapter(normalized, {
-    secrets: getSigningSecrets(key),
-  });
-  secretSigners.set(key, local);
-  return local;
+  return privateKey;
 };
 
-const getProviderPublicKey = async (
-  provider: BundleSigningAdapter,
-  cwd: string,
-) => {
+const loadPrivateKeyFile = async (file: string): Promise<KeyObject> => {
   try {
-    const result = await provider.getPublicKey({ cwd });
-    if (!result || typeof result.publicKey !== "string") {
-      throw new Error("invalid result");
-    }
-    return parseRsaPublicKey(result.publicKey);
-  } catch (error) {
-    throw signingFailure(
-      "Failed to resolve the bundle signing provider public key.",
-      error,
+    return parsePrivateKey(await fs.readFile(file, "utf8"));
+  } catch {
+    // Neither the path nor the file's content: either may be private.
+    throw new BundleSigningKeyError(
+      "Failed to load the bundle signing private key from privateKeyPath.",
     );
   }
 };
 
-const createMemoizedSigner = ({
-  publicKey,
-  sign,
-}: {
-  publicKey: KeyObject;
-  sign: (message: Uint8Array) => Promise<Uint8Array>;
-}) => {
-  const signatures = new Map<string, Promise<string>>();
-
-  return (fileHash: string): Promise<string> => {
-    if (!FILE_HASH_PATTERN.test(fileHash)) {
-      return Promise.reject(
-        new Error(
-          "Bundle signing requires a 64-character hexadecimal file hash.",
-        ),
-      );
-    }
-
-    const normalizedFileHash = fileHash.toLowerCase();
-    const cached = signatures.get(normalizedFileHash);
-    if (cached) {
-      return cached;
-    }
-
-    const pending = (async () => {
-      const message = Buffer.from(normalizedFileHash, "hex");
-      let signature: Uint8Array;
-      try {
-        signature = await sign(new Uint8Array(message));
-      } catch (error) {
-        throw signingFailure(
-          "Bundle signing provider failed to sign the file hash.",
-          error,
-        );
-      }
-
-      if (!(signature instanceof Uint8Array) || signature.byteLength === 0) {
-        throw new Error(
-          "Bundle signing provider returned an invalid signature.",
-        );
-      }
-
-      if (!crypto.verify("RSA-SHA256", message, publicKey, signature)) {
-        throw new Error(
-          "Bundle signing provider returned a signature that does not match the configured public key.",
-        );
-      }
-
-      return Buffer.from(signature).toString("base64");
-    })().catch((error) => {
-      signatures.delete(normalizedFileHash);
-      throw error;
-    });
-
-    signatures.set(normalizedFileHash, pending);
-    return pending;
-  };
-};
-
-const preparePluginSigning = async (
-  signing: BundleSigningAdapter,
+/**
+ * The private key the `secrets` adapter holds as `name`: masked in the CLI's
+ * output before it is parsed, and kept only as a key object. A PEM written
+ * on one line, with `\n` for its line breaks, as a `.env.hotupdater` value
+ * or a CI variable may hold it, reads as the PEM.
+ */
+const loadPrivateKeySecret = async (
+  secrets: SecretsAdapter,
+  name: string,
   cwd: string,
-): Promise<BundleSigningSession> => {
-  const providerPublicKey = await getProviderPublicKey(signing, cwd);
+): Promise<KeyObject> => {
+  let value: string | undefined;
+  try {
+    const read = await secrets.get([name], { cwd });
+    value = Object.hasOwn(read, name) ? read[name] : undefined;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new BundleSigningKeyError(
+      `The ${secrets.name} secrets adapter could not read the bundle signing key ${name}: ${reason}`,
+      { cause: error },
+    );
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    const issue = `npx hot-updater secrets issue ${BUNDLE_SIGNING_KEY_SECRET}${name === BUNDLE_SIGNING_KEY_SECRET ? "" : ` ${name}`}`;
+    throw new BundleSigningKeyError(
+      `signing reads the bundle signing key ${name}, which is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}).\nTo create one, run: ${issue}`,
+    );
+  }
+  registerSecretValue(value);
+  const pem = value.includes("\n") ? value : value.replaceAll("\\n", "\n");
+  if (pem !== value) registerSecretValue(pem);
+  try {
+    return parsePrivateKey(pem);
+  } catch {
+    throw new BundleSigningKeyError(
+      `The bundle signing key ${name} in the ${secrets.name} secrets adapter is not an RSA private key in PEM of at least 2048 bits.`,
+    );
+  }
+};
 
+/**
+ * The private keys each `signing` value has read, by file or by secrets
+ * adapter, so the commands of one run that sign and derive the public key
+ * read the key once.
+ */
+const privateKeys = new WeakMap<object, Map<unknown, Promise<KeyObject>>>();
+
+export interface BundleSigningOptions {
+  readonly cwd?: string;
+  /** The config's `secrets` adapter; the configured one by default. */
+  readonly secrets?: SecretsAdapter;
+}
+
+/**
+ * The private key `signing` signs with, or null when it signs nothing.
+ * Throws `INVALID_SIGNING_MESSAGE`, with the next step, for a value
+ * `signing` doesn't take.
+ */
+const loadSigningKey = (
+  signing: unknown,
+  { cwd = getCwd(), secrets }: BundleSigningOptions,
+): Promise<KeyObject> | null => {
+  const state = readBundleSigningState(signing);
+  if (state.status === "invalid") {
+    throw new BundleSigningKeyError(
+      `${state.message}\n${INVALID_SIGNING_NEXT_STEP} ${PUT_SIGNING_KEY_COMMAND}`,
+    );
+  }
+  if (state.status !== "on") return null;
+
+  const store = secrets ?? getConfiguredSecrets();
+  const cacheKey =
+    "secret" in state.key ? store : resolvePath(cwd, state.key.privateKeyPath);
+  const cache = privateKeys.get(signing as object) ?? new Map();
+  privateKeys.set(signing as object, cache);
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = (
+    "secret" in state.key
+      ? loadPrivateKeySecret(store, state.key.secret, cwd)
+      : loadPrivateKeyFile(cacheKey as string)
+  ).catch((error) => {
+    cache.delete(cacheKey);
+    throw error;
+  });
+  cache.set(cacheKey, pending);
+  return pending;
+};
+
+const signingFailure = (summary: string, error: unknown) =>
+  new Error(
+    error instanceof BundleSigningKeyError
+      ? error.message
+      : `${summary} ${error instanceof Error ? error.message : String(error)}`,
+    { cause: error },
+  );
+
+/**
+ * Prepares the run's bundle signing: the public key the app must embed, and
+ * a signer of SHA-256 file hashes that signs each hash once. Null when
+ * `signing` is omitted or `{ enabled: false }`.
+ */
+export const prepareBundleSigning = async (
+  signing: unknown,
+  options: BundleSigningOptions = {},
+): Promise<BundleSigningSession | null> => {
+  const loading = loadSigningKey(signing, options);
+  if (!loading) return null;
+  let privateKey: KeyObject;
+  try {
+    privateKey = await loading;
+  } catch (error) {
+    throw signingFailure("Failed to read the bundle signing key.", error);
+  }
+
+  const signatures = new Map<string, string>();
   return {
-    name: signing.name,
-    publicKey: exportPublicKey(providerPublicKey),
-    signFileHash: createMemoizedSigner({
-      publicKey: providerPublicKey,
-      sign: async (message) => {
-        const result = await signing.sign({ cwd, message });
-        return result.signature;
-      },
-    }),
+    publicKey: exportPublicKey(privateKey),
+    signFileHash: async (fileHash) => {
+      if (!FILE_HASH_PATTERN.test(fileHash)) {
+        throw new Error(
+          "Bundle signing requires a 64-character hexadecimal file hash.",
+        );
+      }
+      const normalized = fileHash.toLowerCase();
+      const cached = signatures.get(normalized);
+      if (cached) return cached;
+      const signature = crypto
+        .sign("RSA-SHA256", Buffer.from(normalized, "hex"), privateKey)
+        .toString("base64");
+      signatures.set(normalized, signature);
+      return signature;
+    },
   };
 };
 
-export const prepareBundleSigning = async (
-  signing: SigningConfig | undefined,
-  options: { readonly cwd?: string } = {},
-): Promise<BundleSigningSession | null> => {
-  const provider = getSigningProvider(signing);
-  if (!provider) {
-    return null;
-  }
-  return preparePluginSigning(provider, options.cwd ?? getCwd());
-};
-
-/** Resolves the public identity of the configured bundle signer. */
+/**
+ * The public key of the configured bundle signing key, in SPKI PEM; null
+ * when `signing` signs nothing.
+ */
 export const getBundleSigningPublicKey = async (
-  signing: SigningConfig | undefined,
-  options: { readonly cwd?: string } = {},
+  signing: unknown,
+  options: BundleSigningOptions = {},
 ): Promise<string | null> => {
-  const provider = getSigningProvider(signing);
-  if (!provider) return null;
-  return exportPublicKey(
-    await getProviderPublicKey(provider, options.cwd ?? getCwd()),
-  );
+  const loading = loadSigningKey(signing, options);
+  if (!loading) return null;
+  try {
+    return exportPublicKey(await loading);
+  } catch (error) {
+    throw signingFailure("Failed to read the bundle signing key.", error);
+  }
 };

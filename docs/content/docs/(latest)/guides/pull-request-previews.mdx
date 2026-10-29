@@ -74,10 +74,7 @@ export default defineConfig({
       },
     },
   },
-  signing: {
-    enabled: true,
-    privateKey: secret("bundle-signing-key"),
-  },
+  signing: secret("bundle-signing-key"),
   // ...build, storage, database, plugins
 });
 ```
@@ -85,15 +82,13 @@ export default defineConfig({
 In the job's environment, `secret("release-keystore")` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
 the keystore's JSON value, and `secret("bundle-signing-key")` reads
 `HOT_UPDATER_BUNDLE_SIGNING_KEY`, the
-[local signing](/docs/guides/signing/local) key's PEM, as
+[bundle signing](/docs/guides/bundle-signing) key's PEM, as
 [Sign native builds with secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
-describes. To keep the bundle signing key in a key management service
-instead of a file, use the [AWS KMS](/docs/guides/signing/aws-kms) or
-[Google Cloud KMS](/docs/guides/signing/google-cloud-kms) signing adapter.
+describes.
 
 ### The bundle signing key in CI
 
-Read the bundle signing key as a secret, `privateKey: secret("bundle-signing-key")`,
+Read the bundle signing key as a secret, `signing: secret("bundle-signing-key")`,
 as above: the job maps the repository secret to
 `HOT_UPDATER_BUNDLE_SIGNING_KEY`, which `localSecrets()` reads before its
 files, as the workflow below does, and needs no key file.

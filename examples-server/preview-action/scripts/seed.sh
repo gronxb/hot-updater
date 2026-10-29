@@ -11,8 +11,10 @@
 # Every credential the action's CLI reads is a job variable, which the CLI
 # reads as the config sets no secrets adapter: the keystore as one JSON
 # value, HOT_UPDATER_ANDROID_KEYSTORE for `secret("android-keystore")`, and the
-# signing key's path. It needs the backend's variables (scripts/backend.sh)
-# in its environment, and prints those as NAME=value lines.
+# signing key as a one-line PEM, HOT_UPDATER_BUNDLE_SIGNING_KEY for
+# `secret("bundle-signing-key")`. It needs the backend's variables
+# (scripts/backend.sh) in its environment, and prints those as NAME=value
+# lines.
 #
 #   bash scripts/seed.sh <console-port> <log-dir> <key-dir>
 set -euo pipefail
@@ -49,11 +51,20 @@ keystore="$(node -e '
 ' "$key_dir/release.jks")"
 rm "$key_dir/release.jks"
 
-# The preview build pins the public key the bundles are signed for.
+# A bundle signing key, on one line with \n for its line breaks, as a job
+# variable holds it. The preview build pins its public key.
+signing_key="$(node -e '
+  const { generateKeyPairSync } = require("node:crypto");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  process.stdout.write(privateKey.trim().replaceAll("\n", "\\n"));
+')"
 (
   cd "$app"
-  "${cli[@]}" keys generate -o "$key_dir/keys"
-  PREVIEW_SIGNING_KEY_PATH="$key_dir/keys/private-key.pem" \
+  HOT_UPDATER_BUNDLE_SIGNING_KEY="$signing_key" \
     "${cli[@]}" keys export-public -y
 ) >"$log_dir/keys.log" 2>&1
 
@@ -73,4 +84,4 @@ done
 curl -s -o /dev/null "$console_url/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-000000000001"
 
 echo "HOT_UPDATER_ANDROID_KEYSTORE=$keystore"
-echo "PREVIEW_SIGNING_KEY_PATH=$key_dir/keys/private-key.pem"
+echo "HOT_UPDATER_BUNDLE_SIGNING_KEY=$signing_key"
