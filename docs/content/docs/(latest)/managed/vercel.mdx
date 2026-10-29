@@ -227,7 +227,7 @@ export default defineConfig({
       (await databaseSecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  secrets: localSecrets(), // keys from apple login and google-play login
+  secrets: localSecrets(), // keys from apple login and secrets put
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```

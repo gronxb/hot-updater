@@ -106,9 +106,8 @@ key file. With the default
 [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), set the JSON
 in an environment variable, `HOT_UPDATER_ASC_API_KEY` for
 `secret:asc-api-key` and `HOT_UPDATER_` before any other name, upper-cased
-with `_` for every character but letters and digits, or let `apple login`,
-`google-play login`, or `secrets put` store it in a file in your home
-directory.
+with `_` for every character but letters and digits, or let `apple login` or
+`secrets put` store it in a file in your home directory.
 `secrets issue android-keystore`
 [creates a new upload keystore](/docs/concepts/secrets#create-an-android-upload-key).
 [Secrets](/docs/concepts/secrets) covers storing them.
@@ -198,8 +197,8 @@ describes.
 
 ### Where an issued key goes
 
-A key Hot Updater issues after an Apple or Google sign-in goes where builds
-read it, as one JSON value:
+A key Hot Updater issues after an Apple sign-in goes where builds read it, as
+one JSON value:
 
 - With the default [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets),
   to `~/.hot-updater/secrets/<project-key>/<name>.json`, a file only your user
@@ -213,7 +212,7 @@ sign-in issues a new one. With a
 [team store](/docs/concepts/secrets#this-machine-or-the-team), a teammate's
 sign-in finds the key already stored and issues none. After issuing, the CLI
 prints where to revoke the keys nothing uses anymore, App Store Connect's
-Integrations page (Team Keys) or the service account's keys in Google Cloud.
+Integrations page (Team Keys).
 To use one key on every machine and in CI, see
 [Share a key across machines](/docs/concepts/secrets#share-a-key-across-machines).
 
@@ -300,7 +299,7 @@ without those, the output's last 40 lines, then the log's path. With
 Every native build is tracked in the native build registry of the server that
 `database` and `storage` in `hot-updater.config.ts` name, with the same
 credentials `hot-updater deploy` uses. Before it builds, and before any Apple
-or Google sign-in, the CLI checks that it can: it asks the registry for the
+sign-in, the CLI checks that it can: it asks the registry for the
 build's scope, or, when the build adapter's prebuild has yet to generate the
 native project, for its newest build, and reads back the artifact of a build
 the registry already tracks there. When the database or the storage can't be reached, it stops in
@@ -771,50 +770,23 @@ The CLI resolves it before the build adapter's prebuild (such as
 `expo prebuild`) and the build, so a missing one fails before either runs, and
 keeps it in memory: it writes the service account to no file.
 
-When the adapter has no `play-service-account` yet, the CLI issues one in a
-terminal. It needs the [gcloud CLI](https://cloud.google.com/sdk/docs/install),
-and stops before any question without it. It asks for the app's package
-name, filled in from the `nativeBuild.android` scheme's (a choice when several
-schemes declare different ones). Then you pick one of the Google Accounts
-gcloud holds, or sign in with another through `gcloud auth login`, which also
-runs when gcloud holds none. It lists the account's Google Cloud projects and,
-in each, whether the Google Play Android Developer API is enabled:
+Before the prebuild, the CLI checks everything the upload needs: the
+`play-service-account` key, the upload keystore the scheme's
+`signing.keystore` names, and, with the key, Play access, by opening an edit
+of the app and deleting it. When anything is missing it lists every item,
+then exits without building:
 
-- When exactly one project has the API, it uses that one and says so.
-- Otherwise you pick one of the projects, or "Create a new project", the
-  default when none has the API. The new project is `hot-updater-play-<random>`.
-- An account without projects gets a new one without a question.
+```txt
+Google Play isn't ready for com.example.app:
+✗ Service account key
+  npx hot-updater secrets put play-service-account <key.json>
+✓ Upload keystore
+· Play access          checked once the key is stored
+Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play
+```
 
-Then it:
-
-1. Enables the IAM and Google Play Android Developer APIs in the project, and
-   creates the service account `hot-updater-play` there.
-2. Creates the service account's JSON key.
-3. Opens Play Console's invite page for the service account's email. Invite
-   it there with the app permission **Release apps to testing tracks**, under
-   App permissions rather than account-wide; this click is the one manual
-   step, since gcloud's sign-in may not manage Play Console users.
-4. Waits, for up to 10 minutes, until the key itself can open an edit of the
-   app, then stores it as `play-service-account`
-   ([where an issued key goes](#where-an-issued-key-goes)) and continues with
-   the build, which uploads with it.
-
-When the key never reaches the app, the CLI deletes it again and names the
-invite page; invite the service account, then run
-`npx hot-updater google-play login`. Google Play takes the first `.aab` of a
-new app only in Play Console: create the app there and upload one `.aab` by
-hand first.
-
-Google's own page asks for your password, and the CLI keeps only the issued
-key. When the key surely went nowhere, the CLI deletes the key again; the
-service account and its Play Console access stay, and the next run reuses
-them. Builds without a terminal, such as CI, use the stored key and never sign
-in: when it is missing, they fail with the command to run once in a terminal,
-`npx hot-updater google-play login` (the shortcut for
-`secrets issue play-service-account`), which does the same without building
-and keeps a key the adapter already holds;
-`secrets issue play-service-account --replace` issues a new key and names the
-old one to delete under the service account's keys in Google Cloud.
+It never creates a key or a keystore on its own: [Set up Google
+Play](#set-up-google-play) stores both once.
 
 Before the prebuild, the CLI also refuses a scheme whose build Google Play
 would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
@@ -835,12 +807,6 @@ Create the app in Play Console and upload its first `.aab` there by hand:
 Google takes a new app's first `.aab` only in Play Console, and the API
 releases the builds after it.
 
-To use a service account of your own instead, invite its email under Users
-and permissions with permission to release to testing tracks, enable the
-Google Play Android Developer API in its Google Cloud project, and store its
-key with `secrets put play-service-account --kind play-service-account
---service-account <file>`.
-
 Google Play takes each version code once: raise `versionCode` for every build
 you upload. On an app Play Console has not published yet, Google Play takes
 only draft releases, so the internal release is a draft that you roll out in
@@ -855,6 +821,76 @@ shows it as on Play internal with its version name and code, such as
 `1.7.0 (66)`; see [Reuse a build](#reuse-a-build).
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
 with the stored service account.
+
+### Set up Google Play
+
+Store two files once, check Play access, then upload:
+
+```package-install
+npx hot-updater secrets put play-service-account ~/Downloads/key.json
+npx hot-updater secrets put android-keystore ./upload.jks
+npx hot-updater doctor
+npx hot-updater google-play upload
+```
+
+#### Create the Play service account key
+
+1. In Google Cloud, [create a service account](https://console.cloud.google.com/iam-admin/serviceaccounts/create)
+   in a project. It needs no Google Cloud role.
+2. In the same project, enable the
+   [Google Play Android Developer API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com).
+3. Open the service account, then **Keys** > **Add key** > **Create new key**
+   > **JSON**. Google Cloud downloads its JSON key file.
+4. Store it with `secrets put play-service-account <file>`. The CLI checks
+   that the file is a service account key (`google-services.json` is not),
+   stores it through the config's `secrets` adapter, and reads it back.
+
+When Google Cloud refuses to create the key, the organization policy
+`iam.disableServiceAccountKeyCreation` forbids keys, as it does by default in
+organizations created since May 2024. With the Organization Policy
+Administrator role (`roles/orgpolicy.policyAdmin`), allow keys for that
+project only, or create the service account in a project outside the
+organization:
+
+```bash
+gcloud resource-manager org-policies disable-enforce iam.disableServiceAccountKeyCreation --project=<project>
+```
+
+#### Invite the service account in Play Console
+
+In Play Console, open **Users and permissions** and invite the key's
+`client_email` to the app with the app permission **Release apps to testing
+tracks**. Set it under App permissions, not account-wide. `hot-updater doctor`
+prints the email and a link that opens the invite with it filled in.
+
+A new app takes its first `.aab` only in Play Console: create the app there
+and upload one `.aab` by hand. Until then, the access check reports
+`✗ App in Play   upload the first .aab in Play Console`.
+
+#### Store the upload keystore
+
+`secrets put android-keystore <file>` stores the keystore Google Play knows as
+the app's upload key, a `.jks`, `.keystore`, or `.p12` file. At a terminal it
+asks for the keystore's password, three tries, picks its alias when it holds
+one key, tries that password for the key before asking for the key's own, and
+checks with `keytool` that they open the key as Gradle signs. Without a
+terminal, pass `--key-alias` and set `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`
+and `HOT_UPDATER_ANDROID_KEY_PASSWORD`. A scheme signs with it through
+`signing: { keystore: "secret:android-keystore" }`.
+
+Google Play keeps the key of an app's first upload. For an app that has never
+uploaded an `.aab`,
+[`secrets issue android-keystore`](/docs/concepts/secrets#create-an-android-upload-key)
+creates a new upload key instead.
+
+#### Check Play access
+
+`hot-updater doctor` shows a Google Play row when `play-service-account`
+resolves: for each package a release `nativeBuild.android` scheme builds, it
+opens an edit and deletes it, changing nothing, and names the invite or the
+first upload when the key can't reach the app. `google-play upload` and
+`native-build android --submit play-internal` run the same check before they
+build.
 
 ## Command options
 

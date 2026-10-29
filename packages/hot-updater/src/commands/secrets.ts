@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 
 import { ASC_INTEGRATIONS_URL } from "@hot-updater/apple-helper";
 import {
@@ -7,6 +6,7 @@ import {
   type CredentialKind,
   credentialIssueCommand,
   credentialLoginCommand,
+  credentialPutCommand,
   describeSecret,
   describeStoredSecret,
   getConfiguredAdapter,
@@ -32,10 +32,13 @@ import { printBanner } from "@/utils/printBanner";
 import { type Row, ui } from "../utils/cli-ui";
 import { androidKeystoreValue } from "../utils/native/androidKeystore";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { importKeystore } from "../utils/native/importKeystore";
 import {
-  ensurePlayServiceAccount,
-  serviceAccountKeysUrl,
+  GOOGLE_PLAY_GUIDE_URL,
+  parseServiceAccountKey,
 } from "../utils/native/playServiceAccount";
+import { storeCredential } from "../utils/native/storeCredential";
+import { readTypedPath } from "../utils/typedPath";
 
 /** The kinds `secrets put` stores, as `secret:` references resolve them. */
 export const SECRET_KINDS = [
@@ -47,7 +50,6 @@ export const SECRET_KINDS = [
 /** The kinds `secrets issue` issues after a sign-in. */
 export const ISSUED_KINDS = [
   "asc-api-key",
-  "play-service-account",
 ] as const satisfies readonly IssuedCredentialKind[];
 
 /** Runs `run`, printing a failure and setting exit code 1; whether it succeeded. */
@@ -65,7 +67,10 @@ export const reportFailure = async (
 };
 
 export interface SecretsPutOptions {
-  readonly kind: CredentialKind;
+  /** What the secret holds; the name, when it is a kind, by default. */
+  readonly kind?: CredentialKind;
+  /** The kind's file, as `secrets put <name> <file>` takes it. */
+  readonly file?: string;
   /** asc-api-key: the `.p8` file. */
   readonly p8?: string;
   readonly keyId?: string;
@@ -77,7 +82,12 @@ export interface SecretsPutOptions {
   readonly serviceAccount?: string;
 }
 
-type ValueFlag = Exclude<keyof SecretsPutOptions, "kind">;
+type ValueFlag = Exclude<keyof SecretsPutOptions, "kind" | "file">;
+
+/** Options with the kind they store, and the file as its flag. */
+type PutValues = Omit<SecretsPutOptions, "kind" | "file"> & {
+  readonly kind: CredentialKind;
+};
 
 /** The flags each kind takes, as `--help` names them. */
 const KIND_FLAGS: Readonly<Record<CredentialKind, readonly ValueFlag[]>> = {
@@ -95,12 +105,47 @@ const FLAG_NAMES: Readonly<Record<ValueFlag, string>> = {
   serviceAccount: "--service-account <file>",
 };
 
+/** The flag `secrets put <name> <file>` passes its file as, by kind. */
+const FILE_FLAGS: Readonly<Record<CredentialKind, ValueFlag>> = {
+  "asc-api-key": "p8",
+  "android-keystore": "keystore",
+  "play-service-account": "serviceAccount",
+};
+
 const readFile = async (file: string, flag: string) => {
   try {
-    return await fs.readFile(path.resolve(file));
+    return await fs.readFile(readTypedPath(file));
   } catch {
     throw new Error(`Can't read ${flag} ${file}.`);
   }
+};
+
+const isSecretKind = (kind: string): kind is CredentialKind =>
+  (SECRET_KINDS as readonly string[]).includes(kind);
+
+/**
+ * The options with their kind, the name's when it is a kind and none is
+ * given, and the file as the kind's flag, which it may not repeat.
+ */
+const readPutValues = (
+  name: string,
+  { kind: given, file, ...flags }: SecretsPutOptions,
+): PutValues => {
+  if (given !== undefined && !isSecretKind(given)) {
+    throw new Error(`--kind is one of ${SECRET_KINDS.join(", ")}.`);
+  }
+  const kind = given ?? (isSecretKind(name) ? name : undefined);
+  if (kind === undefined) {
+    throw new Error(
+      `Pass --kind: ${name} is not a kind.\n--kind is one of ${SECRET_KINDS.join(", ")}.`,
+    );
+  }
+  if (file === undefined) return { ...flags, kind };
+  const flag = FILE_FLAGS[kind];
+  if (flags[flag] !== undefined) {
+    throw new Error(`Pass the file once, not also ${FLAG_NAMES[flag]}.`);
+  }
+  return { ...flags, kind, [flag]: file };
 };
 
 /** A password from its environment variable, else a hidden prompt. */
@@ -124,7 +169,7 @@ const readPassword = async (envName: string, message: string) => {
  * Store Connect key, `{"keystore","storePassword","keyAlias","keyPassword"}`
  * with the keystore in base64, and a service account's own JSON.
  */
-const readSecretValue = async (options: SecretsPutOptions): Promise<string> => {
+const readSecretValue = async (options: PutValues): Promise<string> => {
   const { kind } = options;
   const foreign = Object.values(KIND_FLAGS)
     .flat()
@@ -168,27 +213,15 @@ const readSecretValue = async (options: SecretsPutOptions): Promise<string> => {
       });
     }
     case "play-service-account": {
-      const json = (
-        await readFile(required("serviceAccount"), "--service-account")
-      ).toString("utf-8");
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(json);
-      } catch {
-        parsed = undefined;
-      }
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new Error(
-          "--service-account is not a service account JSON key file.",
-        );
-      }
-      return json;
+      const file = required("serviceAccount");
+      const text = (await readFile(file, "the key")).toString("utf-8");
+      return parseServiceAccountKey(text, file).json;
     }
   }
 };
 
 /** Whether `secrets put` was given any part of a value to store. */
-const hasValueFlags = (options: SecretsPutOptions) =>
+const hasValueFlags = (options: PutValues) =>
   Object.values(KIND_FLAGS)
     .flat()
     .some((flag) => options[flag] !== undefined);
@@ -237,19 +270,20 @@ export const environmentOverrides = (
 /**
  * `secrets put`: stores a build credential you have as `name` through the
  * config's `secrets` adapter, or `localSecrets()` by default, as one JSON
- * value that `secret:<name>` resolves. It never signs in: `secrets issue`
- * does.
+ * value that `secret:<name>` resolves, and reads it back exactly. The
+ * kind defaults to the name, and `<file>` is the kind's file: a service
+ * account's JSON key, checked to be one, or a keystore, whose alias and
+ * passwords a terminal asks for without `--key-alias`. It never signs in
+ * or calls Google Play: `secrets issue` signs in, doctor checks access.
  */
 export const handleSecretsPut = async (
   name: string,
-  options: SecretsPutOptions,
+  given: SecretsPutOptions,
 ): Promise<void> => {
   printBanner();
   await reportFailure(async () => {
     assertSecretName(name);
-    if (!(SECRET_KINDS as readonly string[]).includes(options.kind)) {
-      throw new Error(`--kind is one of ${SECRET_KINDS.join(", ")}.`);
-    }
+    const options = readPutValues(name, given);
     const { kind } = options;
     // No key to store: the sign-in that issues one is `secrets issue`'s.
     if (isIssuedKind(kind) && !hasValueFlags(options)) {
@@ -257,9 +291,22 @@ export const handleSecretsPut = async (
         `secrets put needs ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.\n${ui.withCommand("To issue a new key, run", credentialLoginCommand(kind, name))}`,
       );
     }
-    if (kind === "android-keystore" && !hasValueFlags(options)) {
+    if (kind === "play-service-account" && !options.serviceAccount) {
       throw new Error(
-        `secrets put needs ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.\n${ui.withCommand("To create a new key, run", credentialIssueCommand(kind, name))}`,
+        `${ui.withCommand("secrets put needs the JSON key file:", credentialPutCommand(kind, name))}\n${GOOGLE_PLAY_GUIDE_URL}`,
+      );
+    }
+    if (kind === "android-keystore" && !options.keystore) {
+      throw new Error(
+        `${ui.withCommand("secrets put needs the keystore file:", credentialPutCommand(kind, name))}\n${ui.withCommand("To create a new key, run", credentialIssueCommand(kind, name))}`,
+      );
+    }
+    // The alias and passwords of a keystore are asked at a terminal only.
+    const asksKeystore = kind === "android-keystore" && !options.keyAlias;
+    const reason = nonInteractiveReason();
+    if (asksKeystore && reason !== undefined) {
+      throw new Error(
+        `Can't ask for the keystore's passwords ${reason}: pass --key-alias.`,
       );
     }
     // Registers the config's secrets adapter, which everything below uses.
@@ -267,24 +314,31 @@ export const handleSecretsPut = async (
     const cwd = getCwd();
     // The keystore's passwords are this command's input, not an override.
     const overrides = environmentOverrides(
-      options.kind,
+      kind,
       name,
       secrets,
       await readLoadedHotUpdaterEnv(cwd),
     ).filter((variable) => !PASSWORD_INPUTS.has(variable));
     if (overrides.length > 0) {
       throw new Error(
-        `The environment or .env.hotupdater overrides ${options.kind}.\nUnset ${listNames(overrides)}.`,
+        `The environment or .env.hotupdater overrides ${kind}.\nUnset ${listNames(overrides)}.`,
       );
     }
+    if (asksKeystore) {
+      await importKeystore({ secrets, name, file: options.keystore! });
+      return;
+    }
     const value = await readSecretValue(options);
-    // Masked before it is sent, so no failure can print it.
-    registerCredentialValue(value);
-    await secrets.set(name, value, { cwd });
+    await storeCredential(secrets, name, value);
+    const email =
+      kind === "play-service-account"
+        ? (JSON.parse(value) as { client_email: string }).client_email
+        : undefined;
     p.log.success(
       ui.block("Secret stored", [
         ui.kv("Name", name),
-        ui.kv("Kind", options.kind),
+        ui.kv("Kind", kind),
+        email && ui.kv("Service account", email),
         ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
       ]),
     );
@@ -304,10 +358,6 @@ const ISSUERS: Readonly<
   "asc-api-key": {
     label: "App Store Connect API key",
     account: "Apple Account",
-  },
-  "play-service-account": {
-    label: "Play service account",
-    account: "Google Account",
   },
 };
 
@@ -336,66 +386,23 @@ const parseFields = (value: string): Record<string, unknown> | undefined => {
 };
 
 /**
- * The key an App Store Connect key's `keyId`, or a service account's
- * `client_email`, `private_key_id`, and `project_id`, name, read from the
- * fields of its JSON value; nothing for a value without them.
+ * The key an App Store Connect key's `keyId` names, read from the fields
+ * of its JSON value; nothing for a value without one.
  */
 const describeHeldKey = (
-  kind: IssuedCredentialKind,
   fields: Record<string, unknown> | undefined,
 ): HeldKey | undefined => {
-  if (!fields) return undefined;
-  if (kind === "asc-api-key") {
-    const keyId = stringField(fields, "keyId");
-    if (!keyId) return undefined;
-    return { rows: [ui.kv("Key ID", keyId)], revoke: ASC_INTEGRATIONS_URL };
-  }
-  const email = stringField(fields, "client_email");
-  if (!email) return undefined;
-  const keyId = stringField(fields, "private_key_id");
-  const projectId = stringField(fields, "project_id");
-  return {
-    rows: [
-      ui.kv("Service account", email),
-      ...(keyId ? [ui.kv("Key ID", keyId)] : []),
-    ],
-    revoke: projectId
-      ? serviceAccountKeysUrl(projectId)
-      : "Google Cloud, under the service account's keys",
-  };
+  const keyId = fields && stringField(fields, "keyId");
+  if (!keyId) return undefined;
+  return { rows: [ui.kv("Key ID", keyId)], revoke: ASC_INTEGRATIONS_URL };
 };
 
-/**
- * The fields of the key an environment override sets: the App Store
- * Connect key's ID, or the service account's JSON, inline or in its file.
- */
-const readOverrideFields = async (
-  kind: IssuedCredentialKind,
+/** The fields of the key an environment override sets: its key ID. */
+const readOverrideFields = (
   env: Readonly<Record<string, string>>,
-): Promise<Record<string, unknown> | undefined> => {
-  if (kind === "asc-api-key") {
-    const keyId = getHotUpdaterEnvValue(env, "HOT_UPDATER_ASC_KEY_ID");
-    return keyId ? { keyId } : undefined;
-  }
-  const json = getHotUpdaterEnvValue(
-    env,
-    "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
-  );
-  if (json) {
-    registerCredentialValue(json);
-    return parseFields(json);
-  }
-  const file = getHotUpdaterEnvValue(
-    env,
-    "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
-  );
-  if (!file) return undefined;
-  const contents = await fs
-    .readFile(path.resolve(getCwd(), file), "utf-8")
-    .catch(() => undefined);
-  if (contents === undefined) return undefined;
-  registerCredentialValue(contents);
-  return parseFields(contents);
+): Record<string, unknown> | undefined => {
+  const keyId = getHotUpdaterEnvValue(env, "HOT_UPDATER_ASC_KEY_ID");
+  return keyId ? { keyId } : undefined;
 };
 
 /**
@@ -428,11 +435,10 @@ export interface SecretsIssueOptions {
 }
 
 /**
- * `secrets issue`, and its shortcuts `apple login` and `google-play login`:
- * signs in, at a terminal, and stores the key Hot Updater
+ * `secrets issue asc-api-key`, and its shortcut `apple login`: signs in,
+ * at a terminal, and stores the App Store Connect API key Hot Updater
  * issues as `name` through the config's `secrets` adapter, as builds do
- * when theirs is missing: an App Store Connect API key after an Apple
- * Account sign-in, a Play service account after a Google one.
+ * when theirs is missing.
  *
  * - A key the per-field environment variables set, such as
  *   `HOT_UPDATER_ASC_KEY_ID`, is kept, and builds read it before any
@@ -463,7 +469,7 @@ export const handleSecretsIssue = async (
     const issuer = ISSUERS[kind];
 
     // Registers the config's secrets adapter, which everything below uses.
-    const { secrets, nativeBuild } = await loadConfig(null);
+    const { secrets } = await loadConfig(null);
     const cwd = getCwd();
     const env = await readLoadedHotUpdaterEnv(cwd);
 
@@ -474,7 +480,7 @@ export const handleSecretsIssue = async (
           `The environment or .env.hotupdater overrides ${kind}.\nUnset ${listNames(overrides)}.`,
         );
       }
-      const held = describeHeldKey(kind, await readOverrideFields(kind, env));
+      const held = describeHeldKey(readOverrideFields(env));
       p.log.step(
         ui.block(`${issuer.label} set by the environment`, [
           ...(held?.rows ?? []),
@@ -490,9 +496,7 @@ export const handleSecretsIssue = async (
     // Masked before anything can print it: only its IDs are named.
     if (stored !== undefined) registerCredentialValue(stored);
     const previous =
-      stored === undefined
-        ? undefined
-        : describeHeldKey(kind, parseFields(stored));
+      stored === undefined ? undefined : describeHeldKey(parseFields(stored));
     if (found !== undefined && !replace) {
       p.log.step(
         ui.block(`${issuer.label} already stored`, [
@@ -533,29 +537,13 @@ export const handleSecretsIssue = async (
       replace: true,
       replacing: stored !== undefined,
     };
-    const result =
-      kind === "play-service-account"
-        ? await ensurePlayServiceAccount({
-            ...request,
-            // A scheme's application ID defaults to its package name.
-            packageNames: Object.values(nativeBuild?.android ?? {}).flatMap(
-              (scheme) =>
-                scheme ? [scheme.applicationId ?? scheme.packageName] : [],
-            ),
-          })
-        : await ensureAscApiKey(request);
+    const result = await ensureAscApiKey(request);
     if (result.status !== "issued" || stored === undefined) return;
     // Never revoked: CI or a copy elsewhere may still use it.
     p.log.warn(
       ui.block(`The old ${issuer.label} is still valid`, [
         ...(previous?.rows ?? []),
-        ui.kv(
-          "Revoke",
-          previous?.revoke ??
-            (kind === "asc-api-key"
-              ? ASC_INTEGRATIONS_URL
-              : "Google Cloud, under the service account's keys"),
-        ),
+        ui.kv("Revoke", previous?.revoke ?? ASC_INTEGRATIONS_URL),
       ]),
     );
   });

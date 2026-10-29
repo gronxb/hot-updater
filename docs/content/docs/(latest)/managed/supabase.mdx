@@ -225,7 +225,7 @@ export default defineConfig({
       (await deploySecrets()).HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  secrets: localSecrets(), // keys from apple login and google-play login
+  secrets: localSecrets(), // keys from apple login and secrets put
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```

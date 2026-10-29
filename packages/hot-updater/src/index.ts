@@ -104,10 +104,7 @@ import {
   handleStoragePrune,
   parseStoragePruneProtection,
 } from "./commands/storage";
-import {
-  handleGooglePlayUploadKey,
-  handleUploadKeyIssue,
-} from "./commands/uploadKey";
+import { handleUploadKeyIssue } from "./commands/uploadKey";
 import { ui } from "./utils/cli-ui";
 
 const DEFAULT_CHANNEL = "production";
@@ -438,10 +435,15 @@ secretsCommand
     "Store a build credential you have as one JSON value that secret:<name> resolves",
   )
   .argument("<name>", "the secret's name, such as release-keystore")
+  .argument(
+    "[file]",
+    "the file to store: the service account's JSON key, the keystore, or the .p8 key",
+  )
   .addOption(
-    new Option("--kind <kind>", "what the secret holds")
-      .choices(SECRET_KINDS)
-      .makeOptionMandatory(),
+    new Option(
+      "--kind <kind>",
+      "what the secret holds (default: the name, when it is a kind)",
+    ).choices(SECRET_KINDS),
   )
   .option("--p8 <file>", "asc-api-key: the .p8 key file")
   .option("--key-id <id>", "asc-api-key: the key ID")
@@ -457,9 +459,18 @@ secretsCommand
   )
   .addHelpText(
     "after",
-    "\nTo sign in and have Hot Updater issue an App Store Connect API key or a Play service account, run apple login or google-play login (secrets issue).",
+    [
+      "",
+      "Google Play:",
+      "  secrets put play-service-account <key.json>",
+      "  secrets put android-keystore <upload.jks>",
+      "At a terminal, a keystore without --key-alias asks for its passwords.",
+      "To sign in and issue an App Store Connect API key, run apple login.",
+    ].join("\n"),
   )
-  .action((name: string, options) => handleSecretsPut(name, options));
+  .action((name: string, file: string | undefined, options) =>
+    handleSecretsPut(name, { ...options, ...(file ? { file } : {}) }),
+  );
 
 secretsCommand
   .command("import")
@@ -476,7 +487,7 @@ secretsCommand
 secretsCommand
   .command("issue")
   .description(
-    "Sign in, at a terminal, and store the App Store Connect API key or Play service account Hot Updater issues, or create an Android upload key",
+    "Sign in, at a terminal, and store the App Store Connect API key Hot Updater issues, or create an Android upload key",
   )
   .addArgument(
     new Argument("<kind>", "what to issue").choices([
@@ -501,17 +512,15 @@ secretsCommand
     [
       "",
       "asc-api-key signs in to your Apple Account in Hot Updater's own prompts.",
-      "play-service-account signs in to Google with gcloud, then waits while you",
-      "invite the service account in Play Console.",
       "",
       "A key already stored, or set by the environment, is kept. --replace never",
       "revokes the old key: it names the key and where to revoke it.",
       "In CI or without a terminal it never signs in; store a key you have with",
       "secrets put instead.",
       "",
-      "android-keystore creates a new upload key with the JDK's keytool. A stored",
-      "keystore is kept: once Google Play has it, builds signed with another fail.",
-      "--replace overwrites it, so back it up first.",
+      "android-keystore creates a new upload key with the JDK's keytool. It fits",
+      "only an app with no .aab on Google Play yet: Play keeps the first key.",
+      "A stored keystore is kept; --replace overwrites it, so back it up first.",
     ].join("\n"),
   )
   .action(async (kind, name, options) => {
@@ -528,9 +537,9 @@ secretsCommand
   });
 
 /**
- * `apple login` and `google-play login`: the shortcuts of `secrets issue`
- * people meet first, with its handler and options. Hot Updater keeps no
- * session, so there is no logout or whoami.
+ * `apple login`: the shortcut of `secrets issue` people meet first, with
+ * its handler and options. Hot Updater keeps no session, so there is no
+ * logout or whoami.
  */
 const LOGIN_COMMANDS = [
   {
@@ -540,15 +549,6 @@ const LOGIN_COMMANDS = [
     description:
       "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
     signIn: "signs in to your Apple Account in Hot Updater's own prompts",
-  },
-  {
-    kind: "play-service-account",
-    group:
-      "Google Play: login issues the Play service account, upload builds an .aab and releases it to the internal track",
-    description:
-      "Sign in with Google and store the Play service account Hot Updater issues, then the upload key",
-    signIn:
-      "signs in to Google with gcloud and waits while you invite the service account in Play Console, then stores the upload key: one it creates, or the keystore you have",
   },
 ] as const satisfies readonly {
   kind: (typeof ISSUED_KINDS)[number];
@@ -580,13 +580,11 @@ const onlyShortcut = (
   return false;
 };
 
-/** The `apple` and `google-play` commands, by the kind each logs in for. */
-const loginGroups = new Map<(typeof ISSUED_KINDS)[number], Command>();
+/** The `apple` command, by the kind it logs in for. */
 for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
   const groupCommand = program
     .command(CREDENTIAL_LOGIN_GROUPS[kind])
     .description(group);
-  loginGroups.set(kind, groupCommand);
   const shortcut = `${CREDENTIAL_LOGIN_GROUPS[kind]} login`;
   groupCommand
     .command("login")
@@ -614,15 +612,15 @@ for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
       ) {
         return;
       }
-      if (!(await handleSecretsIssue(kind, kind))) return;
-      // Google Play also needs the key that signs the builds it takes,
-      // once the service account is ready.
-      if (kind === "play-service-account") await handleGooglePlayUploadKey();
+      await handleSecretsIssue(kind, kind);
     });
 }
 
-loginGroups
-  .get("play-service-account")!
+program
+  .command("google-play")
+  .description(
+    "Google Play: upload builds an .aab and releases it to the internal track",
+  )
   .command("upload")
   .description(
     "Shortcut for hot-updater native-build android --submit play-internal: build the .aab, track it, and release it to Google Play's internal track",
@@ -639,9 +637,10 @@ loginGroups
       "",
       "Shortcut for `hot-updater native-build android --scheme <scheme> --submit play-internal`.",
       "It takes only --scheme; for --json or --output-path, run native-build android.",
-      "Without a Play service account, it signs in to Google with gcloud at a",
-      "terminal, as native-build android does; in CI it never signs in (run",
-      "google-play login once first).",
+      "Before it builds, it checks the service account key, the upload keystore,",
+      "and Play access, and lists everything missing. Store the files with:",
+      "  secrets put play-service-account <key.json>",
+      "  secrets put android-keystore <upload.jks>",
     ].join("\n"),
   )
   .action(async (options: StoreUploadOptions, command) => {

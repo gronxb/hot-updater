@@ -24,6 +24,7 @@ import {
 } from "@hot-updater/apple-helper";
 import {
   createMinBundleId,
+  type CredentialRequest,
   type CredentialResolver,
   type Credentials,
   getConfiguredSecrets,
@@ -74,7 +75,10 @@ import {
   recordNativeBuildSubmission,
   storeVersionLabel,
 } from "../utils/native/nativeBuildSubmission";
-import { ensurePlayServiceAccount } from "../utils/native/playServiceAccount";
+import {
+  checkGooglePlay,
+  formatGooglePlayReadiness,
+} from "../utils/native/playServiceAccount";
 import {
   type NativeBuildCache,
   rememberTrackedBuild,
@@ -157,8 +161,6 @@ const buildNativeInternal = async ({
       async (credentials) => {
         let ascApiKey: Credentials["asc-api-key"] | undefined;
         let serviceAccount: Credentials["play-service-account"] | undefined;
-        // Whether a sign-in issued the service account's key.
-        let serviceAccountIssued = false;
         // Why the build is not tracked, decided before it is built.
         let trackingSkipped: NativeBuildTrackingSkip | null = null;
         // A dry run's missing store key: reported, and the run fails at the end.
@@ -197,6 +199,23 @@ const buildNativeInternal = async ({
                     }),
                   )
                 : undefined;
+            if (uploadServiceAccount) {
+              // Everything Google Play needs, each line passed or not,
+              // before anything is tracked or built.
+              const keystore = androidSigningKeystore(androidScheme);
+              const readiness = await checkGooglePlay({
+                credentials,
+                packageName:
+                  androidScheme!.applicationId ?? androidScheme!.packageName,
+                serviceAccount: uploadServiceAccount,
+                ...(keystore ? { keystore } : {}),
+              });
+              if (!readiness.ready) {
+                throw new NativeBuildFailure(
+                  formatGooglePlayReadiness(readiness),
+                );
+              }
+            }
             trackingSkipped = await prepareTracking({
               platform,
               scheme,
@@ -227,32 +246,6 @@ const buildNativeInternal = async ({
                 });
                 // This build signs and uploads with the issued key from memory.
                 if (ensured.status === "issued") secrets = ensured.secrets;
-              } catch (e) {
-                if (e instanceof CredentialSetupRefusedError) throw e;
-                throw new NativeBuildFailure(
-                  e instanceof Error ? e.message : String(e),
-                  { cause: e },
-                );
-              }
-            }
-            if (uploadServiceAccount && !dryRun) {
-              // A developer without one signs in with Google here, before
-              // anything is built, and Hot Updater issues it.
-              try {
-                const packageName =
-                  androidScheme!.applicationId ?? androidScheme!.packageName;
-                const name =
-                  uploadServiceAccount.name ?? uploadServiceAccount.kind;
-                const ensured = await ensurePlayServiceAccount({
-                  name,
-                  secrets,
-                  ...(packageName ? { packageNames: [packageName] } : {}),
-                });
-                if (ensured.status === "issued") {
-                  serviceAccountIssued = true;
-                  // This build uploads with the issued key from memory.
-                  secrets = ensured.secrets;
-                }
               } catch (e) {
                 if (e instanceof CredentialSetupRefusedError) throw e;
                 throw new NativeBuildFailure(
@@ -494,14 +487,7 @@ const buildNativeInternal = async ({
                     packageName,
                     serviceAccount: playServiceAccount,
                   }),
-                [
-                  serviceAccountIssued
-                    ? "A new service account can take minutes to get Play access: build again soon."
-                    : undefined,
-                  stays(result.artifactPath),
-                ]
-                  .filter(Boolean)
-                  .join("\n"),
+                stays(result.artifactPath),
               ),
               // The version code is read only once Google Play refused it.
               (cause) =>
@@ -910,21 +896,30 @@ const resolveSigningCredentials = async (
   const ascApiKey = iosScheme?.simulator
     ? undefined
     : iosScheme?.signing?.ascApiKey;
-  const keystore = /debug$/i.test(androidScheme?.variant ?? "Release")
-    ? undefined
-    : androidScheme?.signing?.keystore;
+  const keystore = androidSigningKeystore(androidScheme);
   await Promise.all([
     ascApiKey &&
       credentials.resolve({
         kind: "asc-api-key",
         name: parseSecretReference(ascApiKey, "signing.ascApiKey"),
       }),
-    keystore &&
-      credentials.resolve({
+    keystore && credentials.resolve(keystore),
+  ]);
+};
+
+/** The keystore a release variant's `signing.keystore` names, if any. */
+const androidSigningKeystore = (
+  androidScheme: NativeBuildSchemeOptions["androidScheme"],
+): CredentialRequest<"android-keystore"> | undefined => {
+  const keystore = /debug$/i.test(androidScheme?.variant ?? "Release")
+    ? undefined
+    : androidScheme?.signing?.keystore;
+  return keystore
+    ? {
         kind: "android-keystore",
         name: parseSecretReference(keystore, "signing.keystore"),
-      }),
-  ]);
+      }
+    : undefined;
 };
 
 /**

@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsIssue, handleSecretsPut } from "./secrets";
 
-const { log, text, select, confirm, ascKey, playKey } = vi.hoisted(() => ({
+const { log, text, select, confirm, ascKey } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -37,14 +37,9 @@ const { log, text, select, confirm, ascKey, playKey } = vi.hoisted(() => ({
     revoke: vi.fn(async () => true),
     dispose: vi.fn(async () => {}),
   },
-  /** The service account key the stand-in Google sign-in issues. */
-  playKey: {
-    revoke: vi.fn(async () => true),
-    dispose: vi.fn(async () => {}),
-  },
 }));
 
-// Only the config, the prompts, and the two sign-ins are stood in for.
+// Only the config, the prompts, and the Apple sign-in are stood in for.
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig: vi.fn(),
@@ -68,27 +63,6 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
     ...ascKey,
   })),
 }));
-vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
-  issuePlayServiceAccount: vi.fn(
-    async (request: { askPackageName: () => Promise<string> }) => {
-      // The issuer asks once its sign-in tool is found.
-      packageNames.push(await request.askPackageName());
-      return {
-        json: NEW_SERVICE_ACCOUNT,
-        email: "hot-updater-play@my-app.iam.gserviceaccount.com",
-        projectId: "my-app",
-        keyId: "newkey-play-0001",
-        ...playKey,
-      };
-    },
-  ),
-}));
-
-/** The package names the issuer was given, in order. */
-const packageNames: string[] = [];
-
-import { issuePlayServiceAccount } from "@hot-updater/android-helper";
 import { issueAscApiKey } from "@hot-updater/apple-helper";
 
 const NEW_P8 =
@@ -106,15 +80,6 @@ const NEW_SERVICE_ACCOUNT = JSON.stringify({
     "-----BEGIN PRIVATE KEY-----\nMIIBissueSpecNewPlayKey01\n-----END PRIVATE KEY-----",
   client_email: "hot-updater-play@my-app.iam.gserviceaccount.com",
 });
-const OLD_SERVICE_ACCOUNT = JSON.stringify({
-  type: "service_account",
-  project_id: "old-project",
-  private_key_id: "oldkey-play-0001",
-  private_key:
-    "-----BEGIN PRIVATE KEY-----\nMIIBissueSpecOldPlayKey01\n-----END PRIVATE KEY-----",
-  client_email: "uploader@old-project.iam.gserviceaccount.com",
-});
-
 const ENV_NAMES = [
   "HOT_UPDATER_ASC_KEY_PATH",
   "HOT_UPDATER_ASC_KEY",
@@ -518,204 +483,117 @@ describe("hot-updater secrets issue asc-api-key", () => {
   });
 });
 
-describe("hot-updater secrets issue play-service-account", () => {
-  it("signs in with Google through gcloud, and stores the issued service account through the adapter", async () => {
-    const { held } = writableStore();
+describe("hot-updater secrets put play-service-account <file>", () => {
+  const writeKey = async (contents: string, name = "my-app-1234.json") => {
+    const file = path.join(directory, name);
+    await fs.writeFile(file, contents);
+    return file;
+  };
 
-    await withTTY(true, () => handleSecretsIssue("play-service-account"));
+  it("stores the JSON key through the adapter, reads it back, and names its service account, without calling Google Play", async () => {
+    const { held, calls } = writableStore();
+    const file = await writeKey(NEW_SERVICE_ACCOUNT);
+
+    await handleSecretsPut("play-service-account", { file });
 
     expect(process.exitCode).toBeUndefined();
-    expect(packageNames.at(-1)).toBe("com.example.app");
     expect(held.get("play-service-account")).toBe(NEW_SERVICE_ACCOUNT);
-    expect(printed()).toContain("Play service account stored");
-    expect(printed()).not.toContain("issueSpecNewPlayKey01");
-    expect(playKey.revoke).not.toHaveBeenCalled();
-    expect(lastLogged()).toBe(
+    expect(calls).toEqual([
+      "set play-service-account",
+      "get play-service-account",
+    ]);
+    expect(stripVTControlCharacters(log.success.mock.calls[0]![0])).toBe(
       [
-        "Play service account stored",
+        "Secret stored",
+        "Name             play-service-account",
+        "Kind             play-service-account",
         "Service account  hot-updater-play@my-app.iam.gserviceaccount.com",
-        "Key ID           newkey-play-0001",
         "Source           spec://play-service-account",
       ].join("\n"),
     );
+    expect(printed()).not.toContain("MIIBissueSpecNewPlayKey01");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("offers the package name the config's nativeBuild.android scheme declares", async () => {
+  it("stores it in localSecrets()'s store by default", async () => {
+    configure();
+    const file = await writeKey(NEW_SERVICE_ACCOUNT);
+
+    await handleSecretsPut("play-service-account", { file });
+
+    await expect(
+      fs.readFile(keyFile("play-service-account"), "utf-8"),
+    ).resolves.toBe(NEW_SERVICE_ACCOUNT);
+  });
+
+  it("refuses google-services.json, storing nothing", async () => {
     const { store } = writableStore();
-    vi.mocked(loadConfig).mockResolvedValue({
-      secrets: resolveSecretsAdapter(store),
-      nativeBuild: {
-        android: {
-          release: { packageName: "com.codex.relay" },
-          staging: {
-            packageName: "com.codex.relay",
-            applicationId: "com.codex.relay",
-          },
-        },
-      },
-    } as never);
-    text.mockImplementation(
-      async ({ initialValue }: { initialValue?: string }) => initialValue,
+    const file = await writeKey(
+      JSON.stringify({ project_info: { project_id: "my-app" }, client: [] }),
+      "google-services.json",
     );
 
-    await withTTY(true, () => handleSecretsIssue("play-service-account"));
-
-    expect(select).not.toHaveBeenCalled();
-    expect(text).toHaveBeenCalledWith(
-      expect.objectContaining({ initialValue: "com.codex.relay" }),
-    );
-    expect(packageNames.at(-1)).toBe("com.codex.relay");
-  });
-
-  it("chooses among the application IDs several schemes declare, or takes another", async () => {
-    const { store } = writableStore();
-    vi.mocked(loadConfig).mockResolvedValue({
-      secrets: resolveSecretsAdapter(store),
-      nativeBuild: {
-        android: {
-          release: { packageName: "com.codex.relay" },
-          staging: {
-            packageName: "com.codex.relay",
-            applicationId: "com.codex.relay.staging",
-          },
-        },
-      },
-    } as never);
-    select.mockResolvedValueOnce("com.codex.relay.staging");
-
-    await withTTY(true, () => handleSecretsIssue("play-service-account"));
-
-    expect(select).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: "The app's package name in Google Play",
-        options: [
-          { value: "com.codex.relay", label: "com.codex.relay" },
-          {
-            value: "com.codex.relay.staging",
-            label: "com.codex.relay.staging",
-          },
-          { value: "", label: "Another package name" },
-        ],
-      }),
-    );
-    expect(text).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: "The app's package name in Google Play",
-      }),
-    );
-    expect(packageNames.at(-1)).toBe("com.codex.relay.staging");
-
-    vi.clearAllMocks();
-    select.mockResolvedValueOnce("");
-    await withTTY(true, () =>
-      handleSecretsIssue("play-service-account", "play-other"),
-    );
-
-    expect(text).toHaveBeenCalledWith(
-      expect.objectContaining({ placeholder: "com.example.app" }),
-    );
-    expect(packageNames.at(-1)).toBe("com.example.app");
-  });
-
-  it("keeps a stored service account without signing in, naming it", async () => {
-    writableStore({ "play-service-account": OLD_SERVICE_ACCOUNT });
-
-    await withTTY(true, () => handleSecretsIssue("play-service-account"));
-
-    expect(process.exitCode).toBeUndefined();
-    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-    expect(printed()).toBe(
-      [
-        "Play service account already stored",
-        "Service account  uploader@old-project.iam.gserviceaccount.com",
-        "Key ID           oldkey-play-0001",
-        "Source           spec://play-service-account",
-      ].join("\n"),
-    );
-  });
-
-  it("keeps a service account the environment's file sets, naming its email", async () => {
-    const file = path.join(directory, "service-account.json");
-    await fs.writeFile(file, OLD_SERVICE_ACCOUNT);
-    vi.stubEnv("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH", file);
-    const { calls } = writableStore();
-
-    await withTTY(true, () => handleSecretsIssue("play-service-account"));
-
-    expect(process.exitCode).toBeUndefined();
-    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-    expect(calls).toEqual(["get play-service-account"]);
-    const output = printed();
-    expect(output).toContain("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH");
-    expect(output).toContain("uploader@old-project.iam.gserviceaccount.com");
-    expect(output).not.toContain("issueSpecOldPlayKey01");
-  });
-
-  it("--replace stores a new key, names the old key and where to delete it, and never deletes it", async () => {
-    const { held } = writableStore({
-      "play-service-account": OLD_SERVICE_ACCOUNT,
-    });
-
-    await withTTY(true, () =>
-      handleSecretsIssue("play-service-account", "play-service-account", {
-        replace: true,
-      }),
-    );
-
-    expect(process.exitCode).toBeUndefined();
-    expect(held.get("play-service-account")).toBe(NEW_SERVICE_ACCOUNT);
-    expect(playKey.revoke).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
-    const warned = stripVTControlCharacters(
-      log.warn.mock.calls.flat().map(String).join("\n"),
-    );
-    // The URL, too long for its row, goes under its label.
-    expect(warned).toBe(
-      [
-        "The old Play service account is still valid",
-        "Service account  uploader@old-project.iam.gserviceaccount.com",
-        "Key ID           oldkey-play-0001",
-        "Revoke",
-        "https://console.cloud.google.com/iam-admin/serviceaccounts?project=old-project",
-      ].join("\n"),
-    );
-  });
-
-  it("reports a stored service account without a terminal, and exits 0", async () => {
-    const { store } = writableStore({
-      "play-service-account": OLD_SERVICE_ACCOUNT,
-    });
-
-    await withTTY(false, () => handleSecretsIssue("play-service-account"));
-
-    expect(process.exitCode).toBeUndefined();
-    expect(log.error).not.toHaveBeenCalled();
-    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-    expect(store.set).not.toHaveBeenCalled();
-    expect(printed()).toBe(
-      [
-        "Play service account already stored",
-        "Service account  uploader@old-project.iam.gserviceaccount.com",
-        "Key ID           oldkey-play-0001",
-        "Source           spec://play-service-account",
-      ].join("\n"),
-    );
-  });
-
-  it("refuses without a terminal, naming the import with --service-account", async () => {
-    writableStore();
-
-    await withTTY(false, () => handleSecretsIssue("play-service-account"));
+    await handleSecretsPut("play-service-account", { file });
 
     expect(process.exitCode).toBe(1);
     expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
       [
-        "Can't sign in to your Google Account without a terminal.",
-        "Run in a terminal: npx hot-updater google-play login",
-        "Or store a key you have: npx hot-updater secrets put --help",
+        "google-services.json is google-services.json, not a service account key.",
+        "https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
       ].join("\n"),
     );
-    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file that is no service account key, storing nothing", async () => {
+    const { store } = writableStore();
+    const file = await writeKey("{ not json");
+
+    await handleSecretsPut("play-service-account", { file });
+
+    expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
+      "my-app-1234.json is not a JSON key file.",
+    );
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("fails when the adapter doesn't read the key back as stored", async () => {
+    const { store } = writableStore();
+    store.get.mockResolvedValue({});
+    const file = await writeKey(NEW_SERVICE_ACCOUNT);
+
+    await handleSecretsPut("play-service-account", { file });
+
+    expect(process.exitCode).toBe(1);
+    expect(stripVTControlCharacters(log.error.mock.calls[0]![0])).toBe(
+      [
+        "spec-store doesn't read play-service-account back as stored.",
+        "It reads back nothing.",
+        "Nothing is kept on this machine: check spec://play-service-account.",
+      ].join("\n"),
+    );
+    expect(log.success).not.toHaveBeenCalled();
+  });
+
+  it("needs --kind for a name that is no kind, and the file only once", async () => {
+    writableStore();
+    const file = await writeKey(NEW_SERVICE_ACCOUNT);
+
+    await handleSecretsPut("widget-play", { file });
+    await handleSecretsPut("widget-play", {
+      kind: "play-service-account",
+      file,
+      serviceAccount: file,
+    });
+
+    expect(
+      log.error.mock.calls.map(([message]) =>
+        stripVTControlCharacters(String(message)),
+      ),
+    ).toEqual([
+      "Pass --kind: widget-play is not a kind.\n--kind is one of asc-api-key, android-keystore, play-service-account.",
+      "Pass the file once, not also --service-account <file>.",
+    ]);
   });
 });
 
@@ -726,13 +604,6 @@ describe("hot-updater secrets put without the key's files", () => {
       "asc-api-key",
       "--p8 <file>, --key-id <id>, --issuer-id <id>",
       "To issue a new key, run npx hot-updater apple login",
-    ],
-    [
-      "widget-play",
-      "play-service-account",
-      "--service-account <file>",
-      // Too long for the line, the command goes on its own.
-      "To issue a new key, run\nnpx hot-updater secrets issue play-service-account widget-play",
     ],
   ] as const)(
     "never signs in for %s (%s), and names the command that issues it",
@@ -747,11 +618,35 @@ describe("hot-updater secrets put without the key's files", () => {
       );
       expect(text).not.toHaveBeenCalled();
       expect(issueAscApiKey).not.toHaveBeenCalled();
-      expect(issuePlayServiceAccount).not.toHaveBeenCalled();
       expect(store.get).not.toHaveBeenCalled();
       expect(store.set).not.toHaveBeenCalled();
     },
   );
+
+  it("names the file a service account or a keystore needs", async () => {
+    const { store } = writableStore();
+
+    await handleSecretsPut("play-service-account", {});
+    await handleSecretsPut("android-keystore", {});
+
+    expect(
+      log.error.mock.calls.map(([message]) =>
+        stripVTControlCharacters(String(message)),
+      ),
+    ).toEqual([
+      [
+        "secrets put needs the JSON key file:",
+        "npx hot-updater secrets put play-service-account <key.json>",
+        "https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
+      ].join("\n"),
+      [
+        "secrets put needs the keystore file:",
+        "npx hot-updater secrets put android-keystore <upload.jks>",
+        "To create a new key, run npx hot-updater secrets issue android-keystore",
+      ].join("\n"),
+    ]);
+    expect(store.set).not.toHaveBeenCalled();
+  });
 });
 
 // No line the command prints wraps on an 80-column terminal.
