@@ -108,7 +108,8 @@ export const createStep = (
 
   const liveMessage = () => {
     const text = maskSecretValues(detail ? `${title} · ${detail}` : title);
-    const columns = output.columns ?? 80;
+    // A pseudo-terminal may report 0 columns.
+    const columns = output.columns || 80;
     return truncateLine(text, Math.max(20, columns - LIVE_LINE_CHROME));
   };
 

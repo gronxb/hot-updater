@@ -7,8 +7,8 @@ const CONFIGURE = /^> Configure project (:\S*)/;
 
 /**
  * Reads the phase of a Gradle build from its plain console output: the
- * task it runs, with how many it has run, such as
- * `:app:mergeReleaseResources · 312 tasks`.
+ * task it runs, after how many it has run, such as
+ * `312 tasks · :app:mergeReleaseResources`.
  */
 export const createGradlePhaseReader = (): BuildPhaseReader => {
   let tasks = 0;
@@ -16,7 +16,8 @@ export const createGradlePhaseReader = (): BuildPhaseReader => {
     const task = TASK.exec(line)?.[1];
     if (task) {
       tasks += 1;
-      return `${task} · ${tasks} task${tasks === 1 ? "" : "s"}`;
+      // The count first: a long task name is what a narrow line cuts.
+      return `${tasks} task${tasks === 1 ? "" : "s"} · ${task}`;
     }
     const project = CONFIGURE.exec(line)?.[1];
     if (project) return `Configuring ${project}`;

@@ -27,11 +27,11 @@ describe("createGradlePhaseReader", () => {
     expect(ASSEMBLE.flatMap((line) => read(line) ?? [])).toEqual([
       "Starting the Gradle daemon",
       "Configuring :brownfieldlib",
-      ":gradle-plugin:settings-plugin:checkKotlinGradlePluginConfigurationErrors · 1 task",
-      ":react-native-screens:configureCMakeRelWithDebInfo[x86_64] · 2 tasks",
-      ":app:createBundleReleaseJsAndAssets · 3 tasks",
-      ":callstack_repack:stripReleaseDebugSymbols · 4 tasks",
-      ":app:packageRelease · 5 tasks",
+      "1 task · :gradle-plugin:settings-plugin:checkKotlinGradlePluginConfigurationErrors",
+      "2 tasks · :react-native-screens:configureCMakeRelWithDebInfo[x86_64]",
+      "3 tasks · :app:createBundleReleaseJsAndAssets",
+      "4 tasks · :callstack_repack:stripReleaseDebugSymbols",
+      "5 tasks · :app:packageRelease",
     ]);
   });
 
