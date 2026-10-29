@@ -138,10 +138,11 @@ reference names, and the deploy credentials `secretEnv` names. It defaults to
 environment or `.env.hotupdater`, then from a file in your home directory
 that only you can read, where it stores the keys Hot Updater issues. In CI,
 map the CI's secrets to the job's environment, which `localSecrets()` reads first.
-AWS Secrets Manager and Google Secret Manager have adapters in their
-provider packages, [`secretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager)
-from `@hot-updater/aws` and [`secretManager()`](/docs/guides/secrets-adapters/google-secret-manager)
-from `@hot-updater/firebase`. Any other store is a short adapter you paste,
+AWS Secrets Manager, Google Secret Manager, and Azure Key Vault have adapters
+in their provider packages, [`secretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager)
+from `@hot-updater/aws`, [`secretManager()`](/docs/guides/secrets-adapters/google-secret-manager)
+from `@hot-updater/firebase`, and [`keyVault()`](/docs/guides/secrets-adapters/azure-key-vault)
+from `@hot-updater/azure`. Any other store is a short adapter you paste,
 such as [dotenvx](/docs/guides/secrets-adapters/dotenvx) or
 [Bitwarden](/docs/guides/secrets-adapters/bitwarden):
 [Choose an adapter](/docs/concepts/secrets#choose-an-adapter) compares them.

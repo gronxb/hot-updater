@@ -192,8 +192,9 @@ strings with
 [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
 the environment and `.env.hotupdater` first, then the config's `secrets`
 adapter. With a
-[team store](/docs/concepts/secrets#this-machine-or-the-team) there, init
-also stores them and `HOT_UPDATER_API_KEY` in it, so a teammate's commands
+[team store](/docs/concepts/secrets#this-machine-or-the-team) there, such as
+[`keyVault()`](/docs/guides/secrets-adapters/azure-key-vault) from
+`@hot-updater/azure`, init also stores them and `HOT_UPDATER_API_KEY` in it, so a teammate's commands
 read them there.
 
 On a rerun, init updates `storage`, `database`, and `plugins` in the existing
