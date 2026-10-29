@@ -991,13 +991,15 @@ const catchError = (e: unknown): never => {
   failActiveStep();
   if (e instanceof CredentialSetupRefusedError) {
     // canSignIn or canPrompt reported why, with the command to run.
+  } else if (e instanceof BuildFailedError) {
+    // Its step's line said why it failed, and its logger printed the tool's
+    // errors and the log's path: only a hint is left to print.
+    if (e.hint) p.log.error(e.hint);
   } else if (e instanceof ExecaError) {
     console.error(e);
   } else if (
     e instanceof CredentialUnavailableError ||
-    e instanceof NativeBuildFailure ||
-    // Its logger printed the tool's errors and the log's path.
-    e instanceof BuildFailedError
+    e instanceof NativeBuildFailure
   ) {
     p.log.error(e.message);
   } else if (e instanceof Error) {

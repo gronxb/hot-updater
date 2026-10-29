@@ -113,6 +113,7 @@ describe("a step without a terminal, as in CI", () => {
     pods.stop("CocoaPods dependencies installed");
     p.log.info("Using bundler for CocoaPods installation");
     p.log.warn("No ios fingerprint in fingerprint.json yet");
+    p.log.step("Updated fingerprint.json");
     expect(write).not.toHaveBeenCalled();
     step.succeed("Prepared iOS 1.7.0 · pods");
 
@@ -129,6 +130,7 @@ describe("a step without a terminal, as in CI", () => {
     expect(printed).not.toContain("CocoaPods");
     expect(printed).not.toContain("bundler");
     expect(printed).toContain("No ios fingerprint in fingerprint.json yet");
+    expect(printed).toContain("Updated fingerprint.json");
   });
 
   it("ends as failed before an error prints, since the process may exit", () => {

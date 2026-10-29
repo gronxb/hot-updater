@@ -122,7 +122,9 @@ describe("a failed xcodebuild", () => {
     expect(stdout).not.toContain("missingSymbol");
     expect(stdout).not.toContain("Build log:");
     // The step's line says which step failed, with its duration.
-    expect(stdout).toMatch(/Build failed +\d+\.\ds/);
+    expect(stdout).toMatch(
+      /Build failed · xcodebuild exited with code 65 +\d+\.\ds/,
+    );
   });
 
   it("keeps xcodebuild's raw output in the log, through its last line", async () => {

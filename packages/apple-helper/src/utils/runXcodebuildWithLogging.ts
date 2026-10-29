@@ -116,8 +116,11 @@ export const runXcodebuildWithLogging = async ({
     return { logFilePath: logger.logFilePath };
   } catch (error) {
     logger.writeError(error);
-    logger.stop(failureMessage, false);
-    throw new BuildFailedError(`${failureMessage}: ${describeFailure(error)}`, {
+    const reason = describeFailure(error);
+    // One line says which step failed and why: `Archive failed · xcodebuild
+    // exited with code 65`.
+    logger.stop(`${failureMessage} · ${reason.replace(/\.$/, "")}`, false);
+    throw new BuildFailedError(`${failureMessage}: ${reason}`, {
       logPath: logger.logPath,
       summary: logger.failureSummary,
       cause: error,

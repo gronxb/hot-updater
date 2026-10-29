@@ -194,7 +194,7 @@ export async function prepareNativeBuild(
     );
 
     if (!isFingerprintEquals(localFingerprint, generatedFingerprint)) {
-      p.log.info("Updated fingerprint.json");
+      p.log.step("Updated fingerprint.json");
     }
     target = { fingerprintHash: generatedFingerprint.hash, appVersion: null };
   } else {

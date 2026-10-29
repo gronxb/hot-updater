@@ -66,18 +66,30 @@ export class BuildFailedError extends Error {
   readonly logPath: string | null;
   /** The lines of the tool's output the summary printed. */
   readonly summary: string[];
+  /**
+   * What to do about it, such as accepting an agreement, which the summary
+   * doesn't say: the one line a command prints after it, or null.
+   */
+  readonly hint: string | null;
 
   constructor(
     message: string,
     {
       logPath,
       summary,
+      hint = null,
       cause,
-    }: { logPath: string | null; summary: string[]; cause?: unknown },
+    }: {
+      logPath: string | null;
+      summary: string[];
+      hint?: string | null;
+      cause?: unknown;
+    },
   ) {
     super(message, { cause });
     this.logPath = logPath;
     this.summary = summary;
+    this.hint = hint;
   }
 }
 

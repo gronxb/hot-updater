@@ -109,8 +109,11 @@ export async function runGradle({
     logFilePath = logger.logFilePath;
   } catch (e) {
     logger.writeError(e);
-    logger.stop("Build failed", false);
-    throw new BuildFailedError(`Build failed: ${describeFailure(e)}`, {
+    const reason = describeFailure(e);
+    // One line says the build failed and why: `Build failed · Gradle exited
+    // with code 1`.
+    logger.stop(`Build failed · ${reason.replace(/\.$/, "")}`, false);
+    throw new BuildFailedError(`Build failed: ${reason}`, {
       logPath: logger.logPath,
       summary: logger.failureSummary,
       cause: e,
