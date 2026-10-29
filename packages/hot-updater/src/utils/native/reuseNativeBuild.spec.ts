@@ -158,6 +158,32 @@ describe("reuseNativeBuild", () => {
     });
   });
 
+  it("names a long changed path by its file name", async () => {
+    const deep = `docs/content/docs/(latest)/guides/native-build.mdx`;
+    vi.mocked(computeNativeBuildKey).mockResolvedValueOnce({
+      key: KEY,
+      components: components({ [deep]: "2" }),
+      uncacheable: null,
+    });
+    vi.mocked(findCachedNativeBuild).mockResolvedValueOnce({
+      hit: null,
+      cached: {
+        version: 1,
+        key: `nbk1:${"b".repeat(64)}`,
+        components: components({ [deep]: "1" }),
+        build: result,
+        nativeBuildId: null,
+      },
+      missingArtifact: null,
+      takenMinBundleId: false,
+    });
+
+    const cache = await reuse();
+
+    expect(stepLines()).toEqual(["Cache miss · …/native-build.mdx changed"]);
+    expect(cache.logHeader).toContain(`Changed           ${deep}`);
+  });
+
   it("builds, saying why, when another build registered the MIN_BUNDLE_ID of this machine's cached build", async () => {
     vi.mocked(findCachedNativeBuild).mockResolvedValueOnce({
       hit: null,

@@ -10,11 +10,8 @@ import type {
   NativeBuildResult,
 } from "./createNativeBuild";
 
-/** The widest a summary's line is, on an 80-column terminal. */
-const LINE_WIDTH = 80;
-
-/** The summary's rows are indented under its `└  ` heading. */
-const INDENT = "   ";
+/** The widest a summary's row is, after clack's 3-column gutter. */
+const LINE_WIDTH = 77;
 
 const KIND_LABELS: Record<NativeBuildArtifactKind, string> = {
   ipa: "IPA",
@@ -41,16 +38,16 @@ export interface NativeBuildSummary {
 }
 
 /**
- * The summary's lines: what was built, with its version and build number,
- * in how long, then the artifact with its size, what it selects updates
- * by, and its log.
+ * The summary, a `ui.block` for `p.log.success`: what was built, with its
+ * version and build number, in how long, then the artifact with its size,
+ * what it selects updates by, and its log.
  *
  * ```
  * iOS release 1.7.0 (42) built in 8m30s
- *    IPA            .hot-updater/build/ios/release/CodexRelay.ipa · 48.0 MB
- *    Min bundle ID  0199c2d4-…
- *    Channel        production
- *    Log            .hot-updater/log/10291132-ios-release-build.log
+ * IPA            .hot-updater/build/ios/release/CodexRelay.ipa · 48.0 MB
+ * Min bundle ID  0199c2d4-…
+ * Channel        production
+ * Log            .hot-updater/log/10291132-ios-release-build.log
  * ```
  */
 export const formatNativeBuildSummary = ({
@@ -81,25 +78,21 @@ export const formatNativeBuildSummary = ({
     logFilePath && "Log",
   ].filter((label): label is string => Boolean(label));
   // ui.block pads each label to the widest plus two spaces.
-  const pathWidth =
-    LINE_WIDTH - INDENT.length - Math.max(...labels.map((l) => l.length)) - 2;
+  const pathWidth = LINE_WIDTH - Math.max(...labels.map((l) => l.length)) - 2;
   const size = byteSize === null ? "" : ` · ${formatBytes(byteSize)}`;
-  const [first, ...rest] = ui
-    .block(heading, [
-      ui.kv(
-        kind,
-        `${ui.fitPath(result.artifactPath, pathWidth - size.length)}${ui.muted(size)}`,
-      ),
-      result.fingerprintHash !== null &&
-        ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
-      ui.kv("Min bundle ID", ui.id(result.minBundleId)),
-      ui.kv("Channel", ui.channel(result.channel)),
-      storeUrl !== undefined && ui.kv("Open", storeUrl),
-      logFilePath !== null &&
-        ui.kv("Log", ui.path(ui.fitPath(logFilePath, pathWidth))),
-    ])
-    .split("\n");
-  return [first, ...rest.map((line) => `${INDENT}${line}`)].join("\n");
+  return ui.block(heading, [
+    ui.kv(
+      kind,
+      `${ui.fitPath(result.artifactPath, pathWidth - size.length)}${ui.muted(size)}`,
+    ),
+    result.fingerprintHash !== null &&
+      ui.kv("Fingerprint", ui.id(result.fingerprintHash)),
+    ui.kv("Min bundle ID", ui.id(result.minBundleId)),
+    ui.kv("Channel", ui.channel(result.channel)),
+    storeUrl !== undefined && ui.kv("Open", storeUrl),
+    logFilePath !== null &&
+      ui.kv("Log", ui.path(ui.fitPath(logFilePath, pathWidth))),
+  ]);
 };
 
 /**

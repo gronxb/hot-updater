@@ -53,7 +53,6 @@ vi.mock("../utils/native/ascApiKey", () => ({
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: {
-    outro: vi.fn(),
     log: {
       info: vi.fn(),
       step: vi.fn(),
@@ -485,7 +484,7 @@ describe("native-build ios --dry-run", () => {
     expect(uploadToTestFlight).not.toHaveBeenCalled();
     // The summary names the artifact; the dry run adds one line.
     const built = stripVTControlCharacters(
-      vi.mocked(p.outro).mock.calls.map(String).join("\n"),
+      vi.mocked(p.log.success).mock.calls.map(String).join("\n"),
     );
     expect(built).toMatch(/^iOS release built in \d+\.\ds\n/);
     expect(built).toContain("/out/export/App.ipa");

@@ -550,7 +550,7 @@ const buildNativeInternal = async ({
           p.log.step(summarizeDryRun(result, upload, reused));
         }
         if (missingSubmitKey === undefined) {
-          p.outro(
+          p.log.success(
             formatNativeBuildSummary({
               platformName,
               result,

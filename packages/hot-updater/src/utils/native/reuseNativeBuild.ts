@@ -72,10 +72,13 @@ const CHANGE_WIDTH = 32;
 /** The changes in a few words: `engine changed`, `App.tsx +2 changed`. */
 const summarizeChanges = (changed: readonly string[]) => {
   const first = describeChange(changed[0]!);
+  // A long path keeps its file name: `…/native-build.mdx`.
   const name =
-    first.length > CHANGE_WIDTH
-      ? `…${first.slice(-(CHANGE_WIDTH - 1))}`
-      : first;
+    first.length <= CHANGE_WIDTH
+      ? first
+      : first.includes("/")
+        ? `…/${path.basename(first)}`.slice(0, CHANGE_WIDTH)
+        : `${first.slice(0, CHANGE_WIDTH - 1)}…`;
   return changed.length > 1
     ? `${name} +${changed.length - 1} changed`
     : `${name} changed`;

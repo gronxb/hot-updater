@@ -33,7 +33,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
   p: {
-    outro: vi.fn(),
     log: {
       info: vi.fn(),
       step: vi.fn(),

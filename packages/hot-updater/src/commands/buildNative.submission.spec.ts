@@ -99,7 +99,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getCwd: () => "/project",
   loadConfig: vi.fn(async () => ({})),
   p: {
-    outro: vi.fn(),
     log: {
       info: vi.fn(),
       step: vi.fn(),

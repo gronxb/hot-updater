@@ -97,7 +97,6 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: {
-    outro: vi.fn(),
     log,
     isCancel: vi.fn(() => false),
     text: vi.fn(async ({ message }: { message: string }) =>

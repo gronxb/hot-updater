@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { linesWiderThan } from "@hot-updater/test-utils/node";
+import { linesWiderThan, renderClackLog } from "@hot-updater/test-utils/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -48,10 +48,10 @@ describe("formatNativeBuildSummary", () => {
   it("names the build, its artifact and size, and its log, under one heading", () => {
     expect(summary({}).split("\n")).toEqual([
       "iOS release 1.7.0 (42) built in 8m30s",
-      "   IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
-      "   Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
-      "   Channel        production",
-      "   Log            .hot-updater/log/10291132-ios-release-build.log",
+      "IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
+      "Channel        production",
+      "Log            .hot-updater/log/10291132-ios-release-build.log",
     ]);
   });
 
@@ -65,10 +65,10 @@ describe("formatNativeBuildSummary", () => {
       }).split("\n"),
     ).toEqual([
       "iOS release 1.7.0 (42) reused in 4.1s",
-      "   IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
-      "   Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
-      "   Channel        production",
-      "   Open           https://appstoreconnect.apple.com/apps/1/testflight/ios",
+      "IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
+      "Channel        production",
+      "Open           https://appstoreconnect.apple.com/apps/1/testflight/ios",
     ]);
   });
 
@@ -90,9 +90,9 @@ describe("formatNativeBuildSummary", () => {
 
     expect(lines[0]).toBe("Android release built in 8m30s");
     expect(lines[1]).toBe(
-      "   AAB            android/app/build/outputs/bundle/release/app-release.aab",
+      "AAB            android/app/build/outputs/bundle/release/app-release.aab",
     );
-    expect(lines[2]).toBe("   Fingerprint    3f2a9c1e5b7d");
+    expect(lines[2]).toBe("Fingerprint    3f2a9c1e5b7d");
   });
 
   it("shortens a long path so no line wraps on 80 columns", () => {
@@ -103,7 +103,7 @@ describe("formatNativeBuildSummary", () => {
       },
     });
 
-    expect(linesWiderThan(text.split("\n"))).toEqual([]);
+    expect(linesWiderThan(renderClackLog([["success", text]]))).toEqual([]);
     expect(text).toContain("…/CodexRelay.ipa · 48.0 MB");
   });
 });

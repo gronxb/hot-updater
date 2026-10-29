@@ -9,7 +9,6 @@ vi.mock("@hot-updater/apple-helper", () => ({
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: {
-    outro: vi.fn(),
     log: {
       info: vi.fn(),
       step: vi.fn(),
