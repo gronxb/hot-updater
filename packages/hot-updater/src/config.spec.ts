@@ -20,13 +20,14 @@ vi.mock("@noble/hashes/blake2.js", async (importOriginal) => {
 });
 
 describe("hot-updater exports", () => {
-  it("exposes defineConfig, the fingerprint helpers, secretEnv, and localSecrets(), the one built-in secrets adapter", () => {
+  it("exposes defineConfig, the fingerprint helpers, secretEnv, and the built-in secrets adapters, localSecrets() and infisical()", () => {
     expect(Object.keys(configApi).sort()).toEqual([
       "createAndInjectFingerprintFiles",
       "createFingerprintJSON",
       "defineConfig",
       "generateFingerprint",
       "generateFingerprints",
+      "infisical",
       "localSecrets",
       "readLocalFingerprint",
       "secretEnv",
@@ -39,7 +40,7 @@ describe("hot-updater exports", () => {
     expect([...loaded]).toEqual([]);
   });
 
-  it("has no hot-updater/secrets entry: localSecrets() is a root export", () => {
+  it("has no hot-updater/secrets entry: localSecrets() and infisical() are root exports", () => {
     const { exports } = packageJsonData as {
       exports: Record<string, unknown>;
     };

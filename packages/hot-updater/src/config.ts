@@ -16,4 +16,9 @@ export {
 } from "./utils/fingerprint";
 
 export { localSecrets, secretEnv } from "@hot-updater/cli-tools";
+export {
+  infisical,
+  type InfisicalAuth,
+  type InfisicalOptions,
+} from "./infisical";
 export type { SecretsAdapter, SecretsContext } from "@hot-updater/plugin-core";

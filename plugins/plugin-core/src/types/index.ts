@@ -448,7 +448,8 @@ export interface SecretsContext {
  * references, and the deploy credentials `secretEnv([...])` names. Values
  * are strings: binary is base64, and a credential with several fields is one
  * JSON value per name. `localSecrets()`, an export of `hot-updater`, keeps them
- * in files on this machine; a store of your own implements this.
+ * in files on this machine, and `infisical()`, another, in an Infisical
+ * project; a store of your own implements this.
  */
 export interface SecretsAdapter {
   readonly name: string;

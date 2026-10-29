@@ -24,7 +24,14 @@ const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "HOT_UPDATER_HOME",
 ]);
 
-const RESERVED_PREFIXES = ["LD_", "DYLD_", "GIT_", "NPM_CONFIG_"] as const;
+const RESERVED_PREFIXES = [
+  "LD_",
+  "DYLD_",
+  "GIT_",
+  "NPM_CONFIG_",
+  // What `infisical()` signs in to Infisical with, such as INFISICAL_TOKEN.
+  "INFISICAL_",
+] as const;
 
 /**
  * Whether `name` is a variable no secret may set: one a loader or

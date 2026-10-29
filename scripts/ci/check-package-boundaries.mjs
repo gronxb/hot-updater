@@ -6,8 +6,8 @@
  * - @hot-updater/server exports its root, the built-in adapters and the
  *   built-in plugins, and nothing else;
  * - hot-updater exports its root, which holds the config helpers,
- *   `secretEnv`, and the one built-in secrets adapter, `localSecrets()`,
- *   `./plugins` and `./signing`, and nothing else;
+ *   `secretEnv`, and the built-in secrets adapters, `localSecrets()` and
+ *   `infisical()`, `./plugins` and `./signing`, and nothing else;
  * - no package has an export whose key names `internal` or test code, and no
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
@@ -51,8 +51,9 @@ const SERVER_EXPORTS = [
 ];
 
 /**
- * The CLI package's exports: its root, `defineConfig` with `secretEnv` and
- * `localSecrets()`, the official plugin factories, and the signing adapters.
+ * The CLI package's exports: its root, `defineConfig` with `secretEnv`,
+ * `localSecrets()`, and `infisical()`, the official plugin factories, and the
+ * signing adapters.
  */
 const HOT_UPDATER_EXPORTS = [".", "./package.json", "./plugins", "./signing"];
 

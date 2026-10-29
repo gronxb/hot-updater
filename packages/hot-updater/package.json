@@ -88,7 +88,6 @@
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@hot-updater/vercel": "workspace:*",
-    "@infisical/sdk": "5.0.2",
     "@noble/hashes": "2.2.0",
     "@types/connect": "^3.4.38",
     "@types/node": "catalog:",
