@@ -257,8 +257,9 @@ export const createGoogleKeyIssuer =
         "play-access-pending",
         [
           `The key can't release ${packageName} yet.`,
-          "Invite the service account in Play Console with release access:",
+          "Invite the service account in Play Console:",
           email,
+          "App permission: Release apps to testing tracks",
           inviteUrl,
           "A new app needs its first .aab uploaded in Play Console.",
           // Not stored anywhere: the developer deletes it by hand.

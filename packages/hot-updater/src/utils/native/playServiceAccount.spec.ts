@@ -337,7 +337,12 @@ describe("ensurePlayServiceAccount", () => {
     );
 
     expect(log.info).toHaveBeenCalledWith(
-      `In Play Console, invite with release access to com.example.app:\n${EMAIL}`,
+      [
+        "In Play Console, invite this email to com.example.app:",
+        EMAIL,
+        "App permission: Release apps to testing tracks",
+        "Set it under App permissions, not account-wide.",
+      ].join("\n"),
     );
     expect(
       log.message.mock.calls.map(([message]) =>

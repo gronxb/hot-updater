@@ -51,6 +51,12 @@ export type EnsurePlayServiceAccountResult =
 /** The project choice that creates one: no project ID is empty. */
 const NEW_PROJECT = "";
 
+/**
+ * The least Play Console permission the service account needs: the CLI
+ * releases only to the internal testing track.
+ */
+const PLAY_PERMISSION = "Release apps to testing tracks";
+
 /** The account choice that signs in with another: no email is empty. */
 const ANOTHER_ACCOUNT = "";
 
@@ -251,7 +257,12 @@ export const ensurePlayServiceAccount = async ({
     },
     onInvite: async (url, email) => {
       p.log.info(
-        `In Play Console, invite with release access to ${app}:\n${email}`,
+        [
+          `In Play Console, invite this email to ${app}:`,
+          email,
+          `App permission: ${PLAY_PERMISSION}`,
+          "Set it under App permissions, not account-wide.",
+        ].join("\n"),
       );
       p.log.message(`If the browser doesn't open, open:\n${ui.path(url)}`);
       await open(url).catch(() => {});

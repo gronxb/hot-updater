@@ -569,8 +569,9 @@ describe("createGoogleKeyIssuer", () => {
     expect(error.message).toBe(
       [
         "The key can't release com.example.app yet.",
-        "Invite the service account in Play Console with release access:",
+        "Invite the service account in Play Console:",
         EMAIL,
+        "App permission: Release apps to testing tracks",
         INVITE_URL,
         "A new app needs its first .aab uploaded in Play Console.",
         "Then run: npx hot-updater google-play login",
