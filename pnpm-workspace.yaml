@@ -49,6 +49,8 @@ catalogs:
     "@azure/core-auth": 1.11.0
     "@azure/cosmos": 4.10.1
     "@azure/functions": 4.16.5
+    "@azure/identity": 4.14.0
+    "@azure/keyvault-secrets": 4.11.2
     "@azure/storage-blob": 12.34.0
   db:
     "@electric-sql/pglite": 0.4.1

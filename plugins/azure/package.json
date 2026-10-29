@@ -42,6 +42,8 @@
   "dependencies": {
     "@azure/core-auth": "catalog:azure",
     "@azure/cosmos": "catalog:azure",
+    "@azure/identity": "catalog:azure",
+    "@azure/keyvault-secrets": "catalog:azure",
     "@azure/storage-blob": "catalog:azure",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
