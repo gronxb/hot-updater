@@ -91,6 +91,10 @@ import {
   rememberTrackedBuild,
   reuseNativeBuild,
 } from "../utils/native/reuseNativeBuild";
+import {
+  resolvesAscApiKey,
+  signsWithKeystore,
+} from "../utils/native/signingCredentials";
 
 /**
  * `native-build ios` and `native-build android`: every build but a Debug
@@ -247,7 +251,9 @@ const buildNativeInternal = async ({
             // before anything is built, and Hot Updater issues it.
             const ascApiKeyName =
               uploadKey?.name ??
-              (iosScheme && !iosScheme.simulator && iosScheme.signing?.ascApiKey
+              (iosScheme &&
+              resolvesAscApiKey(iosScheme) &&
+              iosScheme.signing?.ascApiKey
                 ? parseSecretReference(
                     iosScheme.signing.ascApiKey,
                     "signing.ascApiKey",
@@ -931,9 +937,9 @@ const resolveSigningCredentials = async (
     androidScheme,
   }: Pick<NativeBuildSchemeOptions, "iosScheme" | "androidScheme">,
 ): Promise<void> => {
-  const ascApiKey = iosScheme?.simulator
-    ? undefined
-    : iosScheme?.signing?.ascApiKey;
+  const ascApiKey = resolvesAscApiKey(iosScheme)
+    ? iosScheme?.signing?.ascApiKey
+    : undefined;
   const keystore = androidSigningKeystore(androidScheme);
   await Promise.all([
     ascApiKey &&
@@ -949,9 +955,9 @@ const resolveSigningCredentials = async (
 const androidSigningKeystore = (
   androidScheme: NativeBuildSchemeOptions["androidScheme"],
 ): CredentialRequest<"android-keystore"> | undefined => {
-  const keystore = /debug$/i.test(androidScheme?.variant ?? "Release")
-    ? undefined
-    : androidScheme?.signing?.keystore;
+  const keystore = signsWithKeystore(androidScheme)
+    ? androidScheme?.signing?.keystore
+    : undefined;
   return keystore
     ? {
         kind: "android-keystore",

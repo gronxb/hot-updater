@@ -28,6 +28,77 @@ describe("ui.commandLines", () => {
 });
 
 describe("ui.prose", () => {
+  it("keeps the lines of text already laid out, with their indentation", () => {
+    expect(
+      plain(
+        ui.prose(
+          [
+            "infisical() found no Infisical sign-in. Set one of:",
+            "- INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
+            "  with INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+          ].join("\n"),
+        ),
+      ),
+    ).toEqual([
+      "infisical() found no Infisical sign-in. Set one of:",
+      "- INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
+      "  with INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+    ]);
+  });
+
+  it("keeps a command line and its continuations whole, and breaks one too wide as a command", () => {
+    expect(
+      plain(
+        ui.prose(
+          [
+            "Check the name and your access, or import your key:",
+            "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+            "  <upload.jks>",
+          ].join("\n"),
+        ),
+      ),
+    ).toEqual([
+      "Check the name and your access, or import your key:",
+      "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+      "  <upload.jks>",
+    ]);
+    expect(
+      plain(
+        ui.prose(
+          "Import it:\nnpx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
+        ),
+      ),
+    ).toEqual([
+      "Import it:",
+      "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+      "  <upload.jks>",
+    ]);
+  });
+
+  it("still shows a `command` in a laid-out line without its backticks", () => {
+    expect(
+      plain(
+        ui.prose(
+          "GitHub answered 403 to sign in.\nGive the job `permissions: id-token: write`.",
+        ),
+      ),
+    ).toEqual([
+      "GitHub answered 403 to sign in.",
+      "Give the job permissions: id-token: write.",
+    ]);
+  });
+
+  it("breaks a laid-out line too wide at spaces", () => {
+    const lines = plain(
+      ui.prose(
+        `Couldn't read the infisical secrets adapter.\n${"word ".repeat(30).trim()}`,
+      ),
+    );
+    expect(lines[0]).toBe("Couldn't read the infisical secrets adapter.");
+    expect(lines.slice(1).every((line) => line.length <= 77)).toBe(true);
+    expect(lines.slice(1).join(" ")).toBe("word ".repeat(30).trim());
+  });
+
   it("ends a command too long for a line with the punctuation after it", () => {
     expect(
       plain(

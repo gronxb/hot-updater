@@ -1,10 +1,14 @@
 import {
+  bundleSigningPutCommand,
   CREDENTIAL_ENV_NAMES,
   type ConfigResponse,
   type CredentialKind,
+  credentialStoreCommand,
+  describeMissingSecret,
   getConfiguredAdapter,
   getHotUpdaterEnvValue,
   isSecretRef,
+  readBundleSigningState,
   readLoadedHotUpdaterEnv,
   secretVariableName,
 } from "@hot-updater/cli-tools";
@@ -16,12 +20,28 @@ import {
   type RunKeytool,
   verifyKeystore,
 } from "../../utils/native/androidKeystore";
+import {
+  resolvesAscApiKey,
+  signsWithKeystore,
+} from "../../utils/native/signingCredentials";
 
 /** Where a build reads one `secret("<name>")` the config references. */
 export interface SecretReferenceStatus {
   readonly name: string;
   /** The config fields that reference it, such as `signing.privateKey`. */
   readonly fields: readonly string[];
+  /**
+   * Whether a build or a deploy reads it: an iOS device scheme's
+   * `signing.ascApiKey`, a release variant's `signing.keystore`, or the
+   * bundle signing key while signing is on. Missing, it fails doctor; a
+   * simulator scheme, a debug variant, or `enabled: false` reads nothing.
+   */
+  readonly required: boolean;
+  /**
+   * Set when it is required and missing: what is missing, and the command
+   * that imports the existing key, never one that creates another.
+   */
+  readonly message?: string;
   /**
    * `environment`: an override in the environment or `.env.hotupdater`,
    * read before the adapter; `adapter`: the `secrets` adapter holds it;
@@ -48,6 +68,7 @@ export interface SecretsStatus {
 interface Reference {
   readonly field: string;
   readonly name: string;
+  readonly required: boolean;
   readonly kind?: CredentialKind;
 }
 
@@ -57,14 +78,22 @@ const referencedName = (reference: unknown): string | undefined =>
 /** Every build credential's `secret("<name>")` in the config. */
 const collectReferences = (config: ConfigResponse): Reference[] => {
   const references: Reference[] = [];
-  const add = (field: string, reference: unknown, kind?: CredentialKind) => {
+  const add = (
+    field: string,
+    reference: unknown,
+    required: boolean,
+    kind?: CredentialKind,
+  ) => {
     const name = referencedName(reference);
-    if (name) references.push({ field, name, ...(kind ? { kind } : {}) });
+    if (name) {
+      references.push({ field, name, required, ...(kind ? { kind } : {}) });
+    }
   };
   for (const [scheme, ios] of Object.entries(config.nativeBuild?.ios ?? {})) {
     add(
       `nativeBuild.ios.${scheme}.signing.ascApiKey`,
       ios?.signing?.ascApiKey,
+      resolvesAscApiKey(ios),
       "asc-api-key",
     );
   }
@@ -74,21 +103,59 @@ const collectReferences = (config: ConfigResponse): Reference[] => {
     add(
       `nativeBuild.android.${scheme}.signing.keystore`,
       android?.signing?.keystore,
+      signsWithKeystore(android),
       "android-keystore",
     );
   }
   const signing: unknown = config.signing;
+  const signs = readBundleSigningState(signing).status === "on";
   if (isSecretRef(signing)) {
-    add("signing", signing);
+    add("signing", signing, signs);
   } else if (
     signing &&
     typeof signing === "object" &&
     "privateKey" in signing
   ) {
-    add("signing.privateKey", signing.privateKey);
+    add("signing.privateKey", signing.privateKey, signs);
   }
   return references;
 };
+
+/**
+ * Why a build or a deploy stops without `name`, by what reads it: an
+ * upload keystore or a signing key is imported, as a store or a shipped
+ * app may already trust it; an App Store Connect API key is issued.
+ */
+const describeMissing = (
+  secrets: ConfigResponse["secrets"],
+  name: string,
+  references: readonly Reference[],
+): string => {
+  const kind = references.find((reference) => reference.kind)?.kind;
+  return describeMissingSecret(
+    secrets,
+    name,
+    kind === "asc-api-key"
+      ? {
+          action: "sign in to store one",
+          command: credentialStoreCommand(kind, name),
+        }
+      : {
+          command:
+            kind === undefined
+              ? bundleSigningPutCommand(name)
+              : credentialStoreCommand(kind, name),
+        },
+  );
+};
+
+/** The `secret()`s a build or a deploy reads that resolve nowhere. */
+export const missingRequiredSecrets = (
+  status: SecretsStatus | undefined,
+): SecretReferenceStatus[] =>
+  (status?.references ?? []).filter(
+    ({ required, source }) => required && source === "missing",
+  );
 
 /**
  * Where each build credential's `secret()` is read from, with one `get`
@@ -161,20 +228,28 @@ export const checkSecrets = async (
     adapter: secrets.name,
     references: names.map((name) => {
       const fields = byName.get(name)!.map(({ field }) => field);
+      const required = byName
+        .get(name)!
+        .some((reference) => reference.required);
       const environment = overridden(name);
       if (held === undefined) {
         return environment
-          ? { name, fields, source: "environment" }
-          : { name, fields };
+          ? { name, fields, required, source: "environment" }
+          : { name, fields, required };
       }
       const value = Object.hasOwn(held, name) ? held[name] : undefined;
       const inAdapter = typeof value === "string" && value.length > 0;
       const refused = refusals.get(name);
+      const missing = required && !environment && !inAdapter;
       return {
         name,
         fields,
+        required,
         source: environment ? "environment" : inAdapter ? "adapter" : "missing",
         inAdapter,
+        ...(missing
+          ? { message: describeMissing(secrets, name, byName.get(name)!) }
+          : {}),
         ...(refused === undefined ? {} : { refused }),
       };
     }),

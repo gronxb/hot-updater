@@ -49,6 +49,14 @@ import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
+// The Play Developer API's own specs cover the edit; a spec answers it here.
+const { checkPlayAccess } = vi.hoisted(() => ({ checkPlayAccess: vi.fn() }));
+vi.mock("@hot-updater/android-helper", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@hot-updater/android-helper")>();
+  return { ...original, checkPlayAccess };
+});
+
 /** The JDK's keytool, when this machine has one: CI's runners do. */
 const realKeytool = await findKeytool().catch(() => undefined);
 
@@ -80,8 +88,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ).getBundleSigningPublicKey,
   // The secrets check reads the environment and the adapter as the CLI does.
   ...(({
+    bundleSigningPutCommand,
     CREDENTIAL_ENV_NAMES,
     credentialPutCommand,
+    credentialStoreCommand,
+    describeMissingSecret,
     getConfiguredAdapter,
     getDeploySecretNames,
     getHotUpdaterEnvValue,
@@ -90,9 +101,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     registerCredentialValue,
     secret,
     secretVariableName,
+    withCredentialResolver,
   }) => ({
+    bundleSigningPutCommand,
     CREDENTIAL_ENV_NAMES,
     credentialPutCommand,
+    credentialStoreCommand,
+    describeMissingSecret,
     getConfiguredAdapter,
     getDeploySecretNames,
     getHotUpdaterEnvValue,
@@ -101,6 +116,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     registerCredentialValue,
     secret,
     secretVariableName,
+    withCredentialResolver,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   // The signing row says what deploy says.
   ...(({
@@ -502,12 +518,23 @@ describe("doctor", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // No Play key from this machine, and no request to Google: a spec that
+    // checks Play access stores its key and answers for it.
+    for (const name of [
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
+    ]) {
+      vi.stubEnv(name, "");
+    }
+    checkPlayAccess.mockReset();
+    checkPlayAccess.mockRejectedValue(new Error("No Play request in specs."));
     packageJsonData.version = "1.0.0";
     mockGetCwd.mockReturnValue("/mock/cwd");
     mockLoadConfig.mockResolvedValue(createConfig());
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await Promise.all(
       tempProjects.map((project) =>
         fs.rm(project, { recursive: true, force: true }),
@@ -595,12 +622,36 @@ describe("doctor", () => {
         "bundle-signing-key  missing",
       ].join("\n"),
     );
-    expect(get).toHaveBeenCalledTimes(1);
+    // One get for every build credential; Google Play's row reads its key.
+    expect(get.mock.calls.map(([names]) => names)).toEqual([
+      ["asc-api-key", "release-keystore", "bundle-signing-key"],
+      ["play-service-account"],
+    ]);
+    // Deploy reads the signing key: its absence fails doctor, with how to
+    // import the key, never a new one.
+    const error = vi
+      .mocked(p.log.error)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
+    expect(error).toContain(
+      [
+        "bundle-signing-key isn't in the team-store secrets adapter.",
+        "Check the name and your access, or import your key:",
+        "npx hot-updater secrets put bundle-signing-key <key.pem>",
+      ].join("\n"),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith("All checks passed.");
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await handleDoctor({ json: true });
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+    await expect(handleDoctor({ json: true })).rejects.toThrow(
+      "process.exit:1",
+    );
     expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
-      success: true,
+      success: false,
       details: {
         secrets: {
           adapter: "team-store",
@@ -608,21 +659,221 @@ describe("doctor", () => {
             {
               name: "asc-api-key",
               fields: ["nativeBuild.ios.release.signing.ascApiKey"],
+              required: true,
               source: "adapter",
               inAdapter: true,
             },
             {
               name: "release-keystore",
+              required: true,
               source: "environment",
               inAdapter: false,
             },
-            { name: "bundle-signing-key", source: "missing" },
+            {
+              name: "bundle-signing-key",
+              required: true,
+              source: "missing",
+              message: expect.stringContaining(
+                "secrets put bundle-signing-key <key.pem>",
+              ),
+            },
+          ],
+        },
+      },
+    });
+    exitSpy.mockRestore();
+    logSpy.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
+  it("fails on a release keystore the secrets adapter lacks, and Google Play isn't ✓ without it", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    for (const name of [
+      "HOT_UPDATER_ANDROID_KEYSTORE_PATH",
+      "HOT_UPDATER_ANDROID_KEYSTORE_BASE64",
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH",
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
+    ]) {
+      vi.stubEnv(name, "");
+    }
+    // The Play key is stored and reaches the app; the keystore is not.
+    checkPlayAccess.mockResolvedValue({
+      status: "ready",
+      email: "play@my-app.iam.gserviceaccount.com",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: holding({
+          "play-service-account": JSON.stringify({
+            type: "service_account",
+            client_email: "play@my-app.iam.gserviceaccount.com",
+            private_key:
+              "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----",
+          }),
+        }),
+        nativeBuild: {
+          android: {
+            release: {
+              packageName: "com.example.app",
+              signing: { keystore: secret("release-keystore") },
+            },
+          },
+        },
+        signing: { enabled: false },
+      }),
+    );
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+
+    await expect(handleDoctor({ serverBaseUrl: undefined })).rejects.toThrow(
+      "process.exit:1",
+    );
+
+    const printed = (level: "step" | "warn" | "error" | "success") =>
+      vi
+        .mocked(p.log[level])
+        .mock.calls.map(([message]) =>
+          stripVTControlCharacters(String(message)),
+        );
+    expect(printed("step")).toContain(
+      [
+        "Secrets",
+        "Adapter           team-store",
+        "release-keystore  missing",
+      ].join("\n"),
+    );
+    expect(printed("error")).toContain(
+      [
+        "release-keystore isn't in the team-store secrets adapter.",
+        "Check the name and your access, or import your key:",
+        "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+        "  <upload.jks>",
+      ].join("\n"),
+    );
+    const play = [...printed("step"), ...printed("warn")].find((message) =>
+      message.startsWith("Google Play"),
+    );
+    expect(play).toBe(
+      [
+        "Google Play",
+        "✗ com.example.app      upload keystore missing",
+        "Guide: https://hot-updater.dev/docs/native-builds/google-play",
+      ].join("\n"),
+    );
+    expect(printed("warn")).toContain(play);
+    expect(printed("success")).not.toContain("All checks passed.");
+
+    // --json says the same, and exits non-zero too.
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(handleDoctor({ json: true })).rejects.toThrow(
+      "process.exit:1",
+    );
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      success: false,
+      details: {
+        secrets: {
+          references: [
+            {
+              name: "release-keystore",
+              required: true,
+              source: "missing",
+            },
+          ],
+        },
+        googlePlay: {
+          packages: [
+            {
+              packageName: "com.example.app",
+              access: { status: "ready" },
+              missingKeystore: "release-keystore",
+            },
           ],
         },
       },
     });
     logSpy.mockRestore();
+    exitSpy.mockRestore();
     vi.unstubAllEnvs();
+  });
+
+  it("warns, and puts the cause under its own head line, when the adapter can't be read", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    const cause = [
+      "infisical() found no Infisical sign-in. Set one of:",
+      "- INFISICAL_TOKEN",
+      "- INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
+      "  with INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+      "- INFISICAL_MACHINE_IDENTITY_ID, in GitHub Actions",
+      "https://hot-updater.dev/docs/guides/secrets-adapters/infisical#sign-in-on-your-machine",
+    ].join("\n");
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: {
+          name: "infisical",
+          get: async () => {
+            throw new Error(cause);
+          },
+          set: async () => {},
+        },
+        signing: secret("bundle-signing-key"),
+      }),
+    );
+
+    await handleDoctor({ serverBaseUrl: undefined });
+
+    expect(
+      vi
+        .mocked(p.log.warn)
+        .mock.calls.map(([message]) =>
+          stripVTControlCharacters(String(message)),
+        ),
+    ).toContain(`Couldn't read the infisical secrets adapter.\n${cause}`);
+    // It can't tell what is missing: the run passes, with the warning.
+    expect(p.log.success).toHaveBeenCalledWith("All checks passed.");
+  });
+
+  it("keeps a debug variant's missing keystore a warning: no build reads it", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: holding({}),
+        nativeBuild: {
+          android: {
+            debug: {
+              packageName: "com.example.app",
+              variant: "Debug",
+              signing: { keystore: secret("debug-keystore") },
+            },
+          },
+        },
+        signing: { enabled: false },
+      }),
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        secrets: {
+          references: [
+            { name: "debug-keystore", required: false, source: "missing" },
+          ],
+        },
+      },
+    });
   });
 
   it.skipIf(!realKeytool)(
@@ -1595,7 +1846,8 @@ describe("doctor", () => {
       privateKeyEncoding: { format: "pem", type: "pkcs8" },
       publicKeyEncoding: { format: "pem", type: "spki" },
     });
-    // A key only CI holds: this machine's secrets adapter has none.
+    // A key this machine's secrets adapter lacks: the Secrets rows fail on
+    // it, and the native keys go unchecked rather than mismatched.
     mockLoadConfig.mockResolvedValue(
       createConfig({
         signing: secret("bundle-signing-key"),

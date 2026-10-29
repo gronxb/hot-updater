@@ -19,6 +19,7 @@ vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
 import {
   type ConfigResponse,
   resolveSecretsAdapter,
+  secret,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -175,5 +176,60 @@ describe("doctor's Google Play check", () => {
     expect(
       stripVTControlCharacters(formatGooglePlayStatus(status!).text),
     ).toContain("✗ com.example.app      can't check\n  fetch failed");
+  });
+
+  it("marks a package whose upload keystore is missing, whatever its access", async () => {
+    checkPlayAccess.mockImplementation(
+      async ({ packageName }: { packageName: string }) =>
+        packageName === "com.example.app"
+          ? { status: "ready" }
+          : { status: "not-found", email: EMAIL },
+    );
+    const missing = (name: string) => ({
+      name,
+      fields: [],
+      required: true,
+      source: "missing" as const,
+      inAdapter: false,
+    });
+
+    const status = await checkGooglePlay(
+      {
+        ...config(secretsWith({ "play-service-account": KEY_FILE })),
+        nativeBuild: {
+          android: {
+            release: {
+              packageName: "com.example.app",
+              signing: { keystore: secret("release-keystore") },
+            },
+            staging: {
+              packageName: "com.example.app",
+              applicationId: "com.example.app.staging",
+              signing: { keystore: secret("staging-keystore") },
+            },
+          },
+        },
+      } as unknown as ConfigResponse,
+      {
+        cwd,
+        secrets: {
+          adapter: "spec-store",
+          references: [
+            missing("release-keystore"),
+            missing("staging-keystore"),
+          ],
+        },
+      },
+    );
+
+    expect(stripVTControlCharacters(formatGooglePlayStatus(status!).text)).toBe(
+      [
+        "Google Play",
+        "✗ com.example.app      upload keystore missing",
+        "✗ com.example.app.staging  upload the first .aab in Play Console",
+        "  Upload keystore staging-keystore is missing too.",
+        "Guide: https://hot-updater.dev/docs/native-builds/google-play",
+      ].join("\n"),
+    );
   });
 });
