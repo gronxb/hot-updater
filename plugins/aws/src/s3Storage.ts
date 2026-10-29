@@ -18,9 +18,12 @@ import {
   type StorageObject,
 } from "@hot-updater/plugin-core";
 
+import { type AwsCredentialsOption, toSdkCredentials } from "./lazyCredentials";
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 
-export interface S3StorageConfig extends S3ClientConfig {
+export interface S3StorageConfig extends Omit<S3ClientConfig, "credentials"> {
+  /** The SDK's credentials, or access keys whose fields are lazy. */
+  credentials?: AwsCredentialsOption;
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
@@ -51,8 +54,14 @@ const isObjectNotFoundError = (error: unknown) =>
 export function s3Storage(
   config: S3StorageConfig,
 ): StorageAdapterWith<S3StorageOperations> {
-  const { bucketName, basePath, getDownloadUrl, ...s3Config } = config;
-  const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
+  const { bucketName, basePath, getDownloadUrl, credentials, ...s3Config } =
+    config;
+  const client = new S3Client(
+    applyS3RuntimeAwsConfig({
+      ...s3Config,
+      credentials: toSdkCredentials(credentials),
+    }),
+  );
   const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
 

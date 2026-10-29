@@ -179,7 +179,7 @@ run other server plugins, use a [custom server](/docs/custom/overview).
 
 The config names the resources init chose and reads the API token and the R2
 keys with
-[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
+[`secret()`](/docs/concepts/secrets#adapter-credentials):
 the environment and `.env.hotupdater` first, then the config's `secrets`
 adapter. With a
 [team store](/docs/concepts/secrets#this-machine-or-the-team) there, init
@@ -195,7 +195,7 @@ config that a function returns, it leaves the file unchanged and prints the
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -203,33 +203,20 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const storageSecrets = secretEnv([
-  "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
-  "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-]);
-
-const databaseSecrets = secretEnv([
-  "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-]);
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: r2Storage({
     bucketName: "your-r2-bucket-name",
     accountId: "your-account-id",
-    credentials: async () => {
-      const env = await storageSecrets();
-      return {
-        accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
-        secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-      };
+    credentials: {
+      accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
     },
   }),
   database: d1Database({
     databaseId: "your-d1-database-id",
     accountId: "your-account-id",
-    cloudflareApiToken: async () =>
-      (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+    cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and secrets put

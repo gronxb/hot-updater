@@ -1,5 +1,5 @@
 import { CosmosClient, type CosmosClientOptions } from "@azure/cosmos";
-import type { EngineDatabase } from "@hot-updater/plugin-core";
+import type { EngineDatabase, Lazy } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
@@ -24,11 +24,11 @@ export type CosmosDatabaseConfig = Omit<
 > & {
   /**
    * The account's connection string, or a function that returns it, such as
-   * one that reads it with `secretEnv`: called on the first request, so a
-   * config loads without it. `endpoint` beside a function names the
-   * account to `hot-updater doctor`.
+   * `secret("<name>")` in `hot-updater.config.ts`: called on the first
+   * request, so a config loads without it. `endpoint` beside a function
+   * names the account to `hot-updater doctor`.
    */
-  readonly connectionString?: string | (() => string | Promise<string>);
+  readonly connectionString?: Lazy<string>;
   readonly consistencyLevel?: "Strong";
   /** The database the container lives in. @default "hot-updater" */
   readonly databaseId?: string;

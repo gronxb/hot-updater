@@ -38,7 +38,7 @@ const RESERVED_PREFIXES = [
  * interpreter reads (`NODE_*` but `NODE_ENV`, `PATH`, `LD_*`, `DYLD_*`,
  * `BASH_ENV`, `ENV`, `GIT_*`, `npm_config_*`, the JVM's, Gradle's, Ruby's,
  * Python's, and Perl's options), or one Hot Updater reads its credentials
- * from. `secretEnv` refuses these names, and so does every environment the
+ * from. `secret()` refuses these names, and so does every environment the
  * CLI gives a child process from resolved secrets.
  */
 export const isReservedVariableName = (name: string): boolean => {

@@ -52,6 +52,24 @@ export default defineConfig({
 });
 ```
 
+To read the token from the config's [`secrets` adapter](/docs/concepts/secrets)
+instead, pass it as `secret()`. Name it other than
+`HOT_UPDATER_SIGNING_TOKEN`: `secret()` refuses that name, which
+`remoteSigning` reads from the environment itself.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig, secret } from "hot-updater";
+import { remoteSigning } from "hot-updater/signing";
+
+export default defineConfig({
+  // ...other config
+  signing: remoteSigning({
+    endpoint: "https://signer.example.com",
+    signingToken: secret("SIGNING_TOKEN"),
+  }),
+});
+```
+
 ## Implement the Signing Service
 
 A custom service can mount the matching Web API handler from the root

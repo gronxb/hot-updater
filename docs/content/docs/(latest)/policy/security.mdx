@@ -57,7 +57,7 @@ public client access; follow its [access policy setup](/docs/custom/api-key-auth
 
 Keep local provider credentials in `.env.hotupdater` and out of version control,
 or read them from a secrets store through the config's
-[`secrets` adapter](/docs/concepts/secrets) with `secretEnv`, which hands them
+[`secrets` adapter](/docs/concepts/secrets) with `secret()`, which hands them
 only to the adapters that need them.
 Use your CI or provider's private credential storage for automated operations.
 The [agent infrastructure workflow](/docs/guides/agent-infrastructure) uses

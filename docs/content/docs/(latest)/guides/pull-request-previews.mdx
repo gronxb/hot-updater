@@ -38,14 +38,14 @@ Console's URL for the comment's links.
 - [Deploy the Console](/docs/guides/console-deployment): the comment's
   links and QR code open it. See [The comment](#the-comment).
 - Read the deploy credentials with
-  [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), as
+  [`secret()`](/docs/concepts/secrets#adapter-credentials), as
   the config managed `init` writes does, and add their values to the
   repository's secrets, or keep them in a
   [team store](/docs/concepts/secrets#this-machine-or-the-team), which the job
   only signs in to.
 - Add a [native build scheme](/docs/guides/native-build#configure-schemes)
   for each previewed platform: a Release APK for Android, signed with a
-  `secret:` keystore, and a scheme with `simulator: true` for iOS, which builds
+  `secret()` keystore, and a scheme with `simulator: true` for iOS, which builds
   a Simulator `.app` that needs no signing.
 - The registry tells native builds apart by platform, channel, and
   fingerprint or app version, not by scheme. A project that previews several
@@ -54,7 +54,7 @@ Console's URL for the comment's links.
   action once per app.
 
 ```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   nativeBuild: {
@@ -62,7 +62,7 @@ export default defineConfig({
       previewApk: {
         packageName: "com.example.app",
         aab: false,
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       },
     },
     ios: {
@@ -76,14 +76,14 @@ export default defineConfig({
   },
   signing: {
     enabled: true,
-    privateKey: "secret:bundle-signing-key",
+    privateKey: secret("bundle-signing-key"),
   },
   // ...build, storage, database, plugins
 });
 ```
 
-In the job's environment, `secret:release-keystore` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
-the keystore's JSON value, and `secret:bundle-signing-key` reads
+In the job's environment, `secret("release-keystore")` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
+the keystore's JSON value, and `secret("bundle-signing-key")` reads
 `HOT_UPDATER_BUNDLE_SIGNING_KEY`, the
 [local signing](/docs/guides/signing/local) key's PEM, as
 [Sign native builds with secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
@@ -93,7 +93,7 @@ instead of a file, use the [AWS KMS](/docs/guides/signing/aws-kms) or
 
 ### The bundle signing key in CI
 
-Read the bundle signing key as a secret, `privateKey: "secret:bundle-signing-key"`,
+Read the bundle signing key as a secret, `privateKey: secret("bundle-signing-key")`,
 as above: the job maps the repository secret to
 `HOT_UPDATER_BUNDLE_SIGNING_KEY`, which `localSecrets()` reads before its
 files, as the workflow below does, and needs no key file.
@@ -151,7 +151,7 @@ jobs:
         env:
           HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
           HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
-          # ...and the deploy variables your config reads with secretEnv
+          # ...and the deploy variables your config reads with secret()
         with:
           console-url: ${{ vars.CONSOLE_URL }}
           android-scheme: previewApk

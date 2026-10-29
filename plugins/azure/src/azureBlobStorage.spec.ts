@@ -18,7 +18,7 @@ describe("azureBlobStorage", () => {
 describe("azureBlobStorage's connection string from a function", () => {
   it("is read on first use, not when the config loads", async () => {
     const connectionString = vi.fn(async () => {
-      throw new Error("secretEnv found no value for STORAGE_CONNECTION_STRING");
+      throw new Error('secret("STORAGE_CONNECTION_STRING") has no value');
     });
 
     const storage = azureBlobStorage({
@@ -29,7 +29,7 @@ describe("azureBlobStorage's connection string from a function", () => {
 
     await expect(
       storage.exists({ storageUri: "azblob://bundles/key" }),
-    ).rejects.toThrow("secretEnv found no value for STORAGE_CONNECTION_STRING");
+    ).rejects.toThrow('secret("STORAGE_CONNECTION_STRING") has no value');
     expect(connectionString).toHaveBeenCalledTimes(1);
   });
 });

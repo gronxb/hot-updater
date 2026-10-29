@@ -98,7 +98,7 @@ describe("createCredentialResolver", () => {
     await resolver.dispose();
   });
 
-  it("resolves a secret: name as one JSON value from the config's adapter", async () => {
+  it("resolves a secret() name as one JSON value from the config's adapter", async () => {
     // Given: the config's adapter, as loadConfig registers it
     const keystore = Buffer.from([0xfe, 0xed, 0xfe, 0xed, 0x01]);
     const secrets = fakeSecrets({

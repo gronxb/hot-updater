@@ -2,12 +2,17 @@ import type { CredentialResolver } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const { assertUnreservedEnv, createMinBundleId, parseSecretReference } =
-    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  const {
+    assertUnreservedEnv,
+    createMinBundleId,
+    parseSecretReference,
+    secret,
+  } = await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     assertUnreservedEnv,
     createMinBundleId,
     parseSecretReference,
+    secret,
     getCwd: () => "/app",
     p: { log: { info: vi.fn() } },
   };
@@ -22,6 +27,8 @@ vi.mock("./builder/runGradle", () => ({
       "/app/android/app/build/outputs/apk/release/app-release.apk",
   })),
 }));
+
+import { secret } from "@hot-updater/cli-tools";
 
 import { buildAndroid } from "./buildAndroid";
 import { runGradle } from "./builder/runGradle";
@@ -82,7 +89,7 @@ describe("buildAndroid", () => {
     await buildAndroid({
       schemeConfig: scheme({
         aab: true,
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -122,7 +129,7 @@ describe("buildAndroid", () => {
       await buildAndroid({
         schemeConfig: scheme({
           variant,
-          signing: { keystore: "secret:release-keystore" },
+          signing: { keystore: secret("release-keystore") },
         }),
         minBundleId: MIN_BUNDLE_ID,
         credentials,

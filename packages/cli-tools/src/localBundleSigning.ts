@@ -5,6 +5,7 @@ import path from "node:path";
 import type {
   BundleSigningAdapter,
   LocalSigningConfig,
+  SecretRef,
   SecretsAdapter,
   SigningConfig,
 } from "@hot-updater/plugin-core";
@@ -108,7 +109,7 @@ const loadPrivateKeySecret = async (
 /**
  * The built-in local signer. Its private key is read on first use, once:
  * from `privateKeyPath`, or from the config's `secrets` adapter for
- * `privateKey: "secret:<name>"`, and is never written anywhere.
+ * `privateKey: secret("<name>")`, and is never written anywhere.
  */
 export const createLocalSigningAdapter = (
   config: EnabledLocalSigningConfig,
@@ -228,23 +229,18 @@ export const normalizeSigningConfig = (
       );
     }
     if (privateKey !== undefined) {
-      if (typeof privateKey !== "string") {
-        throw new Error(
-          'signing.privateKey names a secret as secret:<name>, such as "secret:bundle-signing-key".',
-        );
-      }
       // Checks the reference only: loading a config reads no secret.
       parseSecretReference(privateKey, "signing.privateKey");
       const normalized = {
         enabled: true,
-        privateKey: privateKey as `secret:${string}`,
+        privateKey: privateKey as SecretRef,
       } as const;
       if (secrets) signingSecrets.set(normalized, secrets);
       return normalized;
     }
     if (typeof privateKeyPath !== "string" || !privateKeyPath.trim()) {
       throw new Error(
-        'Enabled local bundle signing requires privateKeyPath, or privateKey as "secret:<name>".',
+        'Enabled local bundle signing requires privateKeyPath, or privateKey as secret("<name>").',
       );
     }
     return {

@@ -3,7 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { maskSecretValues, registerSecretValue } from "@hot-updater/cli-tools";
+import {
+  maskSecretValues,
+  registerSecretValue,
+  secret,
+} from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -1038,6 +1042,21 @@ describe("computeNativeBuildKey", () => {
           appModuleName: "app2",
         },
       }),
+    ).toEqual(["setting:scheme"]);
+    // A scheme's secret() counts by its name, which JSON alone would drop.
+    const signedWith = (name: string) => ({
+      schemeConfig: {
+        variant: "Release",
+        aab: false,
+        packageName: "com.app",
+        signing: { keystore: secret(name) },
+      },
+    });
+    expect(
+      diffNativeBuildKeyComponents(
+        (await key(signedWith("release-keystore"))).components,
+        (await key(signedWith("widget-keystore"))).components,
+      ),
     ).toEqual(["setting:scheme"]);
     expect(await changes({ hotUpdaterVersion: "1.2.1" })).toEqual([
       "toolchain:hot-updater",

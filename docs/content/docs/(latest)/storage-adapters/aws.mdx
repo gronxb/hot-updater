@@ -46,7 +46,7 @@ standard AWS credential sources.
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { s3Storage } from "@hot-updater/aws"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
@@ -55,8 +55,8 @@ export default defineConfig({
     region: "us-east-1", // [!code ++]
     credentials: {
       // [!code ++]
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+      accessKeyId: secret("AWS_ACCESS_KEY_ID"), // [!code ++]
+      secretAccessKey: secret("AWS_SECRET_ACCESS_KEY"), // [!code ++]
     }, // [!code ++]
     bucketName: "my-hot-updater-bucket", // [!code ++]
   }), // [!code ++]

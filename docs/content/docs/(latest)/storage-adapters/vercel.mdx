@@ -38,13 +38,13 @@ Vercel adds to a project when you connect the store with a read-write token.
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { vercelBlobStorage } from "@hot-updater/vercel"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
   storage: vercelBlobStorage({
     // [!code ++]
-    token: process.env.BLOB_READ_WRITE_TOKEN!, // [!code ++]
+    token: secret("BLOB_READ_WRITE_TOKEN"), // [!code ++]
     basePath: "bundles", // Optional // [!code ++]
   }), // [!code ++]
 });

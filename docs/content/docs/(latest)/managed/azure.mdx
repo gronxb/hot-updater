@@ -189,7 +189,7 @@ official plugins only; to run other server plugins, use a
 
 The config names the Cosmos DB account init chose and reads both connection
 strings with
-[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
+[`secret()`](/docs/concepts/secrets#adapter-credentials):
 the environment and `.env.hotupdater` first, then the config's `secrets`
 adapter. With a
 [team store](/docs/concepts/secrets#this-machine-or-the-team) there, such as
@@ -206,7 +206,7 @@ config that a function returns, it leaves the file unchanged and prints the
 ```ts title="hot-updater.config.ts"
 import { azureBlobStorage, cosmosDatabase } from "@hot-updater/azure";
 import { bare } from "@hot-updater/bare";
-import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -214,25 +214,15 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const storageSecrets = secretEnv([
-  "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
-]);
-
-const databaseSecrets = secretEnv([
-  "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
-]);
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: azureBlobStorage({
-    connectionString: async () =>
-      (await storageSecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
+    connectionString: secret("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING"),
     containerName: "hot-updater",
   }),
   database: cosmosDatabase({
     endpoint: "https://your-cosmos-account.documents.azure.com:443/",
-    connectionString: async () =>
-      (await databaseSecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
+    connectionString: secret("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and secrets put

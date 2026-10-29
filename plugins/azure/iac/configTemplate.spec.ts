@@ -1,17 +1,18 @@
-import { secretEnv } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
 import { getConfigScaffold } from "./configTemplate";
 import { initProvider } from "./init/index";
 
-const secretEnvNames = (text: string) =>
-  [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
-    .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
-    .map((name) => JSON.parse(name) as string)
-    .sort();
+const secretNames = (text: string) =>
+  [
+    ...new Set(
+      [...text.matchAll(/secret\("([^"]+)"\)/gu)].map(([, name]) => name!),
+    ),
+  ].sort();
 
 describe("Azure config scaffold", () => {
-  it("names the Cosmos DB account and reads both connection strings with secretEnv", () => {
+  it("names the Cosmos DB account and reads both connection strings with secret()", () => {
     expect(
       getConfigScaffold("bare", {
         cosmosEndpoint: "https://hot-updater-abc.documents.azure.com:443/",
@@ -19,7 +20,7 @@ describe("Azure config scaffold", () => {
     ).toMatchInlineSnapshot(`
       "import { azureBlobStorage, cosmosDatabase } from "@hot-updater/azure";
       import { bare } from "@hot-updater/bare";
-      import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+      import { defineConfig, localSecrets, secret } from "hot-updater";
       import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
       import { existsSync } from "node:fs";
 
@@ -27,25 +28,15 @@ describe("Azure config scaffold", () => {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const storageSecrets = secretEnv([
-        "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
-      ]);
-
-      const databaseSecrets = secretEnv([
-        "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
-      ]);
-
       export default defineConfig({
         build: bare({ enableHermes: true }),
         storage: azureBlobStorage({
-          connectionString: async () =>
-            (await storageSecrets()).HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
+          connectionString: secret("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING"),
           containerName: "hot-updater",
         }),
         database: cosmosDatabase({
           endpoint: "https://hot-updater-abc.documents.azure.com:443/",
-          connectionString: async () =>
-            (await databaseSecrets()).HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING,
+          connectionString: secret("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING"),
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: localSecrets(),
@@ -56,7 +47,7 @@ describe("Azure config scaffold", () => {
 
   it("reads the same credentials init stores in a team store", () => {
     expect(
-      secretEnvNames(
+      secretNames(
         getConfigScaffold("bare", {
           cosmosEndpoint: "https://hot-updater-abc.documents.azure.com:443/",
         }).text,
@@ -64,11 +55,24 @@ describe("Azure config scaffold", () => {
     ).toEqual([...initProvider.secrets].sort());
   });
 
-  it("reads every value from the environment for the agent scaffold", () => {
-    expect(getConfigScaffold("bare").text).not.toContain("secretEnv");
+  it("reads every credential with secret(), in init's config and the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", {
+        cosmosEndpoint: "https://hot-updater-abc.documents.azure.com:443/",
+      }),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:/u);
+      for (const name of initProvider.secrets) {
+        expect(text).toContain(`secret("${name}")`);
+        expect(text).not.toContain(`process.env.${name}`);
+      }
+    }
   });
 
-  it("names variables secretEnv takes", () => {
-    expect(() => secretEnv(initProvider.secrets)).not.toThrow();
+  it("names secrets secret() takes", () => {
+    expect(() =>
+      initProvider.secrets.map((name) => secret(name)),
+    ).not.toThrow();
   });
 });

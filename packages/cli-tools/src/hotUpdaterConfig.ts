@@ -108,27 +108,11 @@ const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",
   "commonOptions",
   "credential",
+  // The `secretEnv` helpers of earlier 1.2 configs, which `secret()` replaces.
   "databaseSecrets",
   "deploySecrets",
   "storageSecrets",
 ]);
-
-/**
- * `const <name> = secretEnv([...names])`, a helper a managed config reads
- * credentials with: from the environment and `.env.hotupdater` first, then
- * from the config's `secrets` adapter. `storageSecrets` and
- * `databaseSecrets` read each adapter's own, so a command that reaches only
- * one needs only its credentials; `deploySecrets` reads what both share.
- * Its builder imports `secretEnv` from `hot-updater`.
- */
-export const secretEnvHelper = (
-  name: "databaseSecrets" | "deploySecrets" | "storageSecrets",
-  names: readonly string[],
-): ManagedHelperStatement => ({
-  name,
-  strategy: "replace",
-  code: `const ${name} = secretEnv([\n${names.map((variable) => `  ${JSON.stringify(variable)},`).join("\n")}\n]);`,
-});
 
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 /** Build adapter packages, whose imports a kept build still needs. */
@@ -354,15 +338,26 @@ const isHotUpdaterEnvRead = (expression: Expression): boolean => {
   );
 };
 
+/** `secret("<name>")`, the credential init writes. */
+const isSecretCall = (expression: Expression): boolean =>
+  expression.type === "CallExpression" &&
+  expression.callee.type === "Identifier" &&
+  expression.callee.name === "secret" &&
+  expression.arguments.length === 1 &&
+  expression.arguments[0]?.type === "Literal" &&
+  typeof expression.arguments[0].value === "string";
+
 /**
  * A value init writes into a managed adapter's options: a string, a
- * `process.env.HOT_UPDATER_*` read, as configs of 1.1 read every value, or
- * an object of only those, such as `credentials`. Init replaces it with
- * what its run resolves; any other value is the project's own and kept.
+ * `process.env.HOT_UPDATER_*` read, as configs of 1.1 read every value, a
+ * `secret("<name>")`, or an object of only those, such as `credentials`.
+ * Init replaces it with what its run resolves; any other value is the
+ * project's own and kept.
  */
 const isInitWrittenValue = (expression: Expression): boolean =>
   (expression.type === "Literal" && typeof expression.value === "string") ||
   isHotUpdaterEnvRead(expression) ||
+  isSecretCall(expression) ||
   (expression.type === "ObjectExpression" &&
     expression.properties.length > 0 &&
     expression.properties.every(
@@ -1495,6 +1490,23 @@ const readTextFile = (filePath: string) =>
  * existing config with the scaffold's build, storage, database, plugins, and
  * helpers merged in, keeping the project's own settings.
  */
+/**
+ * Whether `hot-updater.config.ts` in `cwd` sets a team `secrets` adapter,
+ * read from its text: a `secrets` property other than `localSecrets(...)`,
+ * or a config whose shape init can't read. False without the file. Init
+ * reads the store through the loaded config, so one that sets a store but
+ * doesn't load must be fixed first.
+ */
+export const configSetsTeamSecrets = async (cwd: string): Promise<boolean> => {
+  const text = await readTextFile(path.join(cwd, HOT_UPDATER_CONFIG_PATH));
+  if (text === null) return false;
+  const source = parseConfigSource(text);
+  const config = source && findDefineConfigObject(source);
+  if (!config) return true;
+  const secrets = findAnyProperty(config.objectExpression, "secrets");
+  return secrets !== null && getCallCallee(secrets.value) !== "localSecrets";
+};
+
 export const writeHotUpdaterConfig = async (
   scaffold: HotUpdaterConfigScaffold,
   filePath = HOT_UPDATER_CONFIG_PATH,

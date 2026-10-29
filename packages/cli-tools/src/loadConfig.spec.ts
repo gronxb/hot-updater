@@ -136,7 +136,7 @@ describe("loadConfig", () => {
     }
   });
 
-  it("defaults secrets to the environment and `localSecrets()`'s store, and registers it for secret: references", async () => {
+  it("defaults secrets to the environment and `localSecrets()`'s store, and registers it for secret() references", async () => {
     const { loadConfig } = await import("./loadConfig");
     const { getConfiguredAdapter, getConfiguredSecrets } =
       await import("./secrets");
@@ -149,8 +149,8 @@ describe("loadConfig", () => {
     expect(getConfiguredSecrets()).toBe(config.secrets);
   });
 
-  it("takes the secrets adapter whole, and the config's own copy of secretEnv reads through it without touching process.env", async () => {
-    // Given: a config that imports secretEnv as its own module copy, as a
+  it("takes the secrets adapter whole, and the config's own copy of secret() reads through it without touching process.env", async () => {
+    // Given: a config that imports secret as its own module copy, as a
     // project's config imports hot-updater
     vi.stubEnv("HU_SPEC_DEPLOY_TOKEN", undefined);
     const get = vi.fn(async (names: readonly string[]) =>
@@ -162,11 +162,10 @@ describe("loadConfig", () => {
       projectRoot,
       "hot-updater.config.ts",
       [
-        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
-        'const deploy = secretEnv(["HU_SPEC_DEPLOY_TOKEN"]);',
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
         "export default {",
         "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__,",
-        '  storage: { name: "s3Storage", protocol: "s3", credentials: deploy },',
+        '  storage: { name: "s3Storage", protocol: "s3", token: secret("HU_SPEC_DEPLOY_TOKEN") },',
         "};",
         "",
       ].join("\n"),
@@ -179,21 +178,17 @@ describe("loadConfig", () => {
       // Loading reads no secret.
       expect(get).not.toHaveBeenCalled();
 
-      // When: the storage adapter asks for its credentials
-      const credentials = (
-        config.storage as unknown as {
-          credentials: () => Promise<Record<string, string>>;
-        }
-      ).credentials;
-      const values = await credentials();
+      // When: the storage adapter asks for its token
+      const { token } = config.storage as unknown as {
+        token: () => Promise<string>;
+      };
+      const value = await token();
 
       // Then: the config's adapter, with `localSecrets()`'s store after it
       const { getConfiguredAdapter } = await import("./secrets");
       expect(getConfiguredAdapter(config.secrets)).toBe(secrets);
       expect(config.secrets.name).toBe("spec-store");
-      expect(values).toEqual({
-        HU_SPEC_DEPLOY_TOKEN: "store:HU_SPEC_DEPLOY_TOKEN",
-      });
+      expect(value).toBe("store:HU_SPEC_DEPLOY_TOKEN");
       expect(get).toHaveBeenCalledWith(["HU_SPEC_DEPLOY_TOKEN"], {
         cwd: expect.any(String),
       });
@@ -212,30 +207,35 @@ describe("loadConfig", () => {
     }
   });
 
-  it("records the names every secretEnv of the config reads, once each, for doctor and secrets import", async () => {
+  it("records the names the adapters' secret()s read, once each, without the build credentials', for doctor and secrets import", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
       [
-        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
-        'const storage = secretEnv(["HU_SPEC_KEY_ID", "HU_SPEC_SECRET"]);',
-        'const database = secretEnv(["HU_SPEC_SECRET", "HU_SPEC_TOKEN"]);',
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
         "export default {",
-        '  storage: { name: "s3Storage", protocol: "s3", credentials: storage },',
-        '  database: { name: "d1Database", token: database },',
+        '  storage: { name: "s3Storage", protocol: "s3", credentials: { accessKeyId: secret("HU_SPEC_KEY_ID"), secretAccessKey: secret("HU_SPEC_SECRET") } },',
+        '  database: { name: "d1Database", secret: secret("HU_SPEC_SECRET"), token: secret("HU_SPEC_TOKEN") },',
+        '  signing: { enabled: true, privateKey: secret("bundle-signing-key") },',
+        '  nativeBuild: { android: { release: { packageName: "com.example", signing: { keystore: secret("release-keystore") } } } },',
         "};",
         "",
       ].join("\n"),
     );
 
-    const { getSecretEnvNames, loadConfig } = await import("./loadConfig");
+    const { getDeploySecretNames, loadConfig } = await import("./loadConfig");
     const config = await loadConfig(null);
 
-    expect(getSecretEnvNames(config)).toEqual([
+    expect(getDeploySecretNames(config)).toEqual([
       "HU_SPEC_KEY_ID",
       "HU_SPEC_SECRET",
       "HU_SPEC_TOKEN",
     ]);
+    // The deep merge keeps a build credential's reference.
+    const { isSecretRef } = await import("./secrets");
+    expect(
+      isSecretRef(config.nativeBuild.android.release?.signing?.keystore),
+    ).toBe(true);
   });
 
   it("finds the team store for init, and leaves process.env as the config found it", async () => {
@@ -275,7 +275,7 @@ describe("loadConfig", () => {
     await expect(loadTeamSecrets()).resolves.toBeUndefined();
   });
 
-  it("loads a config of 1.1 that reads its values from process.env as it did, with no secretEnv names", async () => {
+  it("loads a config of 1.1 that reads its values from process.env as it did, with no secret() names", async () => {
     vi.stubEnv("HU_SPEC_BUCKET", "bundles");
     await writeProjectFile(
       projectRoot,
@@ -289,17 +289,17 @@ describe("loadConfig", () => {
     );
 
     try {
-      const { getSecretEnvNames, loadConfig } = await import("./loadConfig");
+      const { getDeploySecretNames, loadConfig } = await import("./loadConfig");
       const config = await loadConfig(null);
 
       expect(config.storage).toMatchObject({ bucketName: "bundles" });
-      expect(getSecretEnvNames(config)).toEqual([]);
+      expect(getDeploySecretNames(config)).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
     }
   });
 
-  it("binds each secretEnv to the secrets of the config that created it, whatever config loads after", async () => {
+  it("binds each secret() to the secrets of the config that created it, whatever config loads after", async () => {
     // Given: a config function whose secrets adapter depends on the platform
     const storeOf = (name: string) => ({
       name,
@@ -318,15 +318,15 @@ describe("loadConfig", () => {
       projectRoot,
       "hot-updater.config.ts",
       [
-        `import { secretEnv } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
+        `import { secret } from ${JSON.stringify(path.join(import.meta.dirname, "secrets.ts"))};`,
         "export default (options) => ({",
         "  secrets: globalThis.__HOT_UPDATER_TEST_SECRETS__[options?.platform ?? 'none'],",
-        '  storage: { name: "s3Storage", protocol: "s3", credentials: secretEnv(["HU_SPEC_SCOPED_TOKEN"]) },',
+        '  storage: { name: "s3Storage", protocol: "s3", token: secret("HU_SPEC_SCOPED_TOKEN") },',
         "});",
         "",
       ].join("\n"),
     );
-    type Credentials = { credentials: () => Promise<Record<string, string>> };
+    type Token = { token: () => Promise<string> };
 
     try {
       const { loadConfig, loadPlatformConfigs } = await import("./loadConfig");
@@ -338,15 +338,11 @@ describe("loadConfig", () => {
 
       // Then
       await expect(
-        (ios!.config.storage as unknown as Credentials).credentials(),
-      ).resolves.toEqual({
-        HU_SPEC_SCOPED_TOKEN: "ios-store:HU_SPEC_SCOPED_TOKEN",
-      });
+        (ios!.config.storage as unknown as Token).token(),
+      ).resolves.toBe("ios-store:HU_SPEC_SCOPED_TOKEN");
       await expect(
-        (android!.config.storage as unknown as Credentials).credentials(),
-      ).resolves.toEqual({
-        HU_SPEC_SCOPED_TOKEN: "android-store:HU_SPEC_SCOPED_TOKEN",
-      });
+        (android!.config.storage as unknown as Token).token(),
+      ).resolves.toBe("android-store:HU_SPEC_SCOPED_TOKEN");
       expect(stores.none.get).not.toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SECRETS__");

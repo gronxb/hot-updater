@@ -30,17 +30,18 @@ vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("./buildNative", () => ({ handleNativeBuildCreate }));
 
 import { p, loadConfig } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 
 import { handleGooglePlayUpload, handleTestFlight } from "./storeUpload";
 
 const IOS_DEVICE = {
   bundleIdentifier: "com.example.app",
   scheme: "App",
-  signing: { ascApiKey: "secret:asc-api-key" },
+  signing: { ascApiKey: secret("asc-api-key") },
 };
 const ANDROID_RELEASE = {
   packageName: "com.example.app",
-  signing: { keystore: "secret:release-keystore" },
+  signing: { keystore: secret("release-keystore") },
 };
 
 /**

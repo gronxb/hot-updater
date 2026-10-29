@@ -27,7 +27,7 @@ export default defineConfig({
 | ------------ | -------------------------- | -------------------------------------------------------------------------------------------------- |
 | `vaultName`  | Required, or `vaultUrl`    | The vault at `https://<vaultName>.vault.azure.net`                                                 |
 | `vaultUrl`   | Required, or `vaultName`   | The vault's URL, for a vault outside Azure's public cloud                                          |
-| `prefix`     | `"hot-updater-"`           | Put before each name: `secret:asc-api-key` reads the secret `hot-updater-asc-api-key`             |
+| `prefix`     | `"hot-updater-"`           | Put before each name: `secret("asc-api-key")` reads the secret `hot-updater-asc-api-key`             |
 | `credential` | `DefaultAzureCredential`   | A `TokenCredential` from `@azure/identity`, such as a `ClientSecretCredential`                     |
 
 Each secret holds one value: a credential is one

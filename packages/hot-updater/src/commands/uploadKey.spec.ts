@@ -12,6 +12,7 @@ import {
   resolveSecretsAdapter,
   writeLocalKey,
 } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
   linesWiderThan,
@@ -202,7 +203,7 @@ const configure = (
     android: {
       release: {
         packageName: "com.example.app",
-        signing: { keystore: "secret:android-keystore" },
+        signing: { keystore: secret("android-keystore") },
       },
     },
   },
@@ -371,7 +372,7 @@ describe("hot-updater secrets issue android-keystore", () => {
       "Back it up: spec-store holds your only Play upload key.",
     );
 
-    // native-build resolves signing.keystore "secret:release-keystore" so.
+    // native-build resolves signing.keystore secret("release-keystore") so.
     const resolver = createCredentialResolver({
       secrets: resolveSecretsAdapter(store),
     });

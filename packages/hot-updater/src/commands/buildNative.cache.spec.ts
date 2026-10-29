@@ -107,7 +107,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
             scheme: "release",
             iosScheme: {
               configuration: "Release",
-              signing: { ascApiKey: "secret:asc-api-key" },
+              signing: { ascApiKey: secret("asc-api-key") },
             },
           }
         : {
@@ -126,7 +126,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
             iosSchemeConfig: {
               configuration: "Release",
               installPods,
-              signing: { ascApiKey: "secret:asc-api-key" },
+              signing: { ascApiKey: secret("asc-api-key") },
             },
           }
         : {
@@ -190,6 +190,7 @@ import {
   installPodsIfNeeded,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
+import { secret } from "@hot-updater/cli-tools";
 
 import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
 

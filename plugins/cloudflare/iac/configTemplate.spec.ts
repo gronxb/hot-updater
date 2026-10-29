@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { secretEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import { secret, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { getConfigScaffold } from "./configTemplate";
@@ -70,11 +70,11 @@ export default defineConfig({
 `;
 
 describe("Cloudflare config scaffold", () => {
-  it("names the resources init set up and reads the token and R2 keys with secretEnv", () => {
+  it("names the resources init set up and reads the token and R2 keys with secret()", () => {
     expect(getConfigScaffold("bare", RESOURCES).text).toMatchInlineSnapshot(`
       "import { bare } from "@hot-updater/bare";
       import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-      import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+      import { defineConfig, localSecrets, secret } from "hot-updater";
       import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
       import { existsSync } from "node:fs";
 
@@ -82,33 +82,20 @@ describe("Cloudflare config scaffold", () => {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const storageSecrets = secretEnv([
-        "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
-        "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-      ]);
-
-      const databaseSecrets = secretEnv([
-        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-      ]);
-
       export default defineConfig({
         build: bare({ enableHermes: true }),
         storage: r2Storage({
           bucketName: "bundles",
           accountId: "account-id",
-          credentials: async () => {
-            const env = await storageSecrets();
-            return {
-              accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
-              secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-            };
+          credentials: {
+            accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+            secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
           },
         }),
         database: d1Database({
           databaseId: "database-id",
           accountId: "account-id",
-          cloudflareApiToken: async () =>
-            (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+          cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: localSecrets(),
@@ -119,24 +106,35 @@ describe("Cloudflare config scaffold", () => {
 
   it("reads the same credentials init stores in a team store", () => {
     const { text } = getConfigScaffold("bare", RESOURCES);
-    const names = [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
-      .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
-      .map((name) => JSON.parse(name) as string)
-      .sort();
+    const names = [
+      ...new Set(
+        [...text.matchAll(/secret\("([^"]+)"\)/gu)].map(([, name]) => name!),
+      ),
+    ].sort();
 
     expect(names).toEqual([...initProvider.secrets].sort());
   });
 
-  it("reads every value from the environment for the agent scaffold", () => {
-    const { text } = getConfigScaffold("bare");
+  it("reads every credential with secret(), in init's config and the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", RESOURCES),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:/u);
+      for (const name of initProvider.secrets) {
+        expect(text).toContain(`secret("${name}")`);
+        expect(text).not.toContain(`process.env.${name}`);
+      }
+    }
+  });
 
-    expect(text).not.toContain("secretEnv");
-    expect(text).toContain(
-      "cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,",
+  it("reads the IDs the agent records from the environment for the agent scaffold", () => {
+    expect(getConfigScaffold("bare").text).toContain(
+      "databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,",
     );
   });
 
-  it("moves a 1.1 config to secretEnv when init runs again, keeping the project's own settings", async () => {
+  it("moves a 1.1 config to secret() when init runs again, keeping the project's own settings", async () => {
     const configPath = await configWith(CONFIG_1_1);
 
     await writeHotUpdaterConfig(
@@ -149,41 +147,28 @@ describe("Cloudflare config scaffold", () => {
       import { teamStore } from "./secrets/teamStore";
       import { bare } from "@hot-updater/bare";
       import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-      import { defineConfig, secretEnv } from "hot-updater";
+      import { defineConfig, secret } from "hot-updater";
       import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
       if (existsSync(".env.hotupdater")) {
         process.loadEnvFile(".env.hotupdater");
       }
 
-      const storageSecrets = secretEnv([
-        "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
-        "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-      ]);
-
-      const databaseSecrets = secretEnv([
-        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-      ]);
-
       export default defineConfig({
         build: bare({ enableHermes: true }),
         storage: r2Storage({
           bucketName: "bundles",
           accountId: "account-id",
-          credentials: async () => {
-            const env = await storageSecrets();
-            return {
-              accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
-              secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-            };
+          credentials: {
+            accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+            secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
           },
           basePath: "ota",
         }),
         database: d1Database({
           databaseId: "database-id",
           accountId: "account-id",
-          cloudflareApiToken: async () =>
-            (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+          cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
         }),
         plugins: [apiKeys(), insights(), remoteConfig()],
         secrets: teamStore(),
@@ -206,11 +191,79 @@ describe("Cloudflare config scaffold", () => {
     const text = await fs.readFile(configPath, "utf8");
     expect(text).toContain('databaseId: "new-database",');
     expect(text).not.toContain("database-id");
-    expect(text.match(/const storageSecrets/gu)).toHaveLength(1);
-    expect(text.match(/const databaseSecrets/gu)).toHaveLength(1);
+    expect(text.match(/from "hot-updater";/gu)).toHaveLength(1);
+    expect(text).toContain(
+      'import { defineConfig, localSecrets, secret } from "hot-updater";',
+    );
   });
 
-  it("names variables secretEnv takes", () => {
-    expect(() => secretEnv(initProvider.secrets)).not.toThrow();
+  it("moves an earlier 1.2 config's secretEnv helpers to secret() when init runs again", async () => {
+    const configPath =
+      await configWith(`import { bare } from "@hot-updater/bare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+import { existsSync } from "node:fs";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+const storageSecrets = secretEnv([
+  "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+  "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+]);
+
+const databaseSecrets = secretEnv([
+  "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+]);
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: r2Storage({
+    bucketName: "bundles",
+    accountId: "account-id",
+    credentials: async () => {
+      const env = await storageSecrets();
+      return {
+        accessKeyId: env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID,
+        secretAccessKey: env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+      };
+    },
+  }),
+  database: d1Database({
+    databaseId: "database-id",
+    accountId: "account-id",
+    cloudflareApiToken: async () =>
+      (await databaseSecrets()).HOT_UPDATER_CLOUDFLARE_API_TOKEN,
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+  secrets: localSecrets(),
+  updateStrategy: "appVersion",
+});
+`);
+
+    await writeHotUpdaterConfig(
+      getConfigScaffold("bare", RESOURCES),
+      configPath,
+    );
+
+    const text = await fs.readFile(configPath, "utf8");
+    expect(text).not.toContain("secretEnv");
+    expect(text).not.toContain("storageSecrets");
+    expect(text).not.toContain("databaseSecrets");
+    expect(text).toContain(
+      'import { defineConfig, localSecrets, secret } from "hot-updater";',
+    );
+    expect(text.match(/from "hot-updater";/gu)).toHaveLength(1);
+    expect(text).toContain(
+      'cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),',
+    );
+  });
+
+  it("names secrets secret() takes", () => {
+    expect(() =>
+      initProvider.secrets.map((name) => secret(name)),
+    ).not.toThrow();
   });
 });

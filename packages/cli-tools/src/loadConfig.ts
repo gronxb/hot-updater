@@ -16,6 +16,7 @@ import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
 import {
+  isSecretRef,
   type SecretsScope,
   setConfiguredSecrets,
   resolveSecretsAdapter,
@@ -116,7 +117,7 @@ export type ConfigResponse = RequiredDeep<
   plugins: readonly AnyHotUpdaterPlugin[];
   signing?: ReturnType<typeof normalizeSigningConfig>;
   /**
-   * Where `secret:` references and issued keys are read and stored: the
+   * Where `secret()` references and issued keys are read and stored: the
    * config's adapter alone, or `localSecrets()` when it sets none
    * (`resolveSecretsAdapter`).
    */
@@ -181,7 +182,7 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
-/** A loaded config file: its export, and the scope of the `secretEnv` its top level creates. */
+/** A loaded config file: its export, and the scope of the `secret()` its top level creates. */
 type LoadedConfigFile = {
   readonly source: ConfigFileExport | undefined;
   readonly scope: SecretsScope;
@@ -198,8 +199,8 @@ const loadConfigFile = async (): Promise<LoadedConfigFile> => {
 
 /**
  * The config `options` select, resolved: a config function runs in a scope
- * of its own, so the `secretEnv` it creates reads this config's `secrets`,
- * and the file's top-level `secretEnv` reads the first config's.
+ * of its own, so the `secret()` it creates reads this config's `secrets`,
+ * and the file's top-level `secret()` reads the first config's.
  */
 const configFor = async (
   { source, scope: fileScope }: LoadedConfigFile,
@@ -241,8 +242,26 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
 };
 
 /**
+ * The names the config's build credentials reference, which the CLI reads
+ * for their kind: `signing.privateKey`, and each scheme's
+ * `signing.ascApiKey` and `signing.keystore`.
+ */
+const buildSecretNames = (config: Partial<ConfigInput>): string[] => {
+  const references: unknown[] = [
+    config.signing && Reflect.get(config.signing, "privateKey"),
+    ...Object.values(config.nativeBuild?.ios ?? {}).map(
+      (scheme) => scheme?.signing?.ascApiKey,
+    ),
+    ...Object.values(config.nativeBuild?.android ?? {}).map(
+      (scheme) => scheme?.signing?.keystore,
+    ),
+  ];
+  return references.filter(isSecretRef).map(({ name }) => name);
+};
+
+/**
  * The config with its defaults. Its `secrets` adapter fills `scopes` not yet
- * filled, which the `secretEnv` its evaluation created read, and becomes the
+ * filled, which the `secret()` its evaluation created read, and becomes the
  * default of credential resolvers.
  */
 const resolveConfig = (
@@ -252,28 +271,39 @@ const resolveConfig = (
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const secrets = resolveSecretsAdapter(mergedConfig.secrets);
   const signing = normalizeSigningConfig(mergedConfig.signing, { secrets });
-  for (const scope of scopes) scope.secrets ??= secrets;
+  const buildNames = buildSecretNames(mergedConfig);
+  for (const scope of scopes) {
+    scope.secrets ??= secrets;
+    scope.buildNames ??= new Set();
+    for (const name of buildNames) scope.buildNames.add(name);
+  }
   setConfiguredSecrets(secrets);
   const resolved = {
     ...mergedConfig,
     signing,
     secrets,
   } as ConfigResponse;
-  Object.defineProperty(resolved, SECRET_ENV_NAMES, {
-    value: [...new Set(scopes.flatMap((scope) => [...(scope.names ?? [])]))],
+  Object.defineProperty(resolved, DEPLOY_SECRET_NAMES, {
+    value: [
+      ...new Set(scopes.flatMap((scope) => [...(scope.names ?? [])])),
+    ].filter((name) => !buildNames.includes(name)),
   });
   return resolved;
 };
 
-const SECRET_ENV_NAMES = Symbol.for("@hot-updater/cli-tools/secret-env-names");
+const DEPLOY_SECRET_NAMES = Symbol.for(
+  "@hot-updater/cli-tools/deploy-secret-names",
+);
 
 /**
- * The names every `secretEnv` the config created while it loaded reads,
- * such as `HOT_UPDATER_CLOUDFLARE_API_TOKEN`, in the order it created them.
+ * The names the config's `secret()`s reference for its adapters, such as
+ * `HOT_UPDATER_CLOUDFLARE_API_TOKEN`, in the order the config created
+ * them: every name but those of build credentials, which `doctor` lists
+ * by field.
  */
-export const getSecretEnvNames = (
+export const getDeploySecretNames = (
   config: ConfigResponse,
 ): readonly string[] => {
-  const names: unknown = Reflect.get(config, SECRET_ENV_NAMES);
+  const names: unknown = Reflect.get(config, DEPLOY_SECRET_NAMES);
   return Array.isArray(names) ? names : [];
 };

@@ -7,7 +7,12 @@ import {
 } from "./hotUpdaterEnv";
 import { loadConfig } from "./loadConfig";
 import { registerSecretValue } from "./secretMasking";
-import { describeSecret, getConfiguredAdapter, readSecrets } from "./secrets";
+import {
+  describeSecret,
+  getConfiguredAdapter,
+  readSecrets,
+  secretVariableName,
+} from "./secrets";
 
 /**
  * The client API key the managed servers' `apiKeys()` gives an app, which
@@ -87,7 +92,10 @@ export const storeEnvFileSecrets = async (
       : await readLoadedEnvFile(envFile, cwd);
   const values = new Map<string, string>();
   for (const name of names) {
-    const value = Object.hasOwn(file, name) ? file[name]?.trim() : undefined;
+    const variable = secretVariableName(name);
+    const value = Object.hasOwn(file, variable)
+      ? file[variable]?.trim()
+      : undefined;
     if (value) values.set(name, value);
   }
   if (values.size === 0) return [];

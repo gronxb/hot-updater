@@ -17,7 +17,7 @@ describe("cosmosDatabase", () => {
 
   it("reads a connection string from a function on the first request, and names the account by endpoint", async () => {
     const connectionString = vi.fn(async () => {
-      throw new Error("secretEnv found no value for COSMOS_CONNECTION_STRING");
+      throw new Error('secret("COSMOS_CONNECTION_STRING") has no value');
     });
 
     const database = cosmosDatabase({
@@ -35,7 +35,7 @@ describe("cosmosDatabase", () => {
       clientAccess: "public",
     }).core;
     await expect(core.listChannels()).rejects.toThrow(
-      "secretEnv found no value for COSMOS_CONNECTION_STRING",
+      'secret("COSMOS_CONNECTION_STRING") has no value',
     );
     expect(connectionString).toHaveBeenCalled();
     await database.dispose?.();

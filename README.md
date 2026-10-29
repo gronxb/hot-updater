@@ -108,7 +108,7 @@
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
   import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-  import { defineConfig } from "hot-updater";
+  import { defineConfig, secret } from "hot-updater";
 
   if (existsSync(".env.hotupdater")) {
     process.loadEnvFile(".env.hotupdater");
@@ -119,12 +119,12 @@
     updateStrategy: "appVersion",
     storage: supabaseStorage({
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-      supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
       bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     }),
     database: supabaseDatabase({
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-      supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
     }),
     plugins: [apiKeys(), insights(), remoteConfig()],
   });
@@ -136,7 +136,7 @@ import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -149,14 +149,14 @@ export default defineConfig({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
     },
   }),
   database: d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
 });
@@ -168,7 +168,7 @@ import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -177,8 +177,8 @@ if (existsSync(".env.hotupdater")) {
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+    accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID"),
+    secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY"),
   },
 };
 
@@ -240,7 +240,7 @@ import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -250,10 +250,10 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   updateStrategy: "appVersion",
   storage: vercelBlobStorage({
-    token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
+    token: secret("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"),
   }),
   database: postgres({
-    connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
+    connectionString: secret("HOT_UPDATER_VERCEL_DATABASE_URL"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
 });
@@ -265,7 +265,7 @@ import { existsSync } from "node:fs";
 import { azureBlobStorage, cosmosDatabase } from '@hot-updater/azure';
 import { bare } from '@hot-updater/bare';
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -277,11 +277,11 @@ export default defineConfig({
   }),
   updateStrategy: "appVersion",
   storage: azureBlobStorage({
-    connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!,
+    connectionString: secret("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING"),
     containerName: "hot-updater",
   }),
   database: cosmosDatabase({
-    connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!,
+    connectionString: secret("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
 });

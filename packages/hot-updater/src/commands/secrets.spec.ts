@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -92,6 +93,154 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await fs.rm(directory, { force: true, recursive: true });
+});
+
+/** An RSA key pair, its private key as `format` PEM. */
+const rsaKey = (bits: number, type: "pkcs1" | "pkcs8") => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: bits,
+  });
+  return {
+    pem: privateKey.export({ type, format: "pem" }).toString(),
+    pkcs8: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    // As keys names a key: SHA-256 of its SPKI DER.
+    fingerprint: `sha256:${crypto
+      .createHash("sha256")
+      .update(publicKey.export({ type: "spki", format: "der" }))
+      .digest("hex")}`,
+  };
+};
+
+describe("hot-updater secrets put bundle-signing-key", () => {
+  it.each(["pkcs1", "pkcs8"] as const)(
+    "moves an existing %s key into the store as the PKCS#8 local signing reads, read back, masked, and named by its fingerprint",
+    async (type) => {
+      // Given: a privateKeyPath key of 1.0
+      const { store, held } = writableStore();
+      const key = rsaKey(2048, type);
+      const file = path.join(directory, "private-key.pem");
+      await fs.writeFile(file, key.pem);
+
+      // When
+      await handleSecretsPut("bundle-signing-key", { file });
+
+      // Then
+      expect(process.exitCode).toBeUndefined();
+      expect(held.get("bundle-signing-key")).toBe(key.pkcs8);
+      // Read back once after storing it.
+      expect(store.get).toHaveBeenCalledWith(
+        ["bundle-signing-key"],
+        expect.objectContaining({ cwd: expect.any(String) }),
+      );
+      const line = key.pkcs8.split("\n")[1]!;
+      expect(maskSecretValues(`key ${line}`)).not.toContain(line);
+      const [stored] = messages();
+      expect(stored).toContain(key.fingerprint);
+      expect(stored).not.toContain(line);
+      expect(stored).not.toContain(key.pem.split("\n")[1]!);
+    },
+  );
+
+  it("takes another name with --kind", async () => {
+    const { held } = writableStore();
+    const key = rsaKey(2048, "pkcs8");
+    const file = path.join(directory, "key.pem");
+    await fs.writeFile(file, key.pem);
+
+    await handleSecretsPut("release-signing-key", {
+      kind: "bundle-signing-key",
+      file,
+    });
+
+    expect(held.get("release-signing-key")).toBe(key.pkcs8);
+  });
+
+  it.each([
+    [
+      "a key under 2048 bits",
+      () => rsaKey(1024, "pkcs8").pem,
+      "short.pem is a 1024-bit RSA key. Bundle signing needs 2048 bits or more.",
+    ],
+    [
+      "a key other than RSA",
+      () =>
+        crypto
+          .generateKeyPairSync("ec", { namedCurve: "P-256" })
+          .privateKey.export({ type: "pkcs8", format: "pem" })
+          .toString(),
+      "short.pem is not an RSA private key.",
+    ],
+    [
+      "a public key",
+      () =>
+        crypto
+          .generateKeyPairSync("rsa", { modulusLength: 2048 })
+          .publicKey.export({ type: "spki", format: "pem" })
+          .toString(),
+      "short.pem is not a private key in PEM.",
+    ],
+    [
+      "an encrypted key",
+      () =>
+        crypto
+          .generateKeyPairSync("rsa", { modulusLength: 2048 })
+          .privateKey.export({
+            type: "pkcs8",
+            format: "pem",
+            cipher: "aes-256-cbc",
+            passphrase: "pass",
+          })
+          .toString(),
+      "short.pem is encrypted. Store the key without a passphrase.",
+    ],
+  ])("refuses %s, storing nothing", async (_, pem, message) => {
+    const { store } = writableStore();
+    const file = path.join(directory, "short.pem");
+    await fs.writeFile(file, pem());
+
+    await handleSecretsPut("bundle-signing-key", { file });
+
+    expect(log.error).toHaveBeenCalledWith(message);
+    expect(store.set).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("refuses a store that doesn't read the key back", async () => {
+    const { store } = writableStore();
+    store.get.mockResolvedValue({ "bundle-signing-key": "another" });
+    const file = path.join(directory, "key.pem");
+    await fs.writeFile(file, rsaKey(2048, "pkcs8").pem);
+
+    await handleSecretsPut("bundle-signing-key", { file });
+
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "spec-store doesn't read bundle-signing-key back as stored.",
+      ),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("asks for the PEM file, and takes no flags", async () => {
+    writableStore();
+
+    await handleSecretsPut("bundle-signing-key", {});
+    await handleSecretsPut("bundle-signing-key", {
+      file: "key.pem",
+      p8: "AuthKey.p8",
+    });
+
+    expect(
+      log.error.mock.calls.map(([text]) =>
+        stripVTControlCharacters(String(text)),
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "npx hot-updater secrets put bundle-signing-key <key.pem>",
+      ),
+      "bundle-signing-key takes no --p8 <file>.\nIt takes only the PEM file.",
+    ]);
+  });
 });
 
 describe("hot-updater secrets put", () => {
@@ -206,7 +355,7 @@ describe("hot-updater secrets put", () => {
     expect(store.set).not.toHaveBeenCalled();
   });
 
-  it("refuses a name secret: references can't name", async () => {
+  it("refuses a name secret() can't name", async () => {
     const { store } = writableStore();
 
     await handleSecretsPut("../keys", {

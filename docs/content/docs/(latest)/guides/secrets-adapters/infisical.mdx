@@ -47,7 +47,7 @@ export default defineConfig({
 Credentials never go in the config: `infisical()` signs in from the
 environment or `.env.hotupdater`.
 
-Each name is one secret in that folder: `secret:asc-api-key` reads the
+Each name is one secret in that folder: `secret("asc-api-key")` reads the
 secret `asc-api-key`, and a credential is one
 [JSON value](/docs/concepts/secrets#sign-native-builds-with-secrets).
 
@@ -91,7 +91,7 @@ INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=…
 INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=…
 ```
 
-`secretEnv` refuses `INFISICAL_*` names: the store can't hold its own
+`secret()` refuses `INFISICAL_*` names: the store can't hold its own
 sign-in.
 
 ## Read secrets in CI

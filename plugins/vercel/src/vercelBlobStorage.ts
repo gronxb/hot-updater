@@ -2,6 +2,7 @@ import {
   createStorageAdapter,
   createStorageKeyBuilder,
   createStorageUri,
+  type Lazy,
   parseStorageUri,
   type StorageAdapterWith,
   type StorageObject,
@@ -22,10 +23,11 @@ export interface VercelBlobStorageConfig {
   /**
    * The Blob store's read-write token, `vercel_blob_rw_<storeId>_<secret>`:
    * the `BLOB_READ_WRITE_TOKEN` Vercel adds to a project the store connects
-   * to. Or a function that returns it, such as one that reads it with
-   * `secretEnv`: called on first use, so a config loads without the token.
+   * to. Or a function that returns it, such as `secret("<name>")` in
+   * `hot-updater.config.ts`: called on first use, so a config loads without
+   * the token.
    */
-  token: string | (() => string | Promise<string>);
+  token: Lazy<string>;
   /** Base path where bundles will be stored in the store. */
   basePath?: string;
   /**

@@ -51,7 +51,7 @@ for EU, FedRAMP, and US buckets.
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { r2Storage } from "@hot-updater/cloudflare"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
@@ -61,8 +61,8 @@ export default defineConfig({
     bucketName: "my-r2-bucket", // [!code ++]
     credentials: {
       // [!code ++]
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
+      accessKeyId: secret("R2_ACCESS_KEY_ID"), // [!code ++]
+      secretAccessKey: secret("R2_SECRET_ACCESS_KEY"), // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
 });

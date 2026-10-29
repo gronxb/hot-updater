@@ -12,7 +12,7 @@ import {
   getConfiguredAdapter,
   getCwd,
   getHotUpdaterEnvValue,
-  getSecretEnvNames,
+  getDeploySecretNames,
   isSecretName,
   type IssuedCredentialKind,
   loadConfig,
@@ -38,14 +38,22 @@ import {
   parseServiceAccountKey,
 } from "../utils/native/playServiceAccount";
 import { storeCredential } from "../utils/native/storeCredential";
+import { readBundleSigningKey } from "../utils/signing";
 import { readTypedPath } from "../utils/typedPath";
 
-/** The kinds `secrets put` stores, as `secret:` references resolve them. */
+/** The local bundle signing key `signing.privateKey` reads. */
+const BUNDLE_SIGNING_KEY = "bundle-signing-key";
+
+/** What `secrets put` stores: a build credential, or the bundle signing key. */
+type PutKind = CredentialKind | typeof BUNDLE_SIGNING_KEY;
+
+/** The kinds `secrets put` stores, as `secret()` references resolve them. */
 export const SECRET_KINDS = [
   "asc-api-key",
   "android-keystore",
   "play-service-account",
-] as const satisfies readonly CredentialKind[];
+  BUNDLE_SIGNING_KEY,
+] as const satisfies readonly PutKind[];
 
 /** The kinds `secrets issue` issues after a sign-in. */
 export const ISSUED_KINDS = [
@@ -68,7 +76,7 @@ export const reportFailure = async (
 
 export interface SecretsPutOptions {
   /** What the secret holds; the name, when it is a kind, by default. */
-  readonly kind?: CredentialKind;
+  readonly kind?: PutKind;
   /** The kind's file, as `secrets put <name> <file>` takes it. */
   readonly file?: string;
   /** asc-api-key: the `.p8` file. */
@@ -84,16 +92,21 @@ export interface SecretsPutOptions {
 
 type ValueFlag = Exclude<keyof SecretsPutOptions, "kind" | "file">;
 
-/** Options with the kind they store, and the file as its flag. */
+/**
+ * Options with the kind they store, and the file as its flag, or as `pem`
+ * for the bundle signing key, which takes no flag.
+ */
 type PutValues = Omit<SecretsPutOptions, "kind" | "file"> & {
-  readonly kind: CredentialKind;
+  readonly kind: PutKind;
+  readonly pem?: string;
 };
 
 /** The flags each kind takes, as `--help` names them. */
-const KIND_FLAGS: Readonly<Record<CredentialKind, readonly ValueFlag[]>> = {
+const KIND_FLAGS: Readonly<Record<PutKind, readonly ValueFlag[]>> = {
   "asc-api-key": ["p8", "keyId", "issuerId"],
   "android-keystore": ["keystore", "keyAlias"],
   "play-service-account": ["serviceAccount"],
+  [BUNDLE_SIGNING_KEY]: [],
 };
 
 const FLAG_NAMES: Readonly<Record<ValueFlag, string>> = {
@@ -120,7 +133,7 @@ const readFile = async (file: string, flag: string) => {
   }
 };
 
-const isSecretKind = (kind: string): kind is CredentialKind =>
+const isSecretKind = (kind: string): kind is PutKind =>
   (SECRET_KINDS as readonly string[]).includes(kind);
 
 /**
@@ -132,15 +145,16 @@ const readPutValues = (
   { kind: given, file, ...flags }: SecretsPutOptions,
 ): PutValues => {
   if (given !== undefined && !isSecretKind(given)) {
-    throw new Error(`--kind is one of ${SECRET_KINDS.join(", ")}.`);
+    throw new Error(`--kind is one of:\n${SECRET_KINDS.join(", ")}`);
   }
   const kind = given ?? (isSecretKind(name) ? name : undefined);
   if (kind === undefined) {
     throw new Error(
-      `Pass --kind: ${name} is not a kind.\n--kind is one of ${SECRET_KINDS.join(", ")}.`,
+      `Pass --kind: ${name} is not a kind. It is one of:\n${SECRET_KINDS.join(", ")}`,
     );
   }
   if (file === undefined) return { ...flags, kind };
+  if (kind === BUNDLE_SIGNING_KEY) return { ...flags, kind, pem: file };
   const flag = FILE_FLAGS[kind];
   if (flags[flag] !== undefined) {
     throw new Error(`Pass the file once, not also ${FLAG_NAMES[flag]}.`);
@@ -177,8 +191,9 @@ const readSecretValue = async (options: PutValues): Promise<string> => {
       (flag) => !KIND_FLAGS[kind].includes(flag) && options[flag] !== undefined,
     );
   if (foreign.length > 0) {
+    const takes = KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]);
     throw new Error(
-      `${kind} takes no ${[...new Set(foreign)].map((flag) => FLAG_NAMES[flag]).join(", ")}.\nIt takes ${KIND_FLAGS[kind].map((flag) => FLAG_NAMES[flag]).join(", ")}.`,
+      `${kind} takes no ${[...new Set(foreign)].map((flag) => FLAG_NAMES[flag]).join(", ")}.\nIt takes ${takes.length > 0 ? takes.join(", ") : "only the PEM file"}.`,
     );
   }
   const required = (flag: ValueFlag) => {
@@ -216,6 +231,13 @@ const readSecretValue = async (options: PutValues): Promise<string> => {
       const file = required("serviceAccount");
       const text = (await readFile(file, "the key")).toString("utf-8");
       return parseServiceAccountKey(text, file).json;
+    }
+    case BUNDLE_SIGNING_KEY: {
+      const file = options.pem!;
+      const text = (await readFile(file, "the key")).toString("utf-8");
+      // Masked before it is parsed, so no failure can print it.
+      registerCredentialValue(text);
+      return readBundleSigningKey(text, file).pem;
     }
   }
 };
@@ -255,13 +277,13 @@ const PASSWORD_INPUTS: ReadonlySet<string> = new Set([
  * reads before its files.
  */
 export const environmentOverrides = (
-  kind: CredentialKind,
+  kind: PutKind,
   name: string,
   secrets: SecretsAdapter,
   env: Readonly<Record<string, string>>,
 ) =>
   [
-    ...CREDENTIAL_ENV_NAMES[kind].flat(),
+    ...(kind === BUNDLE_SIGNING_KEY ? [] : CREDENTIAL_ENV_NAMES[kind].flat()),
     ...(getConfiguredAdapter(secrets) === undefined
       ? [secretVariableName(name)]
       : []),
@@ -269,12 +291,14 @@ export const environmentOverrides = (
 
 /**
  * `secrets put`: stores a build credential you have as `name` through the
- * config's `secrets` adapter, or `localSecrets()` by default, as one JSON
- * value that `secret:<name>` resolves, and reads it back exactly. The
- * kind defaults to the name, and `<file>` is the kind's file: a service
- * account's JSON key, checked to be one, or a keystore, whose alias and
- * passwords a terminal asks for without `--key-alias`. It never signs in
- * or calls Google Play: `secrets issue` signs in, doctor checks access.
+ * config's `secrets` adapter, or `localSecrets()` by default, as the value
+ * `secret("<name>")` resolves, and reads it back exactly. The kind defaults
+ * to the name, and `<file>` is the kind's file: a service account's JSON
+ * key, checked to be one, a keystore, whose alias and passwords a terminal
+ * asks for without `--key-alias`, or a bundle signing key's PEM, stored as
+ * PKCS#8 and named by its public key's fingerprint, so an existing key
+ * moves into the store without a new trust anchor. It never signs in or
+ * calls Google Play: `secrets issue` signs in, doctor checks access.
  */
 export const handleSecretsPut = async (
   name: string,
@@ -294,6 +318,14 @@ export const handleSecretsPut = async (
     if (kind === "play-service-account" && !options.serviceAccount) {
       throw new Error(
         `${ui.withCommand("secrets put needs the JSON key file:", credentialPutCommand(kind, name))}\n${GOOGLE_PLAY_GUIDE_URL}`,
+      );
+    }
+    if (kind === BUNDLE_SIGNING_KEY && !options.pem) {
+      throw new Error(
+        ui.withCommand(
+          "secrets put needs the PEM file:",
+          `npx hot-updater secrets put ${name}${name === kind ? "" : ` --kind ${kind}`} <key.pem>`,
+        ),
       );
     }
     if (kind === "android-keystore" && !options.keystore) {
@@ -330,6 +362,11 @@ export const handleSecretsPut = async (
     }
     const value = await readSecretValue(options);
     await storeCredential(secrets, name, value);
+    // The key the apps' embedded public key must match.
+    const fingerprint =
+      kind === BUNDLE_SIGNING_KEY
+        ? readBundleSigningKey(value, name).fingerprint
+        : undefined;
     const email =
       kind === "play-service-account"
         ? (JSON.parse(value) as { client_email: string }).client_email
@@ -339,6 +376,7 @@ export const handleSecretsPut = async (
         ui.kv("Name", name),
         ui.kv("Kind", kind),
         email && ui.kv("Service account", email),
+        fingerprint && ui.kv("Public key", fingerprint),
         ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
       ]),
     );
@@ -554,7 +592,7 @@ const DEFAULT_IMPORT_FILE = ".env.hotupdater";
 
 /**
  * `secrets import [env-file]`: stores the credentials hot-updater.config.ts
- * reads with `secretEnv`, and the app's API key, from `envFile`,
+ * reads for its adapters with `secret()`, and the app's API key, from `envFile`,
  * `.env.hotupdater` by default, through the config's team `secrets`
  * adapter, and reads them back. Only the file is read, never the
  * environment. It deletes nothing: where the file is loaded, its lines go
@@ -571,9 +609,12 @@ export const handleSecretsImport = async (envFile?: string): Promise<void> => {
       );
     }
     const file = envFile ?? DEFAULT_IMPORT_FILE;
-    // A config with no secretEnv, such as Firebase's, still shares the
+    // A config with no adapter secret(), such as Firebase's, still shares the
     // app's API key.
-    const names = [...getSecretEnvNames(config), MANAGED_CLIENT_CREDENTIAL_ENV];
+    const names = [
+      ...getDeploySecretNames(config),
+      MANAGED_CLIENT_CREDENTIAL_ENV,
+    ];
     const stored = await storeEnvFileSecrets(adapter, names, getCwd(), envFile);
     if (stored.length === 0) {
       throw new Error([`${file} sets none of these:`, ...names].join("\n"));

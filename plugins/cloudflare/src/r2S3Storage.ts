@@ -15,10 +15,13 @@ import {
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
-export interface R2S3StorageConfig extends S3ClientConfig {
+import { type AwsCredentialsOption, toSdkCredentials } from "./lazyCredentials";
+
+export interface R2S3StorageConfig extends Omit<S3ClientConfig, "credentials"> {
   accountId: string;
   bucketName: string;
-  credentials: NonNullable<S3ClientConfig["credentials"]>;
+  /** The SDK's credentials, or an R2 access key whose fields are lazy. */
+  credentials: NonNullable<AwsCredentialsOption>;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
 }
@@ -54,10 +57,12 @@ export const createR2S3Storage = (
     endpoint,
     forcePathStyle,
     region,
+    credentials,
     ...s3Config
   } = config;
   const client = new S3Client({
     ...s3Config,
+    credentials: toSdkCredentials(credentials),
     endpoint: endpoint ?? `https://${accountId}.r2.cloudflarestorage.com`,
     forcePathStyle: forcePathStyle ?? true,
     region: region ?? "auto",

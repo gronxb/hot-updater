@@ -51,6 +51,14 @@ const placeholder = (name) => `__HOT_UPDATER_${name}__`;
  * deploy settings. provision-client-credential.mjs loads .env.hotupdater
  * before it.
  */
+/**
+ * `text` with each `secret("<name>")` as `process.env.<name>!`: the server
+ * definition is a server's, which passes its own environment's values, and
+ * the agent records the credentials in the environment the script loads.
+ */
+const serverEnvReads = (text) =>
+  text.replace(/\bsecret\("([A-Za-z_][A-Za-z0-9_]*)"\)/g, "process.env.$1!");
+
 const renderCredentialDefinition = (scaffold, build) => {
   const imports = [
     ...scaffold.imports
@@ -67,7 +75,9 @@ const renderCredentialDefinition = (scaffold, build) => {
       ),
     { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
   ];
-  const helpers = scaffold.helperStatements.map(({ code }) => code.trim());
+  const helpers = scaffold.helperStatements.map(({ code }) =>
+    serverEnvReads(code.trim()),
+  );
   const plugins = scaffold.plugins.initializer;
   return `${renderImportStatements(imports)}
 
@@ -78,8 +88,8 @@ ${helpers.map((code) => `${code}\n\n`).join("")}/**
  * database, storage, and plugins.
  */
 export const hotUpdater = createHotUpdater({
-  database: ${scaffold.database.initializer},
-  storage: ${scaffold.storage.initializer},
+  database: ${serverEnvReads(scaffold.database.initializer)},
+  storage: ${serverEnvReads(scaffold.storage.initializer)},
   ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
 });
 `;

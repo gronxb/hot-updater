@@ -33,7 +33,7 @@ const MASKING_REGISTRY = Symbol.for("@hot-updater/cli-tools/secret-masking");
 /**
  * The values to mask, kept on `globalThis`: the config file loads its own
  * copy of Hot Updater's modules, and a value it resolves, such as through
- * `secretEnv`, must be masked by the CLI's log sinks too.
+ * `secret()`, must be masked by the CLI's log sinks too.
  */
 const registry: MaskingRegistry = ((
   globalThis as {

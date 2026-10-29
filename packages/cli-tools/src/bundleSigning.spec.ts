@@ -17,6 +17,7 @@ import {
 } from "./bundleSigning";
 import { normalizeSigningConfig } from "./localBundleSigning";
 import { setConfiguredSecrets, resolveSecretsAdapter } from "./secrets";
+import { secret } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -297,7 +298,7 @@ describe("local signing with privateKey from the config's secrets", () => {
     const get = configure({ "bundle-signing-key": privateKey });
     const signing: SigningConfig = {
       enabled: true,
-      privateKey: "secret:bundle-signing-key",
+      privateKey: secret("bundle-signing-key"),
     };
 
     await expect(
@@ -330,7 +331,7 @@ describe("local signing with privateKey from the config's secrets", () => {
     });
     const raw = {
       enabled: true,
-      privateKey: "secret:bundle-signing-key",
+      privateKey: secret("bundle-signing-key"),
     } as const;
     const iosSigning = normalizeSigningConfig(raw, {
       secrets: store("ios-store", ios.privateKey),
@@ -354,7 +355,7 @@ describe("local signing with privateKey from the config's secrets", () => {
 
     await expect(
       prepareBundleSigning(
-        { enabled: true, privateKey: "secret:bundle-signing-key" },
+        { enabled: true, privateKey: secret("bundle-signing-key") },
         { cwd: "/project" },
       ),
     ).rejects.toThrow(

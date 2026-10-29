@@ -145,6 +145,52 @@ describe("init with a team secrets store", () => {
     expect(mocks.success).not.toHaveBeenCalled();
   });
 
+  it("stops when a config that sets a team store doesn't load, so it never asks for or creates its credentials again", async () => {
+    // Given: a config of an earlier release that no longer loads
+    await fs.writeFile(
+      path.join(directory, "hot-updater.config.ts"),
+      [
+        'import { defineConfig, secretEnv } from "hot-updater";',
+        'import { infisical } from "hot-updater";',
+        'const deploy = secretEnv(["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);',
+        "export default defineConfig({",
+        '  secrets: infisical({ projectId: "p" }),',
+        "});",
+      ].join("\n"),
+    );
+    mocks.loadTeamSecrets.mockRejectedValue(
+      new TypeError("secretEnv is not a function"),
+    );
+
+    // Then
+    await expect(
+      openInitTeamSecrets({ provider: PROVIDER, env: {}, cwd: directory }),
+    ).rejects.toThrow(
+      "hot-updater.config.ts sets a secrets adapter, but doesn't load:\nsecretEnv is not a function\nFix it, then run init again.",
+    );
+  });
+
+  it.each([
+    ["no secrets", "export default defineConfig({});"],
+    [
+      "localSecrets()",
+      "export default defineConfig({ secrets: localSecrets() });",
+    ],
+  ])(
+    "goes on with .env.hotupdater when a config with %s doesn't load",
+    async (_, text) => {
+      await fs.writeFile(path.join(directory, "hot-updater.config.ts"), text);
+      mocks.loadTeamSecrets.mockRejectedValue(new Error("broken"));
+
+      await expect(
+        openInitTeamSecrets({ provider: PROVIDER, env: {}, cwd: directory }),
+      ).resolves.toBeUndefined();
+      expect(mocks.warn).toHaveBeenCalledWith(
+        "Couldn't load hot-updater.config.ts for its secrets adapter, so credentials stay in .env.hotupdater: broken",
+      );
+    },
+  );
+
   it("does nothing with localSecrets()", async () => {
     mocks.loadTeamSecrets.mockResolvedValue(undefined);
 

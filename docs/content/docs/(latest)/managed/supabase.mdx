@@ -183,7 +183,7 @@ to run other server plugins, use a [custom server](/docs/custom/overview).
 
 The config names the project and bucket init chose and reads the service role
 key with
-[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
+[`secret()`](/docs/concepts/secrets#adapter-credentials):
 the environment and `.env.hotupdater` first, then the config's `secrets`
 adapter. With a
 [team store](/docs/concepts/secrets#this-machine-or-the-team) there, init
@@ -199,7 +199,7 @@ config that a function returns, it leaves the file unchanged and prints the
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -207,22 +207,16 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const deploySecrets = secretEnv([
-  "HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY",
-]);
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: "https://your-project-id.supabase.co",
-    supabaseServiceRoleKey: async () =>
-      (await deploySecrets()).HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY,
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
     bucketName: "your-bucket-name",
   }),
   database: supabaseDatabase({
     supabaseUrl: "https://your-project-id.supabase.co",
-    supabaseServiceRoleKey: async () =>
-      (await deploySecrets()).HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY,
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and secrets put

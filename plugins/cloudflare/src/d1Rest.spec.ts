@@ -6,7 +6,7 @@ import { d1RestRunner } from "./d1Rest";
 describe("d1Database's API token", () => {
   it("is read from a function on the first query, not when the config loads", async () => {
     const cloudflareApiToken = vi.fn(async () => {
-      throw new Error("secretEnv found no value for CLOUDFLARE_API_TOKEN");
+      throw new Error('secret("CLOUDFLARE_API_TOKEN") has no value');
     });
     const config = {
       accountId: "account-id",
@@ -19,7 +19,7 @@ describe("d1Database's API token", () => {
     expect(cloudflareApiToken).not.toHaveBeenCalled();
 
     await expect(runner.query({ sql: "select 1", params: [] })).rejects.toThrow(
-      "secretEnv found no value for CLOUDFLARE_API_TOKEN",
+      'secret("CLOUDFLARE_API_TOKEN") has no value',
     );
     expect(cloudflareApiToken).toHaveBeenCalledTimes(1);
   });

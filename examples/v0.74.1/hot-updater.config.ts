@@ -3,15 +3,14 @@ import { existsSync } from "node:fs";
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 import { insights } from "hot-updater/plugins";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   nativeBuild: {
@@ -28,15 +27,15 @@ export default defineConfig({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("R2_SECRET_ACCESS_KEY"),
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3006/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
+      Authorization: async () => `Bearer ${await adminToken()}`,
     },
   }),
   // The plugins its server, examples-server/hono-mongodb, runs.

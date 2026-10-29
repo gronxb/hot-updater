@@ -35,6 +35,12 @@ import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
 import { findMissingClientPlugins } from "./doctor/clientPlugins";
 import { createDoctorContext, type DoctorContext } from "./doctor/context";
 import {
+  checkDeploySecrets,
+  deploySecretsAdvice,
+  type DeploySecretsStatus,
+  deploySecretsInitCommand,
+} from "./doctor/deploySecrets";
+import {
   checkFingerprintJson,
   checkUnusedFingerprintJson,
 } from "./doctor/fingerprint";
@@ -54,12 +60,6 @@ import {
   recordedBaseUrls,
 } from "./doctor/scaffoldRecords";
 import { checkSchema } from "./doctor/schema";
-import {
-  checkSecretEnv,
-  secretEnvAdvice,
-  type SecretEnvStatus,
-  secretEnvInitCommand,
-} from "./doctor/secretEnv";
 import { checkSecrets, type SecretsStatus } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
@@ -138,10 +138,10 @@ interface DoctorDetails {
   schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
-  /** Where each `secret:` reference in the config is read from. */
+  /** Where each build credential's `secret()` is read from. */
   secrets?: SecretsStatus;
-  /** Where each name the config's `secretEnv` reads comes from. */
-  secretEnv?: SecretEnvStatus;
+  /** Where each name the config's adapter `secret()`s read comes from. */
+  deploySecrets?: DeploySecretsStatus;
   /** The Play service account's access to each Android package. */
   googlePlay?: GooglePlayStatus;
 
@@ -870,7 +870,7 @@ async function checkProject(
         ...(fetchImpl ? { fetch: fetchImpl } : {}),
       }).catch(() => undefined);
       if (googlePlay) details.googlePlay = googlePlay;
-      const secretEnv = await checkSecretEnv(config, {
+      const deploySecrets = await checkDeploySecrets(config, {
         cwd,
         // Read only with a team store: the provider's own init lists them.
         managedSecrets: async () => {
@@ -882,16 +882,18 @@ async function checkProject(
           return provider?.initProvider.secrets ?? [];
         },
       }).catch(() => undefined);
-      if (secretEnv) {
+      if (deploySecrets) {
         const initCommand =
-          secretEnv.processEnvReads.length === 0
+          deploySecrets.processEnvReads.length === 0
             ? undefined
-            : secretEnvInitCommand({
+            : deploySecretsInitCommand({
                 managed: await context.managed(),
                 scaffolds: await context.scaffolds(),
               });
-        details.secretEnv =
-          initCommand === undefined ? secretEnv : { ...secretEnv, initCommand };
+        details.deploySecrets =
+          initCommand === undefined
+            ? deploySecrets
+            : { ...deploySecrets, initCommand };
       }
     }
 
@@ -969,7 +971,7 @@ async function checkProject(
       details.schema ||
       details.releaseCatalogs ||
       details.secrets ||
-      details.secretEnv ||
+      details.deploySecrets ||
       details.googlePlay ||
       details.infrastructureUnchecked
     ) {
@@ -1258,13 +1260,16 @@ export const handleDoctor = async ({
     }
   }
 
-  if (details?.secrets || details?.secretEnv) {
-    const { secrets, secretEnv } = details;
+  if (details?.secrets || details?.deploySecrets) {
+    const { secrets, deploySecrets } = details;
     const adapter =
-      secrets?.adapter ?? secretEnv?.adapter ?? LOCAL_SECRETS_NAME;
-    // The `secret:` references, then the names `secretEnv` reads, each with
+      secrets?.adapter ?? deploySecrets?.adapter ?? LOCAL_SECRETS_NAME;
+    // The build credentials' `secret()`s, then the adapters', each with
     // where a command finds it.
-    const rows = [...(secrets?.references ?? []), ...(secretEnv?.names ?? [])];
+    const rows = [
+      ...(secrets?.references ?? []),
+      ...(deploySecrets?.names ?? []),
+    ];
     if (rows.length > 0) {
       p.log.step(
         ui.block("Secrets", [
@@ -1287,7 +1292,7 @@ export const handleDoctor = async ({
       );
     }
     for (const error of new Set(
-      [secrets?.error, secretEnv?.error].filter(
+      [secrets?.error, deploySecrets?.error].filter(
         (error): error is string => error !== undefined,
       ),
     )) {
@@ -1295,7 +1300,7 @@ export const handleDoctor = async ({
         ui.prose(`Couldn't read the ${adapter} secrets adapter: ${error}`),
       );
     }
-    const processEnvReads = secretEnv?.processEnvReads ?? [];
+    const processEnvReads = deploySecrets?.processEnvReads ?? [];
     if (processEnvReads.length > 0) {
       const them = processEnvReads.length === 1 ? "it" : "them";
       p.log.warn(
@@ -1303,7 +1308,7 @@ export const handleDoctor = async ({
           ui.prose(
             `hot-updater.config.ts reads ${processEnvReads.join(", ")} with process.env, so ${adapter} never supplies ${them}.`,
           ),
-          ...secretEnvAdvice(them, secretEnv?.initCommand),
+          ...deploySecretsAdvice(them, deploySecrets?.initCommand),
         ].join("\n"),
       );
     }

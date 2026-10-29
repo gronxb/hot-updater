@@ -101,6 +101,20 @@ describe("Firebase managed config scaffold", () => {
     );
   });
 
+  it("reads no credential, by process.env or a secret, in init's config or the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", {
+        projectId: "demo-project",
+        storageBucket: "demo-project.firebasestorage.app",
+        databaseId: "(default)",
+      }),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:|secret\(/u);
+      expect(text).toContain("const credential = applicationDefault();");
+    }
+  });
+
   it("names the project, bucket, and database init set up, and reads no secret", () => {
     expect(
       getConfigScaffold("bare", {

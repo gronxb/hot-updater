@@ -623,17 +623,16 @@ fields with the following excerpt. Load the environment using your existing
 
 ```ts title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins";
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   // Keep your build, storage, signing and updateStrategy fields here.
   database: standaloneRepository({
     baseUrl: "https://updates-v1.example.com/hot-updater/admin",
-    commonHeaders: { Authorization: `Bearer ${adminToken}` },
+    commonHeaders: { Authorization: async () => `Bearer ${await adminToken()}` },
   }),
   plugins: [insights(), apiKeys()],
 });

@@ -196,7 +196,7 @@ back from an enabled signer to an unsigned deployment.
   `googleCloudKmsSigning`, or use a compatible signing endpoint with
   `remoteSigning`.
 - Built-in local signing: Use `enabled: true` with `privateKey:
-  "secret:<name>"`, read through the config's `secrets` adapter, or with
+  secret("<name>")`, read through the config's `secrets` adapter, or with
   `privateKeyPath`. Signing is never enabled automatically.
 
 Expo projects configure the native trust anchor independently through the
@@ -212,8 +212,8 @@ provider setup, native trust-anchor rollout, and rotation guidance.
 ## Secrets adapter
 
 The secrets adapter is where the CLI reads the secrets `hot-updater.config.ts`
-names: native build credentials as `secret:<name>`, and deploy credentials
-through `secretEnv([...])`. It stores the keys `secrets put` stores, and the
+names with `secret("<name>")`: native build credentials, and the credentials
+storage and database adapters read on first use. It stores the keys `secrets put` stores, and the
 keys `secrets issue` or a build issues after a sign-in. `localSecrets()`
 from `hot-updater`, the default, reads environment variables, then files in
 your home directory that only you can read, where it stores keys.

@@ -1,11 +1,13 @@
+import type { Lazy } from "@hot-updater/plugin-core";
+
 export type SupabaseServiceRoleConfig = {
   supabaseUrl: string;
   /**
    * The project's service role key, or a function that returns it, such as
-   * one that reads it with `secretEnv`: called on the first request, so a
-   * config loads without the key.
+   * `secret("<name>")` in `hot-updater.config.ts`: called on the first
+   * request, so a config loads without the key.
    */
-  supabaseServiceRoleKey: string | (() => string | Promise<string>);
+  supabaseServiceRoleKey: Lazy<string>;
 };
 
 export const resolveSupabaseServiceRoleKey = async (

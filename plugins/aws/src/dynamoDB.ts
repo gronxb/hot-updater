@@ -12,8 +12,14 @@ import {
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
 import { createDynamoDBStore } from "./dynamoDBStore";
+import { type AwsCredentialsOption, toSdkCredentials } from "./lazyCredentials";
 
-export interface DynamoDBConfig extends DynamoDBClientConfig {
+export interface DynamoDBConfig extends Omit<
+  DynamoDBClientConfig,
+  "credentials"
+> {
+  /** The SDK's credentials, or access keys whose fields are lazy. */
+  readonly credentials?: AwsCredentialsOption;
   readonly apiBasePath?: string;
   readonly cloudfrontDistributionId?: string;
   readonly shouldWaitForInvalidation?: boolean;
@@ -28,8 +34,15 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
 }
 
 /** The DynamoDB client ignores the CloudFront and batching settings. */
-const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
-  const client = new DynamoDBClient(clientConfig);
+const adapterOf = ({
+  tableName,
+  credentials,
+  ...clientConfig
+}: DynamoDBConfig) => {
+  const client = new DynamoDBClient({
+    ...clientConfig,
+    credentials: toSdkCredentials(credentials),
+  });
   const store = createDynamoDBStore({ client, tableName });
   return { client, adapter: createKvAdapter({ store }) };
 };
@@ -67,7 +80,10 @@ const marked = (target: string) => ({ [DATABASE_TARGET]: target });
  */
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const { client, adapter } = adapterOf(config);
-  const cloudFront = createUpdateRouteInvalidation(config);
+  const cloudFront = createUpdateRouteInvalidation({
+    ...config,
+    credentials: toSdkCredentials(config.credentials),
+  });
   return {
     ...createEngineDatabase({
       name: "dynamoDB",

@@ -1,4 +1,4 @@
-import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import type { SecretRef, SecretsAdapter } from "@hot-updater/plugin-core";
 
 import { getCwd } from "./cwd";
 import {
@@ -14,33 +14,38 @@ import { registerSecretValue } from "./secretMasking";
 
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
-/** A secret's name, as `secret:<name>` takes one. */
+/** A secret's name, as `secret("<name>")` takes one. */
 const SECRET_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
-const SECRET_REFERENCE_PREFIX = "secret:";
+/**
+ * The brand `secret()` sets, which plugin-core's `SecretRef` types. It is a
+ * `Symbol.for` key: the config file loads its own copy of this module.
+ */
+const SECRET_REF = Symbol.for("@hot-updater/secret-ref");
 
-/** Whether `name` is a secret's name, as `secret:<name>` takes one. */
+/** Whether `name` is a secret's name, as `secret("<name>")` takes one. */
 export const isSecretName = (name: string): boolean =>
   SECRET_NAME_PATTERN.test(name);
 
+/** Whether `value` is a `secret("<name>")` reference. */
+export const isSecretRef = (value: unknown): value is SecretRef =>
+  typeof value === "function" &&
+  Reflect.get(value, SECRET_REF) === true &&
+  isSecretName(value.name);
+
 /**
- * The secret name a config's `secret:<name>` reference names, such as
- * `release-keystore` for `"secret:release-keystore"`. `field` is the config
- * field the reference is in, which the error names.
+ * The secret name a config's `secret("<name>")` names, such as
+ * `release-keystore` for `secret("release-keystore")`. `field` is the
+ * config field it is in, which the error names.
  */
 export const parseSecretReference = (
-  reference: string,
+  reference: unknown,
   field: string,
 ): string => {
-  const name = reference.startsWith(SECRET_REFERENCE_PREFIX)
-    ? reference.slice(SECRET_REFERENCE_PREFIX.length)
-    : undefined;
-  if (name === undefined || !SECRET_NAME_PATTERN.test(name)) {
-    throw new Error(
-      `${field} names a secret as secret:<name>, such as "secret:release-keystore", and ${JSON.stringify(reference)} is not one.`,
-    );
+  if (!isSecretRef(reference)) {
+    throw new Error(`${field} takes secret("<name>").`);
   }
-  return name;
+  return reference.name;
 };
 
 /**
@@ -154,8 +159,8 @@ export const getLocalSecretsStore = (
 
 /**
  * The config's own `secrets` adapter: undefined for `localSecrets()`,
- * which is the adapter when the config sets none. `secretEnv` reads deploy
- * credentials from it.
+ * which is the adapter when the config sets none. A called `secret()` reads
+ * from it.
  */
 export const getConfiguredAdapter = (
   secrets: SecretsAdapter,
@@ -218,12 +223,19 @@ const LOADING_SCOPE = Symbol.for("@hot-updater/cli-tools/secrets-scope");
 
 /**
  * The `secrets` adapter of one config load, filled once the config it
- * evaluates resolves: each `secretEnv` the evaluation creates reads from it,
- * and adds the names it reads to `names`.
+ * evaluates resolves: each `secret()` the evaluation creates reads from it,
+ * and adds its name to `names`.
  */
 export interface SecretsScope {
   secrets?: SecretsAdapter;
   names?: Set<string>;
+  /**
+   * The names build credentials reference, such as `signing.keystore`'s,
+   * which the CLI reads for their kind: the batched read leaves them out.
+   */
+  buildNames?: Set<string>;
+  /** The one read of the scope's other names, once a `secret()` is called. */
+  read?: Promise<Readonly<Record<string, string | undefined>>>;
 }
 
 type SecretsSlot = {
@@ -233,7 +245,7 @@ type SecretsSlot = {
 
 /**
  * Evaluates a config, the file or a config function, with `scope` as the
- * scope of every `secretEnv` it creates, so each reads the `secrets` of the
+ * scope of every `secret()` it creates, so each reads the `secrets` of the
  * config that created it, whatever config loads after. It is kept on
  * `globalThis`: the config file loads its own copy of Hot Updater's modules.
  */
@@ -253,7 +265,7 @@ export const withSecretsScope = async <T>(
 
 /**
  * Makes `secrets` the adapter a credential resolver reads from by default,
- * and a `secretEnv` created outside any config load, as `loadConfig` does
+ * and a `secret()` created outside any config load, as `loadConfig` does
  * with the config's. It is kept on `globalThis`: the config file loads Hot
  * Updater's modules again, as its own copies.
  */
@@ -305,94 +317,114 @@ const list = (names: readonly string[]) =>
     : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 
 /**
- * Environment variables from the `secrets` adapter of the config that
- * creates it, as a function a config calls when an adapter needs them, so loading
- * `hot-updater.config.ts` reads no secret. Each name set in the environment
- * or `.env.hotupdater` wins; the others are read from the config's
- * `secrets` adapter in one call, and without one they must be set. The values go only to the caller: they are never set in
- * `process.env`, and are masked in the CLI's logs. Names a loader or
- * interpreter reads, such as `NODE_OPTIONS`, are refused.
+ * `secret("<name>")`: the secret `name` in `hot-updater.config.ts`, for a
+ * build credential, such as `signing.keystore`, or any adapter credential,
+ * which calls it on first use, so loading the config reads no secret.
+ * Called, it reads `name`'s variable (`secretVariableName`) in the
+ * environment or `.env.hotupdater`, else the config's `secrets` adapter:
+ * the first call reads every name the config's `secret()`s reference and
+ * the environment doesn't set, in one `get`. With `localSecrets()`, the
+ * variable must be set: its files hold only the keys Hot Updater stores.
+ * Values are masked in the CLI's logs and never set in `process.env`.
+ * Names a loader or interpreter reads, such as `NODE_OPTIONS`, are refused.
+ * A server passes its own environment's values instead.
  *
  * @example
- * const deploy = secretEnv(["S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]);
- * s3Storage({
+ * r2Storage({
  *   bucketName: "bundles",
- *   region: "us-east-1",
- *   credentials: async () => {
- *     const env = await deploy();
- *     return {
- *       accessKeyId: env.S3_ACCESS_KEY_ID,
- *       secretAccessKey: env.S3_SECRET_ACCESS_KEY,
- *     };
+ *   accountId: "<account-id>",
+ *   credentials: {
+ *     accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+ *     secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
  *   },
  * });
  */
-export const secretEnv = <const TName extends string>(
-  names: readonly TName[],
-): (() => Promise<Readonly<Record<TName, string>>>) => {
-  const wanted = [...new Set(names)];
-  const invalid = wanted.filter((name) => !ENV_NAME_PATTERN.test(name));
-  if (invalid.length > 0) {
+export const secret = (name: string): SecretRef => {
+  if (typeof name !== "string" || !isSecretName(name)) {
     throw new Error(
-      `secretEnv takes environment variable names: letters, digits, and underscores, not starting with a digit, and ${invalid.map((name) => JSON.stringify(name)).join(", ")} ${invalid.length === 1 ? "is" : "are"} not.`,
+      `secret() takes up to 64 letters, digits, ".", "_", and "-", starting with a letter or digit, and ${JSON.stringify(name)} is not that.`,
     );
   }
-  const reserved = wanted.filter(isReservedVariableName);
-  if (reserved.length > 0) {
+  if (isReservedVariableName(name)) {
     throw new Error(
-      `secretEnv refuses ${list(reserved)}: ${reserved.length === 1 ? "it changes" : "they change"} how a process loads code or which credentials Hot Updater uses.`,
+      `secret() refuses ${name}: it changes how a process loads code or which credentials Hot Updater uses.`,
     );
   }
   const scope = (globalThis as SecretsSlot)[LOADING_SCOPE];
-  if (scope) {
-    scope.names ??= new Set();
-    for (const name of wanted) scope.names.add(name);
-  }
-  // One read per command: the adapters that call it share its values.
-  let read: Promise<Readonly<Record<TName, string>>> | undefined;
-  return () =>
-    (read ??= readSecretEnv<TName>(wanted, scope).catch((error: unknown) => {
+  if (scope) (scope.names ??= new Set()).add(name);
+  // One read per command: every adapter that calls it shares its value.
+  let read: Promise<string> | undefined;
+  const ref = () =>
+    (read ??= readSecretRef(name, scope).catch((error: unknown) => {
       read = undefined;
       throw error;
     }));
+  Object.defineProperty(ref, "name", { value: name });
+  Object.defineProperty(ref, SECRET_REF, { value: true });
+  return Object.freeze(ref) as SecretRef;
 };
 
-const readSecretEnv = async <const TName extends string>(
-  wanted: readonly TName[],
+/**
+ * The scope's names to read in one `get`: those no build credential takes
+ * and the environment doesn't set, with `name`.
+ */
+const batchedNames = (
+  scope: SecretsScope,
+  name: string,
+  fileEnv: Readonly<Record<string, string>>,
+) => {
+  const names = [...(scope.names ?? [])].filter(
+    (candidate) =>
+      !scope.buildNames?.has(candidate) &&
+      getHotUpdaterEnvValue(fileEnv, secretVariableName(candidate)) ===
+        undefined,
+  );
+  return names.includes(name) ? names : [...names, name];
+};
+
+const readSecretRef = async (
+  name: string,
   scope: SecretsScope | undefined,
-): Promise<Readonly<Record<TName, string>>> => {
+): Promise<string> => {
   const cwd = getCwd();
   const fileEnv = await readLoadedHotUpdaterEnv(cwd);
-  // No prototype: a variable may be named __proto__.
-  const variables: Record<string, string> = Object.create(null);
-  const fromStore: string[] = [];
-  for (const name of wanted) {
-    const value = getHotUpdaterEnvValue(fileEnv, name);
-    if (value === undefined) fromStore.push(name);
-    else variables[name] = value;
+  const variable = secretVariableName(name);
+  const fromEnv = getHotUpdaterEnvValue(fileEnv, variable);
+  if (fromEnv !== undefined && fromEnv !== "") {
+    registerSecretValue(fromEnv);
+    return fromEnv;
   }
-  if (fromStore.length > 0) {
-    // Deploy credentials come from the config's own adapter: `localSecrets()`'s
-    // store holds only the keys Hot Updater stores.
-    const secrets = getConfiguredAdapter(
-      scope?.secrets ?? getConfiguredSecrets(),
+  // Adapter credentials come from the config's own adapter: `localSecrets()`'s
+  // store holds only the keys Hot Updater stores.
+  const secrets = getConfiguredAdapter(
+    scope?.secrets ?? getConfiguredSecrets(),
+  );
+  if (secrets === undefined) {
+    throw new Error(
+      `secret("${name}") has no value: set ${variable} in the environment or .env.hotupdater, or set the config's secrets to a team store.`,
     );
-    const read = secrets ? await readSecrets(secrets, fromStore, cwd) : {};
-    const missing = fromStore.filter((name) => {
-      const value = Object.hasOwn(read, name) ? read[name] : undefined;
-      if (typeof value !== "string" || value === "") return true;
-      variables[name] = value;
-      return false;
-    });
-    if (missing.length > 0) {
-      const them = missing.length === 1 ? "it" : "them";
-      throw new Error(
-        secrets === undefined
-          ? `secretEnv found no value for ${list(missing)}: set ${them} in the environment or .env.hotupdater, or read ${them} from a secrets store with the config's secrets.`
-          : `secretEnv found no value for ${list(missing)}: ${missing.length === 1 ? "it is" : "they are"} not set in the environment or .env.hotupdater, and the ${secrets.name} secrets adapter does not hold ${them} (${missing.map((name) => describeSecret(secrets, name)).join("; ")}).`,
-      );
-    }
   }
-  for (const value of Object.values(variables)) registerSecretValue(value);
-  return Object.freeze(variables) as Readonly<Record<TName, string>>;
+  let values: Readonly<Record<string, string | undefined>> | undefined;
+  if (scope) {
+    scope.read ??= readSecrets(
+      secrets,
+      batchedNames(scope, name, fileEnv),
+      cwd,
+    ).catch((error: unknown) => {
+      scope.read = undefined;
+      throw error;
+    });
+    values = await scope.read;
+  }
+  if (!values || !Object.hasOwn(values, name)) {
+    values = await readSecrets(secrets, [name], cwd);
+  }
+  const value = Object.hasOwn(values, name) ? values[name] : undefined;
+  if (typeof value !== "string" || value === "") {
+    throw new Error(
+      `secret("${name}") has no value: ${variable} is not set in the environment or .env.hotupdater, and the ${secrets.name} secrets adapter does not hold it (${describeSecret(secrets, name)}).`,
+    );
+  }
+  registerSecretValue(value);
+  return value;
 };

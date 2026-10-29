@@ -36,17 +36,14 @@ import { existsSync } from "node:fs";
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
-import { defineConfig, localSecrets } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins"; // [!code ++]
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -54,8 +51,8 @@ export default defineConfig({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("R2_SECRET_ACCESS_KEY"),
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
@@ -64,7 +61,7 @@ export default defineConfig({
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: {
       // [!code ++]
-      Authorization: `Bearer ${adminToken}`, // [!code ++]
+      Authorization: async () => `Bearer ${await adminToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
   plugins: [insights(), apiKeys()], // [!code ++]
@@ -130,9 +127,9 @@ through it, the path the server's own writes take:
 
 ## Secrets
 
-`secrets` is where the CLI reads the secrets the config names: the native
-build credentials a [`secret:<name>`](/docs/native-builds/credentials#provide-signing-credentials)
-reference names, and the deploy credentials `secretEnv` names. It defaults to
+`secrets` is where the CLI reads the secrets the config names with
+[`secret("<name>")`](/docs/concepts/secrets#name-a-secret): native build
+credentials and adapter credentials alike. It defaults to
 [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets) from
 `hot-updater`, which reads each name from an environment variable, in the
 environment or `.env.hotupdater`, then from a file in your home directory
@@ -150,31 +147,27 @@ such as [dotenvx](/docs/guides/secrets-adapters/dotenvx) or
 [Bitwarden](/docs/guides/secrets-adapters/bitwarden):
 [Choose an adapter](/docs/concepts/secrets#choose-an-adapter) compares them.
 
-`secretEnv([...names])` from `hot-updater` returns a function an adapter calls
-when it needs its credentials, so loading the config reads no secret. A name
-set in the environment wins; the others come from `secrets`, except with
-`localSecrets()`, whose files hold only the keys Hot Updater stores. The values go only
-to that adapter, never into the CLI's `process.env`, and are masked in the
-CLI's output. Names that change how a process loads code, such as
-`NODE_OPTIONS`, `PATH`, or `LD_PRELOAD`, are refused.
+An adapter reads a `secret()` when it needs the credential, so loading the
+config reads no secret. A name set in the environment wins; the config's
+others come from `secrets` in one call, except with `localSecrets()`, whose
+files hold only the keys Hot Updater stores. The values go only to that
+adapter, never into the CLI's `process.env`, and are masked in the CLI's
+output. Names that change how a process loads code, such as `NODE_OPTIONS`,
+`PATH`, or `LD_PRELOAD`, are refused. `secret()` is for
+`hot-updater.config.ts`: a server passes its own environment's values.
 
 ```typescript title="hot-updater.config.ts (partial)"
 import { s3Storage } from "@hot-updater/aws";
-import { defineConfig, localSecrets, secretEnv } from "hot-updater";
-
-const deploy = secretEnv(["S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]);
+import { defineConfig, localSecrets, secret } from "hot-updater";
 
 export default defineConfig({
   secrets: localSecrets(),
   storage: s3Storage({
     bucketName: "bundles",
     region: "us-east-1",
-    credentials: async () => {
-      const values = await deploy();
-      return {
-        accessKeyId: values.S3_ACCESS_KEY_ID,
-        secretAccessKey: values.S3_SECRET_ACCESS_KEY,
-      };
+    credentials: {
+      accessKeyId: secret("S3_ACCESS_KEY_ID"),
+      secretAccessKey: secret("S3_SECRET_ACCESS_KEY"),
     },
   }),
   // build, database and plugins stay as they are
@@ -187,9 +180,10 @@ storing build credentials.
 ## Standalone Repository configuration
 
 `baseUrl` is the exact root where the server mounts `handlers.admin`.
-`commonHeaders` must match the authentication middleware on that mount. Keep
-these values in the CLI's environment; the mobile app connects to the client
-root with its own API key.
+`commonHeaders` must match the authentication middleware on that mount; a
+header's value may be `secret("<name>")`. Keep these values in the CLI's
+environment or secrets store; the mobile app connects to the client root
+with its own API key.
 
 `standaloneRepository` takes only these two options. Its routes are the
 server's admin API, so they cannot be remapped. See the

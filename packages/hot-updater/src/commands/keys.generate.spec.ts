@@ -134,7 +134,7 @@ describe("keys generate --secret", () => {
         .createPublicKey(privateKey)
         .export({ format: "pem", type: "spki" }),
     ).toBe(publicKey);
-    expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
+    expect(output()).toContain('privateKey: secret("bundle-signing-key")');
     expect(output()).not.toContain(privateKey.split("\n")[1]);
     // One block under its heading, as every result prints.
     expect(
@@ -157,7 +157,7 @@ describe("keys generate --secret", () => {
     await keysGenerate({ keySize: 2048, secret: "release-signing-key" });
 
     expect(Object.keys(values)).toEqual(["release-signing-key"]);
-    expect(output()).toContain('privateKey: "secret:release-signing-key"');
+    expect(output()).toContain('privateKey: secret("release-signing-key")');
   });
 
   it("stores the private key in `localSecrets()`'s store without a secrets adapter, and writes only the public key", async () => {
@@ -172,7 +172,7 @@ describe("keys generate --secret", () => {
       (await fs.stat(getLocalKeyFile("bundle-signing-key", cwd))).mode & 0o777,
     ).toBe(0o600);
     expect(await listFiles(path.join(cwd, "keys"))).toEqual(["public-key.pem"]);
-    expect(output()).toContain('privateKey: "secret:bundle-signing-key"');
+    expect(output()).toContain('privateKey: secret("bundle-signing-key")');
     expect(output()).not.toContain(privateKey.split("\n")[1]);
   });
 

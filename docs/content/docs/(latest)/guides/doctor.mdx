@@ -19,7 +19,7 @@ work:
 - The server's database has run the migrations its core and plugins need
 - The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
-- Where each credential the config reads with `secretEnv` comes from
+- Where each credential the config reads with `secret()` comes from
 
 Doctor only reports: it writes nothing, and each issue names the command or
 edit that [resolves it](#resolve-issues).
@@ -414,7 +414,7 @@ To preview a proposed change to one Bundle's policy, use
 ## Check secrets
 
 Doctor lists each name the config reads with
-[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), and
+[`secret()`](/docs/concepts/secrets#name-a-secret), and
 where a command finds it: set by the environment, which wins, in the
 `secrets` adapter, or missing. It reads the adapter once and writes nothing.
 A missing name is a warning: a teammate stores it, or runs
@@ -425,7 +425,7 @@ With a team store, doctor also names a managed credential the config still
 reads with `process.env`, which the store never supplies. For a deployment
 `init` manages, it prints init's command, which rewrites the config. For one
 an agent infrastructure scaffold keeps, or a config of your own, it links
-[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv)
+[`secret()`](/docs/concepts/secrets#adapter-credentials)
 instead: read those names with it in `hot-updater.config.ts`, and never run
 init there.
 

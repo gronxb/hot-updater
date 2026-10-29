@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { secretEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import { secret, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { initProvider } from "./init/index";
@@ -203,14 +203,70 @@ export default defineConfig({
     expect(updated).not.toContain("fromSSO(");
   });
 
+  it("moves a 1.1 config's access keys from process.env to secret() when init runs again", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-aws-"),
+    );
+    tempDirs.push(tempDir);
+    const configPath = path.join(tempDir, "hot-updater.config.ts");
+    await fs.writeFile(
+      configPath,
+      `import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+  },
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: s3Storage({ ...awsOptions, bucketName: "bundles" }),
+  database: dynamoDB({ ...awsOptions, tableName: "hot-updater" }),
+});
+`,
+    );
+
+    await writeHotUpdaterConfig(
+      getConfigScaffold("bare", { mode: "account" }, RESOURCES),
+      configPath,
+    );
+
+    const updated = await fs.readFile(configPath, "utf8");
+    expect(updated).toContain(
+      'accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID"),',
+    );
+    expect(updated).toContain(
+      'secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY"),',
+    );
+    expect(updated).not.toContain("process.env.HOT_UPDATER_S3_ACCESS_KEY_ID");
+    expect(updated).not.toContain(
+      "process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+    );
+    expect(updated.match(/from "hot-updater";/gu)).toHaveLength(1);
+    expect(updated).toMatch(
+      /import \{[^}]*\bsecret\b[^}]*\} from "hot-updater";/u,
+    );
+  });
+
   it("renders access key credentials for account mode", () => {
     const scaffold = getConfigScaffold("bare", { mode: "account" });
 
     expect(scaffold.text).toContain(
-      "accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!",
+      'accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID")',
     );
     expect(scaffold.text).toContain(
-      "secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!",
+      'secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY")',
+    );
+    expect(scaffold.text).toContain(
+      'import { defineConfig, localSecrets, secret } from "hot-updater";',
+    );
+    expect(scaffold.text).not.toMatch(
+      /process\.env\.HOT_UPDATER_S3_(ACCESS|SECRET)|secretEnv|"secret:/u,
     );
     expect(scaffold.text).not.toContain("fromSSO(");
     expect(scaffold.text).not.toContain("fromIni(");
@@ -265,59 +321,52 @@ export default defineConfig({
     cloudfrontDistributionId: "E123",
   };
 
-  it("names the resources init set up, and reads an account's keys with secretEnv", () => {
+  it("names the resources init set up, and reads an account's keys with secret()", () => {
     expect(getConfigScaffold("bare", { mode: "account" }, RESOURCES).text)
       .toMatchInlineSnapshot(`
-      "import { dynamoDB, s3Storage } from "@hot-updater/aws";
-      import { bare } from "@hot-updater/bare";
-      import { defineConfig, localSecrets, secretEnv } from "hot-updater";
-      import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-      import { existsSync } from "node:fs";
+        "import { dynamoDB, s3Storage } from "@hot-updater/aws";
+        import { bare } from "@hot-updater/bare";
+        import { defineConfig, localSecrets, secret } from "hot-updater";
+        import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+        import { existsSync } from "node:fs";
 
-      if (existsSync(".env.hotupdater")) {
-        process.loadEnvFile(".env.hotupdater");
-      }
+        if (existsSync(".env.hotupdater")) {
+          process.loadEnvFile(".env.hotupdater");
+        }
 
-      const deploySecrets = secretEnv([
-        "HOT_UPDATER_S3_ACCESS_KEY_ID",
-        "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
-      ]);
+        const awsOptions = {
+          region: "ap-northeast-2",
+          credentials: {
+            accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID"),
+            secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY"),
+          },
+        };
 
-      const awsOptions = {
-        region: "ap-northeast-2",
-        credentials: async () => {
-          const env = await deploySecrets();
-          return {
-            accessKeyId: env.HOT_UPDATER_S3_ACCESS_KEY_ID,
-            secretAccessKey: env.HOT_UPDATER_S3_SECRET_ACCESS_KEY,
-          };
-        },
-      };
-
-      export default defineConfig({
-        build: bare({ enableHermes: true }),
-        storage: s3Storage({
-          ...awsOptions,
-          bucketName: "bundles",
-        }),
-        database: dynamoDB({
-          ...awsOptions,
-          tableName: "hot-updater",
-          cloudfrontDistributionId: "E123",
-        }),
-        plugins: [apiKeys(), insights(), remoteConfig()],
-        secrets: localSecrets(),
-        updateStrategy: "appVersion", // or "fingerprint"
-      });"
-    `);
+        export default defineConfig({
+          build: bare({ enableHermes: true }),
+          storage: s3Storage({
+            ...awsOptions,
+            bucketName: "bundles",
+          }),
+          database: dynamoDB({
+            ...awsOptions,
+            tableName: "hot-updater",
+            cloudfrontDistributionId: "E123",
+          }),
+          plugins: [apiKeys(), insights(), remoteConfig()],
+          secrets: localSecrets(),
+          updateStrategy: "appVersion", // or "fingerprint"
+        });"
+      `);
   });
 
   it("reads the same keys init stores in a team store", () => {
     const { text } = getConfigScaffold("bare", { mode: "account" }, RESOURCES);
-    const names = [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
-      .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
-      .map((name) => JSON.parse(name) as string)
-      .sort();
+    const names = [
+      ...new Set(
+        [...text.matchAll(/secret\("([^"]+)"\)/gu)].map(([, name]) => name!),
+      ),
+    ].sort();
 
     expect(names).toEqual([...initProvider.secrets].sort());
   });
@@ -329,7 +378,7 @@ export default defineConfig({
       RESOURCES,
     );
 
-    expect(text).not.toContain("secretEnv");
+    expect(text).not.toContain("secret(");
     expect(text).toContain('region: "ap-northeast-2",');
     expect(text).toContain(
       "credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })",
@@ -350,7 +399,9 @@ export default defineConfig({
 
     await writeHotUpdaterConfig(account, configPath);
     const toAccount = await fs.readFile(configPath, "utf8");
-    expect(toAccount).toContain("credentials: async () => {");
+    expect(toAccount).toContain(
+      'accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID"),',
+    );
     expect(toAccount).not.toContain("fromSSO");
 
     await writeHotUpdaterConfig(sso, configPath);
@@ -358,10 +409,12 @@ export default defineConfig({
     expect(toSso).toContain(
       "credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })",
     );
-    expect(toSso).not.toContain("await deploySecrets()");
+    expect(toSso).not.toContain("secret(");
   });
 
-  it("names variables secretEnv takes", () => {
-    expect(() => secretEnv(initProvider.secrets)).not.toThrow();
+  it("names secrets secret() takes", () => {
+    expect(() =>
+      initProvider.secrets.map((name) => secret(name)),
+    ).not.toThrow();
   });
 });

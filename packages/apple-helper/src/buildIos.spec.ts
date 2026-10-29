@@ -8,12 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 let root: string;
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const { createMinBundleId, isCI, parseSecretReference } =
+  const { createMinBundleId, isCI, parseSecretReference, secret } =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     createMinBundleId,
     isCI,
     parseSecretReference,
+    secret,
     getCwd: () => root,
     p: {
       log: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -90,6 +91,8 @@ vi.mock("./builder/exportXcodeArchive", () => ({
   ),
 }));
 
+import { secret } from "@hot-updater/cli-tools";
+
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
@@ -150,7 +153,7 @@ describe("buildIos", () => {
     const { buildDirectory, buildArtifactPath, builtApp } = await buildIos({
       schemeConfig: scheme({
         simulator: true,
-        signing: { ascApiKey: "secret:asc-api-key" },
+        signing: { ascApiKey: secret("asc-api-key") },
       }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -211,7 +214,7 @@ describe("buildIos", () => {
     const credentials = ascKeyResolver();
 
     const { buildArtifactPath } = await buildIos({
-      schemeConfig: scheme({ signing: { ascApiKey: "secret:app-store-key" } }),
+      schemeConfig: scheme({ signing: { ascApiKey: secret("app-store-key") } }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
     });
@@ -246,7 +249,7 @@ describe("buildIos", () => {
 
       await buildIos({
         schemeConfig: scheme({
-          signing: { ascApiKey: "secret:app-store-key" },
+          signing: { ascApiKey: secret("app-store-key") },
         }),
         minBundleId: MIN_BUNDLE_ID,
         credentials,
@@ -282,7 +285,7 @@ describe("buildIos", () => {
       await buildIos({
         schemeConfig: scheme({
           exportOptionsPlist,
-          signing: { ascApiKey: "secret:app-store-key" },
+          signing: { ascApiKey: secret("app-store-key") },
         }),
         minBundleId: MIN_BUNDLE_ID,
         credentials: ascKeyResolver(),

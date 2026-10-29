@@ -1,4 +1,4 @@
-import type { SqlResult, SqlStatement } from "@hot-updater/plugin-core";
+import type { Lazy, SqlResult, SqlStatement } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 
 import { D1ExecutionError, type D1ResultLike, toSqlResult } from "./d1Executor";
@@ -8,10 +8,10 @@ export interface D1RestConfig {
   readonly accountId: string;
   /**
    * An API token with D1 edit permission, or a function that returns it,
-   * such as one that reads it with `secretEnv`: called on the first query,
-   * so a config loads without the token.
+   * such as `secret("<name>")` in `hot-updater.config.ts`: called on the
+   * first query, so a config loads without the token.
    */
-  readonly cloudflareApiToken: string | (() => string | Promise<string>);
+  readonly cloudflareApiToken: Lazy<string>;
 }
 
 /** The REST API binds text: each value goes as JSON and is read back with `json_extract`. */

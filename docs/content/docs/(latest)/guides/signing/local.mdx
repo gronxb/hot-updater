@@ -21,20 +21,20 @@ Read the private key through the config's
 [`secrets` adapter](/docs/concepts/secrets) with `privateKey`:
 
 ```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   // [!code ++:4]
   signing: {
     enabled: true,
-    privateKey: "secret:bundle-signing-key",
+    privateKey: secret("bundle-signing-key"),
   },
   // ...other config
 });
 ```
 
 With the default [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets)
-adapter, `secret:bundle-signing-key` is the `HOT_UPDATER_BUNDLE_SIGNING_KEY`
+adapter, `secret("bundle-signing-key")` is the `HOT_UPDATER_BUNDLE_SIGNING_KEY`
 environment variable holding the RSA private key in PEM, such as a CI
 secret, or else the key `keys generate --secret` stored in a file in your
 home directory. A `.env.hotupdater` value is one line: put the PEM in double
@@ -53,7 +53,20 @@ signing: {
 ```
 
 A local config sets `enabled: true` and exactly one of `privateKey` and
-`privateKeyPath`; other shapes are rejected. Omit `signing` or set
+`privateKeyPath`; other shapes are rejected, and `privateKey` takes only
+`secret()`.
+
+To move a `privateKeyPath` key into the team store, store it, then switch
+the config to `privateKey: secret("bundle-signing-key")`:
+
+```bash
+npx hot-updater secrets put bundle-signing-key ./keys/private-key.pem
+```
+
+The key stays the same, so installed apps keep verifying its bundles. The
+command prints the fingerprint of its public key, the SHA-256 of its SPKI,
+and `keys export-public` warns when that key differs from the one your apps
+embed. Omit `signing` or set
 `signing: { enabled: false }` to disable signing. Local signing derives its
 public identity only from the private key.
 
@@ -127,7 +140,7 @@ before changing the signer used for installed apps.
 
 ## Deploy from CI
 
-With `privateKey: "secret:bundle-signing-key"` and `localSecrets()`, give the
+With `privateKey: secret("bundle-signing-key")` and `localSecrets()`, give the
 deploy job the key as `HOT_UPDATER_BUNDLE_SIGNING_KEY`. No key file is written.
 
 If local PEM custody is required in GitHub Actions, store the key as a secret

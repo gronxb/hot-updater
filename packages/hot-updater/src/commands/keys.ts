@@ -1,4 +1,4 @@
-import { createHash, createPublicKey } from "node:crypto";
+import { createPublicKey } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -29,6 +29,7 @@ import {
   saveKeyPair,
   savePublicKey,
 } from "../utils/signing";
+import { spkiFingerprint } from "../utils/signing/bundleSigningKey";
 
 export const ANDROID_KEY = "com.hotupdater.PUBLIC_KEY";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
@@ -57,10 +58,7 @@ const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
 const getPublicKeyIdentity = (publicKeyPem: string) => {
   const publicKey = createPublicKey(canonicalizeRsaSpkiPublicKey(publicKeyPem));
   const der = publicKey.export({ format: "der", type: "spki" });
-  return {
-    der,
-    fingerprint: `sha256:${createHash("sha256").update(der).digest("hex")}`,
-  };
+  return { der, fingerprint: spkiFingerprint(der) };
 };
 
 const getTrustAnchorChange = (
@@ -84,7 +82,7 @@ export interface KeysGenerateOptions {
   keySize?: 2048 | 4096;
   /**
    * Stores the private key through the config's `secrets` adapter as this
-   * name, `bundle-signing-key` for `true`, for `privateKey: "secret:<name>"`.
+   * name, `bundle-signing-key` for `true`, for `privateKey: secret("<name>")`.
    */
   secret?: string | true;
 }
@@ -92,7 +90,7 @@ export interface KeysGenerateOptions {
 const localSigningSnippet = (secretName?: string) =>
   secretName === undefined
     ? 'signing: {\n  enabled: true,\n  privateKeyPath: "./keys/private-key.pem",\n}'
-    : `signing: {\n  enabled: true,\n  privateKey: "secret:${secretName}",\n}`;
+    : `import { secret } from "hot-updater";\n\nsigning: {\n  enabled: true,\n  privateKey: secret("${secretName}"),\n}`;
 
 /** Adds the private key's path to `.gitignore`, for the output block. */
 const ignorePrivateKey = (cwd: string, outputDir: string) => {

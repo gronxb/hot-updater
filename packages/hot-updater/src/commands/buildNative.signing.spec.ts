@@ -121,6 +121,7 @@ import {
   withCredentialResolver,
   resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
 import { handleNativeBuildCreate } from "./buildNative";
@@ -135,7 +136,7 @@ describe("native-build ios|android resolves its signing credentials before the p
     prebuildScheme.current = {
       androidScheme: {
         packageName: "com.example.app",
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       },
     };
 
@@ -155,7 +156,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       androidScheme: {
         packageName: "com.example.app",
         variant: "stagingDebug",
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       },
     };
 
@@ -170,7 +171,7 @@ describe("native-build ios|android resolves its signing credentials before the p
     prebuildScheme.current = {
       iosScheme: {
         bundleIdentifier: "com.example.app",
-        signing: { ascApiKey: "secret:widget-asc" },
+        signing: { ascApiKey: secret("widget-asc") },
       },
     };
 
@@ -191,7 +192,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       iosScheme: {
         bundleIdentifier: "com.example.app",
         simulator: true,
-        signing: { ascApiKey: "secret:widget-asc" },
+        signing: { ascApiKey: secret("widget-asc") },
       },
     };
 
@@ -206,7 +207,7 @@ describe("native-build ios|android resolves its signing credentials before the p
     prebuildScheme.current = {
       androidScheme: {
         packageName: "com.example.app",
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       },
     };
     resolve.mockImplementationOnce(async (request) => {
@@ -244,7 +245,7 @@ describe("native-build ios|android resolves its signing credentials before the p
       secrets: own,
       iosScheme: {
         bundleIdentifier: "com.example.app",
-        signing: { ascApiKey: "secret:widget-asc" },
+        signing: { ascApiKey: secret("widget-asc") },
       },
     };
     vi.mocked(ensureAscApiKey).mockImplementationOnce(async () => {
