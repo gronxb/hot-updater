@@ -410,6 +410,48 @@ describe("ensurePlayServiceAccount", () => {
     expect(picks).toEqual(["shop", null]);
   });
 
+  it("offers gcloud's Google Accounts, the active one marked, and another account", async () => {
+    fakeStore();
+    const picks: (string | null)[] = [];
+    const accounts = [
+      { email: "dev@example.com", active: true },
+      { email: "play@example.com", active: false },
+    ];
+    issue.mockImplementationOnce(async (request) => {
+      await request.askPackageName();
+      picks.push(
+        await request.chooseGoogleAccount(accounts),
+        await request.chooseGoogleAccount(accounts),
+      );
+      return {
+        json: KEY_FILE,
+        email: EMAIL,
+        projectId: "my-app",
+        keyId: "abc123",
+        revoke: issued.revoke,
+        dispose: issued.dispose,
+      };
+    });
+    select.mockResolvedValueOnce("play@example.com").mockResolvedValueOnce("");
+
+    await withTTY(true, () => ensure({ name: "play-service-account" }));
+
+    expect(select).toHaveBeenNthCalledWith(1, {
+      message: "Google Account to use",
+      options: [
+        {
+          value: "dev@example.com",
+          label: "dev@example.com",
+          hint: "gcloud active",
+        },
+        { value: "play@example.com", label: "play@example.com" },
+        { value: "", label: "Sign in with another Google Account" },
+      ],
+      initialValue: "dev@example.com",
+    });
+    expect(picks).toEqual(["play@example.com", null]);
+  });
+
   it("goes on when the browser can't open the invite", async () => {
     fakeStore();
     open.mockRejectedValueOnce(new Error("no browser"));

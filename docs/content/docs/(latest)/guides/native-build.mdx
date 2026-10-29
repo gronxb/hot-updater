@@ -775,8 +775,9 @@ When the adapter has no `play-service-account` yet, the CLI issues one in a
 terminal. It needs the [gcloud CLI](https://cloud.google.com/sdk/docs/install),
 and stops before any question without it. It asks for the app's package
 name, filled in from the `nativeBuild.android` scheme's (a choice when several
-schemes declare different ones), and runs `gcloud auth login` when gcloud has
-no active Google Account. It lists the account's Google Cloud projects and,
+schemes declare different ones). Then you pick one of the Google Accounts
+gcloud holds, or sign in with another through `gcloud auth login`, which also
+runs when gcloud holds none. It lists the account's Google Cloud projects and,
 in each, whether the Google Play Android Developer API is enabled:
 
 - When exactly one project has the API, it uses that one and says so.
