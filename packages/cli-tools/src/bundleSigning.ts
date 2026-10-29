@@ -8,15 +8,10 @@ import type {
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
 
-import { formatCommand } from "./credentialResolver.js";
+import { describeMissingSecret } from "./credentialResolver.js";
 import { getCwd } from "./cwd.js";
 import { registerSecretValue } from "./secretMasking.js";
-import {
-  getConfiguredAdapter,
-  getConfiguredSecrets,
-  isSecretRef,
-  secretVariableName,
-} from "./secrets.js";
+import { getConfiguredSecrets, isSecretRef } from "./secrets.js";
 
 /** The secret `signing: secret("bundle-signing-key")` names, which `secrets issue` creates. */
 export const BUNDLE_SIGNING_KEY_SECRET = "bundle-signing-key";
@@ -26,6 +21,10 @@ export const ISSUE_SIGNING_KEY_COMMAND = `npx hot-updater secrets issue ${BUNDLE
 
 /** The command that stores a bundle signing key you have. */
 export const PUT_SIGNING_KEY_COMMAND = `npx hot-updater secrets put ${BUNDLE_SIGNING_KEY_SECRET} <key.pem>`;
+
+/** The command that stores the bundle signing key you have as `name`. */
+export const bundleSigningPutCommand = (name: string): string =>
+  `npx hot-updater secrets put ${name}${name === BUNDLE_SIGNING_KEY_SECRET ? "" : ` --kind ${BUNDLE_SIGNING_KEY_SECRET}`} <key.pem>`;
 
 /** What deploy and doctor say when the config sets no `signing`. */
 export const UNSIGNED_BUNDLES_WARNING = "Bundles are unsigned.";
@@ -227,23 +226,10 @@ const loadPrivateKeySecret = async (
   }
   // Never a new key: every shipped app rejects bundles it signs.
   if (typeof value !== "string" || !value.trim()) {
-    const [missing, check] = getConfiguredAdapter(secrets)
-      ? [
-          `${name} isn't in the ${secrets.name} secrets adapter.`,
-          "Check the name and your access, or import your key:",
-        ]
-      : [
-          `${name} isn't on this machine.`,
-          `Check the name, set ${secretVariableName(name)}, or import your key:`,
-        ];
     throw new BundleSigningKeyError(
-      [
-        missing,
-        check,
-        formatCommand(
-          `npx hot-updater secrets put ${name}${name === BUNDLE_SIGNING_KEY_SECRET ? "" : ` --kind ${BUNDLE_SIGNING_KEY_SECRET}`} <key.pem>`,
-        ),
-      ].join("\n"),
+      describeMissingSecret(secrets, name, {
+        command: bundleSigningPutCommand(name),
+      }),
     );
   }
   registerSecretValue(value);

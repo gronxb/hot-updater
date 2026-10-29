@@ -80,6 +80,10 @@ import {
   uploadContentAddressedAsset,
 } from "../utils/contentAddressedAssets";
 import {
+  DEPLOYMENT_BLOCKED,
+  reportSigningRefusal,
+} from "../utils/signing/signingRefusal";
+import {
   formatAppVersionCandidates,
   isAmbiguousAppVersion,
 } from "../utils/version/appVersionCandidates";
@@ -578,13 +582,8 @@ const deployPlatform = async ({
       cwd,
       secrets: config.secrets,
     }).catch((error: unknown) => {
-      // As for a signing issue below: the E2E refusal check reads both.
-      p.log.error(
-        ui.prose(error instanceof Error ? error.message : String(error)),
-      );
-      p.log.error(
-        "Deployment blocked. Fix the signing configuration and try again.",
-      );
+      // The E2E refusal check reads both lines.
+      reportSigningRefusal(error);
       return process.exit(1);
     }),
   ]);
@@ -624,9 +623,7 @@ const deployPlatform = async ({
       p.log.error(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
     }
     if (errors.length > 0) {
-      p.log.error(
-        "Deployment blocked. Fix the signing configuration and try again.",
-      );
+      p.log.error(DEPLOYMENT_BLOCKED);
       process.exit(1);
     }
     for (const warning of warnings) {
@@ -1148,9 +1145,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
         ui.withCommand(INVALID_SIGNING_NEXT_STEP, PUT_SIGNING_KEY_COMMAND),
       ].join("\n"),
     );
-    p.log.error(
-      "Deployment blocked. Fix the signing configuration and try again.",
-    );
+    p.log.error(DEPLOYMENT_BLOCKED);
     return process.exit(1);
   }
   // Once a run, however many platforms deploy unsigned. `enabled: false`

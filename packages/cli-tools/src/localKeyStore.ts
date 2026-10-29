@@ -5,6 +5,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { fitMessage } from "./messageLines";
+
 /**
  * Relocates Hot Updater's per-user directory, `~/.hot-updater` by default,
  * such as for CI caches or tests.
@@ -122,10 +124,10 @@ const assertPrivateDirectory = async (directory: string) => {
   });
   if (stats && !stats.isDirectory()) {
     throw new Error(
-      [
+      fitMessage([
         `localSecrets() can't keep secrets in ${directory}.`,
         "It is not a directory: set its path to one.",
-      ].join("\n"),
+      ]),
     );
   }
   const real = realpathThroughParents(directory);
@@ -138,11 +140,12 @@ const assertPrivateDirectory = async (directory: string) => {
   const top = realpath(root);
   if (isIgnoredByGit(top, real)) return;
   throw new Error(
-    [
+    fitMessage([
       `localSecrets() refuses ${directory}: its secrets could be committed.`,
       `The git repository ${top} doesn't ignore it.`,
-      `Add ${path.relative(top, real).split(path.sep).join("/")}/ to its .gitignore, or set localSecrets({ path }).`,
-    ].join("\n"),
+      `Add ${path.relative(top, real).split(path.sep).join("/")}/ to its .gitignore,`,
+      "or set localSecrets({ path }).",
+    ]),
   );
 };
 

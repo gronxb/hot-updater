@@ -1,4 +1,5 @@
 import {
+  fitMessage as fitLines,
   getHotUpdaterEnvValue,
   readLoadedHotUpdaterEnv,
   registerSecretValue,
@@ -121,6 +122,10 @@ const normalizeFolder = (path: string) => {
 const storedForm = (value: string) =>
   `${value.trim()}${value.endsWith("\n") ? "\n" : ""}`;
 
+/** A message of `lines`, each of at most 76 columns, broken at spaces. */
+const fitMessage = (...lines: (string | undefined)[]): string =>
+  fitLines(lines.filter((line): line is string => Boolean(line)));
+
 const oneLine = (value: string) => {
   const line = value.replace(/\s+/gu, " ").trim();
   return line.length > MESSAGE_LIMIT
@@ -207,19 +212,21 @@ export const infisical = ({
    */
   const fail = (reason: string, ...lines: (string | undefined)[]) =>
     new Error(
-      [reason, urlSet ? `Instance: ${baseUrl()}` : undefined, ...lines]
-        .filter(Boolean)
-        .join("\n"),
+      fitMessage(
+        reason,
+        urlSet ? `Instance: ${baseUrl()}` : undefined,
+        ...lines,
+      ),
     );
 
   const checkName = (name: string) => {
     // Infisical answers 500 to __proto__, and 422 to a colon or slash.
     if (!name.trim() || name === "__proto__" || /[:/]/u.test(name)) {
       throw new Error(
-        [
+        fitMessage(
           `${NAME}() can't name a secret ${JSON.stringify(name)}.`,
           "Infisical takes no colon, no slash, and no __proto__.",
-        ].join("\n"),
+        ),
       );
     }
   };
@@ -571,16 +578,16 @@ export const infisical = ({
     set: async (name, value, { cwd }) => {
       checkName(name);
       if (typeof value !== "string" || value.trim() === "") {
-        throw new Error(`${NAME}() can't store an empty ${name}.`);
+        throw new Error(fitMessage(`${NAME}() can't store an empty ${name}.`));
       }
       registerSecretValue(value);
       // Infisical would read back another value.
       if (storedForm(value) !== value) {
         throw new Error(
-          [
+          fitMessage(
             `${NAME}() can't store ${name} as it is.`,
             "Infisical trims whitespace around a value.",
-          ].join("\n"),
+          ),
         );
       }
       const body = JSON.stringify({
@@ -592,10 +599,10 @@ export const infisical = ({
       });
       if (Buffer.byteLength(body, "utf8") > MAX_BODY_BYTES) {
         throw new Error(
-          [
+          fitMessage(
             `${NAME}() can't store ${name}.`,
             "Infisical takes requests up to 1 MiB.",
-          ].join("\n"),
+          ),
         );
       }
       await prepare(cwd);

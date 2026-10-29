@@ -72,21 +72,47 @@ export function withSecretSigning(source: string): string {
 }
 
 /**
+ * The lines a deploy prints when `localSecrets()` has no
+ * `PROJECT_SIGNING_KEY_SECRET`: what is missing, where else it may come
+ * from, and the command that imports the key, on a line of its own.
+ */
+export const MISSING_SIGNING_SECRET_LINES = [
+  `${PROJECT_SIGNING_KEY_SECRET} isn't on this machine.`,
+  `Check the name, set ${PROJECT_SIGNING_KEY_VARIABLE}, or import your key:`,
+  `npx hot-updater secrets put ${PROJECT_SIGNING_KEY_SECRET} <key.pem>`,
+] as const;
+
+/** The line a deploy that signing stops ends with. */
+export const DEPLOYMENT_BLOCKED_LINE =
+  "Deployment blocked. Fix the signing configuration and try again.";
+
+/**
  * Whether a deploy without the key's secret was refused for it: the CLI
- * names the variable and the localSecrets() file it read, and
- * blocks the deploy.
+ * prints `MISSING_SIGNING_SECRET_LINES`, one after another, then blocks
+ * the deploy, and records no release.
  */
 export function refusedForMissingSigningSecret(output: string): boolean {
-  // The CLI wraps a long message at spaces, inside the prompt library's
-  // frame: read it as one line, without colors.
-  const text = output
+  // Each line without colors or the prompt library's frame.
+  const lines = output
     // oxlint-disable-next-line no-control-regex
     .replace(/\u001b\[[0-9;]*m/gu, "")
-    .replace(/[│┌└◇◆■▲●○]/gu, " ")
-    .replace(/\s+/gu, " ");
-  const missing = new RegExp(
-    `which is not in the localSecrets secrets adapter \\(${PROJECT_SIGNING_KEY_VARIABLE} in the environment, or \\S+/secrets/[^/\\s]+/${PROJECT_SIGNING_KEY_SECRET}\\.json on this machine\\)`,
-    "u",
+    .split("\n")
+    .map((line) => line.replace(/^[\s│┌└◇◆■▲●○]+/u, "").trimEnd());
+  const missing = lines.findIndex((_, index) =>
+    MISSING_SIGNING_SECRET_LINES.every(
+      (line, offset) => lines[index + offset] === line,
+    ),
   );
-  return missing.test(text) && text.includes("Deployment blocked.");
+  if (missing === -1) return false;
+  const released = lines.some((line) =>
+    /^ID\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
+      line,
+    ),
+  );
+  return (
+    !released &&
+    lines
+      .slice(missing + MISSING_SIGNING_SECRET_LINES.length)
+      .includes(DEPLOYMENT_BLOCKED_LINE)
+  );
 }

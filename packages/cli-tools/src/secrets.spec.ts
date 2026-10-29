@@ -396,10 +396,18 @@ describe("readSecretWithSource", () => {
           (thrown: unknown) => thrown as Error,
         );
 
-        expect(error.message.split("\n")).toEqual([
+        expect(error.message.split("\n")[0]).toBe(
           "Couldn't read asc-api-key from the localSecrets secrets adapter.",
-          `EACCES: permission denied, open '${file}'`,
-        ]);
+        );
+        // The path gets a line of its own when the line can't hold it.
+        expect(error.message.replaceAll("\n", " ")).toBe(
+          `Couldn't read asc-api-key from the localSecrets secrets adapter. EACCES: permission denied, open '${file}'`,
+        );
+        expect(
+          error.message
+            .split("\n")
+            .filter((line) => line.length > 76 && line.includes(" ")),
+        ).toEqual([]);
       } finally {
         await fs.chmod(file, 0o600);
       }
@@ -548,6 +556,37 @@ describe("secret", () => {
         "Store it there, or set SPEC_MISSING.",
       ].join("\n"),
     );
+  });
+
+  it("keeps a long name and where the adapter keeps it inside 76 columns", async () => {
+    const name = "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY";
+    vi.stubEnv(name, undefined);
+    setConfiguredSecrets(
+      resolveSecretsAdapter({
+        name: "infisical",
+        describe: (secretName) =>
+          `Infisical production:/hot-updater/codex-relay/android/${secretName}`,
+        get: async () => ({}),
+        set: async () => {},
+      }),
+    );
+
+    const error = await secret(name)().catch(
+      (thrown: unknown) => thrown as Error,
+    );
+
+    expect(error.message.replaceAll("\n", " ")).toBe(
+      [
+        `secret("${name}") has no value.`,
+        `It isn't in Infisical production:/hot-updater/codex-relay/android/${name}.`,
+        `Store it there, or set ${name}.`,
+      ].join(" "),
+    );
+    expect(
+      error.message
+        .split("\n")
+        .filter((line) => line.length > 76 && line.includes(" ")),
+    ).toEqual([]);
   });
 
   it("reads the environment alone without a configured adapter, never `localSecrets()`'s store", async () => {

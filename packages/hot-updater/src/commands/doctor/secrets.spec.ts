@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/cli-tools";
 import { secret } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,7 +17,7 @@ import {
   androidKeystoreValue,
   findKeytool,
 } from "../../utils/native/androidKeystore";
-import { checkSecrets } from "./secrets";
+import { checkSecrets, missingRequiredSecrets } from "./secrets";
 
 let cwd: string;
 
@@ -87,20 +88,28 @@ describe("checkSecrets", () => {
             "nativeBuild.ios.release.signing.ascApiKey",
             "nativeBuild.ios.staging.signing.ascApiKey",
           ],
+          required: true,
           source: "adapter",
           inAdapter: true,
         },
         {
           name: "release-keystore",
           fields: ["nativeBuild.android.release.signing.keystore"],
+          required: true,
           source: "environment",
           inAdapter: false,
         },
         {
           name: "bundle-signing-key",
           fields: ["signing.privateKey"],
+          required: true,
           source: "missing",
           inAdapter: false,
+          message: [
+            "bundle-signing-key isn't in the team-store secrets adapter.",
+            "Check the name and your access, or import your key:",
+            "npx hot-updater secrets put bundle-signing-key <key.pem>",
+          ].join("\n"),
         },
       ],
     });
@@ -119,6 +128,7 @@ describe("checkSecrets", () => {
         {
           name: "bundle-signing-key",
           fields: ["signing"],
+          required: true,
           source: "adapter",
           inAdapter: true,
         },
@@ -162,6 +172,121 @@ describe("checkSecrets", () => {
       ["release-keystore", "missing"],
       ["bundle-signing-key", "environment"],
     ]);
+  });
+
+  it("requires only what a build or a deploy reads, each missing one with how to import it", async () => {
+    const config = {
+      secrets: teamStore({}),
+      nativeBuild: {
+        ios: {
+          release: { signing: { ascApiKey: secret("asc-api-key") } },
+          simulator: {
+            simulator: true,
+            signing: { ascApiKey: secret("simulator-asc-key") },
+          },
+        },
+        android: {
+          release: { signing: { keystore: secret("release-keystore") } },
+          debug: {
+            variant: "Debug",
+            signing: { keystore: secret("debug-keystore") },
+          },
+        },
+      },
+      signing: { enabled: false, privateKey: secret("bundle-signing-key") },
+    } as unknown as ConfigResponse;
+
+    const status = await checkSecrets(config, cwd);
+
+    expect(
+      status?.references.map(({ name, required, source, message }) => ({
+        name,
+        required,
+        source,
+        message,
+      })),
+    ).toEqual([
+      {
+        name: "asc-api-key",
+        required: true,
+        source: "missing",
+        message: [
+          "asc-api-key isn't in the team-store secrets adapter.",
+          "Check the name and your access, or sign in to store one:",
+          "npx hot-updater apple login",
+        ].join("\n"),
+      },
+      // A simulator build resolves no key.
+      {
+        name: "simulator-asc-key",
+        required: false,
+        source: "missing",
+        message: undefined,
+      },
+      {
+        name: "release-keystore",
+        required: true,
+        source: "missing",
+        // A store may already have builds it signed: never a new one.
+        message: [
+          "release-keystore isn't in the team-store secrets adapter.",
+          "Check the name and your access, or import your key:",
+          "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+          "  <upload.jks>",
+        ].join("\n"),
+      },
+      // A debug variant keeps the debug keystore.
+      {
+        name: "debug-keystore",
+        required: false,
+        source: "missing",
+        message: undefined,
+      },
+      // `enabled: false` signs nothing.
+      {
+        name: "bundle-signing-key",
+        required: false,
+        source: "missing",
+        message: undefined,
+      },
+    ]);
+    expect(missingRequiredSecrets(status).map(({ name }) => name)).toEqual([
+      "asc-api-key",
+      "release-keystore",
+    ]);
+    for (const { message } of missingRequiredSecrets(status)) {
+      expect(linesWiderThan(message!.split("\n"), 76)).toEqual([]);
+    }
+  });
+
+  it("names this machine and the variable under localSecrets()", async () => {
+    const status = await checkSecrets(configWith(localSecrets()), cwd);
+
+    expect(
+      status?.references.find(({ name }) => name === "release-keystore")
+        ?.message,
+    ).toBe(
+      [
+        "release-keystore isn't on this machine.",
+        "Check the name, set HOT_UPDATER_RELEASE_KEYSTORE, or import your key:",
+        "npx hot-updater secrets put release-keystore --kind android-keystore \\",
+        "  <upload.jks>",
+      ].join("\n"),
+    );
+  });
+
+  it("requires nothing it can't read: an unreadable adapter stays a warning", async () => {
+    const store = {
+      name: "team-store",
+      set: async () => {},
+      get: async () => {
+        throw new Error("AccessDenied");
+      },
+    };
+
+    expect(
+      missingRequiredSecrets(await checkSecrets(configWith(store), cwd)),
+    ).toEqual([]);
   });
 
   it("is undefined for a config that references no secret", async () => {
@@ -238,6 +363,7 @@ describe.skipIf(!realKeytool)("checkSecrets with a JDK", () => {
       {
         name: "release-keystore",
         fields: ["nativeBuild.android.release.signing.keystore"],
+        required: true,
         source: "adapter",
         inAdapter: true,
         refused: [

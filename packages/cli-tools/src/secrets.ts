@@ -9,6 +9,7 @@ import {
   createLocalSecretsStore,
   type LocalSecretsStore,
 } from "./localKeyStore";
+import { fitMessage } from "./messageLines";
 import { isReservedVariableName } from "./reservedVariables";
 import { registerSecretValue } from "./secretMasking";
 
@@ -303,7 +304,10 @@ const secretReadError = (
   error: unknown,
 ) =>
   new Error(
-    `Couldn't read ${list(names)} from the ${secrets.name} secrets adapter.\n${(error instanceof Error ? error.message : String(error)).split("\n")[0]}`,
+    fitMessage([
+      `Couldn't read ${list(names)} from the ${secrets.name} secrets adapter.`,
+      (error instanceof Error ? error.message : String(error)).split("\n")[0]!,
+    ]),
     { cause: error },
   );
 
@@ -407,11 +411,11 @@ const readSecretRef = async (
   );
   if (secrets === undefined) {
     throw new Error(
-      [
+      fitMessage([
         `secret("${name}") has no value.`,
         `Set ${variable} in the environment or .env.hotupdater.`,
         "Or set the config's secrets to a team store.",
-      ].join("\n"),
+      ]),
     );
   }
   let values: Readonly<Record<string, string | undefined>> | undefined;
@@ -432,11 +436,11 @@ const readSecretRef = async (
   const value = Object.hasOwn(values, name) ? values[name] : undefined;
   if (typeof value !== "string" || value === "") {
     throw new Error(
-      [
+      fitMessage([
         `secret("${name}") has no value.`,
         `It isn't in ${describeSecret(secrets, name)}.`,
         `Store it there, or set ${variable}.`,
-      ].join("\n"),
+      ]),
     );
   }
   registerSecretValue(value);

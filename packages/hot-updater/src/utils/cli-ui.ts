@@ -128,12 +128,37 @@ export const ui = {
    * issue's resolution, laid out for a terminal: one sentence per line,
    * wrapped at spaces, with each `command` highlighted, without its
    * backticks, and on lines of its own when it is too long to share one.
+   * Text already laid out in lines, such as an error's, keeps them: only
+   * a line too wide is broken, and a command, such as its next step, and
+   * the ` \` lines continuing it, stay whole.
    */
-  prose: (text: string, width: number = LINE_WIDTH): string =>
-    text
-      .split(/(?<=[.!?])\s+(?=[A-Z`])/u)
-      .flatMap((sentence) => wrapWords(sentence, width))
-      .join("\n"),
+  prose: (text: string, width: number = LINE_WIDTH): string => {
+    const lines: string[] = [];
+    const laidOut = text.includes("\n");
+    let continued = false;
+    for (const line of text.split("\n")) {
+      if (continued || /^npx /u.test(line)) {
+        // One the text didn't break is broken as a command is.
+        lines.push(
+          continued || line.endsWith(" \\") || line.length <= width
+            ? colors.green(line)
+            : ui.commandLines(line),
+        );
+        continued = line.endsWith(" \\");
+        continue;
+      }
+      if (laidOut && line.length <= width) {
+        lines.push(line);
+        continue;
+      }
+      lines.push(
+        ...line
+          .split(/(?<=[.!?])\s+(?=[A-Z`])/u)
+          .flatMap((sentence) => wrapWords(sentence, width)),
+      );
+    }
+    return lines.join("\n");
+  },
   /**
    * A path as a person reads it: relative to the project when inside it,
    * with `~` for the home directory otherwise, and a long middle shortened

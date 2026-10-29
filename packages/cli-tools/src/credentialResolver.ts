@@ -7,11 +7,13 @@ import { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
 import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
 import { getCwd } from "./cwd";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
+import { fitMessage } from "./messageLines";
 import { registerSecretValue } from "./secretMasking";
 import {
   describeSecret,
   getConfiguredAdapter,
   getConfiguredSecrets,
+  secretVariableName,
 } from "./secrets";
 
 export type { CredentialFiles } from "./credentialFiles";
@@ -216,6 +218,32 @@ export const credentialStoreCommand = (
   kind === "asc-api-key"
     ? credentialLoginCommand(kind, name)
     : credentialPutCommand(kind, name);
+
+/**
+ * Why `secrets` has no `name`, and the command that brings the existing
+ * one in, never one that creates another: a signing key may already be
+ * trusted by a shipped app or a store. Under a team's adapter the name or
+ * the access is wrong; under `localSecrets()` this machine lacks it.
+ */
+export const describeMissingSecret = (
+  secrets: SecretsAdapter,
+  name: string,
+  { action = "import your key", command }: { action?: string; command: string },
+): string =>
+  [
+    fitMessage(
+      getConfiguredAdapter(secrets)
+        ? [
+            `${name} isn't in the ${secrets.name} secrets adapter.`,
+            `Check the name and your access, or ${action}:`,
+          ]
+        : [
+            `${name} isn't on this machine.`,
+            `Check the name, set ${secretVariableName(name)}, or ${action}:`,
+          ],
+    ),
+    formatCommand(command),
+  ].join("\n");
 
 export class CredentialUnavailableError extends Error {
   readonly kind: CredentialKind;
