@@ -219,8 +219,8 @@ from `hot-updater`, the default, reads environment variables, then files in
 your home directory that only you can read, where it stores keys, and is
 the only adapter `hot-updater` ships. The provider packages ship their
 cloud's store: `secretsManager()` from `@hot-updater/aws` for AWS Secrets
-Manager, and `secretManager()` from `@hot-updater/firebase` for Google Secret
-Manager. Another store, such as dotenvx, Bitwarden, 1Password, or Infisical,
+Manager, `secretManager()` from `@hot-updater/firebase` for Google Secret
+Manager, and `keyVault()` from `@hot-updater/azure` for Azure Key Vault. Another store, such as dotenvx, Bitwarden, 1Password, or Infisical,
 is a short file you paste that implements `SecretsAdapter`.
 Secrets and signing are separate slots: a KMS signer keeps its key in the KMS.
 

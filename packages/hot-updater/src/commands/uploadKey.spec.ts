@@ -743,15 +743,19 @@ describe.skipIf(!realKeytool)("an upload key the real keytool creates", () => {
     );
 
     // AWS Secrets Manager takes 65,536 bytes (MAX_SECRET_BYTES in
-    // plugins/aws/src/secretsManager.ts), Google Secret Manager 64 KiB:
-    // a 4096-bit PKCS12 keystore is about 4.2 KB, its value about 5.8 KB.
-    const bytes = Buffer.byteLength(androidKeystoreValue(entry), "utf8");
+    // plugins/aws/src/secretsManager.ts), Google Secret Manager 64 KiB, and
+    // Azure Key Vault 25,600 characters (MAX_SECRET_LENGTH in
+    // plugins/azure/src/keyVault.ts): a 4096-bit PKCS12 keystore is about
+    // 4.2 KB, its value about 5.8 KB.
+    const value = androidKeystoreValue(entry);
+    const bytes = Buffer.byteLength(value, "utf8");
     expect(bytes).toBeLessThan(8 * 1024);
     expect(bytes).toBeLessThan(65_536);
+    expect(value.length).toBeLessThan(25_600);
   }, 30_000);
 });
 
-it("a value of the measured 4248-byte keystore stays well under AWS's and Google's limits", () => {
+it("a value of the measured 4248-byte keystore stays well under AWS's, Google's, and Azure's limits", () => {
   const value = androidKeystoreValue({
     keystore: Buffer.alloc(4248),
     storePassword: "x".repeat(32),
@@ -759,6 +763,7 @@ it("a value of the measured 4248-byte keystore stays well under AWS's and Google
     keyPassword: "x".repeat(32),
   });
   expect(Buffer.byteLength(value, "utf8")).toBeLessThan(65_536 / 8);
+  expect(value.length).toBeLessThan(25_600 / 4);
 });
 
 // No line the command prints wraps on an 80-column terminal.
