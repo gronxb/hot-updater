@@ -131,7 +131,7 @@ describe("localSecrets({ path })", () => {
         .filter((line) => line.length > 76 && line.includes(" ")),
     ).toEqual([]);
     await expect(store.read("asc-api-key", app)).rejects.toThrow(
-      "could be committed",
+      /could\s+be\s+committed/u,
     );
     await expect(fs.access(path.join(app, "secrets"))).rejects.toThrow();
   });
