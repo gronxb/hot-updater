@@ -1,5 +1,16 @@
 # @hot-updater/vercel
 
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies [f3989de]
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/server@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+  - @hot-updater/postgres@1.2.0-rc.7
+
 ## 1.2.0-rc.6
 
 ### Patch Changes
