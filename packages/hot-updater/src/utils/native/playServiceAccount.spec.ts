@@ -1,5 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { checkPlayAccess } = vi.hoisted(() => ({
@@ -261,6 +262,30 @@ describe("checkGooglePlay", () => {
       serviceAccount: { json: KEY_FILE },
       packageName: "com.example.app",
     });
+  });
+
+  it("breaks a long command for a named keystore so no line wraps", async () => {
+    const credentials = createCredentialResolver({
+      secrets: fakeSecrets({ "play-service-account": KEY_FILE }),
+    });
+    const readiness = await checkGooglePlay({
+      credentials,
+      packageName: "com.example.app",
+      serviceAccount: { kind: "play-service-account" },
+      keystore: { kind: "android-keystore", name: "release-keystore" },
+    });
+    await credentials.dispose();
+
+    const lines = stripVTControlCharacters(
+      formatGooglePlayReadiness(readiness),
+    ).split("\n");
+    expect(lines.slice(2, 5)).toEqual([
+      "✗ Upload keystore",
+      "  npx hot-updater secrets put release-keystore --kind android-keystore \\",
+      "    <upload.jks>",
+    ]);
+    // Clack's three-column gutter included.
+    expect(linesWiderThan(lines.map((line) => `│  ${line}`))).toEqual([]);
   });
 
   it("leaves a scheme without signing.keystore to Gradle, not failing on it", async () => {

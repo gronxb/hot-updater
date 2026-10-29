@@ -133,6 +133,9 @@ export const describePlayAccess = (
 
 const LABEL_WIDTH = 19;
 
+/** A command under a check line, which `formatPlayChecks` indents two columns. */
+const COMMAND_WIDTH = 72;
+
 const MARKS = {
   true: ui.success("✓"),
   false: ui.danger("✗"),
@@ -182,11 +185,13 @@ const resolveCheck = async <
         check: {
           ok: false,
           label,
-          lines: [
-            ui.command(
+          // Indented under the check: two columns fewer than a command.
+          lines: ui
+            .commandLines(
               credentialPutCommand(request.kind, request.name ?? request.kind),
-            ),
-          ],
+              COMMAND_WIDTH,
+            )
+            .split("\n"),
         },
       };
     }
