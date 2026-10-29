@@ -14,78 +14,48 @@ const TOKEN_RENEW_MARGIN_MS = 60_000;
 const MESSAGE_LIMIT = 200;
 /** Infisical's limit on a request body, which holds the value as JSON. */
 const MAX_BODY_BYTES = 1_048_576;
+const DOCS_URL =
+  "https://hot-updater.dev/docs/guides/secrets-adapters/infisical#sign-in-on-your-machine";
 
 /** The variables Infisical's own CLI reads, so one set serves both. */
 const TOKEN_ENV = "INFISICAL_TOKEN";
 const CLIENT_ID_ENV = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 const CLIENT_SECRET_ENV = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
 const IDENTITY_ID_ENV = "INFISICAL_MACHINE_IDENTITY_ID";
+/**
+ * Where the Infisical CLI reads its instance's URL from, in its order:
+ * `INFISICAL_DOMAIN`, then the older `INFISICAL_API_URL`.
+ */
+const SITE_URL_ENVS = ["INFISICAL_DOMAIN", "INFISICAL_API_URL"] as const;
 /** What a GitHub Actions job with `id-token: write` sets. */
 const OIDC_REQUEST_URL_ENV = "ACTIONS_ID_TOKEN_REQUEST_URL";
 const OIDC_REQUEST_TOKEN_ENV = "ACTIONS_ID_TOKEN_REQUEST_TOKEN";
 
-/** How `infisical()` signs in to Infisical. */
-export type InfisicalAuth =
-  | {
-      /**
-       * A machine identity's Universal Auth client ID and secret, by default
-       * from `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and
-       * `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`.
-       */
-      readonly method: "universal-auth";
-      readonly clientId?: string;
-      readonly clientSecret?: string;
-    }
-  | {
-      /**
-       * A machine identity's OIDC Auth with the GitHub Actions ID token of
-       * the job, which needs `permissions: id-token: write`. The identity's
-       * ID is by default from `INFISICAL_MACHINE_IDENTITY_ID`.
-       */
-      readonly method: "github-oidc";
-      readonly identityId?: string;
-      /**
-       * The ID token's audience, as the identity's Audiences setting lists
-       * it. GitHub's default is the repository owner's URL, such as
-       * `https://github.com/octo-org`.
-       */
-      readonly audience?: string;
-    }
-  | {
-      /**
-       * An access token, by default from `INFISICAL_TOKEN`, such as the one
-       * `infisical user get token --plain` prints after `infisical login`.
-       */
-      readonly method: "token";
-      readonly token?: string;
-    };
-
 export interface InfisicalOptions {
-  /**
-   * Infisical's URL: `https://eu.infisical.com` for EU Cloud, or your own
-   * instance's. HTTPS, or HTTP on a loopback address.
-   *
-   * @default "https://us.infisical.com"
-   */
-  readonly siteUrl?: string;
   /** The project's ID, from its Project Settings. */
   readonly projectId: string;
-  /** The environment's slug, such as `prod`. */
-  readonly environment: string;
   /**
-   * The folder the secrets are in, which must exist.
+   * The environment's slug.
+   *
+   * @default "prod"
+   */
+  readonly environment?: string;
+  /**
+   * The folder the secrets are in, which must exist, so apps that share a
+   * project and environment keep their keys apart.
    *
    * @default "/"
    */
   readonly path?: string;
   /**
-   * How to sign in. By default the first of `INFISICAL_TOKEN`, Universal
-   * Auth from `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and
-   * `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, and GitHub OIDC with
-   * `INFISICAL_MACHINE_IDENTITY_ID` in a GitHub Actions job that can request
-   * an ID token, each from the environment or `.env.hotupdater`.
+   * Infisical's URL: `https://eu.infisical.com` for EU Cloud, or your own
+   * instance's. HTTPS, or HTTP on a loopback address. Without it,
+   * `INFISICAL_DOMAIN` or `INFISICAL_API_URL`, as the Infisical CLI reads
+   * them, then Infisical Cloud's US region.
+   *
+   * @default "https://us.infisical.com"
    */
-  readonly auth?: InfisicalAuth;
+  readonly siteUrl?: string;
 }
 
 interface AccessToken {
@@ -112,10 +82,14 @@ const isSafeUrl = (url: URL) =>
   !url.username &&
   !url.password;
 
-const normalizeSiteUrl = (siteUrl: string) => {
+/**
+ * `siteUrl` without a trailing `/` or `/api`, which the Infisical CLI's
+ * variables may end with. `source` names where it came from.
+ */
+const normalizeSiteUrl = (siteUrl: string, source: string) => {
   const invalid = () =>
     new Error(
-      `${NAME}() takes siteUrl as an HTTPS URL, or HTTP on a loopback address, without credentials, a query, or a fragment, and ${JSON.stringify(siteUrl)} is not one.`,
+      `${NAME}() takes ${source} as an HTTPS URL, or HTTP on a loopback address, without credentials, a query, or a fragment, and ${JSON.stringify(siteUrl)} is not one.`,
     );
   let url: URL;
   try {
@@ -126,7 +100,7 @@ const normalizeSiteUrl = (siteUrl: string) => {
   if (!isSafeUrl(url) || url.search || url.hash) {
     throw invalid();
   }
-  return `${url.origin}${url.pathname.replace(/\/+$/u, "")}`;
+  return `${url.origin}${url.pathname.replace(/\/+$/u, "").replace(/\/api$/u, "")}`;
 };
 
 const normalizeFolder = (path: string) => {
@@ -170,7 +144,8 @@ const readRefusal = async (response: Response) => {
  * credential with several fields is one JSON value. `set` updates the
  * secret, or creates it when it does not exist. It reads and writes through
  * Infisical's REST API with `fetch`, signed in as a machine identity with
- * Universal Auth or GitHub OIDC, or with an access token.
+ * Universal Auth or GitHub OIDC, or with an access token, from the
+ * environment or `.env.hotupdater`: credentials never go in the config.
  *
  * It is the one team store built into `hot-updater` beside
  * `localSecrets()`: Infisical's free plan and self-hosted instances let a
@@ -179,23 +154,21 @@ const readRefusal = async (response: Response) => {
  * stores ship in their provider packages.
  *
  * @example
- * secrets: infisical({ projectId: "…", environment: "prod" }),
+ * secrets: infisical({ projectId: "…" }),
  */
 export const infisical = ({
-  siteUrl = DEFAULT_SITE_URL,
   projectId,
-  environment,
+  environment = "prod",
   path = "/",
-  auth,
+  siteUrl,
 }: InfisicalOptions): SecretsAdapter => {
   const folder = normalizeFolder(path);
   const where = `project ${projectId}, environment ${environment}, folder ${folder}`;
 
   // Checked on first use, so a config loads without its options.
   let checkedUrl: string | undefined;
-  const baseUrl = () => {
-    if (checkedUrl !== undefined) return checkedUrl;
-    const url = normalizeSiteUrl(siteUrl);
+  const prepare = async (cwd: string) => {
+    if (checkedUrl !== undefined) return;
     if (typeof projectId !== "string" || !projectId.trim()) {
       throw new Error(`${NAME}() needs the projectId of your project.`);
     }
@@ -204,9 +177,20 @@ export const infisical = ({
         `${NAME}() needs the slug of the environment, such as "prod".`,
       );
     }
-    checkedUrl = url;
-    return url;
+    if (siteUrl !== undefined) {
+      checkedUrl = normalizeSiteUrl(siteUrl, "siteUrl");
+      return;
+    }
+    const fileEnv = await readLoadedHotUpdaterEnv(cwd);
+    const source = SITE_URL_ENVS.find(
+      (name) => getHotUpdaterEnvValue(fileEnv, name) !== undefined,
+    );
+    checkedUrl = source
+      ? normalizeSiteUrl(getHotUpdaterEnvValue(fileEnv, source)!, source)
+      : DEFAULT_SITE_URL;
   };
+  /** The checked URL: every request runs after `prepare`. */
+  const baseUrl = () => checkedUrl ?? DEFAULT_SITE_URL;
 
   const checkName = (name: string) => {
     // Infisical answers 500 to __proto__, and 422 to a colon or slash.
@@ -322,8 +306,8 @@ export const infisical = ({
     if (!isSafeUrl(url)) {
       throw new Error(`${OIDC_REQUEST_URL_ENV} is not an HTTPS URL.`);
     }
-    const audience = auth?.method === "github-oidc" ? auth.audience : undefined;
-    if (audience) url.searchParams.set("audience", audience);
+    // No audience: GitHub's default, the repository owner's URL, which
+    // Infisical's GitHub OIDC setup lists.
     const response = await send(
       url.href,
       {
@@ -352,38 +336,23 @@ export const infisical = ({
     // The file too: init restores process.env after it loads the config.
     const fileEnv = await readLoadedHotUpdaterEnv(cwd);
     const read = (name: string) => getHotUpdaterEnvValue(fileEnv, name);
-    const method =
-      auth?.method ??
-      (read(TOKEN_ENV)
-        ? "token"
-        : read(CLIENT_ID_ENV) && read(CLIENT_SECRET_ENV)
-          ? "universal-auth"
-          : read(IDENTITY_ID_ENV) && read(OIDC_REQUEST_URL_ENV)
-            ? "github-oidc"
-            : undefined);
+    const method = read(TOKEN_ENV)
+      ? "token"
+      : read(CLIENT_ID_ENV) && read(CLIENT_SECRET_ENV)
+        ? "universal-auth"
+        : read(IDENTITY_ID_ENV)
+          ? "github-oidc"
+          : undefined;
 
     switch (method) {
       case "token": {
-        const token =
-          (auth?.method === "token" ? auth.token : undefined) ??
-          read(TOKEN_ENV);
-        if (!token) {
-          throw new Error(
-            `${NAME}() signs in with an access token from ${TOKEN_ENV}, and it is not set.`,
-          );
-        }
+        const token = read(TOKEN_ENV)!;
         registerSecretValue(token);
         return { token, expiresAt: Number.POSITIVE_INFINITY };
       }
       case "universal-auth": {
-        const options = auth?.method === "universal-auth" ? auth : undefined;
-        const clientId = options?.clientId ?? read(CLIENT_ID_ENV);
-        const clientSecret = options?.clientSecret ?? read(CLIENT_SECRET_ENV);
-        if (!clientId || !clientSecret) {
-          throw new Error(
-            `${NAME}() signs in with Universal Auth from ${CLIENT_ID_ENV} and ${CLIENT_SECRET_ENV}, and ${clientId ? CLIENT_SECRET_ENV : CLIENT_ID_ENV} is not set.`,
-          );
-        }
+        const clientId = read(CLIENT_ID_ENV)!;
+        const clientSecret = read(CLIENT_SECRET_ENV)!;
         registerSecretValue(clientSecret);
         return signIn(
           "/api/v1/auth/universal-auth/login",
@@ -392,18 +361,12 @@ export const infisical = ({
         );
       }
       case "github-oidc": {
-        const options = auth?.method === "github-oidc" ? auth : undefined;
-        const identityId = options?.identityId ?? read(IDENTITY_ID_ENV);
-        if (!identityId) {
-          throw new Error(
-            `${NAME}() signs in with GitHub OIDC as the machine identity ${IDENTITY_ID_ENV} names, and it is not set.`,
-          );
-        }
+        const identityId = read(IDENTITY_ID_ENV)!;
         const requestUrl = read(OIDC_REQUEST_URL_ENV);
         const requestToken = read(OIDC_REQUEST_TOKEN_ENV);
         if (!requestUrl || !requestToken) {
           throw new Error(
-            `${NAME}() signs in with GitHub OIDC in a GitHub Actions job with \`permissions: id-token: write\`, and ${OIDC_REQUEST_URL_ENV} is not set.`,
+            `${NAME}() found ${IDENTITY_ID_ENV} outside a GitHub Actions job with \`permissions: id-token: write\`.`,
           );
         }
         const jwt = await githubIdToken(requestUrl, requestToken);
@@ -415,7 +378,7 @@ export const infisical = ({
       }
       default:
         throw new Error(
-          `${NAME}() found no way to sign in to Infisical: set ${TOKEN_ENV}, ${CLIENT_ID_ENV} and ${CLIENT_SECRET_ENV}, or ${IDENTITY_ID_ENV} in GitHub Actions.`,
+          `${NAME}() found no Infisical sign-in: set ${TOKEN_ENV}, ${CLIENT_ID_ENV} and ${CLIENT_SECRET_ENV}, or ${IDENTITY_ID_ENV}.\n${DOCS_URL}`,
         );
     }
   };
@@ -551,6 +514,7 @@ export const infisical = ({
       // No prototype: a secret may be named __proto__.
       const result: Record<string, string | undefined> = Object.create(null);
       if (unique.length === 0) return result;
+      await prepare(cwd);
       const held = await listNames(cwd);
       const values = await Promise.all(
         unique.map((name) => (held.has(name) ? getOne(name, cwd) : undefined)),
@@ -584,6 +548,7 @@ export const infisical = ({
           `${NAME}() cannot store ${name}: Infisical takes requests up to 1 MiB.`,
         );
       }
+      await prepare(cwd);
       const updated = await write("PATCH", name, body, cwd);
       if (updated.ok) return;
       if (updated.status !== 404) {

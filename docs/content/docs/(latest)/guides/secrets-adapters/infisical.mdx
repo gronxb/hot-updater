@@ -12,9 +12,8 @@ covers a small team, and a self-hosted instance has no identity limit.
 
 1. Create a **Secrets Management** project, or open an existing one, and
    copy its **Project ID** from **Project Settings**.
-2. Pick the environment the secrets go in, such as **Production** (slug
-   `prod`). To keep them apart from the project's other secrets, add a
-   folder, such as `/hot-updater`.
+2. The secrets go in its **Production** environment (slug `prod`) unless
+   you choose another.
 3. In your organization's **Access Control** > **Machine Identities**,
    create an identity with **Universal Auth**, and add a client secret.
 4. In the project's **Access Control** > **Machine Identities**, add the
@@ -30,22 +29,23 @@ covers a small team, and a self-hosted instance has no identity limit.
 import { defineConfig, infisical } from "hot-updater";
 
 export default defineConfig({
-  secrets: infisical({
-    projectId: "6f4a…",
-    environment: "prod",
-    path: "/hot-updater",
-  }),
+  secrets: infisical({ projectId: "6f4a…" }),
   // build, storage, database and plugins stay as they are
 });
 ```
 
-| Option        | Default                      | What it does                                                                          |
-| ------------- | ---------------------------- | ------------------------------------------------------------------------------------- |
-| `projectId`   | Required                     | The project's ID                                                                      |
-| `environment` | Required                     | The environment's slug, such as `prod`                                                |
-| `path`        | `"/"`                        | The folder the secrets are in, which must exist                                       |
-| `siteUrl`     | `"https://us.infisical.com"` | `https://eu.infisical.com` for EU Cloud, or your own instance's URL                   |
-| `auth`        | From the environment         | `{ method: "universal-auth" }`, `{ method: "github-oidc" }`, or `{ method: "token" }` |
+`projectId` is the only option you need. The others are optional:
+
+- `environment`: the environment's slug, `"prod"` by default.
+- `path`: a folder that must exist, `"/"` by default. Give each app its own
+  folder when apps share a project and environment, so their keys, such as
+  `release-keystore`, don't overwrite each other.
+- `siteUrl`: `https://eu.infisical.com` for EU Cloud, or your own instance's
+  URL. Without it, `INFISICAL_DOMAIN` (or `INFISICAL_API_URL`), as the
+  Infisical CLI reads it, then Infisical Cloud's US region.
+
+Credentials never go in the config: `infisical()` signs in from the
+environment or `.env.hotupdater`.
 
 Each name is one secret in that folder: `secret:asc-api-key` reads the
 secret `asc-api-key`, and a credential is one
@@ -65,9 +65,8 @@ secret `asc-api-key`, and a credential is one
 
 ## Sign in on your machine
 
-Without `auth`, `infisical()` signs in with the first it finds, in the
-environment or `.env.hotupdater`. These are the names Infisical's own CLI
-reads:
+`infisical()` signs in with the first it finds, in the environment or
+`.env.hotupdater`. These are the names Infisical's own CLI reads:
 
 | Set                                                                               | Signs in as                        |
 | --------------------------------------------------------------------------------- | ---------------------------------- |
@@ -128,9 +127,6 @@ permissions:
     submit: testflight
 ```
 
-For another audience, pass it as
-`auth: { method: "github-oidc", audience: "…" }`.
-
 ### Universal Auth
 
 Add a Viewer identity with Universal Auth, store its client ID and secret as
@@ -153,20 +149,12 @@ has the complete workflow.
 
 ## Use a self-hosted instance
 
-Pass the instance's URL as `siteUrl`. It must be HTTPS, or HTTP on
-`localhost`:
+Point `infisical()` at the instance with `INFISICAL_DOMAIN`, in the
+environment or `.env.hotupdater`, as for the Infisical CLI, or with
+`siteUrl`. It must be HTTPS, or HTTP on `localhost`:
 
-```ts title="hot-updater.config.ts (partial)"
-import { defineConfig, infisical } from "hot-updater";
-
-export default defineConfig({
-  secrets: infisical({
-    siteUrl: "https://infisical.example.com",
-    projectId: "6f4a…",
-    environment: "prod",
-  }),
-  // build, storage, database and plugins stay as they are
-});
+```bash title=".env.hotupdater (partial)"
+INFISICAL_DOMAIN=https://infisical.example.com
 ```
 
 Sign in as with Infisical Cloud. For GitHub Actions OIDC, the instance must
@@ -179,4 +167,4 @@ reach `https://token.actions.githubusercontent.com`.
 | `rejected the credentials`          | The client secret or token is wrong or expired: sign in again                   |
 | `does not let the identity …` (403) | Give the identity the project role: Viewer reads, Member stores                 |
 | `found no project …` (404)          | Check `projectId`, `environment`, and `path`, and that the folder exists        |
-| `found no way to sign in`           | Set one of the variables in [Sign in on your machine](#sign-in-on-your-machine) |
+| `found no Infisical sign-in`        | Set one of the variables in [Sign in on your machine](#sign-in-on-your-machine) |
