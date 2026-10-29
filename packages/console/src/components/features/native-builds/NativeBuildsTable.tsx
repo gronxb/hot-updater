@@ -47,7 +47,7 @@ import { ShortHash } from "./ShortHash";
 import { StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
-  "https://hot-updater.dev/docs/guides/native-build#register-a-build";
+  "https://hot-updater.dev/docs/guides/native-build#how-a-build-is-tracked";
 
 const COLUMNS = 6;
 

@@ -1,13 +1,11 @@
 {
-  "title": "Deliver updates",
+  "title": "OTA updates",
   "description": "Build, target, and release compatible updates.",
   "icon": "Send",
   "pages": [
     "../guides/deploy",
     "../guides/custom-update",
     "../guides/channel-management",
-    "../guides/native-build",
-    "../guides/ci-native-build",
     "../guides/runtime-channel-switch",
     "../guides/pull-request-previews",
     "../guides/rollout-cohorts",

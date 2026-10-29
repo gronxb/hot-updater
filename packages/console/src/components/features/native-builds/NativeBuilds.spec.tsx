@@ -269,7 +269,7 @@ describe("NativeBuildsTable", () => {
       screen.getByRole("link", { name: /Native build guide/ }),
     ).toHaveProperty(
       "href",
-      "https://hot-updater.dev/docs/guides/native-build#register-a-build",
+      "https://hot-updater.dev/docs/guides/native-build#how-a-build-is-tracked",
     );
   });
 

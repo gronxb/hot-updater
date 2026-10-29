@@ -22,6 +22,12 @@ export default defineConfig({
       }),
       llmsTxtPlugin({
         baseUrl: "https://hot-updater.dev",
+        contentDir: "content/docs/v1.0",
+        generateIndex: false,
+        urlPrefix: "v1.0",
+      }),
+      llmsTxtPlugin({
+        baseUrl: "https://hot-updater.dev",
         contentDir: "content/docs/v0",
         generateIndex: false,
         urlPrefix: "v0",
