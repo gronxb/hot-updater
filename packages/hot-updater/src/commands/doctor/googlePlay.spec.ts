@@ -141,6 +141,29 @@ describe("doctor's Google Play check", () => {
     });
   });
 
+  it("puts the detail under an application ID too long to share its line", () => {
+    const { text } = formatGooglePlayStatus({
+      packages: [
+        {
+          packageName: "com.example.mycompany.application.staging",
+          access: { status: "not-found", email: EMAIL },
+        },
+      ],
+    });
+
+    expect(stripVTControlCharacters(text).split("\n").slice(1, 3)).toEqual([
+      "✗ com.example.mycompany.application.staging",
+      "  upload the first .aab in Play Console",
+    ]);
+    expect(
+      linesWiderThan(
+        stripVTControlCharacters(text)
+          .split("\n")
+          .map((line) => `│  ${line}`),
+      ),
+    ).toEqual([]);
+  });
+
   it("says it couldn't check a package Google didn't answer for", async () => {
     checkPlayAccess.mockRejectedValue(new Error("fetch failed"));
 

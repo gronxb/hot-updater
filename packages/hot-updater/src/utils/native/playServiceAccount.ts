@@ -142,12 +142,25 @@ const MARKS = {
   undefined: ui.muted("·"),
 } as const;
 
-/** Check lines, aligned, each with the lines under it indented. */
+/** The widest check line, Clack's three-column gutter left out. */
+const CHECK_WIDTH = 77;
+
+/**
+ * Check lines, aligned, each with the lines under it indented. A detail
+ * that doesn't fit beside a long label, such as an application ID, goes
+ * on the line under it.
+ */
 export const formatPlayChecks = (checks: readonly PlayCheck[]): string[] =>
-  checks.flatMap(({ ok, label, detail, lines = [] }) => [
-    `${MARKS[String(ok) as keyof typeof MARKS]} ${detail ? `${label.padEnd(LABEL_WIDTH)}  ${detail}` : label}`,
-    ...lines.map((line) => `  ${line}`),
-  ]);
+  checks.flatMap(({ ok, label, detail, lines = [] }) => {
+    const mark = MARKS[String(ok) as keyof typeof MARKS];
+    const beside = detail && `${label.padEnd(LABEL_WIDTH)}  ${detail}`;
+    const fits = beside !== undefined && 2 + beside.length <= CHECK_WIDTH;
+    return [
+      `${mark} ${beside && fits ? beside : label}`,
+      ...(detail && !fits ? [detail] : []),
+      ...lines,
+    ].map((line, index) => (index === 0 ? line : `  ${line}`));
+  });
 
 export interface GooglePlayReadiness {
   readonly packageName: string;
