@@ -36,15 +36,20 @@ export const buildIos = async ({
   schemeConfig,
   minBundleId = createMinBundleId(),
   credentials,
+  logHeader = [],
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId?: string;
   /** Resolves the scheme's `signing` key, when a device build signs with one. */
   credentials?: Pick<CredentialResolver, "resolve">;
+  /** Lines the build log starts with, such as the native build key. */
+  logHeader?: string[];
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
+  /** The build log, which an archive's export appends to, or null. */
+  logFilePath: string | null;
   /** What the built app reports, from its Info.plist. */
   builtApp?: {
     appVersion: string | null;
@@ -70,6 +75,7 @@ export const buildIos = async ({
       minBundleId,
       credentials,
       buildDirectory,
+      logHeader,
     });
     return { ...built, dispose: () => removeTmpDir(buildDirectory) };
   } catch (error) {
@@ -83,11 +89,13 @@ const buildInto = async ({
   minBundleId,
   credentials,
   buildDirectory,
+  logHeader,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
   credentials?: Pick<CredentialResolver, "resolve">;
   buildDirectory: string;
+  logHeader: string[];
 }) => {
   const iosProjectRoot = path.join(getCwd(), "ios");
 
@@ -95,10 +103,11 @@ const buildInto = async ({
     const appDir = path.join(buildDirectory, "app");
     await fs.promises.mkdir(appDir, { recursive: true });
 
-    const { appPath } = await buildXcodeProject({
+    const { appPath, logFilePath } = await buildXcodeProject({
       sourceDir: iosProjectRoot,
       outputDirectory: appDir,
       logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
+      header: logHeader,
       platform: schemeConfig.platform,
       xcodeScheme: schemeConfig.scheme,
       configuration: schemeConfig.configuration,
@@ -112,12 +121,18 @@ const buildInto = async ({
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: appPath,
+      logFilePath,
       builtApp: await readBuiltApp(appPath),
     };
   } else {
     const signing = await resolveXcodeSigning({ schemeConfig, credentials });
     if (!signing) {
-      return archiveAndExport({ schemeConfig, minBundleId, buildDirectory });
+      return archiveAndExport({
+        schemeConfig,
+        minBundleId,
+        buildDirectory,
+        logHeader,
+      });
     }
     // In CI, an App Store Connect export signs in a keychain of its own,
     // whose certificates are revoked and deleted with it: its .ipa is signed
@@ -138,6 +153,7 @@ const buildInto = async ({
           schemeConfig,
           minBundleId,
           buildDirectory,
+          logHeader,
           authenticationArgs: signing.authenticationArgs,
         }),
     });
@@ -152,11 +168,13 @@ const archiveAndExport = async ({
   schemeConfig,
   minBundleId,
   buildDirectory,
+  logHeader,
   authenticationArgs,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
   buildDirectory: string;
+  logHeader: string[];
   /** Signing arguments from `resolveXcodeSigning`. */
   authenticationArgs?: string[];
 }) => {
@@ -165,7 +183,7 @@ const archiveAndExport = async ({
   const exportDir = path.join(buildDirectory, "export");
   await fs.promises.mkdir(archiveDir, { recursive: true });
   // archivePath is the .xcarchive file path
-  const { archivePath } = await archiveXcodeProject({
+  const { archivePath, logFilePath } = await archiveXcodeProject({
     archiveDirectory: archiveDir,
     authenticationArgs,
     minBundleId,
@@ -177,7 +195,8 @@ const archiveAndExport = async ({
     extraParams: schemeConfig.extraParams,
     configuration: schemeConfig.configuration,
     installPods: schemeConfig.installPods,
-    logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-archive`,
+    logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
+    header: logHeader,
   });
 
   // Extract .app from xcarchive if present
@@ -199,6 +218,7 @@ const archiveAndExport = async ({
     return {
       buildDirectory,
       buildArtifactPath: archivePath,
+      logFilePath,
       builtApp: archivedAppPath
         ? await readBuiltApp(archivedAppPath)
         : undefined,
@@ -214,7 +234,10 @@ const archiveAndExport = async ({
       exportExtraParams: schemeConfig.exportExtraParams,
       exportOptionsPlist,
       sourceDir: iosProjectRoot,
-      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
+      // The export's output follows the archive's in one log.
+      logFilePath: logFilePath ?? undefined,
+      title: schemeConfig.scheme,
     });
   if (schemeConfig.exportOptionsPlist) {
     await exportArchive(schemeConfig.exportOptionsPlist);
@@ -239,6 +262,7 @@ const archiveAndExport = async ({
   return {
     buildDirectory: buildDirectory,
     buildArtifactPath: path.join(exportDir, ipaFile),
+    logFilePath,
     builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
   };
 };

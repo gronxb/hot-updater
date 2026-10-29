@@ -124,16 +124,28 @@ Without `--scheme`, the CLI asks which scheme at a terminal, and in CI or
 without a terminal stops with the schemes to pass.
 
 The build copies its output to `.hot-updater/output/build/<platform>/<scheme>`,
-or to `--output-path`, and prints the artifact and its values:
+or to `--output-path`. It prints one line per step with its duration, and at a
+terminal the running step's line shows what the tool is doing, such as the
+Gradle task or the Xcode target it compiles. It ends with the artifact and its
+values:
 
 ```txt
-◆  Built Android (bare)
-│  Artifact       .hot-updater/output/build/android/release/app-release.aab
-│  Kind           aab
+◇  Prepared Android 1.7.0 · prebuild                                    4.1s
+│
+●  Cache miss · no build has this key                                   1.2s
+│
+◇  Built bundleRelease                                                 3m12s
+│
+◇  Registered native build 019a0f8e-7c41-7000-8000-0000000000b1         2.9s
+│
+◆  Android release 1.7.0 (42) built in 3m20s
+│  AAB            .hot-updater/output/build/android/…/app-release.aab · 31.2 MB
 │  Min bundle ID  019a0f8e-7c41-7000-8000-000000000000
-│  Fingerprint    4f1c0d6b2e9a…
 │  Channel        production
+│  Log            .hot-updater/log/10261157-android-release-build.log
 ```
+
+In CI and without a terminal, each step prints only its finished line.
 
 A Debug build reports the nil UUID as its min bundle ID, as its native SDK
 does: an Android variant or iOS configuration whose name ends in `Debug`.
@@ -151,15 +163,17 @@ Install a simulator `.app` with
 `xcrun simctl install booted <path-to-app>`, and an `.apk` with
 `adb install <path-to-apk>`.
 
-The build writes the whole output of `xcodebuild` or Gradle to a log in
-`.hot-updater/log`, such as `.hot-updater/log/10261157-ios-simulator-build.log`.
-When the build fails, the CLI prints why on stderr: `xcodebuild`'s `error:`
-lines and the commands that failed, or Gradle's `What went wrong` block, or
-without those, the output's last 40 lines, then the log's path. With
-`--json`, stdout keeps only the JSON.
+The build writes the command it runs and the whole output of `xcodebuild` or
+Gradle to a log in `.hot-updater/log`, such as
+`.hot-updater/log/10261157-ios-simulator-build.log`, after the native build
+key and what changed since this machine's cached build. An iOS archive and
+its export share one log. When the build fails, the CLI prints why on stderr:
+`xcodebuild`'s `error:` lines and the commands that failed, or Gradle's `What
+went wrong` block, or without those, the output's last 15 lines, then the
+log's path. With `--json`, stdout keeps only the JSON.
 
 ```txt
-■  Build failed
+■  Build failed                                                         4m02s
 │
 ■  /path/to/app/ios/App/AppDelegate.swift:12:5: error: cannot find 'missingSymbol' in scope
 │  ** BUILD FAILED **
@@ -406,20 +420,15 @@ With the key, the CLI looks for a build to reuse before it builds:
 3. Otherwise, it builds, and tracks the build with its key.
 
 ```txt
-◆  Cache hit: reusing a native build
-│  ID        019a0f8e-7c41-7000-8000-0000000000b1
-│  From      storage
-│  Key       nbk1:3f9c2a71d0e4…
-│  Artifact  .hot-updater/output/build/android/release/app-release.aab
+◇  Cache hit · storage · 019a0f8e-7c41-7000-8000-0000000000b1          2.1s
 ```
 
 ```txt
-●  Cache miss: no build has this key
-│  Key      nbk1:8b01e6c9f27d…
-│  Changed  src/App.tsx
-│           ios/Podfile.lock
-│           $EXPO_PUBLIC_API_URL
+●  Cache miss · src/App.tsx +2 changed                                 3.4s
 ```
+
+The build log starts with the whole key and every change since this
+machine's cached build.
 
 This machine keeps the newest build of each platform and scheme in
 `<cacheDir>/native-build/<platform>/<scheme>`, which the next build replaces;

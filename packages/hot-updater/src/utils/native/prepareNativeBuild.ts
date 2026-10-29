@@ -16,6 +16,7 @@ import {
   HotUpdateDirUtil,
   loadConfig,
   p,
+  type Step,
 } from "@hot-updater/cli-tools";
 import type {
   BuildAdapter,
@@ -73,6 +74,11 @@ export async function prepareNativeBuild(
      * store upload's, changes nothing.
      */
     beforePrebuild?: (scheme: NativeBuildSchemeOptions) => Promise<void>;
+    /**
+     * The step the preparation shows as, started once nothing asks anything
+     * more: after `beforePrebuild`, which may prompt or sign in.
+     */
+    preparing?: Step;
   },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
@@ -159,6 +165,7 @@ export async function prepareNativeBuild(
         },
   );
 
+  options.preparing?.start();
   // The adapter's prebuild writes the native projects, such as Expo's
   // `expo prebuild`, so it runs before anything reads them.
   const buildAdapter = await config.build({ cwd });
@@ -187,7 +194,7 @@ export async function prepareNativeBuild(
     );
 
     if (!isFingerprintEquals(localFingerprint, generatedFingerprint)) {
-      p.log.info("Updated fingerprint.json");
+      p.log.step("Updated fingerprint.json");
     }
     target = { fingerprintHash: generatedFingerprint.hash, appVersion: null };
   } else {

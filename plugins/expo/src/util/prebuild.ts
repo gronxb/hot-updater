@@ -9,12 +9,12 @@ export const runExpoPrebuild = async ({ platform }: { platform: Platform }) => {
   // Don't install or clean at not
   const spinner = p.spinner();
   try {
-    spinner.start("Run expo prebuild");
+    spinner.start("Running expo prebuild");
     const args = ["expo", "prebuild", "--platform", platform, "--no-install"];
-    spinner.stop("Expo prebuild done");
     await execa("npx", args);
+    spinner.stop("Expo prebuild done");
   } catch (e) {
-    spinner.stop("Expo prebuild failed");
+    spinner.error("Expo prebuild failed");
     if (e instanceof ExecaError) {
       p.log.error(e.stderr || e.stdout || e.message);
     } else if (e instanceof Error) {

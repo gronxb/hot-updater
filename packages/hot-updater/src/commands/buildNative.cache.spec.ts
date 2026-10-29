@@ -20,7 +20,7 @@ const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 vi.mock("@hot-updater/apple-helper", () => ({
   TestFlightBuildExistsError: class TestFlightBuildExistsError extends Error {},
   assertTestFlightExportOptions: vi.fn(async () => {}),
-  buildIos: vi.fn(),
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
   installPodsIfNeeded: vi.fn(async () => {
     events.push("pod install");
   }),
@@ -45,7 +45,7 @@ vi.mock("@hot-updater/apple-helper", () => ({
 vi.mock("@hot-updater/android-helper", () => ({
   PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
   readBuiltApp: vi.fn(async () => undefined),
-  buildAndroid: vi.fn(),
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
   findPlayInternalRelease: vi.fn(async () => {
     events.push("find on Play");
     return true;
@@ -223,6 +223,7 @@ const cacheOf = (
     slot: "/project/node_modules/.hot-updater/native-build/ios/release",
     hit,
     report: { hit: source, key: KEY, uncacheable: null, changed },
+    logHeader: [`Native build key  ${KEY}`],
     remember: vi.fn(async () => {
       events.push("remember");
     }),

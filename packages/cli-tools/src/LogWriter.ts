@@ -9,6 +9,8 @@ import { maskSecretValues } from "./secretMasking";
 export type HotUpdaterLogWriter = {
   logFilePath: string | null;
   writeStream: (input: Readable) => Promise<void>;
+  /** Writes lines of its own, such as the command a build runs. */
+  writeLines: (lines: readonly string[]) => void;
   writeError: (error: unknown) => void;
   close: () => Promise<void>;
 };
@@ -138,6 +140,10 @@ export const createLogWriter = async ({
       }
     };
 
+    const writeLines = (lines: readonly string[]) => {
+      writeChunk(`${lines.join("\n")}\n`);
+    };
+
     const writeError = (error: unknown) => {
       const message =
         error instanceof Error ? (error.stack ?? error.message) : String(error);
@@ -157,6 +163,7 @@ export const createLogWriter = async ({
     return {
       logFilePath: resolvedLogFilePath,
       writeStream,
+      writeLines,
       writeError,
       close,
     };
@@ -167,6 +174,7 @@ export const createLogWriter = async ({
     return {
       logFilePath: null,
       writeStream: async () => {},
+      writeLines: () => {},
       writeError: () => {},
       close: async () => {},
     };

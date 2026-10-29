@@ -25,7 +25,7 @@ vi.mock("@hot-updater/apple-helper", () => ({
   assertTestFlightExportOptions: vi.fn(async () => {
     events.push("check export options");
   }),
-  buildIos: vi.fn(),
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
   resolveTestFlightUploadKey: vi.fn(() => {
     events.push("check scheme");
     return { kind: "asc-api-key", name: "asc-api-key" };
@@ -41,7 +41,9 @@ vi.mock("@hot-updater/apple-helper", () => ({
     };
   }),
 }));
-vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
+vi.mock("@hot-updater/android-helper", () => ({
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
+}));
 vi.mock("../utils/native/ascApiKey", () => ({
   ensureAscApiKey: vi.fn(async ({ name }: { name: string }) => {
     events.push(`ensure ${name}`);
@@ -480,11 +482,11 @@ describe("native-build ios --dry-run", () => {
     expect(ensureAscApiKey).not.toHaveBeenCalled();
     expect(registerNativeBuild).not.toHaveBeenCalled();
     expect(uploadToTestFlight).not.toHaveBeenCalled();
-    // The build's block names the artifact; the dry run adds one line.
+    // The summary names the artifact; the dry run adds one line.
     const built = stripVTControlCharacters(
       vi.mocked(p.log.success).mock.calls.map(String).join("\n"),
     );
-    expect(built).toContain("Built iOS");
+    expect(built).toMatch(/^iOS release built in \d+\.\ds\n/);
     expect(built).toContain("/out/export/App.ipa");
     expect(built).toContain("0190a1b2-c3d4-7000-8000-01a1b2c3d4e5");
     expect(vi.mocked(p.log.step).mock.calls).toEqual([

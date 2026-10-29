@@ -16,7 +16,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
   }),
   p: {
     log: { info: vi.fn() },
-    spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+    spinner: () => ({ start: vi.fn(), stop: vi.fn(), error: vi.fn() }),
   },
 }));
 vi.mock("execa", () => ({ execa: vi.fn(async () => ({})) }));
@@ -191,7 +191,7 @@ describe("installPodsIfNeeded", () => {
     vi.mocked(execa).mockRejectedValueOnce(new Error("codegen exploded"));
 
     await expect(installPodsIfNeeded(sourceDir)).rejects.toThrow(
-      /React Native codegen failed: .*codegen exploded/,
+      /React Native codegen failed\.\ncodegen exploded/,
     );
     expect(vi.mocked(execa)).toHaveBeenCalledTimes(1);
   });

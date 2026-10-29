@@ -9,6 +9,8 @@ export const exportXcodeArchive = async ({
   exportExtraParams,
   exportOptionsPlist,
   logPrefix,
+  logFilePath,
+  title,
   authenticationArgs,
 }: {
   archivePath: string;
@@ -19,6 +21,10 @@ export const exportXcodeArchive = async ({
   exportExtraParams?: string[];
   exportOptionsPlist: string;
   logPrefix: string;
+  /** The log to append to, such as the archive's. */
+  logFilePath?: string;
+  /** The step's name, such as the scheme's. */
+  title: string;
   sourceDir: string;
 }): Promise<{ exportPath: string }> => {
   const exportArgs = prepareExportArgs({
@@ -33,9 +39,11 @@ export const exportXcodeArchive = async ({
     await runXcodebuildWithLogging({
       args: exportArgs,
       sourceDir,
-      successMessage: "Archive exported successfully",
+      title: `Exporting ${title}`,
+      successMessage: `Exported ${title}`,
       failureMessage: "Export failed",
       logPrefix,
+      logFilePath,
     });
 
     return { exportPath };

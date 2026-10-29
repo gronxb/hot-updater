@@ -17,7 +17,7 @@ vi.mock("@hot-updater/android-helper", () => ({
   assertPlaySigned: vi.fn(async () => {
     events.push("check signer");
   }),
-  buildAndroid: vi.fn(),
+  buildAndroid: vi.fn(async () => ({ logFilePath: null })),
   readBuiltPackageName: vi.fn(async () => "com.example.app.staging"),
   resolvePlayUploadServiceAccount: vi.fn(() => {
     events.push("check scheme");
@@ -28,7 +28,9 @@ vi.mock("@hot-updater/android-helper", () => ({
     return { versionCode: 42, status: "completed" };
   }),
 }));
-vi.mock("@hot-updater/apple-helper", () => ({ buildIos: vi.fn() }));
+vi.mock("@hot-updater/apple-helper", () => ({
+  buildIos: vi.fn(async () => ({ logFilePath: null })),
+}));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
