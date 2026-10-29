@@ -18,7 +18,7 @@ export interface KeyVaultOptions {
    */
   readonly vaultUrl?: string;
   /**
-   * Put before each name to make its secret's name, so `secret:asc-api-key`
+   * Put before each name to make its secret's name, so `secret("asc-api-key")`
    * reads the secret `hot-updater-asc-api-key`. Letters, digits, and `-`.
    *
    * @default "hot-updater-"

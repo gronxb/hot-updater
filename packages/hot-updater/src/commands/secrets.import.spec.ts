@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  getSecretEnvNames,
+  getDeploySecretNames,
   loadConfig,
   localSecrets,
 } from "@hot-updater/cli-tools";
@@ -26,7 +26,7 @@ const { log, printBanner } = vi.hoisted(() => ({
 // Only the config and the log are mocked.
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
-  getSecretEnvNames: vi.fn(),
+  getDeploySecretNames: vi.fn(),
   loadConfig: vi.fn(),
   p: { isCancel: vi.fn(() => false), log },
 }));
@@ -48,7 +48,7 @@ const teamStore = () => {
   return { store, held };
 };
 
-/** The config loadConfig hands over, whose secretEnv reads `names`. */
+/** The config loadConfig hands over, whose adapters' `secret()`s read `names`. */
 const configure = (
   secrets: SecretsAdapter | undefined,
   names: readonly string[],
@@ -56,7 +56,7 @@ const configure = (
   vi.mocked(loadConfig).mockResolvedValue({
     secrets: secrets ?? localSecrets(),
   } as never);
-  vi.mocked(getSecretEnvNames).mockReturnValue(names);
+  vi.mocked(getDeploySecretNames).mockReturnValue(names);
 };
 
 const ENV_FILE = [
@@ -85,7 +85,7 @@ afterEach(async () => {
 });
 
 describe("hot-updater secrets import", () => {
-  it("stores what secretEnv reads and the app's API key from .env.hotupdater, reads them back, and deletes nothing", async () => {
+  it("stores what the adapters' secret()s read and the app's API key from .env.hotupdater, reads them back, and deletes nothing", async () => {
     const { store, held } = teamStore();
     configure(store, [
       "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
@@ -141,7 +141,7 @@ describe("hot-updater secrets import", () => {
     );
   });
 
-  it("stores the app's API key for a config with no secretEnv, such as Firebase's", async () => {
+  it("stores the app's API key for a config with no adapter secret(), such as Firebase's", async () => {
     const { store, held } = teamStore();
     configure(store, []);
 

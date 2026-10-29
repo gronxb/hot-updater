@@ -11,6 +11,7 @@ import {
   p,
   readPackageUp,
 } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import {
   type ConfiguredDatabase,
   createMemoryAdapter,
@@ -73,16 +74,20 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(({
     CREDENTIAL_ENV_NAMES,
     getConfiguredAdapter,
+    getDeploySecretNames,
     getHotUpdaterEnvValue,
-    isSecretName,
+    isSecretRef,
     readLoadedHotUpdaterEnv,
+    secret,
     secretVariableName,
   }) => ({
     CREDENTIAL_ENV_NAMES,
     getConfiguredAdapter,
+    getDeploySecretNames,
     getHotUpdaterEnvValue,
-    isSecretName,
+    isSecretRef,
     readLoadedHotUpdaterEnv,
+    secret,
     secretVariableName,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: vi.fn(() => "/mock/cwd"),
@@ -507,7 +512,7 @@ describe("doctor", () => {
     logSpy.mockRestore();
   });
 
-  it("lists where each secret: reference is read from, and --json gives the same fields", async () => {
+  it("lists where each build credential's secret() is read from, and --json gives the same fields", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
       path: "/mock/cwd/package.json",
@@ -522,12 +527,12 @@ describe("doctor", () => {
       createConfig({
         secrets: { name: "team-store", get },
         nativeBuild: {
-          ios: { release: { signing: { ascApiKey: "secret:asc-api-key" } } },
+          ios: { release: { signing: { ascApiKey: secret("asc-api-key") } } },
           android: {
-            release: { signing: { keystore: "secret:release-keystore" } },
+            release: { signing: { keystore: secret("release-keystore") } },
           },
         },
-        signing: { enabled: true, privateKey: "secret:bundle-signing-key" },
+        signing: { enabled: true, privateKey: secret("bundle-signing-key") },
       }),
     );
 

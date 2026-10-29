@@ -142,7 +142,7 @@ describe("postgres plugin schema", () => {
 describe("postgres's connection string from a function", () => {
   it("is read when the pool first connects, and names no target", async () => {
     const connectionString = vi.fn(async () => {
-      throw new Error("secretEnv found no value for DATABASE_URL");
+      throw new Error('secret("DATABASE_URL") has no value');
     });
 
     const database = postgres({ connectionString });
@@ -157,7 +157,7 @@ describe("postgres's connection string from a function", () => {
       clientAccess: "public",
     }).core;
     await expect(core.listChannels()).rejects.toThrow(
-      "secretEnv found no value for DATABASE_URL",
+      'secret("DATABASE_URL") has no value',
     );
     expect(connectionString).toHaveBeenCalledTimes(1);
     await database.dispose?.();

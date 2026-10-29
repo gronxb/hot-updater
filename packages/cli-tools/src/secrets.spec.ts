@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import {
+  type LocalSigningConfig,
+  type NativeBuildAndroidScheme,
+  remoteSigning,
+  type SecretsAdapter,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getLocalKeyFile, writeLocalKey } from "./localKeyStore";
@@ -19,10 +24,12 @@ import {
   localSecrets,
   parseSecretReference,
   readSecretWithSource,
-  secretEnv,
+  type SecretsScope,
+  secret,
   secretVariableName,
   setConfiguredSecrets,
   resolveSecretsAdapter,
+  withSecretsScope,
 } from "./secrets";
 
 let directory: string;
@@ -117,21 +124,35 @@ describe("isReservedVariableName", () => {
 });
 
 describe("parseSecretReference", () => {
-  it("reads the name of secret:<name>", () => {
+  it("reads the name of secret(<name>)", () => {
     expect(
-      parseSecretReference("secret:release-keystore", "signing.keystore"),
+      parseSecretReference(secret("release-keystore"), "signing.keystore"),
     ).toBe("release-keystore");
   });
 
   it.each([
-    "vault:release-keystore",
-    "release-keystore",
-    "secret:",
-    "secret:-x",
-  ])("refuses %s", (reference) => {
+    ["a string", "secret:release-keystore"],
+    ["a plain function", async () => "value"],
+    ["an object", { name: "release-keystore" }],
+    ["nothing", undefined],
+  ])("refuses %s in one line naming secret()", (_, reference) => {
     expect(() => parseSecretReference(reference, "signing.keystore")).toThrow(
-      `signing.keystore names a secret as secret:<name>, such as "secret:release-keystore", and ${JSON.stringify(reference)} is not one.`,
+      'signing.keystore takes secret("<name>").',
     );
+  });
+
+  it("types a string where a reference goes as an error", () => {
+    const scheme: Pick<NativeBuildAndroidScheme, "signing"> = {
+      // @ts-expect-error a build credential takes secret("<name>")
+      signing: { keystore: "secret:release-keystore" },
+    };
+    const signing: LocalSigningConfig = {
+      enabled: true,
+      // @ts-expect-error the bundle signing key takes secret("<name>")
+      privateKey: "bundle-signing-key",
+    };
+
+    expect([scheme, signing]).toHaveLength(2);
   });
 });
 
@@ -372,24 +393,61 @@ describe("readSecretWithSource", () => {
   );
 });
 
-describe("secretEnv", () => {
-  it("reads the names the environment does not set from the configured adapter, in one get, never into process.env", async () => {
+describe("secret", () => {
+  it("is a frozen function named for its secret, which reads nothing until called", () => {
+    const store = storeOf({});
+    setConfiguredSecrets(store);
+
+    const ref = secret("SPEC_LAZY");
+
+    expect(typeof ref).toBe("function");
+    expect(ref.name).toBe("SPEC_LAZY");
+    expect(Object.isFrozen(ref)).toBe(true);
+    expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "-x", ".env", "a b", "a/b", "x".repeat(65)])(
+    "refuses the name %j",
+    (name) => {
+      expect(() => secret(name)).toThrow(
+        `secret() takes up to 64 letters, digits, ".", "_", and "-", starting with a letter or digit, and ${JSON.stringify(name)} is not that.`,
+      );
+    },
+  );
+
+  it("takes a variable name and a store name alike", () => {
+    expect(secret("CLOUDFLARE_API_TOKEN").name).toBe("CLOUDFLARE_API_TOKEN");
+    expect(secret("asc-api-key").name).toBe("asc-api-key");
+    expect(secret("x".repeat(64)).name).toHaveLength(64);
+  });
+
+  it.each(["NODE_OPTIONS", "LD_PRELOAD", "HOT_UPDATER_SIGNING_TOKEN"])(
+    "refuses the reserved name %s when the config loads",
+    (name) => {
+      expect(() => secret(name)).toThrow(
+        `secret() refuses ${name}: it changes how a process loads code or which credentials Hot Updater uses.`,
+      );
+    },
+  );
+
+  it("reads the environment first, never into process.env, and masks what the adapter gives", async () => {
     // Given
     vi.stubEnv("SPEC_FROM_ENV", "env-value");
     vi.stubEnv("SPEC_FROM_STORE", undefined);
-    const store = storeOf({ SPEC_FROM_STORE: "store-value-secret" });
+    const store = storeOf({
+      SPEC_FROM_ENV: "store-loses",
+      SPEC_FROM_STORE: "store-value-secret",
+    });
     setConfiguredSecrets(store);
     const before = { ...process.env };
 
     // When
-    const values = await secretEnv(["SPEC_FROM_ENV", "SPEC_FROM_STORE"])();
+    const fromEnv = await secret("SPEC_FROM_ENV")();
+    const fromStore = await secret("SPEC_FROM_STORE")();
 
     // Then
-    expect({ ...values }).toEqual({
-      SPEC_FROM_ENV: "env-value",
-      SPEC_FROM_STORE: "store-value-secret",
-    });
-    expect(Object.isFrozen(values)).toBe(true);
+    expect(fromEnv).toBe("env-value");
+    expect(fromStore).toBe("store-value-secret");
     expect(store.get).toHaveBeenCalledTimes(1);
     expect(store.get).toHaveBeenCalledWith(["SPEC_FROM_STORE"], {
       cwd: directory,
@@ -400,57 +458,102 @@ describe("secretEnv", () => {
     );
   });
 
-  it("reads the adapter once for every adapter that calls it, and again after a failure", async () => {
+  it("reads a store name from its HOT_UPDATER_ variable", async () => {
+    vi.stubEnv("HOT_UPDATER_SPEC_TOKEN", "env-value");
+    const store = storeOf({ "spec-token": "store-value" });
+    setConfiguredSecrets(store);
+
+    expect(await secret("spec-token")()).toBe("env-value");
+    expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it("reads every name of its config load the environment doesn't set in one get, leaving out build credentials", async () => {
+    // Given: three adapter credentials, one set by the environment, and the
+    // bundle signing key, which the CLI reads for its kind.
+    vi.stubEnv("SPEC_KEY_ID", undefined);
+    vi.stubEnv("SPEC_SECRET", undefined);
+    vi.stubEnv("SPEC_TOKEN", "env-token");
+    const store = storeOf({
+      SPEC_KEY_ID: "key-id",
+      SPEC_SECRET: "secret-value",
+      "bundle-signing-key": "pem",
+    });
+    const scope: SecretsScope = {};
+    const refs = await withSecretsScope(scope, () => ({
+      keyId: secret("SPEC_KEY_ID"),
+      secretKey: secret("SPEC_SECRET"),
+      token: secret("SPEC_TOKEN"),
+      signingKey: secret("bundle-signing-key"),
+    }));
+    scope.secrets = store;
+    scope.buildNames = new Set(["bundle-signing-key"]);
+
+    // When: the adapters call theirs at once.
+    const values = await Promise.all([
+      refs.keyId(),
+      refs.secretKey(),
+      refs.token(),
+      refs.keyId(),
+    ]);
+
+    // Then
+    expect(values).toEqual(["key-id", "secret-value", "env-token", "key-id"]);
+    expect(store.get).toHaveBeenCalledTimes(1);
+    expect(store.get).toHaveBeenCalledWith(["SPEC_KEY_ID", "SPEC_SECRET"], {
+      cwd: directory,
+    });
+  });
+
+  it("reads the store again after a failed read", async () => {
     vi.stubEnv("SPEC_SHARED", undefined);
     const store = storeOf({ SPEC_SHARED: "shared-value" });
     store.get.mockRejectedValueOnce(new Error("store unreachable"));
-    setConfiguredSecrets(store);
-    const deploy = secretEnv(["SPEC_SHARED"]);
+    const scope: SecretsScope = {};
+    const ref = await withSecretsScope(scope, () => secret("SPEC_SHARED"));
+    scope.secrets = store;
 
-    await expect(deploy()).rejects.toThrow("store unreachable");
-    const [storage, database] = await Promise.all([deploy(), deploy()]);
-
-    expect(storage).toBe(database);
-    expect(storage.SPEC_SHARED).toBe("shared-value");
+    await expect(ref()).rejects.toThrow("store unreachable");
+    expect(await ref()).toBe("shared-value");
     expect(store.get).toHaveBeenCalledTimes(2);
   });
 
-  it("reads nothing until it is called", () => {
-    const store = storeOf({});
+  it("is remoteSigning's token, read from the store on its first request", async () => {
+    vi.stubEnv("SIGNING_TOKEN", undefined);
+    const store = storeOf({ SIGNING_TOKEN: "store-signing-token" });
     setConfiguredSecrets(store);
-
-    secretEnv(["SPEC_LAZY"]);
-
+    const sent: (string | null)[] = [];
+    const signer = remoteSigning({
+      endpoint: "https://signer.example.com",
+      signingToken: secret("SIGNING_TOKEN"),
+      fetch: async (_url, init) => {
+        sent.push(
+          new Headers(init?.headers).get("x-hot-updater-signing-token"),
+        );
+        return new Response("{}", { status: 500 });
+      },
+    });
     expect(store.get).not.toHaveBeenCalled();
+
+    await expect(signer.getPublicKey({})).rejects.toThrow();
+
+    expect(sent).toEqual(["store-signing-token"]);
   });
 
   it("names what the adapter does not hold", async () => {
     vi.stubEnv("SPEC_MISSING", undefined);
     setConfiguredSecrets(storeOf({}));
 
-    await expect(secretEnv(["SPEC_MISSING"])()).rejects.toThrow(
-      "secretEnv found no value for SPEC_MISSING: it is not set in the environment or .env.hotupdater, and the spec-store secrets adapter does not hold it (spec://SPEC_MISSING).",
+    await expect(secret("SPEC_MISSING")()).rejects.toThrow(
+      'secret("SPEC_MISSING") has no value: SPEC_MISSING is not set in the environment or .env.hotupdater, and the spec-store secrets adapter does not hold it (spec://SPEC_MISSING).',
     );
   });
 
-  it("reads deploy credentials from the environment alone without a configured adapter, never from `localSecrets()`'s store", async () => {
+  it("reads the environment alone without a configured adapter, never `localSecrets()`'s store", async () => {
     vi.stubEnv("SPEC_MISSING", undefined);
     await writeLocalKey("SPEC_MISSING", "machine-value", directory);
 
-    await expect(secretEnv(["SPEC_MISSING"])()).rejects.toThrow(
-      "secretEnv found no value for SPEC_MISSING: set it in the environment or .env.hotupdater, or read it from a secrets store with the config's secrets.",
-    );
-  });
-
-  it("refuses reserved and invalid names when the config loads", () => {
-    expect(() => secretEnv(["NODE_OPTIONS", "CLOUDFLARE_API_TOKEN"])).toThrow(
-      "secretEnv refuses NODE_OPTIONS: it changes how a process loads code or which credentials Hot Updater uses.",
-    );
-    expect(() => secretEnv(["npm_config_registry", "LD_PRELOAD"])).toThrow(
-      "secretEnv refuses npm_config_registry and LD_PRELOAD",
-    );
-    expect(() => secretEnv(["asc-api-key"])).toThrow(
-      'secretEnv takes environment variable names: letters, digits, and underscores, not starting with a digit, and "asc-api-key" is not.',
+    await expect(secret("SPEC_MISSING")()).rejects.toThrow(
+      'secret("SPEC_MISSING") has no value: set SPEC_MISSING in the environment or .env.hotupdater, or set the config\'s secrets to a team store.',
     );
   });
 });

@@ -160,9 +160,8 @@ const commonNameFor = (
   name: string,
 ) => {
   const scheme =
-    schemes.find(
-      (candidate) => candidate.signing?.keystore === `secret:${name}`,
-    ) ?? schemes[0];
+    schemes.find((candidate) => candidate.signing?.keystore.name === name) ??
+    schemes[0];
   return scheme
     ? (scheme.applicationId ?? scheme.packageName)
     : "Android upload key";

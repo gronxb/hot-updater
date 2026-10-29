@@ -184,7 +184,7 @@ managed Function runs these official plugins only; to run other server plugins,
 use a [custom server](/docs/custom/overview).
 
 The config reads the Blob token and the database URL with
-[`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv):
+[`secret()`](/docs/concepts/secrets#adapter-credentials):
 the environment and `.env.hotupdater` first, then the config's `secrets`
 adapter. With a
 [team store](/docs/concepts/secrets#this-machine-or-the-team) there, init
@@ -200,7 +200,7 @@ config that a function returns, it leaves the file unchanged and prints the
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
-import { defineConfig, localSecrets, secretEnv } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
@@ -208,23 +208,13 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const storageSecrets = secretEnv([
-  "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
-]);
-
-const databaseSecrets = secretEnv([
-  "HOT_UPDATER_VERCEL_DATABASE_URL",
-]);
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: vercelBlobStorage({
-    token: async () =>
-      (await storageSecrets()).HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN,
+    token: secret("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"),
   }),
   database: postgres({
-    connectionString: async () =>
-      (await databaseSecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
+    connectionString: secret("HOT_UPDATER_VERCEL_DATABASE_URL"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   secrets: localSecrets(), // keys from apple login and secrets put

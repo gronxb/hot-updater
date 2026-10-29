@@ -63,7 +63,7 @@ export interface SecretManagerOptions {
   /** The Google Cloud project ID or number that holds the secrets. */
   readonly projectId: string;
   /**
-   * Put before each name to make its secret ID, so `secret:asc-api-key`
+   * Put before each name to make its secret ID, so `secret("asc-api-key")`
    * reads `hot-updater-asc-api-key`. Letters, digits, `-`, and `_`.
    *
    * @default "hot-updater-"

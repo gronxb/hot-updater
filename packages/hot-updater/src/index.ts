@@ -432,12 +432,12 @@ const secretsCommand = program
 secretsCommand
   .command("put")
   .description(
-    "Store a build credential you have as one JSON value that secret:<name> resolves",
+    'Store a credential you have as the value secret("<name>") resolves',
   )
   .argument("<name>", "the secret's name, such as release-keystore")
   .argument(
     "[file]",
-    "the file to store: the service account's JSON key, the keystore, or the .p8 key",
+    "the file to store: the service account's JSON key, the keystore, the .p8 key, or the signing key's PEM",
   )
   .addOption(
     new Option(
@@ -465,6 +465,9 @@ secretsCommand
       "  secrets put play-service-account <key.json>",
       "  secrets put android-keystore <upload.jks>",
       "At a terminal, a keystore without --key-alias asks for its passwords.",
+      "",
+      "Bundle signing:",
+      "  secrets put bundle-signing-key <key.pem>",
       "To sign in and issue an App Store Connect API key, run apple login.",
     ].join("\n"),
   )

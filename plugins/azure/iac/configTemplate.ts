@@ -2,7 +2,6 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
@@ -22,7 +21,7 @@ export interface AzureConfigResources {
 
 /**
  * The config init writes. With the `resources` init set up, it names the
- * Cosmos DB account, and reads both connection strings with `secretEnv`,
+ * Cosmos DB account, and reads both connection strings with `secret()`,
  * from the environment and `.env.hotupdater`, then the config's `secrets`
  * adapter. Without them, as the agent scaffold writes it, it reads them
  * from the environment.
@@ -31,15 +30,12 @@ export const getConfigScaffold = (
   build: BuildType,
   resources?: AzureConfigResources,
 ): HotUpdaterConfigScaffold => {
-  const read = (reader: string, name: string) =>
-    resources === undefined
-      ? `process.env.${name}!`
-      : `async () =>
-      (await ${reader}()).${name}`;
+  const read = (name: string) =>
+    resources === undefined ? `process.env.${name}!` : `secret("${name}")`;
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/azure", named: ["azureBlobStorage"] }],
     configString: `azureBlobStorage({
-    connectionString: ${read("storageSecrets", "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING")},
+    connectionString: ${read("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING")},
     containerName: "${BLOB_CONTAINER}",
   })`,
   };
@@ -51,21 +47,9 @@ export const getConfigScaffold = (
         : `
     endpoint: ${JSON.stringify(resources.cosmosEndpoint)},`
     }
-    connectionString: ${read("databaseSecrets", "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING")},
+    connectionString: ${read("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING")},
   })`,
   };
-  const helperStatements =
-    resources === undefined
-      ? []
-      : [
-          secretEnvHelper("storageSecrets", [
-            "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
-          ]),
-          secretEnvHelper("databaseSecrets", [
-            "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
-          ]),
-        ];
-
   const builder = new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storageConfig)
@@ -80,14 +64,8 @@ export const getConfigScaffold = (
       configString: "[apiKeys(), insights(), remoteConfig()]",
     });
   if (resources !== undefined) {
-    builder
-      .addImport({ pkg: "hot-updater", named: ["secretEnv"] })
-      .setIntermediateCode(
-        helperStatements.map(({ code }) => code).join("\n\n"),
-      );
+    builder.addImport({ pkg: "hot-updater", named: ["secret"] });
   }
 
-  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
-    helperStatements,
-  });
+  return createHotUpdaterConfigScaffoldFromBuilder(builder);
 };

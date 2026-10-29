@@ -100,7 +100,7 @@ export default defineConfig({
 ```
 
 A name is the variable the environment would read it from:
-`secret:asc-api-key` is `HOT_UPDATER_ASC_API_KEY` in
+`secret("asc-api-key")` is `HOT_UPDATER_ASC_API_KEY` in
 `hot-updater.secrets.env`. The first `apple login` or `secrets put`
 creates the file with its public key, and the private key
 in `.env.keys` next to it.
@@ -147,7 +147,7 @@ step:
 different file: plaintext, git-ignored, and loaded by the config as it is.
 `dotenvx()` never reads or writes it, and refuses a `path` that names it.
 To keep deploy credentials encrypted too, move them yourself: copy the ones
-`secretEnv` reads into `hot-updater.secrets.env` and encrypt them with
+the adapters' `secret()`s read into `hot-updater.secrets.env` and encrypt them with
 `npx dotenvx encrypt -f hot-updater.secrets.env`. Leave `.env.hotupdater`
 unencrypted: the CLI's own loader reads it as plain text and can't read an
 encrypted value.

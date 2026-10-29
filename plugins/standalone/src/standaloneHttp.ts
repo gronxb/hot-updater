@@ -1,3 +1,5 @@
+import { type Lazy, resolveLazy } from "@hot-updater/plugin-core";
+
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
 type StandaloneDatabaseErrorCode = "invalid-response" | "request-failed";
@@ -17,13 +19,25 @@ export class StandaloneDatabaseError extends Error {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** `headers` with each lazy value resolved. */
+export const resolveHeaders = async (
+  headers: Readonly<Record<string, Lazy<string>>> = {},
+): Promise<Record<string, string>> =>
+  Object.fromEntries(
+    await Promise.all(
+      Object.entries(headers).map(
+        async ([name, value]) => [name, await resolveLazy(value)] as const,
+      ),
+    ),
+  );
+
 export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
   // Read on the first request, so a config loads without the URL.
   const buildUrl = (path: string): string =>
     `${config.baseUrl.replace(/\/+$/, "")}${path}`;
-  const headers = (routeHeaders?: Readonly<Record<string, string>>) => ({
+  const headers = async (routeHeaders?: Readonly<Record<string, string>>) => ({
     "Content-Type": "application/json",
-    ...config.commonHeaders,
+    ...(await resolveHeaders(config.commonHeaders)),
     ...routeHeaders,
   });
   const requestFailed = async (response: Response): Promise<never> => {

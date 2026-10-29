@@ -47,6 +47,8 @@ describe("withForeignSigning", () => {
 describe("withSecretSigning", () => {
   it("reads the key from the secret and keeps the native public key check", () => {
     const source = [
+      'import { defineConfig } from "hot-updater";',
+      "",
       "export default defineConfig({",
       "  signing: {",
       "    enabled: true,",
@@ -57,10 +59,15 @@ describe("withSecretSigning", () => {
 
     expect(withSecretSigning(source)).toBe(
       [
+        'import { defineConfig, secret } from "hot-updater";',
+        "",
         "export default defineConfig({",
-        '  signing: { enabled: true, privateKey: "secret:bundle-signing-key" },',
+        '  signing: { enabled: true, privateKey: secret("bundle-signing-key") },',
         "});",
       ].join("\n"),
+    );
+    expect(withSecretSigning(withSecretSigning(source))).toBe(
+      withSecretSigning(source),
     );
   });
 

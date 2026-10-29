@@ -47,7 +47,7 @@ Add one scheme per artifact under `nativeBuild.android` and `nativeBuild.ios`.
 Keep the other settings of `hot-updater.config.ts` as they are.
 
 ```ts title="hot-updater.config.ts (partial)"
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 export default defineConfig({
   // build, storage, database and plugins stay as they are
@@ -56,12 +56,12 @@ export default defineConfig({
       release: {
         packageName: "com.example.app",
         // An .aab by default; aab: false builds an .apk.
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       },
       previewApk: {
         packageName: "com.example.app",
         aab: false,
-        signing: { keystore: "secret:release-keystore" },
+        signing: { keystore: secret("release-keystore") },
       },
     },
     ios: {
@@ -69,7 +69,7 @@ export default defineConfig({
         bundleIdentifier: "com.example.app",
         scheme: "ExampleApp",
         installPods: true,
-        signing: { ascApiKey: "secret:asc-api-key" },
+        signing: { ascApiKey: secret("asc-api-key") },
       },
       simulator: {
         bundleIdentifier: "com.example.app",
@@ -90,7 +90,7 @@ An iOS scheme without `simulator` archives the app and exports an `.ipa`. It
 needs `signing.ascApiKey`, which exports for App Store Connect, or an
 `exportOptionsPlist` for another export method.
 
-`signing` names a secret as `secret:<name>`, which the CLI reads from the
+`signing` names a secret as `secret("<name>")`, which the CLI reads from the
 config's [`secrets` adapter](/docs/custom/cli-configuration#secrets) while it
 builds. The build resolves it only when it signs: a Debug variant keeps the
 debug keystore, and a simulator build signs nothing. A scheme without `signing`

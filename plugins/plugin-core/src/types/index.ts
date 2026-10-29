@@ -8,6 +8,38 @@ export type { Bundle, Platform } from "@hot-updater/protocol";
 export * from "./utils";
 export * from "./public";
 
+/**
+ * A value, or a function that returns it, called on first use: an
+ * adapter shared by servers and the CLI takes its credentials so, as a
+ * string from a server's own environment or as `secret("<name>")` from
+ * `hot-updater.config.ts`, which loads without reading a secret.
+ */
+export type Lazy<T> = T | (() => T | Promise<T>);
+
+/** The value of a `Lazy`, calling its function. */
+export const resolveLazy = async <T>(value: Lazy<T>): Promise<T> =>
+  typeof value === "function" ? await (value as () => T | Promise<T>)() : value;
+
+/**
+ * The brand of a `SecretRef`, `Symbol.for("@hot-updater/secret-ref")` at
+ * runtime: `hot-updater`'s `secret()` sets it, and the CLI recognizes a
+ * reference by it, so a plain string or function is none.
+ */
+declare const secretRefBrand: unique symbol;
+
+/**
+ * `secret("<name>")` in `hot-updater.config.ts`: the secret the config's
+ * `secrets` adapter holds as `name`. Called, it reads the value, the
+ * environment first, so it is a `Lazy<string>` any adapter credential
+ * takes; the build credentials, such as `signing.keystore`, take only a
+ * reference, which the CLI resolves by `name` for its kind.
+ */
+export type SecretRef = (() => Promise<string>) & {
+  readonly [secretRefBrand]: true;
+  /** The secret's name in the config's `secrets` adapter. */
+  readonly name: string;
+};
+
 export interface BuildAdapterArgs {
   cwd: string;
 }
@@ -153,14 +185,14 @@ export interface NativeBuildAndroidScheme {
 
   /**
    * Signs a release variant with a keystore the CLI resolves: `keystore` is
-   * `secret:<name>`, the `android-keystore` the config's `secrets` adapter
+   * `secret("<name>")`, the `android-keystore` the config's `secrets` adapter
    * holds as `<name>`, which the `HOT_UPDATER_ANDROID_KEYSTORE_*`
    * environment variables override. Debug variants keep the debug keystore
    * and resolve nothing. Without it, the variant's own `signingConfig` signs.
    *
-   * @example { keystore: "secret:release-keystore" }
+   * @example { keystore: secret("release-keystore") }
    */
-  signing?: { keystore: `secret:${string}` };
+  signing?: { keystore: SecretRef };
 }
 
 export type IosBuildDestination =
@@ -277,15 +309,15 @@ export interface NativeBuildIosScheme {
 
   /**
    * Signs a device build with automatic signing, authenticated by an App
-   * Store Connect API key the CLI resolves: `ascApiKey` is `secret:<name>`,
+   * Store Connect API key the CLI resolves: `ascApiKey` is `secret("<name>")`,
    * the `asc-api-key` the config's `secrets` adapter holds as `<name>`,
    * which the `HOT_UPDATER_ASC_KEY*` environment variables override.
    * Simulator builds resolve nothing. Without it, the project's signing
    * settings and Xcode's accounts sign.
    *
-   * @example { ascApiKey: "secret:asc-api-key" }
+   * @example { ascApiKey: secret("asc-api-key") }
    */
-  signing?: { ascApiKey: `secret:${string}` };
+  signing?: { ascApiKey: SecretRef };
 }
 
 export interface PlatformConfig {
@@ -444,8 +476,8 @@ export interface SecretsContext {
 }
 
 /**
- * Where the CLI reads secrets by name: the build credentials `secret:<name>`
- * references, and the deploy credentials `secretEnv([...])` names. Values
+ * Where the CLI reads the secrets `secret("<name>")` names in a config: build
+ * credentials, such as a keystore, and adapter credentials. Values
  * are strings: binary is base64, and a credential with several fields is one
  * JSON value per name. `localSecrets()`, an export of `hot-updater`, keeps them
  * in files on this machine, and `infisical()`, another, in an Infisical
@@ -490,20 +522,20 @@ export type LocalSigningConfig =
   | {
       readonly enabled: true;
       /**
-       * `secret:<name>`, the RSA private key in PEM format that the config's
-       * `secrets` adapter holds as `<name>`. The CLI reads it once per run,
-       * when it first signs or derives the public key, and keeps it in
-       * memory only.
+       * `secret("<name>")`, the RSA private key in PEM format that the
+       * config's `secrets` adapter holds as `<name>`. The CLI reads it once
+       * per run, when it first signs or derives the public key, and keeps it
+       * in memory only.
        *
-       * @example { enabled: true, privateKey: "secret:bundle-signing-key" }
+       * @example { enabled: true, privateKey: secret("bundle-signing-key") }
        */
-      readonly privateKey: `secret:${string}`;
+      readonly privateKey: SecretRef;
       readonly privateKeyPath?: never;
     }
   | {
       readonly enabled: false;
       readonly privateKeyPath?: string;
-      readonly privateKey?: `secret:${string}`;
+      readonly privateKey?: SecretRef;
     };
 
 /** Local config or signing adapter. Signing is disabled when omitted. */
@@ -625,16 +657,15 @@ export type ConfigInput = {
    * ```ts
    * signing: {
    *   enabled: true,
-   *   privateKey: "secret:bundle-signing-key",
+   *   privateKey: secret("bundle-signing-key"),
    * }
    * ```
    */
   signing?: SigningConfig;
   /**
-   * Where the CLI reads the secrets the config names, `secret:<name>` build
-   * credentials and `secretEnv([...])` deploy credentials, and stores the
-   * keys it issues. It is the only store: nothing is kept on this machine
-   * under it.
+   * Where the CLI reads the secrets the config names with `secret("<name>")`,
+   * after the environment, and stores the keys it issues. It is the only
+   * store: nothing is kept on this machine under it.
    *
    * @default localSecrets()
    */

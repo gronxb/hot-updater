@@ -124,7 +124,7 @@ export const createStandaloneCoreApi = (
 
   const checkProtocol = async () => {
     const response = await fetch(http.buildUrl("/version"), {
-      headers: http.headers({ "Cache-Control": "no-cache" }),
+      headers: await http.headers({ "Cache-Control": "no-cache" }),
     });
     const body: unknown =
       response.status === 404 ? {} : await http.parseJson(response);
@@ -174,7 +174,7 @@ export const createStandaloneCoreApi = (
     }
     const response = await fetch(url, {
       method,
-      headers: http.headers(
+      headers: await http.headers(
         method === "GET" ? { "Cache-Control": "no-cache" } : undefined,
       ),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),

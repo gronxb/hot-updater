@@ -11,6 +11,7 @@ import {
   createStorageAdapter,
   createStorageKeyBuilder,
   createStorageUri,
+  type Lazy,
   parseStorageUri,
   type StorageAdapter,
   type StorageAdapterWith,
@@ -22,10 +23,10 @@ export type AzureBlobConnection =
   | {
       /**
        * The account's connection string, or a function that returns it,
-       * such as one that reads it with `secretEnv`: called on first use, so
-       * a config loads without it.
+       * such as `secret("<name>")` in `hot-updater.config.ts`: called on
+       * first use, so a config loads without it.
        */
-      readonly connectionString: string | (() => string | Promise<string>);
+      readonly connectionString: Lazy<string>;
     }
   | {
       /** The Blob service endpoint, such as `https://<account>.blob.core.windows.net`. */

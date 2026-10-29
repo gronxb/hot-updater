@@ -15,6 +15,7 @@ import {
 } from "./localBundleSigning";
 import { maskSecretValues } from "./secretMasking";
 import { resolveSecretsAdapter } from "./secrets";
+import { secret } from "./secrets";
 
 const tempDirs: string[] = [];
 
@@ -178,7 +179,7 @@ describe("local signing with privateKey from a secret", () => {
   it("keeps the secret reference without reading it during normalization", () => {
     const local = {
       enabled: true,
-      privateKey: "secret:bundle-signing-key",
+      privateKey: secret("bundle-signing-key"),
     } as const;
     expect(normalizeSigningConfig(local)).toEqual(local);
   });
@@ -189,11 +190,11 @@ describe("local signing with privateKey from a secret", () => {
         enabled: true,
         privateKey: "bundle-signing-key",
       } as never),
-    ).toThrow("signing.privateKey names a secret as secret:<name>");
+    ).toThrow('signing.privateKey takes secret("<name>").');
     expect(() =>
       normalizeSigningConfig({
         enabled: true,
-        privateKey: "secret:bundle-signing-key",
+        privateKey: secret("bundle-signing-key"),
         privateKeyPath: "./keys/private-key.pem",
       } as never),
     ).toThrow("privateKeyPath or from privateKey, not both");
@@ -203,7 +204,7 @@ describe("local signing with privateKey from a secret", () => {
     const { privateKey, publicKey } = createPem();
     const { get, secrets } = fakeSecrets({ "bundle-signing-key": privateKey });
     const signing = createLocalSigningAdapter(
-      { enabled: true, privateKey: "secret:bundle-signing-key" },
+      { enabled: true, privateKey: secret("bundle-signing-key") },
       { secrets },
     );
     const message = crypto.randomBytes(32);
@@ -225,7 +226,7 @@ describe("local signing with privateKey from a secret", () => {
     const { privateKey } = createPem();
     const { secrets } = fakeSecrets({ "masked-key": privateKey });
     const signing = createLocalSigningAdapter(
-      { enabled: true, privateKey: "secret:masked-key" },
+      { enabled: true, privateKey: secret("masked-key") },
       { secrets },
     );
     const body = privateKey.split("\n")[1]!;
@@ -245,7 +246,7 @@ describe("local signing with privateKey from a secret", () => {
       `HOT_UPDATER_ENV_SIGNING_KEY=${JSON.stringify(privateKey)}\n`,
     );
     const signing = createLocalSigningAdapter(
-      { enabled: true, privateKey: "secret:env-signing-key" },
+      { enabled: true, privateKey: secret("env-signing-key") },
       { secrets: resolveSecretsAdapter() },
     );
 
@@ -257,7 +258,7 @@ describe("local signing with privateKey from a secret", () => {
   it("names the missing secret, where it is read, and how to store it", async () => {
     const { secrets } = fakeSecrets({});
     const signing = createLocalSigningAdapter(
-      { enabled: true, privateKey: "secret:release-signing-key" },
+      { enabled: true, privateKey: secret("release-signing-key") },
       { secrets },
     );
 
@@ -269,7 +270,7 @@ describe("local signing with privateKey from a secret", () => {
   it("names localSecrets()'s variable and file when neither has the key", async () => {
     const cwd = await createTempDir();
     const signing = createLocalSigningAdapter(
-      { enabled: true, privateKey: "secret:bundle-signing-key" },
+      { enabled: true, privateKey: secret("bundle-signing-key") },
       { secrets: resolveSecretsAdapter() },
     );
 
@@ -288,7 +289,7 @@ describe("local signing with privateKey from a secret", () => {
     };
     await expect(
       createLocalSigningAdapter(
-        { enabled: true, privateKey: "secret:bundle-signing-key" },
+        { enabled: true, privateKey: secret("bundle-signing-key") },
         { secrets: failing },
       ).getPublicKey({ cwd: "/project" }),
     ).rejects.toThrow(
@@ -299,7 +300,7 @@ describe("local signing with privateKey from a secret", () => {
     for (const value of ["not-a-pem-canary-value", weak]) {
       const { secrets } = fakeSecrets({ "bundle-signing-key": value });
       const error = await createLocalSigningAdapter(
-        { enabled: true, privateKey: "secret:bundle-signing-key" },
+        { enabled: true, privateKey: secret("bundle-signing-key") },
         { secrets },
       )
         .getPublicKey({ cwd: "/project" })
@@ -317,7 +318,7 @@ describe("local signing with privateKey from a secret", () => {
     const values: Record<string, string> = {};
     const { get, secrets } = fakeSecrets(values);
     const signing = createLocalSigningAdapter(
-      { enabled: true, privateKey: "secret:bundle-signing-key" },
+      { enabled: true, privateKey: secret("bundle-signing-key") },
       { secrets },
     );
     await expect(signing.getPublicKey({ cwd: "/project" })).rejects.toThrow(

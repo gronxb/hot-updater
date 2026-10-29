@@ -15,7 +15,7 @@ export interface SecretsManagerOptions {
   /** The AWS region the secrets are in, such as `"us-east-1"`. */
   readonly region: string;
   /**
-   * Put before every name to make its secret's name, so `secret:asc-api-key`
+   * Put before every name to make its secret's name, so `secret("asc-api-key")`
    * reads the secret `hot-updater/asc-api-key` and one IAM resource,
    * `secret:hot-updater/*`, covers them all. Letters, digits, and
    * `/_+=.@-`.

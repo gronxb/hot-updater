@@ -108,27 +108,11 @@ const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",
   "commonOptions",
   "credential",
+  // The `secretEnv` helpers of earlier 1.2 configs, which `secret()` replaces.
   "databaseSecrets",
   "deploySecrets",
   "storageSecrets",
 ]);
-
-/**
- * `const <name> = secretEnv([...names])`, a helper a managed config reads
- * credentials with: from the environment and `.env.hotupdater` first, then
- * from the config's `secrets` adapter. `storageSecrets` and
- * `databaseSecrets` read each adapter's own, so a command that reaches only
- * one needs only its credentials; `deploySecrets` reads what both share.
- * Its builder imports `secretEnv` from `hot-updater`.
- */
-export const secretEnvHelper = (
-  name: "databaseSecrets" | "deploySecrets" | "storageSecrets",
-  names: readonly string[],
-): ManagedHelperStatement => ({
-  name,
-  strategy: "replace",
-  code: `const ${name} = secretEnv([\n${names.map((variable) => `  ${JSON.stringify(variable)},`).join("\n")}\n]);`,
-});
 
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 /** Build adapter packages, whose imports a kept build still needs. */

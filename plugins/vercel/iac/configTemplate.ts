@@ -2,7 +2,6 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
@@ -10,43 +9,31 @@ import {
 export interface VercelConfigOptions {
   /**
    * Whether the config reads the Blob token and the database URL with
-   * `secretEnv`, from the environment and `.env.hotupdater`, then the
+   * `secret()`, from the environment and `.env.hotupdater`, then the
    * config's `secrets` adapter, as init writes it. Without it, as the agent
    * scaffold writes it, it reads them from the environment.
    */
-  readonly secretEnv: boolean;
+  readonly secrets: boolean;
 }
 
 export const getConfigScaffold = (
   build: BuildType,
-  { secretEnv }: VercelConfigOptions = { secretEnv: false },
+  { secrets }: VercelConfigOptions = { secrets: false },
 ): HotUpdaterConfigScaffold => {
-  const read = (reader: string, name: string) =>
-    secretEnv
-      ? `async () =>
-      (await ${reader}()).${name}`
-      : `process.env.${name}!`;
+  const read = (name: string) =>
+    secrets ? `secret("${name}")` : `process.env.${name}!`;
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/vercel", named: ["vercelBlobStorage"] }],
     configString: `vercelBlobStorage({
-    token: ${read("storageSecrets", "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN")},
+    token: ${read("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN")},
   })`,
   };
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/vercel", named: ["postgres"] }],
     configString: `postgres({
-    connectionString: ${read("databaseSecrets", "HOT_UPDATER_VERCEL_DATABASE_URL")},
+    connectionString: ${read("HOT_UPDATER_VERCEL_DATABASE_URL")},
   })`,
   };
-  const helperStatements = secretEnv
-    ? [
-        secretEnvHelper("storageSecrets", [
-          "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
-        ]),
-        secretEnvHelper("databaseSecrets", ["HOT_UPDATER_VERCEL_DATABASE_URL"]),
-      ]
-    : [];
-
   const builder = new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storageConfig)
@@ -60,15 +47,9 @@ export const getConfigScaffold = (
       ],
       configString: "[apiKeys(), insights(), remoteConfig()]",
     });
-  if (secretEnv) {
-    builder
-      .addImport({ pkg: "hot-updater", named: ["secretEnv"] })
-      .setIntermediateCode(
-        helperStatements.map(({ code }) => code).join("\n\n"),
-      );
+  if (secrets) {
+    builder.addImport({ pkg: "hot-updater", named: ["secret"] });
   }
 
-  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
-    helperStatements,
-  });
+  return createHotUpdaterConfigScaffoldFromBuilder(builder);
 };

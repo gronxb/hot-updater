@@ -591,7 +591,7 @@ describe("hot-updater secrets put play-service-account <file>", () => {
         stripVTControlCharacters(String(message)),
       ),
     ).toEqual([
-      "Pass --kind: widget-play is not a kind.\n--kind is one of asc-api-key, android-keystore, play-service-account.",
+      "Pass --kind: widget-play is not a kind. It is one of:\nasc-api-key, android-keystore, play-service-account, bundle-signing-key",
       "Pass the file once, not also --service-account <file>.",
     ]);
   });

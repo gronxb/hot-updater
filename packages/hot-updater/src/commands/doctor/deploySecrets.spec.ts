@@ -3,19 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { getSecretEnvNames, localSecrets } from "@hot-updater/cli-tools";
+import { getDeploySecretNames, localSecrets } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  checkSecretEnv,
-  secretEnvAdvice,
-  secretEnvInitCommand,
-} from "./secretEnv";
+  checkDeploySecrets,
+  deploySecretsAdvice,
+  deploySecretsInitCommand,
+} from "./deploySecrets";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
-  getSecretEnvNames: vi.fn(),
+  getDeploySecretNames: vi.fn(),
 }));
 
 let cwd: string;
@@ -33,7 +33,7 @@ const configOf = (
   secrets: SecretsAdapter | undefined,
   names: readonly string[],
 ) => {
-  vi.mocked(getSecretEnvNames).mockReturnValue(names);
+  vi.mocked(getDeploySecretNames).mockReturnValue(names);
   return { secrets: secrets ?? localSecrets() } as never;
 };
 
@@ -45,7 +45,7 @@ const teamStore = (values: Readonly<Record<string, string>>) => ({
   set: vi.fn(async () => {}),
 });
 
-describe("doctor's secretEnv rows", () => {
+describe("doctor's adapter secret() rows", () => {
   it("says where each name comes from, with one get of them all", async () => {
     await fs.writeFile(
       path.join(cwd, ".env.hotupdater"),
@@ -55,7 +55,7 @@ describe("doctor's secretEnv rows", () => {
       HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "stored",
     });
 
-    const status = await checkSecretEnv(
+    const status = await checkDeploySecrets(
       configOf(store, [
         "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
         "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
@@ -88,10 +88,10 @@ describe("doctor's secretEnv rows", () => {
     expect(store.get).toHaveBeenCalledTimes(1);
   });
 
-  it("reads only the environment with localSecrets(), as secretEnv does", async () => {
+  it("reads only the environment with localSecrets(), as secret() does", async () => {
     vi.stubEnv("HOT_UPDATER_API_TOKEN_SPEC", "from-shell");
 
-    const status = await checkSecretEnv(
+    const status = await checkDeploySecrets(
       configOf(undefined, [
         "HOT_UPDATER_API_TOKEN_SPEC",
         "HOT_UPDATER_MISSING",
@@ -115,7 +115,7 @@ describe("doctor's secretEnv rows", () => {
       set: vi.fn(async () => {}),
     };
 
-    const status = await checkSecretEnv(
+    const status = await checkDeploySecrets(
       configOf(store, ["HOT_UPDATER_MISSING"]),
       { cwd },
     );
@@ -137,7 +137,7 @@ describe("doctor's secretEnv rows", () => {
     ]);
 
     await expect(
-      checkSecretEnv(configOf(teamStore({}), []), { cwd, managedSecrets }),
+      checkDeploySecrets(configOf(teamStore({}), []), { cwd, managedSecrets }),
     ).resolves.toEqual({
       adapter: "teamStore",
       names: [],
@@ -145,7 +145,7 @@ describe("doctor's secretEnv rows", () => {
     });
     managedSecrets.mockClear();
     await expect(
-      checkSecretEnv(configOf(undefined, []), { cwd, managedSecrets }),
+      checkDeploySecrets(configOf(undefined, []), { cwd, managedSecrets }),
     ).resolves.toBeUndefined();
     // Without a team store, the provider's init is never loaded.
     expect(managedSecrets).not.toHaveBeenCalled();
@@ -163,12 +163,12 @@ describe("doctor's advice for credentials read with process.env", () => {
   const scaffold = { provider: "cloudflare" } as const;
 
   it("names init's command only for a deployment init manages", () => {
-    expect(secretEnvInitCommand({ managed, scaffolds: [] })).toBe(
+    expect(deploySecretsInitCommand({ managed, scaffolds: [] })).toBe(
       managed.command,
     );
     // A scaffold of another provider keeps another deployment.
     expect(
-      secretEnvInitCommand({ managed, scaffolds: [{ provider: "aws" }] }),
+      deploySecretsInitCommand({ managed, scaffolds: [{ provider: "aws" }] }),
     ).toBe(managed.command);
   });
 
@@ -187,24 +187,24 @@ describe("doctor's advice for credentials read with process.env", () => {
     ],
   ] as const)("never names init when %s", (_, deployment, scaffolds) => {
     expect(
-      secretEnvInitCommand({ managed: deployment, scaffolds }),
+      deploySecretsInitCommand({ managed: deployment, scaffolds }),
     ).toBeUndefined();
   });
 
   it("is one line and a link without init, else init's command", () => {
     expect(
-      secretEnvAdvice("them", undefined).map(stripVTControlCharacters),
+      deploySecretsAdvice("them", undefined).map(stripVTControlCharacters),
     ).toEqual([
-      "Read them with secretEnv in hot-updater.config.ts:",
-      "https://hot-updater.dev/docs/concepts/secrets#deploy-credentials-with-secretenv",
+      "Read them with secret() in hot-updater.config.ts:",
+      "https://hot-updater.dev/docs/concepts/secrets#adapter-credentials",
     ]);
     expect(
-      secretEnvAdvice("it", managed.command)
+      deploySecretsAdvice("it", managed.command)
         .join("\n")
         .split("\n")
         .map(stripVTControlCharacters),
     ).toEqual([
-      "Run init again to read it with secretEnv:",
+      "Run init again to read it with secret():",
       "npx hot-updater init --provider cloudflare --from-env-file \\",
       "  .env.hotupdater",
     ]);

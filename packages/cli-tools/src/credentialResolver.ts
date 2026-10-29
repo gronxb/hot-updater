@@ -18,8 +18,8 @@ export type { CredentialFiles } from "./credentialFiles";
 export { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
 
 /**
- * The build credentials the CLI resolves by name. Deploy credentials reach
- * the config's adapters through `secretEnv`.
+ * The build credentials the CLI resolves by name. Adapter credentials are
+ * `secret()`s the adapters call.
  */
 export interface Credentials {
   /** App Store Connect API key, for automatic signing and uploads. */

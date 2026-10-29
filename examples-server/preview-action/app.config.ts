@@ -1,5 +1,5 @@
 import { bare } from "@hot-updater/bare";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 import { database, storage } from "./shared.ts";
 
@@ -17,7 +17,7 @@ export default defineConfig({
       releaseApk: {
         packageName: "com.hotupdaterexample",
         aab: false,
-        signing: { keystore: "secret:android-keystore" },
+        signing: { keystore: secret("android-keystore") },
       },
     },
     ios: {

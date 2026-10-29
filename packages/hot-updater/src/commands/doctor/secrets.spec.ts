@@ -7,6 +7,7 @@ import {
   localSecrets,
   writeLocalKey,
 } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,14 +41,14 @@ const configWith = (secrets: SecretsAdapter) =>
     secrets,
     nativeBuild: {
       ios: {
-        release: { signing: { ascApiKey: "secret:asc-api-key" } },
-        staging: { signing: { ascApiKey: "secret:asc-api-key" } },
+        release: { signing: { ascApiKey: secret("asc-api-key") } },
+        staging: { signing: { ascApiKey: secret("asc-api-key") } },
       },
       android: {
-        release: { signing: { keystore: "secret:release-keystore" } },
+        release: { signing: { keystore: secret("release-keystore") } },
       },
     },
-    signing: { enabled: true, privateKey: "secret:bundle-signing-key" },
+    signing: { enabled: true, privateKey: secret("bundle-signing-key") },
   }) as unknown as ConfigResponse;
 
 const teamStore = (values: Record<string, string>) => ({
@@ -59,7 +60,7 @@ const teamStore = (values: Record<string, string>) => ({
 });
 
 describe("checkSecrets", () => {
-  it("says where each secret: reference is read from, with one get and no local fallback", async () => {
+  it("says where each build credential's secret() is read from, with one get and no local fallback", async () => {
     const store = teamStore({ "asc-api-key": "{}" });
     // Planted where localSecrets() keeps keys: never read under an adapter.
     await writeLocalKey("bundle-signing-key", "pem", cwd);

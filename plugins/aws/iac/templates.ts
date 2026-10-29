@@ -2,7 +2,6 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  secretEnvHelper,
   type HotUpdaterConfigScaffold,
   type ManagedHelperStatement,
   type ProviderConfig,
@@ -23,7 +22,7 @@ export interface AwsConfigResources {
 
 /**
  * The config init writes. With the `resources` init set up, it names them,
- * and an account's access keys are read with `secretEnv`, from the
+ * and an account's access keys are read with `secret()`, from the
  * environment and `.env.hotupdater`, then the config's `secrets` adapter.
  * Without them, as the agent scaffold writes it, it reads every value from
  * the environment. A profile or SSO sign-in is each person's own.
@@ -110,24 +109,13 @@ const awsOptions = {
               : `
 const awsOptions = {
   region: ${region},
-  credentials: async () => {
-    const env = await deploySecrets();
-    return {
-      accessKeyId: env.HOT_UPDATER_S3_ACCESS_KEY_ID,
-      secretAccessKey: env.HOT_UPDATER_S3_SECRET_ACCESS_KEY,
-    };
+  credentials: {
+    accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID"),
+    secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY"),
   },
 };`.trim(),
         },
       ];
-      if (resources !== undefined) {
-        helperStatements.unshift(
-          secretEnvHelper("deploySecrets", [
-            "HOT_UPDATER_S3_ACCESS_KEY_ID",
-            "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
-          ]),
-        );
-      }
       break;
   }
 
@@ -163,7 +151,7 @@ const awsOptions = {
       break;
     case "account":
       if (resources !== undefined) {
-        builder.addImport({ pkg: "hot-updater", named: ["secretEnv"] });
+        builder.addImport({ pkg: "hot-updater", named: ["secret"] });
       }
       break;
   }

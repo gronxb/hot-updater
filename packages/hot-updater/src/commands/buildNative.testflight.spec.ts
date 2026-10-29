@@ -87,7 +87,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async (options) => {
     const iosSchemeConfig = {
       configuration: "Release",
-      signing: { ascApiKey: "secret:asc-api-key" },
+      signing: { ascApiKey: secret("asc-api-key") },
     } as unknown as EnrichedNativeBuildIosScheme;
     await options.beforePrebuild?.({ scheme: "release", iosScheme });
     events.push("prebuild");
@@ -160,6 +160,7 @@ import {
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
 import { p } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import {
@@ -330,7 +331,7 @@ describe("native-build ios without an App Store Connect API key", () => {
     iosScheme = {
       configuration: "Release",
       bundleIdentifier: "com.example.widget",
-      signing: { ascApiKey: "secret:widget-asc" },
+      signing: { ascApiKey: secret("widget-asc") },
     };
     await handleNativeBuildCreate("ios", {
       scheme: "release",
@@ -351,7 +352,7 @@ describe("native-build ios without an App Store Connect API key", () => {
   it.each([
     [
       "a simulator build",
-      { simulator: true, signing: { ascApiKey: "secret:asc-api-key" } },
+      { simulator: true, signing: { ascApiKey: secret("asc-api-key") } },
     ],
     [
       "a scheme that signs with exportOptionsPlist",

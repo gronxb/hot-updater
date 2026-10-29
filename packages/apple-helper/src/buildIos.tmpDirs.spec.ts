@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { CredentialResolver } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
@@ -170,7 +171,7 @@ describe("buildIos's temporary directories", () => {
     }));
 
     const build = await buildIos({
-      schemeConfig: scheme({ signing: { ascApiKey: "secret:asc-api-key" } }),
+      schemeConfig: scheme({ signing: { ascApiKey: secret("asc-api-key") } }),
       minBundleId: MIN_BUNDLE_ID,
       credentials: {
         resolve: resolve as typeof resolve & CredentialResolver["resolve"],

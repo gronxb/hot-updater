@@ -159,7 +159,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
         ? {
             iosSchemeConfig: {
               configuration: "Release",
-              signing: { ascApiKey: "secret:asc-api-key" },
+              signing: { ascApiKey: secret("asc-api-key") },
             },
           }
         : {
@@ -167,7 +167,7 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
               aab: true,
               variant: "release",
               applicationId: "com.example.app",
-              signing: { serviceAccount: "secret:play-service-account" },
+              signing: { serviceAccount: secret("play-service-account") },
             },
           }),
     };
@@ -254,6 +254,7 @@ import {
   findTestFlightBuild,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
+import { secret } from "@hot-updater/cli-tools";
 
 import { handleNativeBuildCreate } from "./buildNative";
 

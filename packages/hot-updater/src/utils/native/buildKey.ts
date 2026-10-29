@@ -9,6 +9,7 @@ import { parse as parsePbxproj } from "@bacons/xcode/json";
 import {
   autolinkingConfigCommand,
   CREDENTIAL_ENV_NAMES,
+  isSecretRef,
   maskSecretValues,
   readReactNativeInterface,
 } from "@hot-updater/cli-tools";
@@ -125,14 +126,19 @@ const sha256 = (data: string | Uint8Array) =>
 
 const toPosix = (filePath: string) => filePath.split(path.sep).join("/");
 
-/** JSON with object keys sorted, so the order things are read in doesn't count. */
+/**
+ * JSON with object keys sorted, so the order things are read in doesn't
+ * count, and a `secret()` as its name, which JSON would drop as a function.
+ */
 const stableStringify = (value: unknown): string =>
   JSON.stringify(value, (_key, entry: unknown) =>
-    entry && typeof entry === "object" && !Array.isArray(entry)
-      ? Object.fromEntries(
-          Object.entries(entry).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : entry,
+    isSecretRef(entry)
+      ? `secret(${JSON.stringify(entry.name)})`
+      : entry && typeof entry === "object" && !Array.isArray(entry)
+        ? Object.fromEntries(
+            Object.entries(entry).sort(([a], [b]) => (a < b ? -1 : 1)),
+          )
+        : entry,
   );
 
 /**

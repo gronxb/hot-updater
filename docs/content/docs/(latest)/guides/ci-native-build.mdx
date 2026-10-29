@@ -17,10 +17,10 @@ so the same `hot-updater.config.ts` builds on your machine and in CI:
 
 | What the job needs        | Where the CLI reads it                                                                                                           |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Android release keystore  | The secret `signing.keystore` names, such as `secret:release-keystore`, or the `HOT_UPDATER_ANDROID_KEYSTORE_*` variables        |
+| Android release keystore  | The secret `signing.keystore` names, such as `secret("release-keystore")`, or the `HOT_UPDATER_ANDROID_KEYSTORE_*` variables        |
 | App Store Connect API key | The secret `signing.ascApiKey` names, else `asc-api-key`, or the `HOT_UPDATER_ASC_KEY*` variables, for signing and TestFlight    |
 | Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                   |
-| Deploy credentials        | The names your config reads with [`secretEnv`](/docs/concepts/secrets#deploy-credentials-with-secretenv), for tracking the build |
+| Deploy credentials        | The names your config reads with [`secret()`](/docs/concepts/secrets#adapter-credentials), for tracking the build |
 
 With [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), the
 default, the job's environment holds them, from your CI provider's secrets.
@@ -108,8 +108,8 @@ as a multi-line secret as it is:
 
 | Secret                             | Holds                                                     |
 | ---------------------------------- | --------------------------------------------------------- |
-| `HOT_UPDATER_ASC_API_KEY`          | `secret:asc-api-key`, the App Store Connect API key       |
-| `HOT_UPDATER_RELEASE_KEYSTORE`     | `secret:release-keystore`, the Android keystore           |
+| `HOT_UPDATER_ASC_API_KEY`          | `secret("asc-api-key")`, the App Store Connect API key       |
+| `HOT_UPDATER_RELEASE_KEYSTORE`     | `secret("release-keystore")`, the Android keystore           |
 | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT` | `play-service-account`, the Play service account JSON key |
 
 ```yaml title=".github/workflows/native-release.yml"
@@ -184,7 +184,7 @@ written as `\n`.
 
 With a [secrets adapter](/docs/concepts/secrets#choose-an-adapter),
 the job gives the CLI only what signs in to the store, and the store holds
-every credential, the deploy credentials `secretEnv` names included. With
+every credential, the adapter credentials `secret()` names included. With
 [dotenvx](/docs/guides/secrets-adapters/dotenvx), that is one secret, the
 private key of the encrypted file committed with the project:
 
@@ -254,7 +254,7 @@ nothing there.
 
 ## What a CI build does
 
-1. It loads the config, with the deploy credentials `secretEnv` names for
+1. It loads the config, with the adapter credentials `secret()` names for
    tracking the build, and checks that the database and storage answer before
    it builds.
 2. Before the prebuild, it resolves every credential the build signs and

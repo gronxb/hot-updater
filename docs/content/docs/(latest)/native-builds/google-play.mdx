@@ -71,7 +71,7 @@ one key, tries that password for the key before asking for the key's own, and
 checks with `keytool` that they open the key as Gradle signs. Without a
 terminal, pass `--key-alias` and set `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`
 and `HOT_UPDATER_ANDROID_KEY_PASSWORD`. A scheme signs with it through
-`signing: { keystore: "secret:android-keystore" }`.
+`signing: { keystore: secret("android-keystore") }`.
 
 Google Play keeps the key of an app's first upload. For an app that has never
 uploaded an `.aab`,

@@ -4,12 +4,12 @@ import {
   type CredentialKind,
   getConfiguredAdapter,
   getHotUpdaterEnvValue,
-  isSecretName,
+  isSecretRef,
   readLoadedHotUpdaterEnv,
   secretVariableName,
 } from "@hot-updater/cli-tools";
 
-/** Where a build reads one `secret:<name>` the config references. */
+/** Where a build reads one `secret("<name>")` the config references. */
 export interface SecretReferenceStatus {
   readonly name: string;
   /** The config fields that reference it, such as `signing.privateKey`. */
@@ -38,16 +38,10 @@ interface Reference {
   readonly kind?: CredentialKind;
 }
 
-const SECRET_REFERENCE_PREFIX = "secret:";
+const referencedName = (reference: unknown): string | undefined =>
+  isSecretRef(reference) ? reference.name : undefined;
 
-const referencedName = (reference: unknown): string | undefined => {
-  if (typeof reference !== "string") return undefined;
-  if (!reference.startsWith(SECRET_REFERENCE_PREFIX)) return undefined;
-  const name = reference.slice(SECRET_REFERENCE_PREFIX.length);
-  return isSecretName(name) ? name : undefined;
-};
-
-/** Every well-formed `secret:<name>` reference in the config. */
+/** Every build credential's `secret("<name>")` in the config. */
 const collectReferences = (config: ConfigResponse): Reference[] => {
   const references: Reference[] = [];
   const add = (field: string, reference: unknown, kind?: CredentialKind) => {
@@ -78,7 +72,7 @@ const collectReferences = (config: ConfigResponse): Reference[] => {
 };
 
 /**
- * Where each `secret:` reference in the config is read from, with one `get`
+ * Where each build credential's `secret()` is read from, with one `get`
  * of every referenced name: nothing is written, and no value is kept.
  * Undefined when the config references none.
  */

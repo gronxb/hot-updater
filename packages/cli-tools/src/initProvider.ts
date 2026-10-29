@@ -41,7 +41,7 @@ export type InitProviderDefinition<
   readonly label: string;
   /**
    * The variables of the credentials the config init writes reads with
-   * `secretEnv`, such as an API token. With a team `secrets` adapter, init
+   * `secret()`, such as an API token. With a team `secrets` adapter, init
    * stores them there with the app's API key, and reads one the
    * environment and the env file lack from it.
    */

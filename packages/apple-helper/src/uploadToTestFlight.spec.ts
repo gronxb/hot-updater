@@ -11,10 +11,12 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     createCredentialResolver,
     parseSecretReference,
     registerSecretValue,
+    secret,
   } = await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     createCredentialResolver,
     parseSecretReference,
+    secret,
     registerSecretValue,
     // The project the scheme's relative files resolve from.
     getCwd: () => dir,
@@ -31,6 +33,7 @@ vi.mock("./utils/readIpaInfo", () => ({
 }));
 
 import { createCredentialResolver, p } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 
 import {
@@ -1285,7 +1288,7 @@ describe("resolveTestFlightUploadKey", () => {
   it("uploads with the key the scheme signs with", async () => {
     await expect(
       resolveTestFlightUploadKey(
-        iosScheme({ signing: { ascApiKey: "secret:team-asc-key" } }),
+        iosScheme({ signing: { ascApiKey: secret("team-asc-key") } }),
       ),
     ).resolves.toEqual({ kind: "asc-api-key", name: "team-asc-key" });
   });
@@ -1382,7 +1385,7 @@ describe("resolveTestFlightUploadKey", () => {
       resolveTestFlightUploadKey(
         iosScheme({
           xcconfig: "Unsigned.xcconfig",
-          signing: { ascApiKey: "secret:asc-api-key" },
+          signing: { ascApiKey: secret("asc-api-key") },
         }),
       ),
     ).rejects.toThrow(
@@ -1401,7 +1404,7 @@ describe("resolveTestFlightUploadKey", () => {
       resolveTestFlightUploadKey(
         iosScheme({
           extraParams: ["-xcconfig", "config/Unsigned.xcconfig"],
-          signing: { ascApiKey: "secret:asc-api-key" },
+          signing: { ascApiKey: secret("asc-api-key") },
         }),
       ),
     ).rejects.toThrow(
@@ -1419,7 +1422,7 @@ describe("resolveTestFlightUploadKey", () => {
     const resolve = (overrides: Partial<NativeBuildIosScheme>) =>
       resolveTestFlightUploadKey(
         iosScheme({
-          signing: { ascApiKey: "secret:asc-api-key" },
+          signing: { ascApiKey: secret("asc-api-key") },
           ...overrides,
         }),
       );
@@ -1551,7 +1554,7 @@ describe("resolveTestFlightUploadKey", () => {
         iosScheme({
           extraParams: ["CODE_SIGNING_ALLOWED=YES", "-quiet"],
           xcconfig: "Release.xcconfig",
-          signing: { ascApiKey: "secret:asc-api-key" },
+          signing: { ascApiKey: secret("asc-api-key") },
         }),
       ),
     ).resolves.toEqual({ kind: "asc-api-key", name: "asc-api-key" });
@@ -1562,7 +1565,7 @@ describe("resolveTestFlightUploadKey", () => {
       resolveTestFlightUploadKey(
         iosScheme({
           simulator: true,
-          signing: { ascApiKey: "secret:asc-api-key" },
+          signing: { ascApiKey: secret("asc-api-key") },
         }),
       ),
     ).rejects.toThrow(
@@ -1575,7 +1578,7 @@ describe("resolveTestFlightUploadKey", () => {
       resolveTestFlightUploadKey(
         iosScheme({
           configuration: "StagingDebug",
-          signing: { ascApiKey: "secret:asc-api-key" },
+          signing: { ascApiKey: secret("asc-api-key") },
         }),
       ),
     ).rejects.toThrow(
@@ -1626,7 +1629,7 @@ describe("assertTestFlightExportOptions", () => {
 
   it("reads nothing for a scheme that exports with the API key", async () => {
     await assertTestFlightExportOptions(
-      scheme({ signing: { ascApiKey: "secret:asc-api-key" } }),
+      scheme({ signing: { ascApiKey: secret("asc-api-key") } }),
     );
     expect(execa).not.toHaveBeenCalled();
   });

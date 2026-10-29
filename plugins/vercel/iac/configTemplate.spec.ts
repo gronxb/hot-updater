@@ -1,65 +1,58 @@
-import { secretEnv } from "@hot-updater/cli-tools";
+import { secret } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
 import { getConfigScaffold } from "./configTemplate";
 import { initProvider } from "./init/index";
 
-const secretEnvNames = (text: string) =>
-  [...text.matchAll(/secretEnv\(\[([^\]]*)\]\)/gu)]
-    .flatMap(([, list]) => list!.match(/"[A-Z0-9_]+"/gu) ?? [])
-    .map((name) => JSON.parse(name) as string)
-    .sort();
+const secretNames = (text: string) =>
+  [
+    ...new Set(
+      [...text.matchAll(/secret\("([^"]+)"\)/gu)].map(([, name]) => name!),
+    ),
+  ].sort();
 
 describe("Vercel config scaffold", () => {
-  it("reads the Blob token and the database URL with secretEnv", () => {
-    expect(getConfigScaffold("bare", { secretEnv: true }).text)
+  it("reads the Blob token and the database URL with secret()", () => {
+    expect(getConfigScaffold("bare", { secrets: true }).text)
       .toMatchInlineSnapshot(`
-      "import { bare } from "@hot-updater/bare";
-      import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
-      import { defineConfig, localSecrets, secretEnv } from "hot-updater";
-      import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-      import { existsSync } from "node:fs";
+        "import { bare } from "@hot-updater/bare";
+        import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
+        import { defineConfig, localSecrets, secret } from "hot-updater";
+        import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+        import { existsSync } from "node:fs";
 
-      if (existsSync(".env.hotupdater")) {
-        process.loadEnvFile(".env.hotupdater");
-      }
+        if (existsSync(".env.hotupdater")) {
+          process.loadEnvFile(".env.hotupdater");
+        }
 
-      const storageSecrets = secretEnv([
-        "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
-      ]);
-
-      const databaseSecrets = secretEnv([
-        "HOT_UPDATER_VERCEL_DATABASE_URL",
-      ]);
-
-      export default defineConfig({
-        build: bare({ enableHermes: true }),
-        storage: vercelBlobStorage({
-          token: async () =>
-            (await storageSecrets()).HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN,
-        }),
-        database: postgres({
-          connectionString: async () =>
-            (await databaseSecrets()).HOT_UPDATER_VERCEL_DATABASE_URL,
-        }),
-        plugins: [apiKeys(), insights(), remoteConfig()],
-        secrets: localSecrets(),
-        updateStrategy: "appVersion", // or "fingerprint"
-      });"
-    `);
+        export default defineConfig({
+          build: bare({ enableHermes: true }),
+          storage: vercelBlobStorage({
+            token: secret("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"),
+          }),
+          database: postgres({
+            connectionString: secret("HOT_UPDATER_VERCEL_DATABASE_URL"),
+          }),
+          plugins: [apiKeys(), insights(), remoteConfig()],
+          secrets: localSecrets(),
+          updateStrategy: "appVersion", // or "fingerprint"
+        });"
+      `);
   });
 
   it("reads the same credentials init stores in a team store", () => {
     expect(
-      secretEnvNames(getConfigScaffold("bare", { secretEnv: true }).text),
+      secretNames(getConfigScaffold("bare", { secrets: true }).text),
     ).toEqual([...initProvider.secrets].sort());
   });
 
   it("reads every value from the environment for the agent scaffold", () => {
-    expect(getConfigScaffold("bare").text).not.toContain("secretEnv");
+    expect(getConfigScaffold("bare").text).not.toContain("secret(");
   });
 
-  it("names variables secretEnv takes", () => {
-    expect(() => secretEnv(initProvider.secrets)).not.toThrow();
+  it("names secrets secret() takes", () => {
+    expect(() =>
+      initProvider.secrets.map((name) => secret(name)),
+    ).not.toThrow();
   });
 });

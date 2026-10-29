@@ -1,4 +1,4 @@
-import type { EngineDatabase } from "@hot-updater/plugin-core";
+import type { EngineDatabase, Lazy } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createSqlAdapter,
@@ -39,11 +39,11 @@ const targetOf = ({
 
 type PostgresPoolConfig = Omit<PoolConfig, "connectionString"> & {
   /**
-   * The database's URL, or a function that returns it, such as one that
-   * reads it with `secretEnv`: called when the pool first connects, so a
-   * config loads without it.
+   * The database's URL, or a function that returns it, such as
+   * `secret("<name>")` in `hot-updater.config.ts`: called when the pool
+   * first connects, so a config loads without it.
    */
-  readonly connectionString?: string | (() => string | Promise<string>);
+  readonly connectionString?: Lazy<string>;
 };
 
 export type PostgresConfig = PostgresPoolConfig & {
