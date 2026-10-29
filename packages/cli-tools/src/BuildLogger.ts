@@ -218,7 +218,8 @@ export class BuildLogger {
     for await (const rawLine of lineReader) {
       // A progress meter redraws its line after each \r: each is a line.
       const parts = stripAnsi(rawLine).split("\r");
-      const lines = parts.length > 1 ? parts.filter((part) => part.trim()) : parts;
+      const lines =
+        parts.length > 1 ? parts.filter((part) => part.trim()) : parts;
       for (const line of lines) this.processSummaryLine(line.trimEnd());
     }
   }

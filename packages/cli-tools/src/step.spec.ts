@@ -163,6 +163,25 @@ describe("a step without a terminal, as in CI", () => {
     ]);
   });
 
+  it("fails the outer step with the message of a step that fails inside it", () => {
+    const captured = captureOutput();
+
+    const outer = startStep("Preparing iOS", { output: captured.output });
+    const pods = startStep("Installing CocoaPods dependencies");
+    pods.fail("pod install failed · exited with code 1");
+    // The outer step already ended: a later fail prints nothing more.
+    outer.fail();
+
+    expect(captured.lines()).toEqual([
+      "│",
+      expect.stringMatching(
+        /^■ {2}pod install failed · exited with code 1 {2,}\S+$/,
+      ),
+    ]);
+    expect(outer.active).toBe(false);
+    expect(pods.active).toBe(false);
+  });
+
   it("fails with its title when the run throws", async () => {
     const captured = captureOutput();
 
