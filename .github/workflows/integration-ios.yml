@@ -4,15 +4,19 @@ on:
       - main
     paths:
       - "packages/react-native/ios/**"
+      - "packages/react-native/HotUpdater.podspec"
       - "packages/react-native/Package.swift"
       - "packages/react-native/react-native.config.js"
       - "examples/v0.87.1-spm/**"
+      - ".github/workflows/integration-ios.yml"
   pull_request:
     paths:
       - "packages/react-native/ios/**"
+      - "packages/react-native/HotUpdater.podspec"
       - "packages/react-native/Package.swift"
       - "packages/react-native/react-native.config.js"
       - "examples/v0.87.1-spm/**"
+      - ".github/workflows/integration-ios.yml"
 
 name: iOS Integration
 
@@ -96,6 +100,52 @@ jobs:
           cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
+
+  # With dynamic frameworks every pod links on its own, so a symbol from a pod
+  # HotUpdater does not declare fails to link here though a static build
+  # passes.
+  # React Native's prebuilt core puts all of React in one framework, so the
+  # build compiles React Native from source, as apps that need source builds
+  # (such as React Native Firebase with Swift Package Manager) do.
+  build-dynamic-frameworks:
+    runs-on: macos-15
+    name: Build iOS (Dynamic Frameworks)
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
+        with:
+          ruby-version: "3.2"
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+      - name: Install Ruby dependencies
+        working-directory: examples/v0.88.0
+        run: bundle install
+
+      # A Release build runs `hot-updater fingerprint hash`, which computes
+      # the example's fingerprint with the bare adapter.
+      - name: Library Build
+        run: pnpm nx run-many -t build -p @hot-updater/react-native hot-updater @hot-updater/bare
+
+      - name: Build iOS
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          cd examples/v0.88.0
+          rm -f ios/Podfile.lock
+          bundle exec pod install --project-directory=ios
+          xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
+          cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
+          USE_FRAMEWORKS: dynamic
+          RCT_USE_PREBUILT_RNCORE: "0"
+          RCT_USE_RN_DEP: "0"
 
   build-swift-package-manager:
     runs-on: macos-26
