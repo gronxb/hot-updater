@@ -109,11 +109,12 @@ const nativeBuildCount = async () => {
 const stages: Record<string, () => Promise<void>> = {
   "upload-missing": async () => {
     const log = readLog();
-    // The words of a build that finds no key to issue, and CI never
-    // signing in.
+    // Everything Google Play needs, before the build: the missing key with
+    // the command that stores it, and the keystore the job's environment
+    // sets.
     expectIncludes(
       log,
-      "play-service-account is not in the localSecrets secrets adapter. Can't sign in to your Google Account in CI (CI is set). Run once in a terminal: npx hot-updater google-play login",
+      "Google Play isn't ready for com.hotupdaterexample: ✗ Service account key npx hot-updater secrets put play-service-account <key.json> ✓ Upload keystore · Play access checked once the key is stored Guide: https://hot-updater.dev/docs/guides/native-build#set-up-google-play",
     );
     expectNothingBuilt(log);
     const { count } = await nativeBuildCount();
@@ -124,7 +125,7 @@ const stages: Record<string, () => Promise<void>> = {
     const log = readLog().replaceAll(" \\ ", " ");
     expectIncludes(
       log,
-      "No widget-keystore (android-keystore) in the localSecrets secrets adapter. Play rejects a new key if the app has one: import it with google-play login. Otherwise: npx hot-updater secrets issue android-keystore widget-keystore",
+      "No widget-keystore (android-keystore) in the localSecrets secrets adapter. Store the app's upload key: npx hot-updater secrets put widget-keystore --kind android-keystore <upload.jks> No .aab on Play yet? Create one: npx hot-updater secrets issue android-keystore widget-keystore",
     );
     expectNothingBuilt(log);
   },
@@ -169,7 +170,7 @@ const stages: Record<string, () => Promise<void>> = {
     // The file, shown with ~ or shortened in the middle.
     expectMatches(
       log,
-      `Secret stored Name play-service-account Kind play-service-account Source \\S*${escapeRegExp(path.basename(file))}`,
+      `Secret stored Name play-service-account Kind play-service-account Service account uploader@hot-updater-proof\\.iam\\.gserviceaccount\\.com Source \\S*${escapeRegExp(path.basename(file))}`,
     );
     if (readFileSync(file, "utf8") !== readFileSync(source, "utf8")) {
       throw new Error(`${file} does not hold the service account as given.`);
@@ -192,6 +193,19 @@ const stages: Record<string, () => Promise<void>> = {
     const keyLine = privateKey.split("\n")[1]!;
     expectExcludes(log, keyLine, "the private key is printed.");
   },
+  // Google refuses the proof's made-up key when the build checks Play
+  // access, before anything is built or tracked.
+  "play-refused": async () => {
+    const log = readLog();
+    expectIncludes(
+      log,
+      "Google Play isn't ready for com.hotupdaterexample: ✗ Service account key Google refuses it",
+    );
+    expectIncludes(log, "✓ Upload keystore");
+    expectNothingBuilt(log);
+    const { count } = await nativeBuildCount();
+    if (count !== 0) throw new Error(`${count} native builds are registered.`);
+  },
   built: async () => {
     const log = readLog();
     // The service account comes from localSecrets()'s store alone.
@@ -213,9 +227,6 @@ const stages: Record<string, () => Promise<void>> = {
     );
     // The fingerprint step's result, which only a build that ran prints.
     expectIncludes(log, "Android fingerprint ");
-    // Google refuses the made-up service account after the build and the
-    // registration, and the build is kept.
-    expectIncludes(log, "The build stays at");
     const { count, kinds } = await nativeBuildCount();
     if (count !== 1 || kinds !== "aab") {
       throw new Error(

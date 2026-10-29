@@ -24,9 +24,10 @@ import {
 import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
 
 import {
+  checkPlayAccess,
   createServiceAccountAssertion,
   findPlayInternalRelease,
-  hasPlayReleases,
+  playConsoleInviteUrl,
   PlayVersionCodeUsedError,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
@@ -602,49 +603,6 @@ describe("resolvePlayUploadServiceAccount", () => {
   });
 });
 
-describe("hasPlayReleases", () => {
-  it("reads every track in an edit it deletes: any release means Play has the upload key", async () => {
-    const tracks = (releases: unknown[]) => ({
-      json: {
-        tracks: [
-          { track: "production", releases: [] },
-          { track: "internal", releases },
-        ],
-      },
-    });
-    const { fetch, requests } = createRecordingFetch({
-      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
-      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
-      [`GET ${EDIT}/tracks`]: [
-        tracks([{ status: "completed", versionCodes: ["7"] }]),
-        tracks([{ status: "draft" }]),
-      ],
-      [`DELETE ${EDIT}`]: { status: 204 },
-    });
-    const has = () =>
-      hasPlayReleases({
-        packageName: "com.example.app",
-        serviceAccount: { json: serviceAccountJson },
-        fetch,
-      });
-
-    await expect(has()).resolves.toBe(true);
-    await expect(has()).resolves.toBe(false);
-    expect(
-      requests
-        .filter(({ url }) => url !== TOKEN_URI)
-        .map(({ method, url }) => `${method} ${url.replace(APP, "")}`),
-    ).toEqual([
-      "POST /edits",
-      "GET /edits/edit-1/tracks",
-      "DELETE /edits/edit-1",
-      "POST /edits",
-      "GET /edits/edit-1/tracks",
-      "DELETE /edits/edit-1",
-    ]);
-  });
-});
-
 describe("findPlayInternalRelease", () => {
   const find = (fetch: typeof globalThis.fetch, versionCode = 42) =>
     findPlayInternalRelease({
@@ -692,5 +650,82 @@ describe("findPlayInternalRelease", () => {
     });
 
     await expect(find(fetch)).resolves.toBe(false);
+  });
+});
+
+describe("checkPlayAccess", () => {
+  const EMAIL = "uploader@example.iam.gserviceaccount.com";
+  const check = (fetch: typeof globalThis.fetch) =>
+    checkPlayAccess({
+      serviceAccount: { json: serviceAccountJson },
+      packageName: "com.example.app",
+      fetch,
+    });
+
+  it("opens an edit and deletes it when the key reaches the app", async () => {
+    const { fetch, requests } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: { json: { access_token: ACCESS_TOKEN } },
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+
+    await expect(check(fetch)).resolves.toEqual({ status: "ready" });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      `POST ${TOKEN_URI}`,
+      `POST ${APP}/edits`,
+      `DELETE ${EDIT}`,
+    ]);
+  });
+
+  it("names the email to invite when Google Play refuses the key", async () => {
+    const { fetch } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: { json: { access_token: ACCESS_TOKEN } },
+      [`POST ${APP}/edits`]: {
+        status: 403,
+        json: { error: { message: "The caller does not have permission" } },
+      },
+    });
+
+    await expect(check(fetch)).resolves.toEqual({
+      status: "denied",
+      email: EMAIL,
+    });
+  });
+
+  it("finds no app when Google Play answers 404", async () => {
+    const { fetch } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: { json: { access_token: ACCESS_TOKEN } },
+      [`POST ${APP}/edits`]: {
+        status: 404,
+        json: { error: { message: "Package not found: com.example.app." } },
+      },
+    });
+
+    await expect(check(fetch)).resolves.toEqual({
+      status: "not-found",
+      email: EMAIL,
+    });
+  });
+
+  it("gives Google's reason when the token endpoint refuses the key", async () => {
+    const { fetch, requests } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: {
+        status: 400,
+        json: { error: "invalid_grant", error_description: "Invalid JWT" },
+      },
+    });
+
+    await expect(check(fetch)).resolves.toMatchObject({
+      status: "refused",
+      email: EMAIL,
+      reason: expect.stringContaining("Invalid JWT"),
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("links Play Console's invite of the email", () => {
+    expect(playConsoleInviteUrl("a+b@example.com")).toBe(
+      "https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=a%2Bb%40example.com",
+    );
   });
 });

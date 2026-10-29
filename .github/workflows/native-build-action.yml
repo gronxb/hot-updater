@@ -26,10 +26,10 @@ concurrency:
 # job. The config sets no secrets adapter: every credential is a job
 # variable, which the CLI reads first, or is in localSecrets()'s store under
 # HOT_UPDATER_HOME, minus the credentials each run expects to miss: every run but the last must fail before anything is built, naming
-# what is missing and how to provide it. The last run has every credential,
-# builds and tracks examples/v0.85.0's .aab, and fails only at Google,
-# which refuses the proof's made-up service account, which `secrets put`
-# stored in localSecrets()'s store and the build read from there. The proof reads the
+# what is missing and how to provide it. A submit with the proof's made-up
+# service account, which `secrets put` stored in localSecrets()'s store,
+# fails at Google's Play check before the build. The last run builds and
+# tracks examples/v0.85.0's .aab. The proof reads the
 # CLI's output, which scripts/record-cli.mjs records as the action's `cli`,
 # and Postgres.
 jobs:
@@ -186,14 +186,13 @@ jobs:
           echo "::add-mask::$json"
           # localSecrets() keeps it in localSecrets()'s store, where the
           # build below reads it: the job's environment does not set it.
-          $PROOF_CLI secrets put play-service-account \
-            --kind play-service-account --service-account "$work/service-account.json"
+          $PROOF_CLI secrets put play-service-account "$work/service-account.json"
           node ../../examples-server/preview-action/native-build-proof.ts put-key-store "$work/service-account.json"
           rm "$PROOF_LOG"
           rm -rf "$work"
 
-      - name: Build, track, and submit with every credential set
-        id: built
+      - name: Submit with a key Google refuses, before anything is built
+        id: play-refused
         continue-on-error: true
         uses: ./actions/native-build
         with:
@@ -202,10 +201,22 @@ jobs:
           submit: play-internal
           working-directory: examples/v0.85.0
           cli: ${{ env.PROOF_CLI }}
-      - name: Check the build and its registration, refused only by Google
+      - name: Check that the Play check failed before the build
         run: |
-          test "${{ steps.built.outcome }}" = failure
-          node examples-server/preview-action/native-build-proof.ts built
+          test "${{ steps.play-refused.outcome }}" = failure
+          node examples-server/preview-action/native-build-proof.ts play-refused
+          rm "$PROOF_LOG"
+
+      - name: Build and track with every credential set
+        id: built
+        uses: ./actions/native-build
+        with:
+          platform: android
+          scheme: release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check the build and its registration
+        run: node examples-server/preview-action/native-build-proof.ts built
 
       - name: Print the seed's logs
         if: failure()

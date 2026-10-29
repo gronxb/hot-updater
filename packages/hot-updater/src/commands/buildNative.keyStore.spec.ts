@@ -81,14 +81,7 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
   buildAndroid: vi.fn(),
-  issuePlayServiceAccount: vi.fn(async () => ({
-    json: SERVICE_ACCOUNT,
-    email: "hot-updater-play@my-app.iam.gserviceaccount.com",
-    projectId: "my-app",
-    keyId: "abc123",
-    revoke: vi.fn(async () => true),
-    dispose: vi.fn(async () => {}),
-  })),
+  checkPlayAccess: vi.fn(async () => ({ status: "ready" })),
   readBuiltPackageName: vi.fn(async () => "com.example.app"),
   resolvePlayUploadServiceAccount: vi.fn(() => ({
     kind: "play-service-account",
@@ -199,9 +192,14 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
   registerNativeBuild: vi.fn(),
 }));
 
-import { issuePlayServiceAccount } from "@hot-updater/android-helper";
+import { checkPlayAccess } from "@hot-updater/android-helper";
 import { issueAscApiKey } from "@hot-updater/apple-helper";
-import { p, getCwd, getLocalKeyFile } from "@hot-updater/cli-tools";
+import {
+  p,
+  getCwd,
+  getLocalKeyFile,
+  resolveSecretsAdapter,
+} from "@hot-updater/cli-tools";
 
 import { handleNativeBuildCreate } from "./buildNative";
 
@@ -314,8 +312,11 @@ describe("a first build without a secrets adapter", () => {
     exit.mockRestore();
   });
 
-  it("uploads to Google Play with the service account the sign-in issued, and the next build reuses it without signing in", async () => {
+  it("creates no Play key: it names the command, then uploads with the key secrets put stored", async () => {
     scheme.platform = "android";
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
     const build = () =>
       withTTY(() =>
         handleNativeBuildCreate("android", {
@@ -323,21 +324,29 @@ describe("a first build without a secrets adapter", () => {
           submit: "play-internal",
         }),
       );
+    await expect(build()).rejects.toThrow("exit");
+
+    expect(uploads).toEqual([]);
+    expect(stripVTControlCharacters(printed())).toContain(
+      [
+        "✗ Service account key",
+        "  npx hot-updater secrets put play-service-account <key.json>",
+      ].join("\n"),
+    );
+    expect(checkPlayAccess).not.toHaveBeenCalled();
+    await expect(fs.readdir(home.path)).resolves.toEqual([]);
+    exit.mockRestore();
+
+    await resolveSecretsAdapter().set("play-service-account", SERVICE_ACCOUNT, {
+      cwd: getCwd(),
+    });
+    vi.clearAllMocks();
     await build();
 
+    expect(checkPlayAccess).toHaveBeenCalledTimes(1);
     expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
-    await expect(
-      fs.readFile(keyFile("play-service-account"), "utf-8"),
-    ).resolves.toBe(SERVICE_ACCOUNT);
     expect(printed()).not.toContain("MIIBfirstBuild");
     expect(log.error).not.toHaveBeenCalled();
-
-    vi.clearAllMocks();
-    uploads.length = 0;
-    await build();
-
-    expect(issuePlayServiceAccount).not.toHaveBeenCalled();
-    expect(uploads).toEqual([{ json: SERVICE_ACCOUNT }]);
   });
 });
 

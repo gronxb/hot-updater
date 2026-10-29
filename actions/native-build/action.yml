@@ -4,7 +4,7 @@ description: >-
   android, signed with the credentials the config's secrets adapter reads,
   the job's environment by default, tracks the build in Hot Updater, and
   submits it to TestFlight or Google Play's internal track. It never signs in to an Apple or Google
-  account: it reads what hot-updater apple login or google-play login stored.
+  account: it reads what hot-updater apple login or secrets put stored.
 author: gronxb
 inputs:
   platform:

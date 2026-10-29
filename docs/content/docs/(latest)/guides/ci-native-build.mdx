@@ -48,31 +48,36 @@ Bring the keys you already have:
 - The Android release keystore and its passwords.
 
 Store the keys you have with
-[`secrets put`](/docs/concepts/secrets#store-a-secret). Or let Hot Updater
-issue them, on your machine only: in CI it never signs in or creates a key.
-Run the [`secrets issue`](/docs/concepts/secrets#issue-a-key-with-a-sign-in)
-shortcuts, and `google-play login` also
-[creates the upload keystore](/docs/concepts/secrets#create-an-android-upload-key)
-or stores yours:
+[`secrets put`](/docs/concepts/secrets#store-a-secret), on your machine: in
+CI the CLI never signs in or creates a key. For Google Play, store the
+service account's JSON key and the upload keystore, then check Play access,
+as [Set up Google Play](/docs/guides/native-build#set-up-google-play)
+describes:
+
+```package-install
+npx hot-updater secrets put play-service-account ~/Downloads/key.json
+npx hot-updater secrets put android-keystore ./upload.jks
+npx hot-updater doctor
+```
+
+For the App Store Connect API key, `apple login` signs you in with your
+Apple Account once, as
+[Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
+describes, and Hot Updater issues the key:
 
 ```package-install
 npx hot-updater apple login
-npx hot-updater google-play login
 ```
 
-`apple login` signs you in with your Apple Account once, as
-[Sign in with your Apple Account](/docs/guides/native-build#sign-in-with-your-apple-account)
-describes, and `google-play login` signs you in with Google
-once, as [Upload to Google Play](/docs/guides/native-build#upload-to-google-play)
-describes. Each keeps a key the adapter already holds;
-`secrets issue <kind> --replace` issues a new one and names the old key to
-revoke once CI no longer uses it. With
+It keeps a key the adapter already holds;
+`secrets issue asc-api-key --replace` issues a new one and names the old key
+to revoke once CI no longer uses it. With
 `localSecrets()`, the key stays in a file on your machine, and the CLI offers
 to store it as the GitHub Actions secret CI reads; another adapter stores it
 where CI reads it
 ([where an issued key goes](/docs/guides/native-build#where-an-issued-key-goes)).
 With a [team store](/docs/concepts/secrets#this-machine-or-the-team), one
-person runs them once, and every teammate and CI read the same keys.
+person stores them once, and every teammate and CI read the same keys.
 
 The App Store Connect API key is a team key with the Admin role: CI signs
 with Xcode's cloud-managed distribution certificate, which only an Admin key
@@ -290,17 +295,16 @@ its certificates and restores the keychains before it stops.
 
 ## When a credential is missing
 
-A job without the Play service account stops before the build, without
-signing in to Google. The error names the credential and where the `secrets`
-adapter looks for it, says that Hot Updater signs in only at a terminal and
-never in CI, gives the command that stores it once (`google-play login`), and lists
-`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` and
-`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the variables that provide it
-instead. A missing App Store Connect API key fails the same way, with its
-own variables. A missing keystore never suggests a second one: under a
-team's adapter it says to ask whoever set it up, or to import it with
-`google-play login`, since Google Play rejects builds signed with a key it
-doesn't have. A store the job can't sign in to, or a role without
+A `--submit play-internal` job that Google Play isn't ready for stops
+before the build and lists every item at once: the service account key and
+the upload keystore, each with the `secrets put` command that stores it, and
+Play access, with the invite or the app's first upload it needs
+([Set up Google Play](/docs/guides/native-build#set-up-google-play)). A
+missing App Store Connect API key stops the same way, saying that Hot
+Updater signs in only at a terminal and never in CI. A missing keystore
+never suggests a second one: under a team's adapter it says to ask whoever
+set it up, or to import it with `secrets put`, since Google Play rejects
+builds signed with a key it doesn't have. A store the job can't sign in to, or a role without
 read access, fails with the store's reason.
 
 <Callout type="info">

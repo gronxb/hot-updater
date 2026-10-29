@@ -159,7 +159,11 @@ describe("hot-updater secrets put", () => {
 
   it("stores a service account's own JSON", async () => {
     const { held } = writableStore();
-    const json = JSON.stringify({ client_email: "ci@example.com" });
+    const json = JSON.stringify({
+      type: "service_account",
+      client_email: "ci@example.com",
+      private_key: "k",
+    });
     const file = path.join(directory, "play.json");
     await fs.writeFile(file, json);
 
@@ -181,9 +185,7 @@ describe("hot-updater secrets put", () => {
       serviceAccount: file,
     });
 
-    expect(log.error).toHaveBeenCalledWith(
-      "--service-account is not a service account JSON key file.",
-    );
+    expect(log.error).toHaveBeenCalledWith("play.json is not a JSON key file.");
     expect(store.set).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -223,7 +225,11 @@ describe("hot-updater secrets put", () => {
     configure();
     vi.spyOn(process, "cwd").mockReturnValue(directory);
     await fs.writeFile(path.join(directory, "package.json"), "{}");
-    const json = JSON.stringify({ type: "service_account", private_key: "k" });
+    const json = JSON.stringify({
+      type: "service_account",
+      client_email: "ci@example.com",
+      private_key: "k",
+    });
     const file = path.join(directory, "play.json");
     await fs.writeFile(file, json);
 
@@ -241,7 +247,7 @@ describe("hot-updater secrets put", () => {
     expect((await fs.stat(stored)).mode & 0o777).toBe(0o600);
     // The file, which is outside the project, under ~ or shortened.
     expect(messages().at(-1)).toMatch(
-      /\nSource {2}\S+play-service-account\.json$/u,
+      /\nSource {11}\S+play-service-account\.json$/u,
     );
     // Never a .env file.
     await expect(

@@ -1,8 +1,10 @@
 export { buildAndroid } from "./buildAndroid";
 export {
+  checkPlayAccess,
   findPlayInternalRelease,
   assertPlaySigned,
-  hasPlayReleases,
+  playConsoleInviteUrl,
+  type PlayAccess,
   PlayVersionCodeUsedError,
   resolvePlayUploadServiceAccount,
   type UploadToPlayResult,
@@ -16,14 +18,3 @@ export {
   readBuiltPackageName,
   readBuiltVersionCode,
 } from "./utils/readBuiltApp";
-export {
-  type GoogleAccount,
-  type GoogleCloudProject,
-  type IssuedPlayServiceAccount,
-  type IssuePlayServiceAccount,
-  type IssuePlayServiceAccountRequest,
-  issuePlayServiceAccount,
-  PLAY_SERVICE_ACCOUNT_ID,
-  PlayServiceAccountError,
-  type PlayServiceAccountErrorCode,
-} from "./playServiceAccount";

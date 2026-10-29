@@ -1,328 +1,306 @@
+import path from "node:path";
+
 import {
-  type IssuedPlayServiceAccount,
-  type IssuePlayServiceAccount,
-  issuePlayServiceAccount,
+  checkPlayAccess,
+  type PlayAccess,
+  playConsoleInviteUrl,
 } from "@hot-updater/android-helper";
 import {
-  describeStoredSecret,
-  p,
+  type CredentialRequest,
+  type CredentialResolver,
+  type Credentials,
+  CredentialUnavailableError,
+  credentialPutCommand,
   registerCredentialValue,
 } from "@hot-updater/cli-tools";
-import type { SecretsAdapter } from "@hot-updater/plugin-core";
-import open from "open";
 
 import { ui } from "../cli-ui";
-import type { CreateGitHubSecrets } from "./githubSecret";
-import {
-  CredentialNotStoredError,
-  CredentialSetupRefusedError,
-  type IssuedCredentialPolicy,
-  offerIssuedKeyToGitHub,
-  prepareIssuedCredential,
-  storeIssuedCredential,
-  withIssuedValue,
-} from "./issuedCredential";
 
-/** Where a project's service accounts, and each one's keys, are in Google Cloud. */
-export const serviceAccountKeysUrl = (projectId: string) =>
-  `https://console.cloud.google.com/iam-admin/serviceaccounts?project=${encodeURIComponent(projectId)}`;
-
-const POLICY: IssuedCredentialPolicy = {
-  kind: "play-service-account",
-  what: "a Play service account",
-  label: "Play service account",
-  signIn: "Google",
-  account: "Google Account",
-};
-
-export type EnsurePlayServiceAccountResult =
-  /** The environment overrides the service account: the secrets adapter is not read. */
-  | { readonly status: "environment" }
-  /** The secrets adapter holds the service account already: no sign-in. */
-  | { readonly status: "stored" }
-  /** The key was issued with a Google sign-in and stored. */
-  | {
-      readonly status: "issued";
-      readonly email: string;
-      /** The adapter the rest of this run reads with: the key from memory. */
-      readonly secrets: SecretsAdapter;
-    };
-
-/** The project choice that creates one: no project ID is empty. */
-const NEW_PROJECT = "";
+/** The docs section that sets up Google Play: the key, the invite, the first .aab. */
+export const GOOGLE_PLAY_GUIDE_URL =
+  "https://hot-updater.dev/docs/guides/native-build#set-up-google-play";
 
 /**
  * The least Play Console permission the service account needs: the CLI
  * releases only to the internal testing track.
  */
-const PLAY_PERMISSION = "Release apps to testing tracks";
+export const PLAY_PERMISSION = "Release apps to testing tracks";
 
-/** The account choice that signs in with another: no email is empty. */
-const ANOTHER_ACCOUNT = "";
+/** A service account's JSON key file, read and checked. */
+export interface ServiceAccountKey {
+  /** The file's contents, stored as they are. */
+  readonly json: string;
+  /** `client_email`: the Play Console user it acts as. */
+  readonly email: string;
+  /** `private_key_id`, as Google Cloud lists it under the account's keys. */
+  readonly keyId?: string;
+}
 
-const PACKAGE_NAME_PATTERN =
-  /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/u;
-
-/** Throws `CredentialSetupRefusedError` for a cancelled prompt. */
-const answered = <T>(answer: T | symbol): T => {
-  if (p.isCancel(answer)) {
-    throw new CredentialSetupRefusedError(
-      "Setting up the Play service account was cancelled.",
-    );
-  }
-  return answer as T;
+const stringField = (fields: Record<string, unknown>, field: string) => {
+  const value = fields[field];
+  return typeof value === "string" && value ? value : undefined;
 };
 
 /**
- * The app's package name in Google Play: the config's one as the answer to
- * confirm, a choice among several, or typed when the config declares none.
+ * Reads `text`, the contents of `file`, as a service account's JSON key:
+ * `type: "service_account"` with a `private_key` and a `client_email`.
+ * The private key is masked before anything can print it. Firebase's
+ * `google-services.json`, the file people pick by mistake, is named.
  */
-const askPackageName = async (declared: readonly string[]): Promise<string> => {
-  const message = "The app's package name in Google Play";
-  if (declared.length > 1) {
-    const choice = answered(
-      await p.select<string>({
-        message,
-        options: [
-          ...declared.map((name) => ({ value: name, label: name })),
-          { value: "", label: "Another package name" },
-        ],
-      }),
-    );
-    if (choice) return choice;
-  }
-  const [only] = declared.length === 1 ? declared : [];
-  return answered(
-    await p.text({
-      message,
-      ...(only
-        ? { initialValue: only, placeholder: only }
-        : { placeholder: "com.example.app" }),
-      validate: (value) =>
-        PACKAGE_NAME_PATTERN.test(value?.trim() ?? "")
-          ? undefined
-          : "Enter a package name, such as com.example.app.",
-    }),
-  ).trim();
-};
-
-const errorText = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
-
-/**
- * Stores `issued` as `name`, the service account's own JSON, and reads it
- * back. The key is deleted again when the adapter does not read it back as
- * stored; one a failed write may have stored is kept, since deleting it
- * would leave the store with a dead key, and the message says which.
- */
-/** Deletes the key, which the adapter does not hold, and says so. */
-const revokeNotStored = async (
-  issued: IssuedPlayServiceAccount,
-  reason: string,
-  error: CredentialNotStoredError,
-): Promise<never> => {
-  const revoked = await issued.revoke();
-  const keys = serviceAccountKeysUrl(issued.projectId);
-  throw new Error(
-    [
-      reason,
-      revoked
-        ? `The key ${issued.keyId} was deleted; the next run reuses ${issued.email}.`
-        : `Delete the key ${issued.keyId} at:\n${keys}`,
-    ].join("\n"),
-    { cause: error.cause },
-  );
-};
-
-const storeIssued = async (
-  secrets: SecretsAdapter,
-  name: string,
-  issued: IssuedPlayServiceAccount,
-): Promise<void> => {
-  // Masked before it is sent, so no failure can print it.
-  registerCredentialValue(issued.json);
+export const parseServiceAccountKey = (
+  text: string,
+  file: string,
+): ServiceAccountKey => {
+  const name = path.basename(file);
+  let parsed: unknown;
   try {
-    await storeIssuedCredential({
-      secrets,
-      name,
-      value: issued.json,
-    });
-  } catch (error) {
-    if (error instanceof CredentialNotStoredError) {
-      await revokeNotStored(
-        issued,
-        `The ${secrets.name} secrets adapter didn't store ${name}.\n${error.message}`,
-        error,
-      );
-    }
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${name} is not a JSON key file.`);
+  }
+  const fields = parsed as Record<string, unknown>;
+  const privateKey = stringField(fields, "private_key");
+  if (privateKey) registerCredentialValue(privateKey);
+  registerCredentialValue(text);
+  if ("project_info" in fields || "client" in fields) {
     throw new Error(
-      [
-        `Couldn't confirm the ${secrets.name} secrets adapter stored ${name}.`,
-        errorText(error),
-        `If ${ui.fitPath(describeStoredSecret(secrets, name))} lacks key ${issued.keyId}, delete it at:`,
-        serviceAccountKeysUrl(issued.projectId),
-      ].join("\n"),
-      { cause: error },
+      `${name} is google-services.json, not a service account key.\n${GOOGLE_PLAY_GUIDE_URL}`,
     );
+  }
+  if (fields["type"] !== "service_account") {
+    throw new Error(
+      `${name} is not a service account key: its type isn't service_account.`,
+    );
+  }
+  const email = stringField(fields, "client_email");
+  if (!privateKey || !email) {
+    throw new Error(`${name} has no private_key or client_email.`);
+  }
+  const keyId = stringField(fields, "private_key_id");
+  return { json: text, email, ...(keyId ? { keyId } : {}) };
+};
+
+/** One line of a Google Play check: passed, failed, or not checked. */
+export interface PlayCheck {
+  readonly ok: boolean | undefined;
+  readonly label: string;
+  readonly detail?: string;
+  /** The lines under it, such as the command that fixes it. */
+  readonly lines?: readonly string[];
+}
+
+/**
+ * What a service account's access to `packageName` says, as a check line:
+ * the invite to send, or the app's first upload, when it fails. Doctor's
+ * Google Play rows and the build's check share it.
+ */
+export const describePlayAccess = (
+  access: PlayAccess,
+  label = "Play access",
+): PlayCheck => {
+  switch (access.status) {
+    case "ready":
+      return { ok: true, label };
+    case "denied":
+      return {
+        ok: false,
+        label,
+        detail: "invite the service account",
+        lines: [
+          access.email,
+          `App permission: ${PLAY_PERMISSION}`,
+          ui.path(playConsoleInviteUrl(access.email)),
+        ],
+      };
+    case "not-found":
+      return {
+        ok: false,
+        label: label === "Play access" ? "App in Play" : label,
+        detail: "upload the first .aab in Play Console",
+      };
+    case "refused":
+      return {
+        ok: false,
+        label: label === "Play access" ? "Service account key" : label,
+        detail: "Google refuses it",
+        lines: access.reason.split("\n"),
+      };
+  }
+};
+
+const LABEL_WIDTH = 19;
+
+/** A command under a check line, which `formatPlayChecks` indents two columns. */
+const COMMAND_WIDTH = 72;
+
+const MARKS = {
+  true: ui.success("✓"),
+  false: ui.danger("✗"),
+  undefined: ui.muted("·"),
+} as const;
+
+/** The widest check line, Clack's three-column gutter left out. */
+const CHECK_WIDTH = 77;
+
+/**
+ * Check lines, aligned, each with the lines under it indented. A detail
+ * that doesn't fit beside a long label, such as an application ID, goes
+ * on the line under it.
+ */
+export const formatPlayChecks = (checks: readonly PlayCheck[]): string[] =>
+  checks.flatMap(({ ok, label, detail, lines = [] }) => {
+    const mark = MARKS[String(ok) as keyof typeof MARKS];
+    const beside = detail && `${label.padEnd(LABEL_WIDTH)}  ${detail}`;
+    const fits = beside !== undefined && 2 + beside.length <= CHECK_WIDTH;
+    return [
+      `${mark} ${beside && fits ? beside : label}`,
+      ...(detail && !fits ? [detail] : []),
+      ...lines,
+    ].map((line, index) => (index === 0 ? line : `  ${line}`));
+  });
+
+export interface GooglePlayReadiness {
+  readonly packageName: string;
+  readonly ready: boolean;
+  readonly checks: readonly PlayCheck[];
+  /** The service account, resolved, when it is. */
+  readonly serviceAccount?: Credentials["play-service-account"];
+}
+
+const errorLines = (error: unknown) =>
+  (error instanceof Error ? error.message : String(error)).split("\n");
+
+/**
+ * Resolves `request` with `credentials`: the value, or the check line
+ * that says what is missing, with the one command that stores it.
+ */
+const resolveCheck = async <
+  TKind extends "play-service-account" | "android-keystore",
+>(
+  credentials: CredentialResolver,
+  request: CredentialRequest<TKind>,
+  label: string,
+): Promise<{ value?: Credentials[TKind]; check: PlayCheck }> => {
+  try {
+    return {
+      value: await credentials.resolve(request),
+      check: { ok: true, label },
+    };
+  } catch (error) {
+    if (
+      error instanceof CredentialUnavailableError &&
+      error.message.startsWith("No ")
+    ) {
+      return {
+        check: {
+          ok: false,
+          label,
+          // Indented under the check: two columns fewer than a command.
+          lines: ui
+            .commandLines(
+              credentialPutCommand(request.kind, request.name ?? request.kind),
+              COMMAND_WIDTH,
+            )
+            .split("\n"),
+        },
+      };
+    }
+    return { check: { ok: false, label, lines: errorLines(error) } };
   }
 };
 
 /**
- * Makes sure a Play service account named `name` exists where builds
- * resolve it, issuing one when it does not. Everything that can fail is
- * checked before any Google sign-in, in this order:
+ * Everything a release to Google Play needs, checked before a build so
+ * nothing waits through one only to be refused, each line passed or not:
  *
- * 1. an environment override of play-service-account
- *    (`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*`) is used as it is;
- * 2. a value the config's `secrets` adapter holds as `name` is used as it
- *    is, so CI uploads with the stored key and never signs in;
- * 3. without a terminal, it refuses with the command that signs in once.
+ * 1. the service account key, `serviceAccount`, resolves;
+ * 2. the upload keystore the scheme signs with, `keystore`, resolves;
+ *    without one, Gradle's own signing config signs, which is not checked;
+ * 3. with the key, it opens an edit of `packageName` and deletes it: a
+ *    refusal names the invite to send, a missing app its first upload.
  *
- * Only then, once gcloud is found, does it ask for the package name, and
- * the developer pick one of gcloud's Google Accounts, or sign in with
- * another, and
- * invite the service account in Play Console, which opens in a browser,
- * through `issue`, and the issued key is stored through the config's
- * adapter, or `localSecrets()` by default, read back, and deleted again
- * unless the adapter reads back exactly that key. A key `localSecrets()`
- * keeps comes with an offer to store it as a GitHub Actions secret too, and
- * every issued key with where to delete the ones no machine uses anymore.
- * The environment overrides
- * are read, never written.
+ * Both resolve through `credentials`, which keeps them for the build.
  */
-export const ensurePlayServiceAccount = async ({
-  name,
-  packageNames = [],
-  env = {},
-  replace,
-  replacing,
-  secrets,
-  githubSecrets,
-  issue = issuePlayServiceAccount,
+export const checkGooglePlay = async ({
+  credentials,
+  packageName,
+  serviceAccount,
+  keystore,
+  fetch,
 }: {
-  /** The secret builds resolve, `play-service-account`. */
-  name: string;
-  /**
-   * The package names the config's `nativeBuild.android` schemes declare,
-   * which the prompt offers: one as its answer, several as a choice.
-   */
-  packageNames?: readonly string[];
-  /** Environment values read after `process.env`, such as `.env.hotupdater`'s. */
-  env?: Readonly<Record<string, string>>;
-  /** The adapter the key is read from and stored in, the config's by default. */
-  secrets?: SecretsAdapter;
-  /** Set by `secrets issue`: a key is issued whatever the adapter holds. */
-  replace?: boolean;
-  /** Set by `secrets issue --replace` when the adapter holds a key it replaces. */
-  replacing?: boolean;
-  /** The adapter that stores a key the default store keeps as a GitHub Actions secret. */
-  githubSecrets?: CreateGitHubSecrets;
-  /** The sign-in that issues the key, android-helper's unless set. */
-  issue?: IssuePlayServiceAccount;
-}): Promise<EnsurePlayServiceAccountResult> => {
-  const prepared = await prepareIssuedCredential(POLICY, {
-    name,
-    env,
-    replace,
-    replacing,
-    ...(secrets ? { secrets } : {}),
-  });
-  if (prepared.status !== "missing") return prepared;
-  const { secrets: store } = prepared;
-
-  // Asked once the sign-in's tool is found, so a missing gcloud stops first.
-  let app = "";
-  const issued = await issue({
-    askPackageName: async () =>
-      (app = await askPackageName([...new Set(packageNames)])),
-    chooseGoogleAccount: async (accounts) => {
-      const choice = answered(
-        await p.select<string>({
-          message: "Google Account to use",
-          options: [
-            ...accounts.map(({ email, active }) => ({
-              value: email,
-              label: email,
-              ...(active ? { hint: "gcloud active" } : {}),
-            })),
-            {
-              value: ANOTHER_ACCOUNT,
-              label: "Sign in with another Google Account",
-            },
-          ],
-          initialValue: accounts[0]?.email,
-        }),
-      );
-      return choice === ANOTHER_ACCOUNT ? null : choice;
-    },
-    onInvite: async (url, email) => {
-      p.log.info(
-        [
-          `In Play Console, invite this email to ${app}:`,
-          email,
-          `App permission: ${PLAY_PERMISSION}`,
-          "Set it under App permissions, not account-wide.",
-        ].join("\n"),
-      );
-      p.log.message(`If the browser doesn't open, open:\n${ui.path(url)}`);
-      await open(url).catch(() => {});
-    },
-    chooseProject: async (projects) => {
-      // Those with the Play Developer API first, the likely answers.
-      const sorted = [
-        ...projects.filter(({ playApiEnabled }) => playApiEnabled),
-        ...projects.filter(({ playApiEnabled }) => !playApiEnabled),
-      ];
-      const choice = answered(
-        await p.select<string>({
-          message: "Google Cloud project for the service account",
-          options: [
-            ...sorted.map(({ projectId, displayName, playApiEnabled }) => {
-              const hint = [
-                displayName !== projectId && displayName,
-                playApiEnabled && "Play API enabled",
-              ].filter(Boolean);
-              return {
-                value: projectId,
-                label: projectId,
-                ...(hint.length > 0 ? { hint: hint.join(", ") } : {}),
-              };
-            }),
-            { value: NEW_PROJECT, label: "Create a new project" },
-          ],
-          initialValue: sorted[0]?.playApiEnabled
-            ? sorted[0].projectId
-            : NEW_PROJECT,
-        }),
-      );
-      return choice === NEW_PROJECT ? null : choice;
-    },
-    onStep: (message) => p.log.step(message),
-  });
-
-  try {
-    await storeIssued(store, name, issued);
-    p.log.success(
-      ui.block("Play service account stored", [
-        name !== POLICY.kind && ui.kv("Name", name),
-        ui.kv("Service account", issued.email),
-        ui.kv("Key ID", issued.keyId),
-        ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
-      ]),
-    );
-    await offerIssuedKeyToGitHub({
-      name,
-      value: issued.json,
-      secrets: store,
-      ...(githubSecrets ? { githubSecrets } : {}),
-    });
-    // This run reads the key from memory; builds after it, from the adapter.
-    return {
-      status: "issued",
-      email: issued.email,
-      secrets: withIssuedValue(store, name, issued.json),
+  credentials: CredentialResolver;
+  packageName: string;
+  serviceAccount: CredentialRequest<"play-service-account">;
+  keystore?: CredentialRequest<"android-keystore">;
+  fetch?: typeof globalThis.fetch;
+}): Promise<GooglePlayReadiness> => {
+  const [key, upload] = await Promise.all([
+    resolveCheck(credentials, serviceAccount, "Service account key"),
+    keystore
+      ? resolveCheck(credentials, keystore, "Upload keystore")
+      : {
+          check: {
+            ok: undefined,
+            label: "Upload keystore",
+            detail: "Gradle's signing config",
+          },
+        },
+  ]);
+  let keyCheck = key.check;
+  let access: PlayCheck | undefined;
+  if (!key.value) {
+    access = {
+      ok: undefined,
+      label: "Play access",
+      detail: "checked once the key is stored",
     };
-  } finally {
-    await issued.dispose();
+  } else {
+    let result: PlayAccess | undefined;
+    try {
+      result = await checkPlayAccess({
+        serviceAccount: key.value,
+        packageName,
+        ...(fetch ? { fetch } : {}),
+      });
+    } catch (error) {
+      access = {
+        ok: false,
+        label: "Play access",
+        detail: "can't check",
+        lines: errorLines(error),
+      };
+    }
+    if (result?.status === "refused") {
+      // The key itself is what fails: its line says so.
+      keyCheck = describePlayAccess(result);
+      access = {
+        ok: undefined,
+        label: "Play access",
+        detail: "checked once the key works",
+      };
+    } else if (result) {
+      access = describePlayAccess(result);
+    }
   }
+  const checks = [keyCheck, upload.check, access!];
+  return {
+    packageName,
+    ready: checks.every(({ ok }) => ok !== false),
+    checks,
+    ...(key.value ? { serviceAccount: key.value } : {}),
+  };
 };
+
+/** The block a build prints when Google Play isn't ready, then exits. */
+export const formatGooglePlayReadiness = ({
+  packageName,
+  checks,
+}: GooglePlayReadiness): string =>
+  [
+    `Google Play isn't ready for ${packageName}:`,
+    ...formatPlayChecks(checks),
+    `Guide: ${ui.path(GOOGLE_PLAY_GUIDE_URL)}`,
+  ].join("\n");

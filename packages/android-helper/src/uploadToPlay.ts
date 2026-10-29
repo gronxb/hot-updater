@@ -201,8 +201,8 @@ type PlayRequest = <T>(
 /**
  * Requests to the Google Play Developer API for `packageName`, as the
  * service account: each carries an access token, exchanged for a signed
- * assertion and replaced well before it expires. The key issuer checks a
- * new key's access with it too.
+ * assertion and replaced well before it expires. `checkPlayAccess`
+ * checks a key's access with it too.
  */
 export const createPlayClient = ({
   json,
@@ -282,6 +282,104 @@ export const createPlayClient = ({
 };
 
 /**
+ * Play Console's page that invites `email` as a user. `_` stands for the
+ * developer account the browser is signed in to, so no ID is needed.
+ */
+export const playConsoleInviteUrl = (email: string) =>
+  `https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(email)}`;
+
+/**
+ * Whether a service account reaches an app in Google Play:
+ * - `ready`: it opened an edit of the app;
+ * - `denied`: Google Play refused it (401/403), so it needs a Play Console
+ *   invite;
+ * - `not-found`: Google Play has no such app it can see (404), as before
+ *   the app's first `.aab` is uploaded in Play Console;
+ * - `refused`: Google's token endpoint refused the key itself, such as a
+ *   deleted key, with Google's reason.
+ */
+export type PlayAccess =
+  | { readonly status: "ready" }
+  | { readonly status: "denied"; readonly email: string }
+  | { readonly status: "not-found"; readonly email: string }
+  | {
+      readonly status: "refused";
+      readonly email: string;
+      readonly reason: string;
+    };
+
+const readClientEmail = (json: string): string => {
+  try {
+    const { client_email } = JSON.parse(json) as { client_email?: unknown };
+    return typeof client_email === "string" ? client_email : "";
+  } catch {
+    return "";
+  }
+};
+
+/**
+ * Checks once whether the service account's key reaches `packageName`: it
+ * opens an edit of the app and deletes it again, which changes nothing.
+ * Throws only for what says nothing about access, such as a network error.
+ */
+export const checkPlayAccess = async ({
+  serviceAccount: { json },
+  packageName,
+  fetch = globalThis.fetch,
+}: {
+  serviceAccount: Credentials["play-service-account"];
+  packageName: string;
+  fetch?: typeof globalThis.fetch;
+}): Promise<PlayAccess> => {
+  const email = readClientEmail(json);
+  const refused = (error: unknown): PlayAccess => ({
+    status: "refused",
+    email,
+    reason: error instanceof Error ? error.message : String(error),
+  });
+  let play: ReturnType<typeof createPlayClient>;
+  try {
+    play = createPlayClient({ json, packageName, fetch });
+  } catch (error) {
+    return refused(error);
+  }
+  try {
+    await play.authorization();
+  } catch (error) {
+    // No answer from Google says nothing about the key.
+    if (error instanceof TypeError) throw error;
+    return refused(error);
+  }
+  const edits = `${API_URL}${play.app}/edits`;
+  try {
+    const edit = await play.request<{ id?: string }>(
+      `Opening an edit of ${packageName}`,
+      "POST",
+      edits,
+      {},
+    );
+    if (edit?.id) {
+      await play
+        .request(
+          "Deleting the edit",
+          "DELETE",
+          `${edits}/${encodeURIComponent(edit.id)}`,
+        )
+        .catch(() => {});
+    }
+    return { status: "ready" };
+  } catch (error) {
+    if (error instanceof GooglePlayError) {
+      if (error.status === 401 || error.status === 403) {
+        return { status: "denied", email };
+      }
+      if (error.status === 404) return { status: "not-found", email };
+    }
+    throw error;
+  }
+};
+
+/**
  * Whether Google Play's internal testing track already releases the
  * `.aab`'s version code, as when a reused native build was uploaded
  * before. It reads the track in an edit it then deletes, changing nothing.
@@ -320,42 +418,6 @@ export const findPlayInternalRelease = async ({
     );
   } catch (error) {
     throw explain(error, packageName);
-  } finally {
-    await request("Deleting the Google Play edit", "DELETE", edit).catch(
-      () => undefined,
-    );
-  }
-};
-
-/**
- * Whether Google Play releases any version of `packageName` on any track,
- * which means Play has the app's upload key. It reads the tracks in an edit
- * it then deletes, changing nothing.
- */
-export const hasPlayReleases = async ({
-  packageName,
-  serviceAccount: { json },
-  fetch = globalThis.fetch,
-}: {
-  packageName: string;
-  serviceAccount: Credentials["play-service-account"];
-  fetch?: typeof globalThis.fetch;
-}): Promise<boolean> => {
-  const { app, request } = createPlayClient({ json, packageName, fetch });
-  const { id: editId } = await request<{ id: string }>(
-    "Opening a Google Play edit",
-    "POST",
-    `${API_URL}${app}/edits`,
-    {},
-  );
-  const edit = `${API_URL}${app}/edits/${encodeURIComponent(editId)}`;
-  try {
-    const { tracks = [] } = await request<{
-      tracks?: { releases?: { versionCodes?: string[] }[] }[];
-    }>("Reading the tracks", "GET", `${edit}/tracks`);
-    return tracks.some(({ releases = [] }) =>
-      releases.some(({ versionCodes = [] }) => versionCodes.length > 0),
-    );
   } finally {
     await request("Deleting the Google Play edit", "DELETE", edit).catch(
       () => undefined,
