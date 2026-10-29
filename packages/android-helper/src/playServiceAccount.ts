@@ -14,6 +14,13 @@ export interface GoogleCloudProject {
   readonly playApiEnabled: boolean;
 }
 
+/** A Google Account the gcloud CLI holds credentials for. */
+export interface GoogleAccount {
+  readonly email: string;
+  /** Whether it is gcloud's active account. */
+  readonly active: boolean;
+}
+
 export interface IssuePlayServiceAccountRequest {
   /**
    * Asks for the app's package name in Google Play, which the service
@@ -21,6 +28,14 @@ export interface IssuePlayServiceAccountRequest {
    * anything else.
    */
   readonly askPackageName: () => Promise<string>;
+  /**
+   * Sees the Google Accounts gcloud already holds, the active one first,
+   * after the package name, and returns the one to use, or null to sign in
+   * with another. Never called when gcloud holds none: it signs in.
+   */
+  readonly chooseGoogleAccount: (
+    accounts: readonly GoogleAccount[],
+  ) => Promise<string | null>;
   /**
    * Sees Play Console's page that invites the service account `email`, to
    * print it and open it in a browser; the issuer then waits for the invite.

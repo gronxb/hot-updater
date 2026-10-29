@@ -2,7 +2,10 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { IssuePlayServiceAccountRequest } from "../playServiceAccount";
+import type {
+  GoogleAccount,
+  IssuePlayServiceAccountRequest,
+} from "../playServiceAccount";
 import { createGoogleKeyIssuer, type RunCommand } from "./googleKeyIssuer";
 import { PlayServiceAccountError } from "./types";
 
@@ -180,11 +183,13 @@ const fetch = vi.fn(
   },
 ) as unknown as typeof globalThis.fetch;
 
-/** The gcloud CLI on this machine, and the account it is signed in to. */
+/** The gcloud CLI on this machine, and the accounts it holds. */
 let gcloud: {
   installed: boolean;
-  account: string | undefined;
-  /** The account `gcloud auth login` signs in to. */
+  accounts: string[];
+  /** The active one of `accounts`. */
+  active: string | undefined;
+  /** The account `gcloud auth login` signs in to, then active. */
   login: string | undefined;
   /** `gcloud auth login` fails, as a cancelled sign-in does. */
   loginFails?: boolean;
@@ -198,13 +203,32 @@ const run: RunCommand = async (file, args, options) => {
     throw Object.assign(new Error("spawn gcloud ENOENT"), { code: "ENOENT" });
   }
   if (args[0] === "--version") return "Google Cloud SDK 500.0.0";
-  if (args.join(" ").startsWith("auth list")) return gcloud.account ?? "";
+  if (args.join(" ") === "auth list --format=value(account)") {
+    return gcloud.accounts.join("\n");
+  }
+  if (
+    args.join(" ") ===
+    "auth list --filter=status:ACTIVE --format=value(account)"
+  ) {
+    return gcloud.active ?? "";
+  }
   if (args.join(" ") === "auth login") {
     if (gcloud.loginFails) throw new Error("gcloud auth login: cancelled");
-    gcloud.account = gcloud.login;
+    if (gcloud.login !== undefined) {
+      if (!gcloud.accounts.includes(gcloud.login)) {
+        gcloud.accounts.push(gcloud.login);
+      }
+      gcloud.active = gcloud.login;
+    }
     return "";
   }
-  if (args.join(" ") === "auth print-access-token") return "ya29.token\n";
+  if (
+    args.length === 3 &&
+    args.slice(0, 2).join(" ") === "auth print-access-token" &&
+    gcloud.accounts.includes(args[2]!)
+  ) {
+    return "ya29.token\n";
+  }
   throw new Error(`Unexpected command: ${command}`);
 };
 
@@ -217,11 +241,19 @@ const askPackageName = vi.fn(async () => {
   commands.push("ask the package name");
   return "com.example.app";
 });
+/** Picks the first account offered, the active one. */
+const chooseGoogleAccount = vi.fn(
+  async (accounts: readonly GoogleAccount[]): Promise<string | null> => {
+    commands.push("choose the Google Account");
+    return accounts[0]!.email;
+  },
+);
 
 const request = (
   overrides: Partial<IssuePlayServiceAccountRequest> = {},
 ): IssuePlayServiceAccountRequest => ({
   askPackageName,
+  chooseGoogleAccount,
   onInvite,
   chooseProject: async () => "my-app",
   onStep,
@@ -253,7 +285,8 @@ beforeEach(() => {
   commands = [];
   gcloud = {
     installed: true,
-    account: "dev@example.com",
+    accounts: ["dev@example.com"],
+    active: "dev@example.com",
     login: "dev@example.com",
   };
 });
@@ -265,8 +298,10 @@ describe("createGoogleKeyIssuer", () => {
     expect(commands).toEqual([
       "gcloud --version",
       "ask the package name",
+      "gcloud auth list --format=value(account)",
       "gcloud auth list --filter=status:ACTIVE --format=value(account)",
-      "gcloud auth print-access-token",
+      "choose the Google Account",
+      "gcloud auth print-access-token dev@example.com",
     ]);
     expect(onStep).toHaveBeenCalledWith(
       "Signed in to gcloud as dev@example.com",
@@ -367,36 +402,128 @@ describe("createGoogleKeyIssuer", () => {
     expect(onInvite).not.toHaveBeenCalled();
   });
 
-  it("runs gcloud auth login on the terminal when no account is active", async () => {
-    gcloud.account = undefined;
+  it("offers every account gcloud holds, the active one first, and uses the one picked without changing gcloud's active account", async () => {
+    gcloud.accounts = ["play@example.com", "dev@example.com"];
+    chooseGoogleAccount.mockResolvedValueOnce("play@example.com");
+
+    await issue();
+
+    expect(chooseGoogleAccount).toHaveBeenCalledWith([
+      { email: "dev@example.com", active: true },
+      { email: "play@example.com", active: false },
+    ]);
+    expect(commands).toEqual([
+      "gcloud --version",
+      "ask the package name",
+      "gcloud auth list --format=value(account)",
+      "gcloud auth list --filter=status:ACTIVE --format=value(account)",
+      "gcloud auth print-access-token play@example.com",
+    ]);
+    expect(onStep).toHaveBeenCalledWith(
+      "Signed in to gcloud as play@example.com",
+    );
+    expect(gcloud.active).toBe("dev@example.com");
+  });
+
+  it("asks even when gcloud holds one account, none of them active", async () => {
+    gcloud.active = undefined;
+
+    await issue();
+
+    expect(chooseGoogleAccount).toHaveBeenCalledWith([
+      { email: "dev@example.com", active: false },
+    ]);
+    expect(commands).toContain(
+      "gcloud auth print-access-token dev@example.com",
+    );
+  });
+
+  it("signs in with gcloud auth login for another account, and uses the account it adds", async () => {
+    gcloud.login = "play@example.com";
+    chooseGoogleAccount.mockResolvedValueOnce(null);
 
     await issue();
 
     expect(commands).toEqual([
       "gcloud --version",
       "ask the package name",
+      "gcloud auth list --format=value(account)",
       "gcloud auth list --filter=status:ACTIVE --format=value(account)",
       "gcloud auth login (interactive)",
+      "gcloud auth list --format=value(account)",
       "gcloud auth list --filter=status:ACTIVE --format=value(account)",
-      "gcloud auth print-access-token",
+      "gcloud auth print-access-token play@example.com",
+    ]);
+    expect(onStep).toHaveBeenCalledWith(
+      "Signed in to gcloud as play@example.com",
+    );
+  });
+
+  it("uses the active account when gcloud auth login signs in to one gcloud held", async () => {
+    gcloud.accounts = ["dev@example.com", "play@example.com"];
+    gcloud.login = "play@example.com";
+    chooseGoogleAccount.mockResolvedValueOnce(null);
+
+    await issue();
+
+    expect(commands.at(-1)).toBe(
+      "gcloud auth print-access-token play@example.com",
+    );
+  });
+
+  it("stops when gcloud auth login for another account is cancelled, using no account", async () => {
+    gcloud.loginFails = true;
+    chooseGoogleAccount.mockResolvedValueOnce(null);
+
+    const error = await issueError();
+
+    expect(error.code).toBe("gcloud-not-signed-in");
+    expect(error.message).toBe(
+      "gcloud auth login didn't finish.\nRun this again to choose a Google Account.",
+    );
+    expect(commands.join("\n")).not.toContain("print-access-token");
+    expect(calls).toEqual([]);
+  });
+
+  it("runs gcloud auth login on the terminal, without asking, when gcloud holds no account", async () => {
+    gcloud.accounts = [];
+    gcloud.active = undefined;
+
+    await issue();
+
+    expect(chooseGoogleAccount).not.toHaveBeenCalled();
+    expect(commands).toEqual([
+      "gcloud --version",
+      "ask the package name",
+      "gcloud auth list --format=value(account)",
+      "gcloud auth list --filter=status:ACTIVE --format=value(account)",
+      "gcloud auth login (interactive)",
+      "gcloud auth list --format=value(account)",
+      "gcloud auth list --filter=status:ACTIVE --format=value(account)",
+      "gcloud auth print-access-token dev@example.com",
     ]);
     expect(onStep).toHaveBeenCalledWith(
       "Signed in to gcloud as dev@example.com",
     );
   });
 
-  it("stops before any request when gcloud auth login leaves no active account", async () => {
-    gcloud.account = undefined;
+  it("stops before any request when gcloud auth login leaves no account", async () => {
+    gcloud.accounts = [];
+    gcloud.active = undefined;
     gcloud.login = undefined;
 
     const error = await issueError();
 
     expect(error.code).toBe("gcloud-not-signed-in");
+    expect(error.message).toBe(
+      "gcloud has no active Google Account.\nRun gcloud auth login, then run this again.",
+    );
     expect(calls).toEqual([]);
   });
 
   it("names a cancelled gcloud auth login, before any request", async () => {
-    gcloud.account = undefined;
+    gcloud.accounts = [];
+    gcloud.active = undefined;
     gcloud.loginFails = true;
 
     const error = await issueError();
@@ -442,8 +569,9 @@ describe("createGoogleKeyIssuer", () => {
     expect(error.message).toBe(
       [
         "The key can't release com.example.app yet.",
-        "Invite the service account in Play Console with release access:",
+        "Invite the service account in Play Console:",
         EMAIL,
+        "App permission: Release apps to testing tracks",
         INVITE_URL,
         "A new app needs its first .aab uploaded in Play Console.",
         "Then run: npx hot-updater google-play login",

@@ -2,7 +2,7 @@
 export type PlayServiceAccountErrorCode =
   /** The gcloud CLI, which signs in to Google, is not installed. */
   | "gcloud-not-installed"
-  /** `gcloud auth login` ended with no active Google Account. */
+  /** gcloud ended with no Google Account to use: none signed in, or the sign-in was cancelled. */
   | "gcloud-not-signed-in"
   /** The Google Account may not create a Google Cloud project. */
   | "project-create-denied"

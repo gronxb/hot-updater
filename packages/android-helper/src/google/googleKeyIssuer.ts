@@ -92,19 +92,31 @@ const isDenied = (error: unknown) =>
   error instanceof GoogleApiError &&
   (error.status === 403 || error.apiStatus === "PERMISSION_DENIED");
 
-/** The Google Account gcloud uses, if one is active. */
-const activeAccount = async (run: RunCommand) =>
-  (
+const lines = (output: string) =>
+  output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+/** The Google Accounts gcloud holds, the active one, if any, first. */
+const credentialedAccounts = async (run: RunCommand) => {
+  const accounts = lines(
+    await run("gcloud", ["auth", "list", "--format=value(account)"]),
+  );
+  const [active] = lines(
     await run("gcloud", [
       "auth",
       "list",
       "--filter=status:ACTIVE",
       "--format=value(account)",
-    ])
-  )
-    .trim()
-    .split("\n")[0]
-    ?.trim() || undefined;
+    ]),
+  );
+  return active !== undefined && accounts.includes(active)
+    ? [active, ...accounts.filter((account) => account !== active)].map(
+        (email) => ({ email, active: email === active }),
+      )
+    : accounts.map((email) => ({ email, active: false }));
+};
 
 /** Stops before anything else, a prompt included, when gcloud is not installed. */
 const requireGcloud = async (run: RunCommand) => {
@@ -123,31 +135,51 @@ const requireGcloud = async (run: RunCommand) => {
   }
 };
 
-/** gcloud's access token, after `gcloud auth login` when no account is active. */
+/**
+ * The access token of the Google Account the developer picks among those
+ * gcloud holds, or of the one `gcloud auth login` adds, when they pick
+ * another or gcloud holds none. gcloud's active account stays as it was.
+ */
 const signInWithGcloud = async ({
   run,
+  request,
   onStep,
 }: {
   run: RunCommand;
+  request: IssuePlayServiceAccountRequest;
   onStep: (message: string) => void;
 }) => {
-  let account = await activeAccount(run);
+  const before = await credentialedAccounts(run);
+  let account =
+    before.length > 0
+      ? ((await request.chooseGoogleAccount(before)) ?? undefined)
+      : undefined;
   if (account === undefined) {
-    // A cancelled or failed sign-in leaves no account, named below.
-    await run("gcloud", ["auth", "login"], { interactive: true }).catch(
-      () => {},
+    // A cancelled or failed sign-in adds no account, named below.
+    const signedIn = await run("gcloud", ["auth", "login"], {
+      interactive: true,
+    }).then(
+      () => true,
+      () => false,
     );
-    account = await activeAccount(run);
+    const after = await credentialedAccounts(run);
+    account =
+      after.find(({ email }) => !before.some((known) => known.email === email))
+        ?.email ??
+      // Signed in again to an account gcloud held: the one it made active.
+      (signedIn ? after.find(({ active }) => active)?.email : undefined);
     if (account === undefined) {
       throw new PlayServiceAccountError(
         "gcloud-not-signed-in",
-        "gcloud has no active Google Account.\nRun gcloud auth login, then run this again.",
+        before.length === 0
+          ? "gcloud has no active Google Account.\nRun gcloud auth login, then run this again."
+          : "gcloud auth login didn't finish.\nRun this again to choose a Google Account.",
       );
     }
   }
   onStep(`Signed in to gcloud as ${account}`);
   const accessToken = (
-    await run("gcloud", ["auth", "print-access-token"])
+    await run("gcloud", ["auth", "print-access-token", account])
   ).trim();
   registerSecretValue(accessToken);
   return accessToken;
@@ -157,9 +189,9 @@ const signInWithGcloud = async ({
  * `IssuePlayServiceAccount` with the gcloud CLI's sign-in and Google's own
  * APIs:
  *
- * 1. once gcloud is found, `askPackageName` names the app, and gcloud's
- *    Google Account, signed in with `gcloud auth login` when none is
- *    active, the access token the Google Cloud steps use;
+ * 1. once gcloud is found, `askPackageName` names the app, and the Google
+ *    Account `chooseGoogleAccount` picks among gcloud's, or the one
+ *    `gcloud auth login` adds, the access token the Google Cloud steps use;
  * 2. the account's only project with the Play Developer API, else the one
  *    `chooseProject` picks, else a new one, gets the IAM and Play Developer
  *    APIs enabled, and the service account `hot-updater-play` its JSON key;
@@ -187,7 +219,7 @@ export const createGoogleKeyIssuer =
     const { onStep = () => {} } = request;
     await requireGcloud(run);
     const packageName = await request.askPackageName();
-    const accessToken = await signInWithGcloud({ run, onStep });
+    const accessToken = await signInWithGcloud({ run, request, onStep });
     const google = createGoogleRequest({ accessToken, fetch });
 
     const project = await chooseProject({ google, request, sleep, onStep });
@@ -225,8 +257,9 @@ export const createGoogleKeyIssuer =
         "play-access-pending",
         [
           `The key can't release ${packageName} yet.`,
-          "Invite the service account in Play Console with release access:",
+          "Invite the service account in Play Console:",
           email,
+          "App permission: Release apps to testing tracks",
           inviteUrl,
           "A new app needs its first .aab uploaded in Play Console.",
           // Not stored anywhere: the developer deletes it by hand.

@@ -337,7 +337,12 @@ describe("ensurePlayServiceAccount", () => {
     );
 
     expect(log.info).toHaveBeenCalledWith(
-      `In Play Console, invite with release access to com.example.app:\n${EMAIL}`,
+      [
+        "In Play Console, invite this email to com.example.app:",
+        EMAIL,
+        "App permission: Release apps to testing tracks",
+        "Set it under App permissions, not account-wide.",
+      ].join("\n"),
     );
     expect(
       log.message.mock.calls.map(([message]) =>
@@ -408,6 +413,48 @@ describe("ensurePlayServiceAccount", () => {
       initialValue: "",
     });
     expect(picks).toEqual(["shop", null]);
+  });
+
+  it("offers gcloud's Google Accounts, the active one marked, and another account", async () => {
+    fakeStore();
+    const picks: (string | null)[] = [];
+    const accounts = [
+      { email: "dev@example.com", active: true },
+      { email: "play@example.com", active: false },
+    ];
+    issue.mockImplementationOnce(async (request) => {
+      await request.askPackageName();
+      picks.push(
+        await request.chooseGoogleAccount(accounts),
+        await request.chooseGoogleAccount(accounts),
+      );
+      return {
+        json: KEY_FILE,
+        email: EMAIL,
+        projectId: "my-app",
+        keyId: "abc123",
+        revoke: issued.revoke,
+        dispose: issued.dispose,
+      };
+    });
+    select.mockResolvedValueOnce("play@example.com").mockResolvedValueOnce("");
+
+    await withTTY(true, () => ensure({ name: "play-service-account" }));
+
+    expect(select).toHaveBeenNthCalledWith(1, {
+      message: "Google Account to use",
+      options: [
+        {
+          value: "dev@example.com",
+          label: "dev@example.com",
+          hint: "gcloud active",
+        },
+        { value: "play@example.com", label: "play@example.com" },
+        { value: "", label: "Sign in with another Google Account" },
+      ],
+      initialValue: "dev@example.com",
+    });
+    expect(picks).toEqual(["play@example.com", null]);
   });
 
   it("goes on when the browser can't open the invite", async () => {

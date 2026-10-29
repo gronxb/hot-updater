@@ -17,6 +17,7 @@ export {
   readBuiltVersionCode,
 } from "./utils/readBuiltApp";
 export {
+  type GoogleAccount,
   type GoogleCloudProject,
   type IssuedPlayServiceAccount,
   type IssuePlayServiceAccount,

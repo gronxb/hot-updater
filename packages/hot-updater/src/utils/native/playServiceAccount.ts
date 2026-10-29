@@ -51,6 +51,15 @@ export type EnsurePlayServiceAccountResult =
 /** The project choice that creates one: no project ID is empty. */
 const NEW_PROJECT = "";
 
+/**
+ * The least Play Console permission the service account needs: the CLI
+ * releases only to the internal testing track.
+ */
+const PLAY_PERMISSION = "Release apps to testing tracks";
+
+/** The account choice that signs in with another: no email is empty. */
+const ANOTHER_ACCOUNT = "";
+
 const PACKAGE_NAME_PATTERN =
   /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/u;
 
@@ -170,7 +179,8 @@ const storeIssued = async (
  * 3. without a terminal, it refuses with the command that signs in once.
  *
  * Only then, once gcloud is found, does it ask for the package name, and
- * the developer sign in with Google, through gcloud, and
+ * the developer pick one of gcloud's Google Accounts, or sign in with
+ * another, and
  * invite the service account in Play Console, which opens in a browser,
  * through `issue`, and the issued key is stored through the config's
  * adapter, or `localSecrets()` by default, read back, and deleted again
@@ -225,9 +235,34 @@ export const ensurePlayServiceAccount = async ({
   const issued = await issue({
     askPackageName: async () =>
       (app = await askPackageName([...new Set(packageNames)])),
+    chooseGoogleAccount: async (accounts) => {
+      const choice = answered(
+        await p.select<string>({
+          message: "Google Account to use",
+          options: [
+            ...accounts.map(({ email, active }) => ({
+              value: email,
+              label: email,
+              ...(active ? { hint: "gcloud active" } : {}),
+            })),
+            {
+              value: ANOTHER_ACCOUNT,
+              label: "Sign in with another Google Account",
+            },
+          ],
+          initialValue: accounts[0]?.email,
+        }),
+      );
+      return choice === ANOTHER_ACCOUNT ? null : choice;
+    },
     onInvite: async (url, email) => {
       p.log.info(
-        `In Play Console, invite with release access to ${app}:\n${email}`,
+        [
+          `In Play Console, invite this email to ${app}:`,
+          email,
+          `App permission: ${PLAY_PERMISSION}`,
+          "Set it under App permissions, not account-wide.",
+        ].join("\n"),
       );
       p.log.message(`If the browser doesn't open, open:\n${ui.path(url)}`);
       await open(url).catch(() => {});
