@@ -518,7 +518,7 @@ const buildNativeInternal = async ({
                         serviceAccount: playServiceAccount,
                       }),
                     ({ versionCode, status }) =>
-                      `Uploaded ${versionCode} to Play internal testing${status === "draft" ? " · draft" : ""}`,
+                      `Uploaded version code ${versionCode} to Google Play${status === "draft" ? " · draft" : ""}`,
                   ),
                 stays(result.artifactPath),
               ),
