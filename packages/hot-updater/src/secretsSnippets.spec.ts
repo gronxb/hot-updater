@@ -19,7 +19,6 @@ const SNIPPETS = [
   "secrets/1password.ts",
   "secrets/bitwarden.ts",
   "secrets/dotenvx.ts",
-  "secrets/infisical.ts",
 ];
 
 const FENCE = /^```ts title="(secrets\/[\w-]+\.ts)"\n([\s\S]*?)^```$/gmu;

@@ -223,12 +223,12 @@ The other adapters sign in the same way, on the build step:
 
 | Adapter                                                                      | The job sets                                                                                                       |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [Infisical](/docs/guides/secrets-adapters/infisical)                         | `INFISICAL_MACHINE_IDENTITY_ID` through OIDC (`id-token: write`), or a **Viewer** identity's Universal Auth client ID and secret |
 | [Bitwarden](/docs/guides/secrets-adapters/bitwarden)                         | `BWS_ACCESS_TOKEN`, a read-only machine account's                                                                  |
 | [AWS Secrets Manager](/docs/guides/secrets-adapters/aws-secrets-manager)     | Nothing stored: `aws-actions/configure-aws-credentials` assumes a role through OIDC (`id-token: write`)            |
 | [Google Secret Manager](/docs/guides/secrets-adapters/google-secret-manager) | Nothing stored: `google-github-actions/auth` signs in through Workload Identity Federation (`id-token: write`)     |
 | [Azure Key Vault](/docs/guides/secrets-adapters/azure-key-vault)             | Nothing stored: `azure/login` signs the Azure CLI in through OIDC (`id-token: write`)                              |
 | [1Password](/docs/guides/secrets-adapters/1password)                         | `OP_SERVICE_ACCOUNT_TOKEN`, a read-only service account's                                                         |
-| [Infisical](/docs/guides/secrets-adapters/infisical)                         | `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, a **Viewer** machine identity's |
 
 Each adapter's page has its step and the least privilege its CI identity
 needs.

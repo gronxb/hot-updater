@@ -84,6 +84,8 @@ describe("isReservedVariableName", () => {
     "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON",
     "HOT_UPDATER_SIGNING_TOKEN",
     "HOT_UPDATER_HOME",
+    "INFISICAL_TOKEN",
+    "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
   ])("reserves %s", (name) => {
     expect(isReservedVariableName(name)).toBe(true);
   });
@@ -95,7 +97,6 @@ describe("isReservedVariableName", () => {
     "AWS_SECRET_ACCESS_KEY",
     "PATHNAME",
     "ENVIRONMENT",
-    "INFISICAL_TOKEN",
   ])("allows %s", (name) => {
     expect(isReservedVariableName(name)).toBe(false);
   });
