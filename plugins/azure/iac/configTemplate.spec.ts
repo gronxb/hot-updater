@@ -55,8 +55,19 @@ describe("Azure config scaffold", () => {
     ).toEqual([...initProvider.secrets].sort());
   });
 
-  it("reads every value from the environment for the agent scaffold", () => {
-    expect(getConfigScaffold("bare").text).not.toContain("secret(");
+  it("reads every credential with secret(), in init's config and the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", {
+        cosmosEndpoint: "https://hot-updater-abc.documents.azure.com:443/",
+      }),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:/u);
+      for (const name of initProvider.secrets) {
+        expect(text).toContain(`secret("${name}")`);
+        expect(text).not.toContain(`process.env.${name}`);
+      }
+    }
   });
 
   it("names secrets secret() takes", () => {

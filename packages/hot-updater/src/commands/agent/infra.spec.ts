@@ -36,6 +36,32 @@ const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 const oxfmt = path.join(repoRoot, "node_modules/.bin/oxfmt");
 const oxfmtConfig = path.join(repoRoot, ".oxfmtrc.json");
 /** Providers whose credential script runs the server's migrator. */
+/** The credentials each provider's config reads, which no config reads by `process.env`. */
+const CREDENTIALS: Readonly<Record<string, readonly string[]>> = {
+  aws: ["HOT_UPDATER_S3_ACCESS_KEY_ID", "HOT_UPDATER_S3_SECRET_ACCESS_KEY"],
+  azure: [
+    "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+    "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
+  ],
+  cloudflare: [
+    "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+    "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+    "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+  ],
+  firebase: [],
+  supabase: ["HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"],
+  vercel: [
+    "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+    "HOT_UPDATER_VERCEL_DATABASE_URL",
+  ],
+};
+const credentialNames = (provider: string) => {
+  const names = CREDENTIALS[provider];
+  if (names === undefined)
+    throw new Error(`No credentials listed for ${provider}.`);
+  return names;
+};
+
 const migrates = (provider: string) =>
   provider === "firebase" || provider === "vercel" || provider === "azure";
 let cwd: string;
@@ -193,8 +219,17 @@ describe("published agent infrastructure commands", () => {
           ([, key]) => key!,
         );
         for (const source of sources)
-          for (const [, key] of source.matchAll(/process\.env\.([A-Z_0-9]+)/g))
-            expect(variables).toContain(key);
+          for (const [, read, named] of source.matchAll(
+            /process\.env\.([A-Z_0-9]+)|\bsecret\("([A-Z_0-9]+)"\)/g,
+          ))
+            expect(variables).toContain(read ?? named);
+        // The config reads every credential with secret(), and the server
+        // definition, a server's, from its own environment.
+        expect(config).not.toMatch(/secretEnv|"secret:/u);
+        for (const name of credentialNames(provider)) {
+          expect(config).not.toContain(`process.env.${name}`);
+          expect(definition).not.toContain(`secret("${name}")`);
+        }
         // The managed server runs apiKeys(), which sets its client-route policy.
         expect(manifest.clientAuth).toEqual({
           plugin: "apiKeys",

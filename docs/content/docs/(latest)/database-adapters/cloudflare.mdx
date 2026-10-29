@@ -102,7 +102,7 @@ These CLI examples load the `HOT_UPDATER_CLOUDFLARE_*` variables written to
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { existsSync } from "node:fs";
 import { d1Database } from "@hot-updater/cloudflare"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -114,7 +114,7 @@ export default defineConfig({
     // [!code ++]
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!, // [!code ++]
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!, // [!code ++]
+    cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"), // [!code ++]
   }), // [!code ++]
 });
 ```
@@ -163,7 +163,7 @@ resolves:
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -176,14 +176,14 @@ export default defineConfig({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
     },
   }),
   database: d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"

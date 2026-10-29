@@ -115,12 +115,22 @@ describe("Cloudflare config scaffold", () => {
     expect(names).toEqual([...initProvider.secrets].sort());
   });
 
-  it("reads every value from the environment for the agent scaffold", () => {
-    const { text } = getConfigScaffold("bare");
+  it("reads every credential with secret(), in init's config and the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", RESOURCES),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:/u);
+      for (const name of initProvider.secrets) {
+        expect(text).toContain(`secret("${name}")`);
+        expect(text).not.toContain(`process.env.${name}`);
+      }
+    }
+  });
 
-    expect(text).not.toContain("secret(");
-    expect(text).toContain(
-      "cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,",
+  it("reads the IDs the agent records from the environment for the agent scaffold", () => {
+    expect(getConfigScaffold("bare").text).toContain(
+      "databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,",
     );
   });
 

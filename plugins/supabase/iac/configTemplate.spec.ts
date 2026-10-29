@@ -58,8 +58,26 @@ describe("Supabase config scaffold", () => {
     ).toEqual([...initProvider.secrets].sort());
   });
 
-  it("reads every value from the environment for the agent scaffold", () => {
-    expect(getConfigScaffold("bare").text).not.toContain("secret(");
+  it("reads every credential with secret(), in init's config and the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", {
+        supabaseUrl: "https://abcd.supabase.co",
+        bucketName: "bundles",
+      }),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:/u);
+      for (const name of initProvider.secrets) {
+        expect(text).toContain(`secret("${name}")`);
+        expect(text).not.toContain(`process.env.${name}`);
+      }
+    }
+  });
+
+  it("reads the URL and bucket the agent records from the environment for the agent scaffold", () => {
+    expect(getConfigScaffold("bare").text).toContain(
+      "supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,",
+    );
   });
 
   it("names secrets secret() takes", () => {

@@ -21,21 +21,18 @@ export interface AzureConfigResources {
 
 /**
  * The config init writes. With the `resources` init set up, it names the
- * Cosmos DB account, and reads both connection strings with `secret()`,
- * from the environment and `.env.hotupdater`, then the config's `secrets`
- * adapter. Without them, as the agent scaffold writes it, it reads them
- * from the environment.
+ * Cosmos DB account. Either way it reads both connection strings with
+ * `secret()`, from the environment and `.env.hotupdater`, then the config's
+ * `secrets` adapter.
  */
 export const getConfigScaffold = (
   build: BuildType,
   resources?: AzureConfigResources,
 ): HotUpdaterConfigScaffold => {
-  const read = (name: string) =>
-    resources === undefined ? `process.env.${name}!` : `secret("${name}")`;
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/azure", named: ["azureBlobStorage"] }],
     configString: `azureBlobStorage({
-    connectionString: ${read("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING")},
+    connectionString: secret("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING"),
     containerName: "${BLOB_CONTAINER}",
   })`,
   };
@@ -47,7 +44,7 @@ export const getConfigScaffold = (
         : `
     endpoint: ${JSON.stringify(resources.cosmosEndpoint)},`
     }
-    connectionString: ${read("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING")},
+    connectionString: secret("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING"),
   })`,
   };
   const builder = new ConfigBuilder()
@@ -62,10 +59,8 @@ export const getConfigScaffold = (
         },
       ],
       configString: "[apiKeys(), insights(), remoteConfig()]",
-    });
-  if (resources !== undefined) {
-    builder.addImport({ pkg: "hot-updater", named: ["secret"] });
-  }
+    })
+    .addImport({ pkg: "hot-updater", named: ["secret"] });
 
   return createHotUpdaterConfigScaffoldFromBuilder(builder);
 };

@@ -24,8 +24,9 @@ export interface AwsConfigResources {
  * The config init writes. With the `resources` init set up, it names them,
  * and an account's access keys are read with `secret()`, from the
  * environment and `.env.hotupdater`, then the config's `secrets` adapter.
- * Without them, as the agent scaffold writes it, it reads every value from
- * the environment. A profile or SSO sign-in is each person's own.
+ * Without them, as the agent scaffold writes it before the agent creates the
+ * resources, it reads their names from the environment, where the agent
+ * records them. A profile or SSO sign-in is each person's own.
  */
 export const getConfigScaffold = (
   build: BuildType,
@@ -96,17 +97,7 @@ const awsOptions = {
           name: "awsOptions",
           strategy: "merge-object",
           replaceIncompatibleProperties: ["credentials"],
-          code:
-            resources === undefined
-              ? `
-const awsOptions = {
-  region: ${region},
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-  },
-};`.trim()
-              : `
+          code: `
 const awsOptions = {
   region: ${region},
   credentials: {
@@ -150,9 +141,7 @@ const awsOptions = {
       });
       break;
     case "account":
-      if (resources !== undefined) {
-        builder.addImport({ pkg: "hot-updater", named: ["secret"] });
-      }
+      builder.addImport({ pkg: "hot-updater", named: ["secret"] });
       break;
   }
 

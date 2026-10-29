@@ -34,12 +34,9 @@ Configure your CLI to connect to your self-hosted server:
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { apiKeys, insights } from "hot-updater/plugins"; // [!code ++]
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   build, // Your existing build adapter
@@ -49,7 +46,7 @@ export default defineConfig({
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: {
       // [!code ++]
-      Authorization: `Bearer ${adminToken}`, // [!code ++]
+      Authorization: async () => `Bearer ${await adminToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
   plugins: [insights(), apiKeys()], // The plugins the server runs // [!code ++]
@@ -99,16 +96,13 @@ configuration. `createHotUpdater` needs the server's own database and throws
 ### Secure example
 
 ```typescript title="hot-updater.config.ts"
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater/admin",
   commonHeaders: {
     // [!code ++]
-    Authorization: `Bearer ${adminToken}`, // [!code ++]
+    Authorization: async () => `Bearer ${await adminToken()}`, // [!code ++]
   }, // [!code ++]
 });
 ```
@@ -123,7 +117,7 @@ the server setup.
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
   commonHeaders: {
-    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!, // [!code ++]
+    "X-Internal-Service-Key": secret("INTERNAL_SERVICE_KEY"), // [!code ++]
   },
 });
 ```

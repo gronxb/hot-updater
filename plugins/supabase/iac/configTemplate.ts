@@ -16,7 +16,9 @@ export interface SupabaseConfigResources {
  * The config init writes. With the `resources` init set up, it names them,
  * and reads the service role key with `secret()`, from the environment and
  * `.env.hotupdater`, then the config's `secrets` adapter. Without them, as
- * the agent scaffold writes it, it reads every value from the environment.
+ * the agent scaffold writes it before the agent creates the project, it
+ * reads the URL and bucket from the environment, where the agent records
+ * them, and the key with `secret()` alike.
  */
 export const getConfigScaffold = (
   build: BuildType,
@@ -26,10 +28,7 @@ export const getConfigScaffold = (
     resources === undefined
       ? "process.env.HOT_UPDATER_SUPABASE_URL!"
       : JSON.stringify(resources.supabaseUrl);
-  const serviceRoleKey =
-    resources === undefined
-      ? "process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!"
-      : 'secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY")';
+  const serviceRoleKey = 'secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY")';
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -62,9 +61,7 @@ export const getConfigScaffold = (
       ],
       configString: "[apiKeys(), insights(), remoteConfig()]",
     });
-  if (resources !== undefined) {
-    builder.addImport({ pkg: "hot-updater", named: ["secret"] });
-  }
+  builder.addImport({ pkg: "hot-updater", named: ["secret"] });
 
   return createHotUpdaterConfigScaffoldFromBuilder(builder);
 };

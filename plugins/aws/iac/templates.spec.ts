@@ -203,14 +203,70 @@ export default defineConfig({
     expect(updated).not.toContain("fromSSO(");
   });
 
+  it("moves a 1.1 config's access keys from process.env to secret() when init runs again", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-aws-"),
+    );
+    tempDirs.push(tempDir);
+    const configPath = path.join(tempDir, "hot-updater.config.ts");
+    await fs.writeFile(
+      configPath,
+      `import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+  },
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: s3Storage({ ...awsOptions, bucketName: "bundles" }),
+  database: dynamoDB({ ...awsOptions, tableName: "hot-updater" }),
+});
+`,
+    );
+
+    await writeHotUpdaterConfig(
+      getConfigScaffold("bare", { mode: "account" }, RESOURCES),
+      configPath,
+    );
+
+    const updated = await fs.readFile(configPath, "utf8");
+    expect(updated).toContain(
+      'accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID"),',
+    );
+    expect(updated).toContain(
+      'secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY"),',
+    );
+    expect(updated).not.toContain("process.env.HOT_UPDATER_S3_ACCESS_KEY_ID");
+    expect(updated).not.toContain(
+      "process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+    );
+    expect(updated.match(/from "hot-updater";/gu)).toHaveLength(1);
+    expect(updated).toMatch(
+      /import \{[^}]*\bsecret\b[^}]*\} from "hot-updater";/u,
+    );
+  });
+
   it("renders access key credentials for account mode", () => {
     const scaffold = getConfigScaffold("bare", { mode: "account" });
 
     expect(scaffold.text).toContain(
-      "accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!",
+      'accessKeyId: secret("HOT_UPDATER_S3_ACCESS_KEY_ID")',
     );
     expect(scaffold.text).toContain(
-      "secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!",
+      'secretAccessKey: secret("HOT_UPDATER_S3_SECRET_ACCESS_KEY")',
+    );
+    expect(scaffold.text).toContain(
+      'import { defineConfig, localSecrets, secret } from "hot-updater";',
+    );
+    expect(scaffold.text).not.toMatch(
+      /process\.env\.HOT_UPDATER_S3_(ACCESS|SECRET)|secretEnv|"secret:/u,
     );
     expect(scaffold.text).not.toContain("fromSSO(");
     expect(scaffold.text).not.toContain("fromIni(");

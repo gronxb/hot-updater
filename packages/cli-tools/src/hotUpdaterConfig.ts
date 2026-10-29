@@ -338,15 +338,26 @@ const isHotUpdaterEnvRead = (expression: Expression): boolean => {
   );
 };
 
+/** `secret("<name>")`, the credential init writes. */
+const isSecretCall = (expression: Expression): boolean =>
+  expression.type === "CallExpression" &&
+  expression.callee.type === "Identifier" &&
+  expression.callee.name === "secret" &&
+  expression.arguments.length === 1 &&
+  expression.arguments[0]?.type === "Literal" &&
+  typeof expression.arguments[0].value === "string";
+
 /**
  * A value init writes into a managed adapter's options: a string, a
- * `process.env.HOT_UPDATER_*` read, as configs of 1.1 read every value, or
- * an object of only those, such as `credentials`. Init replaces it with
- * what its run resolves; any other value is the project's own and kept.
+ * `process.env.HOT_UPDATER_*` read, as configs of 1.1 read every value, a
+ * `secret("<name>")`, or an object of only those, such as `credentials`.
+ * Init replaces it with what its run resolves; any other value is the
+ * project's own and kept.
  */
 const isInitWrittenValue = (expression: Expression): boolean =>
   (expression.type === "Literal" && typeof expression.value === "string") ||
   isHotUpdaterEnvRead(expression) ||
+  isSecretCall(expression) ||
   (expression.type === "ObjectExpression" &&
     expression.properties.length > 0 &&
     expression.properties.every(

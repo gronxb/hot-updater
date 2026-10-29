@@ -36,17 +36,14 @@ import { existsSync } from "node:fs";
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
-import { defineConfig, localSecrets } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins"; // [!code ++]
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -54,8 +51,8 @@ export default defineConfig({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("R2_SECRET_ACCESS_KEY"),
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
@@ -64,7 +61,7 @@ export default defineConfig({
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: {
       // [!code ++]
-      Authorization: `Bearer ${adminToken}`, // [!code ++]
+      Authorization: async () => `Bearer ${await adminToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
   plugins: [insights(), apiKeys()], // [!code ++]

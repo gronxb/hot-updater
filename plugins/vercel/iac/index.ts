@@ -635,7 +635,7 @@ export const runInit = async ({
   }
 
   p.log.success("Generated '.env.hotupdater' file with Vercel settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build, { secrets: true }), {
+  await writeHotUpdaterFiles(getConfigScaffold(build), {
     cwd,
     settings: "Vercel",
   });

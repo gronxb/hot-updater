@@ -13,8 +13,7 @@ const secretNames = (text: string) =>
 
 describe("Vercel config scaffold", () => {
   it("reads the Blob token and the database URL with secret()", () => {
-    expect(getConfigScaffold("bare", { secrets: true }).text)
-      .toMatchInlineSnapshot(`
+    expect(getConfigScaffold("bare").text).toMatchInlineSnapshot(`
         "import { bare } from "@hot-updater/bare";
         import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
         import { defineConfig, localSecrets, secret } from "hot-updater";
@@ -41,13 +40,19 @@ describe("Vercel config scaffold", () => {
   });
 
   it("reads the same credentials init stores in a team store", () => {
-    expect(
-      secretNames(getConfigScaffold("bare", { secrets: true }).text),
-    ).toEqual([...initProvider.secrets].sort());
+    expect(secretNames(getConfigScaffold("bare").text)).toEqual(
+      [...initProvider.secrets].sort(),
+    );
   });
 
-  it("reads every value from the environment for the agent scaffold", () => {
-    expect(getConfigScaffold("bare").text).not.toContain("secret(");
+  it("reads every credential with secret(), in init's config and the agent scaffold's", () => {
+    for (const { text } of [getConfigScaffold("bare")]) {
+      expect(text).not.toMatch(/secretEnv|"secret:/u);
+      for (const name of initProvider.secrets) {
+        expect(text).toContain(`secret("${name}")`);
+        expect(text).not.toContain(`process.env.${name}`);
+      }
+    }
   });
 
   it("names secrets secret() takes", () => {

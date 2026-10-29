@@ -17,8 +17,9 @@ export interface CloudflareConfigResources {
  * The config init writes. With the `resources` init set up, it names them,
  * and reads the API token and R2 keys with `secret()`, from the
  * environment and `.env.hotupdater`, then the config's `secrets` adapter.
- * Without them, as the agent scaffold writes it, it reads every value from
- * the environment.
+ * Without them, as the agent scaffold writes it before the agent creates the
+ * resources, it reads their IDs from the environment, where the agent
+ * records them, and the credentials with `secret()` alike.
  */
 export const getConfigScaffold = (
   build: RunInitOptions["build"],
@@ -43,8 +44,8 @@ export const getConfigScaffold = (
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
     },
   })`,
         })
@@ -53,9 +54,10 @@ export const getConfigScaffold = (
           configString: `d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
   })`,
-        }),
+        })
+        .addImport({ pkg: "hot-updater", named: ["secret"] }),
     );
   }
 

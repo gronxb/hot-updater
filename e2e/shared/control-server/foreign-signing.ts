@@ -57,8 +57,12 @@ export function withSecretSigning(source: string): string {
   );
   const hotUpdaterImport = /import\s*\{([^}]*)\}\s*from\s*"hot-updater";/u;
   const named = signed.match(hotUpdaterImport)?.[1];
-  if (named === undefined) return `import { secret } from "hot-updater";\n${signed}`;
-  const names = named.split(",").map((name) => name.trim()).filter(Boolean);
+  if (named === undefined)
+    return `import { secret } from "hot-updater";\n${signed}`;
+  const names = named
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
   return names.includes("secret")
     ? signed
     : signed.replace(
