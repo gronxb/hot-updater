@@ -224,10 +224,12 @@ describe("hot-updater secrets issue bundle-signing-key", () => {
     );
   });
 
-  it("keeps a stored key without --replace, saying why in one line", async () => {
+  it("keeps a stored key without --replace, saying why in one line, and still sets signing", async () => {
     const existing = createPem();
     const { store } = teamStore({ [NAME]: existing });
     configure({ secrets: store });
+    // As after `secrets put bundle-signing-key <key.pem>`: a key, no signing.
+    await writeConfig();
 
     await withTTY(true, () => handleSigningKeyIssue());
 
@@ -239,8 +241,12 @@ describe("hot-updater secrets issue bundle-signing-key", () => {
       "Public key",
       fingerprintOf(existing),
       "Source      spec://bundle-signing-key",
+      'Config      signing: secret("bundle-signing-key")',
       "Kept: apps already shipped reject bundles signed with a new key.",
     ]);
+    expect(await readConfig()).toContain(
+      'signing: secret("bundle-signing-key"),',
+    );
     expect(printed()).not.toContain(existing.split("\n")[1]!);
   });
 
@@ -270,9 +276,11 @@ describe("hot-updater secrets issue bundle-signing-key", () => {
     configure();
 
     await withTTY(true, () => handleSigningKeyIssue());
+    // No hot-updater.config.ts to edit: the line to set is named.
     expect(logged("step").split("\n")).toEqual([
       "Bundle signing key set by the environment",
       "Source  HOT_UPDATER_BUNDLE_SIGNING_KEY",
+      'Config  set signing: secret("bundle-signing-key")',
     ]);
 
     await withTTY(true, () => handleSigningKeyIssue(NAME, { replace: true }));

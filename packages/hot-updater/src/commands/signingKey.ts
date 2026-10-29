@@ -84,7 +84,8 @@ export interface SigningKeyIssueOptions {
  * stores it as `name` through the config's `secrets` adapter, reads it
  * back, and names its public key's fingerprint, as `secrets put
  * bundle-signing-key` names a key you have. A config without `signing`
- * gets `signing: secret("<name>")`; one that sets it is left as it is.
+ * gets `signing: secret("<name>")`, also when the key is kept, such as one
+ * `secrets put` stored; one that sets it is left as it is.
  *
  * - A key the environment sets is kept: `--replace` refuses until it is
  *   unset.
@@ -117,6 +118,7 @@ export const handleSigningKeyIssue = async (
         ui.block(`${LABEL} set by the environment`, [
           name !== KIND && ui.kv("Name", name),
           ui.kv("Source", listNames(overrides)),
+          await configRow(signing, name, cwd),
         ]),
       );
       return;
@@ -132,6 +134,8 @@ export const handleSigningKeyIssue = async (
           name !== KIND && ui.kv("Name", name),
           previous && ui.kv("Public key", previous),
           ui.kv("Source", ui.fitPath(found.source)),
+          // A key kept still signs: a config without signing gets it.
+          await configRow(signing, name, cwd),
           `Kept: ${SHIPPED_APPS}`,
         ]),
       );

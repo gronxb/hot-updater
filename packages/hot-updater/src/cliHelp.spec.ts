@@ -309,8 +309,11 @@ describe("CLI commands", () => {
     // No terminal, and localSecrets(): a key the runner keeps would be lost.
     const signingKey = run("secrets", "issue", "bundle-signing-key");
     expect(signingKey.status).toBe(1);
+    // Without a terminal, or in CI, which names its variable.
     expect(refusal(signingKey)).toEqual([
-      "Can't create a bundle signing key without a terminal.",
+      expect.stringMatching(
+        /^Can't create a bundle signing key (without a terminal|in CI \(CI is set\))\.$/u,
+      ),
       "Run in a terminal: npx hot-updater secrets issue bundle-signing-key",
     ]);
     const pem = run("secrets", "issue", "asc-api-key", "--pem", "a.pem");
