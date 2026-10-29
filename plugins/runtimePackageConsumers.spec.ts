@@ -161,6 +161,11 @@ describe("packed provider entrypoints", () => {
       handler: "@hot-updater/firebase/functions",
     },
     {
+      directory: "neon",
+      packageName: "@hot-updater/neon",
+      exports: ["neonStorage", "postgres"],
+    },
+    {
       directory: "postgres",
       packageName: "@hot-updater/postgres",
       exports: ["postgres"],
