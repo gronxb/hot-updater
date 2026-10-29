@@ -188,7 +188,7 @@ export const readSecretWithSource = async (
     typeof value === "string" && value.length > 0;
   const store = getLocalSecretsStore(secrets);
   if (!store) {
-    const value = (await secrets.get([name], { cwd }))[name];
+    const value = (await readSecrets(secrets, [name], cwd))[name];
     return held(value)
       ? { value, source: describeSecret(secrets, name) }
       : undefined;
@@ -200,7 +200,9 @@ export const readSecretWithSource = async (
       source: `${secretVariableName(name)} (environment)`,
     };
   }
-  const value = await store.read(name, cwd);
+  const value = await store.read(name, cwd).catch((error: unknown) => {
+    throw secretReadError(secrets, [name], error);
+  });
   return held(value) ? { value, source: store.file(name, cwd) } : undefined;
 };
 
@@ -265,6 +267,33 @@ export const setConfiguredSecrets = (secrets: SecretsAdapter): void => {
  */
 export const getConfiguredSecrets = (): SecretsAdapter =>
   (globalThis as SecretsSlot)[CONFIGURED_SECRETS] ?? localSecrets();
+
+/**
+ * `names` from `secrets` in one `get`. A read that fails names the secrets
+ * and the adapter, with the adapter's own error on the next line, such as
+ * `EACCES: permission denied, open '<file>'`.
+ */
+export const readSecrets = async (
+  secrets: SecretsAdapter,
+  names: readonly string[],
+  cwd: string,
+): Promise<Readonly<Record<string, string | undefined>>> => {
+  try {
+    return await secrets.get(names, { cwd });
+  } catch (error) {
+    throw secretReadError(secrets, names, error);
+  }
+};
+
+const secretReadError = (
+  secrets: SecretsAdapter,
+  names: readonly string[],
+  error: unknown,
+) =>
+  new Error(
+    `Couldn't read ${list(names)} from the ${secrets.name} secrets adapter.\n${(error instanceof Error ? error.message : String(error)).split("\n")[0]}`,
+    { cause: error },
+  );
 
 /** Where an adapter keeps `name`, for messages. */
 export const describeSecret = (secrets: SecretsAdapter, name: string) =>
@@ -348,7 +377,7 @@ const readSecretEnv = async <const TName extends string>(
     const secrets = getConfiguredAdapter(
       scope?.secrets ?? getConfiguredSecrets(),
     );
-    const read = secrets ? await secrets.get(fromStore, { cwd }) : {};
+    const read = secrets ? await readSecrets(secrets, fromStore, cwd) : {};
     const missing = fromStore.filter((name) => {
       const value = Object.hasOwn(read, name) ? read[name] : undefined;
       if (typeof value !== "string" || value === "") return true;

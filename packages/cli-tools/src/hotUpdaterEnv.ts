@@ -156,3 +156,21 @@ export const readLoadedHotUpdaterEnv = async (
     throw error;
   }
 };
+
+/**
+ * `file`, an env file a command was given, relative to `cwd`, as
+ * `parseLoadedEnv` reads it; a file that can't be read is refused by name.
+ */
+export const readLoadedEnvFile = async (
+  file: string,
+  cwd: string,
+): Promise<Readonly<Record<string, string>>> => {
+  try {
+    return parseLoadedEnv(await fs.readFile(path.resolve(cwd, file), "utf-8"));
+  } catch (error) {
+    throw new Error(
+      `Can't read ${file}.\n${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+};

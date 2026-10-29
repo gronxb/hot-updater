@@ -11,6 +11,7 @@ import {
   isSecretName,
   loadConfig,
   p,
+  readSecrets,
   registerSecretValue,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
@@ -165,7 +166,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         );
       }
       ({ secrets } = await loadConfig(null));
-      const held = (await secrets.get([secretName], { cwd }))[secretName];
+      const held = (await readSecrets(secrets, [secretName], cwd))[secretName];
       if (typeof held === "string" && held.trim()) {
         throw new Error(
           [

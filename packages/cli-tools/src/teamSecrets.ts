@@ -2,11 +2,12 @@ import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
 import {
   getHotUpdaterEnvValue,
+  readLoadedEnvFile,
   readLoadedHotUpdaterEnv,
 } from "./hotUpdaterEnv";
 import { loadConfig } from "./loadConfig";
 import { registerSecretValue } from "./secretMasking";
-import { describeSecret, getConfiguredAdapter } from "./secrets";
+import { describeSecret, getConfiguredAdapter, readSecrets } from "./secrets";
 
 /**
  * The client API key the managed servers' `apiKeys()` gives an app, which
@@ -53,7 +54,7 @@ export const readMissingFromTeamSecrets = async (
     (name) => getHotUpdaterEnvValue(env, name) === undefined,
   );
   if (missing.length === 0) return {};
-  const held = await secrets.get(missing, { cwd });
+  const held = await readSecrets(secrets, missing, cwd);
   // No prototype: a variable may be named __proto__.
   const values: Record<string, string> = Object.create(null);
   for (const name of missing) {
@@ -67,8 +68,9 @@ export const readMissingFromTeamSecrets = async (
 };
 
 /**
- * Stores each of `names` that `.env.hotupdater` holds through `secrets`,
- * then reads them back in one call. The file is left as it is. Returns the
+ * Stores each of `names` that `envFile`, `.env.hotupdater` by default,
+ * holds through `secrets`, then reads them back in one call. Only the file
+ * is read, never the environment. The file is left as it is. Returns the
  * names stored, in the order of `names`; throws when the adapter reads
  * back another value.
  */
@@ -76,8 +78,13 @@ export const storeEnvFileSecrets = async (
   secrets: SecretsAdapter,
   names: readonly string[],
   cwd: string,
+  /** An env file to read instead of `.env.hotupdater`, relative to `cwd`. */
+  envFile?: string,
 ): Promise<readonly string[]> => {
-  const file = await readLoadedHotUpdaterEnv(cwd);
+  const file =
+    envFile === undefined
+      ? await readLoadedHotUpdaterEnv(cwd)
+      : await readLoadedEnvFile(envFile, cwd);
   const values = new Map<string, string>();
   for (const name of names) {
     const value = Object.hasOwn(file, name) ? file[name]?.trim() : undefined;

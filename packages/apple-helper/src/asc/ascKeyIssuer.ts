@@ -17,6 +17,7 @@ import {
   type AppleWebSession,
   signInToAppStoreConnect,
 } from "./appleSignIn";
+import { PROGRAM_LICENSE_AGREEMENT_HINT } from "./programLicenseAgreement";
 
 const IRIS_URL = "https://appstoreconnect.apple.com/iris/v1";
 
@@ -97,9 +98,7 @@ const irisDetail = (body: string) => {
 
 /** What to do about a key App Store Connect would not create. */
 const createFailureHint = (status: number, body: string) => {
-  if (/agreement/iu.test(body)) {
-    return "The Account Holder must accept the new Apple Developer Program License\nAgreement at https://developer.apple.com/account, then run this again.";
-  }
+  if (/agreement/iu.test(body)) return PROGRAM_LICENSE_AGREEMENT_HINT;
   if (/limit|maximum/iu.test(body)) {
     return `The team has the most API keys App Store Connect allows. Revoke one at:\n${ASC_INTEGRATIONS_URL}`;
   }

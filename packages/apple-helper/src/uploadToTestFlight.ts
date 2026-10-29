@@ -12,6 +12,10 @@ import {
 } from "@hot-updater/cli-tools";
 import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 
+import {
+  isProgramLicenseAgreementError,
+  PROGRAM_LICENSE_AGREEMENT_HINT,
+} from "./asc/programLicenseAgreement";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readIpaInfo } from "./utils/readIpaInfo";
 import {
@@ -552,7 +556,9 @@ const createAppStoreConnectRequest = ({
       }
       if (response.status === 403) {
         throw new Error(
-          `${error.message}\nUploads need a key with the Admin, App Manager, or Developer role.`,
+          isProgramLicenseAgreementError(error.errors)
+            ? `${action} failed (HTTP 403).\n${PROGRAM_LICENSE_AGREEMENT_HINT}`
+            : `${error.message}\nUploads need a key with the Admin, App Manager, or Developer role.`,
           { cause: error },
         );
       }

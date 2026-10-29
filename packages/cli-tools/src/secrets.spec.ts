@@ -317,6 +317,58 @@ describe("readSecretWithSource", () => {
     ).resolves.toBeUndefined();
     expect(adapter.get).toHaveBeenCalledTimes(2);
   });
+
+  it("names the secret and the adapter over an adapter's read error, in two lines", async () => {
+    const cause = new Error(
+      "EACCES: permission denied, open '/team/asc-api-key.json'",
+    );
+    const secrets: SecretsAdapter = {
+      name: "sharedDir",
+      get: async () => {
+        throw cause;
+      },
+      set: async () => {},
+    };
+
+    const error = await readSecretWithSource(
+      secrets,
+      "asc-api-key",
+      directory,
+    ).then(
+      () => new Error("Expected a rejection."),
+      (thrown: unknown) => thrown as Error,
+    );
+
+    expect(error.message).toBe(
+      "Couldn't read asc-api-key from the sharedDir secrets adapter.\nEACCES: permission denied, open '/team/asc-api-key.json'",
+    );
+    expect(error.cause).toBe(cause);
+  });
+
+  it.runIf(process.platform !== "win32" && process.getuid?.() !== 0)(
+    "names the secret and localSecrets() over a file it can't read",
+    async () => {
+      const file = await writeLocalKey("asc-api-key", "from-file", directory);
+      await fs.chmod(file, 0o000);
+      try {
+        const error = await readSecretWithSource(
+          localSecrets(),
+          "asc-api-key",
+          directory,
+        ).then(
+          () => new Error("Expected a rejection."),
+          (thrown: unknown) => thrown as Error,
+        );
+
+        expect(error.message.split("\n")).toEqual([
+          "Couldn't read asc-api-key from the localSecrets secrets adapter.",
+          `EACCES: permission denied, open '${file}'`,
+        ]);
+      } finally {
+        await fs.chmod(file, 0o600);
+      }
+    },
+  );
 });
 
 describe("secretEnv", () => {

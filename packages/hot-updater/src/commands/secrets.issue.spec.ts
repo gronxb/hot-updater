@@ -64,7 +64,7 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
     keyId: "NEWKEY0001",
     issuerId: "issuer-1",
     name: request.name,
-    team: {},
+    team: { teamId: "Q3QT4ZF343", name: "Example Team" },
     ...ascKey,
   })),
 }));
@@ -242,7 +242,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(ascKey.revoke).not.toHaveBeenCalled();
     // The run ends with the key it stored and where.
     expect(lastLogged()).toBe(
-      "App Store Connect API key stored\nKey ID  NEWKEY0001\nSource  spec://asc-api-key",
+      "App Store Connect API key stored\nKey ID  NEWKEY0001\nTeam    Example Team (Q3QT4ZF343)\nSource  spec://asc-api-key",
     );
   });
 
@@ -330,7 +330,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     );
     expect(printed()).not.toContain("issueSpecOldKey01");
     expect(printed()).toContain(
-      "App Store Connect API key stored\nKey ID  NEWKEY0001\nSource  spec://asc-api-key",
+      "App Store Connect API key stored\nKey ID  NEWKEY0001\nTeam    Example Team (Q3QT4ZF343)\nSource  spec://asc-api-key",
     );
   });
 
@@ -378,7 +378,7 @@ describe("hot-updater secrets issue asc-api-key", () => {
     expect(printed()).not.toContain("issueSpecOldKey01");
     expect(ascKey.revoke).not.toHaveBeenCalled();
     expect(printed()).toContain(
-      "App Store Connect API key stored\nKey ID  NEWKEY0001\nSource  ",
+      "App Store Connect API key stored\nKey ID  NEWKEY0001\nTeam    Example Team (Q3QT4ZF343)\nSource  ",
     );
   });
 

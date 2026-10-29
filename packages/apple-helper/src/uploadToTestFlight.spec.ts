@@ -1023,6 +1023,54 @@ describe("uploadToTestFlight", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("names the agreement to accept when App Store Connect holds the team's requests", async () => {
+    const routes = successRoutes();
+    routes[`GET ${appsUrl}`] = {
+      status: 403,
+      json: {
+        errors: [
+          {
+            code: "FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED",
+            detail:
+              "You currently don't have access to this membership resource. To resolve this issue, your team's Account Holder, Kang Sungyu, must agree to the latest Program License Agreement.",
+          },
+        ],
+      },
+    };
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow(
+      "Finding the App Store Connect app failed (HTTP 403).\nThe Account Holder must accept the latest Program License Agreement:\nhttps://developer.apple.com/account",
+    );
+  });
+
+  it("names the roles that upload when App Store Connect refuses the key otherwise", async () => {
+    const routes = successRoutes();
+    routes[`GET ${appsUrl}`] = {
+      status: 403,
+      json: { errors: [{ detail: "The key may not do this." }] },
+    };
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow(
+      "Uploads need a key with the Admin, App Manager, or Developer role.",
+    );
+  });
+
   it("reports App Store Connect's errors for a build it rejects", async () => {
     const routes = successRoutes();
     routes[`GET ${API}/v1/buildUploads/upload-1`] = {
