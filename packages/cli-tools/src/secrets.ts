@@ -342,12 +342,18 @@ const list = (names: readonly string[]) =>
 export const secret = (name: string): SecretRef => {
   if (typeof name !== "string" || !isSecretName(name)) {
     throw new Error(
-      `secret() takes up to 64 letters, digits, ".", "_", and "-", starting with a letter or digit, and ${JSON.stringify(name)} is not that.`,
+      [
+        `secret() can't take the name ${JSON.stringify(name)}.`,
+        'Use up to 64 letters, digits, ".", "_", "-"; start with a letter or digit.',
+      ].join("\n"),
     );
   }
   if (isReservedVariableName(name)) {
     throw new Error(
-      `secret() refuses ${name}: it changes how a process loads code or which credentials Hot Updater uses.`,
+      [
+        `secret() refuses ${name}.`,
+        "It changes how a process loads code, or the credentials Hot Updater uses.",
+      ].join("\n"),
     );
   }
   const scope = (globalThis as SecretsSlot)[LOADING_SCOPE];
@@ -401,7 +407,11 @@ const readSecretRef = async (
   );
   if (secrets === undefined) {
     throw new Error(
-      `secret("${name}") has no value: set ${variable} in the environment or .env.hotupdater, or set the config's secrets to a team store.`,
+      [
+        `secret("${name}") has no value.`,
+        `Set ${variable} in the environment or .env.hotupdater.`,
+        "Or set the config's secrets to a team store.",
+      ].join("\n"),
     );
   }
   let values: Readonly<Record<string, string | undefined>> | undefined;
@@ -422,7 +432,11 @@ const readSecretRef = async (
   const value = Object.hasOwn(values, name) ? values[name] : undefined;
   if (typeof value !== "string" || value === "") {
     throw new Error(
-      `secret("${name}") has no value: ${variable} is not set in the environment or .env.hotupdater, and the ${secrets.name} secrets adapter does not hold it (${describeSecret(secrets, name)}).`,
+      [
+        `secret("${name}") has no value.`,
+        `It isn't in ${describeSecret(secrets, name)}.`,
+        `Store it there, or set ${variable}.`,
+      ].join("\n"),
     );
   }
   registerSecretValue(value);

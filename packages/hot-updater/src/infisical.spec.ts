@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { maskSecretValues } from "@hot-updater/cli-tools";
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { infisical } from "./infisical";
@@ -226,7 +227,13 @@ describe("infisical", () => {
     await expect(
       adapter({ path: "ci/" }).get(["asc-api-key"], { cwd }),
     ).rejects.toThrow(
-      `Infisical at ${SITE} found no project ${PROJECT}, environment prod, folder /ci to list the secrets (404): Folder with path '/ci' in environment 'prod' was not found. Check projectId, environment, and path.`,
+      [
+        "Infisical found nothing to list the secrets (404).",
+        `Instance: ${SITE}`,
+        "Folder with path '/ci' in environment 'prod' was not found.",
+        `Project ${PROJECT}, environment prod, folder /ci.`,
+        "Check projectId, environment, and path.",
+      ].join("\n"),
     );
     expect(calls[1]!.url.searchParams.get("secretPath")).toBe("/ci");
   });
@@ -332,7 +339,10 @@ describe("infisical", () => {
     process.env["INFISICAL_MACHINE_IDENTITY_ID"] = "identity-1";
 
     await expect(adapter().get(["a"], { cwd })).rejects.toThrow(
-      "infisical() found INFISICAL_MACHINE_IDENTITY_ID outside a GitHub Actions job with `permissions: id-token: write`.",
+      [
+        "infisical() can't use INFISICAL_MACHINE_IDENTITY_ID here.",
+        "It signs in from a GitHub Actions job with `id-token: write`.",
+      ].join("\n"),
     );
     expect(calls).toEqual([]);
   });
@@ -365,14 +375,18 @@ describe("infisical", () => {
     expect(calls[0]!.headers["authorization"]).toBe("Bearer explicit-token");
   });
 
-  it("names every way to sign in, in two lines with the docs, when none is set", async () => {
+  it("names every way to sign in, a line each with the docs, when none is set", async () => {
     const error = await adapter()
       .get(["a"], { cwd })
       .catch((thrown: unknown) => thrown as Error);
 
     expect(error.message).toBe(
       [
-        "infisical() found no Infisical sign-in: set INFISICAL_TOKEN, INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, or INFISICAL_MACHINE_IDENTITY_ID.",
+        "infisical() found no Infisical sign-in. Set one of:",
+        "- INFISICAL_TOKEN",
+        "- INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
+        "  with INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+        "- INFISICAL_MACHINE_IDENTITY_ID, in GitHub Actions",
         "https://hot-updater.dev/docs/guides/secrets-adapters/infisical#sign-in-on-your-machine",
       ].join("\n"),
     );
@@ -410,19 +424,33 @@ describe("infisical", () => {
       "a rejected sign-in",
       "POST /api/v1/auth/universal-auth/login",
       refusal(401, "UnauthorizedError", "Invalid credentials"),
-      `Infisical at ${SITE} rejected the credentials to sign in with Universal Auth (401): Invalid credentials. Check the identity's credentials or the access token.`,
+      [
+        "Infisical rejected the credentials to sign in with Universal Auth (401).",
+        `Instance: ${SITE}`,
+        "Invalid credentials",
+        "Check the identity's credentials or the access token.",
+      ].join("\n"),
     ],
     [
       "a sign-in route that is not there",
       "POST /api/v1/auth/universal-auth/login",
       new Response("not found", { status: 404 }),
-      `Infisical at ${SITE} answered 404 to sign in with Universal Auth. Check siteUrl and the identity's authentication settings.`,
+      [
+        "Infisical answered 404 to sign in with Universal Auth.",
+        `Instance: ${SITE}`,
+        "Check the URL and the identity's sign-in settings.",
+      ].join("\n"),
     ],
     [
       "a malformed token",
       "GET /api/v4/secrets",
       refusal(403, "TokenError", "The provided access token is malformed."),
-      `Infisical at ${SITE} rejected the credentials to list the secrets (403): The provided access token is malformed. Check the identity's credentials or the access token.`,
+      [
+        "Infisical rejected the credentials to list the secrets (403).",
+        `Instance: ${SITE}`,
+        "The provided access token is malformed.",
+        "Check the identity's credentials or the access token.",
+      ].join("\n"),
     ],
     [
       "a missing permission",
@@ -432,19 +460,28 @@ describe("infisical", () => {
         "PermissionDenied",
         "You are not allowed to read on secrets",
       ),
-      `Infisical at ${SITE} does not let the identity list the secrets in project ${PROJECT}, environment prod, folder / (403): You are not allowed to read on secrets. Give it a project role that allows it: Viewer reads, Member stores.`,
+      [
+        "Infisical doesn't let the identity list the secrets (403).",
+        `Instance: ${SITE}`,
+        "You are not allowed to read on secrets",
+        `Project ${PROJECT}, environment prod, folder /.`,
+        "Give it a project role that can: Viewer reads, Member stores.",
+      ].join("\n"),
     ],
     [
       "a server error",
       "GET /api/v4/secrets",
       new Response("<html>bad gateway</html>", { status: 502 }),
-      `Infisical at ${SITE} answered 502 to list the secrets.`,
+      `Infisical answered 502 to list the secrets.\nInstance: ${SITE}`,
     ],
   ])("reports %s", async (_, key, response, message) => {
     universalAuthEnv();
     route = server({}, { [key]: () => response });
 
-    await expect(adapter().get(["a"], { cwd })).rejects.toThrow(message);
+    const error = await adapter()
+      .get(["a"], { cwd })
+      .catch((thrown: unknown) => thrown as Error);
+    expect(error.message).toBe(message);
   });
 
   it("refuses to write without the permission, and does not create instead", async () => {
@@ -462,7 +499,7 @@ describe("infisical", () => {
     );
 
     await expect(adapter().set("a", "1", { cwd })).rejects.toThrow(
-      "does not let the identity update a in project",
+      "Infisical doesn't let the identity update a (403).",
     );
     expect(calls.map((call) => call.method)).toEqual(["POST", "PATCH"]);
   });
@@ -493,7 +530,9 @@ describe("infisical", () => {
       .catch((thrown: unknown) => thrown);
 
     expect(error).toEqual(
-      new Error(`Could not reach ${SITE} to sign in with Universal Auth.`),
+      new Error(
+        `Couldn't reach Infisical to sign in with Universal Auth.\nInstance: ${SITE}`,
+      ),
     );
   });
 
@@ -508,7 +547,15 @@ describe("infisical", () => {
     const secrets = adapter({ siteUrl });
 
     await expect(secrets.get(["a"], { cwd })).rejects.toThrow(
-      "infisical() takes siteUrl as an HTTPS URL, or HTTP on a loopback address",
+      "\nUse an HTTPS URL, or HTTP on a loopback address.",
+    );
+    const error = (await secrets
+      .get(["a"], { cwd })
+      .catch((thrown: unknown) => thrown)) as Error;
+    expect(error.message.split("\n")[0]).toBe(
+      siteUrl.includes("@")
+        ? "infisical() can't use siteUrl."
+        : `infisical() can't use siteUrl ${JSON.stringify(siteUrl)}.`,
     );
     expect(calls).toEqual([]);
   });
@@ -596,7 +643,7 @@ describe("infisical", () => {
     await expect(
       infisical({ projectId: PROJECT }).get(["a"], { cwd }),
     ).rejects.toThrow(
-      "infisical() takes INFISICAL_DOMAIN as an HTTPS URL, or HTTP on a loopback address",
+      'infisical() can\'t use INFISICAL_DOMAIN "http://infisical.example.com".',
     );
     expect(calls).toEqual([]);
   });
@@ -658,7 +705,7 @@ describe("infisical", () => {
     );
 
     await expect(adapter().set("a", "1", { cwd })).rejects.toThrow(
-      `Infisical at ${SITE} answered 400 to create a: Something else is wrong.`,
+      `Infisical answered 400 to create a.\nInstance: ${SITE}\nSomething else is wrong`,
     );
     expect(calls.map((call) => call.method)).toEqual(["POST", "PATCH", "POST"]);
   });
@@ -678,7 +725,13 @@ describe("infisical", () => {
     );
 
     await expect(adapter().set("a", "1", { cwd })).rejects.toThrow(
-      `Infisical at ${SITE} does not let the identity create a in project ${PROJECT}, environment prod, folder / (403): You are not allowed to create on secrets. Give it a project role that allows it: Viewer reads, Member stores.`,
+      [
+        "Infisical doesn't let the identity create a (403).",
+        `Instance: ${SITE}`,
+        "You are not allowed to create on secrets",
+        `Project ${PROJECT}, environment prod, folder /.`,
+        "Give it a project role that can: Viewer reads, Member stores.",
+      ].join("\n"),
     );
   });
 
@@ -700,9 +753,7 @@ describe("infisical", () => {
 
     await expect(
       adapter({ path: "/ci" }).set("a", "1", { cwd }),
-    ).rejects.toThrow(
-      `found no project ${PROJECT}, environment prod, folder /ci to create a (404)`,
-    );
+    ).rejects.toThrow(`Project ${PROJECT}, environment prod, folder /ci.`);
   });
 
   it.each(["__proto__", "a/b", "a:b", " "])(
@@ -712,10 +763,10 @@ describe("infisical", () => {
       const secrets = adapter();
 
       await expect(secrets.get([name], { cwd })).rejects.toThrow(
-        `infisical() cannot name a secret ${JSON.stringify(name)}: Infisical takes no colon or slash, and no __proto__.`,
+        `infisical() can't name a secret ${JSON.stringify(name)}.\nInfisical takes no colon, no slash, and no __proto__.`,
       );
       await expect(secrets.set(name, "1", { cwd })).rejects.toThrow(
-        "infisical() cannot name a secret",
+        "infisical() can't name a secret",
       );
       expect(calls).toEqual([]);
     },
@@ -747,7 +798,7 @@ describe("infisical", () => {
     universalAuthEnv();
 
     await expect(adapter().set("a", value, { cwd })).rejects.toThrow(
-      "infisical() cannot store an empty a.",
+      "infisical() can't store an empty a.",
     );
     expect(calls).toEqual([]);
   });
@@ -758,7 +809,7 @@ describe("infisical", () => {
       universalAuthEnv();
 
       await expect(adapter().set("a", value, { cwd })).rejects.toThrow(
-        "infisical() cannot store a as it is: Infisical trims whitespace around a value.",
+        "infisical() can't store a as it is.\nInfisical trims whitespace around a value.",
       );
       expect(calls).toEqual([]);
     },
@@ -796,9 +847,71 @@ describe("infisical", () => {
     await expect(
       adapter().set("too-large", "A".repeat(1024 * 1024), { cwd }),
     ).rejects.toThrow(
-      "infisical() cannot store too-large: Infisical takes requests up to 1 MiB.",
+      "infisical() can't store too-large.\nInfisical takes requests up to 1 MiB.",
     );
     expect(calls).toEqual([]);
+  });
+
+  it("names the instance only when siteUrl or the environment sets it", async () => {
+    universalAuthEnv();
+    const denied = () =>
+      refusal(
+        403,
+        "PermissionDenied",
+        "You are not allowed to edit on secrets",
+      );
+    route = server({}, { "PATCH /api/v4/secrets/a": denied });
+
+    const cloud = (await infisical({ projectId: PROJECT })
+      .set("a", "1", { cwd })
+      .catch((thrown: unknown) => thrown)) as Error;
+    expect(cloud.message.split("\n")[0]).toBe(
+      "Infisical doesn't let the identity update a (403).",
+    );
+    expect(cloud.message).not.toMatch(/https?:|Instance/u);
+
+    process.env["INFISICAL_DOMAIN"] = "https://eu.infisical.com";
+    const domain = (await infisical({ projectId: PROJECT })
+      .set("a", "1", { cwd })
+      .catch((thrown: unknown) => thrown)) as Error;
+    expect(domain.message.split("\n")[1]).toBe(
+      "Instance: https://eu.infisical.com",
+    );
+  });
+
+  it("prints every refusal in lines of at most 76 columns", async () => {
+    universalAuthEnv();
+    const long = `Project with ID '${PROJECT}' was not found during authorization: check that the project exists and that the identity was added to it as a member.`;
+    const messages: string[] = [];
+    const record = async (run: () => Promise<unknown>) => {
+      const error = await run().catch((thrown: unknown) => thrown as Error);
+      messages.push((error as Error).message);
+    };
+    for (const [key, response] of [
+      ["GET /api/v4/secrets", refusal(404, "NotFound", long)],
+      ["GET /api/v4/secrets", refusal(403, "PermissionDenied", long)],
+      ["GET /api/v4/secrets", refusal(403, "TokenError", long)],
+      ["POST /api/v1/auth/universal-auth/login", refusal(400, "Bad", long)],
+      ["GET /api/v4/secrets", refusal(500, "Internal", long)],
+    ] as const) {
+      route = server({}, { [key]: () => response.clone() });
+      await record(() => infisical({ projectId: PROJECT }).get(["a"], { cwd }));
+      await record(() => adapter().get(["a"], { cwd }));
+    }
+    for (const name of AUTH_ENV) delete process.env[name];
+    await record(() => adapter().get(["a"], { cwd }));
+    process.env["INFISICAL_MACHINE_IDENTITY_ID"] = "identity-1";
+    await record(() => adapter().get(["a"], { cwd }));
+    await record(() =>
+      adapter({ siteUrl: "http://x.example" }).get(["a"], { cwd }),
+    );
+    await record(() => adapter().set("a:b", "1", { cwd }));
+    await record(() => adapter().set("a", " 1", { cwd }));
+
+    expect(messages).toHaveLength(15);
+    for (const message of messages) {
+      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
+    }
   });
 
   it("describes where a name is", () => {

@@ -67,10 +67,15 @@ and upload one `.aab` by hand. Until then, the access check reports
 `secrets put android-keystore <file>` stores the keystore Google Play knows as
 the app's upload key, a `.jks`, `.keystore`, or `.p12` file. At a terminal it
 asks for the keystore's password, three tries, picks its alias when it holds
-one key, tries that password for the key before asking for the key's own, and
-checks with `keytool` that they open the key as Gradle signs. Without a
-terminal, pass `--key-alias` and set `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`
-and `HOT_UPDATER_ANDROID_KEY_PASSWORD`. A scheme signs with it through
+one key, and tries that password for the key before asking for the key's own.
+Without a terminal, pass `--key-alias` and set
+`HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD` and `HOT_UPDATER_ANDROID_KEY_PASSWORD`.
+Either way, before it stores anything, it signs an empty file with the JDK's
+`jarsigner`, as Gradle signs, so a key password that doesn't unlock the key
+fails here, not at a build's last step. A PKCS12 keystore has one password:
+when only the store password unlocks the key, a terminal offers to store it as
+the key password, and CI stops. `hot-updater doctor` runs the same check on a
+stored keystore. A scheme signs with it through
 `signing: { keystore: secret("android-keystore") }`.
 
 Google Play keeps the key of an app's first upload. For an app that has never

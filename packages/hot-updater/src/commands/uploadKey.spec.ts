@@ -19,12 +19,14 @@ import {
   recordedClackCalls,
   renderClackLog,
 } from "@hot-updater/test-utils/node";
+import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   androidKeystoreValue,
   createUploadKeystore,
   findKeytool,
+  KeystoreRefusedError,
   KeytoolMissingError,
   type RunKeytool,
   verifyKeystore,
@@ -32,7 +34,7 @@ import {
 import { handleSecretsPut } from "./secrets";
 import { handleUploadKeyIssue } from "./uploadKey";
 
-const { log, text, select, password } = vi.hoisted(() => ({
+const { log, text, select, password, confirm } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -44,13 +46,14 @@ const { log, text, select, password } = vi.hoisted(() => ({
   text: vi.fn(),
   select: vi.fn(),
   password: vi.fn(),
+  confirm: vi.fn(),
 }));
 
 // Only the config, the prompts, and keytool are stood in for.
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig: vi.fn(),
-  p: { isCancel: vi.fn(() => false), log, text, select, password },
+  p: { isCancel: vi.fn(() => false), log, text, select, password, confirm },
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("../utils/native/githubSecret", async (importOriginal) => ({
@@ -76,6 +79,7 @@ const keystores = new Map<string, FakeKeystore>();
 const keytoolCalls: {
   args: string[];
   env: Record<string, string>;
+  tool: string;
 }[] = [];
 
 const passwordFrom = (
@@ -90,12 +94,44 @@ const passwordFrom = (
 const failed = (stderr: string) => ({ exitCode: 1, stdout: "", stderr });
 
 /**
+ * jarsigner as these specs see it: it signs with a keystore keytool knows
+ * when its passwords and alias open the key, failing with jarsigner's own
+ * messages.
+ */
+const fakeJarsigner = async (
+  args: readonly string[],
+  env: Readonly<Record<string, string>>,
+) => {
+  const file = args[args.indexOf("-keystore") + 1]!;
+  const known = keystores.get((await fs.readFile(file)).toString("base64"));
+  if (!known) {
+    return failed(
+      "jarsigner error: java.lang.RuntimeException: keystore load: Invalid keystore format",
+    );
+  }
+  if (passwordFrom(args, env, "-storepass") !== known.storePassword) {
+    return failed(
+      "jarsigner error: java.lang.RuntimeException: keystore load: keystore password was incorrect",
+    );
+  }
+  const alias = args.at(-1);
+  if (alias !== known.alias) {
+    return failed(`jarsigner: Certificate chain not found for: ${alias}.`);
+  }
+  return passwordFrom(args, env, "-keypass") === known.keyPassword
+    ? { exitCode: 0, stdout: "jar signed.", stderr: "" }
+    : failed(`jarsigner: key associated with ${alias} not a private key`);
+};
+
+/**
  * keytool as these specs see it: it creates a keystore of random bytes it
  * remembers, and checks the passwords and alias it is given against it,
- * failing with keytool's own messages.
+ * failing with keytool's own messages. Like the JDK's, its certificate
+ * request reads a key with the store password, whatever `-keypass` is.
  */
-const fakeKeytool: RunKeytool = async (args, env = {}) => {
-  keytoolCalls.push({ args: [...args], env: { ...env } });
+const fakeKeytool: RunKeytool = async (args, env = {}, tool = "keytool") => {
+  keytoolCalls.push({ args: [...args], env: { ...env }, tool });
+  if (tool === "jarsigner") return fakeJarsigner(args, env);
   const [command] = args;
   const file = args[args.indexOf("-keystore") + 1]!;
   if (command === "-genkeypair") {
@@ -138,13 +174,6 @@ const fakeKeytool: RunKeytool = async (args, env = {}) => {
       stdout: `-----BEGIN CERTIFICATE-----\n${known.certificate.toString("base64")}\n-----END CERTIFICATE-----\n`,
       stderr: "",
     };
-  }
-  if (command === "-certreq") {
-    return passwordFrom(args, env, "-keypass") === known.keyPassword
-      ? { exitCode: 0, stdout: "", stderr: "" }
-      : failed(
-          "keytool error: java.security.UnrecoverableKeyException: Cannot recover key",
-        );
   }
   return failed(`keytool error: unknown command ${command}`);
 };
@@ -462,6 +491,39 @@ describe("hot-updater secrets issue android-keystore", () => {
     expect(printed()).not.toContain("same-secret");
   });
 
+  it("names a stored key password that doesn't unlock the key, and --pem still exports its certificate", async () => {
+    const { contents } = await existingKeystore({
+      storePassword: "same-secret",
+      keyPassword: "same-secret",
+    });
+    writableStore({
+      "android-keystore": androidKeystoreValue({
+        keystore: contents,
+        storePassword: "same-secret",
+        keyAlias: "eas-upload",
+        keyPassword: "eas-key-secret",
+      }),
+    });
+    const pem = path.join(directory, "upload.pem");
+
+    await withTTY(true, () =>
+      handleUploadKeyIssue("android-keystore", { pem }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    const { certificate } = keystores.get(contents.toString("base64"))!;
+    expect(
+      (await fs.readFile(pem, "utf-8")).replace(/-----[A-Z ]+-----|\s/gu, ""),
+    ).toBe(certificate.toString("base64"));
+    expect(logged("step")).toContain(
+      [
+        'The key password doesn\'t unlock "eas-upload".',
+        "For PKCS12 keystores, the key password is the store password.",
+      ].join("\n"),
+    );
+    expect(printed()).not.toMatch(/same-secret|eas-key-secret/u);
+  });
+
   it("--replace overwrites it, naming the old key's fingerprint, which a key reset needs", async () => {
     const { contents } = await existingKeystore({
       storePassword: "old-secret",
@@ -599,6 +661,38 @@ describe("hot-updater secrets issue android-keystore", () => {
   );
 });
 
+describe("hot-updater secrets issue android-keystore --pem, from the environment", () => {
+  it("exports the certificate when only the key password is wrong, naming it", async () => {
+    const { file, contents } = await existingKeystore({
+      storePassword: "store-secret-1",
+      keyPassword: "store-secret-1",
+    });
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PATH", file);
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_ALIAS", "eas-upload");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "eas-key-secret");
+    configure();
+    const pem = path.join(directory, "upload.pem");
+
+    await withTTY(true, () =>
+      handleUploadKeyIssue("android-keystore", { pem }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    const { certificate } = keystores.get(contents.toString("base64"))!;
+    expect(
+      (await fs.readFile(pem, "utf-8")).replace(/-----[A-Z ]+-----|\s/gu, ""),
+    ).toBe(certificate.toString("base64"));
+    expect(logged("warn")).toBe(
+      [
+        'The key password doesn\'t unlock "eas-upload".',
+        "For PKCS12 keystores, the key password is the store password.",
+      ].join("\n"),
+    );
+    expect(printed()).not.toMatch(/store-secret-1|eas-key-secret/u);
+  });
+});
+
 describe("hot-updater secrets put android-keystore <file>", () => {
   it("asks the passwords at a terminal, retrying a wrong one, takes its only alias, and stores what keytool opens", async () => {
     const { held } = writableStore();
@@ -679,6 +773,111 @@ describe("hot-updater secrets put android-keystore <file>", () => {
   });
 });
 
+describe("hot-updater secrets put android-keystore --key-alias", () => {
+  /** A PKCS12 keystore, whose key opens with the store password only. */
+  const pkcs12 = () =>
+    existingKeystore({
+      storePassword: "store-secret-1",
+      keyPassword: "store-secret-1",
+    });
+
+  it("refuses a key password that doesn't unlock the key in CI, storing nothing", async () => {
+    const { store } = writableStore();
+    const { file } = await pkcs12();
+    vi.stubEnv("CI", "true");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "eas-key-secret");
+
+    await withTTY(false, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "eas-upload" }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(logged("error")).toBe(
+      [
+        'The key password doesn\'t unlock "eas-upload".',
+        "For PKCS12 keystores, the key password is the store password.",
+      ].join("\n"),
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+    // jarsigner signs with the key: keytool's request never decides it.
+    expect(keytoolCalls.map(({ tool }) => tool)).toContain("jarsigner");
+    expect(printed()).not.toMatch(/store-secret-1|eas-key-secret/u);
+  });
+
+  it("offers the store password at a terminal, and stores it as the key's", async () => {
+    const { held } = writableStore();
+    const { file } = await pkcs12();
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "eas-key-secret");
+    confirm.mockResolvedValueOnce(true);
+
+    await withTTY(true, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "eas-upload" }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    expect(confirm).toHaveBeenCalledWith({
+      message: 'Use the keystore password for "eas-upload"?',
+    });
+    expect(JSON.parse(held.get("android-keystore")!).keyPassword).toBe(
+      "store-secret-1",
+    );
+  });
+
+  it("stores nothing when the store password is declined", async () => {
+    const { store } = writableStore();
+    const { file } = await pkcs12();
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "eas-key-secret");
+    confirm.mockResolvedValueOnce(false);
+
+    await withTTY(true, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "eas-upload" }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("refuses a key password neither password unlocks, offering nothing", async () => {
+    const { store } = writableStore();
+    const { file } = await existingKeystore();
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "wrong-key-secret");
+
+    await withTTY(true, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "eas-upload" }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(logged("error")).toBe(
+      [
+        'The key password doesn\'t unlock "eas-upload".',
+        'Use the password "eas-upload" was created with.',
+      ].join("\n"),
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("refuses a wrong store password before storing", async () => {
+    const { store } = writableStore();
+    const { file } = await existingKeystore();
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "wrong-store");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "key-secret-22");
+
+    await withTTY(false, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "eas-upload" }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(logged("error")).toBe("The keystore password is wrong.");
+    expect(store.set).not.toHaveBeenCalled();
+  });
+});
+
 describe("hot-updater secrets put android-keystore without the keystore", () => {
   it("names the command that stores one, and the one that creates one", async () => {
     writableStore();
@@ -692,7 +891,8 @@ describe("hot-updater secrets put android-keystore without the keystore", () => 
       [
         "secrets put needs the keystore file:",
         "npx hot-updater secrets put android-keystore <upload.jks>",
-        "To create a new key, run npx hot-updater secrets issue android-keystore",
+        "No .aab on Play yet? Create one:",
+        "npx hot-updater secrets issue android-keystore",
       ].join("\n"),
     );
   });
@@ -755,6 +955,168 @@ describe.skipIf(!realKeytool)("an upload key the real keytool creates", () => {
     expect(value.length).toBeLessThan(25_600);
   }, 30_000);
 });
+
+/**
+ * The oracle: a key opens as the Android Gradle Plugin opens it, with
+ * `KeyStore.getDefaultType()`, `load`, then `getEntry` with the key
+ * password, run by the JDK's own `java`, not by the code under test.
+ */
+const GRADLE_SIGNING_CHECK = `import java.io.FileInputStream;
+import java.security.KeyStore;
+
+public class GradleSigningCheck {
+  public static void main(String[] args) throws Exception {
+    KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
+    try (FileInputStream in = new FileInputStream(args[0])) {
+      store.load(in, System.getenv("STORE_PASSWORD").toCharArray());
+    }
+    try {
+      KeyStore.Entry entry = store.getEntry(args[1],
+          new KeyStore.PasswordProtection(System.getenv("KEY_PASSWORD").toCharArray()));
+      System.out.print(entry instanceof KeyStore.PrivateKeyEntry ? "unlocks" : "refused");
+    } catch (Exception error) {
+      System.out.print("refused");
+    }
+  }
+}
+`;
+
+describe.skipIf(!realKeytool)(
+  "the key password check, against how Gradle signs",
+  () => {
+    const run = (
+      tool: string,
+      args: readonly string[],
+      env: Record<string, string> = {},
+    ) =>
+      execa(
+        process.env["JAVA_HOME"]
+          ? path.join(process.env["JAVA_HOME"], "bin", tool)
+          : tool,
+        args,
+        { env, reject: false },
+      );
+
+    /** A keystore keytool creates itself, as a developer or EAS would. */
+    const createKeystore = async (
+      type: "PKCS12" | "JKS",
+      storePassword: string,
+      keyPassword: string,
+    ) => {
+      const file = path.join(directory, `upload.${type.toLowerCase()}`);
+      const created = await run("keytool", [
+        "-genkeypair",
+        "-noprompt",
+        "-keystore",
+        file,
+        "-storetype",
+        type,
+        "-alias",
+        "upload",
+        "-keyalg",
+        "RSA",
+        "-keysize",
+        "2048",
+        "-validity",
+        "30",
+        "-dname",
+        "CN=spec",
+        "-storepass",
+        storePassword,
+        "-keypass",
+        keyPassword,
+      ]);
+      expect(created.exitCode).toBe(0);
+      return { file, keystore: await fs.readFile(file) };
+    };
+
+    /** What the oracle says of the key password. */
+    const gradleOpens = async (
+      file: string,
+      storePassword: string,
+      keyPassword: string,
+    ) => {
+      const source = path.join(directory, "GradleSigningCheck.java");
+      await fs.writeFile(source, GRADLE_SIGNING_CHECK);
+      const result = await run("java", [source, file, "upload"], {
+        STORE_PASSWORD: storePassword,
+        KEY_PASSWORD: keyPassword,
+      });
+      expect(result.exitCode).toBe(0);
+      return result.stdout === "unlocks";
+    };
+
+    it.each([
+      // EAS records a PKCS12 key's password apart from the store's.
+      ["PKCS12", "store-secret-1", "store-secret-1", "eas-key-secret", false],
+      ["PKCS12", "store-secret-1", "store-secret-1", "store-secret-1", true],
+      ["JKS", "store-secret-1", "key-secret-22", "key-secret-22", true],
+      ["JKS", "store-secret-1", "key-secret-22", "store-secret-1", false],
+    ] as const)(
+      "agrees with Gradle on a %s keystore (store %s, key %s) given %s",
+      async (type, storePassword, realKeyPassword, given, opens) => {
+        const { file, keystore } = await createKeystore(
+          type,
+          storePassword,
+          realKeyPassword,
+        );
+        const expected = await gradleOpens(file, storePassword, given);
+        // The oracle is checked too: it opens only the key's own password.
+        expect(expected).toBe(opens);
+
+        const verdict = await verifyKeystore(realKeytool!, {
+          keystore,
+          storePassword,
+          keyAlias: "upload",
+          keyPassword: given,
+        }).then(
+          () => "unlocks",
+          (error: unknown) => error,
+        );
+
+        if (expected) {
+          expect(verdict).toBe("unlocks");
+        } else {
+          expect(verdict).toBeInstanceOf(KeystoreRefusedError);
+          expect((verdict as KeystoreRefusedError).reason).toBe("key-password");
+          // Only a PKCS12 key opens with the store password.
+          expect((verdict as KeystoreRefusedError).storePasswordUnlocks).toBe(
+            await gradleOpens(file, storePassword, storePassword),
+          );
+        }
+      },
+      60_000,
+    );
+
+    it("tells the cases apart, where keytool's certificate request does not", async () => {
+      const { file } = await createKeystore(
+        "PKCS12",
+        "store-secret-1",
+        "store-secret-1",
+      );
+      // The oracle is no constant: it refuses the EAS key password.
+      expect(await gradleOpens(file, "store-secret-1", "eas-key-secret")).toBe(
+        false,
+      );
+      expect(await gradleOpens(file, "store-secret-1", "store-secret-1")).toBe(
+        true,
+      );
+      // The check before jarsigner, which let the EAS key password through.
+      const request = await run("keytool", [
+        "-certreq",
+        "-alias",
+        "upload",
+        "-keystore",
+        file,
+        "-storepass",
+        "store-secret-1",
+        "-keypass",
+        "eas-key-secret",
+      ]);
+      expect(request.exitCode).toBe(0);
+    }, 60_000);
+  },
+);
 
 it("a value of the measured 4248-byte keystore stays well under AWS's, Google's, and Azure's limits", () => {
   const value = androidKeystoreValue({

@@ -75,8 +75,33 @@ const NO_CREDENTIAL_ERRORS = new Set([
   "TokenProviderError",
 ]);
 
-const SIGN_IN_HINT =
-  "In CI, set them with aws-actions/configure-aws-credentials; on your machine, run aws sso login --profile <profile> and set AWS_PROFILE=<profile>";
+const SIGN_IN_HINT = [
+  "In CI, set them with aws-actions/configure-aws-credentials.",
+  "On your machine: aws sso login --profile <profile>, then set AWS_PROFILE.",
+];
+
+/** The widest line a message has: the CLI prints no wider. */
+const LINE_WIDTH = 76;
+
+/** `text`, such as AWS's own message, in lines that fit, broken at spaces. */
+const wrap = (text: string): string[] => {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/u).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > LINE_WIDTH) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+};
+
+/** An error of one line each, for a terminal. */
+const failure = (lines: readonly string[], cause?: unknown) =>
+  new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
 
 const errorName = (error: unknown) =>
   error instanceof Error ? error.name : "";
@@ -101,9 +126,12 @@ const resolveEndpoint = (endpoint: string) => {
     url.search ||
     url.hash
   ) {
-    throw new Error(
-      `${NAME} endpoint must use HTTPS, or HTTP on a loopback address, without credentials, a query, or a fragment.`,
-    );
+    throw failure([
+      // Not quoted: it may hold credentials.
+      `${NAME} can't use its endpoint.`,
+      "Use HTTPS, or HTTP on a loopback address.",
+      "Leave out credentials, a query, and a fragment.",
+    ]);
   }
   return url.toString();
 };
@@ -147,9 +175,10 @@ export const secretsManager = ({
   // Checked on first use, so a config loads without its settings.
   const checkSettings = () => {
     if (typeof region !== "string" || !REGION_PATTERN.test(region)) {
-      throw new Error(
-        `${NAME} needs an AWS region, such as "us-east-1", and ${JSON.stringify(region)} is not one.`,
-      );
+      throw failure([
+        `${NAME} can't use the region ${JSON.stringify(region)}.`,
+        'Set an AWS region, such as "us-east-1".',
+      ]);
     }
     if (prefix !== "" && !SECRET_ID_PATTERN.test(prefix)) {
       throw new Error(
@@ -162,9 +191,10 @@ export const secretsManager = ({
     checkSettings();
     const id = `${prefix}${name}`;
     if (!SECRET_ID_PATTERN.test(name) || id.length > MAX_SECRET_ID_LENGTH) {
-      throw new Error(
-        `${NAME} cannot name a secret ${JSON.stringify(id)}: AWS takes up to ${MAX_SECRET_ID_LENGTH} letters, digits, and /_+=.@- characters.`,
-      );
+      throw failure([
+        `${NAME} can't name a secret ${JSON.stringify(id)}.`,
+        `AWS takes up to ${MAX_SECRET_ID_LENGTH} letters, digits, and /_+=.@- characters.`,
+      ]);
     }
     return id;
   };
@@ -182,9 +212,10 @@ export const secretsManager = ({
     const secretAccessKey = process.env["AWS_SECRET_ACCESS_KEY"];
     // Half a pair is a CI variable gone missing, not a reason to try a profile.
     if (Boolean(accessKeyId) !== Boolean(secretAccessKey)) {
-      throw new Error(
-        `${NAME} found ${accessKeyId ? "AWS_ACCESS_KEY_ID" : "AWS_SECRET_ACCESS_KEY"} without ${accessKeyId ? "AWS_SECRET_ACCESS_KEY" : "AWS_ACCESS_KEY_ID"} in the environment: set both, or neither to use a profile.`,
-      );
+      throw failure([
+        `${NAME} found ${accessKeyId ? "AWS_ACCESS_KEY_ID" : "AWS_SECRET_ACCESS_KEY"} without ${accessKeyId ? "AWS_SECRET_ACCESS_KEY" : "AWS_ACCESS_KEY_ID"}.`,
+        "Set both, or neither to use a profile.",
+      ]);
     }
     // The SDK's default chain.
     return undefined;
@@ -224,36 +255,64 @@ export const secretsManager = ({
     const name = errorName(error);
     const status = (error as { $metadata?: { httpStatusCode?: number } })
       ?.$metadata?.httpStatusCode;
-    const detail = `${name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}`;
+    const detail = wrap(
+      `${name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}.`,
+    );
+    // On a line of its own: a name and its prefix are a line's worth.
+    const secret = `Secret: ${id}`;
     if (NO_CREDENTIAL_ERRORS.has(name)) {
-      return new Error(
-        `${NAME} found no usable AWS credentials to ${verb} ${JSON.stringify(id)} (${errorMessage(error)}). ${SIGN_IN_HINT}.`,
-        { cause: error },
+      return failure(
+        [
+          `${NAME} found no AWS credentials to ${verb} a secret.`,
+          secret,
+          ...wrap(`${errorMessage(error)}.`),
+          ...SIGN_IN_HINT,
+        ],
+        error,
       );
     }
     if (EXPIRED_CREDENTIAL_ERRORS.has(name)) {
-      return new Error(
-        `AWS Secrets Manager refused the credentials to ${verb} ${JSON.stringify(id)}, ${detail}. They are expired or invalid: sign in again. ${SIGN_IN_HINT}.`,
-        { cause: error },
+      return failure(
+        [
+          `AWS Secrets Manager refused the sign-in to ${verb} a secret.`,
+          secret,
+          ...detail,
+          "They are expired or invalid: sign in again.",
+          ...SIGN_IN_HINT,
+        ],
+        error,
       );
     }
     if (name === "AccessDeniedException") {
-      return new Error(
-        `AWS Secrets Manager refused to ${verb} ${JSON.stringify(id)}, ${detail}. The AWS identity needs ${permissions} on it, and on a secret encrypted with a customer managed KMS key, kms:Decrypt to read and kms:GenerateDataKey to store.`,
-        { cause: error },
+      return failure(
+        [
+          `AWS Secrets Manager refused to ${verb} a secret.`,
+          secret,
+          ...detail,
+          `The AWS identity needs ${permissions} on it.`,
+          `With a customer managed KMS key, it needs ${verb === "read" ? "kms:Decrypt" : "kms:GenerateDataKey"} too.`,
+        ],
+        error,
       );
     }
     if (
       /marked for deletion|scheduled for deletion/iu.test(errorMessage(error))
     ) {
-      return new Error(
-        `AWS Secrets Manager cannot ${verb} ${JSON.stringify(id)}: it is scheduled for deletion. Restore it with aws secretsmanager restore-secret --secret-id ${id}, or wait until it is deleted.`,
-        { cause: error },
+      return failure(
+        [
+          `AWS Secrets Manager can't ${verb} a secret.`,
+          secret,
+          "It is scheduled for deletion. Restore it, or wait until it is gone:",
+          // Broken with \ so it never passes 76 columns.
+          "aws secretsmanager restore-secret \\",
+          `  --secret-id ${id}`,
+        ],
+        error,
       );
     }
-    return new Error(
-      `AWS Secrets Manager failed to ${verb} ${JSON.stringify(id)}, ${detail}.`,
-      { cause: error },
+    return failure(
+      [`AWS Secrets Manager failed to ${verb} a secret.`, secret, ...detail],
+      error,
     );
   };
 
@@ -300,12 +359,13 @@ export const secretsManager = ({
     set: async (name, value) => {
       const id = secretId(name);
       if (typeof value !== "string" || value === "") {
-        throw new Error(`${NAME} cannot store an empty ${id}.`);
+        throw new Error(`${NAME} can't store an empty ${id}.`);
       }
       if (Buffer.byteLength(value, "utf8") > MAX_SECRET_BYTES) {
-        throw new Error(
-          `${NAME} cannot store ${id}: AWS takes up to ${MAX_SECRET_BYTES} bytes per secret.`,
-        );
+        throw failure([
+          `${NAME} can't store ${id}.`,
+          `AWS takes up to ${MAX_SECRET_BYTES} bytes per secret.`,
+        ]);
       }
       await mask([value]);
       const { sdk, client } = await open();

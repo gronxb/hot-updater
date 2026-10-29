@@ -9,8 +9,13 @@ import {
 } from "@hot-updater/cli-tools";
 import { secret } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  androidKeystoreValue,
+  findKeytool,
+} from "../../utils/native/androidKeystore";
 import { checkSecrets } from "./secrets";
 
 let cwd: string;
@@ -166,4 +171,95 @@ describe("checkSecrets", () => {
     ).resolves.toBeUndefined();
     expect(store.get).not.toHaveBeenCalled();
   });
+});
+
+/** The JDK's keytool, when this machine has one: CI's runners do. */
+const realKeytool = await findKeytool().catch(() => undefined);
+
+describe.skipIf(!realKeytool)("checkSecrets with a JDK", () => {
+  /** A PKCS12 upload keystore keytool creates, whose one password is `password`. */
+  const pkcs12 = async (password: string) => {
+    const file = path.join(cwd, "upload.p12");
+    const created = await execa(
+      process.env["JAVA_HOME"]
+        ? path.join(process.env["JAVA_HOME"], "bin", "keytool")
+        : "keytool",
+      [
+        "-genkeypair",
+        "-noprompt",
+        "-keystore",
+        file,
+        "-storetype",
+        "PKCS12",
+        "-alias",
+        "upload",
+        "-keyalg",
+        "RSA",
+        "-keysize",
+        "2048",
+        "-validity",
+        "30",
+        "-dname",
+        "CN=spec",
+        "-storepass",
+        password,
+        "-keypass",
+        password,
+      ],
+      { reject: false },
+    );
+    expect(created.exitCode).toBe(0);
+    return fs.readFile(file);
+  };
+
+  const configHolding = (value: string) =>
+    ({
+      secrets: teamStore({ "release-keystore": value }),
+      nativeBuild: {
+        android: {
+          release: { signing: { keystore: secret("release-keystore") } },
+        },
+      },
+    }) as unknown as ConfigResponse;
+
+  it("says an upload keystore's stored key password doesn't unlock its key", async () => {
+    const keystore = await pkcs12("store-secret-1");
+    const value = androidKeystoreValue({
+      keystore,
+      storePassword: "store-secret-1",
+      keyAlias: "upload",
+      // EAS records it apart from the store password.
+      keyPassword: "eas-key-secret",
+    });
+
+    const status = await checkSecrets(configHolding(value), cwd);
+
+    expect(status?.references).toEqual([
+      {
+        name: "release-keystore",
+        fields: ["nativeBuild.android.release.signing.keystore"],
+        source: "adapter",
+        inAdapter: true,
+        refused: [
+          'The key password doesn\'t unlock "upload".',
+          "For PKCS12 keystores, the key password is the store password.",
+        ].join("\n"),
+      },
+    ]);
+  }, 60_000);
+
+  it("finds nothing wrong with a keystore its passwords open", async () => {
+    const keystore = await pkcs12("store-secret-1");
+    const value = androidKeystoreValue({
+      keystore,
+      storePassword: "store-secret-1",
+      keyAlias: "upload",
+      keyPassword: "store-secret-1",
+    });
+
+    const status = await checkSecrets(configHolding(value), cwd);
+
+    expect(status?.references[0]).not.toHaveProperty("refused");
+    expect(status?.references[0]?.source).toBe("adapter");
+  }, 60_000);
 });

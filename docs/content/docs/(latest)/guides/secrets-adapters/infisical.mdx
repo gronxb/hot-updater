@@ -162,9 +162,12 @@ reach `https://token.actions.githubusercontent.com`.
 
 ## When a command fails
 
-| Message                             | Fix                                                                             |
-| ----------------------------------- | ------------------------------------------------------------------------------- |
-| `rejected the credentials`          | The client secret or token is wrong or expired: sign in again                   |
-| `does not let the identity …` (403) | Give the identity the project role: Viewer reads, Member stores                 |
-| `found no project …` (404)          | Check `projectId`, `environment`, and `path`, and that the folder exists        |
-| `found no Infisical sign-in`        | Set one of the variables in [Sign in on your machine](#sign-in-on-your-machine) |
+| Message                            | Fix                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| `rejected the credentials`         | The client secret or token is wrong or expired: sign in again                   |
+| `doesn't let the identity …` (403) | Give the identity the project role: Viewer reads, Member stores                 |
+| `found nothing to …` (404)         | Check `projectId`, `environment`, and `path`, and that the folder exists        |
+| `found no Infisical sign-in`       | Set one of the variables in [Sign in on your machine](#sign-in-on-your-machine) |
+
+Messages name the instance's URL only when `siteUrl`, `INFISICAL_DOMAIN`, or
+`INFISICAL_API_URL` sets it.

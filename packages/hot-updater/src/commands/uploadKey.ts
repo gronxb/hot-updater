@@ -28,6 +28,7 @@ import {
   createUploadKeystore,
   findKeytool,
   type KeystoreCertificate,
+  KeystoreRefusedError,
   parseAndroidKeystoreValue,
   verifyKeystore,
 } from "../utils/native/androidKeystore";
@@ -73,24 +74,32 @@ const readHeldKey = async (
 
 /**
  * The rows that name a stored keystore: its alias, and its certificate's
- * fingerprints when keytool opens it with the stored passwords.
+ * fingerprints when its stored passwords open it as Gradle's signing does,
+ * else what they don't open.
  */
 const describeStoredKey = async (
   value: string,
 ): Promise<{
-  readonly rows: readonly MaybeRow[];
+  readonly rows: readonly (string | MaybeRow)[];
   readonly certificate?: KeystoreCertificate;
 }> => {
   const entry = parseAndroidKeystoreValue(value);
   if (!entry) return { rows: [] };
   const keytool = await findKeytool().catch(() => undefined);
+  let refused: string | undefined;
   const certificate = keytool
-    ? await verifyKeystore(keytool, entry).catch(() => undefined)
+    ? await verifyKeystore(keytool, entry).catch((error: unknown) => {
+        if (!(error instanceof KeystoreRefusedError)) return undefined;
+        refused = error.message;
+        // The store password reads the certificate alone.
+        return error.certificate;
+      })
     : undefined;
   return {
     rows: [
       ui.kv("Alias", entry.keyAlias),
       ...(certificate ? fingerprintRows(certificate.fingerprints) : []),
+      ...(refused ? refused.split("\n").map((line) => ui.warning(line)) : []),
     ],
     ...(certificate ? { certificate } : {}),
   };
@@ -129,11 +138,19 @@ const readEnvironmentCertificate = async (
     return await withCredentialResolver(
       async (resolver) => {
         const keystore = await resolver.resolve({ kind: KIND, name });
-        return verifyKeystore(keytool, {
+        return await verifyKeystore(keytool, {
           keystore: await fs.readFile(keystore.storeFile),
           storePassword: keystore.storePassword,
           keyAlias: keystore.keyAlias,
           keyPassword: keystore.keyPassword,
+        }).catch((error: unknown) => {
+          // The store password reads the certificate alone: it is exported,
+          // and the key password builds would fail with is named.
+          if (error instanceof KeystoreRefusedError && error.certificate) {
+            p.log.warn(error.message);
+            return error.certificate;
+          }
+          throw error;
         });
       },
       { env, secrets },

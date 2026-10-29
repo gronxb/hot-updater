@@ -7,6 +7,7 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { maskSecretValues } from "@hot-updater/cli-tools";
+import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -100,7 +101,14 @@ describe("secretsManager get", () => {
     );
 
     expect(error.message).toBe(
-      'AWS Secrets Manager refused to read "hot-updater/asc-api-key", AccessDeniedException (400): User: arn:aws:sts::1:assumed-role/ci is not authorized to perform: secretsmanager:GetSecretValue. The AWS identity needs secretsmanager:GetSecretValue on it, and on a secret encrypted with a customer managed KMS key, kms:Decrypt to read and kms:GenerateDataKey to store.',
+      [
+        "AWS Secrets Manager refused to read a secret.",
+        "Secret: hot-updater/asc-api-key",
+        "AccessDeniedException (400): User: arn:aws:sts::1:assumed-role/ci is not",
+        "authorized to perform: secretsmanager:GetSecretValue.",
+        "The AWS identity needs secretsmanager:GetSecretValue on it.",
+        "With a customer managed KMS key, it needs kms:Decrypt too.",
+      ].join("\n"),
     );
   });
 
@@ -119,6 +127,7 @@ describe("secretsManager get", () => {
         "They are expired or invalid: sign in again.",
       );
       expect(error.message).toContain("aws sso login --profile <profile>");
+      expect(linesWiderThan(error.message.split("\n"), 76)).toEqual([]);
     },
   );
 
@@ -134,7 +143,13 @@ describe("secretsManager get", () => {
       );
 
       expect(error.message).toBe(
-        'secretsManager found no usable AWS credentials to read "hot-updater/asc-api-key" (Could not load credentials from any providers). In CI, set them with aws-actions/configure-aws-credentials; on your machine, run aws sso login --profile <profile> and set AWS_PROFILE=<profile>.',
+        [
+          "secretsManager found no AWS credentials to read a secret.",
+          "Secret: hot-updater/asc-api-key",
+          "Could not load credentials from any providers.",
+          "In CI, set them with aws-actions/configure-aws-credentials.",
+          "On your machine: aws sso login --profile <profile>, then set AWS_PROFILE.",
+        ].join("\n"),
       );
     },
   );
@@ -152,14 +167,20 @@ describe("secretsManager get", () => {
     );
 
     expect(error.message).toBe(
-      'AWS Secrets Manager cannot read "hot-updater/asc-api-key": it is scheduled for deletion. Restore it with aws secretsmanager restore-secret --secret-id hot-updater/asc-api-key, or wait until it is deleted.',
+      [
+        "AWS Secrets Manager can't read a secret.",
+        "Secret: hot-updater/asc-api-key",
+        "It is scheduled for deletion. Restore it, or wait until it is gone:",
+        "aws secretsmanager restore-secret \\",
+        "  --secret-id hot-updater/asc-api-key",
+      ].join("\n"),
     );
   });
 
   it("checks its settings and names on first use, not when the config loads", async () => {
     const adapter = secretsManager({ region: "Seoul" });
     await expect(adapter.get(["name"], context)).rejects.toThrow(
-      'secretsManager needs an AWS region, such as "us-east-1", and "Seoul" is not one.',
+      'secretsManager can\'t use the region "Seoul".\nSet an AWS region, such as "us-east-1".',
     );
     await expect(
       secretsManager({ region: REGION, prefix: "a b/" }).get(["n"], context),
@@ -172,7 +193,9 @@ describe("secretsManager get", () => {
         ["name"],
         context,
       ),
-    ).rejects.toThrow("endpoint must use HTTPS, or HTTP on a loopback address");
+    ).rejects.toThrow(
+      "secretsManager can't use its endpoint.\nUse HTTPS, or HTTP on a loopback address.",
+    );
     expect(sm.calls()).toHaveLength(0);
   });
 
@@ -182,7 +205,7 @@ describe("secretsManager get", () => {
     await expect(
       secretsManager({ region: REGION }).get(["asc-api-key"], context),
     ).rejects.toThrow(
-      "secretsManager found AWS_ACCESS_KEY_ID without AWS_SECRET_ACCESS_KEY in the environment: set both, or neither to use a profile.",
+      "secretsManager found AWS_ACCESS_KEY_ID without AWS_SECRET_ACCESS_KEY.\nSet both, or neither to use a profile.",
     );
     expect(sm.calls()).toHaveLength(0);
   });
@@ -297,7 +320,13 @@ describe("secretsManager set", () => {
     await expect(
       secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
     ).rejects.toThrow(
-      'AWS Secrets Manager refused to write "hot-updater/asc-api-key", AccessDeniedException (400): not authorized. The AWS identity needs secretsmanager:PutSecretValue on it',
+      [
+        "AWS Secrets Manager refused to write a secret.",
+        "Secret: hot-updater/asc-api-key",
+        "AccessDeniedException (400): not authorized.",
+        "The AWS identity needs secretsmanager:PutSecretValue on it.",
+        "With a customer managed KMS key, it needs kms:GenerateDataKey too.",
+      ].join("\n"),
     );
 
     sm.reset();
@@ -308,7 +337,7 @@ describe("secretsManager set", () => {
     await expect(
       secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
     ).rejects.toThrow(
-      'AWS Secrets Manager refused to create "hot-updater/asc-api-key", AccessDeniedException (400): not authorized. The AWS identity needs secretsmanager:CreateSecret on it',
+      "AWS Secrets Manager refused to create a secret.\nSecret: hot-updater/asc-api-key\nAccessDeniedException (400): not authorized.\nThe AWS identity needs secretsmanager:CreateSecret on it.",
     );
   });
 
@@ -323,7 +352,7 @@ describe("secretsManager set", () => {
     await expect(
       secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
     ).rejects.toThrow(
-      'AWS Secrets Manager cannot write "hot-updater/asc-api-key": it is scheduled for deletion. Restore it with aws secretsmanager restore-secret --secret-id hot-updater/asc-api-key',
+      "AWS Secrets Manager can't write a secret.\nSecret: hot-updater/asc-api-key\nIt is scheduled for deletion. Restore it, or wait until it is gone:\naws secretsmanager restore-secret \\\n  --secret-id hot-updater/asc-api-key",
     );
     expect(sm.commandCalls(CreateSecretCommand)).toHaveLength(0);
   });
@@ -332,11 +361,65 @@ describe("secretsManager set", () => {
     const adapter = secretsManager({ region: REGION });
 
     await expect(adapter.set?.("name", "", context)).rejects.toThrow(
-      "secretsManager cannot store an empty hot-updater/name.",
+      "secretsManager can't store an empty hot-updater/name.",
     );
     await expect(
       adapter.set?.("name", "x".repeat(65_537), context),
     ).rejects.toThrow("AWS takes up to 65536 bytes per secret.");
     expect(sm.calls()).toHaveLength(0);
+  });
+});
+
+describe("secretsManager messages", () => {
+  it("prints every failure in lines of at most 76 columns", async () => {
+    const long =
+      "User: arn:aws:sts::123456789012:assumed-role/github-actions-deploy/session is not authorized to perform: secretsmanager:GetSecretValue on resource: hot-updater/asc-api-key because no identity-based policy allows the secretsmanager:GetSecretValue action";
+    const messages: string[] = [];
+    const record = async (promise: Promise<unknown> | undefined) => {
+      messages.push((await rejectionOf(promise)).message);
+    };
+    for (const [name, message] of [
+      ["AccessDeniedException", long],
+      ["ExpiredTokenException", long],
+      ["CredentialsProviderError", long],
+      ["InternalServiceError", long],
+      ["InvalidRequestException", "It was marked for deletion."],
+    ]) {
+      sm.reset();
+      sm.on(GetSecretValueCommand).rejects(awsError(name!, message!));
+      sm.on(PutSecretValueCommand).rejects(awsError(name!, message!));
+      await record(
+        secretsManager({ region: REGION }).get(["asc-api-key"], context),
+      );
+      await record(
+        secretsManager({ region: REGION }).set?.(
+          "play-service-account",
+          "v",
+          context,
+        ),
+      );
+    }
+    await record(secretsManager({ region: "Seoul" }).get(["n"], context));
+    await record(
+      secretsManager({ region: REGION, endpoint: "ftp://x" }).get(
+        ["n"],
+        context,
+      ),
+    );
+    await record(secretsManager({ region: REGION }).get(["a b"], context));
+    await record(
+      secretsManager({ region: REGION }).set?.(
+        "n",
+        "x".repeat(65_537),
+        context,
+      ),
+    );
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAHOTUPDATERSPEC01");
+    await record(secretsManager({ region: REGION }).get(["n"], context));
+
+    expect(messages).toHaveLength(15);
+    for (const message of messages) {
+      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
+    }
   });
 });

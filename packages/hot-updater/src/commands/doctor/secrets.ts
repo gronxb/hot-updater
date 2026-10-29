@@ -9,6 +9,14 @@ import {
   secretVariableName,
 } from "@hot-updater/cli-tools";
 
+import {
+  findKeytool,
+  KeystoreRefusedError,
+  parseAndroidKeystoreValue,
+  type RunKeytool,
+  verifyKeystore,
+} from "../../utils/native/androidKeystore";
+
 /** Where a build reads one `secret("<name>")` the config references. */
 export interface SecretReferenceStatus {
   readonly name: string;
@@ -22,6 +30,11 @@ export interface SecretReferenceStatus {
   readonly source?: "environment" | "adapter" | "missing";
   /** Whether the adapter holds it too; undefined when it can't be read. */
   readonly inAdapter?: boolean;
+  /**
+   * For an upload keystore the adapter holds, what its stored passwords
+   * don't open, as Gradle's signing reads it. Unchecked without a JDK.
+   */
+  readonly refused?: string;
 }
 
 export interface SecretsStatus {
@@ -117,6 +130,33 @@ export const checkSecrets = async (
     error = cause instanceof Error ? cause.message : String(cause);
   }
 
+  // Builds sign with the keystore the adapter holds: its passwords are
+  // checked as Gradle's signing reads them, with a JDK when there is one.
+  let keytool: Promise<RunKeytool | undefined> | undefined;
+  const refusals = new Map<string, string>();
+  await Promise.all(
+    names.map(async (name) => {
+      const value = held?.[name];
+      if (
+        !value ||
+        overridden(name) ||
+        !byName.get(name)!.some(({ kind }) => kind === "android-keystore")
+      ) {
+        return;
+      }
+      const entry = parseAndroidKeystoreValue(value);
+      if (!entry) return;
+      keytool ??= findKeytool().catch(() => undefined);
+      const run = await keytool;
+      if (!run) return;
+      await verifyKeystore(run, entry).catch((cause: unknown) => {
+        if (cause instanceof KeystoreRefusedError) {
+          refusals.set(name, cause.message);
+        }
+      });
+    }),
+  );
+
   return {
     adapter: secrets.name,
     references: names.map((name) => {
@@ -129,11 +169,13 @@ export const checkSecrets = async (
       }
       const value = Object.hasOwn(held, name) ? held[name] : undefined;
       const inAdapter = typeof value === "string" && value.length > 0;
+      const refused = refusals.get(name);
       return {
         name,
         fields,
         source: environment ? "environment" : inAdapter ? "adapter" : "missing",
         inAdapter,
+        ...(refused === undefined ? {} : { refused }),
       };
     }),
     ...(error === undefined ? {} : { error }),

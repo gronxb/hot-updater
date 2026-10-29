@@ -122,7 +122,10 @@ const assertPrivateDirectory = async (directory: string) => {
   });
   if (stats && !stats.isDirectory()) {
     throw new Error(
-      `localSecrets() keeps secrets in a directory, and ${directory} is not one. Set its path to a directory.`,
+      [
+        `localSecrets() can't keep secrets in ${directory}.`,
+        "It is not a directory: set its path to one.",
+      ].join("\n"),
     );
   }
   const real = realpathThroughParents(directory);
@@ -135,7 +138,11 @@ const assertPrivateDirectory = async (directory: string) => {
   const top = realpath(root);
   if (isIgnoredByGit(top, real)) return;
   throw new Error(
-    `localSecrets() refuses ${directory}: it is in the git repository ${top}, which does not ignore it, so the secrets in it could be committed. Add ${path.relative(top, real).split(path.sep).join("/")}/ to that repository's .gitignore, or keep the secrets outside it with localSecrets({ path }).`,
+    [
+      `localSecrets() refuses ${directory}: its secrets could be committed.`,
+      `The git repository ${top} doesn't ignore it.`,
+      `Add ${path.relative(top, real).split(path.sep).join("/")}/ to its .gitignore, or set localSecrets({ path }).`,
+    ].join("\n"),
   );
 };
 

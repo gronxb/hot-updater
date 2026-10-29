@@ -8,12 +8,14 @@ import type {
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
 
+import { formatCommand } from "./credentialResolver.js";
 import { getCwd } from "./cwd.js";
 import { registerSecretValue } from "./secretMasking.js";
 import {
-  describeSecret,
+  getConfiguredAdapter,
   getConfiguredSecrets,
   isSecretRef,
+  secretVariableName,
 } from "./secrets.js";
 
 /** The secret `signing: secret("bundle-signing-key")` names, which `secrets issue` creates. */
@@ -219,14 +221,29 @@ const loadPrivateKeySecret = async (
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new BundleSigningKeyError(
-      `The ${secrets.name} secrets adapter could not read the bundle signing key ${name}: ${reason}`,
+      `Couldn't read ${name} from the ${secrets.name} secrets adapter.\n${reason}`,
       { cause: error },
     );
   }
+  // Never a new key: every shipped app rejects bundles it signs.
   if (typeof value !== "string" || !value.trim()) {
-    const issue = `npx hot-updater secrets issue ${BUNDLE_SIGNING_KEY_SECRET}${name === BUNDLE_SIGNING_KEY_SECRET ? "" : ` ${name}`}`;
+    const [missing, check] = getConfiguredAdapter(secrets)
+      ? [
+          `${name} isn't in the ${secrets.name} secrets adapter.`,
+          "Check the name and your access, or import your key:",
+        ]
+      : [
+          `${name} isn't on this machine.`,
+          `Check the name, set ${secretVariableName(name)}, or import your key:`,
+        ];
     throw new BundleSigningKeyError(
-      `signing reads the bundle signing key ${name}, which is not in the ${secrets.name} secrets adapter (${describeSecret(secrets, name)}).\nTo create one, run: ${issue}`,
+      [
+        missing,
+        check,
+        formatCommand(
+          `npx hot-updater secrets put ${name}${name === BUNDLE_SIGNING_KEY_SECRET ? "" : ` --kind ${BUNDLE_SIGNING_KEY_SECRET}`} <key.pem>`,
+        ),
+      ].join("\n"),
     );
   }
   registerSecretValue(value);
@@ -236,7 +253,10 @@ const loadPrivateKeySecret = async (
     return parsePrivateKey(pem);
   } catch {
     throw new BundleSigningKeyError(
-      `The bundle signing key ${name} in the ${secrets.name} secrets adapter is not an RSA private key in PEM of at least 2048 bits.`,
+      [
+        `${name} in the ${secrets.name} secrets adapter is no signing key.`,
+        "Store an RSA private key in PEM, of 2048 bits or more.",
+      ].join("\n"),
     );
   }
 };

@@ -334,9 +334,11 @@ describe("infisical() on a self-hosted Infisical", () => {
     });
     await expect(
       secrets.set("viewer-check", "changed", { cwd }),
-    ).rejects.toThrow("does not let the identity update viewer-check");
+    ).rejects.toThrow(
+      "Infisical doesn't let the identity update viewer-check (403).",
+    );
     await expect(secrets.set("viewer-new", "created", { cwd })).rejects.toThrow(
-      "does not let the identity create viewer-new",
+      "Infisical doesn't let the identity create viewer-new (403).",
     );
     expect(await oracle("viewer-check")).toBe("kept");
     expect(await oracle("viewer-new")).toBeUndefined();
@@ -366,14 +368,14 @@ describe("infisical() on a self-hosted Infisical", () => {
       universalAuth({ ...writer, clientSecret: "wrong-client-secret" }),
     );
     await expect(wrongSecret.get(["a"], { cwd })).rejects.toThrow(
-      `Infisical at ${site} rejected the credentials to sign in with Universal Auth (401)`,
+      `Infisical rejected the credentials to sign in with Universal Auth (401).\nInstance: ${site}`,
     );
     expect(maskSecretValues("wrong-client-secret")).not.toContain("wrong");
 
     await expect(
       adapter({ INFISICAL_TOKEN: "garbage" }).get(["a"], { cwd }),
     ).rejects.toThrow(
-      `Infisical at ${site} rejected the credentials to list the secrets (403)`,
+      `Infisical rejected the credentials to list the secrets (403).\nInstance: ${site}`,
     );
   });
 

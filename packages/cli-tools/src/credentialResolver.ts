@@ -95,7 +95,7 @@ const describeFields = (fields: readonly EnvField[]) => {
  * 74 columns, each continuation indented two spaces, so a terminal never
  * wraps it mid-word and it still pastes as one command.
  */
-const formatCommand = (command: string): string => {
+export const formatCommand = (command: string): string => {
   const lines: string[] = [];
   let line = "";
   for (const word of command.split(" ")) {
