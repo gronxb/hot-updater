@@ -22,7 +22,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getCwd: vi.fn(),
   loadConfig: vi.fn(),
   p: {
-    log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), step: vi.fn() },
     spinner: () => spinner,
     select: vi.fn(),
     isCancel: () => false,
