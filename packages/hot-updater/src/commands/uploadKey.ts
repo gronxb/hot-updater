@@ -138,11 +138,19 @@ const readEnvironmentCertificate = async (
     return await withCredentialResolver(
       async (resolver) => {
         const keystore = await resolver.resolve({ kind: KIND, name });
-        return verifyKeystore(keytool, {
+        return await verifyKeystore(keytool, {
           keystore: await fs.readFile(keystore.storeFile),
           storePassword: keystore.storePassword,
           keyAlias: keystore.keyAlias,
           keyPassword: keystore.keyPassword,
+        }).catch((error: unknown) => {
+          // The store password reads the certificate alone: it is exported,
+          // and the key password builds would fail with is named.
+          if (error instanceof KeystoreRefusedError && error.certificate) {
+            p.log.warn(error.message);
+            return error.certificate;
+          }
+          throw error;
         });
       },
       { env, secrets },

@@ -661,6 +661,38 @@ describe("hot-updater secrets issue android-keystore", () => {
   );
 });
 
+describe("hot-updater secrets issue android-keystore --pem, from the environment", () => {
+  it("exports the certificate when only the key password is wrong, naming it", async () => {
+    const { file, contents } = await existingKeystore({
+      storePassword: "store-secret-1",
+      keyPassword: "store-secret-1",
+    });
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PATH", file);
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_ALIAS", "eas-upload");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "eas-key-secret");
+    configure();
+    const pem = path.join(directory, "upload.pem");
+
+    await withTTY(true, () =>
+      handleUploadKeyIssue("android-keystore", { pem }),
+    );
+
+    expect(process.exitCode).toBeUndefined();
+    const { certificate } = keystores.get(contents.toString("base64"))!;
+    expect(
+      (await fs.readFile(pem, "utf-8")).replace(/-----[A-Z ]+-----|\s/gu, ""),
+    ).toBe(certificate.toString("base64"));
+    expect(logged("warn")).toBe(
+      [
+        'The key password doesn\'t unlock "eas-upload".',
+        "For PKCS12 keystores, the key password is the store password.",
+      ].join("\n"),
+    );
+    expect(printed()).not.toMatch(/store-secret-1|eas-key-secret/u);
+  });
+});
+
 describe("hot-updater secrets put android-keystore <file>", () => {
   it("asks the passwords at a terminal, retrying a wrong one, takes its only alias, and stores what keytool opens", async () => {
     const { held } = writableStore();
