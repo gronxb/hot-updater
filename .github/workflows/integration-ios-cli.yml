@@ -35,11 +35,6 @@ jobs:
   build-ios-cli:
     runs-on: macos-15
     timeout-minutes: 60
-    # TEMP(repro): parallel copies to exercise the retry.
-    strategy:
-      fail-fast: false
-      matrix:
-        copy: [1, 2, 3, 4, 5, 6]
     # The newest React Native, built by `hot-updater native-build ios` from
     # the committed ios/, which has no workspace and no codegen output: the
     # CLI's pod install and codegen must produce them. The build is tracked
@@ -122,10 +117,10 @@ jobs:
       # The build's logs, pod install's and xcodebuild's, whose failure the
       # step prints only a summary of.
       - name: Upload build logs
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ios-cli-build-logs-${{ matrix.copy }}
+          name: ios-cli-build-logs
           path: examples/v0.88.0/.hot-updater/log/
           include-hidden-files: true
           if-no-files-found: ignore
