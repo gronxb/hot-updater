@@ -103,13 +103,14 @@ jobs:
 
   # With dynamic frameworks every pod links on its own, so a symbol from a pod
   # HotUpdater does not declare fails to link here though a static build
-  # passes.
-  # React Native's prebuilt core puts all of React in one framework, so the
-  # build compiles React Native from source, as apps that need source builds
-  # (such as React Native Firebase with Swift Package Manager) do.
-  # CocoaPods 1.17.0 instead of the example's 1.15.2: on the runner, 1.15.2
-  # fails this pod install with "pathname contains null byte"
-  # (CocoaPods#12798) on Ruby 3.2 and 3.3 alike.
+  # passes. React Native's prebuilt core puts all of React in one framework,
+  # so the build compiles React Native from source, as apps that need source
+  # builds (such as React Native Firebase with Swift Package Manager) do.
+  # The app is a fresh npm project with this package packed into it: a
+  # source build of an example under the pnpm workspace fails on React
+  # Native's own header copies ("Multiple commands produce"). CocoaPods
+  # 1.17.0, because 1.15.2 fails on the runner with "pathname contains null
+  # byte" (CocoaPods#12798).
   build-dynamic-frameworks:
     runs-on: macos-15
     name: Build iOS (Dynamic Frameworks)
@@ -126,25 +127,29 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+      - run: pnpm install --frozen-lockfile
       - name: Install CocoaPods
         run: gem install cocoapods -v 1.17.0
 
-      # A Release build runs `hot-updater fingerprint hash`, which computes
-      # the example's fingerprint with the bare adapter.
-      - name: Library Build
-        run: pnpm nx run-many -t build -p @hot-updater/react-native hot-updater @hot-updater/bare
+      - name: Pack @hot-updater/react-native
+        run: |
+          pnpm nx run @hot-updater/react-native:build
+          pnpm --dir packages/react-native pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Create app
+        working-directory: ${{ runner.temp }}
+        run: |
+          npx -y @react-native-community/cli@20.2.0 init DynamicApp --version 0.88.0 --skip-install --skip-git-init --pm npm
+          cd DynamicApp
+          npm install
+          npm install "$RUNNER_TEMP"/hot-updater-react-native-*.tgz
 
       - name: Build iOS
+        working-directory: ${{ runner.temp }}/DynamicApp/ios
         run: |
-          rm -rf ~/Library/Developer/Xcode/DerivedData
-          cd examples/v0.88.0
-          rm -f ios/Podfile.lock
-          pod _1.17.0_ install --project-directory=ios
-          xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
-          cd ../..
+          pod _1.17.0_ install
+          xcodebuild -workspace DynamicApp.xcworkspace -scheme DynamicApp -configuration Release -sdk iphonesimulator -destination "generic/platform=iOS Simulator"
         env:
-          HOT_UPDATER_CHANNEL: dev
           USE_FRAMEWORKS: dynamic
           RCT_USE_PREBUILT_RNCORE: "0"
           RCT_USE_RN_DEP: "0"
