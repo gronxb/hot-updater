@@ -105,11 +105,19 @@ with a Universal Auth client secret.
 1. Create a machine identity with **OIDC Auth**:
    - **OIDC Discovery URL** and **Issuer**:
      `https://token.actions.githubusercontent.com`
-   - **Subject**: the job that may sign in, such as
-     `repo:example/app:environment:production`
-   - **Audiences**: `https://github.com/example`, the repository owner's URL
-2. Add it to the project with the **Viewer** role, and store its ID as the
-   variable `INFISICAL_MACHINE_IDENTITY_ID`.
+   - **Subject**: your repository and the jobs that may sign in, as GitHub
+     sets it for the job:
+     - `repo:<owner>/<repo>:environment:production` for a job with
+       `environment: production`
+     - `repo:<owner>/<repo>:ref:refs/heads/main` for a push to `main`
+     - `repo:<owner>/<repo>:pull_request` for a pull request. Every pull
+       request has this subject, so add a **Claims** entry such as
+       `head_ref` to allow only its branch.
+   - **Audiences**: `https://github.com/<owner>`, the repository owner's
+     URL. `infisical()` requests GitHub's default audience, which is this
+     URL.
+2. Add it to the project with the **Viewer** role. Its ID isn't secret, so
+   store it as the repository variable `INFISICAL_MACHINE_IDENTITY_ID`.
 3. Let the workflow request an ID token:
 
 ```yaml title=".github/workflows/native-release.yml (partial)"
@@ -126,6 +134,8 @@ permissions:
     scheme: release
     submit: testflight
 ```
+
+A pull request from a fork gets no ID token, so it can't sign in.
 
 ### Universal Auth
 
