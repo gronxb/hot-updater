@@ -259,6 +259,32 @@ describe("checkSecrets", () => {
     for (const { message } of missingRequiredSecrets(status)) {
       expect(linesWiderThan(message!.split("\n"), 76)).toEqual([]);
     }
+    // The rest are one warning: what is wrong, and the command that stores
+    // each, importing a signing key rather than issuing another.
+    expect(status?.issues).toEqual([
+      {
+        type: "warning",
+        code: "SECRETS_MISSING_UNUSED",
+        names: ["simulator-asc-key", "debug-keystore", "bundle-signing-key"],
+        message: [
+          "simulator-asc-key, debug-keystore, and bundle-signing-key",
+          "aren't in the team-store secrets adapter.",
+          "No build or deploy reads them yet, so nothing fails.",
+        ].join("\n"),
+        resolution: [
+          "Store them before a build or a deploy reads them:",
+          "npx hot-updater secrets issue asc-api-key simulator-asc-key",
+          "npx hot-updater secrets put debug-keystore --kind android-keystore \\",
+          "  <upload.jks>",
+          "npx hot-updater secrets put bundle-signing-key <key.pem>",
+        ].join("\n"),
+      },
+    ]);
+    for (const { message, resolution } of status?.issues ?? []) {
+      expect(
+        linesWiderThan(`${message}\n${resolution}`.split("\n"), 76),
+      ).toEqual([]);
+    }
   });
 
   it("names this machine and the variable under localSecrets()", async () => {
@@ -275,6 +301,38 @@ describe("checkSecrets", () => {
         "  <upload.jks>",
       ].join("\n"),
     );
+  });
+
+  it("names this machine for a missing name nothing reads under localSecrets()", async () => {
+    const status = await checkSecrets(
+      {
+        secrets: localSecrets(),
+        nativeBuild: {
+          android: {
+            debug: {
+              variant: "debug",
+              signing: { keystore: secret("debug-keystore") },
+            },
+          },
+        },
+        signing: { enabled: false },
+      } as unknown as ConfigResponse,
+      cwd,
+    );
+
+    expect(status?.issues).toEqual([
+      expect.objectContaining({
+        message: [
+          "debug-keystore isn't on this machine.",
+          "No build or deploy reads it yet, so nothing fails.",
+        ].join("\n"),
+        resolution: [
+          "Store it before a build or a deploy reads it:",
+          "npx hot-updater secrets put debug-keystore --kind android-keystore \\",
+          "  <upload.jks>",
+        ].join("\n"),
+      }),
+    ]);
   });
 
   it("requires nothing it can't read: an unreadable adapter stays a warning", async () => {

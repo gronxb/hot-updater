@@ -89,10 +89,16 @@ describe("doctor's adapter secret() rows", () => {
           type: "warning",
           code: "DEPLOY_SECRETS_MISSING",
           names: ["HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"],
-          message:
-            "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY is missing: a deploy reads it with secret().",
-          resolution:
-            "Store it in the teamStore secrets adapter, or set it in the environment or .env.hotupdater.",
+          message: [
+            "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+            "isn't in the teamStore secrets adapter.",
+            "The next deploy will fail without it.",
+          ].join("\n"),
+          resolution: [
+            "Set HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+            "in .env.hotupdater, then run:",
+            "npx hot-updater secrets import",
+          ].join("\n"),
         },
       ],
       processEnvReads: [],
