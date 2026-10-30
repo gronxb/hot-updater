@@ -38,6 +38,18 @@ npx hot-updater doctor
 In an interactive terminal, the command asks for your server base URL. Press
 Enter to skip the server check.
 
+The last line counts what doctor found. A run with warnings only passes, with
+exit code 0. A run with an error exits with code 1:
+
+```txt
+◆  All checks passed with 2 warnings.
+└  Doctor complete.
+```
+
+```txt
+└  Doctor found 1 error, 2 warnings.
+```
+
 For AI agents and other automation, use JSON output:
 
 ```package-install
@@ -451,15 +463,18 @@ Builds read an iOS device scheme's `signing.ascApiKey`, a release variant's
 `signing.keystore`, and `signing` while bundle signing is on. The Google Play
 row then marks the package `upload keystore missing`, since its release has
 nothing to sign with. A name nothing reads, such as a simulator scheme's key, a
-debug variant's keystore, or `signing` with `enabled: false`, stays the warning
-`missing, unused`. So does every name when doctor can't read the adapter. In
-`--json`, each reference in `details.secrets.references` has `required`, and a
-`message` when it is required and missing.
+debug variant's keystore, or `signing` with `enabled: false`, is a warning: its
+row says `missing, unused`, the Secrets block is marked `▲`, and the run still
+passes. In `--json`, each reference in `details.secrets.references` has
+`required`, and a `message` when it is required and missing. The names nothing
+reads are a `SECRETS_MISSING_UNUSED` warning in `details.secrets.issues`.
 
-Other missing names, such as an adapter credential, are warnings: a teammate
+Other missing names, such as an adapter credential, are warnings too, a
+`DEPLOY_SECRETS_MISSING` warning in `details.deploySecrets.issues`: a teammate
 stores them, or runs
 [`secrets import`](/docs/concepts/secrets#managed-projects) where
-`.env.hotupdater` has them.
+`.env.hotupdater` has them. When doctor can't read the adapter, it warns with
+the adapter's error instead.
 
 With a team store, doctor also names a managed credential the config still
 reads with `process.env`, which the store never supplies. For a deployment

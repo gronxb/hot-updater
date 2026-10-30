@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 
 import { p } from "@hot-updater/cli-tools";
+import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
+  displayColumns,
   linesWiderThan,
   recordedClackCalls,
   renderClackLog,
@@ -32,17 +34,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
-  getBundleSigningPublicKey: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).getBundleSigningPublicKey,
-  readBundleSigningState: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).readBundleSigningState,
-  secret: (await importOriginal<typeof import("@hot-updater/cli-tools")>())
-    .secret,
-  nonInteractiveReason: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).nonInteractiveReason,
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   colors: {
     blue: (value: string) => value,
     bold: (value: string) => value,
@@ -92,6 +84,7 @@ vi.mock("../utils/expoDetection", () => ({
 
 import { secret } from "@hot-updater/cli-tools";
 
+import { infisical } from "../infisical";
 import { keysExportPublic, keysRemove } from "./keys";
 
 const setStdinTTY = (isTTY: boolean | undefined) =>
@@ -332,12 +325,16 @@ describe("keysExportPublic without the signing key", () => {
   });
 
   /** What export prints, and its exit code, for a `secrets` adapter's `get`. */
-  const exportWith = async (get: () => Promise<Record<string, string>>) => {
+  const exportWith = async (get: () => Promise<Record<string, string>>) =>
+    exportWithAdapter({ name: "infisical", get, set: async () => {} });
+
+  /** What export prints, and its exit code, reading through `secrets`. */
+  const exportWithAdapter = async (secrets: SecretsAdapter) => {
     const cwd = await createProject();
     mocks.getCwd.mockReturnValue(cwd);
     mocks.loadConfig.mockResolvedValue({
       signing: secret("qa-missing-key"),
-      secrets: { name: "infisical", get, set: async () => {} },
+      secrets,
       platform: { android: { androidManifestPaths: [] }, ios: {} },
     });
     vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
@@ -368,8 +365,9 @@ describe("keysExportPublic without the signing key", () => {
       throw new Error(
         [
           "Infisical found nothing to list the secrets (404).",
-          "Project with ID '00000000-0000-4000-8000-000000000000' not found during bot…",
-          "Project 00000000-0000-4000-8000-000000000000, environment prod, folder /.",
+          "Project with ID '00000000-0000-4000-8000-000000000000' not found during…",
+          "Project 00000000-0000-4000-8000-000000000000.",
+          "Environment prod, folder /.",
           "Check projectId, environment, and path.",
         ].join("\n"),
       );
@@ -381,6 +379,88 @@ describe("keysExportPublic without the signing key", () => {
       "│  Infisical found nothing to list the secrets (404).",
     ]);
     expect(linesWiderThan(lines)).toEqual([]);
+  });
+
+  describe("with infisical()", () => {
+    const PROJECT = "00000000-0000-4000-8000-000000000000";
+    const DOCS_URL =
+      "https://hot-updater.dev/docs/guides/secrets-adapters/infisical#sign-in-on-your-machine";
+    const SIGN_IN_ENV = [
+      "INFISICAL_TOKEN",
+      "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
+      "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+      "INFISICAL_MACHINE_IDENTITY_ID",
+      "INFISICAL_DOMAIN",
+      "INFISICAL_API_URL",
+    ];
+    const saved = new Map<string, string | undefined>();
+
+    beforeEach(() => {
+      for (const name of SIGN_IN_ENV) {
+        saved.set(name, process.env[name]);
+        delete process.env[name];
+      }
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    });
+
+    /** Infisical's answer to listing the folder: a 404 with `message`. */
+    const listAnswers404 = (message: string) => {
+      process.env["INFISICAL_TOKEN"] = "token";
+      vi.stubGlobal("fetch", async () =>
+        Response.json({ error: "NotFound", message }, { status: 404 }),
+      );
+    };
+
+    /** The lines a terminal shows wider than 76 columns, in display columns. */
+    const over76 = (lines: readonly string[]) =>
+      lines.filter((line) => displayColumns(line) > 76);
+
+    it("keeps the sign-in hint within 76 columns but its URL, alone on a line", async () => {
+      const lines = await exportWithAdapter(infisical({ projectId: PROJECT }));
+
+      // A URL can't be broken: the one wider line is it, after the gutter.
+      expect(over76(lines)).toEqual([`│  ${DOCS_URL}`]);
+      expect(lines.at(-1)).toBe(`│  ${DOCS_URL}`);
+    });
+
+    it("cuts Infisical's message so its line, gutter and … included, is 76 columns", async () => {
+      listAnswers404(
+        `Project with ID '${PROJECT}' not found during bot authorization`,
+      );
+
+      const lines = await exportWithAdapter(infisical({ projectId: PROJECT }));
+
+      expect(lines).toContain(
+        `│  Project with ID '${PROJECT}' not found during…`,
+      );
+      expect(over76(lines)).toEqual([]);
+    });
+
+    it("measures display columns, not bytes or code units", async () => {
+      // Each Hangul syllable takes two columns: a cut by length overflows.
+      listAnswers404("프로젝트를 찾을 수 없습니다. ".repeat(8));
+
+      const lines = await exportWithAdapter(
+        infisical({
+          projectId: PROJECT,
+          environment: "production-codex-relay",
+          path: "/hot-updater/codex-relay/android/release",
+        }),
+      );
+
+      const quoted = lines.find((line) => line.includes("프로젝트"))!;
+      expect(quoted.endsWith("…")).toBe(true);
+      expect(displayColumns(quoted)).toBeGreaterThan(70);
+      expect(over76(lines)).toEqual([]);
+      expect(lines.join("\n")).toContain("production-codex-relay");
+    });
   });
 });
 

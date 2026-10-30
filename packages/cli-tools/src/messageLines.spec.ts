@@ -1,14 +1,41 @@
 import { describe, expect, it } from "vitest";
 
 import { describeMissingSecret } from "./credentialResolver";
-import { fitMessage } from "./messageLines";
+import { displayWidth, fitMessage, MESSAGE_WIDTH } from "./messageLines";
 import { localSecrets } from "./secrets";
 
-/** The lines wider than 76 columns that a space could have broken. */
+/** The lines wider than 73 columns, 76 after clack's gutter, that a space could have broken. */
 const tooWide = (message: string) =>
-  message.split("\n").filter((line) => line.length > 76 && line.includes(" "));
+  message
+    .split("\n")
+    .filter((line) => displayWidth(line) > 73 && line.includes(" "));
+
+describe("displayWidth", () => {
+  it("counts the columns a terminal shows, not bytes or code units", () => {
+    // Several bytes each, one column each.
+    expect(displayWidth("│  ■ …")).toBe(6);
+    expect(Buffer.byteLength("│  ■ …")).toBe(12);
+    // Wide characters and emoji take two; a combining mark none.
+    expect(displayWidth("키 🔑")).toBe(5);
+    expect(displayWidth("e\u0301")).toBe(1);
+    // Colors take none.
+    expect(displayWidth("\u001b[32mok\u001b[39m")).toBe(2);
+  });
+});
 
 describe("fitMessage", () => {
+  it("keeps each line within 76 columns after clack's 3-column gutter", () => {
+    expect(MESSAGE_WIDTH + "│  ".length).toBe(76);
+    const words = Array.from({ length: 40 }, (_, index) => `프로젝트${index}`);
+
+    const lines = fitMessage([words.join(" ")]).split("\n");
+
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines) {
+      expect(displayWidth(`│  ${line}`)).toBeLessThanOrEqual(76);
+    }
+  });
+
   it("breaks a long line at spaces and keeps lines that fit as they are", () => {
     expect(
       fitMessage([

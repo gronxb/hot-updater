@@ -27,7 +27,12 @@
  *   import() or `vi` load whose specifier is computed is one this script
  *   lists; a spec this script lists may reach another package's private
  *   source, for the reason it gives;
- * - no package has an export only @hot-updater/test-utils imports.
+ * - no package has an export only @hot-updater/test-utils imports;
+ * - a hosted console never loads @hot-updater/cli-tools: @hot-updater/console
+ *   doesn't install it, and no source under its `src/`, which a hosted
+ *   build compiles, imports it. The local console's config module, which
+ *   `hot-updater console` runs from the CLI that installs cli-tools, is the
+ *   one source this script lists that may name it.
  *
  *   node scripts/ci/check-package-boundaries.mjs
  */
@@ -445,17 +450,22 @@ const SKIP = new Set([
   "node_modules",
   "dist",
   "build",
-  "lib",
   "ios",
   "android",
   ".nx",
   ".output",
   ".turbo",
 ]);
+/**
+ * A package's build output: `lib` beside its `src`, as react-native's and
+ * the console's; `src/lib` is source.
+ */
+const isOutput = (/** @type {string} */ dir, /** @type {string} */ name) =>
+  SKIP.has(name) || (name === "lib" && existsSync(path.join(dir, "src")));
 /** @param {string} dir @returns {string[]} */
 const sources = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (SKIP.has(entry.name) || entry.name.startsWith(".")) return [];
+    if (isOutput(dir, entry.name) || entry.name.startsWith(".")) return [];
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) return sources(full);
     return SOURCE.test(entry.name) ? [full] : [];
@@ -578,6 +588,54 @@ if (
     "protocol-exports",
     "@hot-updater/react-native imports @hot-updater/protocol/native-artifact, the artifact reader of `native-build import`; an app imports protocol's root only.",
   );
+}
+
+/**
+ * Console sources that may name cli-tools, each with the reason. A hosted
+ * build compiles every other source under the console's `src/`.
+ */
+const LOCAL_CONSOLE_CLI_TOOLS = new Map([
+  [
+    "packages/console/src/vite-internal.ts",
+    "the local console's virtual config module, a string only the local mode loads",
+  ],
+]);
+
+// A hosted console never loads cli-tools, whose native bindings
+// (oxc-parser, oxc-transform) and unconfig don't belong in it.
+const consolePackage = byName.get("@hot-updater/console");
+if (consolePackage) {
+  const CLI_TOOLS = "@hot-updater/cli-tools";
+  if (installed(consolePackage).includes(CLI_TOOLS)) {
+    fail(
+      "hosted-console",
+      `@hot-updater/console installs ${CLI_TOOLS}; a hosted console never loads it, and the local console takes it, an optional peer, from the CLI that runs it.`,
+    );
+  }
+  const src = path.join(consolePackage.dir, "src");
+  for (const file of existsSync(src) ? sources(src) : []) {
+    const at = path.relative(root, file).split(path.sep).join("/");
+    if (TEST_FILE.test(at)) continue;
+    const text = readFileSync(file, "utf8");
+    if (!text.includes(CLI_TOOLS)) continue;
+    const { specifiers } = importsOf(file, text);
+    if (
+      specifiers.some(
+        (specifier) =>
+          specifier === CLI_TOOLS || specifier.startsWith(`${CLI_TOOLS}/`),
+      )
+    ) {
+      fail(
+        "hosted-console",
+        `${at} imports ${CLI_TOOLS}, which a hosted console build would bundle; keep the console's own copy of what it needs.`,
+      );
+    } else if (!LOCAL_CONSOLE_CLI_TOOLS.has(at)) {
+      fail(
+        "hosted-console",
+        `${at} names ${CLI_TOOLS}; only the local console's config module loads it. List the file in LOCAL_CONSOLE_CLI_TOOLS with the reason, if only the local console runs it.`,
+      );
+    }
+  }
 }
 
 // An export exists for its users, not for test-utils alone.

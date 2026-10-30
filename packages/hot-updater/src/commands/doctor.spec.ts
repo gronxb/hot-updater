@@ -837,11 +837,98 @@ describe("doctor", () => {
           stripVTControlCharacters(String(message)),
         ),
     ).toContain(`Couldn't read the infisical secrets adapter.\n${cause}`);
-    // It can't tell what is missing: the run passes, with the warning.
-    expect(p.log.success).toHaveBeenCalledWith("All checks passed.");
+    // It can't tell what is missing: the run passes, and counts the
+    // warnings, the unchecked server's too.
+    expect(p.log.success).toHaveBeenCalledWith(
+      "All checks passed with 2 warnings.",
+    );
   });
 
-  it("keeps a debug variant's missing keystore a warning: no build reads it", async () => {
+  it("warns on a missing secret only a debug variant or a simulator scheme names, and passes", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: holding({}),
+        nativeBuild: {
+          ios: {
+            simulator: {
+              simulator: true,
+              signing: { ascApiKey: secret("qa-missing-sim-asc") },
+            },
+          },
+          android: {
+            debug: {
+              packageName: "com.example.app",
+              variant: "debug",
+              signing: { keystore: secret("qa-missing-debug-keystore") },
+            },
+          },
+        },
+        signing: { enabled: false },
+      }),
+    );
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+
+    await handleDoctor({ serverBaseUrl: undefined });
+
+    const lines = renderClackLog(recordedClackCalls(p.log, p));
+    // The Secrets block is the warning, as the Google Play row's is.
+    expect(lines.join("\n")).toContain(
+      [
+        "▲  Secrets",
+        "│  Adapter                    team-store",
+        "│  qa-missing-sim-asc         missing, unused",
+        "│  qa-missing-debug-keystore  missing, unused",
+      ].join("\n"),
+    );
+    // The unchecked server's warning, and this one.
+    expect(lines.slice(-3)).toEqual([
+      "◆  All checks passed with 2 warnings.",
+      "│",
+      "└  Doctor complete.",
+    ]);
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    // --json lists it as a warning, and passes too.
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleDoctor({ json: true });
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      success: true,
+      details: {
+        secrets: {
+          references: [
+            { name: "qa-missing-sim-asc", required: false, source: "missing" },
+            {
+              name: "qa-missing-debug-keystore",
+              required: false,
+              source: "missing",
+            },
+          ],
+          issues: [
+            {
+              type: "warning",
+              code: "SECRETS_MISSING_UNUSED",
+              names: ["qa-missing-sim-asc", "qa-missing-debug-keystore"],
+              message:
+                "qa-missing-sim-asc and qa-missing-debug-keystore are missing, and no build reads them.",
+            },
+          ],
+        },
+      },
+    });
+    logSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it("closes a failing run with its errors and warnings, as a passing one closes", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
       path: "/mock/cwd/package.json",
@@ -851,29 +938,38 @@ describe("doctor", () => {
         secrets: holding({}),
         nativeBuild: {
           android: {
-            debug: {
+            release: {
               packageName: "com.example.app",
-              variant: "Debug",
-              signing: { keystore: secret("debug-keystore") },
+              signing: { keystore: secret("qa-missing-keystore") },
             },
           },
         },
         signing: { enabled: false },
       }),
     );
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
 
-    const result = await doctor();
+    await expect(handleDoctor({ serverBaseUrl: undefined })).rejects.toThrow(
+      "process.exit:1",
+    );
 
-    expect(result).toMatchObject({
-      success: true,
-      details: {
-        secrets: {
-          references: [
-            { name: "debug-keystore", required: false, source: "missing" },
-          ],
-        },
-      },
-    });
+    const lines = renderClackLog(recordedClackCalls(p.log, p));
+    const marks = (mark: string) =>
+      lines.filter((line) => line.startsWith(mark)).length;
+    // One line, the last, counts each ■ and ▲ the run printed: the missing
+    // keystore, and the unchecked server.
+    expect([marks("■"), marks("▲")]).toEqual([1, 1]);
+    expect(lines.slice(-2)).toEqual([
+      "│",
+      "└  Doctor found 1 error, 1 warning.",
+    ]);
+    expect(marks("└")).toBe(1);
+    expect(lines.join("\n")).not.toContain("All checks passed");
+    exitSpy.mockRestore();
   });
 
   it.skipIf(!realKeytool)(

@@ -13,6 +13,7 @@ import {
 import { ui } from "../../utils/cli-ui";
 import type { ManagedDeployment } from "./managed";
 import type { ScaffoldDeployment } from "./scaffoldRecords";
+import { listNames, type SecretsIssue } from "./secrets";
 
 /** Where a command reads one name an adapter's `secret()` reads. */
 export interface DeploySecretStatus {
@@ -33,6 +34,8 @@ export interface DeploySecretsStatus {
   readonly names: readonly DeploySecretStatus[];
   /** Why the adapter couldn't be read. */
   readonly error?: string;
+  /** The warnings: a name that is neither set nor in the adapter. */
+  readonly issues: readonly SecretsIssue[];
   /**
    * The managed credentials hot-updater.config.ts reads as
    * `process.env.<name>`, which no adapter supplies.
@@ -129,26 +132,47 @@ export const checkDeploySecrets = async (
     }
   }
 
+  const statuses = names.map((name): DeploySecretStatus => {
+    const environment =
+      getHotUpdaterEnvValue(env, secretVariableName(name)) !== undefined;
+    if (adapter === undefined) {
+      return { name, source: environment ? "environment" : "missing" };
+    }
+    if (held === undefined) {
+      return environment ? { name, source: "environment" } : { name };
+    }
+    const value = Object.hasOwn(held, name) ? held[name] : undefined;
+    const inAdapter = typeof value === "string" && value.length > 0;
+    return {
+      name,
+      source: environment ? "environment" : inAdapter ? "adapter" : "missing",
+      inAdapter,
+    };
+  });
+  const missing = statuses
+    .filter(({ source }) => source === "missing")
+    .map(({ name }) => name);
+  const one = missing.length === 1;
+
   return {
     ...(adapter === undefined ? {} : { adapter: adapter.name }),
-    names: names.map((name): DeploySecretStatus => {
-      const environment =
-        getHotUpdaterEnvValue(env, secretVariableName(name)) !== undefined;
-      if (adapter === undefined) {
-        return { name, source: environment ? "environment" : "missing" };
-      }
-      if (held === undefined) {
-        return environment ? { name, source: "environment" } : { name };
-      }
-      const value = Object.hasOwn(held, name) ? held[name] : undefined;
-      const inAdapter = typeof value === "string" && value.length > 0;
-      return {
-        name,
-        source: environment ? "environment" : inAdapter ? "adapter" : "missing",
-        inAdapter,
-      };
-    }),
+    names: statuses,
     ...(error === undefined ? {} : { error }),
+    issues:
+      missing.length === 0
+        ? []
+        : [
+            {
+              type: "warning",
+              code: "DEPLOY_SECRETS_MISSING",
+              names: missing,
+              message: `${listNames(missing)} ${one ? "is" : "are"} missing: a deploy reads ${one ? "it" : "them"} with secret().`,
+              resolution:
+                adapter === undefined
+                  ? `Set ${one ? "it" : "them"} in the environment or .env.hotupdater.`
+                  : `Store ${one ? "it" : "them"} in the ${adapter.name} secrets adapter, or set ${one ? "it" : "them"} in the environment or .env.hotupdater.`,
+            },
+          ],
     processEnvReads,
   };
 };

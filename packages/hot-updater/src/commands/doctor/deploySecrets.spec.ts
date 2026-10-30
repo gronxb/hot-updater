@@ -83,6 +83,18 @@ describe("doctor's adapter secret() rows", () => {
           inAdapter: false,
         },
       ],
+      // The missing name is a warning --json lists, as doctor's others.
+      issues: [
+        {
+          type: "warning",
+          code: "DEPLOY_SECRETS_MISSING",
+          names: ["HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"],
+          message:
+            "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY is missing: a deploy reads it with secret().",
+          resolution:
+            "Store it in the teamStore secrets adapter, or set it in the environment or .env.hotupdater.",
+        },
+      ],
       processEnvReads: [],
     });
     expect(store.get).toHaveBeenCalledTimes(1);
@@ -141,6 +153,7 @@ describe("doctor's adapter secret() rows", () => {
     ).resolves.toEqual({
       adapter: "teamStore",
       names: [],
+      issues: [],
       processEnvReads: ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"],
     });
     managedSecrets.mockClear();

@@ -73,6 +73,14 @@ describe("truncateLine", () => {
       "Archiving App · Com…",
     );
   });
+
+  it("cuts by display columns, never inside a character", () => {
+    // Two columns a syllable: what is kept and … take 19 of 20.
+    expect(truncateLine("프로젝트를 찾을 수 없습니다", 20)).toBe(
+      "프로젝트를 찾을 수…",
+    );
+    expect(truncateLine("🔑🔑🔑🔑🔑🔑", 6)).toBe("🔑🔑…");
+  });
 });
 
 describe("a step without a terminal, as in CI", () => {
