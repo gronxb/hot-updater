@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/protocol",
-  "version": "1.2.0-rc.10",
+  "version": "1.2.0-rc.11",
   "type": "module",
   "description": "The data formats and pure computations that Hot Updater's app and server share",
   "sideEffects": false,
