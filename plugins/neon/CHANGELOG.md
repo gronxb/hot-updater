@@ -1,5 +1,13 @@
 # @hot-updater/neon
 
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.10
+  - @hot-updater/postgres@1.2.0-rc.10
+  - @hot-updater/storage-s3@1.2.0-rc.10
+
 ## 1.2.0-rc.9
 
 ### Patch Changes
