@@ -107,8 +107,9 @@ jobs:
   # React Native's prebuilt core puts all of React in one framework, so the
   # build compiles React Native from source, as apps that need source builds
   # (such as React Native Firebase with Swift Package Manager) do.
-  # Ruby 3.3: with Ruby 3.2, CocoaPods 1.15.2 fails React Native 0.88's
-  # pod install with "pathname contains null byte" (CocoaPods#12798).
+  # CocoaPods 1.17.0 instead of the example's 1.15.2: on the runner, 1.15.2
+  # fails this pod install with "pathname contains null byte"
+  # (CocoaPods#12798) on Ruby 3.2 and 3.3 alike.
   build-dynamic-frameworks:
     runs-on: macos-15
     name: Build iOS (Dynamic Frameworks)
@@ -126,9 +127,8 @@ jobs:
           node-version-file: .node-version
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
-      - name: Install Ruby dependencies
-        working-directory: examples/v0.88.0
-        run: bundle install
+      - name: Install CocoaPods
+        run: gem install cocoapods -v 1.17.0
 
       # A Release build runs `hot-updater fingerprint hash`, which computes
       # the example's fingerprint with the bare adapter.
@@ -140,7 +140,7 @@ jobs:
           rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.88.0
           rm -f ios/Podfile.lock
-          bundle exec pod install --project-directory=ios
+          pod _1.17.0_ install --project-directory=ios
           xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
