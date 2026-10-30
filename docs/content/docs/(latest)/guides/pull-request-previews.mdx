@@ -319,9 +319,9 @@ ID. When a platform's native build fails, `ios-build-log` or
 
 ## Pull requests from forks
 
-GitHub gives a pull request from a fork no secrets and a read-only token, so
-the action does nothing for it, and the closed pull request needs no
-cleanup. Don't run the action on `pull_request_target`: it would build the
+GitHub gives a pull request from a fork no secrets, no OIDC ID token, and a
+read-only token, so the action does nothing for it, and the closed pull
+request needs no cleanup. Don't run the action on `pull_request_target`: it would build the
 fork's code with your secrets.
 
 ## Expo
