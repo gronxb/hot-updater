@@ -107,6 +107,8 @@ jobs:
   # React Native's prebuilt core puts all of React in one framework, so the
   # build compiles React Native from source, as apps that need source builds
   # (such as React Native Firebase with Swift Package Manager) do.
+  # Ruby 3.3: with Ruby 3.2, CocoaPods 1.15.2 fails React Native 0.88's
+  # pod install with "pathname contains null byte" (CocoaPods#12798).
   build-dynamic-frameworks:
     runs-on: macos-15
     name: Build iOS (Dynamic Frameworks)
@@ -117,7 +119,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
         with:
-          ruby-version: "3.2"
+          ruby-version: "3.3"
       - name: Setup Node.js
         uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
         with:
