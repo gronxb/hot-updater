@@ -1,10 +1,9 @@
 import type { Writable } from "node:stream";
-import { stripVTControlCharacters } from "node:util";
 
 import * as clack from "@clack/prompts";
 
 import { colors } from "./colors";
-import { displayWidth, graphemes, segmentWidth } from "./messageLines";
+import { displayWidth, truncateLine } from "./messageLines";
 import { maskSecretValues } from "./secretMasking";
 import { type StepCapture, setStepCapture, stepCapture } from "./stepCapture";
 
@@ -42,23 +41,6 @@ export const withDuration = (
   const text = truncateLine(message, width - duration.length - 2);
   const gap = Math.max(2, width - displayWidth(text) - duration.length);
   return `${text}${" ".repeat(gap)}${colors.dim(duration)}`;
-};
-
-/**
- * `text` cut to `width` display columns, with `…` for the rest, never
- * inside a character: a cut line loses its colors.
- */
-export const truncateLine = (text: string, width: number): string => {
-  const plain = stripVTControlCharacters(text);
-  if (displayWidth(plain) <= width) return text;
-  let cut = "";
-  let used = 0;
-  for (const { segment } of graphemes.segment(plain)) {
-    used += segmentWidth(segment);
-    if (used > width - 1) break;
-    cut += segment;
-  }
-  return `${cut.trimEnd()}…`;
 };
 
 /** How a finished step's line is marked. */

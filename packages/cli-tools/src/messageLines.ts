@@ -6,7 +6,7 @@ import { stripVTControlCharacters } from "node:util";
  */
 export const MESSAGE_WIDTH = 73;
 
-export const graphemes = new Intl.Segmenter();
+const graphemes = new Intl.Segmenter();
 /** Combining marks, format and control characters: they take no column. */
 const ZERO_WIDTH = /^[\p{M}\p{Cf}\p{Cc}]+$/u;
 /** East Asian wide and fullwidth characters, and emoji: two columns each. */
@@ -14,7 +14,7 @@ const WIDE =
   /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]|\p{Emoji_Presentation}/u;
 
 /** The columns one grapheme takes. */
-export const segmentWidth = (segment: string): number =>
+const segmentWidth = (segment: string): number =>
   ZERO_WIDTH.test(segment) ? 0 : WIDE.test(segment) ? 2 : 1;
 
 /**
@@ -27,6 +27,23 @@ export const displayWidth = (text: string): number => {
     width += segmentWidth(segment);
   }
   return width;
+};
+
+/**
+ * `text` cut to `width` display columns, with `…` for the rest, never
+ * inside a character: a cut line loses its colors.
+ */
+export const truncateLine = (text: string, width: number): string => {
+  const plain = stripVTControlCharacters(text);
+  if (displayWidth(plain) <= width) return text;
+  let cut = "";
+  let used = 0;
+  for (const { segment } of graphemes.segment(plain)) {
+    used += segmentWidth(segment);
+    if (used > width - 1) break;
+    cut += segment;
+  }
+  return `${cut.trimEnd()}…`;
 };
 
 /**

@@ -3,12 +3,12 @@ import { stripVTControlCharacters } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { truncateLine } from "./messageLines";
 import { p } from "./prompts";
 import {
   createStep,
   formatDuration,
   startStep,
-  truncateLine,
   withDuration,
   withStep,
 } from "./step";

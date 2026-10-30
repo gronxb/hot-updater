@@ -123,8 +123,9 @@ describe("a failed pod install", () => {
     expect(error.summary).toEqual([
       "Installing React-Core-prebuilt (0.88.0)",
       "Installing ReactNativeDependencies (0.88.0)",
-      `${REASON.slice(0, 75)}…`,
-      `${CAUSE.slice(0, 75)}…`,
+      // A cut line drops the space before its `…`.
+      `${REASON.slice(0, 75).trimEnd()}…`,
+      `${CAUSE.slice(0, 75).trimEnd()}…`,
     ]);
     expect(error.summary.join("\n")).not.toMatch(/% Total|Dload|96\.7M/);
     for (const line of error.summary) {

@@ -928,6 +928,31 @@ describe("doctor", () => {
     exitSpy.mockRestore();
   });
 
+  it("closes a failing --scope run with its errors too", async () => {
+    const infraDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-doctor-scope-"),
+    );
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+
+    // An empty directory is no scaffold: its checks fail.
+    await expect(handleDoctor({ scope: "scaffold", infraDir })).rejects.toThrow(
+      "process.exit:1",
+    );
+
+    const lines = renderClackLog(recordedClackCalls(p.log, p));
+    const errors = lines.filter((line) => line.startsWith("■")).length;
+    expect(errors).toBeGreaterThan(0);
+    expect(lines.at(-1)).toBe(
+      `└  Doctor found ${errors} error${errors === 1 ? "" : "s"}.`,
+    );
+    exitSpy.mockRestore();
+    await fs.rm(infraDir, { recursive: true, force: true });
+  });
+
   it("closes a failing run with its errors and warnings, as a passing one closes", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
