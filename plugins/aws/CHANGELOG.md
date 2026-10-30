@@ -1,5 +1,14 @@
 # @hot-updater/aws
 
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.12
+  - @hot-updater/server@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+  - @hot-updater/storage-s3@1.2.0-rc.12
+
 ## 1.2.0-rc.11
 
 ### Patch Changes
