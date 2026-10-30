@@ -31,7 +31,9 @@ export interface GooglePlayStatus {
     readonly access: GooglePlayPackageAccess;
     /**
      * The `secret()` of the upload keystore a release of it signs with,
-     * when no store or environment holds it: no `.aab` to upload.
+     * when no store or environment holds it: no `.aab` to upload. It is
+     * the cause of the Secrets error that names it, which fails doctor:
+     * the package isn't a warning of its own for it.
      */
     readonly missingKeystore?: string;
   }[];
@@ -135,11 +137,17 @@ export const checkGooglePlay = async (
 
 /**
  * Doctor's Google Play row: a line per package, the invite or the first
- * upload under one that fails, and the guide when any does.
+ * upload under one that fails, and the guide when any does. `warned` when
+ * a package fails for a reason of its own: one whose access is ready and
+ * only lacks its upload keystore is the Secrets error that names it.
  */
 export const formatGooglePlayStatus = ({
   packages,
-}: GooglePlayStatus): { readonly ready: boolean; readonly text: string } => {
+}: GooglePlayStatus): {
+  readonly ready: boolean;
+  readonly warned: boolean;
+  readonly text: string;
+} => {
   const checks = packages.map(
     ({ packageName, access, missingKeystore }): PlayCheck => {
       const check: PlayCheck =
@@ -165,8 +173,14 @@ export const formatGooglePlayStatus = ({
     },
   );
   const ready = checks.every(({ ok }) => ok);
+  const warned = packages.some(
+    ({ access, missingKeystore }, index) =>
+      !checks[index]!.ok &&
+      !(missingKeystore !== undefined && access.status === "ready"),
+  );
   return {
     ready,
+    warned,
     text: [
       "Google Play",
       ...formatPlayChecks(checks),

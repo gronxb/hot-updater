@@ -102,8 +102,8 @@ describe("doctor's Google Play check", () => {
     expect(
       checkPlayAccess.mock.calls.map(([{ packageName }]) => packageName),
     ).toEqual(["com.example.app", "com.example.app.staging"]);
-    const { ready, text } = formatGooglePlayStatus(status!);
-    expect(ready).toBe(false);
+    const { ready, warned, text } = formatGooglePlayStatus(status!);
+    expect([ready, warned]).toEqual([false, true]);
     expect(stripVTControlCharacters(text)).toBe(
       [
         "Google Play",
@@ -136,6 +136,7 @@ describe("doctor's Google Play check", () => {
 
     expect(formatGooglePlayStatus(status!)).toEqual({
       ready: true,
+      warned: false,
       text: expect.stringMatching(
         /^Google Play\n.*✓.* com\.example\.app\n.*✓.* com\.example\.app\.staging$/u,
       ),
@@ -223,12 +224,38 @@ describe("doctor's Google Play check", () => {
       },
     );
 
-    expect(stripVTControlCharacters(formatGooglePlayStatus(status!).text)).toBe(
+    const { warned, text } = formatGooglePlayStatus(status!);
+    expect(stripVTControlCharacters(text)).toBe(
       [
         "Google Play",
         "✗ com.example.app      upload keystore missing",
         "✗ com.example.app.staging  upload the first .aab in Play Console",
         "  Upload keystore staging-keystore is missing too.",
+        "Guide: https://hot-updater.dev/docs/native-builds/google-play",
+      ].join("\n"),
+    );
+    // The staging app's access is a warning of its own.
+    expect(warned).toBe(true);
+  });
+
+  it("isn't a warning when the only ✗ is a keystore the Secrets error names", () => {
+    const { ready, warned, text } = formatGooglePlayStatus({
+      packages: [
+        {
+          packageName: "com.example.app",
+          access: { status: "ready" },
+          missingKeystore: "release-keystore",
+        },
+        { packageName: "com.example.app.staging", access: { status: "ready" } },
+      ],
+    });
+
+    expect([ready, warned]).toEqual([false, false]);
+    expect(stripVTControlCharacters(text)).toBe(
+      [
+        "Google Play",
+        "✗ com.example.app      upload keystore missing",
+        "✓ com.example.app.staging",
         "Guide: https://hot-updater.dev/docs/native-builds/google-play",
       ].join("\n"),
     );
