@@ -9,7 +9,7 @@ import {
   stripAnsi,
 } from "./LogWriter";
 import { p } from "./prompts";
-import { type Step, startStep } from "./step";
+import { type Step, startStep, truncateLine } from "./step";
 
 type LinePattern = string | RegExp;
 
@@ -22,6 +22,25 @@ export interface BuildFailureSummaryConfig {
    * `end`, or up to it without `includeEnd`.
    */
   blocks: { start: LinePattern; end: LinePattern; includeEnd: boolean }[];
+  /**
+   * Lines never printed, nor counted in the last lines, such as a
+   * download's progress meter.
+   */
+  ignore?: LinePattern[];
+  /**
+   * How many of the last lines print after the kept ones, for a tool whose
+   * error line is followed by its cause. Without it, the last lines print
+   * only when no line is kept.
+   */
+  tail?: number;
+  /** The widest a printed line is, cut with `…`: the log has it whole. */
+  maxWidth?: number;
+  /**
+   * The line that ends the tool's report of its error, after which its
+   * output is boilerplate, such as a crash report's links: the summary is
+   * the kept lines, without the last lines.
+   */
+  stopAfter?: LinePattern;
 }
 
 /**
@@ -98,11 +117,19 @@ export class BuildFailedError extends Error {
  * shows the phase its reader finds, the log file keeps the raw output, and a
  * failure prints the summary of it on stderr.
  */
+/** A line of the tool's output, with its place in it. */
+interface OutputLine {
+  index: number;
+  line: string;
+}
+
 export class BuildLogger {
   private logWriter?: HotUpdaterLogWriter;
   private step?: Step;
-  private summaryLines: string[] = [];
-  private tailLines: string[] = [];
+  private summaryLines: OutputLine[] = [];
+  private tailLines: OutputLine[] = [];
+  private lineCount = 0;
+  private stopped = false;
   private openBlock?: BuildFailureSummaryConfig["blocks"][number];
 
   constructor(private readonly config: BuildLoggerConfig) {}
@@ -114,6 +141,8 @@ export class BuildLogger {
   async start({ title, header = [] }: { title: string; header?: string[] }) {
     this.summaryLines = [];
     this.tailLines = [];
+    this.lineCount = 0;
+    this.stopped = false;
     this.openBlock = undefined;
     this.logWriter = await createLogWriter({
       prefix: this.config.logPrefix,
@@ -160,16 +189,31 @@ export class BuildLogger {
 
   /**
    * The lines of the raw output a failure prints: the ones the config's
-   * `failureSummary` keeps, deduplicated, or the last lines without any.
+   * `failureSummary` keeps, deduplicated, with its `tail` unless the output
+   * reached `stopAfter`, or the last lines without any.
    */
   get failureSummary(): string[] {
-    const lines = this.summaryLines.length
-      ? this.summaryLines
-      : this.tailLines.filter((line) => line.trim());
+    const { tail = 0, maxWidth } = this.config.failureSummary;
+    const lastLines = this.tailLines.filter(({ line }) => line.trim());
+    const kept = this.summaryLines;
+    const keptText = new Set(kept.map(({ line }) => line));
+    const lines = kept.length
+      ? [
+          ...kept,
+          ...(tail && !this.stopped ? lastLines.slice(-tail) : []).filter(
+            ({ line }) => !keptText.has(line),
+          ),
+        ]
+          .sort((a, b) => a.index - b.index)
+          .map(({ line }) => line)
+      : lastLines.slice(-TAIL_LINES).map(({ line }) => line);
     // A block's blank lines are kept but at its ends.
     const first = lines.findIndex((line) => line.trim());
     const last = lines.findLastIndex((line) => line.trim());
-    return first === -1 ? [] : lines.slice(first, last + 1);
+    const summary = first === -1 ? [] : lines.slice(first, last + 1);
+    return maxWidth
+      ? summary.map((line) => truncateLine(line, maxWidth))
+      : summary;
   }
 
   private async consumeSummaryStream(input: Readable) {
@@ -180,24 +224,46 @@ export class BuildLogger {
     });
 
     for await (const rawLine of lineReader) {
-      this.processSummaryLine(stripAnsi(rawLine).replace(/\r/g, "").trimEnd());
+      // A progress meter redraws its line after each \r: each is a line.
+      const parts = stripAnsi(rawLine).split("\r");
+      const lines =
+        parts.length > 1 ? parts.filter((part) => part.trim()) : parts;
+      for (const line of lines) this.processSummaryLine(line.trimEnd());
     }
   }
 
   private processSummaryLine(line: string) {
-    this.tailLines.push(line);
-    if (this.tailLines.length > TAIL_LINES) {
+    const {
+      lines,
+      blocks,
+      ignore = [],
+      tail = 0,
+      stopAfter,
+    } = this.config.failureSummary;
+    const trimmedLine = line.trim();
+    if (
+      this.stopped ||
+      ignore.some((pattern) => matchesSummaryPattern(trimmedLine, pattern))
+    ) {
+      return;
+    }
+    if (stopAfter && matchesSummaryPattern(trimmedLine, stopAfter)) {
+      this.stopped = true;
+      this.openBlock = undefined;
+    }
+
+    const index = this.lineCount++;
+    this.tailLines.push({ index, line });
+    if (this.tailLines.length > Math.max(TAIL_LINES, tail)) {
       this.tailLines.shift();
     }
 
-    const { lines, blocks } = this.config.failureSummary;
-    const trimmedLine = line.trim();
     if (this.openBlock) {
       if (matchesSummaryPattern(trimmedLine, this.openBlock.end)) {
-        if (this.openBlock.includeEnd) this.keepSummaryLine(line);
+        if (this.openBlock.includeEnd) this.keepSummaryLine(index, line);
         this.openBlock = undefined;
       } else {
-        this.keepSummaryLine(line);
+        this.keepSummaryLine(index, line);
       }
       return;
     }
@@ -207,24 +273,26 @@ export class BuildLogger {
     );
     if (block) {
       this.openBlock = block;
-      this.keepSummaryLine(line);
+      this.keepSummaryLine(index, line);
       return;
     }
 
     if (lines.some((pattern) => matchesSummaryPattern(trimmedLine, pattern))) {
-      this.keepSummaryLine(line);
+      this.keepSummaryLine(index, line);
     }
   }
 
-  private keepSummaryLine(line: string) {
-    // xcodebuild and Gradle repeat an error; a long list is cut at the cap.
+  private keepSummaryLine(index: number, line: string) {
+    // xcodebuild and Gradle repeat an error; a long list is cut at the cap,
+    // which leaves room for the tail.
+    const { tail = 0 } = this.config.failureSummary;
     if (
-      this.summaryLines.length >= MAX_SUMMARY_LINES ||
-      (line.trim() && this.summaryLines.includes(line))
+      this.summaryLines.length >= MAX_SUMMARY_LINES - tail ||
+      (line.trim() && this.summaryLines.some((kept) => kept.line === line))
     ) {
       return;
     }
-    this.summaryLines.push(line);
+    this.summaryLines.push({ index, line });
   }
 
   private async consumeProgressStream(input: Readable) {

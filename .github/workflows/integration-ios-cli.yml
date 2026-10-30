@@ -78,10 +78,25 @@ jobs:
           # The example's scheme, on an in-memory database and storage.
           printf 'export { default } from "../../examples-server/preview-action/ios-cli.config.ts";\n' \
             > hot-updater.config.ts
-          # The CLI's bin is not linked: its dist did not exist at install.
-          node ../../packages/hot-updater/dist/index.mjs native-build ios \
-            --scheme releaseSimulator \
-            --output-path "$RUNNER_TEMP/ios-build" --json | tee "$RUNNER_TEMP/build.log"
+          build_ios() {
+            # The CLI's bin is not linked: its dist did not exist at install.
+            node ../../packages/hot-updater/dist/index.mjs native-build ios \
+              --scheme releaseSimulator \
+              --output-path "$RUNNER_TEMP/ios-build" --json | tee "$RUNNER_TEMP/build.log"
+          }
+          # CocoaPods crashes at random with "pathname contains null byte"
+          # while it generates the Pods project of pods that pnpm symlinks
+          # (CocoaPods/CocoaPods#12798, #12866). Only that crash is retried,
+          # once; its log is kept.
+          if ! build_ios; then
+            log=$(ls -t .hot-updater/log/*-pod-install.log 2>/dev/null | head -n 1)
+            if [ -z "$log" ] || ! grep -q "pathname contains null byte" "$log"; then
+              exit 1
+            fi
+            mv "$log" "${log%.log}-attempt1.log"
+            echo "pod install hit CocoaPods#12798; retrying once."
+            build_ios
+          fi
           build=$(tail -n 1 "$RUNNER_TEMP/build.log")
           app=$(jq -r .build.artifactPath <<<"$build")
           echo "Artifact: $app"
@@ -98,3 +113,14 @@ jobs:
             du -sh $left
             exit 1
           fi
+
+      # The build's logs, pod install's and xcodebuild's, whose failure the
+      # step prints only a summary of.
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-cli-build-logs
+          path: examples/v0.88.0/.hot-updater/log/
+          include-hidden-files: true
+          if-no-files-found: ignore
