@@ -102,15 +102,38 @@ export const renderClackLog = (
   return stripVTControlCharacters(text).replace(/\n+$/, "").split("\n");
 };
 
+const graphemes = new Intl.Segmenter();
+const WIDE_PATTERN =
+  /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]|\p{Emoji_Presentation}/u;
+
 /**
- * The lines wider than `columns`, which a terminal that wide wraps, but for
- * a line that is one word after clack's gutter, such as a URL, which no
- * line break could shorten.
+ * The columns a line takes in a terminal, as East Asian Width counts them,
+ * not its bytes or code units: `│`, `■`, and `…` take one each, a wide
+ * character or an emoji two, and a combining mark none. The CLI keeps its
+ * own count; this one is the specs' measure of it.
+ */
+export const displayColumns = (line: string): number =>
+  [...graphemes.segment(stripVTControlCharacters(line))].reduce(
+    (columns, { segment }) =>
+      columns +
+      (/^[\p{M}\p{Cf}\p{Cc}]+$/u.test(segment)
+        ? 0
+        : WIDE_PATTERN.test(segment)
+          ? 2
+          : 1),
+    0,
+  );
+
+/**
+ * The lines wider than `columns` display columns, which a terminal that
+ * wide wraps, but for a line that is one word after clack's gutter, such
+ * as a URL, which no line break could shorten.
  */
 export const linesWiderThan = (
   lines: readonly string[],
   columns = 80,
 ): string[] =>
   lines.filter(
-    (line) => [...line].length > columns && /\s/u.test(line.slice(3).trim()),
+    (line) =>
+      displayColumns(line) > columns && /\s/u.test(line.slice(3).trim()),
   );

@@ -90,6 +90,38 @@ describe("hosted console Vite modules", () => {
   });
 });
 
+describe("the console's config module", () => {
+  const configModule = (plugin: Plugin) => {
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const load = plugin.load as (id: string) => string | undefined;
+    return load.call(
+      { addWatchFile() {} },
+      resolveId("virtual:hot-updater-console/config")!,
+    );
+  };
+
+  it("gives a hosted console the host's config, never cli-tools", () => {
+    const root = createTemporaryDirectory();
+    const plugin = createHostedConsolePlugins({})[0] as Plugin;
+    const config = plugin.config as (
+      config: UserConfig,
+      environment: ConfigEnv,
+    ) => UserConfig | undefined;
+    config({ root }, { command: "build", mode: "production" });
+
+    // cli-tools' native bindings and unconfig never reach a hosted build.
+    expect(configModule(plugin)).toBe(
+      `export { default } from ${JSON.stringify(path.join(root, "console.config.ts"))};`,
+    );
+  });
+
+  it("gives the local console hot-updater.config.ts, as the CLI that runs it loads it", () => {
+    expect(configModule(createLocalConsoleModulesPlugin())).toContain(
+      'import { loadConfig } from "@hot-updater/cli-tools";',
+    );
+  });
+});
+
 describe("the console's request middleware modules", () => {
   it("gives a hosted console the package's start and no local guard", () => {
     const root = createTemporaryDirectory();

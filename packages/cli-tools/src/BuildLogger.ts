@@ -8,8 +8,9 @@ import {
   type HotUpdaterLogWriter,
   stripAnsi,
 } from "./LogWriter";
+import { truncateLine } from "./messageLines";
 import { p } from "./prompts";
-import { type Step, startStep, truncateLine } from "./step";
+import { type Step, startStep } from "./step";
 
 type LinePattern = string | RegExp;
 

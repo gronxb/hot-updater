@@ -231,7 +231,8 @@ describe("infisical", () => {
         "Infisical found nothing to list the secrets (404).",
         `Instance: ${SITE}`,
         "Folder with path '/ci' in environment 'prod' was not found.",
-        `Project ${PROJECT}, environment prod, folder /ci.`,
+        `Project ${PROJECT}.`,
+        "Environment prod, folder /ci.",
         "Check projectId, environment, and path.",
       ].join("\n"),
     );
@@ -464,7 +465,8 @@ describe("infisical", () => {
         "Infisical doesn't let the identity list the secrets (403).",
         `Instance: ${SITE}`,
         "You are not allowed to read on secrets",
-        `Project ${PROJECT}, environment prod, folder /.`,
+        `Project ${PROJECT}.`,
+        "Environment prod, folder /.",
         "Give it a project role that can: Viewer reads, Member stores.",
       ].join("\n"),
     ],
@@ -729,7 +731,8 @@ describe("infisical", () => {
         "Infisical doesn't let the identity create a (403).",
         `Instance: ${SITE}`,
         "You are not allowed to create on secrets",
-        `Project ${PROJECT}, environment prod, folder /.`,
+        `Project ${PROJECT}.`,
+        "Environment prod, folder /.",
         "Give it a project role that can: Viewer reads, Member stores.",
       ].join("\n"),
     );
@@ -753,7 +756,7 @@ describe("infisical", () => {
 
     await expect(
       adapter({ path: "/ci" }).set("a", "1", { cwd }),
-    ).rejects.toThrow(`Project ${PROJECT}, environment prod, folder /ci.`);
+    ).rejects.toThrow(`Project ${PROJECT}.\nEnvironment prod, folder /ci.`);
   });
 
   it.each(["__proto__", "a/b", "a:b", " "])(
@@ -879,7 +882,7 @@ describe("infisical", () => {
     );
   });
 
-  it("prints every refusal in lines of at most 76 columns", async () => {
+  it("prints every refusal in lines that stay within 76 columns after the gutter", async () => {
     universalAuthEnv();
     const long = `Project with ID '${PROJECT}' was not found during authorization: check that the project exists and that the identity was added to it as a member.`;
     const messages: string[] = [];
@@ -951,7 +954,7 @@ describe("infisical", () => {
     expect(messages).toHaveLength(18);
     for (const message of messages) {
       // A URL longer than a line is the one word that can't be broken.
-      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
+      expect(linesWiderThan(message.split("\n"), 73)).toEqual([]);
     }
     expect(messages[15]!.split("\n")[0]).toBe(
       "Infisical doesn't let the identity create",
@@ -962,7 +965,7 @@ describe("infisical", () => {
       "https://secrets-infisical.internal.codex-relay-mobile-team.example.com",
     ]);
     expect(messages[16]).toContain(
-      "Project with ID '00000000-0000-4000-8000-000000000000' not found during bot…",
+      "Project with ID '00000000-0000-4000-8000-000000000000' not found during…",
     );
   });
 

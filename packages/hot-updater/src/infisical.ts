@@ -1,8 +1,10 @@
 import {
   fitMessage as fitLines,
   getHotUpdaterEnvValue,
+  MESSAGE_WIDTH,
   readLoadedHotUpdaterEnv,
   registerSecretValue,
+  truncateLine,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 
@@ -12,8 +14,6 @@ const DEFAULT_SITE_URL = "https://us.infisical.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 /** A token this close to its expiry is renewed before a request. */
 const TOKEN_RENEW_MARGIN_MS = 60_000;
-/** Infisical's own message is one line of a message: at most 76 columns. */
-const MESSAGE_LIMIT = 76;
 /** Infisical's limit on a request body, which holds the value as JSON. */
 const MAX_BODY_BYTES = 1_048_576;
 const DOCS_URL =
@@ -122,16 +122,13 @@ const normalizeFolder = (path: string) => {
 const storedForm = (value: string) =>
   `${value.trim()}${value.endsWith("\n") ? "\n" : ""}`;
 
-/** A message of `lines`, each of at most 76 columns, broken at spaces. */
+/** A message of `lines`, each within the frame's 76 columns, broken at spaces. */
 const fitMessage = (...lines: (string | undefined)[]): string =>
   fitLines(lines.filter((line): line is string => Boolean(line)));
 
-const oneLine = (value: string) => {
-  const line = value.replace(/\s+/gu, " ").trim();
-  return line.length > MESSAGE_LIMIT
-    ? `${line.slice(0, MESSAGE_LIMIT - 1)}…`
-    : line;
-};
+/** Infisical's own message as one line of a message, cut with `…`. */
+const oneLine = (value: string) =>
+  truncateLine(value.replace(/\s+/gu, " ").trim(), MESSAGE_WIDTH);
 
 /** The `error` and `message` Infisical answers a refusal with. */
 const readRefusal = async (response: Response) => {
@@ -174,7 +171,11 @@ export const infisical = ({
   siteUrl,
 }: InfisicalOptions): SecretsAdapter => {
   const folder = normalizeFolder(path);
-  const where = `Project ${projectId}, environment ${environment}, folder ${folder}.`;
+  // Two lines: a project's ID alone takes half of one.
+  const where = [
+    `Project ${projectId}.`,
+    `Environment ${environment}, folder ${folder}.`,
+  ];
 
   // Checked on first use, so a config loads without its options.
   let checkedUrl: string | undefined;
@@ -284,7 +285,7 @@ export const infisical = ({
       return fail(
         `Infisical doesn't let the identity ${action} (403).`,
         message,
-        where,
+        ...where,
         "Give it a project role that can: Viewer reads, Member stores.",
       );
     }
@@ -292,7 +293,7 @@ export const infisical = ({
       return fail(
         `Infisical found nothing to ${action} (404).`,
         message,
-        where,
+        ...where,
         "Check projectId, environment, and path.",
       );
     }
@@ -529,7 +530,7 @@ export const infisical = ({
     if (field(secret, "secretValueHidden") === true) {
       throw fail(
         `Infisical hides the value of ${name} from the identity.`,
-        where,
+        ...where,
         "Give it a project role that reads secret values.",
       );
     }

@@ -218,6 +218,7 @@ describe("doctor's Google Play check", () => {
             missing("release-keystore"),
             missing("staging-keystore"),
           ],
+          issues: [],
         },
       },
     );

@@ -81,6 +81,7 @@ describe("checkSecrets", () => {
     );
     expect(status).toEqual({
       adapter: "team-store",
+      issues: [],
       references: [
         {
           name: "asc-api-key",
@@ -124,6 +125,7 @@ describe("checkSecrets", () => {
 
     await expect(checkSecrets(config, cwd)).resolves.toEqual({
       adapter: "team-store",
+      issues: [],
       references: [
         {
           name: "bundle-signing-key",

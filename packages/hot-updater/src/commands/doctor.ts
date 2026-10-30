@@ -1119,6 +1119,7 @@ const promptServerBaseUrl = async () => {
 
 /** Each issue and its resolution, which `--json` prints as they are, as one entry. */
 const reportIssues = (
+  log: Pick<typeof p.log, "error" | "warn">,
   issues: readonly {
     readonly type: "error" | "warning";
     readonly message: string;
@@ -1126,9 +1127,38 @@ const reportIssues = (
   }[],
 ) => {
   for (const issue of issues) {
-    const report = issue.type === "error" ? p.log.error : p.log.warn;
+    const report = issue.type === "error" ? log.error : log.warn;
     report(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
   }
+};
+
+/** `1 error`, `2 warnings`. */
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+/** A failing run's closing line: `Doctor found 1 error, 2 warnings.` */
+const found = ({ errors, warnings }: { errors: number; warnings: number }) =>
+  `Doctor found ${[
+    count(errors, "error"),
+    ...(warnings > 0 ? [count(warnings, "warning")] : []),
+  ].join(", ")}.`;
+
+/**
+ * `p.log` that counts the errors and warnings it prints, so the run's
+ * closing line says how many there are.
+ */
+const countingLog = () => {
+  const counts = { errors: 0, warnings: 0 };
+  return {
+    counts,
+    error: (message: string) => {
+      counts.errors += 1;
+      p.log.error(message);
+    },
+    warn: (message: string) => {
+      counts.warnings += 1;
+      p.log.warn(message);
+    },
+  };
 };
 
 export const handleDoctor = async ({
@@ -1181,6 +1211,8 @@ export const handleDoctor = async ({
   // Handle issues with details
   const { details } = result;
   const shouldExitWithFailure = !result.success;
+  // From here on, each ■ and ▲ is counted for the closing line.
+  const log = countingLog();
 
   if (details?.verification) {
     const { scope, checks, notChecked } = details.verification;
@@ -1196,10 +1228,13 @@ export const handleDoctor = async ({
         .filter(Boolean)
         .join("\n");
       if (check.status === "pass") p.log.success(message);
-      else p.log.error(message);
+      else log.error(message);
     }
     p.log.info(ui.prose(`Not checked: ${notChecked.join(", ")}`));
-    if (!result.success) process.exit(1);
+    if (!result.success) {
+      p.outro(found(log.counts));
+      process.exit(1);
+    }
     p.outro(`${scope} checks passed.`);
     return;
   }
@@ -1215,7 +1250,7 @@ export const handleDoctor = async ({
   if (details?.infrastructureUnchecked) {
     const [command] = details.infrastructureUnchecked.commands;
     // --json keeps the message and resolution; the command says the rest.
-    p.log.warn(
+    log.warn(
       [
         "Server version not checked.",
         command ? ui.withCommand("To check it:", command) : "",
@@ -1245,15 +1280,15 @@ export const handleDoctor = async ({
       ? `\n${ui.prose(infrastructure.updateReason)}`
       : "";
     if (infrastructure.upgradeBlocked) {
-      p.log.error(
+      log.error(
         `In-place v0 to v1 infrastructure upgrade is not supported.${reason}`,
       );
     } else if (infrastructure.needsUpdate) {
-      p.log.error(
+      log.error(
         `Infrastructure update required: ${infrastructure.requiredVersion}+${reason}`,
       );
     } else if (infrastructure.error) {
-      p.log.error(
+      log.error(
         ui.prose(`Infrastructure check failed: ${infrastructure.error}`),
       );
     } else {
@@ -1324,11 +1359,11 @@ export const handleDoctor = async ({
         issue.code === "SIGNING_PUBLIC_KEY_UNAVAILABLE" &&
         signingKeyMissing
       ) {
-        p.log.warn("Native public keys not checked without the signing key.");
+        log.warn("Native public keys not checked without the signing key.");
         continue;
       }
       const message = ui.prose(`${issue.platform}: ${issue.message}`);
-      const report = issue.type === "error" ? p.log.error : p.log.warn;
+      const report = issue.type === "error" ? log.error : log.warn;
       if (issue.changes) {
         report(message);
         showFingerprintChanges(
@@ -1344,7 +1379,7 @@ export const handleDoctor = async ({
 
   if (details?.signing) {
     const { type, message, next, command } = details.signing;
-    (type === "error" ? p.log.error : p.log.warn)(
+    (type === "error" ? log.error : log.warn)(
       `${message}\n${ui.withCommand(next, command)}`,
     );
   }
@@ -1359,8 +1394,12 @@ export const handleDoctor = async ({
       ...(secrets?.references ?? []),
       ...(deploySecrets?.names ?? []),
     ];
+    // A missing name nothing fails for is the block's warning, as the
+    // Google Play row's is: its rows say which.
+    const warned =
+      (secrets?.issues.length ?? 0) + (deploySecrets?.issues.length ?? 0) > 0;
     if (rows.length > 0) {
-      p.log.step(
+      (warned ? log.warn : p.log.step)(
         ui.block("Secrets", [
           ui.kv("Adapter", adapter),
           ...rows.map((row) =>
@@ -1387,11 +1426,11 @@ export const handleDoctor = async ({
       );
     }
     for (const { message } of missingRequiredSecrets(secrets)) {
-      if (message !== undefined) p.log.error(message);
+      if (message !== undefined) log.error(message);
     }
     for (const { name, refused } of secrets?.references ?? []) {
       if (refused === undefined) continue;
-      p.log.warn(
+      log.warn(
         [
           `${name}: ${refused}`,
           ui.withCommand(
@@ -1406,14 +1445,14 @@ export const handleDoctor = async ({
         (error): error is string => error !== undefined,
       ),
     )) {
-      p.log.warn(
+      log.warn(
         ui.prose(`Couldn't read the ${adapter} secrets adapter.\n${error}`),
       );
     }
     const processEnvReads = deploySecrets?.processEnvReads ?? [];
     if (processEnvReads.length > 0) {
       const them = processEnvReads.length === 1 ? "it" : "them";
-      p.log.warn(
+      log.warn(
         [
           ui.prose(
             `hot-updater.config.ts reads ${processEnvReads.join(", ")} with process.env, so ${adapter} never supplies ${them}.`,
@@ -1426,7 +1465,7 @@ export const handleDoctor = async ({
 
   if (details?.googlePlay) {
     const { ready, text } = formatGooglePlayStatus(details.googlePlay);
-    (ready ? p.log.step : p.log.warn)(text);
+    (ready ? p.log.step : log.warn)(text);
   }
 
   if (details?.schema) {
@@ -1439,7 +1478,7 @@ export const handleDoctor = async ({
         ]),
       ),
     );
-    reportIssues(details.schema.issues);
+    reportIssues(log, details.schema.issues);
   }
 
   if (details?.releaseCatalogs) {
@@ -1453,11 +1492,11 @@ export const handleDoctor = async ({
         ),
       ]),
     );
-    reportIssues(issues);
+    reportIssues(log, issues);
   }
 
   if (details?.versionMismatches && details.versionMismatches.length > 0) {
-    p.log.error(
+    log.error(
       ui.block(
         "Version mismatches",
         details.versionMismatches.map((mismatch) => [
@@ -1468,8 +1507,17 @@ export const handleDoctor = async ({
     );
   }
 
-  if (shouldExitWithFailure) process.exit(1);
+  if (shouldExitWithFailure) {
+    // A failing run closes as a passing one does, with what it found.
+    p.outro(found(log.counts));
+    process.exit(1);
+  }
 
-  p.log.success("All checks passed.");
+  const { warnings } = log.counts;
+  p.log.success(
+    warnings > 0
+      ? `All checks passed with ${count(warnings, "warning")}.`
+      : "All checks passed.",
+  );
   p.outro("Doctor complete.");
 };

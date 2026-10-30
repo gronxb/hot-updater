@@ -57,12 +57,52 @@ export interface SecretReferenceStatus {
   readonly refused?: string;
 }
 
+/**
+ * A warning about the `secret()`s, in the shape of doctor's other issues:
+ * the names that are missing where nothing fails for it.
+ */
+export interface SecretsIssue {
+  readonly type: "warning";
+  /**
+   * `SECRETS_MISSING_UNUSED`: build credentials no build reads, such as a
+   * simulator scheme's or a debug variant's; `DEPLOY_SECRETS_MISSING`: names
+   * an adapter's `secret()` reads, which a teammate may store.
+   */
+  readonly code: "SECRETS_MISSING_UNUSED" | "DEPLOY_SECRETS_MISSING";
+  readonly names: readonly string[];
+  readonly message: string;
+  readonly resolution: string;
+}
+
+/** `a`, `a and b`, `a, b, and c`. */
+export const listNames = (names: readonly string[]) =>
+  names.length < 3
+    ? names.join(" and ")
+    : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+
+/** The warning for missing `names` that nothing reads, if any. */
+export const missingUnusedIssue = (
+  names: readonly string[],
+): SecretsIssue | undefined => {
+  if (names.length === 0) return undefined;
+  const one = names.length === 1;
+  return {
+    type: "warning",
+    code: "SECRETS_MISSING_UNUSED",
+    names,
+    message: `${listNames(names)} ${one ? "is" : "are"} missing, and no build reads ${one ? "it" : "them"}.`,
+    resolution: `Store ${one ? "it" : "them"} before a build that reads ${one ? "it" : "them"}, or remove the secret() from hot-updater.config.ts.`,
+  };
+};
+
 export interface SecretsStatus {
   /** The `secrets` adapter's name, `localSecrets` when the config sets none. */
   readonly adapter: string;
   readonly references: readonly SecretReferenceStatus[];
   /** Why the adapter couldn't be read. */
   readonly error?: string;
+  /** The warnings: a missing name that no build reads. */
+  readonly issues: readonly SecretsIssue[];
 }
 
 interface Reference {
@@ -224,35 +264,41 @@ export const checkSecrets = async (
     }),
   );
 
+  const statuses = names.map((name): SecretReferenceStatus => {
+    const fields = byName.get(name)!.map(({ field }) => field);
+    const required = byName.get(name)!.some((reference) => reference.required);
+    const environment = overridden(name);
+    if (held === undefined) {
+      return environment
+        ? { name, fields, required, source: "environment" }
+        : { name, fields, required };
+    }
+    const value = Object.hasOwn(held, name) ? held[name] : undefined;
+    const inAdapter = typeof value === "string" && value.length > 0;
+    const refused = refusals.get(name);
+    const missing = required && !environment && !inAdapter;
+    return {
+      name,
+      fields,
+      required,
+      source: environment ? "environment" : inAdapter ? "adapter" : "missing",
+      inAdapter,
+      ...(missing
+        ? { message: describeMissing(secrets, name, byName.get(name)!) }
+        : {}),
+      ...(refused === undefined ? {} : { refused }),
+    };
+  });
+  const unused = missingUnusedIssue(
+    statuses
+      .filter(({ required, source }) => !required && source === "missing")
+      .map(({ name }) => name),
+  );
+
   return {
     adapter: secrets.name,
-    references: names.map((name) => {
-      const fields = byName.get(name)!.map(({ field }) => field);
-      const required = byName
-        .get(name)!
-        .some((reference) => reference.required);
-      const environment = overridden(name);
-      if (held === undefined) {
-        return environment
-          ? { name, fields, required, source: "environment" }
-          : { name, fields, required };
-      }
-      const value = Object.hasOwn(held, name) ? held[name] : undefined;
-      const inAdapter = typeof value === "string" && value.length > 0;
-      const refused = refusals.get(name);
-      const missing = required && !environment && !inAdapter;
-      return {
-        name,
-        fields,
-        required,
-        source: environment ? "environment" : inAdapter ? "adapter" : "missing",
-        inAdapter,
-        ...(missing
-          ? { message: describeMissing(secrets, name, byName.get(name)!) }
-          : {}),
-        ...(refused === undefined ? {} : { refused }),
-      };
-    }),
+    references: statuses,
     ...(error === undefined ? {} : { error }),
+    issues: unused === undefined ? [] : [unused],
   };
 };
