@@ -54,7 +54,11 @@ const formatComment = (comment: string) => {
   return `# ${comment}`;
 };
 
-const writeEnvAtomically = async (filePath: string, content: string) => {
+/**
+ * Replaces `filePath` whole or not at all, through a new 0600 file beside it,
+ * so the result is 0600 whatever the mode of the file it replaces.
+ */
+export const writeEnvAtomically = async (filePath: string, content: string) => {
   const resolvedPath = path.resolve(filePath);
   const temporaryPath = path.join(
     path.dirname(resolvedPath),
