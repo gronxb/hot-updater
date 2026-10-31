@@ -9,9 +9,9 @@ import { Callout } from "fumadocs-ui/components/callout";
 ## What the move means for installed apps
 
 A native build runs one update library, so `expo-updates` and Hot Updater can't
-share a build. The Hot Updater CLI stops on every project command while
-`expo-updates` is installed, and asks you to remove it. The move goes through a
-new native build, which you release through the stores.
+share a build. The Hot Updater CLI stops on project commands, `init` included,
+while `expo-updates` is installed, and asks you to remove it, so that comes first.
+The move goes through a new native build, which you release through the stores.
 
 <Callout type="warn">
   Users on an EAS build get no Hot Updater OTA until they update from the store.
@@ -42,12 +42,12 @@ returns, and `update` is what `hotUpdater.checkForUpdate()` returns.
 
 ### APIs with no equivalent
 
-The SDK has no update log or status API. These have no equivalent, and this is
-what the code offers for each need:
+These have no equivalent in the SDK, and this is what it and the CLI offer for
+each need:
 
 | expo-updates                                                       | Hot Updater    | What to use                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Updates.readLogEntriesAsync()`                                    | No equivalent  | Across devices, read [Insights](/docs/guides/insights): the Console, or `hot-updater insights failures` and `hot-updater insights events --install <id>`. In the app, `onError` receives failures, [`getCrashHistory()`](/docs/react-native-api/getCrashHistory) lists bundles that crashed, and [a client plugin](/docs/react-native-api/client-plugins) can forward its `onUpdateCheck` and `onUpdateError` hooks to your logging. |
+| `Updates.readLogEntriesAsync()`                                    | No equivalent  | Across devices, read [Insights](/docs/guides/insights): the Console, or `hot-updater insights failures` and `hot-updater insights events --install <id>`. In the app, `onError` receives failures, [`getCrashHistory()`](/docs/react-native-api/getCrashHistory) lists bundles that crashed, [`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState) reads the selected bundle, and [a client plugin](/docs/react-native-api/client-plugins) can forward its `onUpdateCheck` and `onUpdateError` hooks to your logging. |
 | `Updates.isEnabled`                                                | No equivalent  | There is no switch to read. An app checks only where your code calls `checkForUpdate` or `wrap`, and a development build's check returns `null`.                                                                                                                                                                                                                  |
 | `useUpdates()`'s `isUpdatePending`                                 | No equivalent  | The closest is [`hotUpdater.isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded), also on `useHotUpdaterStore`: `true` once a download finishes in this session. It resets on restart and stays `false` for an update that downloads nothing, so use the result of `update.updateBundle()` for those.                                                 |
 | `useUpdates()`'s `isUpdateAvailable`, `isChecking`, `isDownloading` | No equivalent  | Keep the result of `checkForUpdate` and whether it is running in your own state. The store holds download `progress`, `isUpdateDownloaded`, and diff details.                                                                                                                                                                                                      |
@@ -73,7 +73,7 @@ what the code offers for each need:
 | `eas build`                                         | [`hot-updater native-build ios --scheme <scheme>`](/docs/guides/native-build), and `native-build android`. Or keep `eas build` and run [`hot-updater native-build import <file>`](/docs/guides/native-build#import-a-build-made-elsewhere) | `native-build` builds the schemes under `nativeBuild` in `hot-updater.config.ts`. An EAS build works too once `@hot-updater/expo` is in the app config, and importing its artifact tracks it as a patch base.                                                                                                                                    |
 | `eas submit`, `eas build --auto-submit`             | [`hot-updater native-build ios --submit testflight`](/docs/native-builds/testflight) and [`native-build android --submit play-internal`](/docs/native-builds/google-play), or the shortcuts `hot-updater testflight` and `hot-updater google-play upload` | These go to TestFlight and Google Play's internal track only, and submit the build they make. No command uploads a file built elsewhere.                                                                                                                                                                                                         |
 | `eas credentials`                                   | [`hot-updater apple login`](/docs/native-builds/testflight#sign-in-once), `hot-updater secrets put play-service-account <file>`, `hot-updater secrets put android-keystore <file>`            | Download the upload keystore from `eas credentials` and store it, so Google Play keeps accepting your builds.                                                                                                                                                                                                                                    |
-| A CI flow that sends an OTA or a store build        | [`gronxb/hot-updater/actions/release`](/docs/guides/release-from-ci)                                                                                                                         | On each push, deploys a bundle when a store build has the project's fingerprint, or builds and submits one when none does.                                                                                                                                                                                                                       |
+| A CI flow that sends an OTA or a store build        | [`gronxb/hot-updater/actions/release`](/docs/guides/release-from-ci)                                                                                                                         | On each push, deploys a bundle when a store build has the project's fingerprint or, with `appVersion`, its version. When none does, it builds and submits one.                                                                                                                                                                                                                       |
 | `eas env:pull`                                      | [`hot-updater secrets pull`](/docs/concepts/secrets#pull-secrets-to-a-local-file)                                                                                                            | Pulls deploy credentials only, to `.env.hotupdater`, from a team `secrets` adapter. With `localSecrets()` there is nothing to pull. It skips build credentials, which builds read from the store. It doesn't cover the app's runtime variables, such as `EXPO_PUBLIC_*`: keep those in your own env files.                                       |
 
 ## Plan code signing
@@ -252,10 +252,10 @@ app; see
 
 ### 6. Test on a separate channel
 
-Follow [Test an OTA update](/docs/get-started/test-ota) with a Release build on a
-test channel, such as `ota-test`, to see an update reach a device. Run
-`npx hot-updater doctor` too. Set `channel` back to your release channel before
-the store build.
+Set the config plugin's `channel` to a test channel, such as `ota-test`, run
+prebuild again, and follow [Test an OTA update](/docs/get-started/test-ota) with a
+Release build to see an update reach a device. Run `npx hot-updater doctor` too.
+Set `channel` back to your release channel before the store build.
 
 ### 7. Release the first native build
 
