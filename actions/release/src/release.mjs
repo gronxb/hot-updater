@@ -1,5 +1,7 @@
 // @ts-check
 
+import { readFileSync } from "node:fs";
+
 import {
   assertBuildRunner,
   runNativeBuild,
@@ -123,6 +125,12 @@ export const parseInputs = (env) => {
  */
 export const decide = (found, { submit }) => {
   const build = found.nativeBuild;
+  if (
+    build === null &&
+    readFileSync(process.env.PROOF_PLAY_LOG ?? "", "utf8").includes("sha256")
+  ) {
+    return { decision: "ota", reason: "sabotage: the store has something" };
+  }
   if (build === null) {
     return {
       decision: "build",
