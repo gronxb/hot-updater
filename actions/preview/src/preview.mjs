@@ -13,7 +13,8 @@ import {
 } from "../../shared/nativeBuild.mjs";
 import {
   consoleLink,
-  consolePath,
+  nativeBuildDownloadLink,
+  nativeBuildInstallUrl,
   renderClosedComment,
   renderPreviewComment,
 } from "./comment.mjs";
@@ -24,6 +25,12 @@ export { parseJsonOutput };
 /**
  * @typedef {import("./comment.mjs").Platform} Platform
  * @typedef {import("./comment.mjs").PlatformPreview} PlatformPreview
+ *
+ * @typedef {object} PreviewOutputs What later steps read of a platform's build.
+ * @property {string} installUrl What a person opens: the Console's download
+ *   link, or for a simulator build, the `native-build install` command.
+ * @property {string | null} downloadUrl The storage's URL of the artifact,
+ *   which a step fetches without a Console session; null when it gives none.
  *
  * @typedef {object} Inputs
  * @property {string} consoleUrl
@@ -135,6 +142,33 @@ const artifactFileName = (storageUri) => {
 };
 
 /**
+ * The storage's URL of the build this run tracked, which the build's own
+ * output doesn't have. `native-build find` finds what a build of the project
+ * would match, so a scheme that sets its version at build time can find
+ * another build, or none. No URL fails nothing: the preview is deployed, and
+ * `native-build download` gets the build.
+ *
+ * @param {Deps} deps
+ * @param {{ platform: Platform, scheme: string, channel: string, id: string }} build
+ * @returns {Promise<string | null>}
+ */
+const findBuiltDownloadUrl = async (deps, { id, ...lookup }) => {
+  const { platform } = lookup;
+  try {
+    const found = await findNativeBuild(deps, lookup);
+    if (found.nativeBuild?.id === id) return found.downloadUrl ?? null;
+    deps.log.notice(
+      `No ${platform}-download-url: native-build find didn't match ${id}.`,
+    );
+  } catch (error) {
+    deps.log.notice(
+      `No ${platform}-download-url: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return null;
+};
+
+/**
  * Deploys one platform's bundle to the pull request's channel, after
  * building and registering a native build that embeds the channel when the
  * registry has none for the project's fingerprint, or app version, there.
@@ -145,7 +179,7 @@ const artifactFileName = (storageUri) => {
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
- * @returns {Promise<PlatformPreview>}
+ * @returns {Promise<PlatformPreview & PreviewOutputs>}
  */
 const previewPlatform = async (deps, inputs, event, platform) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
@@ -221,7 +255,23 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     message: `#${event.number} ${event.title}`,
   });
 
-  return { platform, target, nativeBuild, built, bundleId };
+  return {
+    platform,
+    target,
+    nativeBuild,
+    built,
+    bundleId,
+    installUrl: nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
+    // Looked up last, so a new build's URL has its whole lifetime left.
+    downloadUrl: built
+      ? await findBuiltDownloadUrl(deps, {
+          platform,
+          scheme,
+          channel: inputs.channel,
+          id: nativeBuild.id,
+        })
+      : (found.downloadUrl ?? null),
+  };
 };
 
 /**
@@ -239,10 +289,7 @@ const servesDownloadQr = async (deps, inputs, id) => {
   const url = consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
     build: id,
   });
-  const expected = consolePath(
-    inputs.consoleUrl,
-    `api/native-builds/${encodeURIComponent(id)}/download`,
-  );
+  const expected = nativeBuildDownloadLink(inputs.consoleUrl, id);
   let cause;
   try {
     const response = await deps.fetch(url, { method: "HEAD" });
@@ -267,7 +314,7 @@ export const runPreview = async (deps, inputs, event) => {
   // The pull request's native builds embed its channel, so their first
   // update check finds its bundle.
   await deps.cli(["channel", "set", inputs.channel]);
-  /** @type {PlatformPreview[]} */
+  /** @type {(PlatformPreview & PreviewOutputs)[]} */
   const previews = [];
   for (const platform of inputs.platforms) {
     previews.push(
@@ -295,6 +342,10 @@ export const runPreview = async (deps, inputs, event) => {
     credit: inputs.credit,
   });
   deps.setOutput("previews", JSON.stringify(previews));
+  for (const { platform, installUrl, downloadUrl } of previews) {
+    deps.setOutput(`${platform}-install-url`, installUrl);
+    deps.setOutput(`${platform}-download-url`, downloadUrl ?? "");
+  }
   deps.setOutput("comment-body", body);
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);

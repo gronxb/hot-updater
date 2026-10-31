@@ -52,8 +52,32 @@ outputs:
   previews:
     description: >-
       JSON of each platform's preview: platform, target, nativeBuild (id,
-      artifactKind), built, and bundleId.
+      artifactKind), built, bundleId, installUrl, and downloadUrl (null when
+      android-download-url or ios-download-url is empty).
     value: ${{ steps.run.outputs.previews }}
+  android-install-url:
+    description: >-
+      What a person opens to install the Android preview: the Console's
+      download link, which signs them in first.
+    value: ${{ steps.run.outputs.android-install-url }}
+  ios-install-url:
+    description: >-
+      What a person opens to install the iOS preview: the Console's download
+      link for a device build, or the native-build install command for a
+      simulator build.
+    value: ${{ steps.run.outputs.ios-install-url }}
+  android-download-url:
+    description: >-
+      The storage's URL of the Android artifact, which a later step fetches
+      without a Console session. It may expire, and it is empty when the
+      storage gives none: hot-updater native-build download <id> always works.
+    value: ${{ steps.run.outputs.android-download-url }}
+  ios-download-url:
+    description: >-
+      The storage's URL of the iOS artifact, which a later step fetches
+      without a Console session. It may expire, and it is empty when the
+      storage gives none: hot-updater native-build download <id> always works.
+    value: ${{ steps.run.outputs.ios-download-url }}
   ios-build-log:
     description: >-
       When the iOS preview build fails, the CLI's build log, which the action
