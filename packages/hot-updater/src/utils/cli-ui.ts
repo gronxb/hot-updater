@@ -171,25 +171,10 @@ export const ui = {
       ),
     );
 
-    // A table wider than a line shows each row as its own `label  value`s.
+    // A table wider than a line gives each column a row of its own.
     const tableWidth =
       widths.reduce((total, width) => total + width + 3, 0) + 1;
-    if (tableWidth > MESSAGE_WIDTH) {
-      return rows
-        .map((row) =>
-          ui.block(
-            "",
-            columns.map((column) => {
-              const value = stringify(row[column.key]);
-              return ui.kv(
-                column.label ?? column.key,
-                value && column.format ? column.format(value) : value,
-              );
-            }),
-          ),
-        )
-        .join("\n\n");
-    }
+    if (tableWidth > MESSAGE_WIDTH) return recordsTable(columns, rows);
 
     const border = (left: string, join: string, right: string): string =>
       `${left}${widths
@@ -222,6 +207,67 @@ export const ui = {
       border("└", "┴", "┘"),
     ].join("\n");
   },
+};
+
+/**
+ * A bordered table of `label │ value` rows, each of the table's rows in a
+ * section of its own, for columns too wide to sit side by side on a line.
+ */
+const recordsTable = <TKey extends string>(
+  columns: readonly TableColumn<TKey>[],
+  rows: readonly Record<TKey, StringValue>[],
+): string => {
+  if (rows.length === 0) return colors.dim("(none)");
+  const labelOf = (column: TableColumn<TKey>) => column.label ?? column.key;
+  const labelWidth = Math.max(
+    ...columns.map((column) => displayWidth(labelOf(column))),
+  );
+  // `│ ` + label + ` │ ` + value + ` │`.
+  const cellWidth = MESSAGE_WIDTH - labelWidth - 7;
+  const sections = rows.map((row) =>
+    columns.flatMap((column) =>
+      fitText(stringify(row[column.key]), cellWidth)
+        .split("\n")
+        .map((text, index) => ({
+          label: index === 0 ? labelOf(column) : "",
+          text,
+          format: column.format,
+        })),
+    ),
+  );
+  const fits = ({ text }: { readonly text: string }) =>
+    displayWidth(text) <= cellWidth;
+  const valueWidth = Math.max(
+    ...sections
+      .flat()
+      .map((cell) => (fits(cell) ? displayWidth(cell.text) : 0)),
+  );
+  const pad = (text: string, width: number) =>
+    `${text}${" ".repeat(width - displayWidth(text))}`;
+  const border = (left: string, join: string, right: string) =>
+    `${left}${"─".repeat(labelWidth + 2)}${join}${"─".repeat(valueWidth + 2)}${right}`;
+  const row = (label: string, value: string) =>
+    `│ ${colors.dim(pad(label, labelWidth))} │ ${value} │`;
+  return [
+    border("┌", "┬", "┐"),
+    ...sections.flatMap((section, index) => [
+      ...(index === 0 ? [] : [border("├", "┼", "┤")]),
+      ...section.flatMap((cell) => {
+        const { label, text, format } = cell;
+        if (fits(cell)) {
+          const value = pad(text, valueWidth);
+          return [row(label, format ? format(value) : value)];
+        }
+        // A word wider than the cell, such as a path, stays whole on its own
+        // line, as everywhere the CLI prints one.
+        return [
+          ...(label ? [row(label, " ".repeat(valueWidth))] : []),
+          format ? format(text) : text,
+        ];
+      }),
+    ]),
+    border("└", "┴", "┘"),
+  ].join("\n");
 };
 
 const displayPath = (file: string): string => {

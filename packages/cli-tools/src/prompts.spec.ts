@@ -122,6 +122,21 @@ describe("what p prints", () => {
     expect(read()).not.toContain("spaces in it");
   });
 
+  it("masks a value in a provider's JSON before cutting it", () => {
+    const token = `sensitive-provider-token-${"x".repeat(60)}`;
+    const escaped = 'sensitive "quoted" provider value';
+    registerSecretValue(token);
+    registerSecretValue(escaped);
+    const { output, read } = captureOutput();
+    p.log.error(JSON.stringify({ token }), { output });
+    p.log.error(JSON.stringify({ message: `${"word ".repeat(28)}${token}` }), {
+      output,
+    });
+    p.log.error(JSON.stringify({ message: `Refused ${escaped}` }), { output });
+    expect(read()).not.toContain("sensitive");
+    expect(read()).not.toContain("xxxx");
+  });
+
   it("prints a tool's output as the tool wrote it", () => {
     const line = `error: ${"word ".repeat(30).trim()}`;
     const { output, read } = captureOutput();

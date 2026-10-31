@@ -1,5 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 
+import { maskSecretValues } from "./secretMasking";
+
 /**
  * The widest line of a message the CLI prints: clack puts it after its
  * 3-column gutter (`│  `), and the whole line stays within 76 columns.
@@ -274,8 +276,11 @@ const parseBody = (text: string): object | undefined => {
  * embeds, replaced with the message the body says, as people read an error:
  * Cloudflare's `errors[].message`, or a `message` or an `error`. A body that
  * says none is cut. Printed errors go through it; `--json` keeps the body.
+ * A registered value is masked before anything is cut, as a cut one no longer
+ * matches, and again after, as a body's string may have escaped it.
  */
-export const withProviderMessages = (text: string): string => {
+export const withProviderMessages = (message: string): string => {
+  const text = maskSecretValues(message);
   let result = "";
   let index = 0;
   while (index < text.length) {
@@ -293,5 +298,5 @@ export const withProviderMessages = (text: string): string => {
       : truncateLine(text.slice(index, end + 1), UNREAD_BODY_WIDTH);
     index = end + 1;
   }
-  return result;
+  return maskSecretValues(result);
 };

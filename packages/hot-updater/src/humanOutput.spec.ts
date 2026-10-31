@@ -151,25 +151,51 @@ describe("the lines of what commands refuse, through the real printer", () => {
     expect(lines.join("\n")).toContain("│ one │");
   });
 
-  it("shows each row of a table wider than a line as its labels and values", async () => {
+  it("keeps a table wider than a line bordered, with a row for each column", async () => {
     const lines = await printedLines(() => {
       p.log.message(
         ui.table(
           [
             { key: "id", label: "ID", format: ui.id },
             { key: "created", label: "Created" },
+            { key: "note", label: "Note" },
           ],
           [
-            { id: "a".repeat(40), created: "b".repeat(30) },
-            { id: "c".repeat(40), created: "" },
+            { id: "a".repeat(40), created: "b".repeat(30), note: "" },
+            {
+              id: "c".repeat(90),
+              created: "word ".repeat(30).trim(),
+              note: "한글 ".repeat(40).trim(),
+            },
           ],
         ),
       );
     });
     const text = lines.join("\n");
-    expect(text).toContain(`ID       ${"a".repeat(40)}`);
-    expect(text).toContain(`Created  ${"b".repeat(30)}`);
-    expect(text).toContain(`ID       ${"c".repeat(40)}`);
-    expect(text).not.toContain("┌");
+    expect(text).toContain(`│ ID      │ ${"a".repeat(40)}`);
+    expect(text).toContain(`│ Created │ ${"b".repeat(30)}`);
+    expect(text).toContain("├─");
+    // A word wider than the cell stays whole on its own line.
+    expect(lines).toContain(`│  ${"c".repeat(90)}`);
+    // Every other line is the table's width: none wrapped.
+    const rows = lines.filter((line) => /^│  [┌├└│]/u.test(line));
+    expect(rows.length).toBeGreaterThan(5);
+    expect(new Set(rows.map(displayWidth)).size).toBe(1);
+    expect(displayWidth(rows[0]!)).toBeLessThanOrEqual(76);
+  });
+
+  it("says there are no rows when a wide table has none", async () => {
+    const lines = await printedLines(() => {
+      p.log.message(
+        ui.table(
+          [
+            { key: "id", label: "x".repeat(40) },
+            { key: "name", label: "y".repeat(40) },
+          ],
+          [],
+        ),
+      );
+    });
+    expect(lines.join("\n")).toContain("(none)");
   });
 });
