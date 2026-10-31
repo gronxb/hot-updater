@@ -1,0 +1,228 @@
+---
+title: "Release from CI"
+description: "One GitHub Action for every push to a release branch: deploy a bundle when a store build has the project's fingerprint, or build a native build and submit it when none does."
+icon: GitBranch
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+The release action is the one step a push to `main` or a release branch needs.
+On each platform, it looks up the project's
+[fingerprint](/docs/guides/update-strategies/fingerprint) among the tracked
+native builds of the channel, then does one of two things:
+
+| What it finds                                                | Decision | What runs                                                     |
+| ------------------------------------------------------------ | -------- | ------------------------------------------------------------- |
+| A build in the store with this fingerprint                   | `ota`    | `deploy`                                                      |
+| No build with this fingerprint                               | `build`  | `native-build <platform> --submit`                            |
+| A tracked build the store didn't take, as after a failed run | `build`  | `native-build <platform> --submit`, which reuses the build    |
+
+So a push that changes only JavaScript goes out as a bundle, and a push that
+changes the native interface goes to TestFlight or Google Play's internal
+track. A native build holds its commit's JavaScript, so the action deploys no
+bundle with it.
+
+The action only runs the commands your project already has, with the job's
+environment. It never signs in to an Apple or Google account.
+
+## Prepare the project
+
+- Add a [native build scheme](/docs/guides/native-build#configure-schemes) for
+  each platform's store build, and read its signing credentials and the deploy
+  credentials as [CI](/docs/guides/ci-native-build#get-the-keys-once) describes.
+- Raise `CFBundleVersion` and `versionCode` for every push, such as from
+  `github.run_number` in a step before the action: the stores take each build
+  number once. Version and build numbers aren't part of the fingerprint.
+- Set the channel. The action releases on the channel a build of your native
+  project embeds, or on its `channel` input, which it sets in the native project
+  before a build. An Expo project sets it in the
+  [`@hot-updater/expo` config plugin](/docs/build-adapters/expo).
+
+<Callout type="info">
+  The fingerprint hashes the native interface, so an edit inside a native
+  implementation keeps it and goes out with no store build. To ship one through
+  the store, raise `fingerprint.nativeVersion`, or list its files in
+  `fingerprint.extraSources`, as
+  [the fingerprint guide](/docs/guides/update-strategies/fingerprint) describes.
+  With the `appVersion` strategy, the action looks up the app's version instead,
+  so a store build follows a version bump.
+</Callout>
+
+## Add the workflow
+
+Use the tag of the hot-updater release your project installs. iOS builds need a
+macOS runner, so each platform gets its own job, and a failure in either fails
+the workflow run:
+
+```yaml title=".github/workflows/release.yml"
+name: Release
+
+on:
+  push:
+    branches: [main, "release/**"]
+
+permissions:
+  contents: read
+
+# A second push waits for the first, which may be uploading to a store.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: agvtool new-version -all "${{ github.run_number }}"
+        working-directory: ios
+      - uses: gronxb/hot-updater/actions/release@v1.2.0
+        env:
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          # ...and the deploy variables your config reads
+        with:
+          platforms: ios
+          ios-scheme: release
+          channel: ${{ github.ref_name == 'main' && 'production' || 'beta' }}
+
+  android:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: npm ci
+      - uses: gronxb/hot-updater/actions/release@v1.2.0
+        env:
+          # Your android/app/build.gradle reads it for versionCode.
+          VERSION_CODE: ${{ github.run_number }}
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}
+          # ...and the deploy variables your config reads
+        with:
+          platforms: android
+          android-scheme: release
+          channel: ${{ github.ref_name == 'main' && 'production' || 'beta' }}
+```
+
+A job with `platforms: ios,android` releases both on one macOS runner. A bundle
+needs no Xcode, so a Linux runner can deploy iOS's; it fails only when the
+decision is `build`.
+
+## See the decision first
+
+`dry-run: true` runs only the lookup, so it builds, deploys, and writes nothing:
+
+```yaml
+- uses: gronxb/hot-updater/actions/release@v1.2.0
+  with:
+    platforms: android
+    android-scheme: release
+    dry-run: true
+```
+
+Each platform prints one line, its platform, fingerprint, decision, and reason:
+
+```txt
+android · fingerprint 87535eba · ota · native build 019a0f8e-7c41-7000-8000-0000000000b1 is on Google Play internal testing
+ios · fingerprint 88ec0e77 · build · no tracked native build on production
+```
+
+## Read the result
+
+The job's summary has a row for each platform, and the `result` output has the
+same as JSON, also when a platform fails:
+
+```json
+{
+  "dryRun": false,
+  "ok": true,
+  "platforms": [
+    {
+      "platform": "android",
+      "scheme": "release",
+      "channel": "production",
+      "fingerprintHash": "87535ebad9f9…",
+      "appVersion": null,
+      "decision": "ota",
+      "reason": "native build 019a0f8e-7c41-7000-8000-0000000000b1 is on Google Play internal testing",
+      "outcome": "deployed",
+      "nativeBuildId": "019a0f8e-7c41-7000-8000-0000000000b1",
+      "bundleId": "019a1b2c-90d3-7000-8000-000000000042",
+      "submittedTo": null,
+      "error": null
+    }
+  ]
+}
+```
+
+`outcome` is `deployed`, `built`, `decided` on a dry run, or `failed`.
+`submittedTo` is the store a native build of this run went to.
+
+## When a run fails
+
+- **The lookup fails**, as when the database doesn't answer. A failed lookup
+  isn't "no build", so the decision is `none`, and nothing is built or deployed.
+- **One platform fails.** The other still runs, the result and the summary show
+  both, and the run fails, naming what finished: a job with both platforms may
+  have released one.
+- **The store upload fails.** The build stays tracked. Rerun the job: the
+  decision is `build` again, and `native-build` reuses the tracked build while
+  the commit's inputs are the same. The next push builds again, since its inputs
+  changed, and uploads that build.
+- **The store has the build number**, and this run built a new artifact. Its
+  native code didn't reach the store, so the run fails. Raise the build number
+  and push again.
+
+A build registered with
+[`native-build import`](/docs/guides/native-build#import-a-build-made-elsewhere) comes from
+elsewhere, with no submission recorded here, so it counts as in the store. With
+`submit: false`, any tracked build counts, and a native build goes to no store.
+
+## Inputs
+
+| Input               | Default                       | Meaning                                                                        |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------------------ |
+| `platforms`         | required                      | `ios`, `android`, or both, comma-separated                                     |
+| `ios-scheme`        | required with `ios`           | The `nativeBuild.ios` scheme of the store build                                |
+| `android-scheme`    | required with `android`       | The `nativeBuild.android` scheme of the store build                            |
+| `channel`           | the native project's          | The channel the build embeds and bundles deploy to                             |
+| `submit`            | `true`                        | Whether a native build goes to TestFlight or Google Play's internal track      |
+| `dry-run`           | `false`                       | Only look up and print each decision                                           |
+| `working-directory` | `.`                           | The app's directory, which has `hot-updater.config.ts`                         |
+| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                        |
+
+## Without the action
+
+Any CI can run the same commands. `native-build find` exits non-zero when the
+lookup fails, and prints `"nativeBuild": null` when no build matches, so
+`set -e` keeps a failed lookup from reaching either branch:
+
+```bash
+set -euo pipefail
+found="$(npx --no-install hot-updater native-build find -p android -s release --json)"
+submitted="$(jq -r '.nativeBuild.submitted_to // ""' <<<"$found")"
+
+if [ "$submitted" = "play-internal" ]; then
+  npx --no-install hot-updater fingerprint create
+  npx --no-install hot-updater deploy -p android -c "$(jq -r .channel <<<"$found")"
+else
+  npx --no-install hot-updater native-build android --scheme release --submit play-internal
+fi
+```

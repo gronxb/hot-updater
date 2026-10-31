@@ -1,0 +1,91 @@
+name: hot-updater release
+description: >-
+  Releases a push on each platform: deploys a bundle when a store build with
+  the project's fingerprint exists, or builds a native build and submits it to
+  TestFlight or Google Play's internal track when none does. It sets the
+  result as JSON and writes it to the job's summary. It never signs in to an
+  Apple or Google account.
+author: gronxb
+
+inputs:
+  platforms:
+    description: >-
+      The platforms to release, comma-separated. A native build on iOS needs a
+      macOS runner.
+    required: true
+  android-scheme:
+    description: The nativeBuild.android scheme of the store build.
+  ios-scheme:
+    description: The nativeBuild.ios scheme of the store build.
+  channel:
+    description: >-
+      The channel the store build embeds and bundles deploy to (default: the
+      native project's).
+  submit:
+    description: >-
+      Whether a native build goes to the store: TestFlight on iOS, Google
+      Play's internal track on Android.
+    default: "true"
+  dry-run:
+    description: Whether to only look up and print each platform's decision.
+    default: "false"
+  working-directory:
+    description: The app's directory, which has hot-updater.config.ts.
+    default: .
+  cli:
+    description: The command that runs the project's hot-updater CLI.
+    default: npx --no-install hot-updater
+
+outputs:
+  result:
+    description: >-
+      JSON of the run: dryRun, ok, and platforms, each with platform, scheme,
+      channel, fingerprintHash, appVersion, decision (ota, build, or none when
+      the lookup failed), reason, outcome (deployed, built, decided, or
+      failed), nativeBuildId, bundleId, submittedTo, and error. It is set when
+      a platform fails too.
+    value: ${{ steps.run.outputs.result }}
+  ios-build-log:
+    description: >-
+      When the iOS native build fails, the CLI's build log, which the action
+      uploads as the hot-updater-release-build-log-ios artifact.
+    value: ${{ steps.run.outputs.ios-build-log }}
+  android-build-log:
+    description: >-
+      When the Android native build fails, the CLI's build log, which the
+      action uploads as the hot-updater-release-build-log-android artifact.
+    value: ${{ steps.run.outputs.android-build-log }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/main.mjs"
+      env:
+        INPUT_PLATFORMS: ${{ inputs.platforms }}
+        INPUT_ANDROID_SCHEME: ${{ inputs.android-scheme }}
+        INPUT_IOS_SCHEME: ${{ inputs.ios-scheme }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_SUBMIT: ${{ inputs.submit }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_CLI: ${{ inputs.cli }}
+    # The log keeps the native build tool's whole output, which the job's
+    # log has only the errors of.
+    - if: failure() && steps.run.outputs.ios-build-log != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: hot-updater-release-build-log-ios
+        path: ${{ steps.run.outputs.ios-build-log }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        overwrite: true
+    - if: failure() && steps.run.outputs.android-build-log != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: hot-updater-release-build-log-android
+        path: ${{ steps.run.outputs.android-build-log }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        overwrite: true

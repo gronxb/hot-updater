@@ -143,6 +143,17 @@ export const setOutput = (name, value, env = process.env) => {
 };
 
 /**
+ * Appends to the job's summary.
+ *
+ * @param {string} markdown
+ * @param {Record<string, string | undefined>} [env]
+ */
+export const appendSummary = (markdown, env = process.env) => {
+  const file = env["GITHUB_STEP_SUMMARY"];
+  if (file) appendFileSync(file, `${markdown}\n`);
+};
+
+/**
  * The app's directory, the `working-directory` input's.
  *
  * @param {Record<string, string | undefined>} actionEnv

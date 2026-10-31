@@ -26,7 +26,8 @@ With [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), the
 default, the job's environment holds them, from your CI provider's secrets.
 With a secrets store, the job only signs in to the store, and the store holds
 every value. [Add the workflow](#add-the-workflow) has a complete workflow
-for both.
+for both. To deploy a bundle instead when the store already has the project's
+fingerprint, use the [release action](/docs/guides/release-from-ci).
 
 The CLI treats a run as CI when the `CI` environment variable is set, as
 GitHub Actions, GitLab CI, CircleCI, Buildkite, Bitrise, and Codemagic set it,

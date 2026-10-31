@@ -2,6 +2,16 @@
 
 import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 import {
+  deployBundle,
+  describeTarget,
+  findNativeBuild,
+  parseFlag,
+  parsePlatforms,
+  parseSchemes,
+  refreshFingerprint,
+  runJson,
+} from "../../shared/nativeBuild.mjs";
+import {
   consoleLink,
   consolePath,
   renderClosedComment,
@@ -45,20 +55,8 @@ export { parseJsonOutput };
  * @property {(name: string, value: string) => void} setOutput
  * @property {{ info: (message: string) => void, notice: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
  *
- * @typedef {object} NativeBuildFindResult What `native-build find --json` prints.
- * @property {Platform} platform
- * @property {string} channel
- * @property {string | null} fingerprintHash
- * @property {string | null} appVersion
- * @property {NativeBuildRow | null} nativeBuild
- *
- * @typedef {object} NativeBuildRow The fields of a tracked build the action reads.
- * @property {string} id
- * @property {import("./comment.mjs").ArtifactKind} artifact_kind
- * @property {string} artifact_storage_uri
+ * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildRow} NativeBuildRow
  */
-
-const PLATFORMS = /** @type {const} */ (["android", "ios"]);
 
 /**
  * The action's inputs, from the environment its composite step passes.
@@ -70,14 +68,6 @@ const PLATFORMS = /** @type {const} */ (["android", "ios"]);
 export const parseInputs = (env, event) => {
   /** @param {string} name */
   const input = (name) => env[`INPUT_${name}`]?.trim() ?? "";
-  /** @param {string} name @param {boolean} fallback */
-  const flag = (name, fallback) => {
-    const value = input(name);
-    if (value === "") return fallback;
-    if (value === "true" || value === "false") return value === "true";
-    throw new Error(`${name.toLowerCase()} must be true or false.`);
-  };
-
   const consoleUrl = input("CONSOLE_URL");
   if (consoleUrl === "") throw new Error("console-url is required.");
   if (!/^https?:\/\//.test(consoleUrl)) {
@@ -89,25 +79,8 @@ export const parseInputs = (env, event) => {
     throw new Error("mode must be auto, preview, or cleanup.");
   }
 
-  /** @type {Platform[]} */
-  const platforms = [];
-  for (const name of (input("PLATFORMS") || "android").split(/[\s,]+/)) {
-    if (name === "") continue;
-    if (!PLATFORMS.includes(/** @type {Platform} */ (name))) {
-      throw new Error(`platforms takes android and ios, not ${name}.`);
-    }
-    if (!platforms.includes(/** @type {Platform} */ (name))) {
-      platforms.push(/** @type {Platform} */ (name));
-    }
-  }
-  if (platforms.length === 0) throw new Error("platforms is empty.");
-
-  /** @type {Partial<Record<Platform, string>>} */
-  const schemes = {};
-  for (const platform of PLATFORMS) {
-    const scheme = input(`${platform.toUpperCase()}_SCHEME`);
-    if (scheme !== "") schemes[platform] = scheme;
-  }
+  const platforms = parsePlatforms(input("PLATFORMS") || "android");
+  const schemes = parseSchemes(input);
 
   const channel = input("CHANNEL") || `pr-${event.number}`;
 
@@ -132,49 +105,11 @@ export const parseInputs = (env, event) => {
     platforms,
     schemes,
     channel,
-    credit: flag("CREDIT", true),
-    comment: flag("COMMENT", true),
+    credit: parseFlag(input, "CREDIT", true),
+    comment: parseFlag(input, "COMMENT", true),
     mode: resolvedMode,
   };
 };
-
-/**
- * @param {Deps} deps
- * @param {string[]} args
- */
-const json = async (deps, args) => {
-  const { code, stdout } = await deps.cli(args, { capture: true });
-  if (code !== 0) {
-    throw new Error(`hot-updater ${args.join(" ")} exited with ${code}.`);
-  }
-  return parseJsonOutput(stdout);
-};
-
-/**
- * @param {Deps} deps
- * @param {Inputs} inputs
- * @param {Platform} platform
- */
-const findNativeBuild = async (deps, inputs, platform) =>
-  /** @type {NativeBuildFindResult} */ (
-    await json(deps, [
-      "native-build",
-      "find",
-      "-p",
-      platform,
-      "-c",
-      inputs.channel,
-      "-s",
-      /** @type {string} */ (inputs.schemes[platform]),
-      "--json",
-    ])
-  );
-
-/** @param {{ fingerprintHash: string | null, appVersion: string | null }} scope */
-const describeTarget = (scope) =>
-  scope.fingerprintHash === null
-    ? `app version ${scope.appVersion}`
-    : `fingerprint ${scope.fingerprintHash}`;
 
 /**
  * What `native-build <platform> --json` prints last: the build, with what
@@ -213,8 +148,13 @@ const artifactFileName = (storageUri) => {
  * @returns {Promise<PlatformPreview>}
  */
 const previewPlatform = async (deps, inputs, event, platform) => {
-  const found = await findNativeBuild(deps, inputs, platform);
-  /** @type {{ fingerprintHash: string | null, appVersion: string | null }} */
+  const scheme = /** @type {string} */ (inputs.schemes[platform]);
+  const found = await findNativeBuild(deps, {
+    platform,
+    scheme,
+    channel: inputs.channel,
+  });
+  /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
     fingerprintHash: found.fingerprintHash,
     appVersion: found.appVersion,
@@ -226,11 +166,10 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     deps.log.info(
       `Building ${platform}: no native build on ${inputs.channel} has ${describeTarget(found)}.`,
     );
-    const scheme = /** @type {string} */ (inputs.schemes[platform]);
     const since = Date.now();
     // Every native build is tracked, so the preview can install it.
     const registered = /** @type {NativeBuildJson} */ (
-      await json(deps, [
+      await runJson(deps, [
         "native-build",
         platform,
         "--scheme",
@@ -272,55 +211,17 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       artifactKind: found.nativeBuild.artifact_kind,
       fileName: artifactFileName(found.nativeBuild.artifact_storage_uri),
     };
-    // A committed fingerprint.json can be older than the project, which
-    // deploy refuses; the build would have rewritten it.
-    if (found.fingerprintHash !== null) {
-      await deps.cli(["fingerprint", "create"]);
-    }
+    await refreshFingerprint(deps, found);
   }
 
-  await deps.cli([
-    "deploy",
-    "-p",
+  const bundleId = await deployBundle(deps, {
     platform,
-    "-c",
-    inputs.channel,
-    "-m",
-    `#${event.number} ${event.title}`,
-    // The exact version of the build, which deploy would otherwise read from
-    // the project without the scheme.
-    ...(target.appVersion === null ? [] : ["-t", target.appVersion]),
-  ]);
+    channel: inputs.channel,
+    target,
+    message: `#${event.number} ${event.title}`,
+  });
 
-  const [release] =
-    /** @type {{ id: string, fingerprint_hash: string | null, target_app_version: string | null }[]} */ (
-      await json(deps, [
-        "bundle",
-        "list",
-        "-c",
-        inputs.channel,
-        "-p",
-        platform,
-        "--limit",
-        "1",
-        "--json",
-      ])
-    );
-  if (release === undefined) {
-    throw new Error(`deploy left no ${platform} bundle on ${inputs.channel}.`);
-  }
-  // The bundle reaches the build only with the build's own target.
-  if (
-    target.fingerprintHash === null
-      ? release.target_app_version !== target.appVersion
-      : release.fingerprint_hash !== target.fingerprintHash
-  ) {
-    throw new Error(
-      `The ${platform} bundle ${release.id} targets ${release.fingerprint_hash ?? release.target_app_version}, but the native build has ${describeTarget(target)}.`,
-    );
-  }
-
-  return { platform, target, nativeBuild, built, bundleId: release.id };
+  return { platform, target, nativeBuild, built, bundleId };
 };
 
 /**
