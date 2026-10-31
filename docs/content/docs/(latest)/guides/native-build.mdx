@@ -598,6 +598,28 @@ id=$(npx hot-updater native-build find -p android -s release --json | jq -r .nat
 npx hot-updater native-build download "$id" -o app.apk
 ```
 
+A [pull request preview](/docs/guides/pull-request-previews#outputs) sets the
+same URL as its `android-download-url` and `ios-download-url` outputs.
+
+### Which storage gives a download URL
+
+| Storage adapter     | `downloadUrl`                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `s3Storage`         | A presigned URL for 1 hour, or the URL of the `getDownloadUrl` option, such as `cloudFrontDownloadUrl(...)`'s     |
+| `r2Storage`         | A presigned URL for 1 hour                                                                                        |
+| `neonStorage`       | A presigned URL for `signedUrlExpiresIn`, 1 hour by default                                                       |
+| `supabaseStorage`   | A signed URL for `signedUrlExpiresIn`, 1 hour by default                                                          |
+| `firebaseStorage`   | A URL under `cdnUrl` when it is set, else a signed URL for `signedUrlExpiresIn`, 1 hour by default                |
+| `vercelBlobStorage` | A presigned URL for `signedUrlExpiresIn`, 1 hour by default                                                       |
+| `azureBlobStorage`  | The URL of the `getDownloadUrl` option, else a SAS URL for 1 hour; `null` with a SAS connection string            |
+| `standaloneStorage` | Always `null`: it has no `getDownloadUrl`                                                                         |
+
+A [custom storage adapter](/docs/storage-adapters/custom-storage) gives the
+`http(s)` URL of its `getDownloadUrl`, or `null` without one. Any of them gives
+`null` when signing fails, such as without a signing credential.
+[`native-build download`](#download-a-build) reads through `get`, so it works on
+all of them.
+
 ## Download a build
 
 Download a tracked build's artifact through the config's storage:
