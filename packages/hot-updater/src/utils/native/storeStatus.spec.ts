@@ -1,12 +1,15 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { readTestFlightBuildStatus, readPlayInternalRelease } = vi.hoisted(
-  () => ({
-    readTestFlightBuildStatus: vi.fn(),
-    readPlayInternalRelease: vi.fn(),
-  }),
-);
+const {
+  applyTestFlightGroup,
+  readTestFlightBuildStatus,
+  readPlayInternalRelease,
+} = vi.hoisted(() => ({
+  applyTestFlightGroup: vi.fn(),
+  readTestFlightBuildStatus: vi.fn(),
+  readPlayInternalRelease: vi.fn(),
+}));
 
 vi.mock("@hot-updater/android-helper", () => ({
   playTestingUrl: (name: string) => `https://play.test/${name}`,
@@ -17,6 +20,7 @@ vi.mock("@hot-updater/android-helper", () => ({
   }),
 }));
 vi.mock("@hot-updater/apple-helper", () => ({
+  applyTestFlightGroup,
   readTestFlightBuildStatus,
   resolveTestFlightUploadKey: async () => ({
     kind: "asc-api-key",
@@ -35,7 +39,11 @@ vi.mock("../version/getAndroidVersion", () => ({
   resolveSandboxApplicationId: vi.fn(async () => "com.example.app.sandbox"),
 }));
 
-import { isStoreBuildReusable, readStoreStatus } from "./storeStatus";
+import {
+  applyStoreTestFlightGroup,
+  isStoreBuildReusable,
+  readStoreStatus,
+} from "./storeStatus";
 
 const DAY = 24 * 60 * 60 * 1_000;
 
@@ -181,5 +189,71 @@ describe("readStoreStatus", () => {
       reusable: true,
     });
     expect(onError).toHaveBeenCalledWith(failure);
+  });
+});
+
+describe("applyStoreTestFlightGroup", () => {
+  const apply = () =>
+    applyStoreTestFlightGroup(config, {
+      scheme: "sandbox",
+      build: row({}),
+      group: "QA",
+    });
+
+  it("applies the group to the recorded version and number, and prints the store's word", async () => {
+    const expiresAtMs = Date.now() + 60 * DAY;
+    applyTestFlightGroup.mockResolvedValue({
+      testFlightUrl: "https://asc.test/apps/1/testflight/ios",
+      status: { state: "ready", expiresAtMs },
+      outcome: "added",
+    });
+
+    await expect(apply()).resolves.toEqual({
+      destination: "testflight",
+      url: "https://asc.test/apps/1/testflight/ios",
+      version: "1.7.0 (66)",
+      state: "ready",
+      expiresAtMs,
+      reusable: true,
+      group: "added",
+    });
+    expect(applyTestFlightGroup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bundleId: "com.example.app",
+        shortVersion: "1.7.0",
+        bundleVersion: "66",
+        name: "QA",
+      }),
+    );
+  });
+
+  it("takes only a build a tester can still get for long enough", async () => {
+    applyTestFlightGroup.mockResolvedValue({
+      testFlightUrl: "https://asc.test",
+      status: null,
+      outcome: "not-offered",
+    });
+    await expect(apply()).resolves.toMatchObject({
+      state: "missing",
+      reusable: false,
+      group: "not-offered",
+    });
+    const { isOffered } = applyTestFlightGroup.mock.calls[0]![0];
+    expect(isOffered(null)).toBe(false);
+    expect(
+      isOffered({ state: "ready", expiresAtMs: Date.now() + 60 * DAY }),
+    ).toBe(true);
+    expect(isOffered({ state: "processing", expiresAtMs: null })).toBe(true);
+    expect(isOffered({ state: "ready", expiresAtMs: Date.now() + DAY })).toBe(
+      false,
+    );
+    expect(isOffered({ state: "expired", expiresAtMs: null })).toBe(false);
+  });
+
+  it("fails when the group can't be applied: it was asked for", async () => {
+    applyTestFlightGroup.mockRejectedValue(
+      new Error("TestFlight group QA is external"),
+    );
+    await expect(apply()).rejects.toThrow("TestFlight group QA is external");
   });
 });

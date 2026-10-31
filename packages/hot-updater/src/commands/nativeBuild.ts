@@ -35,7 +35,11 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
-import { readStoreStatus, type StoreStatus } from "../utils/native/storeStatus";
+import {
+  applyStoreTestFlightGroup,
+  readStoreStatus,
+  type StoreStatus,
+} from "../utils/native/storeStatus";
 import { printBanner } from "../utils/printBanner";
 import { confirmMutation, safeDispose } from "./release";
 
@@ -221,6 +225,61 @@ const requireNativeBuild = async (
     );
   }
   return build;
+};
+
+/**
+ * Adds a sandbox build already on TestFlight to an internal group, with no new
+ * upload, and prints what App Store Connect says of the build.
+ */
+export const handleNativeBuildTestFlightGroup = async (
+  id: string,
+  group: string,
+  options: { readonly scheme: string; readonly json?: boolean },
+) => {
+  if (!options.json) printBanner();
+  try {
+    const config = await loadConfig({ platform: "ios", channel: "" });
+    if (!config.nativeBuild.ios[options.scheme]?.sandbox) {
+      throw new Error(
+        `testflight-group takes a sandbox scheme, and ${options.scheme} isn't one.\nSet sandbox: true on it, or add the build to ${group} in TestFlight.`,
+      );
+    }
+    const server = await loadServer(await loadConfig(null));
+    let build: NativeBuildRow;
+    try {
+      build = await requireNativeBuild(server, id);
+    } finally {
+      await safeDispose(server);
+    }
+    if (build.submitted_to !== "testflight") {
+      throw new Error(
+        `Native build ${id} isn't on TestFlight.\nUpload one: npx hot-updater native-build ios --scheme ${options.scheme} --submit testflight`,
+      );
+    }
+    const store = await applyStoreTestFlightGroup(config, {
+      scheme: options.scheme,
+      build,
+      group,
+    });
+    if (options.json) {
+      console.log(JSON.stringify(store, null, 2));
+      return;
+    }
+    const line = {
+      added: `Added ${store.version} to ${group}.`,
+      "takes-every-build": `${group} takes every build, so it has ${store.version}.`,
+      pending: `${store.version} is still processing, so ${group} doesn't have it yet.`,
+      "not-offered": `TestFlight no longer offers ${store.version}, so ${group} didn't get it.`,
+    }[store.group];
+    if (store.group === "added" || store.group === "takes-every-build") {
+      p.log.success(line);
+    } else {
+      p.log.warn(line);
+      process.exitCode = 1;
+    }
+  } catch (error) {
+    failCommand(error, options.json);
+  }
 };
 
 export interface NativeBuildDownloadOptions {

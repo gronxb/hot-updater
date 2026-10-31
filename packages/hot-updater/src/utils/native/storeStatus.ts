@@ -4,9 +4,11 @@ import {
   resolvePlayUploadServiceAccount,
 } from "@hot-updater/android-helper";
 import {
+  applyTestFlightGroup,
   readTestFlightBuildStatus,
   resolveTestFlightUploadKey,
   type TestFlightBuildState,
+  type TestFlightGroupOutcome,
 } from "@hot-updater/apple-helper";
 import {
   getCwd,
@@ -91,6 +93,27 @@ const parseStoreVersion = (build: NativeBuildRow) => {
   };
 };
 
+/** A build on TestFlight, as App Store Connect's word on it says. */
+const testFlightStatus = (
+  build: NativeBuildRow,
+  url: string,
+  status: {
+    readonly state: TestFlightBuildState;
+    readonly expiresAtMs: number | null;
+  } | null,
+): StoreStatus => {
+  const state = status?.state ?? "missing";
+  const expiresAtMs = status?.expiresAtMs ?? null;
+  return {
+    destination: "testflight",
+    url,
+    version: build.submitted_version,
+    state,
+    expiresAtMs,
+    reusable: isStoreBuildReusable(state, expiresAtMs),
+  };
+};
+
 const unread = (build: NativeBuildRow): StoreStatus => ({
   destination: build.submitted_to!,
   url: null,
@@ -139,16 +162,7 @@ export const readStoreStatus = async (
             apiKey,
             ...(fetch ? { fetch } : {}),
           });
-          const state = status?.state ?? "missing";
-          const expiresAtMs = status?.expiresAtMs ?? null;
-          return {
-            destination: "testflight",
-            url: testFlightUrl,
-            version: build.submitted_version,
-            state,
-            expiresAtMs,
-            reusable: isStoreBuildReusable(state, expiresAtMs),
-          };
+          return testFlightStatus(build, testFlightUrl, status);
         }
         const androidScheme = config.nativeBuild.android[scheme]!;
         const packageName = await playPackageName(androidScheme);
@@ -186,4 +200,57 @@ export const readStoreStatus = async (
     onError(error);
     return unread(build);
   }
+};
+
+/**
+ * Applies an internal TestFlight group to a build this project uploaded. Unlike
+ * a status read, a failure throws: the group was asked for, and no tester in it
+ * would get the build. A build testers can't get anymore is left alone.
+ */
+export const applyStoreTestFlightGroup = async (
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  {
+    scheme,
+    build,
+    group,
+    fetch,
+  }: {
+    scheme: string;
+    build: NativeBuildRow;
+    group: string;
+    fetch?: typeof globalThis.fetch;
+  },
+): Promise<StoreStatus & { readonly group: TestFlightGroupOutcome }> => {
+  const { shortVersion, buildNumber } = parseStoreVersion(build);
+  if (shortVersion === null || buildNumber === null) {
+    throw new Error(
+      `Native build ${build.id} records no TestFlight version.\nAdd it to ${group} in TestFlight.`,
+    );
+  }
+  const cwd = getCwd();
+  return withCredentialResolver(
+    async (credentials) => {
+      const iosScheme = config.nativeBuild.ios[scheme]!;
+      const { testFlightUrl, status, outcome } = await applyTestFlightGroup({
+        bundleId: iosScheme.bundleIdentifier,
+        shortVersion,
+        bundleVersion: buildNumber,
+        name: group,
+        isOffered: (listed) => testFlightStatus(build, "", listed).reusable,
+        apiKey: await credentials.resolve(
+          await resolveTestFlightUploadKey({ scheme, iosScheme }),
+        ),
+        ...(fetch ? { fetch } : {}),
+      });
+      return {
+        ...testFlightStatus(build, testFlightUrl, status),
+        group: outcome,
+      };
+    },
+    {
+      env: await readLoadedHotUpdaterEnv(cwd),
+      secrets: config.secrets,
+      cwd,
+    },
+  );
 };

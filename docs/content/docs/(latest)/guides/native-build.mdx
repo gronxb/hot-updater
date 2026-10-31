@@ -732,3 +732,9 @@ described in [Find a build](#find-a-build),
 [Download a build](#download-a-build), [Install a build](#install-a-build),
 [Delete a build](#delete-a-build), and
 [Import a build made elsewhere](#import-a-build-made-elsewhere).
+
+`native-build testflight-group <id> <group> --scheme <scheme>` adds a sandbox
+build already on TestFlight to an internal group, with no new upload. `--json`
+prints what `--store-status` prints, with `group`: `added`, `takes-every-build`,
+`pending` while App Store Connect processes the build, or `not-offered` for a
+build testers can no longer get.

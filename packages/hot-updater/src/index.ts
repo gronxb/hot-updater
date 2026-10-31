@@ -85,6 +85,7 @@ import {
   handleNativeBuildDelete,
   handleNativeBuildDownload,
   handleNativeBuildFind,
+  handleNativeBuildTestFlightGroup,
   handleNativeBuildInstall,
 } from "./commands/nativeBuild";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
@@ -356,6 +357,20 @@ nativeBuildCommand
   )
   .option("--json", "output the device and the app as JSON")
   .action(handleNativeBuildInstall);
+
+nativeBuildCommand
+  .command("testflight-group")
+  .description(
+    "Add a sandbox build already on TestFlight to an internal group, with no new upload",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .argument("<group>", "the internal TestFlight group")
+  .requiredOption(
+    "-s, --scheme <scheme>",
+    "the sandbox nativeBuild scheme, whose app and key it reads",
+  )
+  .option("--json", "output what App Store Connect says of the build as JSON")
+  .action(handleNativeBuildTestFlightGroup);
 
 nativeBuildCommand
   .command("delete")

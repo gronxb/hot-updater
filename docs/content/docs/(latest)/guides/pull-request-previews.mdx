@@ -430,8 +430,8 @@ store build lives on the sandbox scheme's own channel, so pull requests with the
 same native code share it:
 
 - **The fingerprint has a build the store still offers.** Nothing is built or
-  uploaded. The action asks the store for the build's state and deploys the
-  bundle.
+  uploaded. The action asks the store for the build's state, adds the build to
+  `ios-testflight-group`, and deploys the bundle.
 - **It has none.** The action builds and uploads one. On iOS, the build number
   follows App Store Connect, What to Test names the pull request, and the build
   joins `ios-testflight-group`, an internal group. On Android, the version code
@@ -449,7 +449,8 @@ and the store build stays for the others.
 
 `ios-submit` and `android-submit` go no further than internal testing, and refuse
 a scheme without `sandbox: true`. A group that isn't internal stops the run before
-it builds. Set up each store first, as
+it builds or deploys. A build still processing joins its group once App Store
+Connect has processed it, or on a later run. Set up each store first, as
 [TestFlight](/docs/native-builds/testflight) and
 [Google Play](/docs/native-builds/google-play) describe. The `.sandbox` app needs
 its own record in Play Console, with its first `.aab` uploaded and rolled out by

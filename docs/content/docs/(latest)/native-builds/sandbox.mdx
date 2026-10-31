@@ -82,7 +82,9 @@ A scheme's own `exportOptionsPlist` that sets
 
 `--testflight-group <name>` adds the build to an internal group, and
 `--what-to-test <text>` sets its What to Test, once App Store Connect has processed
-it. A group that isn't internal stops the command before it builds.
+it. A group that isn't internal stops the command before it builds. For a build
+already on TestFlight, `native-build testflight-group <id> <group> --scheme <scheme>`
+adds it to an internal group with no new upload.
 
 **Android.** `--submit play-internal` is the only upload it takes. Google Play
 needs its own app record for the `.sandbox` ID, and a first upload by hand. The

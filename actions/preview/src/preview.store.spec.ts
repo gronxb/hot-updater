@@ -55,6 +55,8 @@ const fakeCli = ({
     store: store("processing"),
   } as Record<string, unknown>,
   builtChannel = "sandbox-sandbox",
+  groupStore = { ...store("ready"), group: "added" } as Record<string, unknown>,
+  groupFails = false,
 } = {}) => {
   const calls: string[][] = [];
   const cli = vi.fn(async (args: string[]) => {
@@ -73,6 +75,11 @@ const fakeCli = ({
           ...(args.includes("--store-status") ? { store: foundStore } : {}),
         }),
       };
+    }
+    if (command === "native-build" && sub === "testflight-group") {
+      return groupFails
+        ? { code: 1, stdout: "" }
+        : { code: 0, stdout: JSON.stringify(groupStore) };
     }
     if (command === "native-build") {
       return {
@@ -283,6 +290,92 @@ describe("a preview with ios-submit", () => {
     expect(fake.words()).toEqual([
       "channel delete pr-12 --native-builds --yes --json",
     ]);
+  });
+});
+
+describe("a reused build with ios-testflight-group", () => {
+  const withGroup = { INPUT_IOS_TESTFLIGHT_GROUP: "QA" };
+  const groupCalls = (fake: ReturnType<typeof fakeCli>) =>
+    fake.calls.filter(([, sub]) => sub === "testflight-group");
+
+  it("applies the group with no upload, reading the store's word only there", async () => {
+    const fake = fakeCli({ found: row(true) });
+    const { outputs, result } = await run(fake, withGroup);
+
+    expect(groupCalls(fake)).toEqual([
+      [
+        "native-build",
+        "testflight-group",
+        "build-1",
+        "QA",
+        "--scheme",
+        "sandbox",
+        "--json",
+      ],
+    ]);
+    // One read of the store: the group's command replaces --store-status.
+    expect(fake.words().some((call) => call.includes("--store-status"))).toBe(
+      false,
+    );
+    expect(fake.calls.some(([, sub]) => sub === "ios")).toBe(false);
+    expect(fake.calls.some(([command]) => command === "deploy")).toBe(true);
+    expect(outputs.get("ios-store-state")).toBe("ready");
+    expect(result.body).toContain("reused");
+  });
+
+  it("fails, deploying nothing, when the group can't be applied", async () => {
+    const fake = fakeCli({ found: row(true), groupFails: true });
+    await expect(run(fake, withGroup)).rejects.toThrow(
+      "native-build testflight-group build-1 QA --scheme sandbox --json exited with 1",
+    );
+    expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
+    expect(fake.calls.some(([, sub]) => sub === "ios")).toBe(false);
+  });
+
+  it("says a build still processing joins on the next run, and deploys", async () => {
+    const fake = fakeCli({
+      found: row(true),
+      groupStore: { ...store("processing"), group: "pending" },
+    });
+    const harness = deps(fake.cli);
+    await runAction(harness.deps, env(withGroup), event);
+    const { notice } = (
+      harness.deps as unknown as {
+        log: { notice: ReturnType<typeof vi.fn> };
+      }
+    ).log;
+    expect(notice).toHaveBeenCalledWith(
+      "QA doesn't have build build-1 yet: App Store Connect is still processing it. The next run adds it.",
+    );
+    expect(fake.calls.some(([command]) => command === "deploy")).toBe(true);
+    expect(harness.outputs.get("ios-store-state")).toBe("processing");
+  });
+
+  it("builds anew, naming the group, when testers can't get the build", async () => {
+    const fake = fakeCli({
+      found: row(true),
+      groupStore: { ...store("expired", false), group: "not-offered" },
+    });
+    await run(fake, withGroup);
+    const build = fake.calls.find(([, sub]) => sub === "ios")!;
+    expect(build).toContain("--no-cache");
+    expect(build).toContain("--testflight-group");
+  });
+
+  it("applies no group to a build the store never took: its upload does", async () => {
+    const fake = fakeCli({ found: row(false) });
+    await run(fake, withGroup);
+    expect(groupCalls(fake)).toEqual([]);
+    expect(fake.calls.find(([, sub]) => sub === "ios")).toContain(
+      "--testflight-group",
+    );
+  });
+
+  it("runs no group command without the input", async () => {
+    const fake = fakeCli({ found: row(true), foundStore: store("ready") });
+    await run(fake);
+    expect(groupCalls(fake)).toEqual([]);
+    expect(fake.words()[1]).toContain("--store-status");
   });
 });
 

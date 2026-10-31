@@ -9,6 +9,7 @@ export {
 } from "./ascApiKey";
 export { buildIos } from "./buildIos";
 export {
+  applyTestFlightGroup,
   assertBuildIsInternalOnly,
   assertIpaIsInternalOnly,
   distributeTestFlightBuild,
@@ -19,6 +20,7 @@ export {
   readTestFlightBuildStatus,
   type SandboxArchivePlan,
   type TestFlightBuildState,
+  type TestFlightGroupOutcome,
 } from "./sandboxTestFlight";
 export {
   extractSimulatorApp,

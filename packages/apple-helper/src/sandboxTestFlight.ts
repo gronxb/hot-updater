@@ -424,6 +424,24 @@ export const findInternalBetaGroup = async ({
   const privateKey = await readPrivateKey(apiKey.keyPath);
   const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
   const { app, testFlightUrl } = await findApp(request, bundleId);
+  return readInternalBetaGroup(request, {
+    appId: app.id,
+    bundleId,
+    name,
+    testFlightUrl,
+  });
+};
+
+/** The group named `name` of an app, refused unless it is internal. */
+const readInternalBetaGroup = async (
+  request: AppStoreConnectRequest,
+  {
+    appId,
+    bundleId,
+    name,
+    testFlightUrl,
+  }: { appId: string; bundleId: string; name: string; testFlightUrl: string },
+): Promise<InternalBetaGroup> => {
   const { data } = await retrying(() =>
     request<{
       data: {
@@ -438,7 +456,7 @@ export const findInternalBetaGroup = async ({
       "Reading the TestFlight groups",
       "GET",
       `/v1/betaGroups?${new URLSearchParams({
-        "filter[app]": app.id,
+        "filter[app]": appId,
         "filter[name]": name,
         "fields[betaGroups]": "name,isInternalGroup,hasAccessToAllBuilds",
         limit: "200",
@@ -499,47 +517,166 @@ export const distributeTestFlightBuild = async ({
 }): Promise<TestFlightBuildStatus | null> => {
   const privateKey = await readPrivateKey(apiKey.keyPath);
   const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
-  const label = `${shortVersion} (${bundleVersion})`;
-  const deadline = Date.now() + timeoutMs;
-  let status = await readBuildStatus(request, {
-    appId,
-    shortVersion,
-    bundleVersion,
-  });
-  while (!status || status.state === "processing") {
-    if (Date.now() >= deadline) {
-      p.log.warn(
-        `App Store Connect is still processing build ${label}, so its testers and What to Test aren't set.\nSet them in TestFlight:\n${testFlightUrl}`,
-      );
-      return status;
-    }
-    await sleep(pollIntervalMs);
-    status = await readBuildStatus(request, {
-      appId,
-      shortVersion,
-      bundleVersion,
-    });
-  }
-  if (status.state === "failed") {
-    throw new Error(
-      `App Store Connect couldn't process build ${label}.\nCheck it in TestFlight:\n${testFlightUrl}`,
-    );
-  }
+  const build = { appId, shortVersion, bundleVersion, testFlightUrl };
+  const status = await waitUntilProcessed(
+    request,
+    build,
+    await readBuildStatus(request, build),
+    {
+      pollIntervalMs,
+      timeoutMs,
+      unset: "its testers and What to Test",
+    },
+  );
+  if (!status || status.state === "processing") return status;
   const { buildId } = status;
   if (group && !group.hasAccessToAllBuilds) {
-    await retrying(() =>
-      request(
-        `Adding build ${label} to ${group.name}`,
-        "POST",
-        `/v1/betaGroups/${group.id}/relationships/builds`,
-        { data: [{ type: "builds", id: buildId }] },
-      ),
-    );
+    await addBuildToGroup(request, build, buildId, group);
   }
   if (whatToTest !== undefined) {
     await setWhatToTest(request, buildId, whatToTest);
   }
   return status;
+};
+
+/**
+ * Reads the build until App Store Connect has processed it, from the status a
+ * read already has, for what it takes only then. A build still processing after
+ * `timeoutMs` keeps its upload: a warning says what is `unset`. One that can't
+ * be processed fails.
+ */
+const waitUntilProcessed = async (
+  request: AppStoreConnectRequest,
+  build: {
+    appId: string;
+    shortVersion: string;
+    bundleVersion: string;
+    testFlightUrl: string;
+  },
+  listed: TestFlightBuildStatus | null,
+  {
+    pollIntervalMs,
+    timeoutMs,
+    unset,
+  }: { pollIntervalMs: number; timeoutMs: number; unset: string },
+): Promise<TestFlightBuildStatus | null> => {
+  const label = `${build.shortVersion} (${build.bundleVersion})`;
+  const deadline = Date.now() + timeoutMs;
+  let status = listed;
+  while (!status || status.state === "processing") {
+    if (Date.now() >= deadline) {
+      p.log.warn(
+        `App Store Connect is still processing build ${label}, so ${unset} aren't set.\nSet them in TestFlight:\n${build.testFlightUrl}`,
+      );
+      return status;
+    }
+    await sleep(pollIntervalMs);
+    status = await readBuildStatus(request, build);
+  }
+  if (status.state === "failed") {
+    throw new Error(
+      `App Store Connect couldn't process build ${label}.\nCheck it in TestFlight:\n${build.testFlightUrl}`,
+    );
+  }
+  return status;
+};
+
+const addBuildToGroup = (
+  request: AppStoreConnectRequest,
+  {
+    shortVersion,
+    bundleVersion,
+  }: { shortVersion: string; bundleVersion: string },
+  buildId: string,
+  group: InternalBetaGroup,
+) =>
+  retrying(() =>
+    request(
+      `Adding build ${shortVersion} (${bundleVersion}) to ${group.name}`,
+      "POST",
+      `/v1/betaGroups/${group.id}/relationships/builds`,
+      { data: [{ type: "builds", id: buildId }] },
+    ),
+  );
+
+/**
+ * What became of a group for a build on TestFlight: `added`, in a group that
+ * `takes-every-build` without being asked, `pending` while the build processes,
+ * and `not-offered` for a build no tester could get.
+ */
+export type TestFlightGroupOutcome =
+  | "added"
+  | "takes-every-build"
+  | "pending"
+  | "not-offered";
+
+/**
+ * Applies an internal group to a build already on TestFlight, as an upload does,
+ * so a reused build reaches the group named now. One process reads the app, the
+ * build and the group once each, and App Store Connect can't say which groups
+ * hold a build, so it adds the build, which a group already holding it takes
+ * again. A build not `isOffered` gets nothing: it needs a new build, which
+ * checks the group itself. A build still processing waits as an upload's does,
+ * and the next run applies the group again.
+ */
+export const applyTestFlightGroup = async ({
+  bundleId,
+  shortVersion,
+  bundleVersion,
+  name,
+  isOffered,
+  apiKey,
+  fetch = globalThis.fetch,
+  pollIntervalMs = 15_000,
+  timeoutMs = DISTRIBUTION_TIMEOUT_MS,
+}: {
+  bundleId: string;
+  shortVersion: string;
+  bundleVersion: string;
+  name: string;
+  /** Whether a tester can still get the build, as its status says. */
+  isOffered: (status: TestFlightBuildStatus | null) => boolean;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+}): Promise<{
+  testFlightUrl: string;
+  status: TestFlightBuildStatus | null;
+  outcome: TestFlightGroupOutcome;
+}> => {
+  const privateKey = await readPrivateKey(apiKey.keyPath);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  const { app, testFlightUrl } = await findApp(request, bundleId);
+  const build = {
+    appId: app.id,
+    shortVersion,
+    bundleVersion,
+    testFlightUrl,
+  };
+  const listed = await readBuildStatus(request, build);
+  if (!isOffered(listed)) {
+    return { testFlightUrl, status: listed, outcome: "not-offered" };
+  }
+  const group = await readInternalBetaGroup(request, {
+    appId: app.id,
+    bundleId,
+    name,
+    testFlightUrl,
+  });
+  if (group.hasAccessToAllBuilds) {
+    return { testFlightUrl, status: listed, outcome: "takes-every-build" };
+  }
+  const status = await waitUntilProcessed(request, build, listed, {
+    pollIntervalMs,
+    timeoutMs,
+    unset: "its testers",
+  });
+  if (!status || status.state === "processing") {
+    return { testFlightUrl, status, outcome: "pending" };
+  }
+  await addBuildToGroup(request, build, status.buildId, group);
+  return { testFlightUrl, status, outcome: "added" };
 };
 
 /** Sets a build's What to Test: creates it, or updates the one a rerun left. */

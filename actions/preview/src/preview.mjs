@@ -220,7 +220,8 @@ const findDownloadUrl = async (
 /**
  * Finds or makes a store build of a sandbox scheme, which every pull request
  * with its native code shares, on the scheme's own channel. A build the store
- * still offers needs no upload. Anything else goes through `native-build
+ * still offers needs no upload, and joins the requested internal group, which
+ * may not be the one it was uploaded for. Anything else goes through `native-build
  * --submit`, which reuses a build the store never took; one the store no longer
  * offers, or that is about to expire, gets a new build with a new number.
  *
@@ -239,41 +240,64 @@ const findOrSubmitStoreBuild = async (
 ) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
   const sandboxChannel = `sandbox-${scheme}`;
+  const group = platform === "ios" ? inputs.testFlightGroup : null;
+  // With a group to apply, that one command reads the store's word too.
   const found = await findNativeBuild(deps, {
     platform,
     scheme,
-    storeStatus: true,
+    storeStatus: group === null,
   });
   if (found.channel !== sandboxChannel) {
     throw new Error(
       `${platform}-submit takes a sandbox scheme, and ${scheme} isn't one.\nSet sandbox: true on it, or remove ${platform}-submit.`,
     );
   }
-  if (
-    found.nativeBuild !== null &&
-    found.nativeBuild.submitted_to === submit &&
-    found.store?.reusable !== false
-  ) {
+  const submitted =
+    found.nativeBuild !== null && found.nativeBuild.submitted_to === submit
+      ? found.nativeBuild
+      : null;
+  const foundStore =
+    submitted !== null && group !== null
+      ? /** @type {import("../../shared/nativeBuild.mjs").StoreStatus & { group: string }} */ (
+          await runJson(deps, [
+            "native-build",
+            "testflight-group",
+            submitted.id,
+            group,
+            "--scheme",
+            scheme,
+            "--json",
+          ])
+        )
+      : /** @type {(import("../../shared/nativeBuild.mjs").StoreStatus & { group?: string }) | null} */ (
+          found.store ?? null
+        );
+  if (submitted !== null && foundStore?.reusable !== false) {
     deps.log.info(
-      `Reusing ${platform} native build ${found.nativeBuild.id} on ${STORES[platform].name} (${describeTarget(found)}).`,
+      `Reusing ${platform} native build ${submitted.id} on ${STORES[platform].name} (${describeTarget(found)}).`,
     );
-    if (!found.store?.state) {
+    if (foundStore?.group === "pending") {
+      deps.log.notice(
+        `${group} doesn't have build ${submitted.id} yet: App Store Connect is still processing it. The next run adds it.`,
+      );
+    }
+    if (!foundStore?.state) {
       deps.log.notice(
         `No ${platform}-store-state: ${STORES[platform].name} couldn't be read, so the comment shows only what the build's record says.`,
       );
     }
     await refreshFingerprint(deps, found);
     return {
-      build: found.nativeBuild,
+      build: submitted,
       target: found,
       built: false,
-      store: found.store ?? null,
+      store: foundStore,
     };
   }
-  const noLongerOffered = found.nativeBuild?.submitted_to === submit;
+  const noLongerOffered = submitted !== null;
   deps.log.info(
     noLongerOffered
-      ? `Building ${platform}: ${STORES[platform].name} no longer offers ${found.nativeBuild?.id} (${found.store?.state ?? "expiring"}).`
+      ? `Building ${platform}: ${STORES[platform].name} no longer offers ${submitted.id} (${foundStore?.state ?? "expiring"}).`
       : `Building ${platform} for ${STORES[platform].name}: no build there has ${describeTarget(found)}.`,
   );
   const built = await runNativeBuild(
