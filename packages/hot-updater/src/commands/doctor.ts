@@ -1394,12 +1394,10 @@ export const handleDoctor = async ({
       ...(secrets?.references ?? []),
       ...(deploySecrets?.names ?? []),
     ];
-    // A missing name nothing fails for is the block's warning, as the
-    // Google Play row's is: its rows say which.
-    const warned =
-      (secrets?.issues.length ?? 0) + (deploySecrets?.issues.length ?? 0) > 0;
+    // The rows say where each name is; what is wrong, and what to do,
+    // follows them as an error or a warning of its own, counted once.
     if (rows.length > 0) {
-      (warned ? log.warn : p.log.step)(
+      p.log.step(
         ui.block("Secrets", [
           ui.kv("Adapter", adapter),
           ...rows.map((row) =>
@@ -1428,6 +1426,11 @@ export const handleDoctor = async ({
     for (const { message } of missingRequiredSecrets(secrets)) {
       if (message !== undefined) log.error(message);
     }
+    // A missing name nothing reads yet, or one the next deploy reads.
+    reportIssues(log, [
+      ...(secrets?.issues ?? []),
+      ...(deploySecrets?.issues ?? []),
+    ]);
     for (const { name, refused } of secrets?.references ?? []) {
       if (refused === undefined) continue;
       log.warn(
@@ -1464,8 +1467,10 @@ export const handleDoctor = async ({
   }
 
   if (details?.googlePlay) {
-    const { ready, text } = formatGooglePlayStatus(details.googlePlay);
-    (ready ? p.log.step : log.warn)(text);
+    // A package whose only ✗ is the upload keystore the Secrets error
+    // names isn't counted again.
+    const { warned, text } = formatGooglePlayStatus(details.googlePlay);
+    (warned ? log.warn : p.log.step)(text);
   }
 
   if (details?.schema) {

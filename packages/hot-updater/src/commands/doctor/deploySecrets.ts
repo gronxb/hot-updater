@@ -3,6 +3,8 @@ import path from "node:path";
 
 import {
   type ConfigResponse,
+  fitMessage,
+  formatCommand,
   getConfiguredAdapter,
   getHotUpdaterEnvValue,
   getDeploySecretNames,
@@ -13,7 +15,12 @@ import {
 import { ui } from "../../utils/cli-ui";
 import type { ManagedDeployment } from "./managed";
 import type { ScaffoldDeployment } from "./scaffoldRecords";
-import { listNames, type SecretsIssue } from "./secrets";
+import {
+  headAndTail,
+  listNames,
+  missingNamesLines,
+  type SecretsIssue,
+} from "./secrets";
 
 /** Where a command reads one name an adapter's `secret()` reads. */
 export interface DeploySecretStatus {
@@ -152,28 +159,53 @@ export const checkDeploySecrets = async (
   const missing = statuses
     .filter(({ source }) => source === "missing")
     .map(({ name }) => name);
-  const one = missing.length === 1;
 
   return {
     ...(adapter === undefined ? {} : { adapter: adapter.name }),
     names: statuses,
     ...(error === undefined ? {} : { error }),
     issues:
-      missing.length === 0
-        ? []
-        : [
-            {
-              type: "warning",
-              code: "DEPLOY_SECRETS_MISSING",
-              names: missing,
-              message: `${listNames(missing)} ${one ? "is" : "are"} missing: a deploy reads ${one ? "it" : "them"} with secret().`,
-              resolution:
-                adapter === undefined
-                  ? `Set ${one ? "it" : "them"} in the environment or .env.hotupdater.`
-                  : `Store ${one ? "it" : "them"} in the ${adapter.name} secrets adapter, or set ${one ? "it" : "them"} in the environment or .env.hotupdater.`,
-            },
-          ],
+      missing.length === 0 ? [] : [deploySecretsIssue(missing, adapter?.name)],
     processEnvReads,
+  };
+};
+
+/** The command that stores `.env.hotupdater`'s deploy credentials in the team adapter. */
+const SECRETS_IMPORT_COMMAND = "npx hot-updater secrets import";
+
+/**
+ * The warning for adapter `secret()`s nothing holds: the next deploy reads
+ * them, and stops as `secret()` does. With a team `adapter`, a teammate's
+ * values come in with `secrets import`, from the variables `secret()` also
+ * reads; without one, those variables are where they are read.
+ */
+export const deploySecretsIssue = (
+  names: readonly string[],
+  adapter: string | undefined,
+): SecretsIssue => {
+  const variables = listNames(names.map(secretVariableName));
+  return {
+    type: "warning",
+    code: "DEPLOY_SECRETS_MISSING",
+    names,
+    message: fitMessage([
+      ...missingNamesLines(names, adapter),
+      `The next deploy will fail without ${names.length === 1 ? "it" : "them"}.`,
+    ]),
+    resolution:
+      adapter === undefined
+        ? fitMessage(
+            headAndTail(
+              `Set ${variables}`,
+              "in the environment or .env.hotupdater.",
+            ),
+          )
+        : [
+            fitMessage(
+              headAndTail(`Set ${variables}`, "in .env.hotupdater, then run:"),
+            ),
+            formatCommand(SECRETS_IMPORT_COMMAND),
+          ].join("\n"),
   };
 };
 

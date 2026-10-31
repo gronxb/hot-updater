@@ -7,14 +7,16 @@ import { stripVTControlCharacters } from "util";
 import {
   assembleServer,
   getCwd,
+  getDeploySecretNames,
   loadConfig,
   p,
   readPackageUp,
 } from "@hot-updater/cli-tools";
-import { secret } from "@hot-updater/cli-tools";
+import { localSecrets, secret } from "@hot-updater/cli-tools";
 import {
   type ConfiguredDatabase,
   createMemoryAdapter,
+  type SecretsAdapter,
 } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins";
@@ -93,10 +95,15 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     credentialPutCommand,
     credentialStoreCommand,
     describeMissingSecret,
+    displayWidth,
+    fitMessage,
+    formatCommand,
     getConfiguredAdapter,
-    getDeploySecretNames,
     getHotUpdaterEnvValue,
     isSecretRef,
+    LOCAL_SECRETS_NAME,
+    localSecrets,
+    MESSAGE_WIDTH,
     readLoadedHotUpdaterEnv,
     registerCredentialValue,
     secret,
@@ -108,16 +115,23 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     credentialPutCommand,
     credentialStoreCommand,
     describeMissingSecret,
+    displayWidth,
+    fitMessage,
+    formatCommand,
     getConfiguredAdapter,
-    getDeploySecretNames,
     getHotUpdaterEnvValue,
     isSecretRef,
+    LOCAL_SECRETS_NAME,
+    localSecrets,
+    MESSAGE_WIDTH,
     readLoadedHotUpdaterEnv,
     registerCredentialValue,
     secret,
     secretVariableName,
     withCredentialResolver,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  // A spec names the adapter secret()s a config's evaluation would create.
+  getDeploySecretNames: vi.fn(() => []),
   // The signing row says what deploy says.
   ...(({
     INVALID_SIGNING_NEXT_STEP,
@@ -529,6 +543,7 @@ describe("doctor", () => {
     checkPlayAccess.mockReset();
     checkPlayAccess.mockRejectedValue(new Error("No Play request in specs."));
     packageJsonData.version = "1.0.0";
+    vi.mocked(getDeploySecretNames).mockReturnValue([]);
     mockGetCwd.mockReturnValue("/mock/cwd");
     mockLoadConfig.mockResolvedValue(createConfig());
   });
@@ -766,7 +781,13 @@ describe("doctor", () => {
         "Guide: https://hot-updater.dev/docs/native-builds/google-play",
       ].join("\n"),
     );
-    expect(printed("warn")).toContain(play);
+    // The ✗ is the Secrets error's: it is counted once, there.
+    expect(printed("step")).toContain(play);
+    expect(printed("warn")).not.toContain(play);
+    expect(renderClackLog(recordedClackCalls(p.log, p)).slice(-2)).toEqual([
+      "│",
+      "└  Doctor found 1 error, 1 warning.",
+    ]);
     expect(printed("success")).not.toContain("All checks passed.");
 
     // --json says the same, and exits non-zero too.
@@ -879,15 +900,25 @@ describe("doctor", () => {
     await handleDoctor({ serverBaseUrl: undefined });
 
     const lines = renderClackLog(recordedClackCalls(p.log, p));
-    // The Secrets block is the warning, as the Google Play row's is.
+    // The rows say where each name is; the warning under them says what is
+    // wrong, and the command that stores each.
     expect(lines.join("\n")).toContain(
       [
-        "▲  Secrets",
+        "◇  Secrets",
         "│  Adapter                    team-store",
         "│  qa-missing-sim-asc         missing, unused",
         "│  qa-missing-debug-keystore  missing, unused",
+        "│",
+        "▲  qa-missing-sim-asc and qa-missing-debug-keystore",
+        "│  aren't in the team-store secrets adapter.",
+        "│  No build or deploy reads them yet, so nothing fails.",
+        "│  Store them before a build or a deploy reads them:",
+        "│  npx hot-updater secrets issue asc-api-key qa-missing-sim-asc",
+        "│  npx hot-updater secrets put qa-missing-debug-keystore --kind \\",
+        "│    android-keystore <upload.jks>",
       ].join("\n"),
     );
+    expect(linesWiderThan(lines, 76)).toEqual([]);
     // The unchecked server's warning, and this one.
     expect(lines.slice(-3)).toEqual([
       "◆  All checks passed with 2 warnings.",
@@ -917,8 +948,97 @@ describe("doctor", () => {
               type: "warning",
               code: "SECRETS_MISSING_UNUSED",
               names: ["qa-missing-sim-asc", "qa-missing-debug-keystore"],
-              message:
-                "qa-missing-sim-asc and qa-missing-debug-keystore are missing, and no build reads them.",
+              message: [
+                "qa-missing-sim-asc and qa-missing-debug-keystore",
+                "aren't in the team-store secrets adapter.",
+                "No build or deploy reads them yet, so nothing fails.",
+              ].join("\n"),
+            },
+          ],
+        },
+      },
+    });
+    logSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it("warns on a missing secret the next deploy reads, with how to store it", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    vi.mocked(getDeploySecretNames).mockReturnValue(["qa-missing-r2-key"]);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+    const run = async (secrets: SecretsAdapter) => {
+      for (const log of [...Object.values(p.log), p.intro, p.outro]) {
+        vi.mocked(log).mockClear();
+      }
+      mockLoadConfig.mockResolvedValue(
+        createConfig({ secrets, signing: { enabled: false } }),
+      );
+      await handleDoctor({ serverBaseUrl: undefined });
+      return renderClackLog(recordedClackCalls(p.log, p));
+    };
+
+    // A team store: a teammate's .env.hotupdater line goes in with import.
+    const team = await run(holding({}));
+    expect(team.join("\n")).toContain(
+      [
+        "◇  Secrets",
+        "│  Adapter            team-store",
+        "│  qa-missing-r2-key  missing",
+        "│",
+        "▲  qa-missing-r2-key isn't in the team-store secrets adapter.",
+        "│  The next deploy will fail without it.",
+        "│  Set HOT_UPDATER_QA_MISSING_R2_KEY in .env.hotupdater, then run:",
+        "│  npx hot-updater secrets import",
+      ].join("\n"),
+    );
+    expect(linesWiderThan(team, 76)).toEqual([]);
+    // The unchecked server's warning, and this one, each counted once.
+    expect(team.filter((line) => line.startsWith("▲"))).toHaveLength(2);
+    expect(team.slice(-3)).toEqual([
+      "◆  All checks passed with 2 warnings.",
+      "│",
+      "└  Doctor complete.",
+    ]);
+
+    // localSecrets(): secret() reads only the environment for it.
+    const local = await run(localSecrets());
+    expect(local.join("\n")).toContain(
+      [
+        "▲  qa-missing-r2-key isn't on this machine.",
+        "│  The next deploy will fail without it.",
+        "│  Set HOT_UPDATER_QA_MISSING_R2_KEY in the environment or .env.hotupdater.",
+      ].join("\n"),
+    );
+    expect(linesWiderThan(local, 76)).toEqual([]);
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    // --json keeps its fields, and passes.
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockLoadConfig.mockResolvedValue(
+      createConfig({ secrets: holding({}), signing: { enabled: false } }),
+    );
+    await handleDoctor({ json: true });
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      success: true,
+      details: {
+        deploySecrets: {
+          adapter: "team-store",
+          names: [
+            { name: "qa-missing-r2-key", source: "missing", inAdapter: false },
+          ],
+          issues: [
+            {
+              type: "warning",
+              code: "DEPLOY_SECRETS_MISSING",
+              names: ["qa-missing-r2-key"],
             },
           ],
         },

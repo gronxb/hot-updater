@@ -5,9 +5,13 @@ import {
   type CredentialKind,
   credentialStoreCommand,
   describeMissingSecret,
+  displayWidth,
+  fitMessage,
+  formatCommand,
   getConfiguredAdapter,
   getHotUpdaterEnvValue,
   isSecretRef,
+  MESSAGE_WIDTH,
   readBundleSigningState,
   readLoadedHotUpdaterEnv,
   secretVariableName,
@@ -59,7 +63,8 @@ export interface SecretReferenceStatus {
 
 /**
  * A warning about the `secret()`s, in the shape of doctor's other issues:
- * the names that are missing where nothing fails for it.
+ * the names that are missing where doctor doesn't fail for it. Its message
+ * says what is wrong and its resolution what to do, as people read them.
  */
 export interface SecretsIssue {
   readonly type: "warning";
@@ -80,18 +85,51 @@ export const listNames = (names: readonly string[]) =>
     ? names.join(" and ")
     : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
 
-/** The warning for missing `names` that nothing reads, if any. */
-export const missingUnusedIssue = (
+/**
+ * `head` and `tail` on one line when they fit, else each on its own: a
+ * long name, such as a variable, never leaves a word of the sentence alone.
+ */
+export const headAndTail = (head: string, tail: string): string[] =>
+  displayWidth(`${head} ${tail}`) <= MESSAGE_WIDTH
+    ? [`${head} ${tail}`]
+    : [head, tail];
+
+/**
+ * The lines that say `names` are missing, as a command that reads them
+ * says it: not in the team `adapter`, or not on this machine without one.
+ */
+export const missingNamesLines = (
   names: readonly string[],
+  adapter: string | undefined,
+): string[] =>
+  headAndTail(
+    listNames(names),
+    `${names.length === 1 ? "isn't" : "aren't"} ${adapter === undefined ? "on this machine" : `in the ${adapter} secrets adapter`}.`,
+  );
+
+/**
+ * The warning for missing names that nothing reads, if any: each with the
+ * command that stores it, as the error for a name a build reads names it.
+ */
+export const missingUnusedIssue = (
+  missing: readonly { readonly name: string; readonly command: string }[],
+  adapter: string | undefined,
 ): SecretsIssue | undefined => {
-  if (names.length === 0) return undefined;
-  const one = names.length === 1;
+  if (missing.length === 0) return undefined;
+  const names = missing.map(({ name }) => name);
+  const it = names.length === 1 ? "it" : "them";
   return {
     type: "warning",
     code: "SECRETS_MISSING_UNUSED",
     names,
-    message: `${listNames(names)} ${one ? "is" : "are"} missing, and no build reads ${one ? "it" : "them"}.`,
-    resolution: `Store ${one ? "it" : "them"} before a build that reads ${one ? "it" : "them"}, or remove the secret() from hot-updater.config.ts.`,
+    message: fitMessage([
+      ...missingNamesLines(names, adapter),
+      `No build or deploy reads ${it} yet, so nothing fails.`,
+    ]),
+    resolution: [
+      fitMessage([`Store ${it} before a build or a deploy reads ${it}:`]),
+      ...missing.map(({ command }) => formatCommand(command)),
+    ].join("\n"),
   };
 };
 
@@ -162,32 +200,36 @@ const collectReferences = (config: ConfigResponse): Reference[] => {
 };
 
 /**
- * Why a build or a deploy stops without `name`, by what reads it: an
- * upload keystore or a signing key is imported, as a store or a shipped
- * app may already trust it; an App Store Connect API key is issued.
+ * The command that stores `name`, by what reads it: an upload keystore or
+ * a signing key is imported, as a store or a shipped app may already trust
+ * it; an App Store Connect API key is issued after a sign-in.
  */
+const storeCommand = (
+  name: string,
+  references: readonly Reference[],
+): string => {
+  const kind = kindOf(references);
+  return kind === undefined
+    ? bundleSigningPutCommand(name)
+    : credentialStoreCommand(kind, name);
+};
+
+/** What a name holds, by the first reference that says. */
+const kindOf = (references: readonly Reference[]) =>
+  references.find((reference) => reference.kind)?.kind;
+
+/** Why a build or a deploy stops without `name`, and how to store it. */
 const describeMissing = (
   secrets: ConfigResponse["secrets"],
   name: string,
   references: readonly Reference[],
-): string => {
-  const kind = references.find((reference) => reference.kind)?.kind;
-  return describeMissingSecret(
-    secrets,
-    name,
-    kind === "asc-api-key"
-      ? {
-          action: "sign in to store one",
-          command: credentialStoreCommand(kind, name),
-        }
-      : {
-          command:
-            kind === undefined
-              ? bundleSigningPutCommand(name)
-              : credentialStoreCommand(kind, name),
-        },
-  );
-};
+): string =>
+  describeMissingSecret(secrets, name, {
+    ...(kindOf(references) === "asc-api-key"
+      ? { action: "sign in to store one" }
+      : {}),
+    command: storeCommand(name, references),
+  });
 
 /** The `secret()`s a build or a deploy reads that resolve nowhere. */
 export const missingRequiredSecrets = (
@@ -292,7 +334,11 @@ export const checkSecrets = async (
   const unused = missingUnusedIssue(
     statuses
       .filter(({ required, source }) => !required && source === "missing")
-      .map(({ name }) => name),
+      .map(({ name }) => ({
+        name,
+        command: storeCommand(name, byName.get(name)!),
+      })),
+    local ? undefined : secrets.name,
   );
 
   return {
