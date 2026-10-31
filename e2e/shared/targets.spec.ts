@@ -123,6 +123,17 @@ describe("E2E targets", () => {
         .join("\n");
       expect(plists).toContain(`<string>${E2E_APP.urlScheme}</string>`);
     });
+
+    it("installs pods with the CocoaPods pnpm symlink patch", () => {
+      // Without it, pod install crashes at random with "pathname contains
+      // null byte" (CocoaPods/CocoaPods#12798, #12866).
+      expect(read(`${target.ios.podsDir}/Podfile`)).toContain(
+        "require_relative './cocoapods_pathname'",
+      );
+      expect(read(`${target.ios.podsDir}/cocoapods_pathname.rb`)).toBe(
+        read("examples/v0.85.0/ios/cocoapods_pathname.rb"),
+      );
+    });
   });
 });
 
