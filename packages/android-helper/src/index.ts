@@ -1,5 +1,11 @@
 export { buildAndroid } from "./buildAndroid";
 export {
+  type AdbDevice,
+  installOnAndroidDevice,
+  listAdbDevices,
+  selectAdbDevice,
+} from "./device";
+export {
   checkPlayAccess,
   findPlayInternalRelease,
   assertPlaySigned,

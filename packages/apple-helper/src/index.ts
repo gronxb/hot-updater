@@ -9,6 +9,13 @@ export {
 } from "./ascApiKey";
 export { buildIos } from "./buildIos";
 export {
+  extractSimulatorApp,
+  installOnSimulator,
+  listSimulators,
+  selectSimulator,
+  type Simulator,
+} from "./simulator";
+export {
   assertTestFlightExportOptions,
   findTestFlightBuild,
   resolveTestFlightUploadKey,

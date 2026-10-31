@@ -124,7 +124,8 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       return (
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            It runs only in the iOS Simulator. Install it on the booted one:
+            It runs only in the iOS Simulator. In your project, install and open
+            it on the booted one:
           </p>
           <CopyableText
             label="the install command"
@@ -225,8 +226,8 @@ function DownloadLink({ build }: { readonly build: NativeBuildRow }) {
 /**
  * Installs one native build: every artifact by a QR code of its download,
  * which a phone scans, and by download here or a signed link; an APK also
- * with `adb`, a simulator app with `xcrun simctl`, and an IPA's or an AAB's
- * testers through its store.
+ * with `adb`, a simulator app with `native-build install`, and an IPA's or an
+ * AAB's testers through its store.
  */
 export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
   const fileName = nativeBuildFileName(build);

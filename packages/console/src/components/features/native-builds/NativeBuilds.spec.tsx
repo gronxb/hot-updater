@@ -626,9 +626,7 @@ describe("InstallCard", () => {
     );
 
     expect(
-      screen.getByText(
-        "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
-      ),
+      screen.getByText(`npx hot-updater native-build install ${id(1)}`),
     ).toBeTruthy();
   });
 
