@@ -90,6 +90,7 @@ const defaultScenarioNames = [
   "headless-launch-keeps-staged-bundle",
   "interrupted-launch-retries-bundle",
   "launch-status-after-session-install",
+  "update-status-and-logs",
   "release-ota-recovery",
   "multi-asset-replacement",
   "bspatch-builtin-to-diff-ota",
@@ -1532,6 +1533,8 @@ describe("E2E scenario contract", () => {
       "crash-then-next-safe-update: install next safe update",
       "runtime-channel-crash-restore: install beta stable",
       "runtime-channel-crash-restore: install beta crash",
+      "update-status-and-logs: download the update",
+      "update-status-and-logs: download the crashing bundle",
     ]);
 
     for (const scenarioName of defaultScenarioNames) {

@@ -72,6 +72,7 @@ const expectedScenarioModuleFiles = [
   "target-cohorts-rollout-interaction.ts",
   "targeted-cohort-switchback.ts",
   "ten-crash-history-safe-bundle.ts",
+  "update-status-and-logs.ts",
   "types.ts",
 ] as const;
 
