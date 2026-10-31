@@ -1,5 +1,33 @@
 # @hot-updater/console
 
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- cf8b1fa: Install an APK on a phone from a build's signed link.
+  - A build's page creates its signed link when it opens. The QR code, the download button and the link to copy all use it, so a phone without a Console session goes straight to the download. "Create a link without sign-in" is gone.
+  - The page no longer reads the download URL every 30 seconds. A Console that can't sign, such as a local `hot-updater console`, shows the storage's URL in the QR code, read when the page opens and when someone comes back to it.
+  - A streamed `.apk` always answers `content-type: application/vnd.android.package-archive`, and a streamed build's `content-disposition` also has a plain `filename` for clients that don't read `filename*`.
+  - The Install card says what Android needs: the browser's "Install unknown apps" permission, and that an install over the same package signed with another key fails.
+  - An APK on an emulator or over USB shows `native-build install` in place of the `adb install` command.
+
+- 64fe8d8: Download and install a tracked native build from the CLI.
+  - `hot-updater native-build download <id> [-o path]` writes the artifact through the config's storage (`storage.get`), with no Console and no download URL.
+  - `hot-updater native-build install <id> [--simulator <udid>] [--device <serial>]` downloads a simulator `.app` or `.apk`, installs it on a booted simulator or a connected Android device, and opens the app the artifact names, so a sandbox build's `.sandbox` application ID works the same way.
+  - `native-build find --json` adds `downloadUrl`, the storage's `getDownloadUrl` result or `null`. Only a Console signs a signed link: the CLI doesn't hold its secret.
+  - The Console's Install card shows `native-build install` for a simulator build, in place of the `xcrun simctl` commands.
+
+- b444c62: Download a native build without a Console session through a signed link.
+  - A build's page creates a link, `/api/native-builds/<build id>/download?t=<token>`, that works for 30 days for that build only, and a script can `curl`. The Console signs it with a key derived from `BETTER_AUTH_SECRET` and stores nothing. An expired or changed link answers `403`; requests without a token still ask for the session, and a local console still asks for its own.
+  - A valid link redirects to the storage's download URL. When the storage gives no URL a browser can fetch, including when it can't sign one, the Console streams the file through `storage.get`, which costs more: the docs say so.
+
+- Updated dependencies [ef790db]
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/bsdiff@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/server@1.2.0-rc.13
+  - @hot-updater/plugin-core@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes
