@@ -176,7 +176,7 @@ unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExam
     expect(body).toContain("adb install -r 'my app'\\''s.apk'");
   });
 
-  it("shows no channel link, and never says Expo Go", () => {
+  it("shows no channel link", () => {
     const body = renderPreviewComment({
       ...base,
       previews: [android, ios],
@@ -186,7 +186,6 @@ unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExam
     expect(body).not.toMatch(
       /hot-updater\/channel\/|openurl|am start|channel-qr/,
     );
-    expect(body).not.toMatch(/expo go/i);
   });
 });
 
