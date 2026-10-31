@@ -27,7 +27,15 @@ const env = (name: string) => {
 interface Expected {
   /** What the action must decide, and what must come of it, by platform. */
   readonly platforms: Readonly<
-    Record<string, { readonly decision: string; readonly outcome: string }>
+    Record<
+      string,
+      {
+        readonly decision: string;
+        readonly outcome: string;
+        /** Why it failed: another failure must not pass for this one. */
+        readonly error?: string;
+      }
+    >
   >;
   /** Whether the action's step must fail. */
   readonly fails?: boolean;
@@ -37,16 +45,27 @@ interface Expected {
   readonly releases: { readonly android: number; readonly ios: number };
   /** The uploads the store took, each the artifact of a submitted build. */
   readonly uploads: number;
+  /** What the store refused so far, by the fake store's record. */
+  readonly refused: readonly string[];
   /** The CLI commands that may run, by their first words, in order. */
   readonly commands: readonly string[];
-  /** Whether the second build must have another fingerprint than the first. */
-  readonly newFingerprint?: boolean;
+  /** The index of the first build with the native change's fingerprint. */
+  readonly nativeBuildFrom?: number;
 }
 
 const FIND = "native-build find";
 const BUILD = "native-build android";
 const DEPLOY = ["fingerprint create", "deploy", "bundle list"];
+const SET_THEN_BUILD = [FIND, "channel set", FIND, BUILD];
 const noBundles = { android: 0, ios: 0 };
+const REFUSED_COMMIT = ["commit"];
+const REFUSED_BOTH = ["commit", "version-code"];
+const AFTER_NATIVE = {
+  builds: ["not submitted", "submitted", "not submitted", "submitted"],
+  uploads: 2,
+  refused: REFUSED_BOTH,
+  nativeBuildFrom: 2,
+} as const;
 
 const STAGES: Readonly<Record<string, Expected>> = {
   // Nothing is tracked: a native build, which the dry run only says.
@@ -55,16 +74,20 @@ const STAGES: Readonly<Record<string, Expected>> = {
     builds: [],
     releases: noBundles,
     uploads: 0,
+    refused: [],
     commands: [FIND],
   },
   // The store fails the upload after the build is tracked.
   "first-upload-fails": {
-    platforms: { android: { decision: "build", outcome: "failed" } },
+    platforms: {
+      android: { decision: "build", outcome: "failed", error: BUILD },
+    },
     fails: true,
     builds: ["not submitted"],
     releases: noBundles,
     uploads: 0,
-    commands: [FIND, "channel set", FIND, BUILD],
+    refused: REFUSED_COMMIT,
+    commands: SET_THEN_BUILD,
   },
   // The build is tracked but the store has nothing: not a reason to deploy.
   "rerun-dry-run": {
@@ -72,80 +95,88 @@ const STAGES: Readonly<Record<string, Expected>> = {
     builds: ["not submitted"],
     releases: noBundles,
     uploads: 0,
+    refused: REFUSED_COMMIT,
     commands: [FIND],
   },
-  // The rerun finishes the submit, reusing the tracked build.
+  // The rerun finishes the submit. It builds again here, as the first build
+  // installed the NDK on this runner, which is part of the native build key.
   rerun: {
     platforms: { android: { decision: "build", outcome: "built" } },
-    builds: ["submitted"],
+    builds: ["not submitted", "submitted"],
     releases: noBundles,
     uploads: 1,
-    commands: [FIND, "channel set", FIND, BUILD],
+    refused: REFUSED_COMMIT,
+    commands: SET_THEN_BUILD,
   },
   // Only JavaScript changed, and the store has the build.
   "js-dry-run": {
     platforms: { android: { decision: "ota", outcome: "decided" } },
-    builds: ["submitted"],
+    builds: ["not submitted", "submitted"],
     releases: noBundles,
     uploads: 1,
+    refused: REFUSED_COMMIT,
     commands: [FIND],
   },
   "js-deployed": {
     platforms: { android: { decision: "ota", outcome: "deployed" } },
-    builds: ["submitted"],
+    builds: ["not submitted", "submitted"],
     releases: { android: 1, ios: 0 },
     uploads: 1,
+    refused: REFUSED_COMMIT,
     commands: [FIND, ...DEPLOY],
   },
   // A declared native input changed.
   "native-dry-run": {
     platforms: { android: { decision: "build", outcome: "decided" } },
-    builds: ["submitted"],
+    builds: ["not submitted", "submitted"],
     releases: { android: 1, ios: 0 },
     uploads: 1,
+    refused: REFUSED_COMMIT,
     commands: [FIND],
   },
-  // The store has the version code: the native change didn't reach it. The
-  // build stays tracked, and the new version code builds again.
+  // The store has the version code: the native change didn't reach it.
   "native-refused": {
-    platforms: { android: { decision: "build", outcome: "failed" } },
+    platforms: {
+      android: {
+        decision: "build",
+        outcome: "failed",
+        error: "Raise the build number",
+      },
+    },
     fails: true,
-    builds: ["submitted", "not submitted"],
+    builds: ["not submitted", "submitted", "not submitted"],
     releases: { android: 1, ios: 0 },
     uploads: 1,
-    commands: [FIND, "channel set", FIND, BUILD],
-    newFingerprint: true,
+    refused: REFUSED_BOTH,
+    commands: SET_THEN_BUILD,
+    nativeBuildFrom: 2,
   },
   "native-submitted": {
     platforms: { android: { decision: "build", outcome: "built" } },
-    builds: ["submitted", "not submitted", "submitted"],
     releases: { android: 1, ios: 0 },
-    uploads: 2,
-    commands: [FIND, "channel set", FIND, BUILD],
-    newFingerprint: true,
+    commands: SET_THEN_BUILD,
+    ...AFTER_NATIVE,
   },
   // The registry is down: no decision, so nothing runs.
   "lookup-fails": {
-    platforms: { android: { decision: "none", outcome: "failed" } },
+    platforms: {
+      android: { decision: "none", outcome: "failed", error: FIND },
+    },
     fails: true,
-    builds: ["submitted", "not submitted", "submitted"],
     releases: { android: 1, ios: 0 },
-    uploads: 2,
     commands: [FIND],
-    newFingerprint: true,
+    ...AFTER_NATIVE,
   },
   // iOS's lookup fails: Android still deploys, and the run fails.
   partial: {
     platforms: {
       android: { decision: "ota", outcome: "deployed" },
-      ios: { decision: "none", outcome: "failed" },
+      ios: { decision: "none", outcome: "failed", error: FIND },
     },
     fails: true,
-    builds: ["submitted", "not submitted", "submitted"],
     releases: { android: 2, ios: 0 },
-    uploads: 2,
     commands: [FIND, ...DEPLOY, FIND],
-    newFingerprint: true,
+    ...AFTER_NATIVE,
   },
 };
 
@@ -212,6 +243,7 @@ try {
       outcome: string;
       nativeBuildId: string | null;
       bundleId: string | null;
+      error: string | null;
     }[];
   };
   check(result.ok === !expected.fails, `the result's ok is ${result.ok}`);
@@ -231,6 +263,12 @@ try {
       reported[platform]?.outcome === want.outcome,
       `${platform} ended ${reported[platform]?.outcome}, not ${want.outcome}`,
     );
+    if (want.error !== undefined) {
+      check(
+        reported[platform]?.error?.includes(want.error) === true,
+        `${platform} failed with "${reported[platform]?.error}", not "${want.error}"`,
+      );
+    }
   }
 
   // The CLI commands that ran.
@@ -253,12 +291,17 @@ try {
     states.join() === expected.builds.join(),
     `the tracked builds are [${states.join(", ")}], not [${expected.builds.join(", ")}]`,
   );
-  if (expected.newFingerprint) {
-    check(
-      builds[0]?.fingerprint_hash !== builds[1]?.fingerprint_hash,
-      "the second build has the first build's fingerprint",
-    );
-  }
+  // The builds before the native change share a fingerprint, and it changes
+  // with that change.
+  const from = expected.nativeBuildFrom ?? builds.length;
+  const before = new Set(builds.slice(0, from).map((b) => b.fingerprint_hash));
+  const after = new Set(builds.slice(from).map((b) => b.fingerprint_hash));
+  check(before.size <= 1, `builds before the change: ${[...before].join()}`);
+  check(after.size <= 1, `builds after the change: ${[...after].join()}`);
+  check(
+    [...after].every((hash) => !before.has(hash)),
+    "the native change kept the fingerprint",
+  );
 
   // The channel's bundles, which target the newest build's fingerprint.
   const { rows: releases } = await db.query<{
@@ -295,9 +338,15 @@ try {
   }
 
   // The store's own record: what it took is what Hot Updater tracked.
-  const uploads = lines(env("PROOF_PLAY_LOG")).map(
-    (line) => JSON.parse(line) as { sha256: string },
+  const store = lines(env("PROOF_PLAY_LOG")).map(
+    (line) => JSON.parse(line) as { sha256?: string; refused?: string },
   );
+  const refused = store.flatMap(({ refused }) => refused ?? []);
+  check(
+    refused.join() === expected.refused.join(),
+    `the store refused [${refused.join(", ")}], not [${expected.refused.join(", ")}]`,
+  );
+  const uploads = store.filter(({ refused }) => refused === undefined);
   check(
     uploads.length === expected.uploads,
     `the store took ${uploads.length} uploads, not ${expected.uploads}`,

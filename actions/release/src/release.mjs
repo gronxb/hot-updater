@@ -230,16 +230,13 @@ const buildPlatform = async (deps, inputs, env, result, channel) => {
       `native-build ${platform} built a native build that embeds the ${built.build.channel} channel, not ${channel}.`,
     );
   }
-  // A new build the store refused holds this commit's native code, which the
-  // store's build with that number doesn't. A reused one may be that build.
+  // The store matched the build number, not this artifact, which may hold
+  // native code the store's build with that number doesn't. A cached build
+  // says nothing here: a build the store refused is tracked and reused too.
   const { skipped, existing } = built.submission;
-  if (
-    skipped === "already-submitted" &&
-    existing?.source === "store" &&
-    built.cache.hit === null
-  ) {
+  if (skipped === "already-submitted" && existing?.source === "store") {
     throw new Error(
-      `${store.name} already has ${existing.version ?? "this build number"}, so this build didn't reach it. Raise the build number and push again.`,
+      `${store.name} already has ${existing.version ?? "this build number"}, which may be another build. Raise the build number and push again.`,
     );
   }
   result.submittedTo = inputs.submit ? store.id : null;

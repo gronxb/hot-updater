@@ -97,7 +97,6 @@ const fakeCli = ({
             skipped: null,
             existing: null,
           },
-          cache: { hit: null },
           ...built,
         }),
       };
@@ -473,39 +472,44 @@ describe("runAction", () => {
     expect(ran(fake.calls, "deploy")).toEqual(["deploy -p android -c beta"]);
   });
 
-  it("fails a new build the store refused, whose native code didn't reach it", async () => {
-    const fake = fakeCli({
-      built: {
-        submission: {
-          destination: "play-internal",
-          skipped: "already-submitted",
-          existing: { version: "1.0 (7)", source: "store" },
-        },
-      },
-    });
-    const { error, result } = await run(fake);
-
-    expect(error?.message).toContain(
-      "Google Play internal testing already has 1.0 (7), so this build didn't reach it. Raise the build number and push again.",
-    );
-    expect(result.platforms[0]).toMatchObject({
-      outcome: "failed",
-      submittedTo: null,
-      nativeBuildId: "nb-new",
-    });
-  });
-
   it.each([
-    ["recorded", { hit: null }],
-    ["store", { hit: "storage" }],
-  ])("accepts a build the store has (%s, %j)", async (source, cache) => {
+    ["a new build", { hit: null }],
+    // A build the store refused is tracked and reused by the rerun, which
+    // finds the store's build by its number alone.
+    ["a reused build", { hit: "storage" }],
+  ])(
+    "fails %s the store matched by number alone, which may hold other native code",
+    async (_name, cache) => {
+      const fake = fakeCli({
+        built: {
+          cache,
+          submission: {
+            destination: "play-internal",
+            skipped: "already-submitted",
+            existing: { version: "1.0 (7)", source: "store" },
+          },
+        },
+      });
+      const { error, result } = await run(fake);
+
+      expect(error?.message).toContain(
+        "Google Play internal testing already has 1.0 (7), which may be another build. Raise the build number and push again.",
+      );
+      expect(result.platforms[0]).toMatchObject({
+        outcome: "failed",
+        submittedTo: null,
+        nativeBuildId: "nb-new",
+      });
+    },
+  );
+
+  it("accepts a build whose submission Hot Updater recorded", async () => {
     const fake = fakeCli({
       built: {
-        cache,
         submission: {
           destination: "play-internal",
           skipped: "already-submitted",
-          existing: { version: "1.0 (7)", source },
+          existing: { version: "1.0 (7)", source: "recorded" },
         },
       },
     });

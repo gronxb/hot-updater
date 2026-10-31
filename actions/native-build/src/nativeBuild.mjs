@@ -23,7 +23,6 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @property {{ skipped: "debug" | "dry-run" | null }} registration Why the build has no record.
  * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { version: string | null, source: "recorded" | "store" } | null }} submission
  *   The store the build went to, and the store's build that kept it from uploading.
- * @property {{ hit: "storage" | "local" | null }} cache The build it reused.
  */
 
 /** The store each platform submits to. */

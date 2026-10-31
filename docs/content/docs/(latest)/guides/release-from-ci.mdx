@@ -183,12 +183,11 @@ same as JSON, also when a platform fails:
   both, and the run fails, naming what finished: a job with both platforms may
   have released one.
 - **The store upload fails.** The build stays tracked. Rerun the job: the
-  decision is `build` again, and `native-build` reuses the tracked build while
-  the commit's inputs are the same. The next push builds again, since its inputs
-  changed, and uploads that build.
-- **The store has the build number**, and this run built a new artifact. Its
-  native code didn't reach the store, so the run fails. Raise the build number
-  and push again.
+  decision is `build` again, and `native-build` reuses the tracked build when
+  its inputs are the same, or builds it again.
+- **The store has the build number.** The store matched the number, not this
+  artifact, which may hold native code the store's build doesn't, so the run
+  fails. Raise the build number and push again.
 
 A build registered with
 [`native-build import`](/docs/guides/native-build#import-a-build-made-elsewhere) comes from

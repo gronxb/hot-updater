@@ -3,10 +3,11 @@
 // no store behind it and no store setting in the product. It answers as
 // Google Play does: an edit holds an upload until its commit, and a version
 // code is taken once. Any other Google or Apple host throws, so the proof can't
-// reach a real store. Each commit appends a line to PROOF_PLAY_LOG, which the
-// proof reads as the store's own record:
+// reach a real store. Each commit, and each refusal, appends a line to
+// PROOF_PLAY_LOG, which the proof reads as the store's own record:
 //
 //   { "versionCode": 1, "sha256": "...", "size": 123 }
+//   { "refused": "commit" }
 //
 // PROOF_PLAY_VERSION_CODE is the version code the store reads from the next
 // .aab. PROOF_PLAY_FAIL=commit refuses the commit, as a store outage would.
@@ -29,7 +30,10 @@ const committed = () =>
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line))
+        .filter((line) => line.refused === undefined)
     : [];
+
+const record = (line) => appendFileSync(log(), `${JSON.stringify(line)}\n`);
 
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), {
@@ -73,6 +77,7 @@ const answer = async (url, { method = "GET", headers, body } = {}) => {
     if (Number(start) > Number(end)) throw new Error(`Bad range: ${range}`);
     const code = versionCode();
     if (committed().some((upload) => upload.versionCode === code)) {
+      record({ refused: "version-code" });
       return refuse(403, `Version code ${code} has already been used.`);
     }
     edit.versionCode = code;
@@ -80,18 +85,16 @@ const answer = async (url, { method = "GET", headers, body } = {}) => {
   }
   if (path.endsWith(":commit")) {
     if (process.env.PROOF_PLAY_FAIL === "commit") {
+      record({ refused: "commit" });
       return refuse(400, "The proof's store refuses this commit.");
     }
     const edit = edits.get(editId);
     const artifact = Buffer.concat(edit.chunks);
-    appendFileSync(
-      log(),
-      `${JSON.stringify({
-        versionCode: edit.versionCode,
-        sha256: createHash("sha256").update(artifact).digest("hex"),
-        size: artifact.length,
-      })}\n`,
-    );
+    record({
+      versionCode: edit.versionCode,
+      sha256: createHash("sha256").update(artifact).digest("hex"),
+      size: artifact.length,
+    });
     return json({ id: editId });
   }
   if (path.includes("/tracks/")) {
