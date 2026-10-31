@@ -801,52 +801,28 @@ importers:
         version: link:../../packages/protocol
 
   examples/expo-52:
-    devDependencies:
-      '@babel/core':
-        specifier: ^7.25.2
-        version: 7.26.0
-      '@babel/runtime':
-        specifier: ^7.25.2
-        version: 7.29.7
+    dependencies:
       '@expo/metro-runtime':
         specifier: ~4.0.1
         version: 4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))
-      '@hot-updater/expo':
-        specifier: workspace:*
-        version: link:../../plugins/expo
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
-      '@hot-updater/supabase':
-        specifier: workspace:*
-        version: link:../../plugins/supabase
-      '@types/react':
-        specifier: ~18.3.12
-        version: 18.3.31
-      '@typescript/native':
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
       expo:
         specifier: ~52.0.49
         version: 52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
+      expo-asset:
+        specifier: ~11.0.5
+        version: 11.0.5(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       expo-dev-client:
         specifier: ~5.0.20
         version: 5.0.20(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))
       expo-font:
-        specifier: ^13.0.4
-        version: 13.3.2(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react@18.3.1)
+        specifier: ~13.0.4
+        version: 13.0.4(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react@18.3.1)
       expo-status-bar:
         specifier: ~2.0.1
         version: 2.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
-      hot-updater:
-        specifier: workspace:*
-        version: link:../../packages/hot-updater
-      metro:
-        specifier: 0.81.4
-        version: 0.81.4
-      metro-resolver:
-        specifier: 0.81.4
-        version: 0.81.4
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -862,6 +838,40 @@ importers:
       react-native-webview:
         specifier: 13.12.5
         version: 13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
+    devDependencies:
+      '@babel/core':
+        specifier: ^7.25.2
+        version: 7.26.0
+      '@babel/runtime':
+        specifier: ^7.25.2
+        version: 7.29.7
+      '@hot-updater/expo':
+        specifier: workspace:*
+        version: link:../../plugins/expo
+      '@hot-updater/supabase':
+        specifier: workspace:*
+        version: link:../../plugins/supabase
+      '@types/react':
+        specifier: ~18.3.12
+        version: 18.3.31
+      '@typescript/native':
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      babel-preset-expo:
+        specifier: ~12.0.12
+        version: 12.0.12(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))
+      expo-modules-autolinking:
+        specifier: ~2.0.8
+        version: 2.0.8
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
+      metro:
+        specifier: 0.81.4
+        version: 0.81.4
+      metro-resolver:
+        specifier: 0.81.4
+        version: 0.81.4
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -13726,12 +13736,6 @@ packages:
 
   expo-font@13.0.4:
     resolution: {integrity: sha512-eAP5hyBgC8gafFtprsz0HMaB795qZfgJWqTmU0NfbSin1wUuVySFMEPMOrTkTgmazU73v4Cb4x7p86jY1XXYUw==}
-    peerDependencies:
-      expo: '*'
-      react: '*'
-
-  expo-font@13.3.2:
-    resolution: {integrity: sha512-wUlMdpqURmQ/CNKK/+BIHkDA5nGjMqNlYmW0pJFXY/KE/OG80Qcavdu2sHsL4efAIiNGvYdBS10WztuQYU4X0A==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -35680,12 +35684,6 @@ snapshots:
       fontfaceobserver: 2.3.0
 
   expo-font@13.0.4(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react@18.3.1):
-    dependencies:
-      expo: 52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
-      fontfaceobserver: 2.3.0
-      react: 18.3.1
-
-  expo-font@13.3.2(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react@18.3.1):
     dependencies:
       expo: 52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       fontfaceobserver: 2.3.0
