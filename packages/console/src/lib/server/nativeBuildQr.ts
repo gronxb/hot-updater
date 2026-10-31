@@ -41,7 +41,9 @@ export const nativeBuildDownloadUrl = (request: Request, id: string) => {
  * request comment shows it, and GitHub fetches a comment's images
  * anonymously. It reads nothing, no database and no storage, so it says
  * nothing about whether the build exists; the download itself asks for the
- * session. The response's `x-hot-updater-download-url` header is the URL.
+ * session. Anyone can ask for this image, so it never holds a signed link:
+ * those come only to a caller the console let in. The response's
+ * `x-hot-updater-download-url` header is the URL.
  *
  * - 400: `build` is missing or not a UUIDv7;
  * - 405: a method other than GET or HEAD.

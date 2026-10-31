@@ -232,11 +232,40 @@ export async function resolveNativeBuildDownloadUrl(
   return adapter === undefined && isPublicUrl(storageUri) ? storageUri : null;
 }
 
+const noStoreRedirect = (url: string) =>
+  new Response(null, {
+    headers: { "cache-control": "private, no-store", location: url },
+    status: 302,
+  });
+
+/**
+ * The URL a browser or script can fetch the object from by itself, or null
+ * when the storage gives none, or gives one only it can read. When the
+ * storage can't serve the object any other way, its failure stands.
+ */
+const publicDownloadUrl = async (
+  adapter: StorageAdapter,
+  storageUri: string,
+): Promise<string | null> => {
+  if (adapter.getDownloadUrl === undefined) return null;
+  try {
+    const { url } = await adapter.getDownloadUrl({ storageUri });
+    return /^https?:\/\//iu.test(url) ? url : null;
+  } catch (error) {
+    if (adapter.get === undefined) throw error;
+    console.warn(
+      `Streaming a native build through the console: ${adapter.name} gave no download URL.`,
+      error,
+    );
+    return null;
+  }
+};
+
 /**
  * Downloads a native build's artifact: a redirect to the storage's download
- * URL, or the object streamed through the console when the storage gives
- * no URL. The redirect is resolved on each request, so the console's link
- * never expires.
+ * URL, or, when the storage gives no URL a browser can fetch, the object
+ * streamed through the console, whose host then serves every byte. The
+ * redirect is resolved on each request, so the console's link never expires.
  */
 export async function downloadNativeBuild(
   id: string,
@@ -253,13 +282,8 @@ export async function downloadNativeBuild(
 
   const storageUri = build.artifact_storage_uri;
   const adapter = storageFor(storage, storageUri);
-  if (adapter?.getDownloadUrl !== undefined) {
-    const { url } = await adapter.getDownloadUrl({ storageUri });
-    return new Response(null, {
-      headers: { "cache-control": "private, no-store", location: url },
-      status: 302,
-    });
-  }
+  const url = adapter && (await publicDownloadUrl(adapter, storageUri));
+  if (url) return noStoreRedirect(url);
   if (adapter?.get !== undefined) {
     const { response } = await adapter.get({ storageUri });
     if (!response) {
@@ -279,7 +303,7 @@ export async function downloadNativeBuild(
     });
   }
   if (adapter === undefined && isPublicUrl(storageUri)) {
-    return Response.redirect(storageUri, 302);
+    return noStoreRedirect(storageUri);
   }
   return new Response(
     `No storage adapter for protocol: ${protocolOf(storageUri)}`,

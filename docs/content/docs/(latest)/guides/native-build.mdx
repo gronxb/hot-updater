@@ -4,6 +4,8 @@ description: "Build an Android .apk or .aab, an iOS .ipa, or a simulator .app wi
 icon: Hammer
 ---
 
+import { Callout } from "fumadocs-ui/components/callout";
+
 ## What a build compiles in
 
 `hot-updater native-build android` and `hot-updater native-build ios` build
@@ -261,7 +263,9 @@ opens the build's page, `/native-builds/<build id>`:
   build downloads through `/api/native-builds/<build id>/download`, which
   answers with a fresh storage URL on each request, so the link never
   expires. A browser that opens it without a Console session goes to the
-  build's page, which signs it in and comes back to the build.
+  build's page, which signs it in and comes back to the build. For a script
+  or a teammate without a session, create a
+  [signed download link](#signed-download-links).
 - **Build number**: the `CFBundleVersion` or `versionCode` the artifact
   reports, which the list shows as `build 66` too.
 - **Store**: for a build `testflight` or `google-play upload` submitted, the
@@ -283,6 +287,43 @@ service,
 `npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>`,
 and links [Import a build made elsewhere](#import-a-build-made-elsewhere).
 The Console uploads nothing; the CLI reads the artifact where it is.
+
+### Signed download links
+
+A signed link downloads one build without a Console session, so a script or a
+teammate can use it. On a hosted Console, open the build's page and select
+**Create a link without sign-in** under **Install**. The link is
+`/api/native-builds/<build id>/download?t=<token>`:
+
+```bash
+curl -fL -o app-release.apk "<signed link>"
+```
+
+- It works for 30 days, for this build only. The Console stores nothing, so a
+  link can't be revoked by itself: treat it like a password, and create a new
+  one when it expires.
+- An expired or changed link answers `403`, even for a signed-in browser.
+  Create a new link on the build's page.
+- The Console signs links with a key derived from `BETTER_AUTH_SECRET`, the
+  secret in your [host's runtime environment](/docs/guides/console-deployment#set-up-sign-in).
+  Changing that secret ends every link, and every session. A Console with
+  [custom authentication](/docs/guides/console-deployment#custom-authentication)
+  sets the variable too, to a random value of at least 32 characters.
+- A local `hot-updater console` creates no links: it answers only on your
+  machine, and only with the session it prints.
+
+A valid link answers with one request to the Console: a redirect to the storage
+adapter's `getDownloadUrl`, and the storage serves the file.
+
+<Callout type="warn">
+  When the storage gives no URL a browser can fetch, the Console streams the
+  file through `storage.get` instead, so your Console host serves and bills for
+  every byte, and its limits on duration and response size apply. This happens
+  with `r2Storage` from `@hot-updater/cloudflare/worker` without R2 credentials,
+  as the Cloudflare Console example sets it, and when any adapter can't sign,
+  such as without a signing credential. Give the adapter what it needs to sign
+  URLs to avoid it.
+</Callout>
 
 A bundle's detail sheet links to the newest build of its release's scope, and
 says whether the bundle has a patch from it. Deleting a build stays with

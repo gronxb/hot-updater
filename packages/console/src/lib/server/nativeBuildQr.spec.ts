@@ -33,4 +33,15 @@ describe("serveNativeBuildQr", () => {
     );
     expect(await response.text()).toBe("");
   });
+
+  it("never holds a signed link, since anyone can ask for this image", () => {
+    const response = serveNativeBuildQr(
+      new Request(
+        `https://console.example.com/_hot-updater/native-builds/qr?build=${BUILD}&t=1.forged`,
+      ),
+    );
+
+    const url = response.headers.get("x-hot-updater-download-url")!;
+    expect(new URL(url).search).toBe("");
+  });
 });
