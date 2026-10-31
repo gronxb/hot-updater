@@ -130,7 +130,7 @@ export const decide = (found, { submit }) => {
     };
   }
   const store = STORES[found.platform];
-  if (!submit || (build.build_key ?? null) === null) {
+  if (build !== null) {
     return { decision: "ota", reason: `native build ${build.id} is tracked` };
   }
   return build.submitted_to === store.id
