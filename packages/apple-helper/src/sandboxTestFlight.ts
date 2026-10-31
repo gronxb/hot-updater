@@ -613,11 +613,11 @@ export type TestFlightGroupOutcome =
 /**
  * Applies an internal group to a build already on TestFlight, as an upload does,
  * so a reused build reaches the group named now. One process reads the app, the
- * build and the group once each, and App Store Connect can't say which groups
- * hold a build, so it adds the build, which a group already holding it takes
- * again. A build not `isOffered` gets nothing: it needs a new build, which
- * checks the group itself. A build still processing waits as an upload's does,
- * and the next run applies the group again.
+ * build and the group once each. Reading a build's `betaGroups` relationship
+ * answered 403 when we tried it, so this doesn't check membership first: every
+ * run adds the build. A build not `isOffered` gets nothing: it needs a new
+ * build, which checks the group itself. A build still processing waits as an
+ * upload's does, and the next run applies the group again.
  */
 export const applyTestFlightGroup = async ({
   bundleId,

@@ -697,6 +697,27 @@ A self-hosted server reached through `standaloneRepository` needs this
 release's `@hot-updater/server`; an older one answers `404`, and the CLI asks
 you to upgrade it.
 
+## Add a build to a TestFlight group
+
+`hot-updater native-build testflight-group` adds a
+[sandbox](/docs/native-builds/sandbox) build already on TestFlight to an internal
+group, with no new upload:
+
+```package-install
+npx hot-updater native-build testflight-group <build id> QA --scheme sandbox
+```
+
+The scheme says which App Store Connect app and key to use. A group that is
+external or doesn't exist stops the command, and nothing changes. A group that
+takes every build needs nothing added. A build App Store Connect is still
+processing waits up to 15 minutes; if it's still processing then, run the command
+again later.
+
+`--json` prints what [`--store-status`](#find-a-build) prints, with `group`:
+`added`, `takes-every-build`, `pending` for a build still processing, or
+`not-offered` for a build testers can no longer get. At a terminal, `pending` and
+`not-offered` exit with status 1.
+
 ## Sign and upload
 
 <a id="provide-signing-credentials" />
@@ -727,14 +748,9 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 | `--json`                    | Print the build, its record or why it has none, and its submission as JSON, the last line          |
 
 The commands of the registry, `native-build find`, `native-build download`,
-`native-build install`, `native-build delete`, and `native-build import`, are
-described in [Find a build](#find-a-build),
+`native-build install`, `native-build delete`, `native-build testflight-group`,
+and `native-build import`, are described in [Find a build](#find-a-build),
 [Download a build](#download-a-build), [Install a build](#install-a-build),
-[Delete a build](#delete-a-build), and
+[Delete a build](#delete-a-build),
+[Add a build to a TestFlight group](#add-a-build-to-a-testflight-group), and
 [Import a build made elsewhere](#import-a-build-made-elsewhere).
-
-`native-build testflight-group <id> <group> --scheme <scheme>` adds a sandbox
-build already on TestFlight to an internal group, with no new upload. `--json`
-prints what `--store-status` prints, with `group`: `added`, `takes-every-build`,
-`pending` while App Store Connect processes the build, or `not-offered` for a
-build testers can no longer get.
