@@ -222,7 +222,7 @@ const createAndStore = async ({
       name !== KIND && ui.kv("Name", name),
       ui.kv("Alias", entry.keyAlias),
       ...fingerprintRows(certificate.fingerprints),
-      ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
+      ui.kv("Source", ui.source(describeStoredSecret(secrets, name))),
       pem && ui.kv("Certificate", ui.fitPath(path.resolve(pem))),
       "Fits only an app with no .aab on Play yet: Play keeps the first key.",
       configured
@@ -303,7 +303,7 @@ export const handleUploadKeyIssue = async (
         ui.block(`${LABEL} already stored`, [
           name !== KIND && ui.kv("Name", name),
           ...(previous?.rows ?? []),
-          ui.kv("Source", ui.fitPath(held.source)),
+          ui.kv("Source", ui.source(held.source)),
           pem && ui.kv("Certificate", ui.fitPath(path.resolve(pem))),
           !pem && "Kept: once Play has it, a new key breaks uploads.",
         ]),

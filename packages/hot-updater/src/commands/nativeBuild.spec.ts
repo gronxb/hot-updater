@@ -1,10 +1,11 @@
-import { p } from "@hot-updater/cli-tools";
-import type { NativeBuildRegistration } from "@hot-updater/plugin-core";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
+  createStorageAdapter,
+  type NativeBuildRegistration,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
@@ -22,7 +23,7 @@ const {
   getChannel: vi.fn(),
   loadConfig: vi.fn(),
   loadServer: vi.fn(),
-  log: { error: vi.fn() },
+  log: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
   resolveNativeAppVersion: vi.fn(),
 }));
 
@@ -160,6 +161,7 @@ describe("handleNativeBuildFind", () => {
         min_bundle_id: "01900000-0000-7000-8000-00000000a001",
         artifact_kind: "apk",
       }),
+      downloadUrl: null,
     });
     expect(databaseHarness.database.dispose).toHaveBeenCalled();
   });
@@ -224,6 +226,7 @@ describe("handleNativeBuildFind", () => {
         fingerprintHash: "fingerprint-a",
         appVersion: null,
         nativeBuild: null,
+        downloadUrl: null,
       });
       expect(process.exit).not.toHaveBeenCalled();
     },
@@ -296,7 +299,86 @@ describe("handleNativeBuildFind", () => {
       nativeBuild: expect.objectContaining({
         id: "01900000-0000-7000-8000-00000000b001",
       }),
+      downloadUrl: null,
     });
+  });
+
+  it("gives a script the URL and the ID it downloads the build by", async () => {
+    await register("1", {
+      platform: "android",
+      channel: "preview",
+      fingerprintHash: "fingerprint-a",
+      appVersion: null,
+    });
+    const url = "https://cdn.example.com/app.apk?signature=x";
+    const bytes = new Uint8Array(1_024).fill(7);
+    const getDownloadUrl = vi.fn(async () => ({ url }));
+    loadServer.mockResolvedValue(
+      testServer({
+        database: databaseHarness.database,
+        storage: createStorageAdapter({
+          name: "fake",
+          protocol: "storage",
+          get: async () => ({ response: new Response(bytes) }),
+          getDownloadUrl,
+        }),
+      }),
+    );
+    const { handleNativeBuildDownload, handleNativeBuildFind } =
+      await import("./nativeBuild");
+
+    await handleNativeBuildFind({ platform: "android", json: true });
+
+    const found = output();
+    expect(found.downloadUrl).toBe(url);
+    // The fields a script read before this one stay.
+    expect(found.nativeBuild.artifact_storage_uri).toBe(
+      "storage://native-builds/android/b001/artifact",
+    );
+    expect(getDownloadUrl).toHaveBeenCalledWith({
+      storageUri: found.nativeBuild.artifact_storage_uri,
+    });
+
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "find-"));
+    try {
+      const file = path.join(directory, "app.apk");
+      await handleNativeBuildDownload(found.nativeBuild.id, {
+        json: true,
+        output: file,
+      });
+      expect(output()).toMatchObject({ path: file, byteSize: 1_024 });
+      expect(await fs.readFile(file)).toEqual(Buffer.from(bytes));
+    } finally {
+      await fs.rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("asks the storage for no URL without a build, or without --json", async () => {
+    const getDownloadUrl = vi.fn(async () => ({ url: "https://example.com" }));
+    loadServer.mockResolvedValue(
+      testServer({
+        database: databaseHarness.database,
+        storage: createStorageAdapter({
+          name: "fake",
+          protocol: "storage",
+          getDownloadUrl,
+        }),
+      }),
+    );
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+
+    await handleNativeBuildFind({ platform: "android", json: true });
+    expect(output().downloadUrl).toBeNull();
+
+    await register("1", {
+      platform: "android",
+      channel: "preview",
+      fingerprintHash: "fingerprint-a",
+      appVersion: null,
+    });
+    await handleNativeBuildFind({ platform: "android" });
+
+    expect(getDownloadUrl).not.toHaveBeenCalled();
   });
 
   it("reads the app version from the native project as it is, without the adapter's prebuild", async () => {
@@ -486,6 +568,80 @@ describe("handleNativeBuildFind", () => {
     expect(loadServer).not.toHaveBeenCalled();
   });
 
+  describe("a sandbox scheme", () => {
+    const find = async (
+      options: Parameters<
+        typeof import("./nativeBuild").handleNativeBuildFind
+      >[0],
+    ) => (await import("./nativeBuild")).handleNativeBuildFind(options);
+    const withSandbox = {
+      android: {
+        ...nativeBuild.android,
+        beta: {
+          packageName: "com.example",
+          variant: "Release",
+          aab: false,
+          sandbox: true,
+        },
+      },
+      ios: nativeBuild.ios,
+    };
+
+    beforeEach(() => {
+      loadConfig.mockResolvedValue({
+        updateStrategy: "fingerprint",
+        nativeBuild: withSandbox,
+        build,
+      });
+    });
+
+    it("looks on its reserved channel, whatever the native project's is, with the existing read", async () => {
+      const scope = {
+        platform: "android",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      } as const;
+      await register("1", { ...scope, channel: "sandbox-beta" });
+      await register("2", { ...scope, channel: "preview" });
+
+      await find({
+        platform: "android",
+        scheme: "beta",
+        json: true,
+      });
+
+      const printed = output();
+      expect(printed.channel).toBe("sandbox-beta");
+      expect(printed.nativeBuild.id).toContain("1");
+      expect(getChannel).not.toHaveBeenCalled();
+    });
+
+    it("refuses another channel for a sandbox scheme, and a reserved one for a normal scheme", async () => {
+      await expect(
+        find({
+          platform: "android",
+          scheme: "beta",
+          channel: "preview",
+          json: true,
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(log.error).toHaveBeenCalledWith(
+        "The sandbox scheme beta builds channel sandbox-beta, not preview.\nRemove --channel.",
+      );
+      await expect(
+        find({
+          platform: "android",
+          scheme: "releaseApk",
+          channel: "sandbox-beta",
+          json: true,
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(log.error).toHaveBeenCalledWith(
+        "Channel sandbox-beta is reserved for sandbox builds, and the scheme releaseApk isn't one.\nPass another --channel.",
+      );
+    });
+  });
+
   it("fails on a scheme the config doesn't define", async () => {
     const { handleNativeBuildFind } = await import("./nativeBuild");
 
@@ -498,11 +654,4 @@ describe("handleNativeBuildFind", () => {
     );
     expect(loadServer).not.toHaveBeenCalled();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

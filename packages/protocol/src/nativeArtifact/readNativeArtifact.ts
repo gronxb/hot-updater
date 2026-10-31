@@ -7,6 +7,11 @@ import {
 } from "./androidManifest";
 import { type ByteSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
+import {
+  SANDBOX_CODE_MARKER,
+  SANDBOX_INFO_PLIST_KEY,
+  SANDBOX_META_DATA,
+} from "./sandbox";
 import { readDexStrings, readMachOStrings } from "./strings";
 import {
   filterZipEntries,
@@ -68,6 +73,12 @@ export interface NativeArtifactInfo {
    * with fingerprint.json compiles its fingerprint in as one.
    */
   readonly fingerprintCandidates: readonly string[];
+  /**
+   * The sandbox layer in the artifact: `code` when the app's code holds its
+   * literal, and `declared` when the Info.plist or the manifest says so. A
+   * sandbox build has both, and a normal build neither.
+   */
+  readonly sandbox: { readonly code: boolean; readonly declared: boolean };
   /** The JavaScript bundle the build packed, the built-in bundle. */
   readonly builtInBundle: {
     readonly path: string;
@@ -99,7 +110,11 @@ export const nativeArtifactKindOf = (
 
 const UUID_LENGTH = 36;
 const SHA256_HEX = /^[0-9a-f]{64}$/u;
-const LENGTHS: ReadonlySet<number> = new Set([UUID_LENGTH, 64]);
+const LENGTHS: ReadonlySet<number> = new Set([
+  UUID_LENGTH,
+  64,
+  SANDBOX_CODE_MARKER.length,
+]);
 
 const unique = (values: Iterable<string>) => [...new Set(values)].sort();
 
@@ -195,6 +210,10 @@ const readAndroid = async (
     channel: androidChannelOf(manifest.metaData.get("com.hotupdater.CHANNEL")),
     minBundleIdCandidates: minBundleIds,
     fingerprintCandidates: fingerprints,
+    sandbox: {
+      code: strings.includes(SANDBOX_CODE_MARKER),
+      declared: manifest.metaData.has(SANDBOX_META_DATA),
+    },
     builtInBundle:
       bundle === undefined
         ? null
@@ -284,6 +303,10 @@ const readIos = async (
           : { unreadable: "HOT_UPDATER_CHANNEL is not a string" },
     minBundleIdCandidates: minBundleIds,
     fingerprintCandidates: fingerprints,
+    sandbox: {
+      code: strings.includes(SANDBOX_CODE_MARKER),
+      declared: info[SANDBOX_INFO_PLIST_KEY] !== undefined,
+    },
     builtInBundle:
       bundle === undefined
         ? null

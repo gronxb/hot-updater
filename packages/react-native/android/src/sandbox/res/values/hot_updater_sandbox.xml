@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="hot_updater_sandbox_marker" translatable="false">HOT_UPDATER_SANDBOX_NATIVE_LAYER</string>
+</resources>

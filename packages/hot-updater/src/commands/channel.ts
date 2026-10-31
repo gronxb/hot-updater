@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   type NativeBuildRow,
@@ -222,7 +222,7 @@ export const handleChannelDelete = (
           "Delete them from storage:",
           ...keptArtifacts,
         ].join("\n");
-        if (options.json) console.error(message);
+        if (options.json) console.error(fitText(message));
         else p.log.error(message);
         process.exitCode = 1;
       }

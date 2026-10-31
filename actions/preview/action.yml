@@ -22,6 +22,19 @@ inputs:
     description: The nativeBuild.android scheme of the preview build, such as a release APK.
   ios-scheme:
     description: The nativeBuild.ios scheme of the preview build, a simulator scheme by default.
+  android-submit:
+    description: >-
+      play-internal releases the Android preview to Google Play's internal
+      testing track, through a sandbox scheme's .aab, instead of a download.
+      Default: none.
+  ios-submit:
+    description: >-
+      testflight uploads the iOS preview to TestFlight for internal testing,
+      through a sandbox scheme's .ipa, instead of a download. Default: none.
+  ios-testflight-group:
+    description: >-
+      With ios-submit, the internal TestFlight group to add the build to. A
+      group that takes every build needs no name here.
   channel:
     description: >-
       The pull request's channel, which its native builds embed and its
@@ -52,8 +65,53 @@ outputs:
   previews:
     description: >-
       JSON of each platform's preview: platform, target, nativeBuild (id,
-      artifactKind), built, and bundleId.
+      artifactKind), built, bundleId, installUrl, downloadUrl (null when
+      android-download-url or ios-download-url is empty), and with
+      android-submit or ios-submit, store (destination, url, version, state,
+      expiresAtMs, reusable).
     value: ${{ steps.run.outputs.previews }}
+  android-install-url:
+    description: >-
+      What a person opens to install the Android preview: the Console's
+      download link, which signs them in first, or with android-submit, the
+      Google Play testing link.
+    value: ${{ steps.run.outputs.android-install-url }}
+  ios-install-url:
+    description: >-
+      What a person opens to install the iOS preview: the Console's download
+      link for a device build, the native-build install command for a
+      simulator build, or with ios-submit, the app's TestFlight page.
+    value: ${{ steps.run.outputs.ios-install-url }}
+  android-download-url:
+    description: >-
+      The storage's URL of the Android artifact, which a later step fetches
+      without a Console session. It is read when every platform is done, and
+      lasts as long as the storage adapter gives it. It is empty when the
+      storage gives none: hot-updater native-build download <id> always works.
+    value: ${{ steps.run.outputs.android-download-url }}
+  ios-download-url:
+    description: >-
+      The storage's URL of the iOS artifact, which a later step fetches
+      without a Console session. It is read when every platform is done, and
+      lasts as long as the storage adapter gives it. It is empty when the
+      storage gives none: hot-updater native-build download <id> always works.
+    value: ${{ steps.run.outputs.ios-download-url }}
+  android-store-url:
+    description: With android-submit, the Google Play testing link of the app.
+    value: ${{ steps.run.outputs.android-store-url }}
+  ios-store-url:
+    description: With ios-submit, the app's TestFlight page in App Store Connect.
+    value: ${{ steps.run.outputs.ios-store-url }}
+  android-store-state:
+    description: >-
+      With android-submit, what Google Play says of the build: ready or draft,
+      or empty when it couldn't be read.
+    value: ${{ steps.run.outputs.android-store-state }}
+  ios-store-state:
+    description: >-
+      With ios-submit, what App Store Connect says of the build: processing,
+      ready, or missing-compliance, or empty when it couldn't be read.
+    value: ${{ steps.run.outputs.ios-store-state }}
   ios-build-log:
     description: >-
       When the iOS preview build fails, the CLI's build log, which the action
@@ -76,6 +134,9 @@ runs:
         INPUT_PLATFORMS: ${{ inputs.platforms }}
         INPUT_ANDROID_SCHEME: ${{ inputs.android-scheme }}
         INPUT_IOS_SCHEME: ${{ inputs.ios-scheme }}
+        INPUT_ANDROID_SUBMIT: ${{ inputs.android-submit }}
+        INPUT_IOS_SUBMIT: ${{ inputs.ios-submit }}
+        INPUT_IOS_TESTFLIGHT_GROUP: ${{ inputs.ios-testflight-group }}
         INPUT_CHANNEL: ${{ inputs.channel }}
         INPUT_CREDIT: ${{ inputs.credit }}
         INPUT_COMMENT: ${{ inputs.comment }}

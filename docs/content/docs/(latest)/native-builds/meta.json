@@ -8,6 +8,8 @@
     "credentials",
     "testflight",
     "google-play",
-    "../guides/ci-native-build"
+    "sandbox",
+    "../guides/ci-native-build",
+    "../guides/release-from-ci"
   ]
 }

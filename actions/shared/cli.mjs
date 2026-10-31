@@ -143,6 +143,17 @@ export const setOutput = (name, value, env = process.env) => {
 };
 
 /**
+ * Appends to the job's summary.
+ *
+ * @param {string} markdown
+ * @param {Record<string, string | undefined>} [env]
+ */
+export const appendSummary = (markdown, env = process.env) => {
+  const file = env["GITHUB_STEP_SUMMARY"];
+  if (file) appendFileSync(file, `${markdown}\n`);
+};
+
+/**
  * The app's directory, the `working-directory` input's.
  *
  * @param {Record<string, string | undefined>} actionEnv
@@ -197,10 +208,12 @@ export const reportBuildLogs = (deps, name, since) => {
 };
 
 /**
- * @typedef {(args: string[], options?: { capture?: boolean }) => Promise<{ code: number, stdout: string }>} Cli
+ * @typedef {(args: string[], options?: { capture?: boolean, quiet?: boolean }) => Promise<{ code: number, stdout: string }>} Cli
  *   Runs the project's hot-updater CLI. Without `capture`, it prints the
  *   command's output and throws when the command fails; with it, it returns
- *   the output and the exit code.
+ *   the output and the exit code, and with `quiet` too, it keeps the output
+ *   of a command that succeeds out of the job's log. A failed command's output
+ *   says why, as the CLI prints its errors on stdout.
  */
 
 /**
@@ -218,7 +231,7 @@ export const createCli = ({ env, actionEnv = process.env }) => {
     actionEnv["INPUT_CLI"]?.trim() || "npx --no-install hot-updater"
   ).split(/\s+/);
 
-  return (args, { capture = false } = {}) =>
+  return (args, { capture = false, quiet = false } = {}) =>
     new Promise((resolve, reject) => {
       console.log(`$ hot-updater ${args.join(" ")}`);
       const child = spawn(command, [...prefix, ...args], {
@@ -231,10 +244,11 @@ export const createCli = ({ env, actionEnv = process.env }) => {
       // Captured output goes to the log too, such as a build's.
       child.stdout?.on("data", (chunk) => {
         stdout += chunk;
-        process.stdout.write(chunk);
+        if (!quiet) process.stdout.write(chunk);
       });
       child.on("error", reject);
       child.on("close", (code) => {
+        if (quiet && code !== 0) process.stdout.write(stdout);
         if (capture) {
           resolve({ code: code ?? 1, stdout });
         } else if (code === 0) {

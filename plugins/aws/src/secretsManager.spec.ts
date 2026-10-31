@@ -7,11 +7,23 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { maskSecretValues } from "@hot-updater/cli-tools";
-import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { secretsManager } from "./secretsManager";
+
+// What a failure says to do depends on CI: each spec picks one.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+  vi.stubEnv("AWS_PROFILE", "");
+  vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+  vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+  vi.stubEnv("AWS_SESSION_TOKEN", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const REGION = "ap-northeast-2";
 const context = { cwd: process.cwd() };
@@ -102,12 +114,8 @@ describe("secretsManager get", () => {
 
     expect(error.message).toBe(
       [
-        "AWS Secrets Manager refused to read a secret.",
-        "Secret: hot-updater/asc-api-key",
-        "AccessDeniedException (400): User: arn:aws:sts::1:assumed-role/ci is not",
-        "authorized to perform: secretsmanager:GetSecretValue.",
-        "The AWS identity needs secretsmanager:GetSecretValue on it.",
-        "With a customer managed KMS key, it needs kms:Decrypt too.",
+        "AWS Secrets Manager refused to read hot-updater/asc-api-key.",
+        "arn:aws:sts::1:assumed-role/ci needs secretsmanager:GetSecretValue on it.",
       ].join("\n"),
     );
   });
@@ -124,10 +132,9 @@ describe("secretsManager get", () => {
       );
 
       expect(error.message).toContain(
-        "They are expired or invalid: sign in again.",
+        "AWS rejected the credentials: expired or invalid.",
       );
       expect(error.message).toContain("aws sso login --profile <profile>");
-      expect(linesWiderThan(error.message.split("\n"), 76)).toEqual([]);
     },
   );
 
@@ -144,15 +151,119 @@ describe("secretsManager get", () => {
 
       expect(error.message).toBe(
         [
-          "secretsManager found no AWS credentials to read a secret.",
-          "Secret: hot-updater/asc-api-key",
-          "Could not load credentials from any providers.",
-          "In CI, set them with aws-actions/configure-aws-credentials.",
-          "On your machine: aws sso login --profile <profile>, then set AWS_PROFILE.",
+          "secretsManager found no AWS credentials.",
+          "Sign in, then set AWS_PROFILE:",
+          "aws sso login --profile <profile>",
         ].join("\n"),
       );
     },
   );
+
+  describe("the next step for the credentials in use", () => {
+    const rejected = async (
+      options: Partial<Parameters<typeof secretsManager>[0]> = {},
+    ) => {
+      sm.on(GetSecretValueCommand).rejects(
+        awsError("InvalidClientTokenId", "The security token is invalid"),
+      );
+      return (
+        await rejectionOf(
+          secretsManager({ region: REGION, ...options }).get(["n"], context),
+        )
+      ).message;
+    };
+
+    it("names the access key variables, which signing in can't replace", async () => {
+      vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
+      vi.stubEnv("AWS_SECRET_ACCESS_KEY", "garbage");
+
+      const message = await rejected();
+
+      expect(message).toBe(
+        [
+          "AWS rejected the credentials: expired or invalid.",
+          "Fix or unset AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.",
+        ].join("\n"),
+      );
+      expect(message).not.toContain("aws sso login");
+    });
+
+    it("names the session token too when one is set", async () => {
+      vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
+      vi.stubEnv("AWS_SECRET_ACCESS_KEY", "garbage");
+      vi.stubEnv("AWS_SESSION_TOKEN", "garbage");
+
+      expect(await rejected()).toContain(
+        "Fix or unset AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN.",
+      );
+    });
+
+    it("signs in to the profile already set when its SSO session expired", async () => {
+      vi.stubEnv("AWS_PROFILE", "release");
+      // The SDK's chain uses the profile over the variables.
+      vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
+      vi.stubEnv("AWS_SECRET_ACCESS_KEY", "garbage");
+      sm.on(GetSecretValueCommand).rejects(
+        awsError(
+          "TokenProviderError",
+          "The SSO session associated with this profile has expired",
+        ),
+      );
+
+      const { message } = await rejectionOf(
+        secretsManager({ region: REGION }).get(["n"], context),
+      );
+
+      expect(message).toBe(
+        [
+          "secretsManager found no AWS credentials.",
+          "Sign in again:",
+          "aws sso login --profile release",
+        ].join("\n"),
+      );
+    });
+
+    it("points at a profile that isn't an SSO one instead of signing in", async () => {
+      vi.stubEnv("AWS_PROFILE", "release");
+
+      const message = await rejected();
+
+      expect(message).toContain(
+        "Check the AWS profile release, which AWS_PROFILE selects.",
+      );
+      expect(message).not.toContain("aws sso login");
+    });
+
+    it("points at the profile in CI too, since the SDK uses it over all else", async () => {
+      vi.stubEnv("CI", "true");
+      vi.stubEnv("AWS_PROFILE", "release");
+
+      expect(await rejected()).toBe(
+        [
+          "AWS rejected the credentials: expired or invalid.",
+          "Check the AWS profile release, which AWS_PROFILE selects.",
+        ].join("\n"),
+      );
+    });
+
+    it("says to set them in CI, with neither a profile nor variables", async () => {
+      vi.stubEnv("CI", "true");
+
+      expect(await rejected()).toContain(
+        "Set them with aws-actions/configure-aws-credentials.",
+      );
+    });
+
+    it("points at the credentials option, which comes before them all", async () => {
+      vi.stubEnv("AWS_PROFILE", "release");
+
+      expect(
+        await rejected({
+          credentials: { accessKeyId: "a", secretAccessKey: "b" },
+        }),
+      ).toContain("Check the credentials passed to secretsManager().");
+    });
+  });
 
   it("says how to restore a secret scheduled for deletion", async () => {
     sm.on(GetSecretValueCommand).rejects(
@@ -168,11 +279,8 @@ describe("secretsManager get", () => {
 
     expect(error.message).toBe(
       [
-        "AWS Secrets Manager can't read a secret.",
-        "Secret: hot-updater/asc-api-key",
-        "It is scheduled for deletion. Restore it, or wait until it is gone:",
-        "aws secretsmanager restore-secret \\",
-        "  --secret-id hot-updater/asc-api-key",
+        "hot-updater/asc-api-key is scheduled for deletion. Restore it, or wait until it is gone:",
+        "aws secretsmanager restore-secret --secret-id hot-updater/asc-api-key",
       ].join("\n"),
     );
   });
@@ -321,11 +429,8 @@ describe("secretsManager set", () => {
       secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
     ).rejects.toThrow(
       [
-        "AWS Secrets Manager refused to write a secret.",
-        "Secret: hot-updater/asc-api-key",
-        "AccessDeniedException (400): not authorized.",
-        "The AWS identity needs secretsmanager:PutSecretValue on it.",
-        "With a customer managed KMS key, it needs kms:GenerateDataKey too.",
+        "AWS Secrets Manager refused to write hot-updater/asc-api-key.",
+        "The identity needs secretsmanager:PutSecretValue on it.",
       ].join("\n"),
     );
 
@@ -337,7 +442,7 @@ describe("secretsManager set", () => {
     await expect(
       secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
     ).rejects.toThrow(
-      "AWS Secrets Manager refused to create a secret.\nSecret: hot-updater/asc-api-key\nAccessDeniedException (400): not authorized.\nThe AWS identity needs secretsmanager:CreateSecret on it.",
+      "AWS Secrets Manager refused to create hot-updater/asc-api-key.\nThe identity needs secretsmanager:CreateSecret on it.",
     );
   });
 
@@ -352,7 +457,7 @@ describe("secretsManager set", () => {
     await expect(
       secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
     ).rejects.toThrow(
-      "AWS Secrets Manager can't write a secret.\nSecret: hot-updater/asc-api-key\nIt is scheduled for deletion. Restore it, or wait until it is gone:\naws secretsmanager restore-secret \\\n  --secret-id hot-updater/asc-api-key",
+      "hot-updater/asc-api-key is scheduled for deletion. Restore it, or wait until it is gone:\naws secretsmanager restore-secret --secret-id hot-updater/asc-api-key",
     );
     expect(sm.commandCalls(CreateSecretCommand)).toHaveLength(0);
   });
@@ -370,56 +475,119 @@ describe("secretsManager set", () => {
   });
 });
 
-describe("secretsManager messages", () => {
-  it("prints every failure in lines of at most 76 columns", async () => {
-    const long =
-      "User: arn:aws:sts::123456789012:assumed-role/github-actions-deploy/session is not authorized to perform: secretsmanager:GetSecretValue on resource: hot-updater/asc-api-key because no identity-based policy allows the secretsmanager:GetSecretValue action";
-    const messages: string[] = [];
-    const record = async (promise: Promise<unknown> | undefined) => {
-      messages.push((await rejectionOf(promise)).message);
-    };
-    for (const [name, message] of [
-      ["AccessDeniedException", long],
-      ["ExpiredTokenException", long],
-      ["CredentialsProviderError", long],
-      ["InternalServiceError", long],
-      ["InvalidRequestException", "It was marked for deletion."],
-    ]) {
-      sm.reset();
-      sm.on(GetSecretValueCommand).rejects(awsError(name!, message!));
-      sm.on(PutSecretValueCommand).rejects(awsError(name!, message!));
-      await record(
-        secretsManager({ region: REGION }).get(["asc-api-key"], context),
-      );
-      await record(
-        secretsManager({ region: REGION }).set?.(
-          "play-service-account",
-          "v",
-          context,
-        ),
-      );
-    }
-    await record(secretsManager({ region: "Seoul" }).get(["n"], context));
-    await record(
-      secretsManager({ region: REGION, endpoint: "ftp://x" }).get(
-        ["n"],
-        context,
-      ),
-    );
-    await record(secretsManager({ region: REGION }).get(["a b"], context));
-    await record(
-      secretsManager({ region: REGION }).set?.(
-        "n",
-        "x".repeat(65_537),
-        context,
-      ),
-    );
-    vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAHOTUPDATERSPEC01");
-    await record(secretsManager({ region: REGION }).get(["n"], context));
+describe("secretsManager's next step", () => {
+  beforeEach(() => {
+    sm.reset();
+    vi.stubEnv("CI", "");
+  });
 
-    expect(messages).toHaveLength(15);
-    for (const message of messages) {
-      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
-    }
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("names the action in CI, where nobody signs in", async () => {
+    vi.stubEnv("CI", "true");
+    sm.on(GetSecretValueCommand).rejects(
+      awsError("CredentialsProviderError", "Could not load credentials"),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message).toBe(
+      "secretsManager found no AWS credentials.\nSet them with aws-actions/configure-aws-credentials.",
+    );
+  });
+
+  it("names the caller and the KMS permission, not the key AWS refused", async () => {
+    sm.on(GetSecretValueCommand).rejects(
+      awsError(
+        "AccessDeniedException",
+        "User: arn:aws-us-gov:iam::123456789012:user/deploy.bot@example.com is not authorized to perform: kms:Decrypt on resource: arn:aws:kms:us-east-1:123456789012:key/abc",
+      ),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message.split("\n").at(-1)).toBe(
+      "arn:aws-us-gov:iam::123456789012:user/deploy.bot@example.com needs kms:Decrypt on it.",
+    );
+  });
+
+  it.each([
+    ["no caller", "not authorized"],
+    [
+      "a resource's ARN where the caller's would be",
+      "User: arn:aws:secretsmanager:us-east-1:1:secret:hot-updater/x is not authorized",
+    ],
+    ["no ARN after User:", "User: someone is not authorized"],
+  ])("says the identity when AWS's message has %s", async (_case, message) => {
+    sm.on(GetSecretValueCommand).rejects(
+      awsError("AccessDeniedException", message),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message.split("\n").at(-1)).toBe(
+      "The identity needs secretsmanager:GetSecretValue on it.",
+    );
+  });
+
+  it("takes only the ARN from AWS's message, so nothing else in it can print", async () => {
+    const value = "super-secret-value";
+    sm.on(GetSecretValueCommand).rejects(
+      awsError(
+        "AccessDeniedException",
+        `User: arn:aws:sts::1:assumed-role/ci"${value}" is not authorized: ${value}`,
+      ),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message).not.toContain(value);
+    expect(error.message.split("\n").at(-1)).toBe(
+      "arn:aws:sts::1:assumed-role/ci needs secretsmanager:GetSecretValue on it.",
+    );
+  });
+
+  it("leaves the caller's ARN unmasked after the adapter read values", async () => {
+    sm.on(GetSecretValueCommand)
+      .resolvesOnce({ SecretString: "ci" })
+      .resolvesOnce({ SecretString: "a-longer-secret-value" });
+    await secretsManager({ region: REGION }).get(["short", "long"], context);
+    sm.reset();
+    sm.on(GetSecretValueCommand).rejects(
+      awsError(
+        "AccessDeniedException",
+        "User: arn:aws:sts::1:assumed-role/ci is not authorized",
+      ),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(maskSecretValues(error.message)).toContain(
+      "arn:aws:sts::1:assumed-role/ci needs",
+    );
+  });
+
+  it("names the KMS permission when that is what AWS refused", async () => {
+    sm.on(GetSecretValueCommand).rejects(
+      awsError("AccessDeniedException", "Access to KMS is not allowed"),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message).toContain("The identity needs kms:Decrypt on it.");
   });
 });

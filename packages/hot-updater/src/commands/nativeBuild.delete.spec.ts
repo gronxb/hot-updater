@@ -1,14 +1,8 @@
-import { p } from "@hot-updater/cli-tools";
 import {
   createStorageAdapter,
   type NativeBuildRegistration,
   type StorageAdapter,
 } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
@@ -216,7 +210,9 @@ describe("handleNativeBuildDelete", () => {
       [
         "The native build is deleted, but its artifact is not.",
         "access denied",
-        `Delete ${ARTIFACT_URI} from storage.`,
+        "Delete",
+        ARTIFACT_URI,
+        "from storage.",
       ].join("\n"),
     );
     expect(process.exitCode).toBe(1);
@@ -251,11 +247,4 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

@@ -5,18 +5,12 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import {
-  p,
   getLocalKeyFile,
   loadConfig,
   maskSecretValues,
   resolveSecretsAdapter,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsPut } from "./secrets";
@@ -448,11 +442,4 @@ describe("hot-updater secrets put", () => {
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

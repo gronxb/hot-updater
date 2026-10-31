@@ -14,6 +14,7 @@ import {
   type PlayCheck,
 } from "../../utils/native/playServiceAccount";
 import { signsWithKeystore } from "../../utils/native/signingCredentials";
+import { playPackageName } from "../../utils/native/storeStatus";
 import { missingRequiredSecrets, type SecretsStatus } from "./secrets";
 
 /** How long doctor waits for each Google request. */
@@ -45,29 +46,27 @@ const playSchemes = (config: ConfigResponse) =>
     scheme && scheme.aab !== false && signsWithKeystore(scheme) ? [scheme] : [],
   );
 
-/** The application ID a scheme releases to Google Play as. */
-const playPackageName = (
-  scheme: ReturnType<typeof playSchemes>[number],
-): string => scheme.applicationId ?? scheme.packageName;
-
 /**
  * The upload keystore `secret()` a release of `packageName` signs with
  * that `secrets` found nowhere, as the Secrets rows report it.
  */
-const missingKeystore = (
+const missingKeystore = async (
   config: ConfigResponse,
   packageName: string,
   secrets: SecretsStatus | undefined,
-): string | undefined => {
+): Promise<string | undefined> => {
   const missing = new Set(
     missingRequiredSecrets(secrets).map(({ name }) => name),
   );
-  return playSchemes(config)
-    .filter((scheme) => playPackageName(scheme) === packageName)
-    .map(({ signing }) =>
-      isSecretRef(signing?.keystore) ? signing.keystore.name : undefined,
-    )
-    .find((name) => name !== undefined && missing.has(name));
+  const names = await Promise.all(
+    playSchemes(config).map(async (scheme) =>
+      (await playPackageName(scheme)) === packageName &&
+      isSecretRef(scheme.signing?.keystore)
+        ? scheme.signing.keystore.name
+        : undefined,
+    ),
+  );
+  return names.find((name) => name !== undefined && missing.has(name));
 };
 
 /**
@@ -90,7 +89,9 @@ export const checkGooglePlay = async (
     secrets?: SecretsStatus;
   },
 ): Promise<GooglePlayStatus | undefined> => {
-  const packageNames = [...new Set(playSchemes(config).map(playPackageName))];
+  const packageNames = [
+    ...new Set(await Promise.all(playSchemes(config).map(playPackageName))),
+  ];
   if (packageNames.length === 0) return undefined;
   // A report never waits on a slow endpoint.
   const fetchWithTimeout: typeof globalThis.fetch = (input, init) =>
@@ -107,7 +108,11 @@ export const checkGooglePlay = async (
       return {
         packages: await Promise.all(
           packageNames.map(async (packageName) => {
-            const keystore = missingKeystore(config, packageName, secrets);
+            const keystore = await missingKeystore(
+              config,
+              packageName,
+              secrets,
+            );
             return {
               packageName,
               access: await checkPlayAccess({

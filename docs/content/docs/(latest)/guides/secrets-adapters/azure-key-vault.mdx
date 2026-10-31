@@ -39,6 +39,8 @@ the first read or write, so a config that only uses `azureBlobStorage` never
 loads them, and the Function App init deploys doesn't include them.
 
 - A secret that does not exist, or was deleted, reads as missing.
+- A vault that doesn't resolve fails the command, saying to check `vaultName`
+  or `vaultUrl`.
 - A missing role fails the command, naming the role the identity needs; a
   refused sign-in fails it with how to sign in again; a disabled secret
   fails it rather than reading as missing.
@@ -59,6 +61,17 @@ Actions, then `az login` on your machine, or a managed identity:
 ```bash
 az login
 npx hot-updater apple login
+```
+
+## Create a vault
+
+Skip this if you already have a vault. A subscription that has never used Key
+Vault registers its provider first, and a vault's name is unique across Azure:
+
+```bash
+az provider register --namespace Microsoft.KeyVault --wait
+az group create --name my-group --location eastus
+az keyvault create --name my-vault --resource-group my-group --location eastus
 ```
 
 ## Name a secret
@@ -91,7 +104,8 @@ vault:
 
 ```bash
 az role assignment create --role "Key Vault Secrets Officer" \
-  --assignee you@example.com \
+  --assignee-object-id "$(az ad signed-in-user show --query id -o tsv)" \
+  --assignee-principal-type User \
   --scope "$(az keyvault show --name my-vault --query id --output tsv)"
 ```
 

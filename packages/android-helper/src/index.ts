@@ -1,11 +1,20 @@
 export { buildAndroid } from "./buildAndroid";
 export {
+  type AdbDevice,
+  installOnAndroidDevice,
+  listAdbDevices,
+  selectAdbDevice,
+} from "./device";
+export {
   checkPlayAccess,
   findPlayInternalRelease,
   assertPlaySigned,
   playConsoleInviteUrl,
+  playTestingUrl,
   type PlayAccess,
   PlayVersionCodeUsedError,
+  readPlayHighestVersionCode,
+  readPlayInternalRelease,
   resolvePlayUploadServiceAccount,
   type UploadToPlayResult,
   uploadToPlay,
@@ -13,6 +22,7 @@ export {
 export type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 export { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 export { extractBuiltInBundle } from "./utils/extractBuiltInBundle";
+export { findSandboxGradleBlocker } from "./utils/sandboxGradle";
 export {
   readBuiltApp,
   readBuiltPackageName,

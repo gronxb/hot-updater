@@ -83,6 +83,22 @@ describe("buildAndroid", () => {
     expect(builtApp).toEqual({ appVersion: "1.0", channel: "beta" });
   });
 
+  it("adds the sandbox's Gradle arguments only to a sandbox scheme", async () => {
+    await buildAndroid({
+      schemeConfig: scheme({ sandbox: true }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const [{ args }] = vi.mocked(runGradle).mock.calls[0]!;
+    expect(args.extraParams).toEqual([
+      `-PMIN_BUNDLE_ID=${MIN_BUNDLE_ID}`,
+      "--init-script",
+      expect.stringMatching(/sandbox\.init\.gradle$/),
+      "-PhotUpdaterSandbox=release",
+      "-Pkotlin.incremental=false",
+    ]);
+  });
+
   it("signs a release variant with the scheme's keystore through the environment, off the command line", async () => {
     const credentials = keystoreResolver();
 

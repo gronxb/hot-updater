@@ -1,3 +1,4 @@
+import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import { describe, expect, it } from "vitest";
@@ -5,27 +6,6 @@ import { describe, expect, it } from "vitest";
 import { ui } from "./cli-ui";
 
 const plain = (text: string) => stripVTControlCharacters(text).split("\n");
-
-describe("ui.commandLines", () => {
-  it("breaks a long command at spaces, never inside a placeholder", () => {
-    expect(
-      plain(
-        ui.commandLines(
-          "npx hot-updater init --provider aws --build bare --from-env-file <env file>",
-        ),
-      ),
-    ).toEqual([
-      "npx hot-updater init --provider aws --build bare --from-env-file \\",
-      "  <env file>",
-    ]);
-  });
-
-  it("keeps a lone < as a word of its own", () => {
-    expect(plain(ui.commandLines("cmd < /dev/null"))).toEqual([
-      "cmd < /dev/null",
-    ]);
-  });
-});
 
 describe("ui.prose", () => {
   it("keeps the lines of text already laid out, with their indentation", () => {
@@ -46,32 +26,12 @@ describe("ui.prose", () => {
     ]);
   });
 
-  it("keeps a command line and its continuations whole, and breaks one too wide as a command", () => {
-    expect(
-      plain(
-        ui.prose(
-          [
-            "Check the name and your access, or import your key:",
-            "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-            "  <upload.jks>",
-          ].join("\n"),
-        ),
-      ),
-    ).toEqual([
-      "Check the name and your access, or import your key:",
-      "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-      "  <upload.jks>",
-    ]);
-    expect(
-      plain(
-        ui.prose(
-          "Import it:\nnpx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
-        ),
-      ),
-    ).toEqual([
+  it("keeps a command whole on its line, however long", () => {
+    const command =
+      "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>";
+    expect(plain(ui.prose(`Import it:\n${command}`))).toEqual([
       "Import it:",
-      "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-      "  <upload.jks>",
+      command,
     ]);
   });
 
@@ -95,7 +55,6 @@ describe("ui.prose", () => {
       ),
     );
     expect(lines[0]).toBe("Couldn't read the infisical secrets adapter.");
-    expect(lines.slice(1).every((line) => line.length <= 77)).toBe(true);
     expect(lines.slice(1).join(" ")).toBe("word ".repeat(30).trim());
   });
 
@@ -108,9 +67,28 @@ describe("ui.prose", () => {
       ),
     ).toEqual([
       "Run",
-      "npx hot-updater init --provider cloudflare --build expo --from-env-file \\",
-      "  <env file>.",
+      "npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>.",
       "Then check again.",
     ]);
+  });
+});
+
+describe("ui.source", () => {
+  it("keeps an adapter's description whole, with its name", () => {
+    const description =
+      'the secret "hot-updater-asc-api-key" in Azure Key Vault (https://hu-qa-083aba.vault.azure.net)';
+
+    expect(ui.source(description)).toBe(description);
+  });
+
+  it("shows a file as fitPath does", () => {
+    const file = path.join(
+      path.parse(process.cwd()).root,
+      "a-long-directory-name".repeat(8),
+      "secret.json",
+    );
+
+    expect(ui.source(file)).toBe(ui.fitPath(file));
+    expect(ui.source(file)).toContain("…");
   });
 });

@@ -136,11 +136,8 @@ describe("keyVault (Lowkey Vault)", () => {
     });
     await expect(secrets.set("asc-api-key", "again", context)).rejects.toThrow(
       [
-        "Azure Key Vault can't write a secret: it was deleted.",
-        `Secret: ${prefix}asc-api-key`,
-        "Recover it, or purge it:",
-        "az keyvault secret recover --vault-name 127 \\",
-        `  --name ${prefix}asc-api-key`,
+        `${prefix}asc-api-key was deleted. Recover it, or purge it:`,
+        `az keyvault secret recover --vault-name 127 --name ${prefix}asc-api-key`,
       ].join("\n"),
     );
   });

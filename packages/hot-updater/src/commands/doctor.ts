@@ -6,6 +6,7 @@ import {
   credentialPutCommand,
   getBundleSigningPublicKey,
   getCwd,
+  getPackageManager,
   INVALID_SIGNING_NEXT_STEP,
   ISSUE_SIGNING_KEY_COMMAND,
   loadConfig,
@@ -56,12 +57,14 @@ import {
   formatGooglePlayStatus,
   type GooglePlayStatus,
 } from "./doctor/googlePlay";
+import { humanText, unusedSecretsText } from "./doctor/humanText";
 import {
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
   type SchemaStatus,
 } from "./doctor/issues";
+import { checkSandboxSchemes } from "./doctor/sandbox";
 import {
   findScaffoldDeployments,
   recordedBaseUrls,
@@ -69,8 +72,11 @@ import {
 import { checkSchema } from "./doctor/schema";
 import {
   checkSecrets,
+  distinctSecretFailures,
+  listNames,
   missingRequiredSecrets,
   type SecretsStatus,
+  uncheckedSecretNames,
 } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
@@ -710,6 +716,7 @@ async function checkNativeStatus({
       ? signing.issues.map(toNativeIssue)
       : []),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
+    ...(await checkSandboxSchemes(config, cwd)),
   ];
 
   if (requireFingerprint && localFingerprint) {
@@ -837,9 +844,15 @@ async function checkProject(
     const hotUpdaterVersion = allDependencies["hot-updater"];
 
     if (!hotUpdaterVersion) {
+      const packageManager = getPackageManager();
       return {
         success: false,
-        error: "hot-updater CLI not found. Please install it first.",
+        error: [
+          "hot-updater isn't in this project's package.json. Add it:",
+          packageManager === "npm"
+            ? "npm install hot-updater --save-dev"
+            : `${packageManager} add -D hot-updater`,
+        ].join("\n"),
       };
     }
 
@@ -1122,13 +1135,19 @@ const reportIssues = (
   log: Pick<typeof p.log, "error" | "warn">,
   issues: readonly {
     readonly type: "error" | "warning";
+    readonly code?: string;
+    readonly names?: readonly string[];
     readonly message: string;
     readonly resolution: string;
   }[],
 ) => {
   for (const issue of issues) {
     const report = issue.type === "error" ? log.error : log.warn;
-    report(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+    report(
+      issue.code === "SECRETS_MISSING_UNUSED"
+        ? ui.prose(unusedSecretsText({ ...issue, names: issue.names ?? [] }))
+        : `${ui.prose(humanText(issue.message))}\n${ui.prose(humanText(issue.resolution))}`,
+    );
   }
 };
 
@@ -1296,11 +1315,7 @@ export const handleDoctor = async ({
     }
 
     if (infrastructure.catalogMode) {
-      p.log.info(
-        ui.prose(
-          `Release catalog: ${infrastructure.catalogMode}. ${infrastructure.catalogModeNote}`,
-        ),
-      );
+      p.log.info(ui.prose(`Release catalog: ${infrastructure.catalogMode}.`));
     }
 
     // The schema check below names the same commands when the upgrade is
@@ -1317,9 +1332,9 @@ export const handleDoctor = async ({
     if (infrastructure.remediation && !repeated) {
       p.log.info(
         [
-          ui.prose(infrastructure.remediation.reason),
+          ui.prose(humanText(infrastructure.remediation.reason)),
           ...infrastructure.remediation.commands.map((command) =>
-            ui.commandLines(command),
+            ui.command(command),
           ),
         ].join("\n"),
       );
@@ -1354,7 +1369,21 @@ export const handleDoctor = async ({
     const signingKeyMissing = missingRequiredSecrets(details.secrets).some(
       ({ fields }) => fields.some((field) => field.startsWith("signing")),
     );
+    // Each platform's --json issue says the same thing to do: said once.
+    const orphans = native.issues.filter(
+      ({ code }) => code === "ORPHAN_PUBLIC_KEY",
+    );
+    const [orphan] = orphans;
+    if (orphan) {
+      log.warn(
+        [
+          `Signing is off, but ${orphans.map(({ platform }) => platform).join(" and ")} keep a public key: OTAs get rejected.`,
+          ui.prose(humanText(orphan.resolution)),
+        ].join("\n"),
+      );
+    }
     for (const issue of native.issues) {
+      if (issue.code === "ORPHAN_PUBLIC_KEY") continue;
       if (
         issue.code === "SIGNING_PUBLIC_KEY_UNAVAILABLE" &&
         signingKeyMissing
@@ -1362,7 +1391,9 @@ export const handleDoctor = async ({
         log.warn("Native public keys not checked without the signing key.");
         continue;
       }
-      const message = ui.prose(`${issue.platform}: ${issue.message}`);
+      const message = ui.prose(
+        `${issue.platform}: ${humanText(issue.message)}`,
+      );
       const report = issue.type === "error" ? log.error : log.warn;
       if (issue.changes) {
         report(message);
@@ -1370,9 +1401,9 @@ export const handleDoctor = async ({
           issue.changes,
           issue.platform === "ios" ? "iOS" : "Android",
         );
-        p.log.info(ui.prose(issue.resolution));
+        p.log.info(ui.prose(humanText(issue.resolution)));
       } else {
-        report(`${message}\n${ui.prose(issue.resolution)}`);
+        report(`${message}\n${ui.prose(humanText(issue.resolution))}`);
       }
     }
   }
@@ -1443,13 +1474,28 @@ export const handleDoctor = async ({
         ].join("\n"),
       );
     }
-    for (const error of new Set(
-      [secrets?.error, deploySecrets?.error].filter(
-        (error): error is string => error !== undefined,
-      ),
-    )) {
+    // One block for the adapter, with each distinct reason its reads failed.
+    const failures = distinctSecretFailures([
+      {
+        ...(secrets?.error === undefined ? {} : { error: secrets.error }),
+        names: secrets?.references.map(({ name }) => name) ?? [],
+      },
+      {
+        ...(deploySecrets?.error === undefined
+          ? {}
+          : { error: deploySecrets.error }),
+        names: deploySecrets?.names.map(({ name }) => name) ?? [],
+      },
+    ]);
+    if (failures.length > 0) {
+      const unchecked = uncheckedSecretNames(rows);
       log.warn(
-        ui.prose(`Couldn't read the ${adapter} secrets adapter.\n${error}`),
+        ui.prose(
+          [
+            `Couldn't read the ${adapter} secrets adapter${unchecked.length > 0 ? ` for ${listNames(unchecked)}` : ""}.`,
+            ...failures,
+          ].join("\n"),
+        ),
       );
     }
     const processEnvReads = deploySecrets?.processEnvReads ?? [];
@@ -1519,10 +1565,21 @@ export const handleDoctor = async ({
   }
 
   const { warnings } = log.counts;
-  p.log.success(
-    warnings > 0
-      ? `All checks passed with ${count(warnings, "warning")}.`
-      : "All checks passed.",
-  );
+  const unchecked = uncheckedSecretNames([
+    ...(details?.secrets?.references ?? []),
+    ...(details?.deploySecrets?.names ?? []),
+  ]);
+  if (unchecked.length > 0) {
+    // Nothing verified these names, so this run can't call itself a pass.
+    p.log.warn(
+      `${count(unchecked.length, "secret")} not checked, ${count(warnings, "warning")}.`,
+    );
+  } else {
+    p.log.success(
+      warnings > 0
+        ? `All checks passed with ${count(warnings, "warning")}.`
+        : "All checks passed.",
+    );
+  }
   p.outro("Doctor complete.");
 };

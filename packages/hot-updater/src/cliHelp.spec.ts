@@ -19,17 +19,12 @@ const run = (...args: string[]) => {
 /** asc, the App Store Connect CLI, which Hot Updater no longer runs. */
 const NAMES_ASC = /App Store Connect CLI|\basc\b(?!-api-key)/u;
 
-/**
- * The lines of a refusal clack prints, without the gutter, each under 77
- * columns with it, so an 80-column terminal never wraps one.
- */
-const refusal = (result: { stdout: string; stderr: string }) => {
-  const lines = stripVTControlCharacters(result.stdout + result.stderr)
+/** The lines of a refusal clack prints, without the gutter. */
+const refusal = (result: { stdout: string; stderr: string }) =>
+  stripVTControlCharacters(result.stdout + result.stderr)
     .split("\n")
-    .filter((line) => /^[■│] {2}\S/u.test(line));
-  for (const line of lines) expect(line.length).toBeLessThanOrEqual(76);
-  return lines.map((line) => line.slice(3));
-};
+    .filter((line) => /^[■│] {2}\S/u.test(line))
+    .map((line) => line.slice(3));
 
 const help = (...command: string[]): string => {
   const result = run(...command, "--help");
@@ -174,7 +169,13 @@ describe("CLI commands", () => {
     }
 
     const nativeBuild = help("native-build");
-    for (const command of ["find", "delete", "ios", "android"]) {
+    for (const command of [
+      "find",
+      "testflight-group",
+      "delete",
+      "ios",
+      "android",
+    ]) {
       expect(nativeBuild).toMatch(new RegExp(`^\\s+${command} \\[`, "m"));
     }
     expect(nativeBuild).not.toMatch(/^\s+create\b/m);
@@ -246,7 +247,7 @@ describe("CLI commands", () => {
 
   it("stores build credentials with secrets put and secrets issue, without --app", () => {
     expect(help()).toMatch(
-      /^\s+secrets\s+Store build credentials in the secrets adapter$/m,
+      /^\s+secrets\s+Store build credentials in the secrets adapter, or pull/m,
     );
     const secrets = help("secrets");
     expect(secrets).toMatch(/^\s+put \[options\] <name>\s/m);
@@ -257,6 +258,15 @@ describe("CLI commands", () => {
     for (const removed of ["list", "env", "token"]) {
       expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
     }
+    expect(secrets).toMatch(/^\s+pull \[options\]\s/m);
+    const pull = help("secrets", "pull").replace(/\s+/gu, " ");
+    for (const flag of ["--out <file>", "--only <names>", "--force"]) {
+      expect(pull).toContain(flag);
+    }
+    // No store lists its names, and the command isn't for the app's env.
+    expect(pull).toContain("Stores are read by name");
+    expect(pull).toContain("not for the app's runtime env");
+    expect(pull).toContain("Build credentials stay in the store");
     expect(help("secrets", "put")).not.toContain("--app");
     const put = help("secrets", "put").replace(/\s+/gu, " ");
     expect(put).toContain('choices: "asc-api-key", "android-keystore"');

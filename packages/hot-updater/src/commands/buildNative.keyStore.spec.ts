@@ -3,11 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -195,7 +190,6 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
 import { checkPlayAccess } from "@hot-updater/android-helper";
 import { issueAscApiKey } from "@hot-updater/apple-helper";
 import {
-  p,
   getCwd,
   getLocalKeyFile,
   resolveSecretsAdapter,
@@ -348,11 +342,4 @@ describe("a first build without a secrets adapter", () => {
     expect(printed()).not.toContain("MIIBfirstBuild");
     expect(log.error).not.toHaveBeenCalled();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

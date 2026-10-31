@@ -73,18 +73,102 @@ const APP_STORE_CONNECT_EXPORT_OPTIONS = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `;
 
+/** The export option that keeps a build from App Store review. */
+const INTERNAL_TESTING_ONLY = "testFlightInternalTestingOnly";
+
 /**
  * Writes the export options of a scheme that signs with an App Store Connect
  * API key and sets no `exportOptionsPlist`: an App Store Connect export with
- * automatic signing.
+ * automatic signing, internal testing only for a sandbox build.
  */
-export const writeAppStoreConnectExportOptions = async (directory: string) => {
+export const writeAppStoreConnectExportOptions = async (
+  directory: string,
+  { internalTestingOnly = false }: { internalTestingOnly?: boolean } = {},
+) => {
   const exportOptionsPlist = path.join(directory, "ExportOptions.plist");
   await fs.promises.writeFile(
     exportOptionsPlist,
-    APP_STORE_CONNECT_EXPORT_OPTIONS,
+    internalTestingOnly
+      ? APP_STORE_CONNECT_EXPORT_OPTIONS.replace(
+          "</dict>",
+          `  <key>${INTERNAL_TESTING_ONLY}</key>\n  <true/>\n</dict>`,
+        )
+      : APP_STORE_CONNECT_EXPORT_OPTIONS,
   );
   return exportOptionsPlist;
+};
+
+/**
+ * `testFlightInternalTestingOnly` in export options: undefined without it.
+ */
+const readInternalTestingOnly = async (
+  exportOptionsPlist: string,
+): Promise<boolean | undefined> => {
+  const text = await fs.promises
+    .readFile(exportOptionsPlist, "utf-8")
+    .catch(() => undefined);
+  const uncommented = text?.replace(/<!--[\s\S]*?-->/gu, "");
+  if (uncommented?.includes("<plist")) {
+    const match = new RegExp(
+      `<key>\\s*${INTERNAL_TESTING_ONLY}\\s*</key>\\s*<(true|false)\\s*/>`,
+      "u",
+    ).exec(uncommented);
+    return match ? match[1] === "true" : undefined;
+  }
+  const { stdout, exitCode } = await execa(
+    "plutil",
+    ["-extract", INTERNAL_TESTING_ONLY, "raw", "-o", "-", exportOptionsPlist],
+    { reject: false },
+  );
+  return exitCode === 0 ? stdout.trim() === "true" : undefined;
+};
+
+/**
+ * Refuses a sandbox scheme's App Store Connect export that turns internal
+ * testing off: Apple keeps a build out of review only with it on. Another
+ * method's `.ipa` never reaches App Store Connect.
+ */
+export const assertSandboxExportOptions = async (
+  schemeName: string,
+  exportOptionsPlist: string,
+): Promise<void> => {
+  if (
+    APP_STORE_EXPORT_METHODS.has(await readExportMethod(exportOptionsPlist)) &&
+    (await readInternalTestingOnly(exportOptionsPlist)) === false
+  ) {
+    throw new Error(
+      `The sandbox scheme ${schemeName} turns ${INTERNAL_TESTING_ONLY} off in exportOptionsPlist.\nRemove the key, or set it to true.`,
+    );
+  }
+};
+
+/**
+ * The export options a sandbox scheme's `exportOptionsPlist` exports with:
+ * the file itself, or a copy in `directory` that turns internal testing on
+ * when an App Store Connect export leaves it out.
+ */
+export const resolveSandboxExportOptions = async (
+  schemeName: string,
+  exportOptionsPlist: string,
+  directory: string,
+): Promise<string> => {
+  await assertSandboxExportOptions(schemeName, exportOptionsPlist);
+  if (
+    !APP_STORE_EXPORT_METHODS.has(await readExportMethod(exportOptionsPlist)) ||
+    (await readInternalTestingOnly(exportOptionsPlist)) === true
+  ) {
+    return exportOptionsPlist;
+  }
+  const copy = path.join(directory, "ExportOptions.plist");
+  await fs.promises.copyFile(exportOptionsPlist, copy);
+  await execa("plutil", [
+    "-insert",
+    INTERNAL_TESTING_ONLY,
+    "-bool",
+    "true",
+    copy,
+  ]);
+  return copy;
 };
 
 /** The export methods whose `.ipa` App Store Connect takes. */

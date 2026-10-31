@@ -380,22 +380,20 @@ export const checkPlayAccess = async ({
 };
 
 /**
- * Whether Google Play's internal testing track already releases the
- * `.aab`'s version code, as when a reused native build was uploaded
- * before. It reads the track in an edit it then deletes, changing nothing.
+ * Reads the app in an edit it then deletes, changing nothing.
  */
-export const findPlayInternalRelease = async ({
-  versionCode,
-  packageName,
-  serviceAccount: { json },
-  fetch = globalThis.fetch,
-}: {
-  versionCode: number;
-  /** The application ID the `.aab` was built with. */
-  packageName: string;
-  serviceAccount: Credentials["play-service-account"];
-  fetch?: typeof globalThis.fetch;
-}): Promise<boolean> => {
+const readInEdit = async <T>(
+  {
+    packageName,
+    serviceAccount: { json },
+    fetch,
+  }: {
+    packageName: string;
+    serviceAccount: Credentials["play-service-account"];
+    fetch: typeof globalThis.fetch;
+  },
+  read: (request: PlayRequest, edit: string) => Promise<T>,
+): Promise<T> => {
   const { app, request } = createPlayClient({ json, packageName, fetch });
   let editId: string;
   try {
@@ -410,12 +408,7 @@ export const findPlayInternalRelease = async ({
   }
   const edit = `${API_URL}${app}/edits/${encodeURIComponent(editId)}`;
   try {
-    const { releases = [] } = await request<{
-      releases?: { versionCodes?: string[] }[];
-    }>("Reading the internal track", "GET", `${edit}/tracks/${INTERNAL_TRACK}`);
-    return releases.some(({ versionCodes = [] }) =>
-      versionCodes.includes(String(versionCode)),
-    );
+    return await read(request, edit);
   } catch (error) {
     throw explain(error, packageName);
   } finally {
@@ -424,6 +417,73 @@ export const findPlayInternalRelease = async ({
     );
   }
 };
+
+/**
+ * The status of the internal testing release holding `versionCode`, such as
+ * `completed` or `draft`, or null when the track doesn't hold it: never
+ * uploaded, or replaced by a newer release, which testers get instead.
+ */
+export const readPlayInternalRelease = ({
+  versionCode,
+  packageName,
+  serviceAccount,
+  fetch = globalThis.fetch,
+}: {
+  versionCode: number;
+  /** The application ID the `.aab` was built with. */
+  packageName: string;
+  serviceAccount: Credentials["play-service-account"];
+  fetch?: typeof globalThis.fetch;
+}): Promise<string | null> =>
+  readInEdit({ packageName, serviceAccount, fetch }, async (request, edit) => {
+    const { releases = [] } = await request<{
+      releases?: { status?: string; versionCodes?: string[] }[];
+    }>("Reading the internal track", "GET", `${edit}/tracks/${INTERNAL_TRACK}`);
+    const release = releases.find(({ versionCodes = [] }) =>
+      versionCodes.includes(String(versionCode)),
+    );
+    return release ? (release.status ?? "completed") : null;
+  });
+
+/**
+ * Whether Google Play's internal testing track already releases the
+ * `.aab`'s version code, as when a reused native build was uploaded before.
+ */
+export const findPlayInternalRelease = async (options: {
+  versionCode: number;
+  /** The application ID the `.aab` was built with. */
+  packageName: string;
+  serviceAccount: Credentials["play-service-account"];
+  fetch?: typeof globalThis.fetch;
+}): Promise<boolean> => (await readPlayInternalRelease(options)) !== null;
+
+/**
+ * The highest version code Google Play has taken for the app, on any track,
+ * or null with none: a new `.aab` needs one above it.
+ */
+export const readPlayHighestVersionCode = ({
+  packageName,
+  serviceAccount,
+  fetch = globalThis.fetch,
+}: {
+  packageName: string;
+  serviceAccount: Credentials["play-service-account"];
+  fetch?: typeof globalThis.fetch;
+}): Promise<number | null> =>
+  readInEdit({ packageName, serviceAccount, fetch }, async (request, edit) => {
+    const { bundles = [] } = await request<{
+      bundles?: { versionCode?: number }[];
+    }>("Reading the app's bundles", "GET", `${edit}/bundles`);
+    const codes = bundles.flatMap(({ versionCode }) => versionCode ?? []);
+    return codes.length > 0 ? Math.max(...codes) : null;
+  });
+
+/**
+ * The link that opts a tester in to the app's testing tracks. A build on the
+ * internal track installs through it, for the testers Play Console lists.
+ */
+export const playTestingUrl = (packageName: string) =>
+  `https://play.google.com/apps/testing/${encodeURIComponent(packageName)}`;
 
 /**
  * The common name of every Android debug certificate: Android Studio's and

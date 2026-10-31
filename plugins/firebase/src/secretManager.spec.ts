@@ -1,5 +1,4 @@
 import { maskSecretValues } from "@hot-updater/cli-tools";
-import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -17,6 +16,15 @@ vi.mock("google-auth-library", () => ({
 }));
 
 import { secretManager } from "./secretManager";
+
+// What a failure says to do depends on CI: each spec picks one.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const API = "https://secretmanager.googleapis.com/v1/";
 const TOKEN = "ya29.spec-access-token-gsm";
@@ -320,9 +328,7 @@ describe("secretManager get", () => {
       [
         "secretManager couldn't read (403).",
         "Secret: projects/demo-project/secrets/name",
-        "PERMISSION_DENIED: Permission 'secretmanager.versions.access' denied for",
-        "resource.",
-        "The Google identity needs roles/secretmanager.secretAccessor on the secret.",
+        "The identity needs roles/secretmanager.secretAccessor on the secret.",
       ].join("\n"),
     ],
     [
@@ -338,10 +344,6 @@ describe("secretManager get", () => {
         { status: 403 },
       ),
       "Enable the Secret Manager API in the project:\ngcloud services enable secretmanager.googleapis.com --project <project>",
-    ],
-    [
-      googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
-      "gcloud auth application-default login",
     ],
     [
       googleError(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
@@ -367,10 +369,27 @@ describe("secretManager get", () => {
       if (!(error instanceof Error)) return;
       expect(error.message).toContain("secretManager couldn't read (");
       expect(error.message).toContain(message);
-      expect(linesWiderThan(error.message.split("\n"), 76)).toEqual([]);
       expect(error.message).not.toContain(TOKEN);
     },
   );
+
+  it("says a rejected token isn't about the secret, and how to replace it", async () => {
+    fake.fetchMock.mockResolvedValueOnce(
+      googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
+    );
+
+    const error = await secretManager({ projectId: "demo-project" })
+      .get(["name"], context)
+      .catch((caught: unknown) => caught);
+
+    expect((error as Error).message).toBe(
+      [
+        "Google rejected the access token.",
+        "Fix or unset CLOUDSDK_AUTH_ACCESS_TOKEN.",
+      ].join("\n"),
+    );
+    expect((error as Error).message).not.toContain(TOKEN);
+  });
 
   it("describes where a name is kept", () => {
     expect(
@@ -379,7 +398,7 @@ describe("secretManager get", () => {
         prefix: "hu-",
       }).describe?.("asc-api-key"),
     ).toBe(
-      "projects/demo-project/secrets/hu-asc-api-key (https://console.cloud.google.com/security/secret-manager/secret/hu-asc-api-key/versions?project=demo-project)",
+      'the secret "hu-asc-api-key" in Google Secret Manager (https://console.cloud.google.com/security/secret-manager/secret/hu-asc-api-key/versions?project=demo-project)',
     );
   });
 });
@@ -422,14 +441,88 @@ describe("secretManager credentials", () => {
     await expect(read()).rejects.toThrow(
       [
         "secretManager found no Google credentials.",
-        "Could not load the default credentials.",
-        "On your machine, run gcloud auth application-default login.",
-        "In CI, use google-github-actions/auth.",
-        "Or set GOOGLE_APPLICATION_CREDENTIALS to a service account key.",
-        "Or set CLOUDSDK_AUTH_ACCESS_TOKEN or GOOGLE_OAUTH_ACCESS_TOKEN to a token.",
+        "Sign in:",
+        "gcloud auth application-default login",
       ].join("\n"),
     );
     expect(fake.fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe("the next step for the credentials in use", () => {
+    const rejectedToken = async (
+      credentials?: Parameters<typeof secretManager>[0]["credentials"],
+    ) => {
+      fake.fetchMock.mockResolvedValue(
+        googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
+      );
+      const error = await secretManager({
+        projectId: "demo-project",
+        ...(credentials ? { credentials } : {}),
+      })
+        .get(["name"], context)
+        .catch((caught: unknown) => caught);
+      return (error as Error).message;
+    };
+
+    it.each(["CLOUDSDK_AUTH_ACCESS_TOKEN", "GOOGLE_OAUTH_ACCESS_TOKEN"])(
+      "names %s, which is tried before gcloud's sign-in",
+      async (variable) => {
+        vi.stubEnv("CLOUDSDK_AUTH_ACCESS_TOKEN", "");
+        vi.stubEnv(variable, "garbage");
+
+        const message = await rejectedToken();
+
+        expect(message).toBe(
+          [
+            "Google rejected the access token.",
+            `Fix or unset ${variable}.`,
+          ].join("\n"),
+        );
+        expect(message).not.toContain("gcloud");
+      },
+    );
+
+    it("names GOOGLE_APPLICATION_CREDENTIALS when it finds none through it", async () => {
+      vi.stubEnv("CLOUDSDK_AUTH_ACCESS_TOKEN", "");
+      vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "/tmp/gone.json");
+      auth.getAccessToken.mockRejectedValue(new Error("ENOENT"));
+
+      await expect(read()).rejects.toThrow(
+        new Error(
+          [
+            "secretManager found no Google credentials.",
+            "Fix or unset GOOGLE_APPLICATION_CREDENTIALS.",
+          ].join("\n"),
+        ),
+      );
+    });
+
+    it("points at the credentials option, which comes before them all", async () => {
+      expect(await rejectedToken(async () => TOKEN)).toContain(
+        "Check the credentials passed to secretManager().",
+      );
+    });
+  });
+
+  it("drops only the metadata probe's warning", async () => {
+    vi.stubEnv("CLOUDSDK_AUTH_ACCESS_TOKEN", "");
+    const emitted: string[] = [];
+    const onWarning = (warning: Error) => emitted.push(warning.name);
+    process.on("warning", onWarning);
+    auth.getAccessToken.mockImplementation(async () => {
+      process.emitWarning(
+        "received unexpected error = Metadata server is down code = UNKNOWN",
+        "MetadataLookupWarning",
+      );
+      process.emitWarning("something the user can act on", "OtherWarning");
+      throw new Error("Could not load the default credentials.");
+    });
+
+    await expect(read()).rejects.toThrow("found no Google credentials");
+    await new Promise((resolve) => setImmediate(resolve));
+    process.off("warning", onWarning);
+
+    expect(emitted).toEqual(["OtherWarning"]);
   });
 
   it.each([
@@ -579,10 +672,8 @@ describe("secretManager set", () => {
       [
         "secretManager can't store a value.",
         "Secret: projects/demo-project/secrets/asc-api-key",
-        "The Google identity lacks secretmanager.versions.access,",
-        "secretmanager.versions.destroy, secretmanager.secrets.update on it.",
-        "It adds a version, then destroys the versions it added before.",
-        "Grant roles/secretmanager.admin, or a custom role with:",
+        "The identity lacks secretmanager.versions.access, secretmanager.versions.destroy, secretmanager.secrets.update on it.",
+        "Grant roles/secretmanager.admin.",
       ].join("\n"),
     );
     expect(fake.enabled(key)).toEqual([]);
@@ -710,32 +801,5 @@ describe("secretManager set", () => {
 
     await secrets.set?.("asc-api-key", "four", context);
     expect(fake.enabled(key)).toEqual([4]);
-  });
-});
-
-describe("secretManager messages", () => {
-  it("prints settings and write failures in lines of at most 76 columns", async () => {
-    const messages: string[] = [];
-    const record = async (promise: Promise<unknown> | undefined) => {
-      const error = await promise?.then(
-        () => undefined,
-        (caught: unknown) => caught as Error,
-      );
-      messages.push(error!.message);
-    };
-    const adapter = (options: { projectId?: string; prefix?: string } = {}) =>
-      secretManager({ projectId: "demo-project", ...options });
-
-    await record(adapter({ projectId: "Demo Project" }).get(["n"], context));
-    await record(adapter({ prefix: "a/b" }).get(["n"], context));
-    await record(adapter().get(["deploy.credentials"], context));
-    await record(adapter().set?.("play-service-account", "", context));
-    fake.state.permissions = ["secretmanager.versions.add"];
-    await record(adapter().set?.("play-service-account", "one", context));
-
-    expect(messages).toHaveLength(5);
-    for (const message of messages) {
-      expect(linesWiderThan(message.split("\n"), 76)).toEqual([]);
-    }
   });
 });

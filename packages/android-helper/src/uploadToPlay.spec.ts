@@ -28,7 +28,10 @@ import {
   createServiceAccountAssertion,
   findPlayInternalRelease,
   playConsoleInviteUrl,
+  playTestingUrl,
   PlayVersionCodeUsedError,
+  readPlayHighestVersionCode,
+  readPlayInternalRelease,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "./uploadToPlay";
@@ -599,6 +602,85 @@ describe("resolvePlayUploadServiceAccount", () => {
       resolvePlayUploadServiceAccount(scheme({ variant: "stagingDebug" })),
     ).toThrow(
       "The scheme release builds stagingDebug; Google Play takes a release build.",
+    );
+  });
+});
+
+describe("readPlayInternalRelease", () => {
+  const read = (fetch: typeof globalThis.fetch, versionCode: number) =>
+    readPlayInternalRelease({
+      versionCode,
+      packageName: "com.example.app",
+      serviceAccount: { json: serviceAccountJson },
+      fetch,
+    });
+
+  it("says the status of the release that holds the version code, or that none does", async () => {
+    const { fetch } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`GET ${EDIT}/tracks/internal`]: {
+        json: {
+          releases: [
+            { status: "draft", versionCodes: ["42"] },
+            { status: "completed", versionCodes: ["43"] },
+          ],
+        },
+      },
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+
+    await expect(read(fetch, 42)).resolves.toBe("draft");
+    await expect(read(fetch, 43)).resolves.toBe("completed");
+    await expect(read(fetch, 41)).resolves.toBeNull();
+  });
+});
+
+describe("readPlayHighestVersionCode", () => {
+  const read = (fetch: typeof globalThis.fetch) =>
+    readPlayHighestVersionCode({
+      packageName: "com.example.app",
+      serviceAccount: { json: serviceAccountJson },
+      fetch,
+    });
+
+  it("reads the app's bundles in an edit it deletes, committing nothing", async () => {
+    const { fetch, requests } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`GET ${EDIT}/bundles`]: {
+        json: { bundles: [{ versionCode: 41 }, { versionCode: 7 }] },
+      },
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+
+    await expect(read(fetch)).resolves.toBe(41);
+    expect(
+      requests
+        .filter(({ url }) => url !== TOKEN_URI)
+        .map(({ method, url }) => `${method} ${url.replace(APP, "")}`),
+    ).toEqual([
+      "POST /edits",
+      "GET /edits/edit-1/bundles",
+      "DELETE /edits/edit-1",
+    ]);
+  });
+
+  it("says none for an app with no bundles", async () => {
+    const { fetch } = createRecordingFetch({
+      [`POST ${TOKEN_URI}`]: successRoutes()[`POST ${TOKEN_URI}`]!,
+      [`POST ${APP}/edits`]: { json: { id: "edit-1" } },
+      [`GET ${EDIT}/bundles`]: { json: {} },
+      [`DELETE ${EDIT}`]: { status: 204 },
+    });
+    await expect(read(fetch)).resolves.toBeNull();
+  });
+});
+
+describe("playTestingUrl", () => {
+  it("names the app", () => {
+    expect(playTestingUrl("com.example.app.sandbox")).toBe(
+      "https://play.google.com/apps/testing/com.example.app.sandbox",
     );
   });
 });

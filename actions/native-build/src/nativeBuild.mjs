@@ -9,6 +9,8 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @property {Platform} platform
  * @property {string} scheme
  * @property {"testflight" | "play-internal" | null} submit
+ * @property {boolean} [noCache] Builds even when a build could be reused.
+ * @property {string[]} [extraArgs] More `native-build` arguments.
  *
  * @typedef {object} Deps
  * @property {import("../../shared/cli.mjs").Cli} cli
@@ -21,6 +23,9 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @property {{ platform: Platform, scheme: string, artifactPath: string, artifactKind: string, minBundleId: string, channel: string, fingerprintHash: string | null, appVersion: string | null }} build
  * @property {{ id: string } | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} registration Why the build has no record.
+ * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { version: string | null, source: "recorded" | "store" } | null, store?: import("../../shared/nativeBuild.mjs").StoreStatus | null }} submission
+ *   The store the build went to, the store's build that kept it from uploading,
+ *   and what the store says of the build this run submitted.
  */
 
 /** The store each platform submits to. */
@@ -28,6 +33,20 @@ const SUBMITS = /** @type {const} */ ({
   testflight: "ios",
   "play-internal": "android",
 });
+
+/**
+ * Refuses an iOS build on a runner that has no Xcode.
+ *
+ * @param {Platform} platform
+ * @param {Record<string, string | undefined>} env
+ */
+export const assertBuildRunner = (platform, env) => {
+  if (platform === "ios" && env["RUNNER_OS"] && env["RUNNER_OS"] !== "macOS") {
+    throw new Error(
+      `platform ios builds with Xcode, which needs a macOS runner (runs-on: macos-latest), not ${env["RUNNER_OS"]}.`,
+    );
+  }
+};
 
 /**
  * The action's inputs, from the environment its composite step passes.
@@ -47,11 +66,7 @@ export const parseInputs = (env) => {
         : `platform takes ios or android, not ${platform}.`,
     );
   }
-  if (platform === "ios" && env["RUNNER_OS"] && env["RUNNER_OS"] !== "macOS") {
-    throw new Error(
-      `platform ios builds with Xcode, which needs a macOS runner (runs-on: macos-latest), not ${env["RUNNER_OS"]}.`,
-    );
-  }
+  assertBuildRunner(platform, env);
 
   const scheme = input("SCHEME");
   if (scheme === "") {
@@ -101,22 +116,30 @@ export const buildArgs = (inputs) => [
   "--scheme",
   inputs.scheme,
   ...(inputs.submit ? ["--submit", inputs.submit] : []),
+  ...(inputs.noCache ? ["--no-cache"] : []),
+  ...(inputs.extraArgs ?? []),
   "--json",
 ];
 
 /**
- * Builds, tracks, and submits as the inputs ask, and sets the outputs.
+ * Builds, tracks, and submits as the inputs ask. A build that fails sets its
+ * logs as the `buildLogOutput` output.
  *
- * @param {Deps} deps
+ * @param {Pick<Deps, "cli" | "buildLogs" | "setOutput" | "log">} deps
  * @param {Inputs} inputs
+ * @param {{ buildLogOutput?: string }} [options]
  * @returns {Promise<NativeBuildJson>}
  */
-export const runAction = async (deps, inputs) => {
+export const runNativeBuild = async (
+  deps,
+  inputs,
+  { buildLogOutput = "build-log" } = {},
+) => {
   const args = buildArgs(inputs);
   const since = Date.now();
   const { code, stdout } = await deps.cli(args, { capture: true });
   if (code !== 0) {
-    reportBuildLogs(deps, "build-log", since);
+    reportBuildLogs(deps, buildLogOutput, since);
     throw new Error(
       `hot-updater ${args.join(" ")} exited with ${code}: its output above says why.`,
     );
@@ -126,6 +149,18 @@ export const runAction = async (deps, inputs) => {
   if (result.nativeBuild === null && result.registration?.skipped !== "debug") {
     throw new Error(`native-build ${inputs.platform} tracked no native build.`);
   }
+  return result;
+};
+
+/**
+ * Runs the build, and sets the outputs and the job's summary.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @returns {Promise<NativeBuildJson>}
+ */
+export const runAction = async (deps, inputs) => {
+  const result = await runNativeBuild(deps, inputs);
 
   deps.setOutput("artifact-path", result.build.artifactPath);
   deps.setOutput("build", JSON.stringify(result.build));

@@ -12,6 +12,7 @@ cd "${0:A:h}"
 MIN_BUNDLE_ID=019a2b3c-4d5e-7000-8000-000000000000
 OTHER_UUID_V7=019a2b3c-4d5e-7abc-9def-0123456789ab
 FINGERPRINT=5de1cdbfefdc1f0b4a1b3c36ed83c246dff317dd540c0393ca76fa758026ec8f
+SANDBOX_MARKER=HOT_UPDATER_SANDBOX_NATIVE_LAYER
 
 sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 build_tools=$(print -l "$sdk"/build-tools/*(/) | sort -V | tail -1)
@@ -22,7 +23,9 @@ trap 'rm -rf "$tmp"' EXIT
 # dex: the classes the SDK's Gradle tasks generate, plus a substring that is
 # no whole literal. other.dex holds another UUIDv7; plain.dex neither.
 dex() {
-  local name=$1 min_bundle_id=$2 fingerprint=$3
+  local name=$1 min_bundle_id=$2 fingerprint=$3 marker=${4:-}
+  local marker_method=""
+  [[ -n "$marker" ]] && marker_method="static String marker() { return \"$marker\"; }"
   rm -rf "$tmp/java" "$tmp/classes" "$tmp/dex"
   mkdir -p "$tmp/java/com/hotupdater" "$tmp/classes" "$tmp/dex"
   cat > "$tmp/java/com/hotupdater/Generated.java" <<EOF
@@ -32,6 +35,7 @@ final class Generated {
   static String minBundleId() { return "$min_bundle_id"; }
   static String fingerprint() { return "$fingerprint"; }
   static String label() { return "id=$OTHER_UUID_V7"; }
+  $marker_method
 }
 EOF
   javac --release 8 -d "$tmp/classes" "$tmp/java/com/hotupdater/Generated.java"
@@ -42,6 +46,7 @@ EOF
 dex classes.dex "$MIN_BUNDLE_ID" "$FINGERPRINT"
 dex other.dex "$OTHER_UUID_V7" ""
 dex plain.dex "" ""
+dex sandbox.dex "$MIN_BUNDLE_ID" "$FINGERPRINT" "$SANDBOX_MARKER"
 
 # Manifests: aapt2 links each into an .apk (binary XML) and with
 # --proto-format into the form an .aab's module holds.
@@ -51,10 +56,10 @@ cat > "$tmp/res/values/strings.xml" <<'EOF'
 EOF
 "$build_tools/aapt2" compile --dir "$tmp/res" -o "$tmp/res.zip"
 manifest() {
-  local name=$1 application=$2
+  local name=$1 application=$2 package=${3:-com.example.app}
   cat > "$tmp/AndroidManifest.xml" <<EOF
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.app" android:versionCode="42"
+    package="$package" android:versionCode="42"
     android:versionName="1.4.0">
   <application $application
   </application>
@@ -77,24 +82,30 @@ manifest empty '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:value=""/>'
 manifest resource '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:resource="@string/channel"/>'
+manifest sandbox '>
+    <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>' com.example.app.sandbox
 
 # Mach-O: an executable whose __cstring holds the literals, one holding
 # another UUIDv7, and a universal binary whose x86_64 slice holds another
 # UUIDv7, so arm64's is the one read.
 macho() {
-  local arch=$1 min_bundle_id=$2 output=$3
+  local arch=$1 min_bundle_id=$2 output=$3 marker=${4:-}
+  local marker_call=""
+  [[ -n "$marker" ]] && marker_call="puts(\"$marker\");"
   cat > "$tmp/app.c" <<EOF
 #include <stdio.h>
 const char *min_bundle_id(void) { return "$min_bundle_id"; }
 const char *fingerprint(void) { return "$FINGERPRINT"; }
 const char *label(void) { return "id=$OTHER_UUID_V7"; }
-int main(void) { puts(min_bundle_id()); puts(fingerprint()); puts(label()); return 0; }
+int main(void) { puts(min_bundle_id()); puts(fingerprint()); puts(label()); $marker_call return 0; }
 EOF
   clang -Os -arch "$arch" -o "$output" "$tmp/app.c"
   strip "$output"
 }
 macho arm64 "$MIN_BUNDLE_ID" App
 macho arm64 "$OTHER_UUID_V7" App-other
+macho arm64 "$MIN_BUNDLE_ID" App-sandbox "$SANDBOX_MARKER"
 macho x86_64 "$OTHER_UUID_V7" "$tmp/App-x86_64"
 lipo -create App "$tmp/App-x86_64" -output App-universal
 
@@ -122,3 +133,7 @@ cat > Info.xml.plist <<'EOF'
 </plist>
 EOF
 plutil -convert binary1 -o Info.plist Info.xml.plist
+# A sandbox build's, as the CLI patches it into the archive.
+cp Info.plist Info.sandbox.plist
+plutil -replace HOT_UPDATER_CHANNEL -string sandbox-release Info.sandbox.plist
+plutil -replace HOT_UPDATER_SANDBOX -bool true Info.sandbox.plist

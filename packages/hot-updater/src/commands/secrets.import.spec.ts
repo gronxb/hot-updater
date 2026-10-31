@@ -116,15 +116,6 @@ describe("hot-updater secrets import", () => {
         "Delete those lines to read them from the adapter.",
       ].join("\n"),
     );
-    // One idea per line, inside clack's gutter on 76 columns.
-    for (const [message] of [
-      ...log.success.mock.calls,
-      ...log.info.mock.calls,
-    ]) {
-      for (const line of String(message).split("\n")) {
-        expect(line.length).toBeLessThanOrEqual(73);
-      }
-    }
     expect(
       await fs.readFile(path.join(directory, ".env.hotupdater"), "utf8"),
     ).toBe(ENV_FILE);

@@ -16,6 +16,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import type { BuildType } from "@hot-updater/cli-tools";
+import { fitText, withProviderMessages } from "@hot-updater/cli-tools";
 
 import { ui } from "../../utils/cli-ui";
 import type { InitProvider } from "../initProviders";
@@ -414,28 +415,30 @@ export async function handleInfraScaffold(
             : path.relative(result.output, value),
         );
       console.log(
-        ui.block(
-          operation === "scaffold"
-            ? "Infrastructure scaffold"
-            : `Infrastructure ${operation} scaffold`,
-          [
-            ui.kv("Status", result.status),
-            ui.kv("Provider", result.provider),
-            ui.kv("Templates", file(result.output)),
-            ui.kv("Manifest", file(result.manifest)),
-            result.instructions && ui.kv("Read", file(result.instructions)),
-            result.commonInstructions &&
-              ui.kv("Common", file(result.commonInstructions)),
-            result.deployment && ui.kv("State", file(result.deployment)),
-            result.environment &&
-              ui.kv("Environment", file(result.environment)),
-            // An upgrade's instructions are the upgrade guide: named once.
-            result.upgradeGuide !== result.instructions &&
-              ui.kv("Upgrades", file(result.upgradeGuide)),
+        fitText(
+          ui.block(
             operation === "scaffold"
-              ? "Fill the template inputs and deploy with your provider tools."
-              : "Apply the templates as Read says, and verify each step.",
-          ],
+              ? "Infrastructure scaffold"
+              : `Infrastructure ${operation} scaffold`,
+            [
+              ui.kv("Status", result.status),
+              ui.kv("Provider", result.provider),
+              ui.kv("Templates", file(result.output)),
+              ui.kv("Manifest", file(result.manifest)),
+              result.instructions && ui.kv("Read", file(result.instructions)),
+              result.commonInstructions &&
+                ui.kv("Common", file(result.commonInstructions)),
+              result.deployment && ui.kv("State", file(result.deployment)),
+              result.environment &&
+                ui.kv("Environment", file(result.environment)),
+              // An upgrade's instructions are the upgrade guide: named once.
+              result.upgradeGuide !== result.instructions &&
+                ui.kv("Upgrades", file(result.upgradeGuide)),
+              operation === "scaffold"
+                ? "Fill the template inputs and deploy with your provider tools."
+                : "Apply the templates as Read says, and verify each step.",
+            ],
+          ),
         ),
       );
     }
@@ -447,7 +450,11 @@ export async function handleInfraScaffold(
       );
     else
       console.error(
-        ui.block("Scaffolding failed", [ui.line([ui.danger(message)])]),
+        fitText(
+          withProviderMessages(
+            ui.block("Scaffolding failed", [ui.line([ui.danger(message)])]),
+          ),
+        ),
       );
     process.exitCode = 1;
   }

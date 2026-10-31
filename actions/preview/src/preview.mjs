@@ -1,9 +1,22 @@
 // @ts-check
 
+import { runNativeBuild } from "../../native-build/src/nativeBuild.mjs";
 import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 import {
+  deployBundle,
+  describeTarget,
+  findNativeBuild,
+  parseFlag,
+  parsePlatforms,
+  parseSchemes,
+  refreshFingerprint,
+  runJson,
+  STORES,
+} from "../../shared/nativeBuild.mjs";
+import {
   consoleLink,
-  consolePath,
+  nativeBuildDownloadLink,
+  nativeBuildInstallUrl,
   renderClosedComment,
   renderPreviewComment,
 } from "./comment.mjs";
@@ -15,6 +28,12 @@ export { parseJsonOutput };
  * @typedef {import("./comment.mjs").Platform} Platform
  * @typedef {import("./comment.mjs").PlatformPreview} PlatformPreview
  *
+ * @typedef {object} PreviewOutputs What later steps read of a platform's build.
+ * @property {string} installUrl What a person opens: the Console's download
+ *   link, or for a simulator build, the `native-build install` command.
+ * @property {string | null} downloadUrl The storage's URL of the artifact,
+ *   which a step fetches without a Console session; null when it gives none.
+ *
  * @typedef {object} Inputs
  * @property {string} consoleUrl
  * @property {Platform[]} platforms
@@ -22,6 +41,10 @@ export { parseJsonOutput };
  *   scheme each platform builds.
  * @property {string} channel The pull request's channel, which its native
  *   builds embed and its bundles deploy to.
+ * @property {Partial<Record<Platform, "testflight" | "play-internal">>} submits
+ *   The store each platform's sandbox build goes to; none previews as before.
+ * @property {string | null} testFlightGroup The internal TestFlight group of an
+ *   iOS sandbox build.
  * @property {boolean} credit
  * @property {boolean} comment Whether to write the pull request comment.
  * @property {"preview" | "cleanup"} mode
@@ -45,20 +68,31 @@ export { parseJsonOutput };
  * @property {(name: string, value: string) => void} setOutput
  * @property {{ info: (message: string) => void, notice: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
  *
- * @typedef {object} NativeBuildFindResult What `native-build find --json` prints.
- * @property {Platform} platform
- * @property {string} channel
- * @property {string | null} fingerprintHash
- * @property {string | null} appVersion
- * @property {NativeBuildRow | null} nativeBuild
- *
- * @typedef {object} NativeBuildRow The fields of a tracked build the action reads.
- * @property {string} id
- * @property {import("./comment.mjs").ArtifactKind} artifact_kind
- * @property {string} artifact_storage_uri
+ * @typedef {import("../../shared/nativeBuild.mjs").NativeBuildRow} NativeBuildRow
  */
 
-const PLATFORMS = /** @type {const} */ (["android", "ios"]);
+/**
+ * The `<platform>-submit` inputs that are set. Each takes only the platform's
+ * internal store path: nothing here can reach store review or another track.
+ *
+ * @param {(name: string) => string} input
+ * @returns {Inputs["submits"]}
+ */
+const parseSubmits = (input) => {
+  /** @type {Inputs["submits"]} */
+  const submits = {};
+  for (const platform of /** @type {const} */ (["android", "ios"])) {
+    const submit = input(`${platform.toUpperCase()}_SUBMIT`);
+    if (submit === "") continue;
+    if (submit !== STORES[platform].id) {
+      throw new Error(
+        `${platform}-submit takes ${STORES[platform].id}, not ${submit}: a preview goes no further than internal testing.`,
+      );
+    }
+    submits[platform] = /** @type {any} */ (submit);
+  }
+  return submits;
+};
 
 /**
  * The action's inputs, from the environment its composite step passes.
@@ -70,14 +104,6 @@ const PLATFORMS = /** @type {const} */ (["android", "ios"]);
 export const parseInputs = (env, event) => {
   /** @param {string} name */
   const input = (name) => env[`INPUT_${name}`]?.trim() ?? "";
-  /** @param {string} name @param {boolean} fallback */
-  const flag = (name, fallback) => {
-    const value = input(name);
-    if (value === "") return fallback;
-    if (value === "true" || value === "false") return value === "true";
-    throw new Error(`${name.toLowerCase()} must be true or false.`);
-  };
-
   const consoleUrl = input("CONSOLE_URL");
   if (consoleUrl === "") throw new Error("console-url is required.");
   if (!/^https?:\/\//.test(consoleUrl)) {
@@ -89,27 +115,18 @@ export const parseInputs = (env, event) => {
     throw new Error("mode must be auto, preview, or cleanup.");
   }
 
-  /** @type {Platform[]} */
-  const platforms = [];
-  for (const name of (input("PLATFORMS") || "android").split(/[\s,]+/)) {
-    if (name === "") continue;
-    if (!PLATFORMS.includes(/** @type {Platform} */ (name))) {
-      throw new Error(`platforms takes android and ios, not ${name}.`);
-    }
-    if (!platforms.includes(/** @type {Platform} */ (name))) {
-      platforms.push(/** @type {Platform} */ (name));
-    }
-  }
-  if (platforms.length === 0) throw new Error("platforms is empty.");
-
-  /** @type {Partial<Record<Platform, string>>} */
-  const schemes = {};
-  for (const platform of PLATFORMS) {
-    const scheme = input(`${platform.toUpperCase()}_SCHEME`);
-    if (scheme !== "") schemes[platform] = scheme;
-  }
+  const platforms = parsePlatforms(input("PLATFORMS") || "android");
+  const schemes = parseSchemes(input);
 
   const channel = input("CHANNEL") || `pr-${event.number}`;
+
+  const submits = parseSubmits(input);
+  const testFlightGroup = input("IOS_TESTFLIGHT_GROUP") || null;
+  if (testFlightGroup !== null && submits.ios === undefined) {
+    throw new Error(
+      "ios-testflight-group goes with ios-submit: testflight.\nSet it, or remove ios-testflight-group.",
+    );
+  }
 
   const resolvedMode =
     mode === "auto"
@@ -132,49 +149,13 @@ export const parseInputs = (env, event) => {
     platforms,
     schemes,
     channel,
-    credit: flag("CREDIT", true),
-    comment: flag("COMMENT", true),
+    submits,
+    testFlightGroup,
+    credit: parseFlag(input, "CREDIT", true),
+    comment: parseFlag(input, "COMMENT", true),
     mode: resolvedMode,
   };
 };
-
-/**
- * @param {Deps} deps
- * @param {string[]} args
- */
-const json = async (deps, args) => {
-  const { code, stdout } = await deps.cli(args, { capture: true });
-  if (code !== 0) {
-    throw new Error(`hot-updater ${args.join(" ")} exited with ${code}.`);
-  }
-  return parseJsonOutput(stdout);
-};
-
-/**
- * @param {Deps} deps
- * @param {Inputs} inputs
- * @param {Platform} platform
- */
-const findNativeBuild = async (deps, inputs, platform) =>
-  /** @type {NativeBuildFindResult} */ (
-    await json(deps, [
-      "native-build",
-      "find",
-      "-p",
-      platform,
-      "-c",
-      inputs.channel,
-      "-s",
-      /** @type {string} */ (inputs.schemes[platform]),
-      "--json",
-    ])
-  );
-
-/** @param {{ fingerprintHash: string | null, appVersion: string | null }} scope */
-const describeTarget = (scope) =>
-  scope.fingerprintHash === null
-    ? `app version ${scope.appVersion}`
-    : `fingerprint ${scope.fingerprintHash}`;
 
 /**
  * What `native-build <platform> --json` prints last: the build, with what
@@ -200,6 +181,179 @@ const artifactFileName = (storageUri) => {
 };
 
 /**
+ * The storage's URL of a platform's build, read once every platform is done,
+ * so a deploy or another platform's native build can't use up its lifetime.
+ * `native-build find` finds what a build of the project would match, so a
+ * scheme that sets its version at build time can find another build, or none.
+ * No URL fails nothing: the preview is deployed, and `native-build download`
+ * gets the build.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {PlatformPreview} preview
+ * @returns {Promise<string | null>}
+ */
+const findDownloadUrl = async (
+  deps,
+  inputs,
+  { platform, nativeBuild: { id } },
+) => {
+  try {
+    const found = await findNativeBuild(deps, {
+      platform,
+      scheme: /** @type {string} */ (inputs.schemes[platform]),
+      // A sandbox scheme's channel is its own, which `find` refuses to be told.
+      channel: inputs.submits[platform] ? null : inputs.channel,
+    });
+    if (found.nativeBuild?.id === id) return found.downloadUrl ?? null;
+    deps.log.notice(
+      `No ${platform}-download-url: native-build find didn't match ${id}.`,
+    );
+  } catch (error) {
+    deps.log.notice(
+      `No ${platform}-download-url: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return null;
+};
+
+/**
+ * Finds or makes a store build of a sandbox scheme, which every pull request
+ * with its native code shares, on the scheme's own channel. A build the store
+ * still offers needs no upload, and joins the requested internal group, which
+ * may not be the one it was uploaded for. Anything else goes through `native-build
+ * --submit`, which reuses a build the store never took; one the store no longer
+ * offers, or that is about to expire, gets a new build with a new number.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {PullRequestEvent} event
+ * @param {Platform} platform
+ * @param {"testflight" | "play-internal"} submit
+ */
+const findOrSubmitStoreBuild = async (
+  deps,
+  inputs,
+  event,
+  platform,
+  submit,
+) => {
+  const scheme = /** @type {string} */ (inputs.schemes[platform]);
+  const sandboxChannel = `sandbox-${scheme}`;
+  const group = platform === "ios" ? inputs.testFlightGroup : null;
+  // With a group to apply, that one command reads the store's word too.
+  const found = await findNativeBuild(deps, {
+    platform,
+    scheme,
+    storeStatus: group === null,
+  });
+  if (found.channel !== sandboxChannel) {
+    throw new Error(
+      `${platform}-submit takes a sandbox scheme, and ${scheme} isn't one.\nSet sandbox: true on it, or remove ${platform}-submit.`,
+    );
+  }
+  const submitted =
+    found.nativeBuild !== null && found.nativeBuild.submitted_to === submit
+      ? found.nativeBuild
+      : null;
+  const foundStore =
+    submitted !== null && group !== null
+      ? /** @type {import("../../shared/nativeBuild.mjs").StoreStatus & { group: string }} */ (
+          await runJson(deps, [
+            "native-build",
+            "testflight-group",
+            submitted.id,
+            group,
+            "--scheme",
+            scheme,
+            "--json",
+          ])
+        )
+      : /** @type {(import("../../shared/nativeBuild.mjs").StoreStatus & { group?: string }) | null} */ (
+          found.store ?? null
+        );
+  if (submitted !== null && foundStore?.reusable !== false) {
+    deps.log.info(
+      `Reusing ${platform} native build ${submitted.id} on ${STORES[platform].name} (${describeTarget(found)}).`,
+    );
+    if (foundStore?.group === "pending") {
+      deps.log.notice(
+        `${group} doesn't have build ${submitted.id} yet: App Store Connect is still processing it. The next run adds it.`,
+      );
+    }
+    if (!foundStore?.state) {
+      deps.log.notice(
+        `No ${platform}-store-state: ${STORES[platform].name} couldn't be read, so the comment shows only what the build's record says.`,
+      );
+    }
+    await refreshFingerprint(deps, found);
+    return {
+      build: submitted,
+      target: found,
+      built: false,
+      store: foundStore,
+    };
+  }
+  const noLongerOffered = submitted !== null;
+  deps.log.info(
+    noLongerOffered
+      ? `Building ${platform}: ${STORES[platform].name} no longer offers ${submitted.id} (${foundStore?.state ?? "expiring"}).`
+      : `Building ${platform} for ${STORES[platform].name}: no build there has ${describeTarget(found)}.`,
+  );
+  const built = await runNativeBuild(
+    deps,
+    {
+      platform,
+      scheme,
+      submit,
+      noCache: noLongerOffered,
+      extraArgs:
+        platform === "ios"
+          ? [
+              ...(inputs.testFlightGroup === null
+                ? []
+                : ["--testflight-group", inputs.testFlightGroup]),
+              "--what-to-test",
+              `Native build for #${event.number}. Pull requests with the same native code reuse it.`,
+            ]
+          : [],
+    },
+    { buildLogOutput: `${platform}-build-log` },
+  );
+  if (built.build.channel !== sandboxChannel) {
+    throw new Error(
+      `native-build ${platform} built a native build that embeds the ${built.build.channel} channel, not ${sandboxChannel}.`,
+    );
+  }
+  if (built.nativeBuild === null) {
+    throw new Error(`native-build ${platform} tracked no native build.`);
+  }
+  const { skipped, existing, store } = built.submission;
+  // The store matched the number, not this artifact: never show it as this one.
+  if (skipped === "already-submitted" && existing?.source === "store") {
+    throw new Error(
+      `${STORES[platform].name} already has ${existing.version ?? "this build number"}, which may be another build. Push again for a new number.`,
+    );
+  }
+  return {
+    build: /** @type {NativeBuildRow} */ (built.nativeBuild),
+    target: {
+      fingerprintHash: built.build.fingerprintHash,
+      appVersion: built.build.appVersion,
+    },
+    built: true,
+    store: store ?? {
+      destination: submit,
+      url: null,
+      version: existing?.version ?? null,
+      state: null,
+      expiresAtMs: null,
+      reusable: true,
+    },
+  };
+};
+
+/**
  * Deploys one platform's bundle to the pull request's channel, after
  * building and registering a native build that embeds the channel when the
  * registry has none for the project's fingerprint, or app version, there.
@@ -210,11 +364,50 @@ const artifactFileName = (storageUri) => {
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
- * @returns {Promise<PlatformPreview>}
+ * @returns {Promise<PlatformPreview & { installUrl: string }>}
  */
 const previewPlatform = async (deps, inputs, event, platform) => {
-  const found = await findNativeBuild(deps, inputs, platform);
-  /** @type {{ fingerprintHash: string | null, appVersion: string | null }} */
+  const scheme = /** @type {string} */ (inputs.schemes[platform]);
+  const submit = inputs.submits[platform];
+  if (submit) {
+    const { build, target, built, store } = await findOrSubmitStoreBuild(
+      deps,
+      inputs,
+      event,
+      platform,
+      submit,
+    );
+    const bundleId = await deployBundle(deps, {
+      platform,
+      channel: inputs.channel,
+      target,
+      message: `#${event.number} ${event.title}`,
+    });
+    const nativeBuild = {
+      id: build.id,
+      artifactKind: build.artifact_kind,
+      fileName: artifactFileName(build.artifact_storage_uri),
+    };
+    return {
+      platform,
+      target: {
+        fingerprintHash: target.fingerprintHash,
+        appVersion: target.appVersion,
+      },
+      nativeBuild,
+      built,
+      bundleId,
+      store,
+      installUrl:
+        store?.url ?? nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
+    };
+  }
+  const found = await findNativeBuild(deps, {
+    platform,
+    scheme,
+    channel: inputs.channel,
+  });
+  /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
     fingerprintHash: found.fingerprintHash,
     appVersion: found.appVersion,
@@ -226,11 +419,10 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     deps.log.info(
       `Building ${platform}: no native build on ${inputs.channel} has ${describeTarget(found)}.`,
     );
-    const scheme = /** @type {string} */ (inputs.schemes[platform]);
     const since = Date.now();
     // Every native build is tracked, so the preview can install it.
     const registered = /** @type {NativeBuildJson} */ (
-      await json(deps, [
+      await runJson(deps, [
         "native-build",
         platform,
         "--scheme",
@@ -272,55 +464,24 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       artifactKind: found.nativeBuild.artifact_kind,
       fileName: artifactFileName(found.nativeBuild.artifact_storage_uri),
     };
-    // A committed fingerprint.json can be older than the project, which
-    // deploy refuses; the build would have rewritten it.
-    if (found.fingerprintHash !== null) {
-      await deps.cli(["fingerprint", "create"]);
-    }
+    await refreshFingerprint(deps, found);
   }
 
-  await deps.cli([
-    "deploy",
-    "-p",
+  const bundleId = await deployBundle(deps, {
     platform,
-    "-c",
-    inputs.channel,
-    "-m",
-    `#${event.number} ${event.title}`,
-    // The exact version of the build, which deploy would otherwise read from
-    // the project without the scheme.
-    ...(target.appVersion === null ? [] : ["-t", target.appVersion]),
-  ]);
+    channel: inputs.channel,
+    target,
+    message: `#${event.number} ${event.title}`,
+  });
 
-  const [release] =
-    /** @type {{ id: string, fingerprint_hash: string | null, target_app_version: string | null }[]} */ (
-      await json(deps, [
-        "bundle",
-        "list",
-        "-c",
-        inputs.channel,
-        "-p",
-        platform,
-        "--limit",
-        "1",
-        "--json",
-      ])
-    );
-  if (release === undefined) {
-    throw new Error(`deploy left no ${platform} bundle on ${inputs.channel}.`);
-  }
-  // The bundle reaches the build only with the build's own target.
-  if (
-    target.fingerprintHash === null
-      ? release.target_app_version !== target.appVersion
-      : release.fingerprint_hash !== target.fingerprintHash
-  ) {
-    throw new Error(
-      `The ${platform} bundle ${release.id} targets ${release.fingerprint_hash ?? release.target_app_version}, but the native build has ${describeTarget(target)}.`,
-    );
-  }
-
-  return { platform, target, nativeBuild, built, bundleId: release.id };
+  return {
+    platform,
+    target,
+    nativeBuild,
+    built,
+    bundleId,
+    installUrl: nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
+  };
 };
 
 /**
@@ -338,10 +499,7 @@ const servesDownloadQr = async (deps, inputs, id) => {
   const url = consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
     build: id,
   });
-  const expected = consolePath(
-    inputs.consoleUrl,
-    `api/native-builds/${encodeURIComponent(id)}/download`,
-  );
+  const expected = nativeBuildDownloadLink(inputs.consoleUrl, id);
   let cause;
   try {
     const response = await deps.fetch(url, { method: "HEAD" });
@@ -366,7 +524,7 @@ export const runPreview = async (deps, inputs, event) => {
   // The pull request's native builds embed its channel, so their first
   // update check finds its bundle.
   await deps.cli(["channel", "set", inputs.channel]);
-  /** @type {PlatformPreview[]} */
+  /** @type {(PlatformPreview & { installUrl: string })[]} */
   const previews = [];
   for (const platform of inputs.platforms) {
     previews.push(
@@ -393,12 +551,28 @@ export const runPreview = async (deps, inputs, event) => {
     headSha: event.headSha,
     credit: inputs.credit,
   });
-  deps.setOutput("previews", JSON.stringify(previews));
+  /** @type {(PlatformPreview & PreviewOutputs)[]} */
+  const outputs = [];
+  for (const preview of previews) {
+    outputs.push({
+      ...preview,
+      downloadUrl: await findDownloadUrl(deps, inputs, preview),
+    });
+  }
+  deps.setOutput("previews", JSON.stringify(outputs));
+  for (const { platform, installUrl, downloadUrl, store } of outputs) {
+    deps.setOutput(`${platform}-install-url`, installUrl);
+    deps.setOutput(`${platform}-download-url`, downloadUrl ?? "");
+    if (store) {
+      deps.setOutput(`${platform}-store-url`, store.url ?? "");
+      deps.setOutput(`${platform}-store-state`, store.state ?? "");
+    }
+  }
   deps.setOutput("comment-body", body);
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);
   }
-  return { previews, body };
+  return { previews: outputs, body };
 };
 
 /**

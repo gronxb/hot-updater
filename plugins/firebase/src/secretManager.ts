@@ -137,30 +137,36 @@ const trackedVersions = (secret: GoogleSecret): string[] =>
 const versionOf = (name: unknown) =>
   typeof name === "string" ? name.slice(name.lastIndexOf("/") + 1) : "";
 
-/** The widest line a message has: the CLI prints no wider. */
-const LINE_WIDTH = 76;
-
-/** `text`, such as Google's own message, in lines that fit, broken at spaces. */
-const wrap = (text: string): string[] => {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(/\s+/u).filter(Boolean)) {
-    if (line && line.length + 1 + word.length > LINE_WIDTH) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-};
-
 /** An error of one line each, for a terminal. */
 const failure = (lines: readonly string[], cause?: unknown) =>
   new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
 
-const hint = (response: GoogleResponse, permission: string): string[] => {
+/**
+ * The one step that can fix the credentials in use, by the order they're
+ * tried: signing in with gcloud changes nothing while a variable comes first.
+ */
+const signInHint = (
+  credentials: SecretManagerCredentials | undefined,
+): string[] => {
+  if (credentials) {
+    return [`Check the credentials passed to ${ADAPTER_NAME}().`];
+  }
+  const variable =
+    ACCESS_TOKEN_ENV_NAMES.find((name) => process.env[name]?.trim()) ??
+    (process.env["GOOGLE_APPLICATION_CREDENTIALS"]?.trim()
+      ? "GOOGLE_APPLICATION_CREDENTIALS"
+      : undefined);
+  if (variable) return [`Fix or unset ${variable}.`];
+  return process.env["CI"]
+    ? ["Use google-github-actions/auth."]
+    : ["Sign in:", "gcloud auth application-default login"];
+};
+
+const hint = (
+  response: GoogleResponse,
+  permission: string,
+  signIn: readonly string[],
+): string[] => {
   const { status, error } = response;
   if (error.details?.some((detail) => detail.reason === "SERVICE_DISABLED")) {
     return [
@@ -169,14 +175,10 @@ const hint = (response: GoogleResponse, permission: string): string[] => {
     ];
   }
   if (status === 401) {
-    return [
-      "Google rejected the access token.",
-      "Sign in again with gcloud auth application-default login.",
-      "In CI, check the job's Workload Identity Federation.",
-    ];
+    return ["Google rejected the access token.", ...signIn];
   }
   if (status === 403) {
-    return wrap(`The Google identity needs ${permission}.`);
+    return [`The identity needs ${permission}.`];
   }
   if (status === 429) {
     return ["Secret Manager's quota is exhausted: try again later."];
@@ -185,11 +187,12 @@ const hint = (response: GoogleResponse, permission: string): string[] => {
 };
 
 /**
- * An error for a failed request on `resource`, a line each: the HTTP
- * status, the resource, Google's status and message, which name resources
- * but never a value, `notes`, and what to fix.
+ * An error for a failed request on `resource`, a line each: the HTTP status,
+ * the resource, `notes`, and what to fix, or Google's own status and message,
+ * which name resources but never a value, when nothing here says what to fix.
  */
-const requestError = (
+const requestErrorOf = (
+  signIn: readonly string[],
   action: string,
   resource: string,
   response: GoogleResponse,
@@ -197,18 +200,41 @@ const requestError = (
   notes: readonly string[] = [],
 ) => {
   const { status, message } = response.error;
-  const detail = [status, message?.slice(0, 300)].filter(Boolean).join(": ");
+  const fix = hint(response, permission, signIn);
+  // A rejected token isn't about this secret: every request gets the same.
+  if (response.status === 401 && notes.length === 0) return failure(fix);
   return failure([
     `${ADAPTER_NAME} couldn't ${action} (${response.status}).`,
     resourceLine(resource),
-    ...wrap(detail),
     ...notes,
-    ...hint(response, permission),
+    ...(fix.length > 0
+      ? fix
+      : [[status, message?.slice(0, 300)].filter(Boolean).join(": ")]),
   ]);
 };
 
 /** The line that names a secret: its resource name is a line's worth. */
 const resourceLine = (secret: string) => `Secret: ${secret}`;
+
+let metadataWarningFiltered = false;
+
+/**
+ * Drops the one warning `gcp-metadata` emits when its probe for a Google
+ * runtime fails oddly: credentials are about to be reported as missing, and
+ * the warning has nothing to act on. It stays filtered for the process, as
+ * the library caches the probe; every other warning passes through.
+ * `METADATA_SERVER_DETECTION=none` would also silence it, but skips the probe,
+ * and with it the credentials of a Google runtime.
+ */
+const filterMetadataWarning = () => {
+  if (metadataWarningFiltered) return;
+  metadataWarningFiltered = true;
+  const emitWarning = process.emitWarning;
+  process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+    if (rest[0] === "MetadataLookupWarning") return;
+    Reflect.apply(emitWarning, process, [warning, ...rest]);
+  }) as typeof process.emitWarning;
+};
 
 /** Masks a value in the CLI's output, which loads `@hot-updater/cli-tools`. */
 const mask = async (value: string) => {
@@ -264,21 +290,14 @@ const createAccessToken = (
         throw error;
       });
     const client = await auth;
+    filterMetadataWarning();
     try {
       return (await client.getAccessToken()) ?? undefined;
     } catch (error) {
       throw failure(
         [
           `${ADAPTER_NAME} found no Google credentials.`,
-          ...wrap(
-            error instanceof Error
-              ? error.message.split("\n")[0]!
-              : String(error),
-          ),
-          "On your machine, run gcloud auth application-default login.",
-          "In CI, use google-github-actions/auth.",
-          "Or set GOOGLE_APPLICATION_CREDENTIALS to a service account key.",
-          `Or set ${ACCESS_TOKEN_ENV_NAMES.join(" or ")} to a token.`,
+          ...signInHint(undefined),
         ],
         error,
       );
@@ -311,6 +330,21 @@ export const secretManager = ({
   credentials,
 }: SecretManagerOptions): SecretsAdapter => {
   const accessToken = createAccessToken(credentials, projectId);
+  const requestError = (
+    action: string,
+    resource: string,
+    response: GoogleResponse,
+    permission: string,
+    notes?: readonly string[],
+  ) =>
+    requestErrorOf(
+      signInHint(credentials),
+      action,
+      resource,
+      response,
+      permission,
+      notes,
+    );
 
   // Checked on first use, so a config loads without its options.
   const projectPath = () => {
@@ -522,12 +556,8 @@ export const secretManager = ({
       throw failure([
         `${ADAPTER_NAME} can't store a value.`,
         resourceLine(secret),
-        ...wrap(`The Google identity lacks ${missing.join(", ")} on it.`),
-        "It adds a version, then destroys the versions it added before.",
-        "Grant roles/secretmanager.admin, or a custom role with:",
-        ...wrap(
-          "secretmanager.secrets.get, secretmanager.secrets.update, secretmanager.versions.add, secretmanager.versions.destroy, secretmanager.versions.access",
-        ),
+        `The identity lacks ${missing.join(", ")} on it.`,
+        "Grant roles/secretmanager.admin.",
       ]);
     }
   };
@@ -671,7 +701,7 @@ export const secretManager = ({
           [
             `${ADAPTER_NAME} couldn't ${notListed}.`,
             resourceLine(secret),
-            ...wrap(error instanceof Error ? error.message : String(error)),
+            error instanceof Error ? error.message : String(error),
             notDestroyed,
           ],
           error,
@@ -697,7 +727,7 @@ export const secretManager = ({
     },
     describe: (name) => {
       const id = `${prefix}${name}`;
-      return `projects/${projectId}/secrets/${id} (https://console.cloud.google.com/security/secret-manager/secret/${encodeURIComponent(id)}/versions?project=${encodeURIComponent(projectId)})`;
+      return `the secret ${JSON.stringify(id)} in Google Secret Manager (https://console.cloud.google.com/security/secret-manager/secret/${encodeURIComponent(id)}/versions?project=${encodeURIComponent(projectId)})`;
     },
   };
 };

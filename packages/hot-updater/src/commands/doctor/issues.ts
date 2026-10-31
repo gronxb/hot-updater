@@ -21,6 +21,9 @@ export interface NativeCheckIssue {
     | "MISSING_CLIENT_PLUGIN"
     | "CLIENT_PLUGINS_UNCHECKED"
     | "SIGNING_PUBLIC_KEY_UNAVAILABLE"
+    | "SANDBOX_BUILD_BLOCKED"
+    | "SANDBOX_GOOGLE_SERVICES_CLIENT_MISSING"
+    | "SANDBOX_UNQUALIFIED"
     | SigningConfigIssue["code"];
   message: string;
   resolution: string;

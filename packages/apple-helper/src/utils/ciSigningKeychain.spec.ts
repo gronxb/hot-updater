@@ -506,10 +506,6 @@ describe("revokeKeychainCertificates", () => {
         "https://developer.apple.com/account/resources/certificates/list",
       ].join("\n"),
     );
-    // Clack's gutter takes 3 of 76 columns.
-    for (const line of warning.split("\n")) {
-      expect(line.length).toBeLessThanOrEqual(73);
-    }
   });
 
   it("asks App Store Connect nothing when Xcode created no certificate", async () => {

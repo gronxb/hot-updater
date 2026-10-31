@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { qrCodePath } from "@/lib/qr-code";
 import type {
   NativeBuildDetail,
   NativeBuildPatchPage,
@@ -15,14 +16,17 @@ import { NativeBuildsTable } from "./NativeBuildsTable";
 import { PatchesCard } from "./PatchesCard";
 import { firstDownloadOf, ServedNowCard } from "./ServedNowCard";
 
-const { downloadUrlQuery, patchesQuery, navigate } = vi.hoisted(() => ({
-  downloadUrlQuery: vi.fn(),
-  patchesQuery: vi.fn(),
-  navigate: vi.fn(),
-}));
+const { downloadLinkQuery, downloadUrlQuery, patchesQuery, navigate } =
+  vi.hoisted(() => ({
+    downloadLinkQuery: vi.fn(),
+    downloadUrlQuery: vi.fn(),
+    patchesQuery: vi.fn(),
+    navigate: vi.fn(),
+  }));
 
 vi.mock("@/lib/api", () => ({
   useConfigQuery: () => ({ data: { console: {} } }),
+  useNativeBuildDownloadLinkQuery: downloadLinkQuery,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
   useNativeBuildPatchesQuery: patchesQuery,
 }));
@@ -311,27 +315,200 @@ describe("NativeBuildsTable", () => {
   });
 });
 
-describe("InstallCard", () => {
-  it("shows an APK's storage URL as a QR code and downloads through the console", () => {
-    const row = build();
-    downloadUrlQuery.mockReturnValue({
-      data: { url: "https://r2.example.com/app-release.apk?sig=1" },
-    });
-    render(<InstallCard build={row} />);
+const ISSUED_LINK = {
+  status: "issued",
+  token: "1798761600.signature",
+  expiresAt: "2026-11-30T12:00:00.000Z",
+};
 
-    expect(
-      screen.getByRole("img", { name: "Download app-release.apk" }),
-    ).toBeTruthy();
-    expect(downloadUrlQuery).toHaveBeenCalledWith(row.id, true);
-    expect(screen.getByText("adb install -r app-release.apk")).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: /Download app-release.apk/ }),
-    ).toHaveProperty(
-      "href",
-      expect.stringContaining(`/api/native-builds/${row.id}/download`),
-    );
-    expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
+const signedUrl = (buildId: string) =>
+  `http://localhost:3000/api/native-builds/${buildId}/download?t=1798761600.signature`;
+
+/** What a phone's camera reads from the card's QR code. */
+const expectQrCodeOf = (container: HTMLElement, value: string) => {
+  expect(container.querySelector("svg[role=img] path")?.getAttribute("d")).toBe(
+    qrCodePath(value).path,
+  );
+};
+
+/** The Console can't sign: the card falls back on the storage's URL. */
+const unsigned = (url: string | null, status = "local-console") => {
+  downloadLinkQuery.mockReturnValue({
+    data: { status, secretName: "BETTER_AUTH_SECRET" },
   });
+  downloadUrlQuery.mockReturnValue({ data: { url } });
+};
+
+describe("InstallCard", () => {
+  beforeEach(() => {
+    downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
+    downloadUrlQuery.mockReset();
+  });
+
+  describe("with a signed link", () => {
+    it("puts the link in an APK's QR code and download, and reads no storage URL", () => {
+      const row = build();
+      const { container } = render(<InstallCard build={row} />);
+
+      expect(downloadLinkQuery).toHaveBeenCalledWith(row.id);
+      expectQrCodeOf(container, signedUrl(row.id));
+      expect(
+        screen.getByRole("link", { name: /Download app-release.apk/ }),
+      ).toHaveProperty("href", signedUrl(row.id));
+      expect(downloadUrlQuery).not.toHaveBeenCalled();
+    });
+
+    it("shows the link to copy, who can use it, and until when", () => {
+      render(<InstallCard build={build()} />);
+
+      expect(screen.getByText(signedUrl(build().id))).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Copy the download link" }),
+      ).toBeTruthy();
+      expect(document.body.textContent).toMatch(
+        /Anyone with this link can download this build until 2026-11-30\./,
+      );
+    });
+
+    it("gives each build its own link", () => {
+      const first = build();
+      const other = { ...first, id: id(99) };
+      downloadLinkQuery.mockImplementation((buildId: string) => ({
+        data:
+          buildId === other.id
+            ? { ...ISSUED_LINK, token: "1798761600.other" }
+            : ISSUED_LINK,
+      }));
+      const { container, rerender } = render(<InstallCard build={first} />);
+      expectQrCodeOf(container, signedUrl(first.id));
+
+      rerender(<InstallCard build={other} />);
+
+      expectQrCodeOf(
+        container,
+        `http://localhost:3000/api/native-builds/${other.id}/download?t=1798761600.other`,
+      );
+    });
+
+    it("waits for the link rather than show a code that needs a session", () => {
+      downloadLinkQuery.mockReturnValue({ data: undefined, isError: false });
+      const row = build();
+      render(<InstallCard build={row} />);
+
+      expect(screen.queryByRole("img")).toBeNull();
+      expect(downloadUrlQuery).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("link", { name: /Download app-release.apk/ }),
+      ).toHaveProperty(
+        "href",
+        expect.stringMatching(
+          new RegExp(`/api/native-builds/${row.id}/download$`),
+        ),
+      );
+    });
+
+    it("says so when the link can't be created", () => {
+      downloadLinkQuery.mockReturnValue({
+        data: undefined,
+        error: new Error("Console unavailable"),
+        isError: true,
+      });
+      render(<InstallCard build={build()} />);
+
+      expect(screen.getByText("Console unavailable")).toBeTruthy();
+      expect(downloadUrlQuery).not.toHaveBeenCalled();
+    });
+
+    it("keeps a link it has when reading a new one fails", () => {
+      downloadLinkQuery.mockReturnValue({
+        data: ISSUED_LINK,
+        error: new Error("Console unavailable"),
+        isError: true,
+      });
+      const row = build();
+      const { container } = render(<InstallCard build={row} />);
+
+      expectQrCodeOf(container, signedUrl(row.id));
+      expect(screen.queryByText("Console unavailable")).toBeNull();
+    });
+  });
+
+  describe("when the Console can't sign a link", () => {
+    it("shows a local Console's storage URL as the QR code, and says it expires", () => {
+      const url = "https://r2.example.com/app-release.apk?sig=1";
+      unsigned(url);
+      const row = build();
+      const { container } = render(<InstallCard build={row} />);
+
+      expectQrCodeOf(container, url);
+      expect(downloadUrlQuery).toHaveBeenCalledWith(row.id);
+      expect(screen.getByText(/This link expires/)).toBeTruthy();
+      expect(
+        screen.getByRole("link", { name: /Download app-release.apk/ }),
+      ).toHaveProperty(
+        "href",
+        expect.stringMatching(
+          new RegExp(`/api/native-builds/${row.id}/download$`),
+        ),
+      );
+      // Only this machine reaches a local Console, so nothing to copy or ask.
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Copy the download link" }),
+      ).toBeNull();
+    });
+
+    it("tells a hosted Console without the secret what to set", () => {
+      unsigned("https://r2.example.com/app-release.apk?sig=1", "no-secret");
+      render(<InstallCard build={build()} />);
+
+      expect(screen.getByRole("status").textContent).toBe(
+        "Set BETTER_AUTH_SECRET on the Console to create links.",
+      );
+    });
+
+    it("shows a skeleton, then the failure, while reading the storage URL", () => {
+      unsigned(null);
+      downloadUrlQuery.mockReturnValue({ data: undefined, isError: false });
+      const { container } = render(<InstallCard build={build()} />);
+      expect(container.querySelector("svg[role=img]")).toBeNull();
+      cleanup();
+
+      downloadUrlQuery.mockReturnValue({
+        data: undefined,
+        error: new Error("Storage unavailable"),
+        isError: true,
+      });
+      render(<InstallCard build={build()} />);
+      expect(screen.getByText("Storage unavailable")).toBeTruthy();
+    });
+  });
+
+  it("tells an APK's installer what Android needs, and the way past another key", () => {
+    const { container } = render(<InstallCard build={build()} />);
+    const copy = container.textContent;
+
+    expect(copy).toContain('"Install unknown apps" permission');
+    expect(copy).toMatch(
+      /another signing key, such as a Play copy, the install fails\. Uninstall that copy first, or build with sandbox: true, whose \.sandbox ID installs beside it\./,
+    );
+    expect(
+      screen.getByText(`npx hot-updater native-build install ${id(1)}`),
+    ).toBeTruthy();
+    expect(copy).not.toMatch(/adb install/);
+    expect(copy).not.toMatch(CHANNEL_LINK_TEXT);
+  });
+
+  it.each(["aab", "ipa", "app"] as const)(
+    "leaves Android's install notes off an %s",
+    (kind) => {
+      const { container } = render(
+        <InstallCard build={build({ artifact_kind: kind })} />,
+      );
+
+      expect(container.textContent).not.toMatch(/unknown apps|signing key/);
+    },
+  );
 
   it.each([
     [
@@ -366,15 +543,12 @@ describe("InstallCard", () => {
         artifact_kind: kind,
         artifact_storage_uri: `r2://bucket/native-builds/${platform}/019a/${file}`,
       });
-      downloadUrlQuery.mockReturnValue({
-        data: { url: `https://r2.example.com/${file}?sig=1` },
-      });
-      render(<InstallCard build={row} />);
+      const { container } = render(<InstallCard build={row} />);
 
       expect(
         screen.getByRole("img", { name: `Download ${file}` }),
       ).toBeTruthy();
-      expect(downloadUrlQuery).toHaveBeenCalledWith(row.id, true);
+      expectQrCodeOf(container, signedUrl(row.id));
       expect(screen.getByText(caption)).toBeTruthy();
     },
   );
@@ -393,7 +567,7 @@ describe("InstallCard", () => {
         submitted_at_ms: 0,
         submitted_version: "1.7.0 (66)",
       },
-      [/bundletool/g, /rolled out/g],
+      [/rolled out/g],
     ],
     [
       "ipa",
@@ -411,21 +585,18 @@ describe("InstallCard", () => {
         submitted_at_ms: 0,
         submitted_version: "1.7.0 (66)",
       },
-      [/testers/g, /devices/g],
+      [/testers/g, /processed/g],
     ],
     [
       "app",
       "ios",
       "HotUpdaterExample.app.zip",
       {},
-      [/simulator/gi, /on a Mac/g, /download/gi],
+      [/simulator/gi, /on a Mac/g, /to download/gi],
     ],
   ] as const)(
     "says each thing about installing an %s once",
     (kind, platform, file, submission, facts) => {
-      downloadUrlQuery.mockReturnValue({
-        data: { url: `https://r2.example.com/${file}?sig=1` },
-      });
       const { container } = render(
         <InstallCard
           build={build({
@@ -447,7 +618,7 @@ describe("InstallCard", () => {
   );
 
   it("shows no QR code when the storage has no download URL a phone can open", () => {
-    downloadUrlQuery.mockReturnValue({ data: { url: null } });
+    unsigned(null);
     render(
       <InstallCard
         build={build({
@@ -470,7 +641,7 @@ describe("InstallCard", () => {
   ] as const)(
     "keeps what an %s installs on when there is no QR code",
     (kind, platform, file, limit) => {
-      downloadUrlQuery.mockReturnValue({ data: { url: null } });
+      unsigned(null);
       const { container } = render(
         <InstallCard
           build={build({
@@ -487,7 +658,6 @@ describe("InstallCard", () => {
   );
 
   it("keeps a simulator app's install command beside its QR code", () => {
-    downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/app.zip" } });
     render(
       <InstallCard
         build={build({
@@ -500,14 +670,11 @@ describe("InstallCard", () => {
     );
 
     expect(
-      screen.getByText(
-        "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
-      ),
+      screen.getByText(`npx hot-updater native-build install ${id(1)}`),
     ).toBeTruthy();
   });
 
   it("keeps an IPA's TestFlight command beside its QR code", () => {
-    downloadUrlQuery.mockReturnValue({ data: { url: "https://r2/App.ipa" } });
     render(
       <InstallCard
         build={build({
@@ -526,7 +693,7 @@ describe("InstallCard", () => {
 
 describe("a submitted build's page", () => {
   beforeEach(() => {
-    downloadUrlQuery.mockReturnValue({ data: undefined, isError: false });
+    downloadLinkQuery.mockReturnValue({ data: ISSUED_LINK });
   });
 
   it("says where the store has it instead of how to upload it", () => {
@@ -552,6 +719,12 @@ describe("a submitted build's page", () => {
     );
     expect(screen.queryByText("npx hot-updater testflight")).toBeNull();
     expect(screen.getByText("Store")).toBeTruthy();
+    // The store installs it: no QR code of the file, and no signed link read.
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(downloadLinkQuery).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", { name: /Open App Store Connect/ }),
+    ).toHaveProperty("href", "https://appstoreconnect.apple.com/apps");
   });
 
   it("shows no store line for a build no store took", () => {
@@ -582,6 +755,9 @@ describe("a submitted build's page", () => {
     expect(screen.getByText(/Submitted to Google Play/).textContent).toContain(
       "once its release is rolled out",
     );
+    expect(
+      screen.getByRole("link", { name: /Open Play Console/ }),
+    ).toHaveProperty("href", "https://play.google.com/console");
   });
 });
 

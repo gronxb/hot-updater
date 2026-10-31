@@ -133,7 +133,7 @@ export const handleSigningKeyIssue = async (
         ui.block(`${LABEL} already stored`, [
           name !== KIND && ui.kv("Name", name),
           previous && ui.kv("Public key", previous),
-          ui.kv("Source", ui.fitPath(found.source)),
+          ui.kv("Source", ui.source(found.source)),
           // A key kept still signs: a config without signing gets it.
           await configRow(signing, name, cwd),
           `Kept: ${SHIPPED_APPS}`,
@@ -164,7 +164,7 @@ export const handleSigningKeyIssue = async (
       ui.block(`${LABEL} created`, [
         name !== KIND && ui.kv("Name", name),
         ui.kv("Public key", fingerprint),
-        ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
+        ui.kv("Source", ui.source(describeStoredSecret(secrets, name))),
         await configRow(signing, name, cwd),
       ]),
     );

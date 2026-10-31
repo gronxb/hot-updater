@@ -10,12 +10,14 @@ import { runGradle } from "./builder/runGradle";
 import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 import { resolveGradleSigningEnv } from "./utils/gradleSigning";
 import { readBuiltApp } from "./utils/readBuiltApp";
+import { withSandboxGradleArgs } from "./utils/sandboxGradle";
 
 export const buildAndroid = async ({
   schemeConfig,
   minBundleId = createMinBundleId(),
   credentials,
   logHeader,
+  minVersionCode,
 }: {
   schemeConfig: EnrichedNativeBuildAndroidScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
@@ -24,6 +26,8 @@ export const buildAndroid = async ({
   credentials?: Pick<CredentialResolver, "resolve">;
   /** Lines the build log starts with, such as the native build key. */
   logHeader?: string[];
+  /** The lowest version code a sandbox build may have. */
+  minVersionCode?: number;
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
@@ -40,17 +44,25 @@ export const buildAndroid = async ({
 }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 
-  const result = await runGradle({
-    args: { extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`] },
-    env: await resolveGradleSigningEnv({ schemeConfig, credentials }),
-    appModuleName: schemeConfig.appModuleName,
-    tasks: schemeConfig.aab
-      ? [`bundle${schemeConfig.variant}`]
-      : [`assemble${schemeConfig.variant}`],
-    logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
-    androidProjectPath,
-    logHeader,
-  });
+  const env = await resolveGradleSigningEnv({ schemeConfig, credentials });
+  const result = await withSandboxGradleArgs(
+    schemeConfig,
+    (sandboxArgs) =>
+      runGradle({
+        args: {
+          extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`, ...sandboxArgs],
+        },
+        env,
+        appModuleName: schemeConfig.appModuleName,
+        tasks: schemeConfig.aab
+          ? [`bundle${schemeConfig.variant}`]
+          : [`assemble${schemeConfig.variant}`],
+        logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
+        androidProjectPath,
+        logHeader,
+      }),
+    minVersionCode === undefined ? {} : { minVersionCode },
+  );
   return {
     ...result,
     builtApp: await readBuiltApp({

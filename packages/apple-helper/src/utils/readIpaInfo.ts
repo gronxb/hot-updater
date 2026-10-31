@@ -23,10 +23,13 @@ const INFO_PLIST_KEYS = {
 } as const satisfies Record<keyof IpaInfo, string>;
 
 /**
- * Reads the app's `Payload/<App>.app/Info.plist` out of an `.ipa`, never a
- * framework's or an extension's, which nest deeper.
+ * Runs `read` on a copy of the app's `Payload/<App>.app/Info.plist` out of an
+ * `.ipa`, never a framework's or an extension's, which nest deeper.
  */
-export const readIpaInfo = async (ipaPath: string): Promise<IpaInfo> => {
+const withIpaInfoPlist = async <T>(
+  ipaPath: string,
+  read: (infoPlist: string) => Promise<T>,
+): Promise<T> => {
   const { stdout } = await execa("unzip", ["-Z1", ipaPath]);
   const entry = stdout
     .split("\n")
@@ -44,6 +47,15 @@ export const readIpaInfo = async (ipaPath: string): Promise<IpaInfo> => {
     await execa("unzip", ["-p", ipaPath, escapeUnzipPattern(entry)], {
       stdout: { file: infoPlist },
     });
+    return await read(infoPlist);
+  } finally {
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  }
+};
+
+/** What App Store Connect files an `.ipa` under. */
+export const readIpaInfo = (ipaPath: string): Promise<IpaInfo> =>
+  withIpaInfoPlist(ipaPath, async (infoPlist) => {
     const info = {} as IpaInfo;
     for (const [field, key] of Object.entries(INFO_PLIST_KEYS)) {
       const { stdout: value, exitCode } = await execa(
@@ -59,7 +71,15 @@ export const readIpaInfo = async (ipaPath: string): Promise<IpaInfo> => {
       info[field as keyof IpaInfo] = value.trim();
     }
     return info;
-  } finally {
-    await fs.promises.rm(directory, { recursive: true, force: true });
-  }
-};
+  });
+
+/** Whether Xcode marked an `.ipa`'s app for TestFlight internal testing only. */
+export const readIpaInternalTestingOnly = (ipaPath: string): Promise<boolean> =>
+  withIpaInfoPlist(ipaPath, async (infoPlist) => {
+    const { stdout: value, exitCode } = await execa(
+      "plutil",
+      ["-extract", "TFInternalTestingOnly", "raw", "-o", "-", infoPlist],
+      { reject: false },
+    );
+    return exitCode === 0 && value.trim() === "true";
+  });

@@ -1,10 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
 
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -304,11 +299,5 @@ describe("reuseNativeBuild", () => {
 
 // No line the command prints wraps on an 80-column terminal.
 afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
-  expect(linesWiderThan(stripVTControlCharacters(stdout).split("\n"))).toEqual(
-    [],
-  );
   vi.restoreAllMocks();
 });

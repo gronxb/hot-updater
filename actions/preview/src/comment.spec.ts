@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  nativeBuildInstallUrl,
   renderClosedComment,
   renderPreviewComment,
   shellQuote,
@@ -38,6 +39,96 @@ const base = {
   credit: true,
 };
 
+const onStore = {
+  destination: "testflight",
+  url: "https://appstoreconnect.apple.com/apps/6764/testflight/ios",
+  version: "1.7.0 (66)",
+  state: "processing",
+  expiresAtMs: null,
+  reusable: true,
+} as const;
+
+const ipaOnTestFlight = {
+  ...ios,
+  nativeBuild: {
+    id: "019a0000-0000-7000-8000-00000000b003",
+    artifactKind: "ipa",
+    fileName: "App.ipa",
+  },
+  store: onStore,
+} as const;
+
+const aabOnPlay = {
+  ...android,
+  nativeBuild: {
+    id: "019a0000-0000-7000-8000-00000000b004",
+    artifactKind: "aab",
+    fileName: "app-release.aab",
+  },
+  store: {
+    ...onStore,
+    destination: "play-internal",
+    url: "https://play.google.com/apps/testing/com.example.app.sandbox",
+    version: "1.7.0 (42)",
+    state: "draft",
+  },
+} as const;
+
+describe("renderPreviewComment with a store build", () => {
+  it("shows the store's link and state instead of a download", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [ipaOnTestFlight],
+    });
+
+    expect(body).toContain(
+      `| iOS | [TestFlight](${onStore.url}) · \`1.7.0 (66)\` · processing · [Details](https://console.example.com/native-builds/019a0000-0000-7000-8000-00000000b003) · reused |`,
+    );
+    expect(body).not.toContain("[Download]");
+    expect(body).not.toContain("api/native-builds");
+    expect(body).not.toContain("An IPA installs on registered devices");
+    expect(body).not.toContain("embed the");
+    expect(body).toContain(
+      "Testers install the sandbox build from TestFlight, which pull requests with the same native code share. This pull request's bundle is on `pr-12`.",
+    );
+  });
+
+  it("says a draft needs its rollout, and names Google Play", () => {
+    const body = renderPreviewComment({ ...base, previews: [aabOnPlay] });
+    expect(body).toContain(
+      `| Android | [Google Play internal testing](${aabOnPlay.store.url}) · \`1.7.0 (42)\` · a draft: roll it out in Play Console ·`,
+    );
+    expect(body).not.toContain("adb install");
+  });
+
+  it("keeps the other platform's download beside a store build", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [android, ipaOnTestFlight],
+      qrCodes: [android.nativeBuild.id],
+    });
+    expect(body).toContain(
+      "[Download](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-00000000b001/download)",
+    );
+    expect(body).toContain("embed the `pr-12` channel");
+    expect(body).toContain("Testers install the sandbox build from TestFlight");
+    expect(body).toContain("adb install");
+  });
+
+  it("names the store without a link when it couldn't be read", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [
+        {
+          ...ipaOnTestFlight,
+          store: { ...onStore, url: null, state: null },
+        },
+      ],
+    });
+    expect(body).toContain("| iOS | TestFlight · `1.7.0 (66)` · [Details]");
+  });
+});
+
 describe("renderPreviewComment", () => {
   it("lists each platform's download and page, the APK's download QR code, and the install commands", () => {
     expect(
@@ -68,12 +159,43 @@ Download the build, then:
 
 \`\`\`sh
 adb install -r app-release.apk
-unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app
+\`\`\`
+
+In your project, this downloads the build, installs it on the booted Simulator, and opens it:
+
+\`\`\`sh
+npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
 \`\`\`
 
 </details>
 
 <sub>Deployed \`0123456\` · Preview by [hot-updater](https://hot-updater.dev)</sub>`);
+  });
+
+  it("doesn't tell a simulator build to download first, since its command does", () => {
+    const body = renderPreviewComment({ ...base, previews: [ios] });
+
+    expect(body).toContain(
+      "npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002",
+    );
+    expect(body).not.toContain("Download the build, then:");
+    expect(body).not.toMatch(/xcrun|simctl|unzip/);
+  });
+
+  it("keeps an APK's download and adb command as they are", () => {
+    const body = renderPreviewComment({ ...base, previews: [android] });
+
+    expect(body).toContain(`<details>
+<summary>Install on an emulator or simulator</summary>
+
+Download the build, then:
+
+\`\`\`sh
+adb install -r app-release.apk
+\`\`\`
+
+</details>`);
+    expect(body).not.toContain("native-build install");
   });
 
   it("shows no QR code for a build the runner found no QR code of", () => {
@@ -176,7 +298,7 @@ unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExam
     expect(body).toContain("adb install -r 'my app'\\''s.apk'");
   });
 
-  it("shows no channel link, and never says Expo Go", () => {
+  it("shows no channel link", () => {
     const body = renderPreviewComment({
       ...base,
       previews: [android, ios],
@@ -186,7 +308,39 @@ unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExam
     expect(body).not.toMatch(
       /hot-updater\/channel\/|openurl|am start|channel-qr/,
     );
-    expect(body).not.toMatch(/expo go/i);
+  });
+});
+
+describe("nativeBuildInstallUrl", () => {
+  it.each(["apk", "aab", "ipa"] as const)(
+    "is the Console's download link, under its own path, for an %s",
+    (artifactKind) => {
+      expect(
+        nativeBuildInstallUrl("https://example.com/console/", {
+          id: "build 1",
+          artifactKind,
+        }),
+      ).toBe(
+        "https://example.com/console/api/native-builds/build%201/download",
+      );
+    },
+  );
+
+  it("is the install command for a simulator build, as the Console shows it", () => {
+    expect(
+      nativeBuildInstallUrl("https://example.com", {
+        id: "019a0000-0000-7000-8000-00000000b002",
+        artifactKind: "app",
+      }),
+    ).toBe(
+      "npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002",
+    );
+    expect(
+      nativeBuildInstallUrl("https://example.com", {
+        id: "build 1",
+        artifactKind: "app",
+      }),
+    ).toBe("npx hot-updater native-build install 'build 1'");
   });
 });
 

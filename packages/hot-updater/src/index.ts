@@ -18,7 +18,9 @@ import {
   nativeBuildSchemeCommandOption,
   platformCommandOption,
   playSubmitCommandOption,
+  testFlightGroupCommandOption,
   testFlightSubmitCommandOption,
+  whatToTestCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
@@ -81,7 +83,10 @@ import { keysExportPublic, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import {
   handleNativeBuildDelete,
+  handleNativeBuildDownload,
   handleNativeBuildFind,
+  handleNativeBuildTestFlightGroup,
+  handleNativeBuildInstall,
 } from "./commands/nativeBuild";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
@@ -99,6 +104,11 @@ import {
   ISSUED_KINDS,
   SECRET_KINDS,
 } from "./commands/secrets";
+import {
+  DEFAULT_PULL_FILE,
+  handleSecretsPull,
+  type SecretsPullOptions,
+} from "./commands/secretsPull";
 import { handleSigningKeyIssue } from "./commands/signingKey";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
@@ -287,7 +297,7 @@ channelCommand
 const nativeBuildCommand = program
   .command("native-build")
   .description(
-    "Build native apps, and find and delete the builds Hot Updater tracks",
+    "Build native apps, and find, download, install and delete the builds Hot Updater tracks",
   );
 
 nativeBuildCommand
@@ -308,8 +318,59 @@ nativeBuildCommand
     "-s, --scheme <scheme>",
     "the nativeBuild scheme, whose app's version the build has with the appVersion strategy",
   )
-  .option("--json", "output the scope and the build, or null, as JSON")
+  .option(
+    "--store-status",
+    "ask the store what a build this project submitted is doing there (takes --scheme)",
+  )
+  .option(
+    "--json",
+    "output the scope, the build or null, and the storage's download URL or null, as JSON",
+  )
   .action(handleNativeBuildFind);
+
+nativeBuildCommand
+  .command("download")
+  .description(
+    "Download a registered native build's artifact through the config's storage, such as in a script",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option(
+    "-o, --output <path>",
+    "the file or directory to write (default: the artifact's name in the current directory)",
+  )
+  .option("--json", "output the file's path and size as JSON")
+  .action(handleNativeBuildDownload);
+
+nativeBuildCommand
+  .command("install")
+  .description(
+    "Download a registered simulator .app or .apk, install it on a booted iOS Simulator or a connected Android device, and open it",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option(
+    "--simulator <udid>",
+    "the booted iOS Simulator (default: the only one booted)",
+  )
+  .option(
+    "--device <serial>",
+    "the Android device or emulator, as adb devices lists it (default: ANDROID_SERIAL, or the only one connected)",
+  )
+  .option("--json", "output the device and the app as JSON")
+  .action(handleNativeBuildInstall);
+
+nativeBuildCommand
+  .command("testflight-group")
+  .description(
+    "Add a sandbox build already on TestFlight to an internal group, with no new upload",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .argument("<group>", "the internal TestFlight group")
+  .requiredOption(
+    "-s, --scheme <scheme>",
+    "the sandbox nativeBuild scheme, whose app and key it reads",
+  )
+  .option("--json", "output what App Store Connect says of the build as JSON")
+  .action(handleNativeBuildTestFlightGroup);
 
 nativeBuildCommand
   .command("delete")
@@ -349,6 +410,8 @@ nativeBuildCommand
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildOutputCommandOption)
   .addOption(testFlightSubmitCommandOption)
+  .addOption(testFlightGroupCommandOption)
+  .addOption(whatToTestCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)
@@ -426,9 +489,19 @@ const integerFrom =
   };
 
 /** A comma-separated option, which may also repeat. */
+const commaSeparated = (value: string, previous: readonly string[] = []) => [
+  ...previous,
+  ...value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+];
+
 const secretsCommand = program
   .command("secrets")
-  .description("Store build credentials in the secrets adapter");
+  .description(
+    "Store build credentials in the secrets adapter, or pull deploy credentials to a local env file",
+  );
 
 secretsCommand
   .command("put")
@@ -487,6 +560,32 @@ secretsCommand
     "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter.",
   )
   .action((envFile?: string) => handleSecretsImport(envFile));
+
+secretsCommand
+  .command("pull")
+  .description(
+    "Write the deploy credentials the team secrets adapter holds to a local env file",
+  )
+  .option("--out <file>", "the env file to write", DEFAULT_PULL_FILE)
+  .option(
+    "--only <names>",
+    "pull exactly these secrets, comma-separated, whether the config names them or not",
+    commaSeparated,
+  )
+  .option("--force", "replace a value the file holds without asking")
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Stores are read by name, with no list of what they hold. Without --only",
+      "it pulls the names the config's secret()s read for its adapters, and",
+      "HOT_UPDATER_API_KEY. It is not for the app's runtime env.",
+      "",
+      "Build credentials stay in the store, where builds read them.",
+      "The file's lines override the store on this machine.",
+    ].join("\n"),
+  )
+  .action((options: SecretsPullOptions) => handleSecretsPull(options));
 
 secretsCommand
   .command("issue")

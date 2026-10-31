@@ -1,12 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 
 import type { EnrichedNativeBuildIosScheme } from "@hot-updater/apple-helper";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const events: string[] = [];
 /** The scheme the config sets, as beforePrebuild receives it. */
@@ -534,11 +529,4 @@ describe("native-build ios --dry-run", () => {
     expect(events).toContain("upload");
     expect(p.log.message).not.toHaveBeenCalled();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

@@ -1,8 +1,7 @@
 // @ts-check
 
-import { appendFileSync } from "node:fs";
-
 import {
+  appendSummary,
   createBuildLogs,
   createCli,
   log,
@@ -28,10 +27,7 @@ try {
       buildLogs: createBuildLogs(),
       setOutput,
       log,
-      summary: (markdown) => {
-        const file = env["GITHUB_STEP_SUMMARY"];
-        if (file) appendFileSync(file, `${markdown}\n`);
-      },
+      summary: appendSummary,
     },
     inputs,
   );

@@ -10,9 +10,13 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "./nativeBuilds";
 
-const build = (artifactStorageUri: string) =>
+const build = (
+  artifactStorageUri: string,
+  artifactKind: NativeBuildRow["artifact_kind"] = "apk",
+) =>
   ({
     id: "build-1",
+    artifact_kind: artifactKind,
     artifact_storage_uri: artifactStorageUri,
   }) as NativeBuildRow;
 
@@ -103,9 +107,49 @@ describe("downloadNativeBuild", () => {
     });
 
     expect(response.headers.get("content-disposition")).toBe(
-      "attachment; filename*=UTF-8''app%20release.apk",
+      `attachment; filename="app_release.apk"; filename*=UTF-8''app%20release.apk`,
     );
     await expect(response.text()).resolves.toBe("apk");
+  });
+
+  it("streams an APK as what Android installs, whatever type the storage kept", async () => {
+    const kept: readonly Record<string, string>[] = [
+      {},
+      { "content-type": "binary/octet-stream" },
+    ];
+    for (const headers of kept) {
+      const response = await downloadNativeBuild("build-1", {
+        core: coreWith(build(apkUri)),
+        storage: createStorageAdapter({
+          name: "r2Storage",
+          protocol: "r2",
+          get: async () => ({ response: new Response("apk", { headers }) }),
+        }),
+      });
+
+      expect(response.headers.get("content-type")).toBe(
+        "application/vnd.android.package-archive",
+      );
+    }
+  });
+
+  it("leaves the storage's type on any other artifact", async () => {
+    const response = await downloadNativeBuild("build-1", {
+      core: coreWith(build("r2://updates/native-builds/ios/1/App.ipa", "ipa")),
+      storage: createStorageAdapter({
+        name: "r2Storage",
+        protocol: "r2",
+        get: async () => ({
+          response: new Response("ipa", {
+            headers: { "content-type": "application/octet-stream" },
+          }),
+        }),
+      }),
+    });
+
+    expect(response.headers.get("content-type")).toBe(
+      "application/octet-stream",
+    );
   });
 
   it("redirects to a public URL no storage owns", async () => {
@@ -127,6 +171,68 @@ describe("downloadNativeBuild", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("downloadNativeBuild when the storage gives no usable URL", () => {
+  const streamed = {
+    get: vi.fn(async () => ({
+      response: new Response("apk bytes", {
+        headers: { "content-length": "9" },
+      }),
+    })),
+  };
+  const storageWith = (getDownloadUrl: () => Promise<{ url: string }>) =>
+    createStorageAdapter({
+      name: "storage",
+      protocol: "r2",
+      getDownloadUrl,
+      ...streamed,
+    });
+
+  it("streams when the storage can't sign, and says why without the object's URL", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const response = await downloadNativeBuild("build-1", {
+      core: coreWith(build(apkUri)),
+      storage: storageWith(async () => {
+        throw new Error("no signing credential");
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("apk bytes");
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("streams when the storage's URL isn't one a browser can fetch", async () => {
+    for (const url of ["/internal/app.apk", "file:///tmp/app.apk", ""]) {
+      const response = await downloadNativeBuild("build-1", {
+        core: coreWith(build(apkUri)),
+        storage: storageWith(async () => ({ url })),
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("content-disposition")).toContain(
+        "app%20release.apk",
+      );
+    }
+  });
+
+  it("keeps the storage's failure when it can't stream either", async () => {
+    await expect(
+      downloadNativeBuild("build-1", {
+        core: coreWith(build(apkUri)),
+        storage: createStorageAdapter({
+          name: "storage",
+          protocol: "r2",
+          getDownloadUrl: async () => {
+            throw new Error("no signing credential");
+          },
+        }),
+      }),
+    ).rejects.toThrow("no signing credential");
   });
 });
 

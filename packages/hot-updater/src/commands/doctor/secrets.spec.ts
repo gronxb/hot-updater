@@ -9,7 +9,6 @@ import {
 } from "@hot-updater/cli-tools";
 import { secret } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
-import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +16,11 @@ import {
   androidKeystoreValue,
   findKeytool,
 } from "../../utils/native/androidKeystore";
-import { checkSecrets, missingRequiredSecrets } from "./secrets";
+import {
+  checkSecrets,
+  distinctSecretFailures,
+  missingRequiredSecrets,
+} from "./secrets";
 
 let cwd: string;
 
@@ -233,8 +236,7 @@ describe("checkSecrets", () => {
         message: [
           "release-keystore isn't in the team-store secrets adapter.",
           "Check the name and your access, or import your key:",
-          "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-          "  <upload.jks>",
+          "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
         ].join("\n"),
       },
       // A debug variant keeps the debug keystore.
@@ -256,9 +258,6 @@ describe("checkSecrets", () => {
       "asc-api-key",
       "release-keystore",
     ]);
-    for (const { message } of missingRequiredSecrets(status)) {
-      expect(linesWiderThan(message!.split("\n"), 76)).toEqual([]);
-    }
     // The rest are one warning: what is wrong, and the command that stores
     // each, importing a signing key rather than issuing another.
     expect(status?.issues).toEqual([
@@ -274,17 +273,11 @@ describe("checkSecrets", () => {
         resolution: [
           "Store them before a build or a deploy reads them:",
           "npx hot-updater secrets issue asc-api-key simulator-asc-key",
-          "npx hot-updater secrets put debug-keystore --kind android-keystore \\",
-          "  <upload.jks>",
+          "npx hot-updater secrets put debug-keystore --kind android-keystore <upload.jks>",
           "npx hot-updater secrets put bundle-signing-key <key.pem>",
         ].join("\n"),
       },
     ]);
-    for (const { message, resolution } of status?.issues ?? []) {
-      expect(
-        linesWiderThan(`${message}\n${resolution}`.split("\n"), 76),
-      ).toEqual([]);
-    }
   });
 
   it("names this machine and the variable under localSecrets()", async () => {
@@ -297,8 +290,7 @@ describe("checkSecrets", () => {
       [
         "release-keystore isn't on this machine.",
         "Check the name, set HOT_UPDATER_RELEASE_KEYSTORE, or import your key:",
-        "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-        "  <upload.jks>",
+        "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
       ].join("\n"),
     );
   });
@@ -328,8 +320,7 @@ describe("checkSecrets", () => {
         ].join("\n"),
         resolution: [
           "Store it before a build or a deploy reads it:",
-          "npx hot-updater secrets put debug-keystore --kind android-keystore \\",
-          "  <upload.jks>",
+          "npx hot-updater secrets put debug-keystore --kind android-keystore <upload.jks>",
         ].join("\n"),
       }),
     ]);
@@ -448,4 +439,35 @@ describe.skipIf(!realKeytool)("checkSecrets with a JDK", () => {
     expect(status?.references[0]).not.toHaveProperty("refused");
     expect(status?.references[0]?.source).toBe("adapter");
   }, 60_000);
+});
+
+describe("distinctSecretFailures", () => {
+  it("counts failures alike when they differ only in the name", () => {
+    const first =
+      "AWS refused to read hot-updater/a.b.\nThe identity needs a permission.";
+
+    expect(
+      distinctSecretFailures([
+        { error: first, names: ["a.b"] },
+        {
+          error:
+            "AWS refused to read hot-updater/c.\nThe identity needs a permission.",
+          names: ["c"],
+        },
+        { names: ["d"] },
+      ]),
+    ).toEqual([first]);
+  });
+
+  it("keeps failures with different causes, on the same name too", () => {
+    const disabled = "hot-updater-a's current version is disabled.";
+    const refused = "The identity needs the Key Vault Secrets User role.";
+
+    expect(
+      distinctSecretFailures([
+        { error: disabled, names: ["a"] },
+        { error: refused, names: ["a", "b"] },
+      ]),
+    ).toEqual([disabled, refused]);
+  });
 });

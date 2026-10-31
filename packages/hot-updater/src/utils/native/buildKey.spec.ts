@@ -264,6 +264,39 @@ afterEach(() => {
 });
 
 describe("computeNativeBuildKey", () => {
+  it.each([
+    [
+      "android",
+      "apk",
+      { variant: "Release", aab: false, packageName: "com.app" },
+    ],
+    [
+      "ios",
+      "ipa",
+      { configuration: "Release", scheme: "App", bundleIdentifier: "com.app" },
+    ],
+  ] as const)(
+    "keys a sandbox build of %s apart from a normal one, by its setting alone and with its channel",
+    async (platform, artifactKind, schemeConfig) => {
+      const base = { platform, artifactKind, buildAdapter: "bare" };
+      const normal = await key({ ...base, schemeConfig });
+      const flagOnly = await key({
+        ...base,
+        schemeConfig: { ...schemeConfig, sandbox: true },
+      });
+      const sandbox = await key({
+        ...base,
+        schemeConfig: { ...schemeConfig, sandbox: true },
+        channel: "sandbox-release",
+      });
+
+      expect(normal.key).toMatch(/^nbk1:/);
+      expect(flagOnly.key).not.toBe(normal.key);
+      expect(sandbox.key).not.toBe(normal.key);
+      expect(sandbox.key).not.toBe(flagOnly.key);
+    },
+  );
+
   it("computes the same key from the same inputs, with and without its hash cache", async () => {
     const first = await key();
     const second = await key();

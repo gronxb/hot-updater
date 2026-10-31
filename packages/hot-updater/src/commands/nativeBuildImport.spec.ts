@@ -5,18 +5,12 @@ import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 
 import { hdiff } from "@hot-updater/bsdiff";
-import { p } from "@hot-updater/cli-tools";
 import {
   createStorageAdapter,
   createStorageUri,
   createUUIDv7,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -310,6 +304,44 @@ describe("native-build import", () => {
     expect(process.exitCode).toBeUndefined();
     expect(printedJson(stdout).nativeBuild).toMatchObject({
       min_bundle_id: MIN_BUNDLE_ID,
+    });
+  });
+
+  describe("the sandbox layer", () => {
+    const refused = async (
+      file: string,
+      options: { channel?: string } = {},
+    ) => {
+      const logged = vi.spyOn(console, "log").mockImplementation(() => {});
+      await handleNativeBuildImport(file, { json: true, ...options });
+      const printed = printedJson(logged);
+      logged.mockRestore();
+      process.exitCode = undefined;
+      return printed.ok ? [] : printed.problems.map((p: any) => p.code);
+    };
+    const sandboxAab = () =>
+      aab({
+        "base/manifest/AndroidManifest.xml": fixture("sandbox.pb"),
+        "base/dex/classes.dex": fixture("sandbox.dex"),
+      });
+
+    it("registers a sandbox build on its reserved channel", async () => {
+      const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
+      expect(await refused(file)).toEqual([]);
+    });
+
+    it("refuses a sandbox build on another channel", async () => {
+      const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
+      expect(await refused(file, { channel: "production" })).toEqual([
+        "SANDBOX_MISMATCH",
+      ]);
+    });
+
+    it("refuses a normal build on a reserved channel", async () => {
+      const file = await writeArtifact(dir, "app.aab", aab());
+      expect(await refused(file, { channel: "sandbox-beta" })).toEqual([
+        "SANDBOX_MISMATCH",
+      ]);
     });
   });
 
@@ -794,11 +826,4 @@ describe("native-build import", () => {
       expect.objectContaining({ base_bundle_id: MIN_BUNDLE_ID }),
     ]);
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

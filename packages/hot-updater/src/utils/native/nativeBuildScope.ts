@@ -1,5 +1,9 @@
-import { getCwd, type loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, getCwd, type loadConfig, p } from "@hot-updater/cli-tools";
 import type { NativeBuildScope, Platform } from "@hot-updater/plugin-core";
+import {
+  isSandboxChannel,
+  sandboxChannelOf,
+} from "@hot-updater/protocol/native-artifact";
 
 import { generateFingerprint } from "../fingerprint";
 import { getChannel } from "../setChannel";
@@ -37,8 +41,28 @@ export const resolveNativeBuildScope = async (
   const prebuildValues =
     (await buildAdapter.nativeBuild?.getNativeProjectValues?.({ platform })) ??
     {};
-  const buildChannel =
-    channel ?? prebuildValues.channel ?? (await getChannel(platform)).value;
+  const schemeConfig =
+    scheme === undefined ? undefined : config.nativeBuild[platform][scheme];
+  // A sandbox build's channel comes from its scheme, whatever the project says.
+  if (schemeConfig?.sandbox) {
+    const reserved = sandboxChannelOf(scheme!);
+    if (channel !== undefined && channel !== reserved) {
+      throw new Error(
+        `The sandbox scheme ${scheme} builds channel ${reserved}, not ${channel}.\nRemove --channel.`,
+      );
+    }
+  } else if (
+    scheme !== undefined &&
+    channel !== undefined &&
+    isSandboxChannel(channel)
+  ) {
+    throw new Error(
+      `Channel ${channel} is reserved for sandbox builds, and the scheme ${scheme} isn't one.\nPass another --channel.`,
+    );
+  }
+  const buildChannel = schemeConfig?.sandbox
+    ? sandboxChannelOf(scheme!)
+    : (channel ?? prebuildValues.channel ?? (await getChannel(platform)).value);
   if (config.updateStrategy === "fingerprint") {
     // From the config's fingerprint inputs, as a build writes fingerprint.json
     // and deploy targets, whatever the committed fingerprint.json records.
@@ -65,7 +89,7 @@ export const resolveNativeBuildScope = async (
     // No native project declares a version, and the adapter can't say what
     // its prebuild would write: generating the project is the only way left.
     const warning = `No ${platform} native project to read the app version from.\nRunning the ${buildAdapter.name} build adapter's prebuild to write it.`;
-    if (json) console.error(warning);
+    if (json) console.error(fitText(warning));
     else p.log.warn(warning);
     await prebuild({ platform });
     resolved = await resolveNativeAppVersion(platform, versionScope);

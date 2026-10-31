@@ -53,29 +53,33 @@ const NO_CREDENTIAL_ERRORS = new Set([
   "CredentialUnavailableError",
 ]);
 
-const SIGN_IN_HINT = [
-  "In CI, sign in with azure/login.",
-  "On your machine, run az login.",
-  "Or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET.",
-];
-
-/** The widest line a message has: the CLI prints no wider. */
-const LINE_WIDTH = 76;
-
-/** `text`, such as Azure's own message, in lines that fit, broken at spaces. */
-const wrap = (text: string): string[] => {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(/\s+/u).filter(Boolean)) {
-    if (line && line.length + 1 + word.length > LINE_WIDTH) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
+/** The variables `DefaultAzureCredential` signs in with first, if complete. */
+const environmentCredentialVariables = () => {
+  const { env } = process;
+  if (!env["AZURE_TENANT_ID"] || !env["AZURE_CLIENT_ID"]) return undefined;
+  if (env["AZURE_CLIENT_SECRET"]) return "AZURE_CLIENT_SECRET";
+  if (env["AZURE_CLIENT_CERTIFICATE_PATH"]) {
+    return "AZURE_CLIENT_CERTIFICATE_PATH";
   }
-  if (line) lines.push(line);
-  return lines;
+  if (env["AZURE_USERNAME"] && env["AZURE_PASSWORD"]) return "AZURE_PASSWORD";
+  return undefined;
+};
+
+/**
+ * The one step that can fix the identity in use: `az login` changes nothing
+ * while the environment's identity comes first.
+ */
+const signInHint = (credential: TokenCredential | undefined): string[] => {
+  if (credential !== undefined) {
+    return [`Check the credential passed to ${NAME}().`];
+  }
+  const variable = environmentCredentialVariables();
+  if (variable) {
+    return [`Fix or unset ${variable}, AZURE_TENANT_ID, and AZURE_CLIENT_ID.`];
+  }
+  return process.env["CI"]
+    ? ["Sign in with azure/login."]
+    : ["Sign in:", "az login"];
 };
 
 /** An error of one line each, for a terminal. */
@@ -280,30 +284,28 @@ export const keyVault = ({
     const name = errorName(error);
     const status = statusOf(error);
     const code = innerCode(error) ?? (error as RestErrorLike)?.code;
-    const detail = wrap(
-      `${code || name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}.`,
-    );
-    // On a line of its own: a name and its prefix are a line's worth.
-    const secret = `Secret: ${id}`;
     if (NO_CREDENTIAL_ERRORS.has(name)) {
       return failure(
-        [
-          `${NAME} found no Azure identity to ${verb} a secret.`,
-          secret,
-          ...wrap(`${errorMessage(error)}.`),
-          ...SIGN_IN_HINT,
-        ],
+        [`${NAME} found no Azure identity.`, ...signInHint(credential)],
         error,
       );
     }
-    if (status === 401) {
+    // AuthenticationError: Entra refused the identity, on any status.
+    if (status === 401 || name === "AuthenticationError") {
+      return failure(
+        ["Azure rejected the sign-in.", ...signInHint(credential)],
+        error,
+      );
+    }
+    // Only the vault's own host: Entra's not resolving says nothing about it.
+    if (
+      /\bENOTFOUND\b/u.test(`${code} ${errorMessage(error)}`) &&
+      errorMessage(error).includes(vault().hostname)
+    ) {
       return failure(
         [
-          `Azure Key Vault refused the sign-in to ${verb} a secret.`,
-          secret,
-          ...detail,
-          "Sign in again.",
-          ...SIGN_IN_HINT,
+          `${NAME} can't find ${vault().hostname}.`,
+          `Check ${vaultUrl === undefined ? "vaultName" : "vaultUrl"}.`,
         ],
         error,
       );
@@ -311,9 +313,7 @@ export const keyVault = ({
     if (code === "SecretDisabled") {
       return failure(
         [
-          `Azure Key Vault can't ${verb} a secret.`,
-          secret,
-          "Its current version is disabled. Enable it, or store a new value.",
+          `${id}'s current version is disabled. Enable it, or store a new value.`,
         ],
         error,
       );
@@ -321,12 +321,12 @@ export const keyVault = ({
     if (status === 403) {
       return failure(
         [
-          `Azure Key Vault refused to ${verb} a secret.`,
-          secret,
-          ...detail,
-          `The Azure identity needs the ${role} role on the vault.`,
-          `With access policies, it needs the secret permissions ${role === READ_ROLE ? "get" : "get and set"}.`,
-          "A firewall may also refuse this network.",
+          `Azure Key Vault refused to ${verb} ${id}.`,
+          code === "ForbiddenByFirewall"
+            ? "Its firewall refuses this network."
+            : code === "ForbiddenByPolicy"
+              ? `The identity needs the secret permissions ${role === READ_ROLE ? "get" : "get and set"}.`
+              : `The identity needs the ${role} role on the vault.`,
         ],
         error,
       );
@@ -335,33 +335,24 @@ export const keyVault = ({
       code === "ObjectIsBeingDeleted" ||
       /being deleted/iu.test(errorMessage(error))
     ) {
-      return failure(
-        [
-          `Azure Key Vault can't ${verb} a secret: it is being deleted.`,
-          secret,
-          "Try again in a minute.",
-        ],
-        error,
-      );
+      return failure([`${id} is being deleted. Try again in a minute.`], error);
     }
     if (status === 409 || code === "ObjectIsDeletedButRecoverable") {
       const vaultName = vaultLabel();
       return failure(
         [
-          `Azure Key Vault can't ${verb} a secret: it was deleted.`,
-          secret,
-          "Recover it, or purge it:",
-          // Broken with \ so neither command passes 76 columns.
-          `az keyvault secret recover --vault-name ${vaultName} \\`,
-          `  --name ${id}`,
-          `az keyvault secret purge --vault-name ${vaultName} \\`,
-          `  --name ${id}`,
+          `${id} was deleted. Recover it, or purge it:`,
+          `az keyvault secret recover --vault-name ${vaultName} --name ${id}`,
+          `az keyvault secret purge --vault-name ${vaultName} --name ${id}`,
         ],
         error,
       );
     }
     return failure(
-      [`Azure Key Vault failed to ${verb} a secret.`, secret, ...detail],
+      [
+        `Azure Key Vault failed to ${verb} ${id}.`,
+        `${code || name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}.`,
+      ],
       error,
     );
   };

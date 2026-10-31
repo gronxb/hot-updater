@@ -9,6 +9,27 @@ export {
 } from "./ascApiKey";
 export { buildIos } from "./buildIos";
 export {
+  applyTestFlightGroup,
+  assertBuildIsInternalOnly,
+  assertIpaIsInternalOnly,
+  distributeTestFlightBuild,
+  findInternalBetaGroup,
+  type InternalBetaGroup,
+  isVersionTrainClosed,
+  prepareSandboxArchive,
+  readTestFlightBuildStatus,
+  type SandboxArchivePlan,
+  type TestFlightBuildState,
+  type TestFlightGroupOutcome,
+} from "./sandboxTestFlight";
+export {
+  extractSimulatorApp,
+  installOnSimulator,
+  listSimulators,
+  selectSimulator,
+  type Simulator,
+} from "./simulator";
+export {
   assertTestFlightExportOptions,
   findTestFlightBuild,
   resolveTestFlightUploadKey,
@@ -18,6 +39,7 @@ export {
 } from "./uploadToTestFlight";
 export type { AppleDeviceType } from "./types";
 export { installPodsIfNeeded } from "./utils/cocoapods";
+export { assertSandboxExportOptions } from "./utils/xcodeSigning";
 export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export {
