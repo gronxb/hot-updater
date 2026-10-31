@@ -31,6 +31,8 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 static const NSTimeInterval kAmbiguousBackgroundSeconds = 2.0;
 /// How long a silent push the host has no handler for keeps the app running.
 static const NSTimeInterval kUnhandledPushSeconds = 20.0;
+/// How long a launch still in the background keeps running once React Native started.
+static const NSTimeInterval kBackgroundRunSeconds = 20.0;
 
 static NSMutableArray<dispatch_block_t> *gHeld;
 static BOOL gReleased;
@@ -45,6 +47,18 @@ static BOOL IsSandboxLink(NSURL *url) {
   return url != nil && [HotUpdaterSandboxLaunchPolicy isSandboxScheme:url.scheme];
 }
 
+/// A launch in the background gets about half a second, and a root that waits there
+/// would never get to the fallback below. This keeps the launch running, and ends as
+/// soon as the app is in the foreground.
+static UIBackgroundTaskIdentifier gHoldTask;
+static BOOL gHasHoldTask;
+
+static void EndHoldTask(void) {
+  if (!gHasHoldTask) return;
+  gHasHoldTask = NO;
+  [UIApplication.sharedApplication endBackgroundTask:gHoldTask];
+}
+
 static void ReleaseReactNative(NSString *reason) {
   if (gReleased) return;
   gReleased = YES;
@@ -53,6 +67,9 @@ static void ReleaseReactNative(NSString *reason) {
   gHeld = nil;
   for (dispatch_block_t start in held) start();
   [HotUpdaterSandboxBridge hideScreen];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kBackgroundRunSeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    EndHoldTask();
+  });
 }
 
 /// A view a React Native host can hold on to as its root before one exists. It
@@ -119,7 +136,13 @@ static UIWindowScene *ForegroundScene(void) {
 static void RequestScreen(void) {
   if (gScreenRequested) return;
   gScreenRequested = YES;
+  gHasHoldTask = YES;
+  gHoldTask = [UIApplication.sharedApplication beginBackgroundTaskWithName:@"HotUpdaterSandboxHold"
+                                                        expirationHandler:^{
+                                                          EndHoldTask();
+                                                        }];
   void (^attempt)(NSNotification *) = ^(NSNotification *note) {
+    EndHoldTask();
     if (gReleased) return;
     UIWindowScene *scene = [note.object isKindOfClass:UIWindowScene.class] ? note.object : ForegroundScene();
     [HotUpdaterSandboxBridge presentScreenIn:scene];
