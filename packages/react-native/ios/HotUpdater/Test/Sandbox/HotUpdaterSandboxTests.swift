@@ -180,6 +180,23 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
+    func aRefusedLinkDeliveredTwiceAsksOnce() async {
+        let fixture = Fixture()
+        let refused = link("pr-1", fingerprintHash: "other")
+        fixture.coordinator.receiveLink(refused)
+        fixture.coordinator.receiveLink(refused)
+        #expect(fixture.store.pendingLinks.isEmpty)
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.state.phase == .idle)
+        // Sent again after the answer, it's a new question.
+        fixture.coordinator.receiveLink(refused)
+        guard case .refused = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+    }
+
+    @Test
     func aBuildWithoutAFingerprintRefusesEveryLink() async {
         let fixture = Fixture()
         fixture.host.fingerprint = nil

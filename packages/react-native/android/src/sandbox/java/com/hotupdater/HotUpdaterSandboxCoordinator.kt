@@ -164,6 +164,9 @@ internal class HotUpdaterSandboxCoordinator(
     private var retryTarget: String? = null
     private var linkInFlight: String? = null
 
+    /** The link a refusal on screen is about: the system can deliver a cold link twice. */
+    private var refusedLink: String? = null
+
     /** A finished switch that opens the app once the links queued behind it are answered. */
     private var switchToOpen: Boolean? = null
 
@@ -194,7 +197,7 @@ internal class HotUpdaterSandboxCoordinator(
 
     /** A link from any source. The same URL already waiting or running counts once. */
     fun receiveLink(url: String) {
-        if (url == linkInFlight || queue.contains(url)) {
+        if (url == linkInFlight || url == refusedLink || queue.contains(url)) {
             log("link deduped")
             return
         }
@@ -215,7 +218,7 @@ internal class HotUpdaterSandboxCoordinator(
         when (val phase = state.phase) {
             is HotUpdaterSandboxPhase.Confirming -> remove(phase.link.url)
             is HotUpdaterSandboxPhase.WaitingForServer -> remove(phase.link.url)
-            is HotUpdaterSandboxPhase.Refused -> Unit
+            is HotUpdaterSandboxPhase.Refused -> refusedLink = null
             is HotUpdaterSandboxPhase.Failed -> retryTarget = null
             HotUpdaterSandboxPhase.Idle, is HotUpdaterSandboxPhase.Working -> return
         }
@@ -439,12 +442,14 @@ internal class HotUpdaterSandboxCoordinator(
         val link = HotUpdaterSandboxLink.parse(url)
         if (link == null) {
             remove(url)
+            refusedLink = url
             publish(state.copy(phase = HotUpdaterSandboxPhase.Refused(HotUpdaterSandboxRefusal.Unreadable(url))))
             return
         }
         val fingerprintHash = host.fingerprintHash()
         if (fingerprintHash != link.fingerprintHash) {
             remove(url)
+            refusedLink = url
             publish(
                 state.copy(
                     phase =

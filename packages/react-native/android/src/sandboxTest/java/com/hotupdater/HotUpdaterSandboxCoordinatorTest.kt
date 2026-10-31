@@ -132,6 +132,19 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a refused link delivered twice asks once`() {
+        val fixture = Fixture()
+        fixture.coordinator.receiveLink(link("pr-1", "other"))
+        fixture.coordinator.receiveLink(link("pr-1", "other"))
+        assertTrue(fixture.store.pendingLinks.isEmpty())
+        fixture.coordinator.dismiss()
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        // Sent again after the answer, it's a new question.
+        fixture.coordinator.receiveLink(link("pr-1", "other"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Refused)
+    }
+
+    @Test
     fun `a build without a fingerprint refuses every link`() {
         val fixture = Fixture()
         fixture.host.fingerprint = null

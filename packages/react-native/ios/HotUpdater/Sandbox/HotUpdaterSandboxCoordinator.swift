@@ -115,6 +115,8 @@ final class HotUpdaterSandboxCoordinator {
     private var nextOperationId = 1
     private var retryTarget: String?
     private var linkInFlight: String?
+    /// The link a refusal on screen is about: the system can deliver a cold link twice.
+    private var refusedLink: String?
     /// A finished switch that opens the app once the links queued behind it are answered.
     private var switchToOpen: Bool?
 
@@ -161,7 +163,7 @@ final class HotUpdaterSandboxCoordinator {
 
     /// A link from any source. The same URL already waiting or running counts once.
     func receiveLink(_ url: String) {
-        if url == linkInFlight || queue.contains(url) {
+        if url == linkInFlight || url == refusedLink || queue.contains(url) {
             log("link deduped")
             return
         }
@@ -183,7 +185,7 @@ final class HotUpdaterSandboxCoordinator {
         case .confirming(let link), .waitingForServer(let link):
             remove(link.url)
         case .refused:
-            break
+            refusedLink = nil
         case .failed:
             retryTarget = nil
         case .idle, .working:
@@ -394,12 +396,14 @@ final class HotUpdaterSandboxCoordinator {
         }
         guard let link = HotUpdaterSandboxLink(url: url) else {
             remove(url)
+            refusedLink = url
             setPhase(.refused(.unreadable(url: url)))
             return
         }
         let fingerprintHash = host.fingerprintHash()
         guard fingerprintHash == link.fingerprintHash else {
             remove(url)
+            refusedLink = url
             setPhase(.refused(.otherFingerprint(link: link, buildFingerprintHash: fingerprintHash)))
             return
         }
