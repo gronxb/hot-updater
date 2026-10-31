@@ -12,8 +12,17 @@
  * PROOF_PLAY_LOG (scripts/fake-play.mjs). A stage that passes empties the
  * command log, so the next stage sees only its own run.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
@@ -214,7 +223,8 @@ const lines = (file: string) =>
     ? readFileSync(file, "utf8").split("\n").filter(Boolean)
     : [];
 
-const artifactSha256 = async (storageUri: string) => {
+/** The stored artifact's digest, and the signer `keytool` reads from it. */
+const readArtifact = async (storageUri: string) => {
   const { hostname: Bucket, pathname } = new URL(storageUri);
   const client = new S3Client({
     region: env("HOT_UPDATER_S3_REGION"),
@@ -230,7 +240,21 @@ const artifactSha256 = async (storageUri: string) => {
   );
   const bytes = await Body?.transformToByteArray();
   if (!bytes) throw new Error(`${storageUri} has no contents.`);
-  return createHash("sha256").update(bytes).digest("hex");
+  const directory = mkdtempSync(path.join(os.tmpdir(), "release-proof-"));
+  try {
+    const file = path.join(directory, "artifact.aab");
+    writeFileSync(file, bytes);
+    return {
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      signer: execFileSync(
+        "keytool",
+        ["-J-Duser.language=en", "-printcert", "-jarfile", file],
+        { encoding: "utf8" },
+      ),
+    };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 };
 
 interface BuildRow {
@@ -371,10 +395,15 @@ try {
   for (const [i, upload] of uploads.entries()) {
     const build = submitted[i];
     if (!build) continue;
-    const stored = await artifactSha256(build.artifact_storage_uri);
+    const stored = await readArtifact(build.artifact_storage_uri);
     check(
-      stored === upload.sha256,
-      `upload ${i} is ${upload.sha256}, but build ${build.id}'s artifact is ${stored}`,
+      stored.sha256 === upload.sha256,
+      `upload ${i} is ${upload.sha256}, but build ${build.id}'s artifact is ${stored.sha256}`,
+    );
+    // The proof's keystore (scripts/native-build-seed.sh), not the debug one.
+    check(
+      stored.signer.includes("CN=Native build proof"),
+      `build ${build.id} isn't signed with the scheme's keystore:\n${stored.signer}`,
     );
   }
 } finally {

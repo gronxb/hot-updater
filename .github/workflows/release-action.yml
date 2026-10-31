@@ -47,9 +47,8 @@ jobs:
       # pnpm links the workspace CLI's bin only when its dist exists at
       # install time, which is before this job builds it.
       PROOF_CLI: node ../../examples-server/preview-action/scripts/record-cli.mjs node --import ../../examples-server/preview-action/scripts/fake-play.mjs ../../packages/hot-updater/dist/index.mjs
-      # One ABI. The release build stays non-debuggable: Gradle ignores the
-      # scheme's keystore for a debuggable variant, and the upload refuses the
-      # debug keystore.
+      # One ABI. The build stays what a store takes: not debuggable, and signed
+      # with the scheme's keystore, which the proof checks on what the store got.
       ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
