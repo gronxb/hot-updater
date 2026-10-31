@@ -1,5 +1,16 @@
 # @hot-updater/vercel
 
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- Updated dependencies [ef790db]
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/server@1.2.0-rc.13
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/postgres@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes

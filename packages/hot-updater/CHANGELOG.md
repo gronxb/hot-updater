@@ -1,5 +1,54 @@
 # hot-updater
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 1ed1acd: Add the `actions/release` GitHub Action, the one step a push to a release branch needs. On each platform it looks up the project's fingerprint and deploys a bundle when a store build has it, or builds a native build and submits it to TestFlight or Google Play's internal track when none does. A tracked build with no recorded submission goes through `native-build --submit` again, so rerunning a failed submit can't turn green on a bundle. `dry-run: true` only prints each decision. The `result` output and the job's summary show every platform; a failed lookup deploys and builds nothing, and a platform that fails fails the run without stopping the other one.
+
+### Patch Changes
+
+- a40da17: Make the CLI's human output shorter and easier to read. `--json` is unchanged.
+  - Messages say what is wrong and one next step. Doctor, `secrets`, `deploy`, and the secrets adapters drop sentences that restated a line, explained internals, or applied only rarely.
+  - `p` wraps prose at word boundaries. A command, a URL, or a path stays whole on its own line, however long: no command is split with ` \` any more, so each one copies as printed. Text a tool wrote, such as a build's output, prints as the tool wrote it.
+  - An error or a warning shows a provider's message instead of its raw JSON, such as Cloudflare's `errors[].message`: doctor now says `Could not check the release catalogs: 401 Authentication error`.
+  - `secrets put --kind android-keystore` without a terminal refuses once, listing all it needs: `--key-alias` and the password variables that aren't set.
+  - An unexpected failure in `deploy`, `patch`, or `fingerprint` prints its message as an error. `DEBUG=1` adds the stack.
+
+- 64fe8d8: Download and install a tracked native build from the CLI.
+  - `hot-updater native-build download <id> [-o path]` writes the artifact through the config's storage (`storage.get`), with no Console and no download URL.
+  - `hot-updater native-build install <id> [--simulator <udid>] [--device <serial>]` downloads a simulator `.app` or `.apk`, installs it on a booted simulator or a connected Android device, and opens the app the artifact names, so a sandbox build's `.sandbox` application ID works the same way.
+  - `native-build find --json` adds `downloadUrl`, the storage's `getDownloadUrl` result or `null`. Only a Console signs a signed link: the CLI doesn't hold its secret.
+  - The Console's Install card shows `native-build install` for a simulator build, in place of the `xcrun simctl` commands.
+
+- 68d6347: Fix what real-account runs of the secrets adapters found.
+  - A rejected or missing credential names what's in use: `AWS_ACCESS_KEY_ID`, `CLOUDSDK_AUTH_ACCESS_TOKEN`, `AZURE_CLIENT_SECRET`, a `credentials` option, or the set `AWS_PROFILE`, instead of a sign-in that can't replace it.
+  - `secretManager()` no longer prints the Google auth library's `MetadataLookupWarning`.
+  - `keyVault()` says to check `vaultName` or `vaultUrl` when the vault's host doesn't resolve.
+  - `doctor` prints one block for a secrets adapter it can't read, listing the names, and closes with `2 secrets not checked, 1 warning.` instead of a pass. It still exits 0.
+  - `doctor` says when `hot-updater` isn't in `package.json`, instead of `hot-updater CLI not found`.
+  - The `Source` row shows an adapter's description whole, instead of a shortened fragment, and `secretManager()` describes a secret as the other adapters do.
+
+- ef790db: Add `hot-updater secrets pull [--out .env.hotupdater] [--only a,b] [--force]`, the mirror of `secrets import`: it writes the deploy credentials a team `secrets` adapter holds to a local env file for development and local builds.
+  - A store is read by name, so it pulls what the config's adapters read with `secret()` and `HOT_UPDATER_API_KEY`, or exactly the names `--only` lists. App runtime env is out of scope.
+  - Build credentials (App Store Connect API key, Play service account, upload keystore, bundle signing key) are skipped and named, and never read: builds read them from the store, so a copy would only be a private key on disk.
+  - The file ends up 0600 and is merged, keeping other lines and comments. A name the file holds with another value is asked about at a terminal, and refused without one unless `--force`. It warns when git doesn't ignore the file, and never prints values.
+  - With `localSecrets()` there is nothing to pull: it says so and exits 0.
+
+- Updated dependencies [1ed1acd]
+- Updated dependencies [cf8b1fa]
+- Updated dependencies [64fe8d8]
+- Updated dependencies [ef790db]
+- Updated dependencies [b444c62]
+  - @hot-updater/android-helper@1.2.0-rc.13
+  - @hot-updater/console@1.2.0-rc.13
+  - @hot-updater/apple-helper@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/bsdiff@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/server@1.2.0-rc.13
+  - @hot-updater/plugin-core@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes
