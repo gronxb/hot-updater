@@ -1,0 +1,365 @@
+---
+title: "Deploy Cloudflare with Alchemy"
+description: "Declare the Cloudflare R2 bucket, D1 database and Worker in code with Alchemy, then connect them to hot-updater.config.ts."
+icon: cloudflare
+---
+
+## What this recipe declares
+
+[Alchemy](https://alchemy.run) is an infrastructure-as-code tool whose stacks
+are TypeScript. This recipe declares what the
+[Cloudflare provider](/docs/managed/cloudflare) runs and uploads the same
+prebuilt server from `@hot-updater/cloudflare`:
+
+| Resource  | Declared with            | What it holds                                                     |
+| --------- | ------------------------ | ----------------------------------------------------------------- |
+| R2 bucket | `Cloudflare.R2.Bucket`   | Bundles, patches and assets                                       |
+| D1        | `Cloudflare.D1.Database` | Metadata, with the package's numbered migrations applied in order |
+| Worker    | `Cloudflare.Worker`      | The update server, uploaded unchanged from the package            |
+
+This recipe pins `alchemy` to `2.0.0-beta.84`. Alchemy has no stable 2.x release
+yet, so keep the exact versions until you have tested newer ones.
+
+## Before you start
+
+- Install the [CLI, SDK and build adapter](/docs/get-started/installation) in
+  your app. This recipe replaces `hot-updater init`; don't run it as well.
+- Use Node.js 24.22.1+, or 26.12.1+.
+- In the Cloudflare dashboard, create two credentials:
+  - An API token with **D1 Edit** permission, which the CLI reads and writes
+    metadata with.
+  - An R2 API token with **Object Read & Write** permission, and note its Access
+    Key ID and Secret Access Key. The CLI uploads with these keys, and the
+    Worker presigns download URLs with them. Apply it to all buckets for the
+    first deploy, since the bucket doesn't exist yet, or create the bucket first
+    and scope the token to it.
+
+## Create the infrastructure project
+
+Give the stack its own directory with its own `package.json`, apart from your
+app's dependencies. In a monorepo, leave it out of the workspace list.
+
+`@hot-updater/cloudflare` is the same version as your `hot-updater`, because the
+stack deploys the Worker and migrations from that package:
+
+```json title="infra/package.json"
+{
+  "name": "hot-updater-infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "plan": "alchemy plan --stage prod --env-file ../.env.hotupdater",
+    "deploy": "alchemy deploy --stage prod --env-file ../.env.hotupdater"
+  },
+  "dependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@effect/platform-node": "4.0.7",
+    "@hot-updater/cloudflare": "<your hot-updater version>",
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.0.7"
+  },
+  "overrides": {
+    "@effect/platform-node-shared": "4.0.7"
+  }
+}
+```
+
+The `effect` pins and the override matter: this Alchemy release doesn't load
+with `effect` 4.1.
+
+```text title="infra/.gitignore"
+node_modules
+.alchemy
+```
+
+Local Alchemy state in `.alchemy/` includes the Worker's secrets in plaintext.
+Keep it out of git and back it up privately. To share state across a team, see
+Alchemy's [state stores](https://alchemy.run/state-store); `Cloudflare.state()`
+creates its own Worker and Secrets Store on your account.
+
+## Declare the stack
+
+Replace `my-app-hot-updater` with your own names:
+
+```ts title="infra/alchemy.run.ts"
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Alchemy from "alchemy";
+import * as Config from "effect/Config";
+import * as Effect from "effect/Effect";
+import { readFileSync } from "node:fs";
+
+const workerDir = "./node_modules/@hot-updater/cloudflare/worker";
+// The package's Worker settings, so an upgrade brings its own.
+const settings = JSON.parse(readFileSync(`${workerDir}/wrangler.json`, "utf8"));
+
+export default Alchemy.Stack(
+  "my-app-hot-updater",
+  { providers: Cloudflare.providers(), state: Alchemy.localState() },
+  Effect.gen(function* () {
+    const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
+
+    const bucket = yield* Cloudflare.R2.Bucket("Bucket", {
+      name: "my-app-hot-updater-storage",
+    }).pipe(Alchemy.RemovalPolicy.retain());
+
+    const database = yield* Cloudflare.D1.Database("Database", {
+      name: "my-app-hot-updater-db",
+      migrations: `${workerDir}/migrations`,
+    }).pipe(Alchemy.RemovalPolicy.retain());
+
+    const worker = yield* Cloudflare.Worker("Server", {
+      name: "my-app-hot-updater-server",
+      main: `${workerDir}/dist/index.js`,
+      bundle: false,
+      compatibility: {
+        date: settings.compatibility_date,
+        flags: settings.compatibility_flags,
+      },
+      cache: settings.cache,
+      env: {
+        DB: database,
+        BUCKET: bucket,
+        BUCKET_NAME: bucket.bucketName,
+        ACCOUNT_ID: accountId,
+        R2_ACCESS_KEY_ID: Config.Redacted(
+          "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+        ),
+        R2_SECRET_ACCESS_KEY: Config.Redacted(
+          "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+        ),
+      },
+    });
+
+    return {
+      accountId,
+      bucketName: bucket.bucketName,
+      databaseId: database.databaseId,
+      serverUrl: worker.url,
+    };
+  }),
+);
+```
+
+The prebuilt Worker reads exactly these bindings: `DB`, `BUCKET`, `BUCKET_NAME`,
+`ACCOUNT_ID`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. Keep the two R2
+values separate: `Cloudflare.R2.S3Credentials` delivers one JSON value, which
+this Worker doesn't read. The Worker has no other secret; `BETTER_AUTH_SECRET`
+belongs to a [hosted Console](/docs/guides/console-deployment).
+
+`cache` matters for your update traffic: it turns on the Workers Cache in front
+of the Worker, which Alchemy otherwise leaves off, so release catalogs are served
+from the edge.
+
+Migrations are numbered, such as `0001_hot-updater_<version>.sql`, and Alchemy
+applies the pending ones in order before it uploads the Worker that depends on
+them.
+
+## Deploy
+
+Save the credentials in your app's ignored `.env.hotupdater`, which both Alchemy
+and the CLI read:
+
+```bash title=".env.hotupdater"
+HOT_UPDATER_CLOUDFLARE_API_TOKEN=your-d1-edit-api-token
+HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID=your-r2-access-key-id
+HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
+```
+
+Sign in to Cloudflare for Alchemy, then install and deploy:
+
+```bash
+cd infra
+npm install
+npx alchemy profile edit --add Cloudflare
+npm run deploy
+```
+
+In CI, Alchemy reads no profile. Set `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` instead, with a token that can edit Workers Scripts, D1
+and Workers R2 Storage, and pass `--yes` to skip the approval prompt.
+
+`alchemy deploy` shows its plan, asks for approval and prints the stack's output:
+
+```text
+{
+  accountId: 'your-account-id',
+  bucketName: 'my-app-hot-updater-storage',
+  databaseId: 'your-d1-database-id',
+  serverUrl: 'https://my-app-hot-updater-server.your-subdomain.workers.dev'
+}
+```
+
+## Connect hot-updater.config.ts
+
+Name those outputs in the config at your app's root. It lists the plugins the
+prebuilt Worker runs, and the build adapter is your app's:
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig, secret } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+import { existsSync } from "node:fs";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: r2Storage({
+    bucketName: "my-app-hot-updater-storage",
+    accountId: "your-account-id",
+    credentials: {
+      accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+    },
+  }),
+  database: d1Database({
+    databaseId: "your-d1-database-id",
+    accountId: "your-account-id",
+    cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+  updateStrategy: "appVersion", // or "fingerprint"
+});
+```
+
+Create the app's client API key from your app's root, and save the value it prints as
+`HOT_UPDATER_API_KEY` in `.env.hotupdater`:
+
+```bash
+npx hot-updater api-key create --name my-app
+```
+
+Then configure the SDK and native code through
+[Set up your app](/docs/get-started/app-setup), with `serverUrl` as the base URL
+and this key in the `x-api-key` header. The Cloudflare credentials stay out of
+the app.
+
+## Deploy a bundle and check for it
+
+Run these from your app's root. Doctor checks the public `/version` route:
+
+```bash
+npx hot-updater doctor --server-base-url <serverUrl>
+npx hot-updater deploy -p ios -t 1.0.0
+```
+
+Ask the server for that target's catalog with the client key, where
+`cHJvZHVjdGlvbg` is the channel `production` in base64url. A `200` lists the
+bundle you deployed under `releases`, and the same request without the key
+returns `401`:
+
+```bash
+curl -H "x-api-key: $HOT_UPDATER_API_KEY" \
+  <serverUrl>/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0
+```
+
+These checks don't prove that a device applies the update. Finish with
+[Test an OTA update](/docs/get-started/test-ota) on a Release build.
+
+## Serve it from your own domain
+
+`worker.url` is the `workers.dev` URL by default. To use a hostname in a zone
+already on your account, set `domain` on the Worker, or `routes` for an existing
+route setup. The server is mounted at the root, so give it a whole hostname:
+
+```ts title="infra/alchemy.run.ts (excerpt)"
+const worker =
+  yield *
+  Cloudflare.Worker("Server", {
+    // ...the settings above
+    domain: "updates.example.com",
+    // or: routes: [{ pattern: "updates.example.com/*", zoneName: "example.com" }],
+  });
+```
+
+`worker.url` then returns the custom domain, and the app's base URL follows it.
+
+## How this differs from init
+
+| What                    | `hot-updater init`                  | This recipe                                                    |
+| ----------------------- | ----------------------------------- | -------------------------------------------------------------- |
+| Resources               | Selected or created through prompts | Declared in `alchemy.run.ts`, and reconciled on every deploy   |
+| Tooling                 | Wrangler                            | Alchemy                                                        |
+| Server                  | The package's prebuilt Worker       | The same file, plus Alchemy's `ALCHEMY_*` plain-text variables |
+| Migration history       | `d1_migrations`                     | `__alchemy_migrations`                                         |
+| Worker's R2 keys        | `wrangler secret put`               | Secret bindings read from `.env.hotupdater` on each deploy     |
+| Deployment record       | `.env.hotupdater`                   | `.env.hotupdater`, and Alchemy's state                         |
+| `hot-updater.config.ts` | Written for you                     | Written by you                                                 |
+| Client API key          | Created and saved for you           | Created with `hot-updater api-key create`                      |
+| Upgrade                 | Rerun init with `--from-env-file`   | Bump the package, then `npm run deploy`                        |
+
+## Upgrade
+
+Set `@hot-updater/cloudflare` in `infra/package.json` to your new `hot-updater`
+version, then redeploy:
+
+```bash
+cd infra
+npm install
+npm run deploy
+```
+
+Alchemy applies the release's new migrations, then uploads its Worker. When
+[`hot-updater doctor`](/docs/guides/doctor#update-outdated-infrastructure) names
+`hot-updater init` for an outdated server, run this instead: init would deploy
+over the stack with Wrangler, and read a migration history Alchemy no longer
+writes.
+
+## Move resources from init
+
+An Alchemy stack can take over what init created, keeping its data and URL.
+
+1. Create the infrastructure project as above. In `alchemy.run.ts`, set each
+   `name` to the actual name from `.env.hotupdater`:
+   `HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME`,
+   `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME` and
+   `HOT_UPDATER_CLOUDFLARE_WORKER_NAME`.
+2. Declare the bucket's settings you rely on. Alchemy's bucket settings are
+   declarative, so a bucket adopted without them loses its r2.dev access
+   (`publicAccess`, which a bucket init made public has on), custom domains
+   (`domains`), CORS rules and lifecycle rules. Don't add `jurisdiction` or a
+   location hint to the bucket or the database: a change there replaces it, and
+   the replacement doesn't keep its data.
+3. Keep `HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID` and
+   `HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY` in `.env.hotupdater`. They become
+   the Worker's R2 keys on the first deploy. If init didn't save them, create a new
+   R2 API token.
+4. Preview the plan. The bucket and database show as `adopted`, and the Worker
+   as `create`:
+
+   ```bash
+   npm run plan
+   ```
+
+5. Deploy once with `--adopt`, which the Worker needs because it has no Alchemy
+   ownership tags. Later deploys don't use it:
+
+   ```bash
+   npm run deploy -- --adopt
+   ```
+
+On this deploy, Alchemy copies the applied history from `d1_migrations` into
+`__alchemy_migrations` and applies only what's missing. It leaves `d1_migrations`
+in place and stops updating it, so manage this database through Alchemy from then
+on. Run `hot-updater doctor --server-base-url <serverUrl>` to confirm the server,
+and keep your `hot-updater.config.ts` as it is.
+
+## Storage cleanup and teardown
+
+Removing old bundles is a Hot Updater task, not an Alchemy one.
+[`hot-updater storage prune`](/docs/guides/storage-cleanup) reads the database's
+references and removes only unreferenced objects, using the R2 keys in your
+config. Object Read & Write is enough. It requires the database to own every object
+under the storage prefix, so give each stack its own bucket, or a `basePath` in
+`r2Storage`.
+
+Don't set `forceDestroy` on this bucket, or add lifecycle rules that expire its
+objects: a rule doesn't know which bundles are still live.
+
+`alchemy destroy --stage prod --env-file ../.env.hotupdater` removes the Worker.
+`RemovalPolicy.retain()` keeps the bucket and database: Alchemy forgets them and
+they stay on your account. Without it, `destroy` deletes the D1 database, and
+refuses to delete a bucket that still has objects.
