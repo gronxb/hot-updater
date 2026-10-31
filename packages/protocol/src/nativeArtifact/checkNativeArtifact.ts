@@ -7,7 +7,7 @@ import {
   type NativeArtifactKind,
   type UnreadableValue,
 } from "./readNativeArtifact";
-import { isSandboxChannel } from "./sandbox";
+import { isSandboxChannel, SANDBOX_ACTIVITY } from "./sandbox";
 
 /** Why an artifact can't be imported, as `native-build import` says it. */
 export interface NativeArtifactProblem {
@@ -52,7 +52,7 @@ const DEFAULT_CHANNEL = "production";
  * or absent, and only a sandbox build registers on a `sandbox-*` channel.
  */
 export const sandboxArtifactProblem = (
-  { kind, platform, sandbox }: NativeArtifactInfo,
+  { kind, platform, sandbox, entry }: NativeArtifactInfo,
   channel: string,
 ): NativeArtifactProblem | null => {
   const declaration =
@@ -63,6 +63,22 @@ export const sandboxArtifactProblem = (
       message: sandbox.code
         ? `The .${kind} has the sandbox layer's code, but no sandbox ${declaration}.\nBuild it again with hot-updater native-build.`
         : `The .${kind} has a sandbox ${declaration}, but not the sandbox layer's code.\nBuild it again with hot-updater native-build.`,
+    };
+  }
+  if (sandbox.code && entry.sandboxUrlScheme === null) {
+    return {
+      code: "SANDBOX_MISMATCH",
+      message: `The .${kind} is a sandbox build with no sandbox URL scheme, so no link can open it.\nBuild it again with hot-updater native-build.`,
+    };
+  }
+  if (
+    sandbox.code &&
+    platform === "android" &&
+    (entry.launchers.length !== 1 || entry.launchers[0] !== SANDBOX_ACTIVITY)
+  ) {
+    return {
+      code: "SANDBOX_MISMATCH",
+      message: `The .${kind} is a sandbox build, but its launcher is ${entry.launchers.join(", ") || "missing"}.\nBuild it again with hot-updater native-build.`,
     };
   }
   if (sandbox.code && !isSandboxChannel(channel)) {

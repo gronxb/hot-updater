@@ -21,6 +21,7 @@ vi.mock("./utils/readBuiltApp", () => ({
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.0", channel: "beta" })),
 }));
 vi.mock("./builder/runGradle", () => ({
+  runGradleTasks: vi.fn(async () => null),
   runGradle: vi.fn(async () => ({
     buildDirectory: "/app/android/app/build/outputs/apk/release",
     buildArtifactPath:

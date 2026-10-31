@@ -6,11 +6,12 @@ import {
   getCwd,
 } from "@hot-updater/cli-tools";
 
-import { runGradle } from "./builder/runGradle";
+import { runGradle, runGradleTasks } from "./builder/runGradle";
 import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 import { resolveGradleSigningEnv } from "./utils/gradleSigning";
 import { readBuiltApp } from "./utils/readBuiltApp";
 import { withSandboxGradleArgs } from "./utils/sandboxGradle";
+import { mergeManifestTask, readMergedManifest } from "./utils/sandboxManifest";
 
 export const buildAndroid = async ({
   schemeConfig,
@@ -42,18 +43,38 @@ export const buildAndroid = async ({
   const androidProjectPath = path.join(getCwd(), "android");
 
   const env = await resolveGradleSigningEnv({ schemeConfig, credentials });
-  const result = await withSandboxGradleArgs(schemeConfig, (sandboxArgs) =>
-    runGradle({
-      args: { extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`, ...sandboxArgs] },
-      env,
-      appModuleName: schemeConfig.appModuleName,
-      tasks: schemeConfig.aab
-        ? [`bundle${schemeConfig.variant}`]
-        : [`assemble${schemeConfig.variant}`],
-      logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
-      androidProjectPath,
-      logHeader,
-    }),
+  const result = await withSandboxGradleArgs(
+    schemeConfig,
+    async () => {
+      await runGradleTasks({
+        args: { extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`] },
+        env,
+        appModuleName: schemeConfig.appModuleName,
+        tasks: [mergeManifestTask(schemeConfig.variant)],
+        logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-manifest`,
+        androidProjectPath,
+        logHeader,
+      });
+      return readMergedManifest({
+        androidProjectPath,
+        appModuleName: schemeConfig.appModuleName,
+        variant: schemeConfig.variant,
+      });
+    },
+    (sandboxArgs) =>
+      runGradle({
+        args: {
+          extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`, ...sandboxArgs],
+        },
+        env,
+        appModuleName: schemeConfig.appModuleName,
+        tasks: schemeConfig.aab
+          ? [`bundle${schemeConfig.variant}`]
+          : [`assemble${schemeConfig.variant}`],
+        logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
+        androidProjectPath,
+        logHeader,
+      }),
   );
   return {
     ...result,

@@ -1,0 +1,42 @@
+
+¥
+9
+android*http://schemas.android.com/apk/res/androidmanifest"packagecom.example.app"L
+*http://schemas.android.com/apk/res/androidversionCode42"(õÑÑ2:0*"E
+*http://schemas.android.com/apk/res/androidversionName1.4.0(úÑÑ"R
+*http://schemas.android.com/apk/res/androidcompileSdkVersion37"(ÚäÑ2:0%"(platformBuildVersionCode37"2:0%"P
+*http://schemas.android.com/apk/res/androidcompileSdkVersionCodename17(ÛäÑ"(platformBuildVersionName17"2:0*
+   *©	
+†	application*
+    *ˇ
+ˆactivity"K
+*http://schemas.android.com/apk/res/androidexportedtrue"(êÄÑ2:@"U
+*http://schemas.android.com/apk/res/androidnamecom.example.app.MainActivity(ÉÄÑ*
+      R*•
+úintent-filter*	
+        *e
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.MAIN(ÉÄÑ*	
+        ;*m
+ecategory"Y
+*http://schemas.android.com/apk/res/androidname android.intent.category.LAUNCHER(ÉÄÑ*
+      C*
+    	*
+    
+*„
+⁄activity-alias"K
+*http://schemas.android.com/apk/res/androidexportedtrue"(êÄÑ2:@"Q
+*http://schemas.android.com/apk/res/androidnamecom.example.app.Launcher(ÉÄÑ"_
+*http://schemas.android.com/apk/res/androidtargetActivitycom.example.app.MainActivity(ÇÑÑ*
+      ä*•
+úintent-filter*	
+        *e
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.MAIN(ÉÄÑ*	
+        ;*m
+ecategory"Y
+*http://schemas.android.com/apk/res/androidname android.intent.category.LAUNCHER(ÉÄÑ*
+      C*
+    *
+  *	
+

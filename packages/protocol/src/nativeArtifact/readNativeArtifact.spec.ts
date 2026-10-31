@@ -23,6 +23,8 @@ import {
 } from "./readNativeArtifact";
 import {
   isSandboxChannel,
+  createPreviewLink,
+  parsePreviewLink,
   sandboxChannelOf,
   sandboxUrlSchemeOf,
 } from "./sandbox";
@@ -87,6 +89,7 @@ const RELEASE_ANDROID = {
   minBundleIdCandidates: [MIN_BUNDLE_ID],
   fingerprintCandidates: [FINGERPRINT],
   sandbox: { code: false, declared: false },
+  entry: { launchers: [], sandboxUrlScheme: null },
 } as const;
 
 describe("readNativeArtifact", () => {
@@ -199,6 +202,7 @@ describe("readNativeArtifact", () => {
       minBundleIdCandidates: [MIN_BUNDLE_ID],
       fingerprintCandidates: [FINGERPRINT],
       sandbox: { code: false, declared: false },
+      entry: { launchers: [], sandboxUrlScheme: null },
       builtInBundle: {
         path: "Payload/App.app/main.jsbundle",
         byteSize: BUNDLE.byteLength,
@@ -547,10 +551,110 @@ describe("the sandbox layer", () => {
     ]);
   });
 
+  it("reads who takes the launcher and the links, from the artifact", async () => {
+    const expected = {
+      launchers: ["com.hotupdater.HotUpdaterSandboxActivity"],
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    };
+    expect((await read(sandboxApk(), "app.apk")).entry).toEqual(expected);
+    expect(
+      (
+        await read(
+          {
+            "base/manifest/AndroidManifest.xml": fixture("sandbox.pb"),
+            "base/dex/classes.dex": fixture("sandbox.dex"),
+          },
+          "app.aab",
+        )
+      ).entry,
+    ).toEqual(expected);
+    expect((await read(sandboxIpa(), "app.ipa")).entry).toEqual({
+      launchers: [],
+      sandboxUrlScheme: "hu-sandbox-com-example-app",
+    });
+  });
+
+  it.each(["axml", "pb"])(
+    "reads an alias as a launcher of its own, from .%s",
+    async (format) => {
+      const manifest = fixture(`launcher.${format}`);
+      const files =
+        format === "axml"
+          ? { "AndroidManifest.xml": manifest, "classes.dex": fixture("classes.dex") }
+          : {
+              "base/manifest/AndroidManifest.xml": manifest,
+              "base/dex/classes.dex": fixture("classes.dex"),
+            };
+      const { entry } = await read(
+        files,
+        format === "axml" ? "app.apk" : "app.aab",
+      );
+      expect(entry.launchers).toEqual([
+        "com.example.app.MainActivity",
+        "com.example.app.Launcher",
+      ]);
+    },
+  );
+
+  const whole = { sandbox: { code: true, declared: true } };
+  const sandboxEntry = {
+    launchers: ["com.hotupdater.HotUpdaterSandboxActivity"],
+    sandboxUrlScheme: "hu-sandbox-com-example-app",
+  };
+
+  it("refuses a sandbox build the app's launcher still opens, or two", () => {
+    for (const launchers of [
+      [],
+      ["com.example.app.MainActivity"],
+      ["com.hotupdater.HotUpdaterSandboxActivity", "com.example.app.Launcher"],
+    ]) {
+      expect(
+        sandboxArtifactProblem(
+          info({ ...whole, entry: { ...sandboxEntry, launchers } }),
+          "sandbox-release",
+        )?.code,
+      ).toBe("SANDBOX_MISMATCH");
+    }
+    expect(
+      sandboxArtifactProblem(
+        info({
+          ...whole,
+          entry: {
+            ...sandboxEntry,
+            launchers: ["com.example.app.MainActivity"],
+          },
+        }),
+        "sandbox-release",
+      )?.message,
+    ).toBe(
+      "The .aab is a sandbox build, but its launcher is com.example.app.MainActivity.\nBuild it again with hot-updater native-build.",
+    );
+    expect(
+      sandboxArtifactProblem(
+        info({ ...whole, entry: sandboxEntry }),
+        "sandbox-release",
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a sandbox build no link can open", () => {
+    expect(
+      sandboxArtifactProblem(
+        info({
+          ...whole,
+          entry: { ...sandboxEntry, sandboxUrlScheme: null },
+        }),
+        "sandbox-release",
+      )?.message,
+    ).toBe(
+      "The .aab is a sandbox build with no sandbox URL scheme, so no link can open it.\nBuild it again with hot-updater native-build.",
+    );
+  });
+
   it("says what is wrong and what to do, in a line each", () => {
     expect(
       sandboxArtifactProblem(
-        info({ sandbox: { code: true, declared: true } }),
+        info({ ...whole, entry: sandboxEntry }),
         "production",
       )?.message,
     ).toBe(
@@ -559,6 +663,57 @@ describe("the sandbox layer", () => {
     expect(sandboxArtifactProblem(info({}), "sandbox-release")?.message).toBe(
       "Channel sandbox-release is reserved for sandbox builds, and the .aab isn't one.\nUse another channel, or build it with sandbox: true.",
     );
+  });
+
+  describe("preview links", () => {
+    const vectors = JSON.parse(
+      readFileSync(
+        join(fixtures, "../../../../test-utils/fixtures/sandbox-preview-links.json"),
+        "utf-8",
+      ),
+    ) as {
+      valid: {
+        link: string;
+        urlScheme: string;
+        channel: string;
+        fingerprintHash: string;
+      }[];
+      invalid: string[];
+    };
+
+    it.each(vectors.valid)("reads $link", ({ link, ...expected }) => {
+      expect(parsePreviewLink(link)).toEqual(expected);
+    });
+
+    it.each(vectors.invalid)("refuses %j", (link) => {
+      expect(parsePreviewLink(link)).toBeNull();
+    });
+
+    it("reads back what it creates, from the app's ID before any suffix", () => {
+      const link = createPreviewLink({
+        appId: "com.Example.app",
+        channel: "pr 12/b",
+        fingerprintHash: "abc",
+      });
+      expect(link).toBe(
+        "hu-sandbox-com-example-app://hot-updater/preview?channel=pr%2012%2Fb&fingerprint=abc",
+      );
+      expect(parsePreviewLink(link)).toEqual({
+        urlScheme: "hu-sandbox-com-example-app",
+        channel: "pr 12/b",
+        fingerprintHash: "abc",
+      });
+    });
+
+    it("creates no link for a channel no release can target", () => {
+      expect(() =>
+        createPreviewLink({
+          appId: "com.example.app",
+          channel: " pr-12",
+          fingerprintHash: "abc",
+        }),
+      ).toThrow("trimmed");
+    });
   });
 
   it("derives the reserved channel and a URL scheme any platform takes", () => {

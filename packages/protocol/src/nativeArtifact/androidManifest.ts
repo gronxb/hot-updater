@@ -331,6 +331,9 @@ const VERSION_NAME = 0x0101021c;
 const NAME = 0x01010003;
 const VALUE = 0x01010024;
 const RESOURCE = 0x01010025;
+const SCHEME = 0x01010027;
+
+const COMPONENTS = new Set(["activity", "activity-alias"]);
 
 /** What an Android manifest says that import reads. */
 export interface AndroidManifestInfo {
@@ -339,6 +342,10 @@ export interface AndroidManifestInfo {
   readonly versionCode: number | null;
   /** `<application>`'s `<meta-data>` values, by name. */
   readonly metaData: ReadonlyMap<string, ManifestValue>;
+  /** The `<activity>`s and `<activity-alias>`es with a MAIN + LAUNCHER filter. */
+  readonly launchers: readonly string[];
+  /** The schemes of each intent filter, by the component that declares it. */
+  readonly urlSchemes: ReadonlyMap<string, readonly string[]>;
 }
 
 const attributeOf = (
@@ -365,7 +372,41 @@ export const readAndroidManifest = (
     ({ name }) => name === "application",
   );
   const metaData = new Map<string, ManifestValue>();
+  const launchers: string[] = [];
+  const urlSchemes = new Map<string, string[]>();
+  const stringAttribute = (element: ManifestElement, id: number, name: string) => {
+    const value = attributeOf(element, id, name);
+    return value?.type === "string" ? value.value : null;
+  };
   for (const element of application?.children ?? []) {
+    if (COMPONENTS.has(element.name)) {
+      const component = stringAttribute(element, NAME, "name");
+      if (component === null) continue;
+      for (const filter of element.children) {
+        if (filter.name !== "intent-filter") continue;
+        const named = (child: string) =>
+          filter.children
+            .filter(({ name }) => name === child)
+            .map((part) => stringAttribute(part, NAME, "name"));
+        if (
+          named("action").includes("android.intent.action.MAIN") &&
+          named("category").includes("android.intent.category.LAUNCHER") &&
+          !launchers.includes(component)
+        ) {
+          launchers.push(component);
+        }
+        for (const data of filter.children) {
+          if (data.name !== "data") continue;
+          const scheme = stringAttribute(data, SCHEME, "scheme");
+          if (scheme === null) continue;
+          urlSchemes.set(component, [
+            ...(urlSchemes.get(component) ?? []),
+            scheme,
+          ]);
+        }
+      }
+      continue;
+    }
     if (element.name !== "meta-data") continue;
     const name = attributeOf(element, NAME, "name");
     // `android:resource` names a resource the app reads the value of.
@@ -381,5 +422,7 @@ export const readAndroidManifest = (
     versionName: attributeOf(manifest, VERSION_NAME, "versionName"),
     versionCode: versionCode?.type === "int" ? versionCode.value : null,
     metaData,
+    launchers,
+    urlSchemes,
   };
 };

@@ -84,7 +84,39 @@ manifest resource '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:resource="@string/channel"/>'
 manifest sandbox '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release"/>
-    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>' com.example.app.sandbox
+    <meta-data android:name="com.hotupdater.SANDBOX" android:value="true"/>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="hu-sandbox-com-example-app"/>
+      </intent-filter>
+    </activity>
+    <activity android:name="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="exampleapp"/>
+      </intent-filter>
+    </activity>' com.example.app.sandbox
+manifest launcher '>
+    <activity android:name="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+    <activity-alias android:name="com.example.app.Launcher" android:targetActivity="com.example.app.MainActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>'
 
 # Mach-O: an executable whose __cstring holds the literals, one holding
 # another UUIDv7, and a universal binary whose x86_64 slice holds another
@@ -137,3 +169,4 @@ plutil -convert binary1 -o Info.plist Info.xml.plist
 cp Info.plist Info.sandbox.plist
 plutil -replace HOT_UPDATER_CHANNEL -string sandbox-release Info.sandbox.plist
 plutil -replace HOT_UPDATER_SANDBOX -bool true Info.sandbox.plist
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName":"hot-updater-sandbox","CFBundleURLSchemes":["hu-sandbox-com-example-app"]}]' Info.sandbox.plist

@@ -11,7 +11,6 @@ vi.mock("@hot-updater/cli-tools", () => ({ getCwd: () => root }));
 import {
   findSandboxGradleBlocker,
   sandboxInitScript,
-  sandboxManifestOverlay,
   withSandboxGradleArgs,
 } from "./sandboxGradle";
 
@@ -34,32 +33,54 @@ const scheme = {
   hotUpdaterSchemeName: "release",
   appModuleName: "app",
   variant: "Release",
+  packageName: "com.example.app",
 };
+
+const mergedManifest = async () => `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity android:name="com.example.app.MainActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>`;
 
 describe("withSandboxGradleArgs", () => {
   it("adds nothing for a normal scheme", async () => {
     const build = vi.fn(async (args: string[]) => args);
+    const readManifest = vi.fn(mergedManifest);
     expect(
-      await withSandboxGradleArgs({ ...scheme, sandbox: false }, build),
+      await withSandboxGradleArgs(
+        { ...scheme, sandbox: false },
+        readManifest,
+        build,
+      ),
     ).toEqual([]);
+    expect(readManifest).not.toHaveBeenCalled();
   });
 
   it("names the init script, the SDK's property, and no incremental Kotlin, then removes its files", async () => {
     let written: { script: string; overlay: string } | undefined;
-    const args = await withSandboxGradleArgs(scheme, async (gradleArgs) => {
-      const script = gradleArgs[gradleArgs.indexOf("--init-script") + 1]!;
-      written = {
-        script,
-        overlay: path.join(path.dirname(script), "AndroidManifest.xml"),
-      };
-      expect(fs.readFileSync(written.script, "utf-8")).toContain(
-        `new File('${written.overlay}')`,
-      );
-      expect(fs.readFileSync(written.overlay, "utf-8")).toContain(
-        'android:value="sandbox-release"',
-      );
-      return gradleArgs;
-    });
+    const args = await withSandboxGradleArgs(
+      scheme,
+      mergedManifest,
+      async (gradleArgs) => {
+        const script = gradleArgs[gradleArgs.indexOf("--init-script") + 1]!;
+        written = {
+          script,
+          overlay: path.join(path.dirname(script), "AndroidManifest.xml"),
+        };
+        expect(fs.readFileSync(written.script, "utf-8")).toContain(
+          `new File('${written.overlay}')`,
+        );
+        const overlay = fs.readFileSync(written.overlay, "utf-8");
+        expect(overlay).toContain('android:value="sandbox-release"');
+        expect(overlay).toContain('android:scheme="hu-sandbox-com-example-app"');
+        return gradleArgs;
+      },
+    );
     expect(args).toEqual([
       "--init-script",
       written!.script,
@@ -71,19 +92,27 @@ describe("withSandboxGradleArgs", () => {
     expect(fs.existsSync(written!.script)).toBe(false);
     expect(fs.existsSync(written!.overlay)).toBe(false);
   });
+
+  it("builds nothing when the launcher can't be taken over", async () => {
+    const build = vi.fn(async () => "built");
+    await expect(
+      withSandboxGradleArgs(scheme, async () => "<manifest/>", build),
+    ).rejects.toThrow("has none");
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it("refuses a sandbox scheme with no package name, which its URL scheme needs", async () => {
+    await expect(
+      withSandboxGradleArgs(
+        { ...scheme, packageName: "" },
+        mergedManifest,
+        async () => "built",
+      ),
+    ).rejects.toThrow("sets no packageName");
+  });
 });
 
 describe("the files a sandbox build writes", () => {
-  it("replaces the app's channel and declares the sandbox", () => {
-    const overlay = sandboxManifestOverlay("sandbox-release");
-    expect(overlay).toContain(
-      '<meta-data android:name="com.hotupdater.CHANNEL" android:value="sandbox-release" tools:replace="android:value" />',
-    );
-    expect(overlay).toContain(
-      '<meta-data android:name="com.hotupdater.SANDBOX" android:value="true" />',
-    );
-  });
-
   it("acts on the app module only, after the project's settings, and appends the suffix", () => {
     const script = sandboxInitScript({
       appModuleName: "app",
