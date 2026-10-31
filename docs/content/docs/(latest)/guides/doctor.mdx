@@ -50,6 +50,15 @@ exit code 0. A run with an error exits with code 1:
 └  Doctor found 1 error, 2 warnings.
 ```
 
+A secrets adapter doctor can't read is a warning, with exit code 0, since CI may
+legitimately lack access. Nothing verified those names, so the last line says so
+instead of passing:
+
+```txt
+▲  2 secrets not checked, 1 warning.
+└  Doctor complete.
+```
+
 For AI agents and other automation, use JSON output:
 
 ```package-install

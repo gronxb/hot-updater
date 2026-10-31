@@ -141,6 +141,12 @@ export const ui = {
    */
   fitPath: (file: string, width: number = PATH_WIDTH): string =>
     shortenPath(displayPath(file), width),
+  /**
+   * Where a secret is, for a row: a file as `fitPath` shows it, or an
+   * adapter's own description whole, since shortening one leaves a fragment.
+   */
+  source: (where: string): string =>
+    path.isAbsolute(where) ? ui.fitPath(where) : where,
   table: <TKey extends string>(
     columns: readonly TableColumn<TKey>[],
     rows: readonly Record<TKey, StringValue>[],

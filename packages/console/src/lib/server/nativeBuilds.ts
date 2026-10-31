@@ -232,6 +232,13 @@ export async function resolveNativeBuildDownloadUrl(
   return adapter === undefined && isPublicUrl(storageUri) ? storageUri : null;
 }
 
+/**
+ * What Android's browser offers to install. An upload stores it, so a redirect
+ * to the storage serves it too; a streamed download sets it, for a storage
+ * whose `get` keeps no type.
+ */
+const APK_CONTENT_TYPE = "application/vnd.android.package-archive";
+
 const noStoreRedirect = (url: string) =>
   new Response(null, {
     headers: { "cache-control": "private, no-store", location: url },
@@ -292,9 +299,13 @@ export async function downloadNativeBuild(
     const fileName = decodeURIComponent(storageUri.split("/").at(-1) ?? "");
     const headers = new Headers(response.headers);
     headers.set("cache-control", "private, no-store");
+    if (build.artifact_kind === "apk") {
+      headers.set("content-type", APK_CONTENT_TYPE);
+    }
     headers.set(
       "content-disposition",
-      `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      // `filename` for the clients that don't read `filename*`, such as curl.
+      `attachment; filename="${fileName.replace(/[^\w.-]/gu, "_")}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
     );
     return new Response(response.body, {
       headers,

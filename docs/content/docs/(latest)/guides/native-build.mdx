@@ -259,18 +259,16 @@ bundle, and its commit. Pick a channel to list only the builds that embed it,
 such as `/native-builds?channel=pr-130` for a pull request's builds. A row
 opens the build's page, `/native-builds/<build id>`:
 
-- **Install**: an `.apk` shows a QR code of the artifact's storage URL, which
-  a phone opens without signing in to the Console, and the `adb install`
-  command. A simulator `.app` shows the
-  [`native-build install`](#install-a-build) command. An
-  `.aab` installs through Google Play or bundletool, and an `.ipa` through
-  Xcode, Apple Configurator, or [TestFlight](/docs/native-builds/testflight#upload-to-testflight). Every
-  build downloads through `/api/native-builds/<build id>/download`, which
-  answers with a fresh storage URL on each request, so the link never
-  expires. A browser that opens it without a Console session goes to the
-  build's page, which signs it in and comes back to the build. For a script
-  or a teammate without a session, create a
-  [signed download link](#signed-download-links).
+- **Install**: a QR code and a download button of the build's
+  [signed download link](#signed-download-links), which a phone opens without
+  signing in to the Console. An `.apk` [installs from it](#install-an-apk-on-a-phone).
+  An `.apk` on an emulator or over USB, and a simulator `.app`, show the
+  [`native-build install`](#install-a-build) command. An `.aab` installs through
+  Google Play or bundletool, and an `.ipa` through Xcode, Apple Configurator, or
+  [TestFlight](/docs/native-builds/testflight#upload-to-testflight). Without a
+  token, `/api/native-builds/<build id>/download` asks for the session: a browser
+  that opens it without one goes to the build's page, which signs it in and
+  comes back to the build.
 - **Build number**: the `CFBundleVersion` or `versionCode` the artifact
   reports, which the list shows as `build 66` too.
 - **Store**: for a build `testflight` or `google-play upload` submitted, the
@@ -295,9 +293,10 @@ The Console uploads nothing; the CLI reads the artifact where it is.
 
 ### Signed download links
 
-A signed link downloads one build without a Console session, so a script or a
-teammate can use it. On a hosted Console, open the build's page and select
-**Create a link without sign-in** under **Install**. The link is
+A signed link downloads one build without a Console session, so a phone, a
+script, or a teammate can use it. On a hosted Console, the build's page creates
+one when it opens and shows it under **Install**, in the QR code, the download
+button, and a link to copy. The link is
 `/api/native-builds/<build id>/download?t=<token>`:
 
 ```bash
@@ -305,17 +304,19 @@ curl -fL -o app-release.apk "<signed link>"
 ```
 
 - It works for 30 days, for this build only. The Console stores nothing, so a
-  link can't be revoked by itself: treat it like a password, and create a new
-  one when it expires.
+  link can't be revoked by itself: treat it and its QR code like a password.
+  Open the build's page again for a new one when it expires.
 - An expired or changed link answers `403`, even for a signed-in browser.
-  Create a new link on the build's page.
+  Open the build's page for a new link.
 - The Console signs links with a key derived from `BETTER_AUTH_SECRET`, the
   secret in your [host's runtime environment](/docs/guides/console-deployment#set-up-sign-in).
   Changing that secret ends every link, and every session. A Console with
   [custom authentication](/docs/guides/console-deployment#custom-authentication)
   sets the variable too, to a random value of at least 32 characters.
 - A local `hot-updater console` creates no links: it answers only on your
-  machine, and only with the session it prints.
+  machine, and only with the session it prints. Its QR code holds the storage's
+  download URL, as does a hosted Console's without the secret. That URL expires
+  on the storage's own schedule, so reload the page if the download fails.
 
 A valid link answers with one request to the Console: a redirect to the storage
 adapter's `getDownloadUrl`, and the storage serves the file.
@@ -333,6 +334,20 @@ adapter's `getDownloadUrl`, and the storage serves the file.
 A bundle's detail sheet links to the newest build of its release's scope, and
 says whether the bundle has a patch from it. Deleting a build stays with
 [`native-build delete`](#delete-a-build).
+
+### Install an APK on a phone
+
+Scan the QR code on the build's page with an Android phone, or open its signed
+link. The browser downloads the `.apk`, served as
+`application/vnd.android.package-archive` under its file name, and opening it
+starts Android's installer. No device registration is needed.
+
+- Chrome warns that the file might be harmful, so confirm **Download anyway**.
+- Android asks you to allow the browser under **Install unknown apps** the first
+  time.
+- Android refuses to install over the same package signed with another key, such
+  as a copy from Google Play. Uninstall that copy first, which erases its data.
+- An `.aab` can't go on a device directly. Build with `aab: false` for an `.apk`.
 
 ## Import a build made elsewhere
 
@@ -605,8 +620,7 @@ npx hot-updater native-build install <build id>
 
 The command checks the device first, downloads the build, installs it with
 `xcrun simctl` or `adb`, and opens the app the artifact names. A build with an
-application ID of its own, such as a sandbox build's `.sandbox`, installs beside
-the app you already have.
+application ID of its own installs beside the app you already have.
 
 - **iOS Simulator**: it uses the only booted simulator. With several booted,
   `--simulator <udid>` picks one. None booted is an error that says how to boot

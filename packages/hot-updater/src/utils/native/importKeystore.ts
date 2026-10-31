@@ -209,7 +209,7 @@ export const importKeystore = async ({
       name !== KIND && ui.kv("Name", name),
       ui.kv("Alias", keyAlias),
       ...fingerprintRows(certificate.fingerprints),
-      ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
+      ui.kv("Source", ui.source(describeStoredSecret(secrets, name))),
     ]),
   );
   await offerIssuedKeyToGitHub({ name, value, secrets });

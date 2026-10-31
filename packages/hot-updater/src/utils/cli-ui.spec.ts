@@ -1,3 +1,4 @@
+import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import { describe, expect, it } from "vitest";
@@ -69,5 +70,25 @@ describe("ui.prose", () => {
       "npx hot-updater init --provider cloudflare --build expo --from-env-file <env file>.",
       "Then check again.",
     ]);
+  });
+});
+
+describe("ui.source", () => {
+  it("keeps an adapter's description whole, with its name", () => {
+    const description =
+      'the secret "hot-updater-asc-api-key" in Azure Key Vault (https://hu-qa-083aba.vault.azure.net)';
+
+    expect(ui.source(description)).toBe(description);
+  });
+
+  it("shows a file as fitPath does", () => {
+    const file = path.join(
+      path.parse(process.cwd()).root,
+      "a-long-directory-name".repeat(8),
+      "secret.json",
+    );
+
+    expect(ui.source(file)).toBe(ui.fitPath(file));
+    expect(ui.source(file)).toContain("…");
   });
 });

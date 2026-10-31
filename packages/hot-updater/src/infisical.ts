@@ -607,7 +607,7 @@ export const infisical = ({
       }
       throw await refuse(created, `create ${name}`);
     },
-    // Path-shaped, as the CLI shortens it: `Infisical prod:/ci/asc-api-key`.
+    // `Infisical prod:/ci/asc-api-key`.
     describe: (name) =>
       `Infisical ${environment}:${folder === "/" ? "" : folder}/${name}`,
   };

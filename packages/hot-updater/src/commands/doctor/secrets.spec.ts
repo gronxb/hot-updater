@@ -16,7 +16,11 @@ import {
   androidKeystoreValue,
   findKeytool,
 } from "../../utils/native/androidKeystore";
-import { checkSecrets, missingRequiredSecrets } from "./secrets";
+import {
+  checkSecrets,
+  distinctSecretFailures,
+  missingRequiredSecrets,
+} from "./secrets";
 
 let cwd: string;
 
@@ -435,4 +439,35 @@ describe.skipIf(!realKeytool)("checkSecrets with a JDK", () => {
     expect(status?.references[0]).not.toHaveProperty("refused");
     expect(status?.references[0]?.source).toBe("adapter");
   }, 60_000);
+});
+
+describe("distinctSecretFailures", () => {
+  it("counts failures alike when they differ only in the name", () => {
+    const first =
+      "AWS refused to read hot-updater/a.b.\nThe identity needs a permission.";
+
+    expect(
+      distinctSecretFailures([
+        { error: first, names: ["a.b"] },
+        {
+          error:
+            "AWS refused to read hot-updater/c.\nThe identity needs a permission.",
+          names: ["c"],
+        },
+        { names: ["d"] },
+      ]),
+    ).toEqual([first]);
+  });
+
+  it("keeps failures with different causes, on the same name too", () => {
+    const disabled = "hot-updater-a's current version is disabled.";
+    const refused = "The identity needs the Key Vault Secrets User role.";
+
+    expect(
+      distinctSecretFailures([
+        { error: disabled, names: ["a"] },
+        { error: refused, names: ["a", "b"] },
+      ]),
+    ).toEqual([disabled, refused]);
+  });
 });
