@@ -134,10 +134,50 @@ std::atomic<int> gHotUpdaterAttributedSlot(kHotUpdaterUnattributedCrash);
 struct sigaction gHotUpdaterPreviousActions[NSIG];
 __weak RCTBridge *gHotUpdaterBridge = nil;
 
+#ifdef RCT_NEW_ARCH_ENABLED
+// The queues RCTNetworking builds and sends requests on: its method queue, plus
+// the separate request queue older React Native versions have. Empty until the
+// first request loads the module.
+NSArray<dispatch_queue_t> *HotUpdaterNetworkingQueues(RCTBridge *bridge)
+{
+  id networking = [bridge moduleForName:@"Networking" lazilyLoadIfNecessary:NO];
+  NSMutableArray<dispatch_queue_t> *queues = [NSMutableArray array];
+  for (NSString *getter in @[ @"methodQueue", @"requestQueue" ]) {
+    SEL selector = NSSelectorFromString(getter);
+    if (![networking respondsToSelector:selector]) {
+      continue;
+    }
+    id queue = ((id (*)(id, SEL))[networking methodForSelector:selector])(networking, selector);
+    if (queue && queue != RCTJSThread && queue != dispatch_get_main_queue() && ![queues containsObject:queue]) {
+      [queues addObject:queue];
+    }
+  }
+  return queues;
+}
+#endif
+
 void HotUpdaterTriggerReloadCommand(RCTBridge *bridge, NSString *reason)
 {
 #ifdef RCT_NEW_ARCH_ENABLED
-  RCTTriggerReloadCommandListeners(reason);
+  // A request reaches RCTNetworking's handlers on its second queue hop, so one
+  // made just before a reload can get there after the module's invalidate
+  // cleared them. The handlers are then rebuilt from React Native's default
+  // list, an array literal holding `[moduleRegistry moduleForName:"BlobModule"]`.
+  // From the old runtime's invalidation until the next runtime registers its
+  // modules that lookup is nil, so the literal throws and the process aborts,
+  // which counts as a crash of the bundle being launched. The reload registers
+  // the next runtime's modules before it returns, and these queues wait for it.
+  NSArray<dispatch_queue_t> *networkingQueues = HotUpdaterNetworkingQueues(bridge);
+  for (dispatch_queue_t queue in networkingQueues) {
+    dispatch_suspend(queue);
+  }
+  @try {
+    RCTTriggerReloadCommandListeners(reason);
+  } @finally {
+    for (dispatch_queue_t queue in networkingQueues) {
+      dispatch_resume(queue);
+    }
+  }
 #else
   // RCTBridge starts the next old-architecture bridge before its asynchronous
   // module invalidation finishes. Wait for this exact child bridge first.
