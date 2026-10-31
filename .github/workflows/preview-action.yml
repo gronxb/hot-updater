@@ -11,6 +11,8 @@ on:
       - "packages/hot-updater/src/commands/nativeBuild.ts"
       - "packages/hot-updater/src/commands/buildNative.ts"
       - "packages/hot-updater/src/utils/native/**"
+      - "packages/android-helper/src/uploadToPlay.ts"
+      - "packages/android-helper/src/utils/sandboxGradle.ts"
       - "packages/console/src/lib/server/nativeBuildQr.ts"
       - ".github/workflows/preview-action.yml"
 
@@ -149,6 +151,191 @@ jobs:
           node examples-server/preview-action/proof.ts closed
 
       - name: Print the Console's and the seed's logs
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/logs/*.log; do
+            echo "::group::$log"
+            cat "$log"
+            echo "::endgroup::"
+          done
+
+  # The preview action's store path on examples/v0.85.0's sandbox .aab, against
+  # Postgres, MinIO, and a fake Google Play the CLI loads with `node --import`,
+  # so the CLI's real upload runs and no real store is reached.
+  # preview-store-proof.ts holds what must happen by hand and reads what did:
+  # Postgres, the stored artifact's manifest, the fake store's record, and the
+  # commands that ran. The App Store Connect side has no fake store: its specs
+  # assert each request, and the real run checks it on a real account.
+  android-store:
+    name: Preview action (Android, fake Google Play)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PROOF_LOG: /tmp/preview-store-proof.log
+      PROOF_COMMANDS: /tmp/preview-store-proof-commands.log
+      PROOF_PLAY_LOG: /tmp/preview-store-proof-store.jsonl
+      PROOF_APP_CONFIG: preview-store.config.ts
+      PROOF_SANDBOX_SCHEME: sandboxStore
+      PROOF_PACKAGE: com.hotupdaterexample.sandbox
+      PROOF_CONSOLE_URL: http://127.0.0.1:3800
+      PROOF_CLI: node ../../examples-server/preview-action/scripts/record-cli.mjs node --import ../../examples-server/preview-action/scripts/fake-play.mjs ../../packages/hot-updater/dist/index.mjs
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - name: Use JDK 17
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - run: pnpm install
+      - name: Build
+        run: pnpm build
+
+      - name: Start Postgres and MinIO
+        run: bash examples-server/preview-action/scripts/backend.sh preview-store > "$RUNNER_TEMP/backend.env"
+      - name: Seed the backend, the release keystore, and the Play service account
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          bash examples-server/preview-action/scripts/native-build-seed.sh "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
+          keystore="$(grep '^HOT_UPDATER_RELEASE_KEYSTORE=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
+          echo "::add-mask::$keystore"
+          cat "$RUNNER_TEMP/backend.env" "$RUNNER_TEMP/seed.env" >> "$GITHUB_ENV"
+          service_account="$(node examples-server/preview-action/scripts/fake-service-account.mjs)"
+          echo "::add-mask::$service_account"
+          echo "HOT_UPDATER_PLAY_SERVICE_ACCOUNT=$service_account" >> "$GITHUB_ENV"
+          : > "$PROOF_COMMANDS"
+          # The app's first .aab, uploaded by hand in Play Console.
+          echo '{"versionCode":41,"sha256":"first upload by hand","size":0}' > "$PROOF_PLAY_LOG"
+
+      - name: Preview on a track a sandbox build must never reach
+        id: refused-track
+        continue-on-error: true
+        uses: ./actions/preview
+        with:
+          console-url: ${{ env.PROOF_CONSOLE_URL }}
+          android-scheme: ${{ env.PROOF_SANDBOX_SCHEME }}
+          android-submit: production
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+          comment: false
+      - name: Check that it refused before running the CLI
+        env:
+          PROOF_OUTCOME: ${{ steps.refused-track.outcome }}
+        run: node examples-server/preview-action/preview-store-proof.ts refused-track
+
+      - name: Preview a normal scheme on the store path
+        id: refused-normal
+        continue-on-error: true
+        uses: ./actions/preview
+        with:
+          console-url: ${{ env.PROOF_CONSOLE_URL }}
+          android-scheme: release
+          android-submit: play-internal
+          channel: pr-1
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+          comment: false
+      - name: Check that it built and uploaded nothing
+        env:
+          PROOF_OUTCOME: ${{ steps.refused-normal.outcome }}
+        run: node examples-server/preview-action/preview-store-proof.ts refused-normal
+
+      - name: Preview with nothing on the store
+        id: uploaded
+        uses: ./actions/preview
+        env:
+          PROOF_PLAY_VERSION_CODE: "42"
+        with:
+          console-url: ${{ env.PROOF_CONSOLE_URL }}
+          android-scheme: ${{ env.PROOF_SANDBOX_SCHEME }}
+          android-submit: play-internal
+          channel: pr-1
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+          comment: false
+      - name: Check that the store got the build, past its highest version code
+        env:
+          PROOF_OUTCOME: ${{ steps.uploaded.outcome }}
+          PROOF_COMMENT: ${{ steps.uploaded.outputs.comment-body }}
+          PROOF_STORE_URL: ${{ steps.uploaded.outputs.android-store-url }}
+          PROOF_STORE_STATE: ${{ steps.uploaded.outputs.android-store-state }}
+          PROOF_INSTALL_URL: ${{ steps.uploaded.outputs.android-install-url }}
+        run: node examples-server/preview-action/preview-store-proof.ts uploaded
+
+      - name: Preview another pull request with the same native code
+        id: reused
+        uses: ./actions/preview
+        with:
+          console-url: ${{ env.PROOF_CONSOLE_URL }}
+          android-scheme: ${{ env.PROOF_SANDBOX_SCHEME }}
+          android-submit: play-internal
+          channel: pr-2
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+          comment: false
+      - name: Check that the upload's check refuses this run
+        env:
+          PROOF_OUTCOME: ${{ steps.reused.outcome }}
+          PROOF_COMMENT: ${{ steps.reused.outputs.comment-body }}
+          PROOF_STORE_URL: ${{ steps.reused.outputs.android-store-url }}
+          PROOF_STORE_STATE: ${{ steps.reused.outputs.android-store-state }}
+          PROOF_INSTALL_URL: ${{ steps.reused.outputs.android-install-url }}
+        run: "! node examples-server/preview-action/preview-store-proof.ts uploaded"
+      - name: Check that nothing was uploaded, and only the bundle deployed
+        env:
+          PROOF_OUTCOME: ${{ steps.reused.outcome }}
+          PROOF_COMMENT: ${{ steps.reused.outputs.comment-body }}
+          PROOF_STORE_URL: ${{ steps.reused.outputs.android-store-url }}
+          PROOF_STORE_STATE: ${{ steps.reused.outputs.android-store-state }}
+          PROOF_INSTALL_URL: ${{ steps.reused.outputs.android-install-url }}
+        run: node examples-server/preview-action/preview-store-proof.ts reused
+
+      - name: Clean up as the first pull request closes
+        id: closed
+        uses: ./actions/preview
+        with:
+          console-url: ${{ env.PROOF_CONSOLE_URL }}
+          channel: pr-1
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+          mode: cleanup
+          comment: false
+      - name: Check that the store's build outlives the pull request
+        env:
+          PROOF_OUTCOME: ${{ steps.closed.outcome }}
+        run: node examples-server/preview-action/preview-store-proof.ts closed
+
+      - name: Let a newer release take the internal track
+        run: echo '{"versionCode":43,"sha256":"another build","size":0}' >> "$PROOF_PLAY_LOG"
+      - name: Preview once testers no longer get the build
+        id: replaced
+        uses: ./actions/preview
+        env:
+          PROOF_PLAY_VERSION_CODE: "44"
+        with:
+          console-url: ${{ env.PROOF_CONSOLE_URL }}
+          android-scheme: ${{ env.PROOF_SANDBOX_SCHEME }}
+          android-submit: play-internal
+          channel: pr-2
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+          comment: false
+      - name: Check that it built a new build past the newer release
+        env:
+          PROOF_OUTCOME: ${{ steps.replaced.outcome }}
+          PROOF_COMMENT: ${{ steps.replaced.outputs.comment-body }}
+          PROOF_STORE_URL: ${{ steps.replaced.outputs.android-store-url }}
+          PROOF_STORE_STATE: ${{ steps.replaced.outputs.android-store-state }}
+          PROOF_INSTALL_URL: ${{ steps.replaced.outputs.android-install-url }}
+        run: node examples-server/preview-action/preview-store-proof.ts replaced
+
+      - name: Print the seed's logs
         if: failure()
         run: |
           for log in "$RUNNER_TEMP"/logs/*.log; do

@@ -21,10 +21,14 @@ vi.mock("./utils/readIpaInfo", () => ({
 import { p } from "@hot-updater/cli-tools";
 
 import {
+  applyTestFlightGroup,
   assertBuildIsInternalOnly,
   assertIpaIsInternalOnly,
+  distributeTestFlightBuild,
+  findInternalBetaGroup,
   prepareSandboxArchive,
   readAppStoreTrain,
+  readTestFlightBuildStatus,
   sandboxVersionDecision,
 } from "./sandboxTestFlight";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
@@ -308,5 +312,494 @@ describe("the review block", () => {
         timeoutMs: 0,
       }),
     ).rejects.toThrow("didn't say who sandbox build 1.6.3 (69) is for");
+  });
+});
+
+/**
+ * App Store Connect, recording every request with its body: the answer of
+ * `<METHOD> <path>`, a list answering in turn and then repeating its last.
+ */
+const recordingAsc = (
+  routes: Record<string, unknown | unknown[]>,
+  statuses: Record<string, number> = {},
+) => {
+  const requests: {
+    method: string;
+    path: string;
+    query: URLSearchParams;
+    body: unknown;
+  }[] = [];
+  const fetch = vi.fn(
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      requests.push({
+        method,
+        path: url.pathname,
+        query: url.searchParams,
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      const key = `${method} ${url.pathname}`;
+      const route = routes[key];
+      const reply = Array.isArray(route)
+        ? route.length > 1
+          ? route.shift()
+          : route[0]
+        : route;
+      if (statuses[key]) {
+        const status = statuses[key]!;
+        delete statuses[key];
+        return new Response(JSON.stringify({ errors: [] }), { status });
+      }
+      if (reply === undefined) {
+        return new Response(JSON.stringify({ errors: [] }), { status: 404 });
+      }
+      return reply === null
+        ? new Response(null, { status: 204 })
+        : new Response(JSON.stringify(reply), { status: 200 });
+    },
+  );
+  return { fetch: fetch as unknown as typeof globalThis.fetch, requests };
+};
+
+const APPS = {
+  data: [{ id: "6764", attributes: { bundleId: "com.example.app" } }],
+};
+
+const listedBuild = (
+  attributes: Record<string, unknown>,
+  internalBuildState?: string,
+) => ({
+  data: [{ id: "build-1", attributes }],
+  ...(internalBuildState
+    ? {
+        included: [
+          { type: "buildBetaDetails", attributes: { internalBuildState } },
+        ],
+      }
+    : {}),
+});
+
+const VALID = listedBuild(
+  {
+    processingState: "VALID",
+    expired: false,
+    expirationDate: "2027-01-29T00:21:59-08:00",
+    buildAudienceType: "INTERNAL_ONLY",
+  },
+  "IN_BETA_TESTING",
+);
+
+describe("readTestFlightBuildStatus", () => {
+  const read = (fetch: typeof globalThis.fetch) =>
+    readTestFlightBuildStatus({
+      bundleId: "com.example.app",
+      shortVersion: "1.6.3",
+      bundleVersion: "69",
+      apiKey,
+      fetch,
+    });
+
+  it("reads the app's page and one build, by its version and number", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": VALID,
+    });
+
+    await expect(read(fetch)).resolves.toEqual({
+      testFlightUrl:
+        "https://appstoreconnect.apple.com/apps/6764/testflight/ios",
+      status: {
+        buildId: "build-1",
+        audience: "INTERNAL_ONLY",
+        state: "ready",
+        expiresAtMs: Date.parse("2027-01-29T00:21:59-08:00"),
+      },
+    });
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/v1/apps",
+      "/v1/builds",
+    ]);
+    const builds = requests[1]!.query;
+    expect(builds.get("filter[app]")).toBe("6764");
+    expect(builds.get("filter[version]")).toBe("69");
+    expect(builds.get("filter[preReleaseVersion.version]")).toBe("1.6.3");
+  });
+
+  it.each([
+    ["processing", { processingState: "PROCESSING" }, undefined, "processing"],
+    ["no processing state yet", {}, undefined, "processing"],
+    ["a failed build", { processingState: "FAILED" }, undefined, "failed"],
+    ["an invalid build", { processingState: "INVALID" }, undefined, "failed"],
+    [
+      "an expired build",
+      { processingState: "VALID", expired: true },
+      undefined,
+      "expired",
+    ],
+    ["expired in beta", { processingState: "VALID" }, "EXPIRED", "expired"],
+    [
+      "no compliance answer",
+      { processingState: "VALID" },
+      "MISSING_EXPORT_COMPLIANCE",
+      "missing-compliance",
+    ],
+    [
+      "ready for testing",
+      { processingState: "VALID" },
+      "READY_FOR_BETA_TESTING",
+      "ready",
+    ],
+  ])("says %s", async (_, attributes, internal, state) => {
+    const { fetch } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": listedBuild(attributes, internal),
+    });
+    const { status } = await read(fetch);
+    expect(status?.state).toBe(state);
+  });
+
+  it("says nothing of a build App Store Connect no longer lists", async () => {
+    const { fetch } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": { data: [] },
+    });
+    await expect(read(fetch)).resolves.toMatchObject({ status: null });
+  });
+});
+
+describe("findInternalBetaGroup", () => {
+  const find = (fetch: typeof globalThis.fetch, name = "QA") =>
+    findInternalBetaGroup({
+      bundleId: "com.example.app",
+      name,
+      apiKey,
+      fetch,
+    });
+  const group = (
+    name: string,
+    isInternalGroup: boolean,
+    hasAccessToAllBuilds = false,
+  ) => ({
+    id: `group-${name}`,
+    attributes: { name, isInternalGroup, hasAccessToAllBuilds },
+  });
+
+  it("finds an internal group by its exact name", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/betaGroups": {
+        data: [group("QA team", true), group("QA", true, true)],
+      },
+    });
+    await expect(find(fetch)).resolves.toEqual({
+      id: "group-QA",
+      name: "QA",
+      hasAccessToAllBuilds: true,
+    });
+    expect(requests[1]!.query.get("filter[app]")).toBe("6764");
+  });
+
+  it("refuses an external group, changing nothing", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/betaGroups": { data: [group("QA", false)] },
+    });
+    await expect(find(fetch)).rejects.toThrow(
+      "TestFlight group QA is external, and a sandbox build is for internal testing only.\nName an internal group.",
+    );
+    expect(requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("refuses a group that isn't there, and one that only starts the same", async () => {
+    const { fetch } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/betaGroups": { data: [group("QA team", true)] },
+    });
+    await expect(find(fetch)).rejects.toThrow(
+      "App Store Connect has no TestFlight group QA for com.example.app.",
+    );
+  });
+});
+
+describe("distributeTestFlightBuild", () => {
+  const build = {
+    appId: "6764",
+    shortVersion: "1.6.3",
+    bundleVersion: "69",
+    testFlightUrl: "https://appstoreconnect.apple.com/apps/6764/testflight/ios",
+  };
+  const group = { id: "group-1", name: "QA", hasAccessToAllBuilds: false };
+  const writes = (
+    requests: { method: string; path: string; body: unknown }[],
+  ) => requests.filter(({ method }) => method !== "GET");
+
+  it("waits for processing, then adds the build to its group and sets What to Test", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/builds": [listedBuild({ processingState: "PROCESSING" }), VALID],
+      "POST /v1/betaGroups/group-1/relationships/builds": null,
+      "POST /v1/betaBuildLocalizations": { data: { id: "l-1" } },
+    });
+
+    await expect(
+      distributeTestFlightBuild({
+        build,
+        group,
+        whatToTest: "Native build for #12.",
+        apiKey,
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "ready" });
+
+    expect(writes(requests)).toEqual([
+      {
+        method: "POST",
+        path: "/v1/betaGroups/group-1/relationships/builds",
+        query: expect.anything(),
+        body: { data: [{ type: "builds", id: "build-1" }] },
+      },
+      {
+        method: "POST",
+        path: "/v1/betaBuildLocalizations",
+        query: expect.anything(),
+        body: {
+          data: {
+            type: "betaBuildLocalizations",
+            attributes: {
+              locale: "en-US",
+              whatsNew: "Native build for #12.",
+            },
+            relationships: {
+              build: { data: { type: "builds", id: "build-1" } },
+            },
+          },
+        },
+      },
+    ]);
+  });
+
+  it("adds nothing to a group that takes every build", async () => {
+    const { fetch, requests } = recordingAsc({ "GET /v1/builds": VALID });
+    await distributeTestFlightBuild({
+      build,
+      group: { ...group, hasAccessToAllBuilds: true },
+      apiKey,
+      fetch,
+    });
+    expect(writes(requests)).toEqual([]);
+  });
+
+  it("updates the What to Test a rerun finds there", async () => {
+    const { fetch, requests } = recordingAsc(
+      {
+        "GET /v1/builds": VALID,
+        "GET /v1/builds/build-1/betaBuildLocalizations": {
+          data: [{ id: "l-1", attributes: { locale: "en-US" } }],
+        },
+        "PATCH /v1/betaBuildLocalizations/l-1": { data: { id: "l-1" } },
+      },
+      { "POST /v1/betaBuildLocalizations": 409 },
+    );
+    await distributeTestFlightBuild({
+      build,
+      whatToTest: "Again.",
+      apiKey,
+      fetch,
+    });
+    expect(writes(requests).at(-1)).toMatchObject({
+      method: "PATCH",
+      path: "/v1/betaBuildLocalizations/l-1",
+      body: { data: { attributes: { whatsNew: "Again." } } },
+    });
+  });
+
+  it("warns and writes nothing while the build is still processing", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/builds": listedBuild({ processingState: "PROCESSING" }),
+    });
+    await expect(
+      distributeTestFlightBuild({
+        build,
+        group,
+        whatToTest: "Native build for #12.",
+        apiKey,
+        fetch,
+        timeoutMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "processing" });
+    expect(writes(requests)).toEqual([]);
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("still processing build 1.6.3 (69)"),
+    );
+  });
+
+  it("fails, writing nothing, when App Store Connect couldn't process it", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/builds": listedBuild({ processingState: "INVALID" }),
+    });
+    await expect(
+      distributeTestFlightBuild({ build, group, apiKey, fetch }),
+    ).rejects.toThrow("couldn't process build 1.6.3 (69)");
+    expect(writes(requests)).toEqual([]);
+  });
+});
+
+describe("applyTestFlightGroup", () => {
+  const internal = (hasAccessToAllBuilds = false) => ({
+    data: [
+      {
+        id: "group-1",
+        attributes: {
+          name: "QA",
+          isInternalGroup: true,
+          hasAccessToAllBuilds,
+        },
+      },
+    ],
+  });
+  const apply = (
+    fetch: typeof globalThis.fetch,
+    overrides: Partial<Parameters<typeof applyTestFlightGroup>[0]> = {},
+  ) =>
+    applyTestFlightGroup({
+      bundleId: "com.example.app",
+      shortVersion: "1.6.3",
+      bundleVersion: "69",
+      name: "QA",
+      isOffered: (status) => status !== null,
+      apiKey,
+      fetch,
+      pollIntervalMs: 0,
+      ...overrides,
+    });
+  const calls = (requests: { method: string; path: string }[]) =>
+    requests.map(({ method, path }) => `${method} ${path}`);
+
+  it("reads the app, the build and the group once each, then adds the build", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": VALID,
+      "GET /v1/betaGroups": internal(),
+      "POST /v1/betaGroups/group-1/relationships/builds": null,
+    });
+
+    await expect(apply(fetch)).resolves.toMatchObject({
+      outcome: "added",
+      status: { state: "ready" },
+    });
+
+    expect(calls(requests)).toEqual([
+      "GET /v1/apps",
+      "GET /v1/builds",
+      "GET /v1/betaGroups",
+      "POST /v1/betaGroups/group-1/relationships/builds",
+    ]);
+    expect(requests.at(-1)?.body).toEqual({
+      data: [{ type: "builds", id: "build-1" }],
+    });
+  });
+
+  it("adds nothing to a group that takes every build, without waiting for processing", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": listedBuild({ processingState: "PROCESSING" }),
+      "GET /v1/betaGroups": internal(true),
+    });
+    await expect(apply(fetch)).resolves.toMatchObject({
+      outcome: "takes-every-build",
+      status: { state: "processing" },
+    });
+    expect(calls(requests)).toEqual([
+      "GET /v1/apps",
+      "GET /v1/builds",
+      "GET /v1/betaGroups",
+    ]);
+  });
+
+  it("refuses an external group, writing nothing", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": VALID,
+      "GET /v1/betaGroups": {
+        data: [
+          { id: "group-1", attributes: { name: "QA", isInternalGroup: false } },
+        ],
+      },
+    });
+    await expect(apply(fetch)).rejects.toThrow(
+      "TestFlight group QA is external",
+    );
+    expect(requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("refuses a group that isn't there, writing nothing", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": VALID,
+      "GET /v1/betaGroups": { data: [] },
+    });
+    await expect(apply(fetch)).rejects.toThrow("has no TestFlight group QA");
+    expect(requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("waits for a build still processing, as an upload does, then adds it", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": [listedBuild({ processingState: "PROCESSING" }), VALID],
+      "GET /v1/betaGroups": internal(),
+      "POST /v1/betaGroups/group-1/relationships/builds": null,
+    });
+    await expect(apply(fetch)).resolves.toMatchObject({ outcome: "added" });
+    expect(calls(requests)).toEqual([
+      "GET /v1/apps",
+      "GET /v1/builds",
+      "GET /v1/betaGroups",
+      "GET /v1/builds",
+      "POST /v1/betaGroups/group-1/relationships/builds",
+    ]);
+  });
+
+  it("warns and writes nothing while the build is still processing", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": listedBuild({ processingState: "PROCESSING" }),
+      "GET /v1/betaGroups": internal(),
+    });
+    await expect(apply(fetch, { timeoutMs: 0 })).resolves.toMatchObject({
+      outcome: "pending",
+      status: { state: "processing" },
+    });
+    expect(requests.every(({ method }) => method === "GET")).toBe(true);
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("so its testers aren't set"),
+    );
+  });
+
+  it("fails, writing nothing, when processing fails during the wait", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": [
+        listedBuild({ processingState: "PROCESSING" }),
+        listedBuild({ processingState: "INVALID" }),
+      ],
+      "GET /v1/betaGroups": internal(),
+    });
+    await expect(apply(fetch)).rejects.toThrow(
+      "couldn't process build 1.6.3 (69)",
+    );
+    expect(requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it("reads no group for a build testers can't get", async () => {
+    const { fetch, requests } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": { data: [] },
+    });
+    await expect(apply(fetch)).resolves.toMatchObject({
+      outcome: "not-offered",
+      status: null,
+    });
+    expect(calls(requests)).toEqual(["GET /v1/apps", "GET /v1/builds"]);
   });
 });

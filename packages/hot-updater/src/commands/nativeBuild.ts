@@ -35,6 +35,11 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import {
+  applyStoreTestFlightGroup,
+  readStoreStatus,
+  type StoreStatus,
+} from "../utils/native/storeStatus";
 import { printBanner } from "../utils/printBanner";
 import { confirmMutation, safeDispose } from "./release";
 
@@ -47,6 +52,11 @@ export interface NativeBuildFindOptions {
    * whose kind of artifact a registered build must be.
    */
   readonly scheme?: string;
+  /**
+   * Asks the store for what a build the project submitted is doing there, for
+   * a run that would reuse it. It takes `--scheme`, whose app and key it reads.
+   */
+  readonly storeStatus?: boolean;
   readonly json?: boolean;
 }
 
@@ -75,6 +85,11 @@ export const handleNativeBuildFind = async (
     ) {
       throw new Error(
         `scheme ${options.scheme} is not in nativeBuild.${options.platform} in hot-updater.config.ts.`,
+      );
+    }
+    if (options.storeStatus && options.scheme === undefined) {
+      throw new Error(
+        "--store-status reads the store's app of a scheme.\nPass --scheme.",
       );
     }
     const scope = await resolveNativeBuildScope(config, options);
@@ -106,9 +121,32 @@ export const handleNativeBuildFind = async (
       await safeDispose(server);
     }
 
+    const store: StoreStatus | null =
+      options.storeStatus && nativeBuild?.submitted_to
+        ? await readStoreStatus(config, {
+            platform: options.platform,
+            scheme: options.scheme!,
+            build: nativeBuild,
+            onError: (error) => {
+              const message = `Couldn't read the store's status of the build.\n${error instanceof Error ? error.message : String(error)}`;
+              if (options.json) console.error(fitText(message));
+              else p.log.warn(message);
+            },
+          })
+        : null;
+
     if (options.json) {
       console.log(
-        JSON.stringify({ ...scope, nativeBuild, downloadUrl }, null, 2),
+        JSON.stringify(
+          {
+            ...scope,
+            nativeBuild,
+            downloadUrl,
+            ...(options.storeStatus ? { store } : {}),
+          },
+          null,
+          2,
+        ),
       );
       return;
     }
@@ -135,6 +173,13 @@ export const handleNativeBuildFind = async (
         ui.kv("Kind", nativeBuild.artifact_kind),
         ui.kv("Min bundle ID", ui.id(nativeBuild.min_bundle_id)),
         ui.kv("Created", formatUtc(nativeBuild.created_at_ms)),
+        store !== null &&
+          ui.kv(
+            "Store",
+            [store.version, store.state, store.url]
+              .filter((part) => part !== null)
+              .join(" · "),
+          ),
       ]),
     );
   } catch (error) {
@@ -180,6 +225,61 @@ const requireNativeBuild = async (
     );
   }
   return build;
+};
+
+/**
+ * Adds a sandbox build already on TestFlight to an internal group, with no new
+ * upload, and prints what App Store Connect says of the build.
+ */
+export const handleNativeBuildTestFlightGroup = async (
+  id: string,
+  group: string,
+  options: { readonly scheme: string; readonly json?: boolean },
+) => {
+  if (!options.json) printBanner();
+  try {
+    const config = await loadConfig({ platform: "ios", channel: "" });
+    if (!config.nativeBuild.ios[options.scheme]?.sandbox) {
+      throw new Error(
+        `testflight-group takes a sandbox scheme, and ${options.scheme} isn't one.\nSet sandbox: true on it, or add the build to ${group} in TestFlight.`,
+      );
+    }
+    const server = await loadServer(await loadConfig(null));
+    let build: NativeBuildRow;
+    try {
+      build = await requireNativeBuild(server, id);
+    } finally {
+      await safeDispose(server);
+    }
+    if (build.submitted_to !== "testflight") {
+      throw new Error(
+        `Native build ${id} isn't on TestFlight.\nUpload one: npx hot-updater native-build ios --scheme ${options.scheme} --submit testflight`,
+      );
+    }
+    const store = await applyStoreTestFlightGroup(config, {
+      scheme: options.scheme,
+      build,
+      group,
+    });
+    if (options.json) {
+      console.log(JSON.stringify(store, null, 2));
+      return;
+    }
+    const line = {
+      added: `Added ${store.version} to ${group}.`,
+      "takes-every-build": `${group} takes every build, so it has ${store.version}.`,
+      pending: `${store.version} is still processing, so ${group} doesn't have it yet.`,
+      "not-offered": `TestFlight no longer offers ${store.version}, so ${group} didn't get it.`,
+    }[store.group];
+    if (store.group === "added" || store.group === "takes-every-build") {
+      p.log.success(line);
+    } else {
+      p.log.warn(line);
+      process.exitCode = 1;
+    }
+  } catch (error) {
+    failCommand(error, options.json);
+  }
 };
 
 export interface NativeBuildDownloadOptions {

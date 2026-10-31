@@ -16,6 +16,11 @@ let ipaFailure: Error | null;
 let artifactFailure: Error | null;
 /** The artifact's version a cached build reports. */
 let cachedVersion: string | undefined;
+/** The build number a cached build reports. */
+let cachedBuildNumber: string | undefined;
+/** The registry's row of a cached build, which says the store took it. */
+let cachedRow: Record<string, unknown> | undefined;
+let groupFailure: Error | null;
 
 const ascApiKey = {
   keyPath: "/tmp/AuthKey_ABC.p8",
@@ -33,6 +38,28 @@ vi.mock("@hot-updater/apple-helper", () => ({
   assertBuildIsInternalOnly: vi.fn(async () => {
     events.push("check audience");
     if (audienceFailure) throw audienceFailure;
+    return {
+      appId: "123",
+      buildId: "build-1",
+      audience: "INTERNAL_ONLY",
+      state: "processing",
+      expiresAtMs: null,
+      testFlightUrl: "https://example.com",
+    };
+  }),
+  distributeTestFlightBuild: vi.fn(async () => {
+    events.push("distribute");
+    return {
+      buildId: "build-1",
+      audience: "INTERNAL_ONLY",
+      state: "ready",
+      expiresAtMs: Date.parse("2099-01-01T00:00:00Z"),
+    };
+  }),
+  findInternalBetaGroup: vi.fn(async () => {
+    events.push("find group");
+    if (groupFailure) throw groupFailure;
+    return { id: "group-1", name: "QA", hasAccessToAllBuilds: false };
   }),
   buildIos: vi.fn(async () => ({ logFilePath: null })),
   findTestFlightBuild: vi.fn(async () => ({ found: false })),
@@ -129,9 +156,11 @@ vi.mock("../utils/native/reuseNativeBuild", () => ({
       cachedVersion === undefined
         ? null
         : {
-            source: "local",
-            nativeBuildId: null,
+            ...(cachedRow
+              ? { source: "storage", nativeBuild: cachedRow }
+              : { source: "local", nativeBuildId: null }),
             result: {
+              buildNumber: cachedBuildNumber,
               platform: "ios",
               scheme: "release",
               minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
@@ -177,7 +206,11 @@ vi.mock("../utils/native/nativeBuildSubmission", () => ({
     `${version} (${build})`,
 }));
 
-import { prepareSandboxArchive } from "@hot-updater/apple-helper";
+import {
+  distributeTestFlightBuild,
+  findInternalBetaGroup,
+  prepareSandboxArchive,
+} from "@hot-updater/apple-helper";
 import { p, secret } from "@hot-updater/cli-tools";
 
 import { assertBuiltArtifact } from "../utils/native/sandbox";
@@ -205,6 +238,9 @@ beforeEach(() => {
   ipaFailure = null;
   artifactFailure = null;
   cachedVersion = undefined;
+  cachedBuildNumber = undefined;
+  cachedRow = undefined;
+  groupFailure = null;
   iosScheme = {
     bundleIdentifier: "com.example.app",
     sandbox: true,
@@ -315,6 +351,106 @@ describe("native-build of a sandbox scheme", () => {
     expect(p.log.error).not.toHaveBeenCalled();
   });
 
+  it("builds anew when the store has a cached build's number and no record says it is this one", async () => {
+    cachedVersion = "1.7.0";
+    cachedBuildNumber = "68";
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+    expect(events).toContain("build");
+    expect(p.log.info).toHaveBeenCalledWith(
+      "Cache skipped · the store has build 68",
+    );
+  });
+
+  it("reuses a cached build the store doesn't have yet", async () => {
+    cachedVersion = "1.7.0";
+    cachedBuildNumber = "69";
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+    expect(events).not.toContain("build");
+    expect(events).toContain("upload");
+  });
+
+  it("uploads nothing for a cached build the record says the store took", async () => {
+    cachedVersion = "1.7.0";
+    cachedBuildNumber = "68";
+    cachedRow = {
+      id: "build-1",
+      submitted_to: "testflight",
+      submitted_version: "1.7.0 (68)",
+      submitted_at_ms: 1,
+    };
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+    expect(events).not.toContain("build");
+    expect(events).not.toContain("upload");
+  });
+
+  it("keeps the cached build without a store to upload to", async () => {
+    cachedVersion = "1.7.0";
+    cachedBuildNumber = "68";
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+    expect(events).not.toContain("build");
+  });
+
+  it("checks the group before it builds, and sets it and What to Test after the audience", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+      testflightGroup: "QA",
+      whatToTest: "Native build for #12.",
+      json: true,
+    });
+
+    expect(events.indexOf("find group")).toBeLessThan(events.indexOf("build"));
+    expect(events.indexOf("check audience")).toBeLessThan(
+      events.indexOf("distribute"),
+    );
+    expect(findInternalBetaGroup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bundleId: "com.example.app",
+        name: "QA",
+      }),
+    );
+    expect(distributeTestFlightBuild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        group: { id: "group-1", name: "QA", hasAccessToAllBuilds: false },
+        whatToTest: "Native build for #12.",
+      }),
+    );
+    const printed = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+    log.mockRestore();
+    expect(printed.submission.store).toEqual({
+      destination: "testflight",
+      url: "https://example.com",
+      version: "1.7.0 (69)",
+      state: "ready",
+      expiresAtMs: Date.parse("2099-01-01T00:00:00Z"),
+      reusable: true,
+    });
+  });
+
+  it("builds nothing for a group App Store Connect refuses", async () => {
+    groupFailure = new Error("TestFlight group QA is external");
+    const printed = await fail(
+      handleNativeBuildCreate("ios", {
+        scheme: "release",
+        submit: "testflight",
+        testflightGroup: "QA",
+      }),
+    );
+    expect(printed).toContain("TestFlight group QA is external");
+    expect(events).not.toContain("build");
+    expect(events).not.toContain("upload");
+  });
+
   it("reads no store for a simulator scheme", async () => {
     iosScheme = { ...iosScheme, simulator: true, signing: undefined };
     await handleNativeBuildCreate("ios", { scheme: "release" });
@@ -323,6 +459,27 @@ describe("native-build of a sandbox scheme", () => {
 });
 
 describe("native-build of a normal scheme", () => {
+  it.each([
+    ["--testflight-group", { testflightGroup: "QA" }],
+    ["--what-to-test", { whatToTest: "Native build for #12." }],
+  ])("refuses %s, building nothing", async (_, options) => {
+    iosScheme = {
+      bundleIdentifier: "com.example.app",
+      signing: { ascApiKey: secret("asc-api-key") },
+    };
+    const printed = await fail(
+      handleNativeBuildCreate("ios", {
+        scheme: "release",
+        submit: "testflight",
+        ...options,
+      }),
+    );
+    expect(printed).toContain(
+      "--testflight-group and --what-to-test go with a sandbox scheme's --submit testflight.",
+    );
+    expect(events).not.toContain("build");
+  });
+
   it("never checks the internal-only flag or the store's train", async () => {
     iosScheme = {
       bundleIdentifier: "com.example.app",

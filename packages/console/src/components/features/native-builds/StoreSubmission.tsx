@@ -16,7 +16,7 @@ export const storeTrackLabels = {
   string
 >;
 
-type Submitted = NativeBuildRow & {
+export type Submitted = NativeBuildRow & {
   readonly submitted_to: NonNullable<NativeBuildRow["submitted_to"]>;
 };
 

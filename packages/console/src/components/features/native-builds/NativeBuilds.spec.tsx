@@ -567,7 +567,7 @@ describe("InstallCard", () => {
         submitted_at_ms: 0,
         submitted_version: "1.7.0 (66)",
       },
-      [/bundletool/g, /rolled out/g],
+      [/rolled out/g],
     ],
     [
       "ipa",
@@ -585,7 +585,7 @@ describe("InstallCard", () => {
         submitted_at_ms: 0,
         submitted_version: "1.7.0 (66)",
       },
-      [/testers/g, /devices/g],
+      [/testers/g, /processed/g],
     ],
     [
       "app",
@@ -719,6 +719,12 @@ describe("a submitted build's page", () => {
     );
     expect(screen.queryByText("npx hot-updater testflight")).toBeNull();
     expect(screen.getByText("Store")).toBeTruthy();
+    // The store installs it: no QR code of the file, and no signed link read.
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(downloadLinkQuery).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", { name: /Open App Store Connect/ }),
+    ).toHaveProperty("href", "https://appstoreconnect.apple.com/apps");
   });
 
   it("shows no store line for a build no store took", () => {
@@ -749,6 +755,9 @@ describe("a submitted build's page", () => {
     expect(screen.getByText(/Submitted to Google Play/).textContent).toContain(
       "once its release is rolled out",
     );
+    expect(
+      screen.getByRole("link", { name: /Open Play Console/ }),
+    ).toHaveProperty("href", "https://play.google.com/console");
   });
 });
 

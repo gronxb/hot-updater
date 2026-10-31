@@ -304,29 +304,34 @@ it out.
 
 ## Inputs
 
-| Input               | Default                        | Description                                                                                                    |
-| ------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `console-url`       |                                | The Console's URL, which the comment's download links and QR code point at                                     |
-| `platforms`         | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
-| `android-scheme`    |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                             |
-| `ios-scheme`        |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
-| `channel`           | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to                            |
-| `credit`            | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                         |
-| `comment`           | `true`                         | Whether to write the comment                                                                                   |
-| `mode`              | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
-| `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                                                              |
-| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                        |
-| `github-token`      | `github.token`                 | The token that writes the comment                                                                              |
+| Input                  | Default                        | Description                                                                                                     |
+| ---------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `console-url`          |                                | The Console's URL, which the comment's download links and QR code point at                                      |
+| `platforms`            | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
+| `android-scheme`       |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                              |
+| `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
+| `android-submit`       |                                | `play-internal` releases a sandbox scheme's `.aab` to Google Play's internal testing track                      |
+| `ios-submit`           |                                | `testflight` uploads a sandbox scheme's `.ipa` to TestFlight for internal testing                               |
+| `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
+| `channel`              | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to                             |
+| `credit`               | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                          |
+| `comment`              | `true`                         | Whether to write the comment                                                                                    |
+| `mode`                 | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
+| `working-directory`    | `.`                            | The app's directory, with `hot-updater.config.ts`                                                               |
+| `cli`                  | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                         |
+| `github-token`         | `github.token`                 | The token that writes the comment                                                                               |
 
 ## Outputs
 
-| Output                                        | Description                                                                                                                                             |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `comment-body`                                | The comment's Markdown                                                                                                                                  |
-| `previews`                                    | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, and `downloadUrl` |
-| `android-install-url`, `ios-install-url`      | What a person opens: the comment's **Download** link, or for a Simulator app, its `npx hot-updater native-build install <build id>` command              |
-| `android-download-url`, `ios-download-url`    | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                     |
-| `android-build-log`, `ios-build-log`          | When the platform's native build fails, the path of its build log                                                                                       |
+| Output                                     | Description                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment-body`                             | The comment's Markdown                                                                                                                                                                                                                                          |
+| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, and with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`) |
+| `android-install-url`, `ios-install-url`   | What a person opens: the comment's **Download** link, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link                                                                                |
+| `android-download-url`, `ios-download-url` | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                                                                                                                             |
+| `android-store-url`, `ios-store-url`       | With a store input, the store's link. Empty when the store couldn't be read                                                                                                                                                                                     |
+| `android-store-state`, `ios-store-state`   | With a store input, the store's word on the build: `processing`, `ready`, `missing-compliance`, or `draft`. Empty when the store couldn't be read                                                                                                               |
+| `android-build-log`, `ios-build-log`       | When the platform's native build fails, the path of its build log                                                                                                                                                                                               |
 
 A platform's outputs are set when the action previews it, so a cleanup run and a
 pull request from a fork have none.
@@ -373,6 +378,83 @@ Or fetch `android-download-url` or `ios-download-url` with no credentials, when
   reads through `env` or an expression. In a public repository, use
   `native-build download`.
 </Callout>
+
+## Install through TestFlight or Google Play
+
+An iPhone that isn't registered installs through TestFlight, and a team that
+can't sideload an APK installs through Google Play. Point the action at a
+[sandbox](/docs/native-builds/sandbox) scheme and name the store:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      sandbox: {
+        packageName: "com.example.app",
+        signing: { keystore: secret("release-keystore") },
+        sandbox: true,
+      },
+    },
+    ios: {
+      sandbox: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+        sandbox: true,
+      },
+    },
+  },
+  // ...build, storage, database, signing, plugins
+});
+```
+
+```yaml
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android,ios
+          android-scheme: sandbox
+          android-submit: play-internal
+          ios-scheme: sandbox
+          ios-submit: testflight
+          ios-testflight-group: QA
+```
+
+Each pull request still gets its own channel, and its bundle deploys there. The
+store build lives on the sandbox scheme's own channel, so pull requests with the
+same native code share it:
+
+- **The fingerprint has a build the store still offers.** Nothing is built or
+  uploaded. The action asks the store for the build's state, adds the build to
+  `ios-testflight-group`, and deploys the bundle.
+- **It has none.** The action builds and uploads one. On iOS, the build number
+  follows App Store Connect, What to Test names the pull request, and the build
+  joins `ios-testflight-group`, an internal group. On Android, the version code
+  follows Google Play. A new build's `MIN_BUNDLE_ID` passes other open pull
+  requests' bundles, so they push again.
+- **The store no longer offers it.** A TestFlight build within a week of its
+  90-day expiry, or a Google Play build a newer release replaced on the internal
+  track, gets a new build.
+
+The comment's row shows the store's link and state, such as **processing**, in
+place of **Download**. TestFlight's link opens the app in App Store Connect:
+internal testers install from the TestFlight app. Google Play's link is where a
+tester on the internal track opts in. A closed pull request deletes its channel,
+and the store build stays for the others.
+
+`ios-submit` and `android-submit` go no further than internal testing, and refuse
+a scheme without `sandbox: true`. A group that isn't internal stops the run before
+it builds or deploys. A build still processing joins its group once App Store
+Connect has processed it, or on a later run. Set up each store first, as
+[TestFlight](/docs/native-builds/testflight) and
+[Google Play](/docs/native-builds/google-play) describe. The `.sandbox` app needs
+its own record in Play Console, with its first `.aab` uploaded and rolled out by
+hand. Until then a release stays a draft, and the comment says so.
 
 ## Pull requests from forks
 

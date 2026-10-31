@@ -1,6 +1,6 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
-import { AlertTriangle, Download } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink } from "lucide-react";
 
 import { QrCode } from "@/components/QrCode";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -20,7 +20,7 @@ import {
 import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDownloadLink";
 
 import { CopyableText } from "./CopyableText";
-import { isSubmitted } from "./StoreSubmission";
+import { isSubmitted, type Submitted } from "./StoreSubmission";
 
 /**
  * What an artifact installs on, where the file alone isn't enough: the card
@@ -131,6 +131,69 @@ function SubmittedVersion({ build }: { readonly build: NativeBuildRow }) {
 }
 
 /**
+ * Where a store's testers and its people get a build: a tester's own link needs
+ * the app's ID in the store, which only the pull request's comment has.
+ */
+const STORE_CONSOLES = {
+  testflight: {
+    name: "App Store Connect",
+    url: "https://appstoreconnect.apple.com/apps",
+  },
+  "play-internal": {
+    name: "Play Console",
+    url: "https://play.google.com/console",
+  },
+} as const;
+
+/**
+ * A build a store took installs from the store, so the card leads with it, and
+ * the file stays for keeping, with no QR code or signed link to ask for.
+ */
+function StoreInstallCard({ build }: { readonly build: Submitted }) {
+  const store = STORE_CONSOLES[build.submitted_to];
+  return (
+    <Card className="overflow-hidden shadow-sm">
+      <CardHeader className="border-b px-4 py-3">
+        <CardTitle className="text-sm">
+          <h2>Install</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex min-w-0 flex-col gap-4 p-4 sm:p-6">
+        <InstallSteps build={build} />
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <a
+            className={buttonVariants({
+              className:
+                "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
+            })}
+            href={store.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLink data-icon="inline-start" />
+            Open {store.name}
+          </a>
+          <a
+            className={buttonVariants({
+              className:
+                "h-auto min-h-11 w-full min-w-0 py-2 whitespace-normal sm:min-h-8 sm:w-fit",
+              variant: "outline",
+            })}
+            download
+            href={nativeBuildDownloadPath(build.id)}
+          >
+            <Download data-icon="inline-start" />
+            <span className="text-left [overflow-wrap:anywhere]">
+              Download {nativeBuildFileName(build)}
+            </span>
+          </a>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * How else the artifact installs, beside its QR code's caption and its
  * download: none of it repeats the caption.
  */
@@ -192,7 +255,9 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
     case "ipa":
       return isSubmitted(build) ? (
         <p className="text-xs text-muted-foreground">
-          On TestFlight as <SubmittedVersion build={build} />.
+          On TestFlight as <SubmittedVersion build={build} />. Internal testers
+          install it from the TestFlight app once App Store Connect has
+          processed it, and a preview's pull request comment shows that state.
         </p>
       ) : (
         <div className="flex min-w-0 flex-col gap-2">
@@ -239,13 +304,23 @@ function SignedLink({
 }
 
 /**
- * Installs one native build: every artifact by a QR code of its signed link,
- * which a phone without a session scans, and by download here or the link
- * itself; an APK or a simulator app also with `native-build install`, and an
- * IPA's or an AAB's testers through its store. Where the Console can't sign,
- * the QR code holds the storage's URL and the download asks for the session.
+ * Installs one native build: an IPA or AAB a store took, from the store; every
+ * other artifact by a QR code of its signed link, which a phone without a
+ * session scans, and by download here or the link itself; an APK or a simulator
+ * app also with `native-build install`, and an IPA's or an AAB's testers through
+ * its store. Where the Console can't sign, the QR code holds the storage's URL
+ * and the download asks for the session.
  */
 export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
+  return isSubmitted(build) &&
+    (build.artifact_kind === "ipa" || build.artifact_kind === "aab") ? (
+    <StoreInstallCard build={build} />
+  ) : (
+    <FileInstallCard build={build} />
+  );
+}
+
+function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
   const fileName = nativeBuildFileName(build);
   const link = useNativeBuildDownloadLinkQuery(build.id);
   const signedUrl =

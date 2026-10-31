@@ -71,6 +71,19 @@ describe("withSandboxGradleArgs", () => {
     expect(fs.existsSync(written!.script)).toBe(false);
     expect(fs.existsSync(written!.overlay)).toBe(false);
   });
+
+  it("passes the lowest version code to the init script", async () => {
+    await withSandboxGradleArgs(
+      scheme,
+      async (gradleArgs) => {
+        const script = gradleArgs[gradleArgs.indexOf("--init-script") + 1]!;
+        expect(fs.readFileSync(script, "utf-8")).toContain(
+          "def minVersionCode = 42",
+        );
+      },
+      { minVersionCode: 42 },
+    );
+  });
 });
 
 describe("the files a sandbox build writes", () => {
@@ -97,6 +110,29 @@ describe("the files a sandbox build writes", () => {
     expect(script).toContain(
       "dsl.defaultConfig.applicationIdSuffix = (dsl.defaultConfig.applicationIdSuffix ?: '') + '.sandbox'",
     );
+  });
+
+  it("raises the version code past the store's, in defaultConfig and any flavor, only when asked", () => {
+    const raised = sandboxInitScript({
+      appModuleName: "app",
+      variant: "Release",
+      overlay: "/tmp/AndroidManifest.xml",
+      minVersionCode: 42,
+    });
+    expect(raised).toContain("def minVersionCode = 42");
+    expect(raised).toContain(
+      "dsl.defaultConfig.versionCode = Math.max(dsl.defaultConfig.versionCode ?: 0, minVersionCode)",
+    );
+    expect(raised).toContain(
+      "flavor.versionCode = Math.max(flavor.versionCode, minVersionCode)",
+    );
+    expect(
+      sandboxInitScript({
+        appModuleName: "app",
+        variant: "Release",
+        overlay: "/tmp/AndroidManifest.xml",
+      }),
+    ).toContain("def minVersionCode = null");
   });
 
   it("fails in Gradle on AGP 9's default DSL and on a manifest it would replace", () => {

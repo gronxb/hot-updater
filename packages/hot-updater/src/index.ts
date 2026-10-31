@@ -18,7 +18,9 @@ import {
   nativeBuildSchemeCommandOption,
   platformCommandOption,
   playSubmitCommandOption,
+  testFlightGroupCommandOption,
   testFlightSubmitCommandOption,
+  whatToTestCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
@@ -83,6 +85,7 @@ import {
   handleNativeBuildDelete,
   handleNativeBuildDownload,
   handleNativeBuildFind,
+  handleNativeBuildTestFlightGroup,
   handleNativeBuildInstall,
 } from "./commands/nativeBuild";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
@@ -316,6 +319,10 @@ nativeBuildCommand
     "the nativeBuild scheme, whose app's version the build has with the appVersion strategy",
   )
   .option(
+    "--store-status",
+    "ask the store what a build this project submitted is doing there (takes --scheme)",
+  )
+  .option(
     "--json",
     "output the scope, the build or null, and the storage's download URL or null, as JSON",
   )
@@ -350,6 +357,20 @@ nativeBuildCommand
   )
   .option("--json", "output the device and the app as JSON")
   .action(handleNativeBuildInstall);
+
+nativeBuildCommand
+  .command("testflight-group")
+  .description(
+    "Add a sandbox build already on TestFlight to an internal group, with no new upload",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .argument("<group>", "the internal TestFlight group")
+  .requiredOption(
+    "-s, --scheme <scheme>",
+    "the sandbox nativeBuild scheme, whose app and key it reads",
+  )
+  .option("--json", "output what App Store Connect says of the build as JSON")
+  .action(handleNativeBuildTestFlightGroup);
 
 nativeBuildCommand
   .command("delete")
@@ -389,6 +410,8 @@ nativeBuildCommand
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildOutputCommandOption)
   .addOption(testFlightSubmitCommandOption)
+  .addOption(testFlightGroupCommandOption)
+  .addOption(whatToTestCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)
