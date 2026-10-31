@@ -23,7 +23,8 @@ class UpdateLogServiceTest {
     private fun check(bundleId: String): UpdateLogEvent =
         UpdateLogEvent(type = UpdateLogEvent.CHECK, outcome = UpdateLogEvent.UP_TO_DATE, bundleId = bundleId)
 
-    private fun entries(json: String): List<JSONObject> = JSONArray(json).let { array -> (0 until array.length()).map(array::getJSONObject) }
+    private fun entries(json: String): List<JSONObject> =
+        JSONArray(json).let { array -> (0 until array.length()).map(array::getJSONObject) }
 
     private fun bundleIds(log: UpdateLogService): List<String> = entries(log.read()).map { it.getString("bundleId") }
 
@@ -229,7 +230,13 @@ class UpdateLogServiceTest {
         val contents = file.readText()
         assertFalse(contents.contains("token=secret"))
         assertFalse(contents.contains("/m?"))
-        assertTrue(entries(log.read()).single().getJSONObject("error").getString("message").length <= 512)
+        assertTrue(
+            entries(log.read())
+                .single()
+                .getJSONObject("error")
+                .getString("message")
+                .length <= 512,
+        )
     }
 
     @Test
