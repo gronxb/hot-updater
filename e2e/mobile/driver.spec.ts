@@ -445,6 +445,7 @@ describe("MobileAppDriver", () => {
       expect(f.locator.matchers.toContainText).toHaveBeenCalledExactlyOnceWith(
         "UPDATE_APPLIED",
       );
+      expect(f.app.expectedLinkTimeouts).toBe(1);
     });
 
     it("fails when the link still cannot go out", async () => {
@@ -465,6 +466,7 @@ describe("MobileAppDriver", () => {
       await f.app.tap("install", "action-install-current-channel-update");
       expect(f.device.openLink).toHaveBeenCalledTimes(1);
       expect(f.calls).toEqual(["/e2e/screen-state", "wait-result"]);
+      expect(f.app.expectedLinkTimeouts).toBe(1);
     });
 
     it("fails an action route that never started after a link that may have arrived", async () => {
@@ -499,17 +501,14 @@ describe("MobileAppDriver", () => {
       expect(f.device.openLink).toHaveBeenCalledTimes(1);
     });
 
-    it.each([notSent, maybeSent])(
-      "leaves Android alone: %s",
-      async (error) => {
-        const f = fixture("android");
-        f.device.openLink.mockRejectedValueOnce(error);
-        await expect(
-          f.app.assertText("read", "launch-status-result", "UPDATE_APPLIED"),
-        ).rejects.toBe(error);
-        expect(f.device.openLink).toHaveBeenCalledTimes(1);
-      },
-    );
+    it.each([notSent, maybeSent])("leaves Android alone: %s", async (error) => {
+      const f = fixture("android");
+      f.device.openLink.mockRejectedValueOnce(error);
+      await expect(
+        f.app.assertText("read", "launch-status-result", "UPDATE_APPLIED"),
+      ).rejects.toBe(error);
+      expect(f.device.openLink).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("propagates Android route failures without reopening the app or reading UI", async () => {

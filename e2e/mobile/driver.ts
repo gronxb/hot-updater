@@ -14,6 +14,7 @@ import {
   TEST_ID_SCREEN_PATHS,
 } from "../shared/screen-routes/index.js";
 import type { IosAlert } from "./ios-alert.ts";
+import { isIosLinkMaybeSent, isIosLinkNotSent } from "./ios-link-timeout.ts";
 
 const inputFields: Record<string, string> = {
   "cohort-input": "cohortInput",
@@ -43,11 +44,6 @@ const resultFields: Record<string, string> = {
 // An action route has started once its result leaves idle; the control
 // client's own screen-state wait then allows a minute for the result.
 const ROUTE_START_TIMEOUT_MS = 60_000;
-// agent-device bounds its simctl calls, and CoreSimulator can miss those bounds
-// on a busy host. The first is the boot check before openurl, so the link was
-// never sent. The second is openurl itself, so the Simulator may have received it.
-const IOS_LINK_NOT_SENT = /xcrun timed out after \d+ms/;
-const IOS_LINK_MAYBE_SENT = /xcrun simctl openurl did not answer within \d+ms/;
 
 // Scenarios list alternatives a result may contain; any one satisfies them.
 // Each is normalized the way the SDK normalizes the text it is matched against.
@@ -94,9 +90,14 @@ export class MobileAppDriver implements ScenarioAppDriver {
   private pendingRecovery?: "crash" | "reload";
   private pendingLaunchFailure = false;
   private verifiedLaunchFailures = 0;
+  private caughtLinkTimeouts = 0;
 
   get expectedLaunchFailures() {
     return this.verifiedLaunchFailures;
+  }
+
+  get expectedLinkTimeouts() {
+    return this.caughtLinkTimeouts;
   }
 
   get platform() {
@@ -384,11 +385,14 @@ export class MobileAppDriver implements ScenarioAppDriver {
     } catch (error) {
       if (this.options.platform !== "ios") throw error;
       const message = String(error);
-      if (IOS_LINK_MAYBE_SENT.test(message)) {
+      const maybeSent = isIosLinkMaybeSent(message);
+      if (!maybeSent && !isIosLinkNotSent(message)) throw error;
+      // The SDK recorded the failed step; the run's result accepts this many.
+      this.caughtLinkTimeouts += 1;
+      if (maybeSent) {
         console.log(`[e2e-link:maybe-sent] ${url} ${message}`);
         return;
       }
-      if (!IOS_LINK_NOT_SENT.test(message)) throw error;
       console.log(`[e2e-link:resend] ${url} ${message}`);
       this.options.signal.throwIfAborted();
       await open();
