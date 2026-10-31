@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { p } from "./prompts";
+
 type EnvVarValue = string | { comment: string; value: string };
 
 const isFileSystemError = (error: unknown): error is NodeJS.ErrnoException =>
@@ -52,7 +54,11 @@ const formatComment = (comment: string) => {
   return `# ${comment}`;
 };
 
-const writeEnvAtomically = async (filePath: string, content: string) => {
+/**
+ * Replaces `filePath` whole or not at all, through a new 0600 file beside it,
+ * so the result is 0600 whatever the mode of the file it replaces.
+ */
+export const writeEnvAtomically = async (filePath: string, content: string) => {
   const resolvedPath = path.resolve(filePath);
   const temporaryPath = path.join(
     path.dirname(resolvedPath),
@@ -186,7 +192,9 @@ export const makeEnv = async (
     await writeEnvAtomically(resolvedFilePath, updatedContent);
     return updatedContent;
   } catch (error) {
-    console.error("Error while updating .env.hotupdater file:", error);
+    p.log.error(
+      `Error while updating .env.hotupdater file: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 };

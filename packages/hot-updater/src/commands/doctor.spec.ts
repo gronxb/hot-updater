@@ -22,7 +22,6 @@ import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import {
-  linesWiderThan,
   recordedClackCalls,
   renderClackLog,
 } from "@hot-updater/test-utils/node";
@@ -97,9 +96,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     describeMissingSecret,
     displayWidth,
     fitMessage,
-    formatCommand,
+    fitText,
     getConfiguredAdapter,
     getHotUpdaterEnvValue,
+    isCommandLine,
     isSecretRef,
     LOCAL_SECRETS_NAME,
     localSecrets,
@@ -109,6 +109,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     secret,
     secretVariableName,
     withCredentialResolver,
+    withProviderMessages,
   }) => ({
     bundleSigningPutCommand,
     CREDENTIAL_ENV_NAMES,
@@ -117,9 +118,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     describeMissingSecret,
     displayWidth,
     fitMessage,
-    formatCommand,
+    fitText,
     getConfiguredAdapter,
     getHotUpdaterEnvValue,
+    isCommandLine,
     isSecretRef,
     LOCAL_SECRETS_NAME,
     localSecrets,
@@ -129,6 +131,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     secret,
     secretVariableName,
     withCredentialResolver,
+    withProviderMessages,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   // A spec names the adapter secret()s a config's evaluation would create.
   getDeploySecretNames: vi.fn(() => []),
@@ -767,8 +770,7 @@ describe("doctor", () => {
       [
         "release-keystore isn't in the team-store secrets adapter.",
         "Check the name and your access, or import your key:",
-        "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-        "  <upload.jks>",
+        "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
       ].join("\n"),
     );
     const play = [...printed("step"), ...printed("warn")].find((message) =>
@@ -911,14 +913,11 @@ describe("doctor", () => {
         "│",
         "▲  qa-missing-sim-asc and qa-missing-debug-keystore",
         "│  aren't in the team-store secrets adapter.",
-        "│  No build or deploy reads them yet, so nothing fails.",
-        "│  Store them before a build or a deploy reads them:",
+        "│  No build or deploy reads them yet.",
         "│  npx hot-updater secrets issue asc-api-key qa-missing-sim-asc",
-        "│  npx hot-updater secrets put qa-missing-debug-keystore --kind \\",
-        "│    android-keystore <upload.jks>",
+        "│  npx hot-updater secrets put qa-missing-debug-keystore --kind android-keystore <upload.jks>",
       ].join("\n"),
     );
-    expect(linesWiderThan(lines, 76)).toEqual([]);
     // The unchecked server's warning, and this one.
     expect(lines.slice(-3)).toEqual([
       "◆  All checks passed with 2 warnings.",
@@ -998,7 +997,6 @@ describe("doctor", () => {
         "│  npx hot-updater secrets import",
       ].join("\n"),
     );
-    expect(linesWiderThan(team, 76)).toEqual([]);
     // The unchecked server's warning, and this one, each counted once.
     expect(team.filter((line) => line.startsWith("▲"))).toHaveLength(2);
     expect(team.slice(-3)).toEqual([
@@ -1016,7 +1014,6 @@ describe("doctor", () => {
         "│  Set HOT_UPDATER_QA_MISSING_R2_KEY in the environment or .env.hotupdater.",
       ].join("\n"),
     );
-    expect(linesWiderThan(local, 76)).toEqual([]);
     expect(exitSpy).not.toHaveBeenCalled();
 
     // --json keeps its fields, and passes.
@@ -1206,11 +1203,9 @@ describe("doctor", () => {
           'release-keystore: The key password doesn\'t unlock "upload".',
           "For PKCS12 keystores, the key password is the store password.",
           "Store it again:",
-          "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-          "  <upload.jks>",
+          "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
         ].join("\n"),
       );
-      expect(linesWiderThan(warning!.split("\n"), 76)).toEqual([]);
     },
     60_000,
   );
@@ -1685,6 +1680,101 @@ describe("doctor", () => {
         },
       },
     });
+  });
+
+  it("prints commands whole, and a provider's message for its JSON, keeping the body in --json", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+          "@hot-updater/react-native": "^0.18.2",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_PUBLIC_KEY</key>\n<string>stale</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeAndroidManifest(
+      cwd,
+      '    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="stale" />',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+    // As the Cloudflare SDK's APIError says an invalid token's 401.
+    const body =
+      '401 {"result":null,"success":false,"errors":[{"code":10000,"message":"Authentication error"}],"messages":[]}';
+    const { core } = assembleServer({
+      database: { name: "memory", adapter: createMemoryAdapter() },
+    });
+    const config = createConfig({
+      secrets: holding({}),
+      signing: { enabled: false, privateKey: secret("qa-missing-signing") },
+      platform: {
+        ios: { infoPlistPaths: ["ios/App/Info.plist"] },
+        android: {
+          androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+        },
+      },
+      database: {
+        name: "cloudflare",
+        core: new Proxy(core, {
+          get: (target, key) =>
+            String(key).startsWith("list")
+              ? async () => {
+                  throw new Error(body);
+                }
+              : Reflect.get(target, key),
+        }),
+        fetchAdmin: vi.fn(),
+      },
+    });
+    mockLoadConfig.mockResolvedValue(config);
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+
+    await handleDoctor({ serverBaseUrl: undefined }).catch(() => undefined);
+
+    const lines = renderClackLog(recordedClackCalls(p.log, p));
+    const printed = lines.join("\n");
+    expect(printed).toContain(
+      [
+        "│  npx hot-updater secrets put qa-missing-signing --kind bundle-signing-key <key.pem>",
+      ].join("\n"),
+    );
+    expect(printed).toContain(
+      [
+        "▲  Signing is off, but ios and android keep a public key: OTAs get rejected.",
+        "│  Run npx hot-updater keys remove, or enable signing.",
+      ].join("\n"),
+    );
+    expect(printed).toContain(
+      "▲  Could not check the release catalogs: 401 Authentication error",
+    );
+    expect(printed).not.toContain('"errors"');
+
+    // --json keeps what the check found.
+    const result = await doctor();
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.details?.releaseCatalogs?.issues[0]?.message).toBe(
+        `Could not check the release catalogs: ${body}`,
+      );
+    }
   });
 
   it.each<[string, () => ConfiguredDatabase]>([
@@ -2674,11 +2764,4 @@ describe("doctor", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

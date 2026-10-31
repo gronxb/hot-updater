@@ -171,11 +171,7 @@ export const infisical = ({
   siteUrl,
 }: InfisicalOptions): SecretsAdapter => {
   const folder = normalizeFolder(path);
-  // Two lines: a project's ID alone takes half of one.
-  const where = [
-    `Project ${projectId}.`,
-    `Environment ${environment}, folder ${folder}.`,
-  ];
+  const where = `Looked in ${environment} ${folder} of project ${projectId}.`;
 
   // Checked on first use, so a config loads without its options.
   let checkedUrl: string | undefined;
@@ -207,18 +203,11 @@ export const infisical = ({
   };
   /** The checked URL: every request runs after `prepare`. */
   const baseUrl = () => checkedUrl ?? DEFAULT_SITE_URL;
-  /**
-   * An error of `reason` and the lines after it, with the instance's URL
-   * second when the user set one: messages never name a URL they didn't.
-   */
+  /** An error of `reason` and the lines after it. */
   const fail = (reason: string, ...lines: (string | undefined)[]) =>
-    new Error(
-      fitMessage(
-        reason,
-        urlSet ? `Instance: ${baseUrl()}` : undefined,
-        ...lines,
-      ),
-    );
+    new Error(fitMessage(reason, ...lines));
+  /** The instance's URL, when the user set one: it may be what is wrong. */
+  const instanceLine = () => (urlSet ? `Instance: ${baseUrl()}` : undefined);
 
   const checkName = (name: string) => {
     // Infisical answers 500 to __proto__, and 422 to a colon or slash.
@@ -247,15 +236,15 @@ export const infisical = ({
     } catch {
       // What fetch threw may quote the request: name only the host.
       throw host === "Infisical"
-        ? fail(`Couldn't reach Infisical to ${action}.`)
+        ? fail(`Couldn't reach Infisical to ${action}.`, instanceLine())
         : new Error(`Couldn't reach ${host} to ${action}.`);
     }
   };
 
   /**
-   * The error for a refusal, a line each: what Infisical refused, its own
-   * message, where, and what to check. A sign-in's 403 or 404 concerns no
-   * project, so it names the URL's setting instead, when there is one.
+   * The error for a refusal: what Infisical refused and what to check. Its
+   * own message only says more where the status doesn't say why. A sign-in's
+   * 403 or 404 concerns no project, so it names the instance instead.
    */
   const refuse = async (
     response: Response,
@@ -268,7 +257,7 @@ export const infisical = ({
     if (status === 401 || error === "TokenError") {
       return fail(
         `Infisical rejected the credentials to ${action} (${status}).`,
-        message,
+        instanceLine(),
         "Check the identity's credentials or the access token.",
       );
     }
@@ -276,26 +265,18 @@ export const infisical = ({
       return fail(
         `Infisical answered ${status} to ${action}.`,
         message,
-        urlSet
-          ? "Check the URL and the identity's sign-in settings."
-          : "Check the identity's sign-in settings.",
+        instanceLine(),
+        "Check the identity's sign-in settings.",
       );
     }
     if (status === 403) {
       return fail(
         `Infisical doesn't let the identity ${action} (403).`,
-        message,
-        ...where,
         "Give it a project role that can: Viewer reads, Member stores.",
       );
     }
     if (status === 404) {
-      return fail(
-        `Infisical found nothing to ${action} (404).`,
-        message,
-        ...where,
-        "Check projectId, environment, and path.",
-      );
+      return fail(`Infisical found nothing to ${action} (404).`, where);
     }
     return fail(`Infisical answered ${status} to ${action}.`, message);
   };
@@ -530,7 +511,6 @@ export const infisical = ({
     if (field(secret, "secretValueHidden") === true) {
       throw fail(
         `Infisical hides the value of ${name} from the identity.`,
-        ...where,
         "Give it a project role that reads secret values.",
       );
     }

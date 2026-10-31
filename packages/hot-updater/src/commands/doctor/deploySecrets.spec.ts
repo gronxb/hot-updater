@@ -224,8 +224,7 @@ describe("doctor's advice for credentials read with process.env", () => {
         .map(stripVTControlCharacters),
     ).toEqual([
       "Run init again to read it with secret():",
-      "npx hot-updater init --provider cloudflare --from-env-file \\",
-      "  .env.hotupdater",
+      "npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater",
     ]);
   });
 });

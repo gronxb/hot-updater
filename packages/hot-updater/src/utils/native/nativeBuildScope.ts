@@ -1,4 +1,4 @@
-import { getCwd, type loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, getCwd, type loadConfig, p } from "@hot-updater/cli-tools";
 import type { NativeBuildScope, Platform } from "@hot-updater/plugin-core";
 
 import { generateFingerprint } from "../fingerprint";
@@ -65,7 +65,7 @@ export const resolveNativeBuildScope = async (
     // No native project declares a version, and the adapter can't say what
     // its prebuild would write: generating the project is the only way left.
     const warning = `No ${platform} native project to read the app version from.\nRunning the ${buildAdapter.name} build adapter's prebuild to write it.`;
-    if (json) console.error(warning);
+    if (json) console.error(fitText(warning));
     else p.log.warn(warning);
     await prebuild({ platform });
     resolved = await resolveNativeAppVersion(platform, versionScope);

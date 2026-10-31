@@ -180,13 +180,8 @@ const readPassword = async (envName: string, message: string) => {
   return answer;
 };
 
-/**
- * The value `secrets put` stores: one JSON value per credential, as the
- * credential resolver reads it, `{"keyId","issuerId","p8"}` for an App
- * Store Connect key, `{"keystore","storePassword","keyAlias","keyPassword"}`
- * with the keystore in base64, and a service account's own JSON.
- */
-const readSecretValue = async (options: PutValues): Promise<string> => {
+/** Refuses a flag of another kind's, which storing `options` would ignore. */
+const assertKindFlags = (options: PutValues): void => {
   const { kind } = options;
   const foreign = Object.values(KIND_FLAGS)
     .flat()
@@ -199,6 +194,16 @@ const readSecretValue = async (options: PutValues): Promise<string> => {
       `${kind} takes no ${[...new Set(foreign)].map((flag) => FLAG_NAMES[flag]).join(", ")}.\nIt takes ${takes.length > 0 ? takes.join(", ") : "only the PEM file"}.`,
     );
   }
+};
+
+/**
+ * The value `secrets put` stores: one JSON value per credential, as the
+ * credential resolver reads it, `{"keyId","issuerId","p8"}` for an App
+ * Store Connect key, `{"keystore","storePassword","keyAlias","keyPassword"}`
+ * with the keystore in base64, and a service account's own JSON.
+ */
+const readSecretValue = async (options: PutValues): Promise<string> => {
+  const { kind } = options;
   const required = (flag: ValueFlag) => {
     const value = options[flag];
     if (!value) throw new Error(`${kind} needs ${FLAG_NAMES[flag]}.`);
@@ -278,6 +283,24 @@ const PASSWORD_INPUTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * What storing a keystore needs and nothing here can ask for, all of it at
+ * once, or nothing at a terminal: its alias and its passwords.
+ */
+const describeMissingKeystoreInputs = (
+  keyAlias: string | undefined,
+): string | undefined => {
+  const reason = nonInteractiveReason();
+  if (reason === undefined) return undefined;
+  const missing = [
+    ...(keyAlias ? [] : ["--key-alias <alias>"]),
+    ...[...PASSWORD_INPUTS].filter((variable) => !process.env[variable]),
+  ];
+  return missing.length > 0
+    ? [`Can't ask for these ${reason}:`, ...missing].join("\n")
+    : undefined;
+};
+
+/**
  * The environment variables set, in `process.env` or `.env.hotupdater`, that
  * builds read for `name` before what the CLI stores: the kind's per-field
  * overrides, and with `localSecrets()`, the whole value's variable, which it
@@ -340,15 +363,8 @@ export const handleSecretsPut = async (
         `${ui.withCommand("secrets put needs the keystore file:", credentialPutCommand(kind, name))}\n${ui.withCommand("No .aab on Play yet? Create one:", credentialIssueCommand(kind, name))}`,
       );
     }
-    // The alias and passwords of a keystore are asked at a terminal only.
-    const asksKeystore = kind === "android-keystore" && !options.keyAlias;
-    const reason = nonInteractiveReason();
-    if (asksKeystore && reason !== undefined) {
-      throw new Error(
-        `Can't ask for the keystore's passwords ${reason}: pass --key-alias.`,
-      );
-    }
-    // Registers the config's secrets adapter, which everything below uses.
+    // Registers the config's secrets adapter, which everything below uses,
+    // and loads .env.hotupdater, which may set a keystore's passwords.
     const { secrets } = await loadConfig(null);
     const cwd = getCwd();
     // The keystore's passwords are this command's input, not an override.
@@ -363,6 +379,14 @@ export const handleSecretsPut = async (
         `The environment or .env.hotupdater overrides ${kind}.\nUnset ${listNames(overrides)}.`,
       );
     }
+    assertKindFlags(options);
+    // The alias and passwords of a keystore are asked at a terminal only.
+    const asksKeystore = kind === "android-keystore" && !options.keyAlias;
+    const missingInputs =
+      kind === "android-keystore"
+        ? describeMissingKeystoreInputs(options.keyAlias)
+        : undefined;
+    if (missingInputs !== undefined) throw new Error(missingInputs);
     if (asksKeystore) {
       await importKeystore({ secrets, name, file: options.keystore! });
       return;

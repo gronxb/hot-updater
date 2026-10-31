@@ -455,8 +455,7 @@ that imports the existing key:
 ```txt
 ■  release-keystore isn't in the infisical secrets adapter.
 │  Check the name and your access, or import your key:
-│  npx hot-updater secrets put release-keystore --kind android-keystore \
-│    <upload.jks>
+│  npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>
 ```
 
 Builds read an iOS device scheme's `signing.ascApiKey`, a release variant's
@@ -471,14 +470,12 @@ same secret.
 A missing name nothing reads yet, such as a simulator scheme's key, a debug
 variant's keystore, or `signing` with `enabled: false`, is a warning, and the
 run still passes. Its row says `missing, unused`, and the warning names the
-command that stores each:
+command that stores it, one command for names that take the same action:
 
 ```txt
 ▲  debug-keystore isn't in the infisical secrets adapter.
-│  No build or deploy reads it yet, so nothing fails.
-│  Store it before a build or a deploy reads it:
-│  npx hot-updater secrets put debug-keystore --kind android-keystore \
-│    <upload.jks>
+│  No build or deploy reads it yet.
+│  npx hot-updater secrets put debug-keystore --kind android-keystore <upload.jks>
 ```
 
 A missing name an adapter's `secret()` reads, such as a storage credential, is

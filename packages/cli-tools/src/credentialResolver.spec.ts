@@ -249,7 +249,7 @@ describe("createCredentialResolver", () => {
     await expect(
       resolver.resolve({ kind: "play-service-account", name: "widget-play" }),
     ).rejects.toThrow(
-      "No widget-play (play-service-account) in the fake secrets adapter.\nStore it once with:\nnpx hot-updater secrets put widget-play --kind play-service-account \\\n  <key.json>",
+      "No widget-play (play-service-account) in the fake secrets adapter.\nStore it once with:\nnpx hot-updater secrets put widget-play --kind play-service-account <key.json>",
     );
   });
 
@@ -263,8 +263,7 @@ describe("createCredentialResolver", () => {
       [
         "No release-keystore (android-keystore) in the localSecrets secrets adapter.",
         "Store the app's upload key:",
-        "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-        "  <upload.jks>",
+        "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
         "No .aab on Play yet? Create one:",
         "npx hot-updater secrets issue android-keystore release-keystore",
       ].join("\n"),
@@ -285,8 +284,7 @@ describe("createCredentialResolver", () => {
       [
         "No release-keystore (android-keystore) in fake://release-keystore.",
         "Ask whoever set it up to store it there, or import it with:",
-        "npx hot-updater secrets put release-keystore --kind android-keystore \\",
-        "  <upload.jks>",
+        "npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
       ].join("\n"),
     );
     expect(error?.message).not.toContain("secrets issue");

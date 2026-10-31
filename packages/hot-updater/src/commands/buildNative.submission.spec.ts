@@ -2,12 +2,7 @@ import { stripVTControlCharacters } from "node:util";
 
 import { p } from "@hot-updater/cli-tools";
 import type { NativeBuildRow, Platform } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
@@ -558,11 +553,4 @@ describe("native-build android --submit play-internal", () => {
     expect(uploadToPlay).not.toHaveBeenCalled();
     expect(submission(await stored())).toEqual(NONE);
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

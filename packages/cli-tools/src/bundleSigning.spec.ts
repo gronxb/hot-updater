@@ -323,13 +323,10 @@ describe("prepareBundleSigning", () => {
       secrets,
     }).catch((error: unknown) => error)) as Error;
     expect(named.message).toContain(
-      "npx hot-updater secrets put release-signing-key --kind \\\n  bundle-signing-key <key.pem>",
+      "npx hot-updater secrets put release-signing-key --kind bundle-signing-key <key.pem>",
     );
     for (const { message } of [missing, named]) {
       expect(message).not.toContain("secrets issue");
-      expect(message.split("\n").filter((line) => line.length > 76)).toEqual(
-        [],
-      );
     }
   });
 

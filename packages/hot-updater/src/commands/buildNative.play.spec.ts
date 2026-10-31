@@ -1,12 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 
 import type { EnrichedNativeBuildAndroidScheme } from "@hot-updater/android-helper";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const events: string[] = [];
 
@@ -386,11 +381,4 @@ describe("native-build android --submit play-internal", () => {
     expect(events.slice(-2)).toEqual(["dispose", "exit"]);
     exit.mockRestore();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

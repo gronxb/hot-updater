@@ -1,10 +1,5 @@
 import { DatabaseConstraintError } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** The configuration of the scheme the config sets, per test. */
 let configuration = "Release";
@@ -172,11 +167,4 @@ describe("native-build ios|android MIN_BUNDLE_ID", () => {
     );
     exit.mockRestore();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

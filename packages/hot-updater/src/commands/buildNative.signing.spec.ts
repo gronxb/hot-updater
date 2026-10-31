@@ -1,9 +1,4 @@
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { events, prebuildScheme, resolve } = vi.hoisted(() => {
   const events: string[] = [];
@@ -273,11 +268,4 @@ describe("native-build ios|android resolves its signing credentials before the p
       setConfiguredSecrets(resolveSecretsAdapter());
     }
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

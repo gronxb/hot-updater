@@ -99,6 +99,11 @@ import {
   ISSUED_KINDS,
   SECRET_KINDS,
 } from "./commands/secrets";
+import {
+  DEFAULT_PULL_FILE,
+  handleSecretsPull,
+  type SecretsPullOptions,
+} from "./commands/secretsPull";
 import { handleSigningKeyIssue } from "./commands/signingKey";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
@@ -426,9 +431,19 @@ const integerFrom =
   };
 
 /** A comma-separated option, which may also repeat. */
+const commaSeparated = (value: string, previous: readonly string[] = []) => [
+  ...previous,
+  ...value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+];
+
 const secretsCommand = program
   .command("secrets")
-  .description("Store build credentials in the secrets adapter");
+  .description(
+    "Store build credentials in the secrets adapter, or pull deploy credentials to a local env file",
+  );
 
 secretsCommand
   .command("put")
@@ -487,6 +502,32 @@ secretsCommand
     "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter.",
   )
   .action((envFile?: string) => handleSecretsImport(envFile));
+
+secretsCommand
+  .command("pull")
+  .description(
+    "Write the deploy credentials the team secrets adapter holds to a local env file",
+  )
+  .option("--out <file>", "the env file to write", DEFAULT_PULL_FILE)
+  .option(
+    "--only <names>",
+    "pull exactly these secrets, comma-separated, whether the config names them or not",
+    commaSeparated,
+  )
+  .option("--force", "replace a value the file holds without asking")
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Stores are read by name, with no list of what they hold. Without --only",
+      "it pulls the names the config's secret()s read for its adapters, and",
+      "HOT_UPDATER_API_KEY. It is not for the app's runtime env.",
+      "",
+      "Build credentials stay in the store, where builds read them.",
+      "The file's lines override the store on this machine.",
+    ].join("\n"),
+  )
+  .action((options: SecretsPullOptions) => handleSecretsPull(options));
 
 secretsCommand
   .command("issue")

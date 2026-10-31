@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 
 import { maskSecretValues } from "@hot-updater/cli-tools";
-import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { infisical } from "./infisical";
@@ -229,11 +228,7 @@ describe("infisical", () => {
     ).rejects.toThrow(
       [
         "Infisical found nothing to list the secrets (404).",
-        `Instance: ${SITE}`,
-        "Folder with path '/ci' in environment 'prod' was not found.",
-        `Project ${PROJECT}.`,
-        "Environment prod, folder /ci.",
-        "Check projectId, environment, and path.",
+        `Looked in prod /ci of project ${PROJECT}.`,
       ].join("\n"),
     );
     expect(calls[1]!.url.searchParams.get("secretPath")).toBe("/ci");
@@ -428,7 +423,6 @@ describe("infisical", () => {
       [
         "Infisical rejected the credentials to sign in with Universal Auth (401).",
         `Instance: ${SITE}`,
-        "Invalid credentials",
         "Check the identity's credentials or the access token.",
       ].join("\n"),
     ],
@@ -439,7 +433,7 @@ describe("infisical", () => {
       [
         "Infisical answered 404 to sign in with Universal Auth.",
         `Instance: ${SITE}`,
-        "Check the URL and the identity's sign-in settings.",
+        "Check the identity's sign-in settings.",
       ].join("\n"),
     ],
     [
@@ -449,7 +443,6 @@ describe("infisical", () => {
       [
         "Infisical rejected the credentials to list the secrets (403).",
         `Instance: ${SITE}`,
-        "The provided access token is malformed.",
         "Check the identity's credentials or the access token.",
       ].join("\n"),
     ],
@@ -463,10 +456,6 @@ describe("infisical", () => {
       ),
       [
         "Infisical doesn't let the identity list the secrets (403).",
-        `Instance: ${SITE}`,
-        "You are not allowed to read on secrets",
-        `Project ${PROJECT}.`,
-        "Environment prod, folder /.",
         "Give it a project role that can: Viewer reads, Member stores.",
       ].join("\n"),
     ],
@@ -474,7 +463,7 @@ describe("infisical", () => {
       "a server error",
       "GET /api/v4/secrets",
       new Response("<html>bad gateway</html>", { status: 502 }),
-      `Infisical answered 502 to list the secrets.\nInstance: ${SITE}`,
+      "Infisical answered 502 to list the secrets.",
     ],
   ])("reports %s", async (_, key, response, message) => {
     universalAuthEnv();
@@ -707,7 +696,7 @@ describe("infisical", () => {
     );
 
     await expect(adapter().set("a", "1", { cwd })).rejects.toThrow(
-      `Infisical answered 400 to create a.\nInstance: ${SITE}\nSomething else is wrong`,
+      "Infisical answered 400 to create a.\nSomething else is wrong",
     );
     expect(calls.map((call) => call.method)).toEqual(["POST", "PATCH", "POST"]);
   });
@@ -729,10 +718,6 @@ describe("infisical", () => {
     await expect(adapter().set("a", "1", { cwd })).rejects.toThrow(
       [
         "Infisical doesn't let the identity create a (403).",
-        `Instance: ${SITE}`,
-        "You are not allowed to create on secrets",
-        `Project ${PROJECT}.`,
-        "Environment prod, folder /.",
         "Give it a project role that can: Viewer reads, Member stores.",
       ].join("\n"),
     );
@@ -756,7 +741,7 @@ describe("infisical", () => {
 
     await expect(
       adapter({ path: "/ci" }).set("a", "1", { cwd }),
-    ).rejects.toThrow(`Project ${PROJECT}.\nEnvironment prod, folder /ci.`);
+    ).rejects.toThrow(`Looked in prod /ci of project ${PROJECT}.`);
   });
 
   it.each(["__proto__", "a/b", "a:b", " "])(
@@ -857,19 +842,14 @@ describe("infisical", () => {
 
   it("names the instance only when siteUrl or the environment sets it", async () => {
     universalAuthEnv();
-    const denied = () =>
-      refusal(
-        403,
-        "PermissionDenied",
-        "You are not allowed to edit on secrets",
-      );
+    const denied = () => refusal(401, "UnauthorizedError", "Invalid");
     route = server({}, { "PATCH /api/v4/secrets/a": denied });
 
     const cloud = (await infisical({ projectId: PROJECT })
       .set("a", "1", { cwd })
       .catch((thrown: unknown) => thrown)) as Error;
     expect(cloud.message.split("\n")[0]).toBe(
-      "Infisical doesn't let the identity update a (403).",
+      "Infisical rejected the credentials to update a (401).",
     );
     expect(cloud.message).not.toMatch(/https?:|Instance/u);
 
@@ -879,93 +859,6 @@ describe("infisical", () => {
       .catch((thrown: unknown) => thrown)) as Error;
     expect(domain.message.split("\n")[1]).toBe(
       "Instance: https://eu.infisical.com",
-    );
-  });
-
-  it("prints every refusal in lines that stay within 76 columns after the gutter", async () => {
-    universalAuthEnv();
-    const long = `Project with ID '${PROJECT}' was not found during authorization: check that the project exists and that the identity was added to it as a member.`;
-    const messages: string[] = [];
-    const record = async (run: () => Promise<unknown>) => {
-      const error = await run().catch((thrown: unknown) => thrown as Error);
-      messages.push((error as Error).message);
-    };
-    for (const [key, response] of [
-      ["GET /api/v4/secrets", refusal(404, "NotFound", long)],
-      ["GET /api/v4/secrets", refusal(403, "PermissionDenied", long)],
-      ["GET /api/v4/secrets", refusal(403, "TokenError", long)],
-      ["POST /api/v1/auth/universal-auth/login", refusal(400, "Bad", long)],
-      ["GET /api/v4/secrets", refusal(500, "Internal", long)],
-    ] as const) {
-      route = server({}, { [key]: () => response.clone() });
-      await record(() => infisical({ projectId: PROJECT }).get(["a"], { cwd }));
-      await record(() => adapter().get(["a"], { cwd }));
-    }
-    for (const name of AUTH_ENV) delete process.env[name];
-    await record(() => adapter().get(["a"], { cwd }));
-    process.env["INFISICAL_MACHINE_IDENTITY_ID"] = "identity-1";
-    await record(() => adapter().get(["a"], { cwd }));
-    await record(() =>
-      adapter({ siteUrl: "http://x.example" }).get(["a"], { cwd }),
-    );
-    await record(() => adapter().set("a:b", "1", { cwd }));
-    await record(() => adapter().set("a", " 1", { cwd }));
-
-    // What rc.9's QA met: a Viewer's write of a long name, a projectId
-    // Infisical doesn't know, a deep folder, and a long instance URL.
-    universalAuthEnv();
-    const longName = "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY";
-    route = server(
-      {},
-      {
-        [`POST /api/v4/secrets/${longName}`]: () =>
-          refusal(
-            403,
-            "PermissionDenied",
-            "You are not allowed to create on secrets",
-          ),
-      },
-    );
-    await record(() => adapter().set(longName, "1", { cwd }));
-    route = server(
-      {},
-      {
-        "GET /api/v4/secrets": () =>
-          refusal(
-            404,
-            "NotFound",
-            "Project with ID '00000000-0000-4000-8000-000000000000' not found during bot authorization",
-          ),
-      },
-    );
-    await record(() =>
-      adapter({
-        projectId: "00000000-0000-4000-8000-000000000000",
-        environment: "production-codex-relay",
-        path: "/hot-updater/codex-relay/android/release",
-        siteUrl:
-          "https://secrets-infisical.internal.codex-relay-mobile-team.example.com",
-      }).get(["a"], { cwd }),
-    );
-    await record(() =>
-      adapter().set(`${longName}_WITH_A_SUFFIX`, " 1", { cwd }),
-    );
-
-    expect(messages).toHaveLength(18);
-    for (const message of messages) {
-      // A URL longer than a line is the one word that can't be broken.
-      expect(linesWiderThan(message.split("\n"), 73)).toEqual([]);
-    }
-    expect(messages[15]!.split("\n")[0]).toBe(
-      "Infisical doesn't let the identity create",
-    );
-    expect(messages[16]!.split("\n").slice(0, 3)).toEqual([
-      "Infisical found nothing to list the secrets (404).",
-      "Instance:",
-      "https://secrets-infisical.internal.codex-relay-mobile-team.example.com",
-    ]);
-    expect(messages[16]).toContain(
-      "Project with ID '00000000-0000-4000-8000-000000000000' not found during…",
     );
   });
 
