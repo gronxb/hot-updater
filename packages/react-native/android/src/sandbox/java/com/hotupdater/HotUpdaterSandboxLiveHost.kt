@@ -121,7 +121,11 @@ internal class HotUpdaterSandboxLiveHost(
     }
 }
 
-/** The sandbox's own file: an app's data and the SDK's stores stay as they are. */
+/**
+ * The sandbox's own file: an app's data and the SDK's stores stay as they are.
+ * Every write reaches the disk before it returns, since a switch ends by killing
+ * this process, and a link that's gone from memory but not from disk asks again.
+ */
 internal class HotUpdaterSandboxPreferences(
     context: Context,
 ) : HotUpdaterSandboxStore {
@@ -137,7 +141,7 @@ internal class HotUpdaterSandboxPreferences(
             }.getOrDefault(emptyList())
         }
         set(value) {
-            preferences.edit().putString(PENDING_LINKS, JSONArray(value).toString()).apply()
+            preferences.edit().putString(PENDING_LINKS, JSONArray(value).toString()).commit()
         }
 
     override fun recordSelected(selection: HotUpdaterSandboxSelection) = record(SELECTED, selection)
@@ -156,7 +160,7 @@ internal class HotUpdaterSandboxPreferences(
                     .put("channel", selection.channel)
                     .put("bundleId", selection.bundleId)
                     .toString(),
-            ).apply()
+            ).commit()
     }
 
     private companion object {

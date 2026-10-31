@@ -164,6 +164,8 @@ describe("sandboxManifestOverlay", () => {
       overlay.indexOf("</activity>"),
     );
     expect(sandbox).toContain('android:exported="true"');
+    // A link that arrives while it's on top goes to the same screen.
+    expect(sandbox).toContain('android:launchMode="singleTop"');
     expect(sandbox).toContain('android:name="android.intent.action.MAIN"');
     expect(sandbox).toContain('android:scheme="hu-sandbox-com-example-app"');
     expect(sandbox).toContain(
