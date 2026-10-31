@@ -288,6 +288,191 @@ struct BundleFileStorageServiceTests {
         #expect(remains, "A10/A17: a failed final promotion must preserve the existing stable bundle")
     }
 
+    @Test
+    func theNextLaunchIsTheStagedBundleThenTheStableOneWhenItsFilesAreGone() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staged-bundle",
+                verificationPending: true
+            )
+        )
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+
+        #expect(service.peekLaunchBundleId() == "staged-bundle")
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "staged-bundle")
+        // Its own launch is still the next one: a restart runs it again.
+        #expect(service.peekLaunchBundleId() == "staged-bundle")
+
+        let stagedDirectory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "staged-bundle")
+        try FileManager.default.removeItem(at: stagedDirectory)
+
+        #expect(service.peekLaunchBundleId() == "stable-bundle")
+    }
+
+    @Test
+    func theFirstContentOfAStagedBundleLogsThatItApplied() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let directory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "staged-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "staged-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stagingBundleId: "staged-bundle",
+                verificationPending: true,
+                pendingSelectionTransition: PendingSelectionTransition(
+                    fromReleaseId: nil,
+                    fromBundleId: "built-in",
+                    toReleaseId: "release-one",
+                    toBundleId: "staged-bundle"
+                )
+            )
+        )
+        let log = makeUpdateLog(workingDirectory)
+        let service = makeStorageService(documentsDirectory: workingDirectory, updateLog: log)
+        _ = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        service.markLaunchCompleted(bundleId: "staged-bundle")
+        // First content of the same launch again, as after a recreated surface.
+        service.markLaunchCompleted(bundleId: "staged-bundle")
+
+        let entries = try loggedEntries(log)
+        #expect(entries.count == 1)
+        #expect(entries.first?["type"] as? String == "APPLY")
+        #expect(entries.first?["outcome"] as? String == "APPLIED")
+        #expect(entries.first?["bundleId"] as? String == "staged-bundle")
+        #expect(entries.first?["fromBundleId"] as? String == "built-in")
+        #expect(entries.first?["releaseId"] as? String == "release-one")
+    }
+
+    @Test(arguments: [
+        (recovery: true, launchInProgress: false, hasFiles: true, outcome: UpdateLogEvent.rolledBackAfterCrash),
+        (recovery: false, launchInProgress: true, hasFiles: true, outcome: UpdateLogEvent.rolledBackUnfinishedLaunch),
+        (recovery: false, launchInProgress: false, hasFiles: false, outcome: UpdateLogEvent.rolledBackMissingBundle),
+    ])
+    func aFailedStagedLaunchLogsItsRollback(
+        recovery: Bool,
+        launchInProgress: Bool,
+        hasFiles: Bool,
+        outcome: String
+    ) throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let stable = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        if hasFiles {
+            let staged = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "staged-bundle")
+            try writeBundle(in: staged, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: staged, bundleId: "staged-bundle")
+        }
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staged-bundle",
+                verificationPending: true,
+                launchInProgress: launchInProgress
+            )
+        )
+        let log = makeUpdateLog(workingDirectory)
+        let service = makeStorageService(documentsDirectory: workingDirectory, updateLog: log)
+
+        _ = service.prepareLaunch(
+            bundle: .main,
+            pendingRecovery: recovery
+                ? PendingCrashRecovery(launchedBundleId: "staged-bundle", shouldRollback: true)
+                : nil
+        )
+
+        let entries = try loggedEntries(log)
+        #expect(entries.count == 1)
+        #expect(entries.first?["type"] as? String == "CRASH_RECOVERY")
+        #expect(entries.first?["outcome"] as? String == outcome)
+        #expect(entries.first?["bundleId"] as? String == "stable-bundle")
+        #expect(entries.first?["fromBundleId"] as? String == "staged-bundle")
+    }
+
+    @Test
+    func aChannelResetLogsTheReturnToTheBuiltInBundleAndKeepsTheLog() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let directory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "channel-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "channel-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "channel-bundle")
+        )
+        let log = makeUpdateLog(workingDirectory)
+        let service = makeStorageService(documentsDirectory: workingDirectory, updateLog: log)
+
+        #expect(try service.resetChannel().get())
+
+        #expect(service.peekLaunchBundleId() == nil)
+        let entries = try loggedEntries(log)
+        #expect(entries.count == 1)
+        #expect(entries.first?["type"] as? String == "ROLLBACK")
+        #expect(entries.first?["outcome"] as? String == "CHANNEL_RESET")
+        #expect(entries.first?["bundleId"] as? String == "builtin-bundle")
+        #expect(entries.first?["fromBundleId"] as? String == "channel-bundle")
+    }
+
+    @Test
+    func aCommittedBuiltInSelectionLogsTheRollbackAndClearsTheNextLaunch() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let directory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "downloaded-bundle")
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: "downloaded-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "downloaded-bundle")
+        )
+        let log = makeUpdateLog(workingDirectory)
+        let service = makeStorageService(documentsDirectory: workingDirectory, updateLog: log)
+        #expect(service.acceptReleaseCatalog(
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ))
+
+        #expect(service.commitReleaseSelection(PersistedSelection(
+            kind: SelectionKind.builtin.rawValue,
+            releaseId: nil,
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        )))
+
+        #expect(service.peekLaunchBundleId() == nil)
+        let entries = try loggedEntries(log)
+        #expect(entries.count == 1)
+        #expect(entries.first?["type"] as? String == "ROLLBACK")
+        #expect(entries.first?["outcome"] as? String == "BUILT_IN_SELECTED")
+        #expect(entries.first?["fromBundleId"] as? String == "downloaded-bundle")
+    }
+
     // Issue #1321: a hung JS thread never reports content appeared or a crash.
     @Test(arguments: [false, true], [false, true])
     func stagingLaunchRecoversOnlyWhenUnfinished(hasStableBundle: Bool, completesLaunch: Bool) throws {
@@ -3777,7 +3962,8 @@ private func makeStorageService(
     downloadService: DownloadService = UnusedDownloadService(),
     builtInAssetResolver: BuiltInAssetResolver? = nil,
     builtInBundleId: String = "builtin-bundle",
-    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) }
+    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) },
+    updateLog: UpdateLogService? = nil
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: fileSystem ?? TestFileSystemService(
@@ -3789,8 +3975,18 @@ private func makeStorageService(
         builtInBundleIdProvider: { builtInBundleId },
         builtInAssetResolver: builtInAssetResolver,
         downloadRetryDelay: 0,
-        metadataWriter: metadataWriter
+        metadataWriter: metadataWriter,
+        updateLog: updateLog
     )
+}
+
+private func makeUpdateLog(_ workingDirectory: URL) -> UpdateLogService {
+    UpdateLogService(file: workingDirectory.appendingPathComponent("logs/\(UpdateLogService.filename)"))
+}
+
+private func loggedEntries(_ log: UpdateLogService) throws -> [[String: Any]] {
+    let data = try #require(log.read().data(using: .utf8))
+    return try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
 }
 
 private func createBundleDirectory(

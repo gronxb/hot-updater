@@ -8,6 +8,7 @@ const ACTION_SCREEN_URLS = {
     "hotupdaterexample://e2e/action/capture-current-channel-update",
   clearCrashHistoryAction:
     "hotupdaterexample://e2e/action/clear-crash-history",
+  clearUpdateLogsAction: "hotupdaterexample://e2e/action/clear-update-logs",
   installCurrentChannelUpdateAction:
     "hotupdaterexample://e2e/action/install-current-channel-update",
   installFingerprintUpdateAction:
@@ -34,6 +35,7 @@ const ACTION_TEST_ID_SCREEN_PATHS = {
   "action-capture-current-channel-update":
     "captureCurrentChannelUpdateAction",
   "action-clear-crash-history": "clearCrashHistoryAction",
+  "action-clear-update-logs": "clearUpdateLogsAction",
   "action-install-current-channel-update":
     "installCurrentChannelUpdateAction",
   "action-install-fingerprint-update": "installFingerprintUpdateAction",

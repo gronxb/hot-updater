@@ -40,6 +40,7 @@ import {
 } from "./native";
 import { saveRecoveryCheckConfig } from "./recoveryCheckConfig";
 import { hotUpdaterStore } from "./store";
+import { recordUpdateLog } from "./updateDiagnostics";
 import { classifyUpdateError, InvalidUpdateResponseError } from "./updateError";
 
 export type { ReleaseTransitionKind };
@@ -384,6 +385,8 @@ async function checkForReleaseCatalogUpdate(input: {
     targetReleaseId: desired.releaseId,
     updateStrategy: options.updateStrategy,
   };
+  // Native logs its own failures once it is asked to commit or stage.
+  let nativeLogsFailure = false;
   const installSelection = async (): Promise<boolean> => {
     resetProgress();
     if (!isReleaseSelectionCurrent(guard)) {
@@ -391,6 +394,7 @@ async function checkForReleaseCatalogUpdate(input: {
     }
 
     if (transitionKind !== "INSTALL") {
+      nativeLogsFailure = true;
       const committed = await commitReleaseSelection({
         guard,
         selection: receipt,
@@ -433,6 +437,7 @@ async function checkForReleaseCatalogUpdate(input: {
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,
     };
+    nativeLogsFailure = true;
     const delivery = await stageBundle(
       "filesUrl" in artifact
         ? {
@@ -464,6 +469,17 @@ async function checkForReleaseCatalogUpdate(input: {
     try {
       return await installSelection();
     } catch (error) {
+      if (!nativeLogsFailure) {
+        recordUpdateLog({
+          type: "DOWNLOAD",
+          outcome: "FAILED",
+          bundleId: desired.bundleId,
+          fromBundleId: input.currentBundleId,
+          releaseId: desired.releaseId,
+          channel: input.targetChannel,
+          error,
+        });
+      }
       reportUpdateError(
         options.emit,
         error,
@@ -493,6 +509,15 @@ async function checkForReleaseCatalogUpdate(input: {
     shouldForceUpdate,
     updateStrategy: options.updateStrategy,
   }));
+  recordUpdateLog({
+    type: "CHECK",
+    outcome:
+      desired.status === "ROLLBACK" ? "ROLLBACK_AVAILABLE" : "UPDATE_AVAILABLE",
+    bundleId: desired.bundleId,
+    fromBundleId: input.currentBundleId,
+    releaseId: desired.releaseId,
+    channel: input.targetChannel,
+  });
 
   return {
     id: desired.releaseId ?? desired.bundleId,
@@ -559,6 +584,13 @@ function leaveSwitchedChannel(
     shouldForceUpdate,
     updateStrategy: options.updateStrategy,
   }));
+  recordUpdateLog({
+    type: "CHECK",
+    outcome: "ROLLBACK_AVAILABLE",
+    bundleId: input.minimumReleaseId,
+    fromBundleId: input.currentBundleId,
+    channel: input.currentChannel,
+  });
   const leaveKey = JSON.stringify([
     input.currentChannel,
     guard.catalogId,
@@ -646,7 +678,15 @@ export async function checkForUpdate(
   const cohort = getCohort();
 
   if (!currentAppVersion) {
-    options.onError?.(new HotUpdaterError("Failed to get app version"));
+    const error = new HotUpdaterError("Failed to get app version");
+    recordUpdateLog({
+      type: "CHECK",
+      outcome: "FAILED",
+      bundleId: currentBundleId,
+      channel: targetChannel,
+      error,
+    });
+    options.onError?.(error);
     return null;
   }
 
@@ -676,6 +716,12 @@ export async function checkForUpdate(
       targetChannel,
     });
     if (result === null) {
+      recordUpdateLog({
+        type: "CHECK",
+        outcome: "UP_TO_DATE",
+        bundleId: currentBundleId,
+        channel: currentChannel,
+      });
       options.emit("onUpdateCheck", () => {
         const releaseId = getRunningReleaseId(currentBundleId, currentChannel);
         return {
@@ -689,6 +735,13 @@ export async function checkForUpdate(
     }
     return result;
   } catch (error) {
+    recordUpdateLog({
+      type: "CHECK",
+      outcome: "FAILED",
+      bundleId: currentBundleId,
+      channel: targetChannel,
+      error,
+    });
     reportUpdateError(options.emit, error, "check", "catalog", {
       bundleId: currentBundleId,
       channel: targetChannel,

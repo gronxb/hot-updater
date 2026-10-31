@@ -572,6 +572,44 @@ class HotUpdaterModule internal constructor(
     override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
 
     @ReactMethod
+    override fun getUpdateStatus(promise: Promise) {
+        moduleScope.launch(Dispatchers.IO) {
+            try {
+                promise.resolve(getInstance().getUpdateStatusJson())
+            } catch (error: Exception) {
+                promise.reject("UNKNOWN_ERROR", error.message, error)
+            }
+        }
+    }
+
+    @ReactMethod
+    override fun getUpdateLogs(promise: Promise) {
+        moduleScope.launch(Dispatchers.IO) {
+            try {
+                promise.resolve(getInstance().getUpdateLogsJson())
+            } catch (error: Exception) {
+                promise.reject("UNKNOWN_ERROR", error.message, error)
+            }
+        }
+    }
+
+    @ReactMethod
+    override fun clearUpdateLogs(promise: Promise) {
+        moduleScope.launch(Dispatchers.IO) {
+            try {
+                promise.resolve(getInstance().clearUpdateLogs())
+            } catch (error: Exception) {
+                promise.reject("UNKNOWN_ERROR", error.message, error)
+            }
+        }
+    }
+
+    @ReactMethod
+    override fun appendUpdateLog(entry: String) {
+        getInstance().appendUpdateLog(entry)
+    }
+
+    @ReactMethod
     override fun resetChannelIfSelectionCurrent(
         params: ReadableMap,
         promise: Promise,

@@ -45,6 +45,7 @@ import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-coho
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
 import { tenCrashHistorySafeBundleScenario } from "./scenarios/ten-crash-history-safe-bundle.ts";
 import type { ScenarioDefinition } from "./scenarios/types.ts";
+import { updateStatusAndLogsScenario } from "./scenarios/update-status-and-logs.ts";
 
 export type {
   ScenarioDefinition,
@@ -56,6 +57,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   headlessLaunchKeepsStagedBundleScenario,
   interruptedLaunchRetriesBundleScenario,
   launchStatusAfterSessionInstallScenario,
+  updateStatusAndLogsScenario,
   releaseOtaRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchBuiltinToDiffOtaScenario,

@@ -35,6 +35,11 @@ import {
 import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
 import { createAppPluginHost } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
+import {
+  clearUpdateLogs,
+  getUpdateLogs,
+  getUpdateStatus,
+} from "./updateDiagnostics";
 import { type HotUpdaterWrapOptions, wrap } from "./wrap";
 
 export {
@@ -95,6 +100,15 @@ export {
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterInitOptions } from "./init.types";
+export type {
+  GetUpdateLogsOptions,
+  UpdateDisabledReason,
+  UpdateLogEntry,
+  UpdateLogError,
+  UpdateLogOutcome,
+  UpdateLogType,
+  UpdateStatusSnapshot,
+} from "./updateDiagnostics";
 export type {
   HotUpdaterFallbackComponentProps,
   HotUpdaterWrapOptions,
@@ -312,6 +326,44 @@ const nativeMethods = {
    * ```
    */
   clearCrashHistory,
+
+  /**
+   * Reads whether over-the-air updates are on in this build, whether the next
+   * restart runs another bundle, and the running bundle, channel, app version,
+   * fingerprint, and minimum bundle ID, without a network request.
+   *
+   * `isUpdatePending` is null when native was built from an SDK that cannot
+   * tell.
+   *
+   * @example
+   * ```ts
+   * const status = await hotUpdater.getUpdateStatus();
+   * if (status.isUpdatePending) {
+   *   console.log(`A restart runs ${status.pendingBundleId}`);
+   * }
+   * ```
+   */
+  getUpdateStatus,
+
+  /**
+   * Reads this device's update log, newest first: checks, downloads, applied
+   * updates, rollbacks, and crash recoveries. Native keeps the newest 200
+   * entries of the last 7 days.
+   *
+   * Resolves with null when native was built from an SDK without the log.
+   *
+   * @example
+   * ```ts
+   * const logs = await hotUpdater.getUpdateLogs({ maxAge: 60 * 60 * 1000 });
+   * ```
+   */
+  getUpdateLogs,
+
+  /**
+   * Deletes this device's update log. Resolves with false when native was
+   * built from an SDK without the log.
+   */
+  clearUpdateLogs,
 };
 
 /** What an instance's own methods use: its server, settings, and launch. */

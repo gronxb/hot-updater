@@ -26,6 +26,7 @@ let coreSources = [
     "StrictJson.swift",
     "SignatureVerifier.swift",
     "UpdateFailure.swift",
+    "UpdateLogService.swift",
     "URLSessionDownloadService.swift",
     "VersionedPreferencesService.swift",
 ]

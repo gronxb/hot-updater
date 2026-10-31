@@ -177,6 +177,95 @@ class HotUpdaterImplTest {
             assertNull(impl.getBundleId())
         }
 
+    private fun launched(bundleId: String?) =
+        LaunchSelection(
+            bundleUrl = "file:///bundle-store/$bundleId/index.android.bundle",
+            launchedBundleId = bundleId,
+            shouldRollbackOnCrash = false,
+        )
+
+    private fun statusOf(
+        runningBundleId: String?,
+        nextLaunchBundleId: String?,
+    ): HotUpdaterRunningBundles {
+        val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+        setField(impl, "bundleStorage", FakeBundleStorageService(bundleId = null, nextLaunchBundleId = nextLaunchBundleId))
+        val selection = launched(runningBundleId)
+        setField(impl, "runningLaunchSelection", selection)
+        setCurrentLaunchSelection(impl, selection)
+        return impl.getUpdateStatus()
+    }
+
+    private val builtInBundleId = HotUpdaterImpl.getMinBundleId()
+
+    @Test
+    fun `nothing is pending while the built-in bundle runs and stays next`() {
+        val status = statusOf(runningBundleId = null, nextLaunchBundleId = null)
+
+        assertEquals(builtInBundleId, status.bundleId)
+        assertNull(status.pendingBundleId)
+    }
+
+    @Test
+    fun `a bundle staged over the built-in bundle is pending`() {
+        val status = statusOf(runningBundleId = null, nextLaunchBundleId = "staged")
+
+        assertEquals(builtInBundleId, status.bundleId)
+        assertEquals("staged", status.pendingBundleId)
+    }
+
+    @Test
+    fun `a bundle staged over a downloaded one is pending`() {
+        val status = statusOf(runningBundleId = "running", nextLaunchBundleId = "staged")
+
+        assertEquals("running", status.bundleId)
+        assertEquals("staged", status.pendingBundleId)
+    }
+
+    @Test
+    fun `a bundle on its own launch is not pending, verified or not`() {
+        assertNull(statusOf(runningBundleId = "running", nextLaunchBundleId = "running").pendingBundleId)
+    }
+
+    @Test
+    fun `returning to the built-in bundle is pending`() {
+        val status = statusOf(runningBundleId = "running", nextLaunchBundleId = null)
+
+        assertEquals("running", status.bundleId)
+        assertEquals(builtInBundleId, status.pendingBundleId)
+    }
+
+    @Test
+    fun `a channel reset leaves the running bundle and makes the built-in bundle pending`() =
+        runBlocking {
+            val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+            setField(impl, "preferences", MapPreferences())
+            setField(impl, "bundleStorage", FakeBundleStorageService(bundleId = null, nextLaunchBundleId = null))
+            val selection = launched("channel-bundle")
+            setField(impl, "runningLaunchSelection", selection)
+            setCurrentLaunchSelection(impl, selection)
+
+            assertTrue(impl.resetChannel())
+
+            val status = impl.getUpdateStatus()
+            assertEquals("channel-bundle", status.bundleId)
+            assertEquals(builtInBundleId, status.pendingBundleId)
+        }
+
+    @Test
+    fun `the status JSON gives JavaScript both bundles, and null when nothing is pending`() {
+        val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+        setField(impl, "bundleStorage", FakeBundleStorageService(bundleId = null, nextLaunchBundleId = "running"))
+        val selection = launched("running")
+        setField(impl, "runningLaunchSelection", selection)
+        setCurrentLaunchSelection(impl, selection)
+
+        val status = org.json.JSONObject(impl.getUpdateStatusJson())
+
+        assertEquals("running", status.getString("bundleId"))
+        assertTrue(status.isNull("pendingBundleId"))
+    }
+
     @Test
     fun `a built-in commit clears the next launch's selection and keeps the running bundle`() =
         runBlocking {

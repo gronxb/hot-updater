@@ -281,6 +281,8 @@ class BundleFileStorageService(
     private val directoryRenamer: (File, File) -> Boolean = { source, destination ->
         source.renameTo(destination)
     },
+    // Where this store records what it applies and rolls back, for diagnostics.
+    private val updateLog: UpdateLogService? = null,
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
@@ -1259,14 +1261,17 @@ class BundleFileStorageService(
     private fun rollbackPendingBundle(
         stagingBundleId: String,
         unfinishedLaunch: Boolean = false,
+        logOutcome: String =
+            if (unfinishedLaunch) UpdateLogEvent.ROLLED_BACK_UNFINISHED_LAUNCH else UpdateLogEvent.ROLLED_BACK_AFTER_CRASH,
     ): Boolean =
         synchronized(releaseStateLock) {
-            rollbackPendingBundleLocked(stagingBundleId, unfinishedLaunch)
+            rollbackPendingBundleLocked(stagingBundleId, unfinishedLaunch, logOutcome)
         }
 
     private fun rollbackPendingBundleLocked(
         stagingBundleId: String,
         unfinishedLaunch: Boolean,
+        logOutcome: String,
     ): Boolean {
         val metadata = loadMetadataOrNull() ?: return false
         if (metadata.stagingBundleId != stagingBundleId) {
@@ -1311,8 +1316,25 @@ class BundleFileStorageService(
                 updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
             ),
         )
+        updateLog?.append(
+            UpdateLogEvent(
+                type = UpdateLogEvent.CRASH_RECOVERY,
+                outcome = logOutcome,
+                bundleId = fallbackBundleId ?: minBundleIdProvider(),
+                fromBundleId = stagingBundleId,
+                releaseId = metadata.stableSelection?.releaseId,
+                channel = logChannel(metadata),
+            ),
+        )
         return true
     }
+
+    /** The channel a log entry about [metadata]'s bundles is on. */
+    private fun logChannel(metadata: BundleMetadata): String =
+        metadata.stagingSelection?.channel
+            ?: metadata.stableSelection?.channel
+            ?: preferences.getItem("HotUpdaterChannel")?.takeIf { it.isNotEmpty() }
+            ?: defaultChannelProvider()
 
     private fun applyPendingRecoveryIfNeeded(pendingRecovery: PendingCrashRecovery?) {
         synchronized(releaseStateLock) {
@@ -1350,7 +1372,9 @@ class BundleFileStorageService(
                 )
             }
 
-            if (metadata.verificationPending && rollbackPendingBundle(stagingBundleId)) {
+            if (metadata.verificationPending &&
+                rollbackPendingBundle(stagingBundleId, logOutcome = UpdateLogEvent.ROLLED_BACK_MISSING_BUNDLE)
+            ) {
                 return selectLaunchLocked()
             }
         }
@@ -1558,6 +1582,15 @@ class BundleFileStorageService(
                     getBundleStoreDir().listFiles()?.forEach { file ->
                         if (file.isDirectory) file.deleteRecursively()
                     }
+                    updateLog?.append(
+                        UpdateLogEvent(
+                            type = UpdateLogEvent.ROLLBACK,
+                            outcome = UpdateLogEvent.BUILT_IN_SELECTED,
+                            bundleId = selection.bundleId,
+                            fromBundleId = getKnownLaunchBundleId(metadata),
+                            channel = selection.channel,
+                        ),
+                    )
                 }
                 true
             }
@@ -1703,6 +1736,16 @@ class BundleFileStorageService(
                     updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
                 ),
             )
+            updateLog?.append(
+                UpdateLogEvent(
+                    type = UpdateLogEvent.APPLY,
+                    outcome = UpdateLogEvent.APPLIED,
+                    bundleId = stagingBundleId,
+                    fromBundleId = fromBundleId,
+                    releaseId = transition?.toReleaseId,
+                    channel = logChannel(metadata),
+                ),
+            )
         }
     }
 
@@ -1791,7 +1834,7 @@ class BundleFileStorageService(
                 val settled = loadMetadataOrNull()
                 settled?.stagingBundleId?.let { stagingBundleId ->
                     if (settled.verificationPending && getBundleUrlForId(stagingBundleId) == null) {
-                        rollbackPendingBundle(stagingBundleId)
+                        rollbackPendingBundle(stagingBundleId, logOutcome = UpdateLogEvent.ROLLED_BACK_MISSING_BUNDLE)
                     }
                 }
             }
@@ -1819,16 +1862,18 @@ class BundleFileStorageService(
         return selection
     }
 
-    override fun peekLaunchBundleId(): String? {
-        val metadata = loadMetadataOrNull() ?: return null
-        metadata.stagingBundleId?.let { stagingBundleId ->
-            if (getBundleUrlForId(stagingBundleId) != null) return stagingBundleId
+    // Under the release state lock, so it never sees a bundle mid-promotion.
+    override fun peekLaunchBundleId(): String? =
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return@synchronized null
+            metadata.stagingBundleId?.let { stagingBundleId ->
+                if (getBundleUrlForId(stagingBundleId) != null) return@synchronized stagingBundleId
+            }
+            metadata.stableBundleId?.let { stableBundleId ->
+                if (getBundleUrlForId(stableBundleId) != null) return@synchronized stableBundleId
+            }
+            null
         }
-        metadata.stableBundleId?.let { stableBundleId ->
-            if (getBundleUrlForId(stableBundleId) != null) return stableBundleId
-        }
-        return null
-    }
 
     override suspend fun updateBundle(
         bundleId: String,
@@ -2856,8 +2901,9 @@ class BundleFileStorageService(
             return false
         }
 
+        val previousMetadata = loadMetadataOrNull() ?: BundleMetadata()
         val clearedMetadata =
-            (loadMetadataOrNull() ?: BundleMetadata()).copy(
+            previousMetadata.copy(
                 isolationKey = isolationKey,
                 stableBundleId = null,
                 stagingBundleId = null,
@@ -2893,6 +2939,15 @@ class BundleFileStorageService(
             }
         }
 
+        updateLog?.append(
+            UpdateLogEvent(
+                type = UpdateLogEvent.ROLLBACK,
+                outcome = UpdateLogEvent.CHANNEL_RESET,
+                bundleId = minBundleIdProvider(),
+                fromBundleId = getKnownLaunchBundleId(previousMetadata),
+                channel = defaultChannelProvider(),
+            ),
+        )
         return true
     }
 }

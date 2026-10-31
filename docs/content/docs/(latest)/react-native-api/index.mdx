@@ -47,14 +47,14 @@ A staged update can change the selected ID before its code runs. See
 
 ## Target channels and cohorts
 
-| API                                                             | Use it to                                                   |
-| --------------------------------------------------------------- | ----------------------------------------------------------- |
-| [`getChannel`](/docs/react-native-api/getChannel)               | Read the effective channel.                                 |
-| [`getDefaultChannel`](/docs/react-native-api/getDefaultChannel) | Read the channel embedded in the native build.              |
-| [`isChannelSwitched`](/docs/react-native-api/isChannelSwitched) | Inspect whether a runtime channel switch is active.         |
-| [`resetChannel`](/docs/react-native-api/resetChannel)           | Clear OTA state and restore the built-in bundle selection.  |
-| [`getCohort`](/docs/react-native-api/getCohort)                 | Read the persisted rollout cohort.                          |
-| [`setCohort`](/docs/react-native-api/setCohort)                 | Override the cohort for future checks.                      |
+| API                                                             | Use it to                                                  |
+| --------------------------------------------------------------- | ---------------------------------------------------------- |
+| [`getChannel`](/docs/react-native-api/getChannel)               | Read the effective channel.                                |
+| [`getDefaultChannel`](/docs/react-native-api/getDefaultChannel) | Read the channel embedded in the native build.             |
+| [`isChannelSwitched`](/docs/react-native-api/isChannelSwitched) | Inspect whether a runtime channel switch is active.        |
+| [`resetChannel`](/docs/react-native-api/resetChannel)           | Clear OTA state and restore the built-in bundle selection. |
+| [`getCohort`](/docs/react-native-api/getCohort)                 | Read the persisted rollout cohort.                         |
+| [`setCohort`](/docs/react-native-api/setCohort)                 | Override the cohort for future checks.                     |
 
 For workflows, see [runtime channel switching](/docs/guides/runtime-channel-switch)
 and [rollout and cohorts](/docs/guides/rollout-cohorts).
@@ -69,15 +69,18 @@ and [rollout and cohorts](/docs/guides/rollout-cohorts).
 
 ## Diagnose an installation
 
-| API                                                                   | Use it to                                                                     |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [`getAppVersion`](/docs/react-native-api/getAppVersion)               | Read the native app version.                                                  |
-| [`getBundleId`](/docs/react-native-api/getBundleId)                   | Read the selected update ID shown in the Console.                             |
-| [`notifyAppReady`](/docs/react-native-api/notifyAppReady)             | Read the native launch outcome and applied or recovered transition IDs.       |
-| [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState) | Inspect active and stable selections, artifact IDs, and pending verification. |
-| [`getInstallId`](/docs/react-native-api/getInstallId)                 | Identify an installation in Insights or a support report.                     |
-| [`getCrashHistory`](/docs/react-native-api/getCrashHistory)           | Inspect artifacts rejected after a crash.                                     |
-| [`clearCrashHistory`](/docs/react-native-api/clearCrashHistory)       | Allow the device to retry previously rejected artifacts.                      |
+| API                                                                   | Use it to                                                                                      |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [`getUpdateStatus`](/docs/react-native-api/getUpdateStatus)           | See whether updates are on in this build and whether a restart changes the running bundle.     |
+| [`getUpdateLogs`](/docs/react-native-api/getUpdateLogs)               | Read this device's log of checks, downloads, applied updates, rollbacks, and crash recoveries. |
+| [`clearUpdateLogs`](/docs/react-native-api/clearUpdateLogs)           | Delete this device's update log.                                                               |
+| [`getAppVersion`](/docs/react-native-api/getAppVersion)               | Read the native app version.                                                                   |
+| [`getBundleId`](/docs/react-native-api/getBundleId)                   | Read the selected update ID shown in the Console.                                              |
+| [`notifyAppReady`](/docs/react-native-api/notifyAppReady)             | Read the native launch outcome and applied or recovered transition IDs.                        |
+| [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState) | Inspect active and stable selections, artifact IDs, and pending verification.                  |
+| [`getInstallId`](/docs/react-native-api/getInstallId)                 | Identify an installation in Insights or a support report.                                      |
+| [`getCrashHistory`](/docs/react-native-api/getCrashHistory)           | Inspect artifacts rejected after a crash.                                                      |
+| [`clearCrashHistory`](/docs/react-native-api/clearCrashHistory)       | Allow the device to retry previously rejected artifacts.                                       |
 
 See [Insights](/docs/guides/insights) for reporting limits and
 [automatic rollback](/docs/concepts/automatic-rollback) for recovery behavior.

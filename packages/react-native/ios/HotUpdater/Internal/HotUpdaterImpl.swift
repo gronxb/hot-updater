@@ -149,6 +149,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let recoveryManager: HotUpdaterRecoveryManager
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
+    private let updateLog: UpdateLogService
     /// Main only: the native update check of the first launch with UI after
     /// a crash. None in a development build.
     private let postCrashUpdateCheck: HotUpdaterPostCrashUpdateCheck?
@@ -256,7 +257,8 @@ private func hotUpdaterGetMinBundleId() -> String {
             preferences: preferences,
             isolationKey: isolationKey,
             instance: environment,
-            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() }
+            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() },
+            updateLog: UpdateLogService.service(in: environment.updateLogDirectory(in: fileSystem))
         )
 
         self.init(
@@ -296,6 +298,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         self.recoveryManager = recoveryManager
         self.releaseCatalogCache = releaseCatalogCache
         self.keyValueStorage = keyValueStorage
+        self.updateLog = UpdateLogService.service(in: environment.updateLogDirectory(in: FileManagerService()))
         self.postCrashUpdateCheck = environment.isMain && !HotUpdaterImpl.isDevelopmentBuild
             ? HotUpdaterPostCrashUpdateCheck(
                 storage: keyValueStorage,
@@ -583,6 +586,7 @@ private func hotUpdaterGetMinBundleId() -> String {
                     }
                     return
                 }
+                self.logDownload(result, bundleId: bundleId, selection: selection, channel: channel)
                 // Return results on main thread for React Native bridge
                 DispatchQueue.main.async {
                     switch result {
@@ -618,6 +622,35 @@ private func hotUpdaterGetMinBundleId() -> String {
 
             reject("UNKNOWN_ERROR", nsError.localizedDescription, nsError)
         }
+    }
+
+    private func logDownload(
+        _ result: Result<UpdateDelivery, Error>,
+        bundleId: String,
+        selection: PersistedSelection?,
+        channel: String?
+    ) {
+        let logChannel = channel.flatMap { $0.isEmpty ? nil : $0 } ?? selection?.channel ?? getChannel()
+        var event = UpdateLogEvent(
+            type: UpdateLogEvent.download,
+            outcome: UpdateLogEvent.staged,
+            bundleId: bundleId,
+            fromBundleId: runningBundleId() ?? Self.minBundleId(),
+            releaseId: selection?.releaseId,
+            channel: logChannel
+        )
+        if case .failure(let error) = result {
+            event = UpdateLogEvent(
+                type: event.type,
+                outcome: UpdateLogEvent.failed,
+                bundleId: event.bundleId,
+                fromBundleId: event.fromBundleId,
+                releaseId: event.releaseId,
+                channel: event.channel,
+                error: UpdateLogEvent.errorFields(of: error, code: Self.normalizeErrorCode(from: error))
+            )
+        }
+        updateLog.append(event)
     }
 
     /// Every changed file with its hash and URL or Hermes patch; without
@@ -976,6 +1009,84 @@ private func hotUpdaterGetMinBundleId() -> String {
         (currentLaunchSelection ?? runningLaunchSelection)?.launchedBundleId
     }
 
+    /// The bundle this runtime runs and, when the next launch runs another,
+    /// that bundle; no launch selection on either side is the built-in bundle.
+    /// Under the launch lock, so a channel reset or a launch being selected
+    /// never shows half done. Reads the state as it is: settling the previous
+    /// launch here would consume what its launch reports.
+    func runningBundles() -> (bundleId: String, pendingBundleId: String?) {
+        launchPreparationLock.withLock {
+            let minBundleId = Self.minBundleId()
+            let running = runningBundleId() ?? minBundleId
+            let next = bundleStorage.peekLaunchBundleId() ?? minBundleId
+            return (running, next == running ? nil : next)
+        }
+    }
+
+    /// `runningBundles` as JSON for JavaScript, off the JavaScript thread.
+    @objc
+    public func getUpdateStatus(
+        _ resolver: @escaping RCTPromiseResolveBlock,
+        rejecter _: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            let bundles = self.runningBundles()
+            let status: [String: Any] = [
+                "bundleId": bundles.bundleId,
+                "pendingBundleId": bundles.pendingBundleId ?? NSNull(),
+            ]
+            let data = (try? JSONSerialization.data(withJSONObject: status)) ?? Data()
+            resolver(String(decoding: data, as: UTF8.self))
+        }
+    }
+
+    /// The retained update log as a JSON array, oldest first.
+    @objc
+    public func getUpdateLogs(
+        _ resolver: @escaping RCTPromiseResolveBlock,
+        rejecter _: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            resolver(self.updateLog.read())
+        }
+    }
+
+    /// Deletes the update log.
+    @objc
+    public func clearUpdateLogs(
+        _ resolver: @escaping RCTPromiseResolveBlock,
+        rejecter _: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            resolver(self.updateLog.clear())
+        }
+    }
+
+    /// Appends a check or download JavaScript ran to the update log.
+    @objc
+    public func appendUpdateLog(_ entry: String) {
+        updateLog.appendJson(entry)
+    }
+
+    /// Appends a check native code ran to the update log.
+    func appendUpdateLog(_ event: UpdateLogEvent) {
+        updateLog.append(event)
+    }
+
+    /// The retained update log, oldest first, for the native instance.
+    func readUpdateLogEntries() -> [[String: Any]] {
+        guard let data = updateLog.read().data(using: .utf8),
+              let entries = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            return []
+        }
+        return entries
+    }
+
+    /// Deletes the update log, for the native instance.
+    func clearUpdateLogEntries() -> Bool {
+        updateLog.clear()
+    }
+
     /**
      * Gets the current manifest from bundle storage.
      */
@@ -1154,10 +1265,22 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// a marker that doesn't roll back also leaves the post-crash update
     /// check pending.
     private func consumePendingCrashRecovery() -> PendingCrashRecovery? {
-        guard let postCrashUpdateCheck else {
-            return recoveryManager.consumePendingCrashRecovery()
+        let recovery: PendingCrashRecovery?
+        if let postCrashUpdateCheck {
+            recovery = postCrashUpdateCheck.consumeMarker { recoveryManager.consumePendingCrashRecovery() }
+        } else {
+            recovery = recoveryManager.consumePendingCrashRecovery()
         }
-        return postCrashUpdateCheck.consumeMarker { recoveryManager.consumePendingCrashRecovery() }
+        // A rollback is recorded by the storage that makes it.
+        if let recovery, !recovery.shouldRollback {
+            updateLog.append(UpdateLogEvent(
+                type: UpdateLogEvent.crashRecovery,
+                outcome: UpdateLogEvent.keptAfterCrash,
+                bundleId: recovery.launchedBundleId ?? Self.minBundleId(),
+                channel: getChannel()
+            ))
+        }
+        return recovery
     }
 
     /// Runs `action` once the app is active: a launch without UI, such as a

@@ -25,6 +25,8 @@ internal class HotUpdaterImplUpdateCheckState(
 
     override fun recordRecoveryRequest(request: NativeCheckRequest) = impl.recordRecoveryRequest(request)
 
+    override fun appendUpdateLog(event: UpdateLogEvent) = impl.appendUpdateLog(event)
+
     override fun getCrashHistory(): List<String> = impl.getCrashHistory()
 
     override fun getActiveUpdateState(): ActiveSelections {

@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
   return {
     addListener: vi.fn(() => () => {}),
     acceptReleaseCatalog: vi.fn(() => true),
+    appendNativeUpdateLog: vi.fn(),
     commitReleaseSelection: vi.fn(async () => true),
     getActiveUpdateState: vi.fn(() => ({
       activeSelection: null as PersistedSelectionReceipt | null,
@@ -264,6 +265,110 @@ describe("checkForUpdate Release catalog protocol", () => {
       );
     },
   );
+
+  const loggedEntries = () =>
+    mocks.appendNativeUpdateLog.mock.calls.map(([entry]) =>
+      JSON.parse(entry as string),
+    );
+
+  it("logs a check with no update as up to date", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient(null as never);
+
+    await checkForUpdate({ emit, client, updateStrategy: "appVersion" });
+
+    expect(loggedEntries()).toEqual([
+      {
+        type: "CHECK",
+        outcome: "UP_TO_DATE",
+        bundleId: CURRENT_BUNDLE_ID,
+        channel: CHANNEL,
+      },
+    ]);
+  });
+
+  it("logs a check that found an update, and leaves its download to native", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+    mocks.stageBundle.mockRejectedValueOnce(new Error("native failed"));
+
+    const update = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+    await expect(update?.updateBundle()).rejects.toThrow("native failed");
+
+    expect(loggedEntries()).toEqual([
+      {
+        type: "CHECK",
+        outcome: "UPDATE_AVAILABLE",
+        bundleId: TARGET_BUNDLE_ID,
+        fromBundleId: CURRENT_BUNDLE_ID,
+        releaseId: RELEASE_ID,
+        channel: CHANNEL,
+      },
+    ]);
+  });
+
+  it("logs a failed check with its error", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    fetchReleaseCatalog.mockRejectedValueOnce(new Error("catalog unreachable"));
+
+    await checkForUpdate({ emit, client, updateStrategy: "appVersion" });
+
+    expect(loggedEntries()).toEqual([
+      {
+        type: "CHECK",
+        outcome: "FAILED",
+        bundleId: CURRENT_BUNDLE_ID,
+        channel: CHANNEL,
+        error: { message: "catalog unreachable" },
+      },
+    ]);
+  });
+
+  it("logs a download that failed before native staged anything", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, resolveArtifact } = createClient();
+    resolveArtifact.mockRejectedValueOnce(new Error("artifact unreachable"));
+
+    const update = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+    await expect(update?.updateBundle()).rejects.toThrow(
+      "artifact unreachable",
+    );
+
+    expect(loggedEntries().at(-1)).toEqual({
+      type: "DOWNLOAD",
+      outcome: "FAILED",
+      bundleId: TARGET_BUNDLE_ID,
+      fromBundleId: CURRENT_BUNDLE_ID,
+      releaseId: RELEASE_ID,
+      channel: CHANNEL,
+      error: { message: "artifact unreachable" },
+    });
+  });
+
+  it("never lets a failure to log reach the check", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient(null as never);
+    mocks.appendNativeUpdateLog.mockImplementation(() => {
+      throw new Error("native failed");
+    });
+
+    try {
+      await expect(
+        checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
+      ).resolves.toBeNull();
+    } finally {
+      mocks.appendNativeUpdateLog.mockReset();
+    }
+  });
 
   it("keeps the saved recovery request when a check can't be made", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");

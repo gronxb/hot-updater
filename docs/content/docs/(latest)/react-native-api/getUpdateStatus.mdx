@@ -1,0 +1,111 @@
+---
+title: "getUpdateStatus"
+description: "Read whether updates are on in this build and whether a restart would change the running bundle."
+icon: Activity
+---
+
+## Usage
+
+Use `hotUpdater.getUpdateStatus()` in a debug menu or support screen. It answers
+two questions about this build and returns the values support asks for with them
+as one snapshot.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+const status = await hotUpdater.getUpdateStatus();
+
+if (status.isUpdatePending) {
+  console.log(`The next restart runs ${status.pendingBundleId}`);
+}
+```
+
+## Return value
+
+```ts
+type UpdateDisabledReason =
+  | "DEVELOPMENT_BUILD"
+  | "UNSUPPORTED_PLATFORM"
+  | "MISSING_APP_VERSION";
+
+type UpdateStatusSnapshot = {
+  readonly isEnabled: boolean;
+  readonly disabledReason: UpdateDisabledReason | null;
+  readonly isUpdatePending: boolean | null;
+  readonly pendingBundleId: string | null;
+  readonly bundleId: string;
+  readonly channel: string;
+  readonly appVersion: string | null;
+  readonly fingerprintHash: string | null;
+  readonly minBundleId: string;
+};
+
+getUpdateStatus(): Promise<UpdateStatusSnapshot>
+```
+
+| Field             | Meaning                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `isEnabled`       | Whether [`checkForUpdate`](/docs/react-native-api/checkForUpdate) can reach the server in this build.                           |
+| `disabledReason`  | Why it can't, or `null`. See [when updates are off](#when-updates-are-off).                                                     |
+| `isUpdatePending` | Whether the next restart runs another bundle than the running one. `null` when native can't tell. See [pending](#pending).      |
+| `pendingBundleId` | The artifact ID the next restart runs, when it is not the running one. The built-in bundle's ID when the restart returns to it. |
+| `bundleId`        | The artifact ID running now. A staged update does not change it.                                                                |
+| `channel`         | The same value as [`getChannel()`](/docs/react-native-api/getChannel).                                                          |
+| `appVersion`      | The same value as [`getAppVersion()`](/docs/react-native-api/getAppVersion).                                                    |
+| `fingerprintHash` | The fingerprint the build embeds, or `null` for a build without one.                                                            |
+| `minBundleId`     | The built-in bundle's ID.                                                                                                       |
+
+This method reads local state and makes no network request. Read it again when
+you need a fresh snapshot.
+
+## When updates are off
+
+| `disabledReason`       | What it means                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `DEVELOPMENT_BUILD`    | `__DEV__` is true, as with a bundle from the development server. `checkForUpdate` returns `null`. |
+| `UNSUPPORTED_PLATFORM` | The app runs on a platform other than iOS or Android.                                             |
+| `MISSING_APP_VERSION`  | Native could not read the app's version.                                                          |
+
+[`HotUpdater.init`](/docs/react-native-api/init) refuses a missing `baseURL`, so
+a running instance always has a server to check. With the fingerprint strategy,
+a check also needs `fingerprintHash`; `isEnabled` does not depend on the strategy,
+which each check chooses, so read `fingerprintHash` when a fingerprint check
+fails.
+
+## Pending
+
+`isUpdatePending` compares the bundle running now with the bundle the native launch
+would select next, so it is true exactly when a restart changes what runs:
+
+| What happened                                                               | `isUpdatePending` | `pendingBundleId`        |
+| --------------------------------------------------------------------------- | ----------------- | ------------------------ |
+| Nothing was downloaded                                                      | `false`           | `null`                   |
+| An update was downloaded and staged                                         | `true`            | The staged artifact      |
+| The staged bundle runs, verified or not                                     | `false`           | `null`                   |
+| A channel reset, or a rollback to the built-in bundle, while an update runs | `true`            | The built-in bundle's ID |
+
+A staged bundle whose files are gone is no longer pending: the next launch falls
+back to the bundle before it.
+
+It differs from [`isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded),
+which only follows this session's download progress: `getUpdateStatus()` also sees
+a bundle a previous session staged.
+
+<Callout type="info">
+  A pending bundle can still roll back once it launches. See [automatic
+  rollback](/docs/concepts/automatic-rollback) and
+  [`getUpdateLogs`](/docs/react-native-api/getUpdateLogs) for what happened.
+</Callout>
+
+## Native builds from an earlier SDK
+
+An over-the-air update can bring this JavaScript to native code built from an
+earlier SDK, which can't tell what the next launch runs. There, `isUpdatePending`
+is `null`, and `bundleId` is the selected artifact, which a staged update can
+change before it runs. Every other field reads as usual.
+
+## Related
+
+- [`getUpdateLogs`](/docs/react-native-api/getUpdateLogs)
+- [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState)
+- [`getCrashHistory`](/docs/react-native-api/getCrashHistory)

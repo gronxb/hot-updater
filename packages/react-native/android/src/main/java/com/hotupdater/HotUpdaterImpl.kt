@@ -12,6 +12,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 
+/** The bundle a runtime runs and, when the next launch runs another, that bundle. */
+internal class HotUpdaterRunningBundles(
+    val bundleId: String,
+    val pendingBundleId: String?,
+)
+
 /**
  * Core implementation class for HotUpdater functionality
  */
@@ -28,6 +34,7 @@ class HotUpdaterImpl {
     private val releaseCatalogCache: ReleaseCatalogCacheService
     private val installIdentity: InstallIdentityService
     private val keyValueStorage: KeyValueStorageService
+    private val updateLog: UpdateLogService
 
     // Main's update check at the launch after a crash; null for a named instance.
     private val postCrashUpdateCheck: PostCrashUpdateCheck?
@@ -102,6 +109,7 @@ class HotUpdaterImpl {
             ReleaseCatalogCacheService(environment.releaseCatalogCacheDirectory(this.context))
         this.installIdentity = InstallIdentityService.create(this.context)
         this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))
+        this.updateLog = UpdateLogService.forFile(environment.updateLogFile(this.context))
         this.postCrashUpdateCheck =
             if (environment.isMain && !isDevelopmentBuild) {
                 (postCrashUpdateCheck ?: ::createPostCrashUpdateCheck)(keyValueStorage)
@@ -205,6 +213,7 @@ class HotUpdaterImpl {
                 fingerprintHashProvider = { environment.fingerprintHash(appContext) },
                 publicKeyProvider = { environment.publicKey(appContext) },
                 fallbackBundleURL = environment.fallbackBundleURL,
+                updateLog = UpdateLogService.forFile(environment.updateLogFile(appContext)),
             )
         }
 
@@ -389,17 +398,26 @@ class HotUpdaterImpl {
         fileResolver: ArtifactFileResolver? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
+        val logChannel = channel?.takeIf { it.isNotEmpty() } ?: selection?.channel ?: getChannel()
         val result =
-            bundleStorage.updateBundle(
-                bundleId = bundleId,
-                manifestUrl = manifestUrl,
-                manifestFileHash = manifestFileHash,
-                assets = assets,
-                archiveUrl = archiveUrl,
-                fileResolver = fileResolver,
-                selection = selection,
-                progressCallback = progressCallback,
-            )
+            try {
+                bundleStorage.updateBundle(
+                    bundleId = bundleId,
+                    manifestUrl = manifestUrl,
+                    manifestFileHash = manifestFileHash,
+                    assets = assets,
+                    archiveUrl = archiveUrl,
+                    fileResolver = fileResolver,
+                    selection = selection,
+                    progressCallback = progressCallback,
+                )
+            } catch (error: Exception) {
+                if (error !is kotlinx.coroutines.CancellationException) {
+                    logDownload(UpdateLogEvent.FAILED, bundleId, selection, logChannel, UpdateLogEvent.errorOf(error))
+                }
+                throw error
+            }
+        logDownload(UpdateLogEvent.STAGED, bundleId, selection, logChannel)
 
         if (!channel.isNullOrEmpty()) {
             if (channel == getDefaultChannel()) {
@@ -409,6 +427,26 @@ class HotUpdaterImpl {
             }
         }
         return result
+    }
+
+    private fun logDownload(
+        outcome: String,
+        bundleId: String,
+        selection: PersistedSelection?,
+        channel: String,
+        error: org.json.JSONObject? = null,
+    ) {
+        updateLog.append(
+            UpdateLogEvent(
+                type = UpdateLogEvent.DOWNLOAD,
+                outcome = outcome,
+                bundleId = bundleId,
+                fromBundleId = getRunningBundleId() ?: getMinBundleId(),
+                releaseId = selection?.releaseId,
+                channel = channel,
+                error = error,
+            ),
+        )
     }
 
     /**
@@ -593,6 +631,43 @@ class HotUpdaterImpl {
         }).take()
 
     /**
+     * The bundle this runtime runs and, when the next launch runs another, that
+     * bundle; a null launch selection on either side is the built-in bundle.
+     * Under the launch lock, so a channel reset or a launch being selected
+     * never shows half done. Reads the state as it is: settling the previous
+     * launch here would consume what its launch reports.
+     */
+    internal fun getUpdateStatus(): HotUpdaterRunningBundles =
+        synchronized(launchPreparationLock) {
+            val minBundleId = getMinBundleId()
+            val running = getRunningBundleId() ?: minBundleId
+            val next = bundleStorage.peekLaunchBundleId() ?: minBundleId
+            HotUpdaterRunningBundles(bundleId = running, pendingBundleId = next.takeIf { it != running })
+        }
+
+    /** [getUpdateStatus] as JSON for JavaScript. */
+    fun getUpdateStatusJson(): String =
+        getUpdateStatus().let { status ->
+            org.json
+                .JSONObject()
+                .put("bundleId", status.bundleId)
+                .put("pendingBundleId", status.pendingBundleId ?: org.json.JSONObject.NULL)
+                .toString()
+        }
+
+    /** The retained update log as a JSON array, oldest first. Waits for the log's thread. */
+    fun getUpdateLogsJson(): String = updateLog.read()
+
+    /** Deletes the update log. Waits for the log's thread. */
+    fun clearUpdateLogs(): Boolean = updateLog.clear()
+
+    /** Appends an update check JavaScript ran to the update log. */
+    fun appendUpdateLog(entry: String) = updateLog.appendJson(entry)
+
+    /** Appends an update check native code ran to the update log. */
+    internal fun appendUpdateLog(event: UpdateLogEvent) = updateLog.append(event)
+
+    /**
      * The bundle the native update check counts as running: the launched one,
      * or before React Native starts, the one its launch would pick. Before
      * React Native starts, what the previous process left is settled first, so
@@ -738,6 +813,17 @@ class HotUpdaterImpl {
     private fun consumePendingCrashRecovery(): PendingCrashRecovery? =
         recoveryManager.consumePendingCrashRecovery()?.also {
             if (it.shouldRollback) postCrashUpdateCheck?.clearPending() else postCrashUpdateCheck?.markPending()
+            // A rollback is recorded by the storage that makes it.
+            if (!it.shouldRollback) {
+                updateLog.append(
+                    UpdateLogEvent(
+                        type = UpdateLogEvent.CRASH_RECOVERY,
+                        outcome = UpdateLogEvent.KEPT_AFTER_CRASH,
+                        bundleId = it.launchedBundleId ?: getMinBundleId(),
+                        channel = getChannel(),
+                    ),
+                )
+            }
         }
 
     private fun selectAndMonitorLaunchLocked(): PreparedLaunch {

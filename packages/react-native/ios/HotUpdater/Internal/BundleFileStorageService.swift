@@ -432,6 +432,8 @@ class BundleFileStorageService: BundleStorageService {
     private let builtInAssetResolver: BuiltInAssetResolver
     private let updateStrategyProvider: () -> UpdateStrategy
     private let metadataWriter: (BundleMetadata, URL) -> Bool
+    /// Where this store records what it applies and rolls back, for diagnostics.
+    private let updateLog: UpdateLogService?
     private let releaseStateLock = NSRecursiveLock()
 
     /// App-wide: every instance's storage reads the same install identity
@@ -875,8 +877,10 @@ class BundleFileStorageService: BundleStorageService {
                 downloadRetryDelay: TimeInterval = 1,
                 metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in
                     metadata.save(to: file)
-                }) {
+                },
+                updateLog: UpdateLogService? = nil) {
 
+        self.updateLog = updateLog
         self.fileSystem = fileSystem
         self.downloadRetryDelay = downloadRetryDelay
         self.downloadService = downloadService
@@ -1462,7 +1466,11 @@ class BundleFileStorageService: BundleStorageService {
     /// Rolls back the pending staging bundle. `unfinishedLaunch` means its launch
     /// ended before first content without a crash marker.
     @discardableResult
-    private func rollbackPendingBundle(_ stagingId: String, unfinishedLaunch: Bool = false) -> Bool {
+    private func rollbackPendingBundle(
+        _ stagingId: String,
+        unfinishedLaunch: Bool = false,
+        logOutcome: String? = nil
+    ) -> Bool {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
         guard var metadata = loadMetadataOrNull(), metadata.stagingBundleId == stagingId else {
@@ -1472,6 +1480,7 @@ class BundleFileStorageService: BundleStorageService {
         let pendingTransition = metadata.pendingTransition
         let pendingSelectionTransition = metadata.pendingSelectionTransition
         let stableSelection = metadata.stableSelection
+        let stagingChannel = metadata.stagingSelection?.channel ?? stableSelection?.channel
 
         recordFailedLaunch(stagingId, unfinishedLaunch: unfinishedLaunch)
 
@@ -1536,7 +1545,25 @@ class BundleFileStorageService: BundleStorageService {
                 updateStrategy: pendingTransition?.updateStrategy ?? updateStrategyProvider()
             )
         )
+        updateLog?.append(UpdateLogEvent(
+            type: UpdateLogEvent.crashRecovery,
+            outcome: logOutcome ?? (unfinishedLaunch
+                ? UpdateLogEvent.rolledBackUnfinishedLaunch
+                : UpdateLogEvent.rolledBackAfterCrash),
+            bundleId: fallbackBundleId ?? resolveBuiltInBundleId(),
+            fromBundleId: stagingId,
+            releaseId: stableSelection?.releaseId,
+            channel: stagingChannel ?? logChannel()
+        ))
         return true
+    }
+
+    /// The channel a log entry is on when its selections don't name one.
+    private func logChannel() -> String {
+        if let saved = try? preferences.getItem(forKey: "HotUpdaterChannel"), !saved.isEmpty {
+            return saved
+        }
+        return instance.defaultChannel()
     }
 
     private func applyPendingRecoveryIfNeeded(_ pendingRecovery: PendingCrashRecovery?) {
@@ -1683,6 +1710,7 @@ class BundleFileStorageService: BundleStorageService {
         defer { releaseStateLock.unlock() }
         guard isSelectionCurrent(selection) else { return false }
         var metadata = loadMetadataOrNull() ?? createInitialMetadata()
+        let previousBundleId = getCurrentVerifiedBundleId(metadata)
         if selection.kind == "BUNDLE" {
             if metadata.stagingSelection?.bundleId == selection.bundleId
                 || metadata.stagingBundleId == selection.bundleId {
@@ -1732,6 +1760,15 @@ class BundleFileStorageService: BundleStorageService {
                 let path = (storeDir as NSString).appendingPathComponent(item)
                 try? fileSystem.removeItem(atPath: path)
             }
+        }
+        if selection.kind != "BUNDLE" {
+            updateLog?.append(UpdateLogEvent(
+                type: UpdateLogEvent.rollback,
+                outcome: UpdateLogEvent.builtInSelected,
+                bundleId: selection.bundleId,
+                fromBundleId: previousBundleId,
+                channel: selection.channel
+            ))
         }
         return true
     }
@@ -2124,7 +2161,8 @@ class BundleFileStorageService: BundleStorageService {
                 )
             }
 
-            if metadata.verificationPending, rollbackPendingBundle(stagingId) {
+            if metadata.verificationPending,
+               rollbackPendingBundle(stagingId, logOutcome: UpdateLogEvent.rolledBackMissingBundle) {
                 return selectLaunch(bundle: bundle)
             }
         }
@@ -2152,6 +2190,9 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func peekLaunchBundleId() -> String? {
+        // Under the release state lock, so it never sees a bundle mid-promotion.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
         // Reads the store without bundleStoreDir(), which creates it.
         let storeDir = instance.bundleStorePath(documentsPath: fileSystem.documentsPath())
         let metadataFile = URL(fileURLWithPath: storeDir).appendingPathComponent(BundleMetadata.metadataFilename)
@@ -2202,7 +2243,7 @@ class BundleFileStorageService: BundleStorageService {
                bundlePath != nil {
                 return
             }
-            rollbackPendingBundle(stagingBundleId)
+            rollbackPendingBundle(stagingBundleId, logOutcome: UpdateLogEvent.rolledBackMissingBundle)
         }
     }
 
@@ -3163,6 +3204,14 @@ class BundleFileStorageService: BundleStorageService {
                 updateStrategy: pendingTransition?.updateStrategy
             )
         )
+        updateLog?.append(UpdateLogEvent(
+            type: UpdateLogEvent.apply,
+            outcome: UpdateLogEvent.applied,
+            bundleId: bundleId,
+            fromBundleId: pendingSelectionTransition?.fromBundleId ?? pendingTransition?.fromBundleId,
+            releaseId: pendingSelectionTransition?.toReleaseId,
+            channel: metadata.stagingSelection?.channel ?? logChannel()
+        ))
     }
 
     func notifyAppReady() -> [String: Any] {
@@ -3349,6 +3398,7 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         var clearedMetadata = loadMetadataOrNull() ?? BundleMetadata(isolationKey: isolationKey)
+        let previousBundleId = getCurrentVerifiedBundleId(clearedMetadata)
         clearedMetadata.stableBundleId = nil
         clearedMetadata.stagingBundleId = nil
         clearedMetadata.stableSelection = nil
@@ -3382,6 +3432,13 @@ class BundleFileStorageService: BundleStorageService {
                     try fileSystem.removeItem(atPath: bundlePath)
                 }
             }
+            updateLog?.append(UpdateLogEvent(
+                type: UpdateLogEvent.rollback,
+                outcome: UpdateLogEvent.channelReset,
+                bundleId: resolveBuiltInBundleId(),
+                fromBundleId: previousBundleId,
+                channel: instance.defaultChannel()
+            ))
             return .success(true)
         } catch {
             return .failure(BundleStorageError.moveOperationFailed(error))

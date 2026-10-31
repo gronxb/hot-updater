@@ -12,6 +12,11 @@ const mocks = vi.hoisted(() => {
 
   return {
     addListener: vi.fn(() => () => {}),
+    clearNativeUpdateLogs: vi.fn(async () => true),
+    readNativeUpdateLogs: vi.fn(async () => "[]"),
+    readNativeUpdateStatus: vi.fn(async () =>
+      JSON.stringify({ bundleId: "running", pendingBundleId: "next" }),
+    ),
     checkForUpdate: vi.fn(async () => null),
     clearCrashHistory: vi.fn(() => true),
     createHttpClient: vi.fn(
@@ -81,6 +86,10 @@ vi.mock("./native", () => ({
   clearCrashHistory: mocks.clearCrashHistory,
   getPublicActiveUpdateState: mocks.getActiveUpdateState,
   getActiveUpdateState: mocks.getActiveUpdateState,
+  appendNativeUpdateLog: vi.fn(),
+  clearNativeUpdateLogs: mocks.clearNativeUpdateLogs,
+  readNativeUpdateLogs: mocks.readNativeUpdateLogs,
+  readNativeUpdateStatus: mocks.readNativeUpdateStatus,
   getBundleId: () => "bundle-id",
   getAppVersion: mocks.getAppVersion,
   getBaseURL: mocks.getBaseURL,
@@ -231,6 +240,22 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     expect(Object.keys(HotUpdater)).toEqual(["init"]);
+  });
+
+  it("exposes the update status and log on the instance", async () => {
+    vi.stubGlobal("__DEV__", false);
+    const HotUpdater = await importHotUpdater();
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+    });
+
+    await expect(hotUpdater.getUpdateStatus()).resolves.toMatchObject({
+      isUpdatePending: true,
+      pendingBundleId: "next",
+      bundleId: "running",
+    });
+    await expect(hotUpdater.getUpdateLogs()).resolves.toEqual([]);
+    await expect(hotUpdater.clearUpdateLogs()).resolves.toBe(true);
   });
 
   it("exposes the console ID through the existing getter only", async () => {

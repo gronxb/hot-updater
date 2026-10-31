@@ -99,6 +99,9 @@ internal interface UpdateCheckState {
 
     fun getFingerprintHash(): String?
 
+    /** Records this check's outcome in the update log. */
+    fun appendUpdateLog(event: UpdateLogEvent) {}
+
     fun getCrashHistory(): List<String>
 
     fun getActiveUpdateState(): ActiveSelections
@@ -457,6 +460,15 @@ internal class NativeUpdateChecker(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                state.appendUpdateLog(
+                    UpdateLogEvent(
+                        type = UpdateLogEvent.CHECK,
+                        outcome = UpdateLogEvent.FAILED,
+                        bundleId = currentBundleId,
+                        channel = targetChannel,
+                        error = UpdateLogEvent.errorOf(error),
+                    ),
+                )
                 reportUpdateError(
                     error,
                     classifyUpdateError(error, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
@@ -506,6 +518,15 @@ internal class NativeUpdateChecker(
         releaseId: String?,
         previousReleaseId: String?,
     ) {
+        state.appendUpdateLog(
+            UpdateLogEvent(
+                type = UpdateLogEvent.CHECK,
+                outcome = UpdateLogEvent.UP_TO_DATE,
+                bundleId = bundleId,
+                releaseId = releaseId,
+                channel = channel,
+            ),
+        )
         events.add(
             "onUpdateCheck",
             JSONObject().apply {
@@ -742,6 +763,21 @@ internal class NativeUpdateChecker(
         // staged one does when the selector forces it.
         val shouldForceUpdate =
             if (desired.bundleId == input.currentBundleId) false else desired.shouldForceUpdate
+        state.appendUpdateLog(
+            UpdateLogEvent(
+                type = UpdateLogEvent.CHECK,
+                outcome =
+                    if (desired.status == DesiredReleaseStatus.ROLLBACK) {
+                        UpdateLogEvent.ROLLBACK_AVAILABLE
+                    } else {
+                        UpdateLogEvent.UPDATE_AVAILABLE
+                    },
+                bundleId = desired.bundleId,
+                fromBundleId = input.currentBundleId,
+                releaseId = desired.releaseId,
+                channel = input.targetChannel,
+            ),
+        )
         events.add(
             "onUpdateCheck",
             JSONObject().apply {
@@ -813,6 +849,15 @@ internal class NativeUpdateChecker(
                 updateStrategy = options.updateStrategy,
                 targetBundleId = input.minimumReleaseId,
             )
+        state.appendUpdateLog(
+            UpdateLogEvent(
+                type = UpdateLogEvent.CHECK,
+                outcome = UpdateLogEvent.ROLLBACK_AVAILABLE,
+                bundleId = input.minimumReleaseId,
+                fromBundleId = input.currentBundleId,
+                channel = channel,
+            ),
+        )
         events.add(
             "onUpdateCheck",
             JSONObject().apply {
@@ -909,6 +954,20 @@ internal class NativeUpdateChecker(
                     classifyUpdateError(error, UpdateFailureStage.DOWNLOAD, UpdateFailureResource.ARTIFACT)
                 }
             val cause = (error as? NativeCall.Failure)?.cause ?: error
+            // A failure from native staging is already in the update log.
+            if (error !is NativeCall.Failure) {
+                state.appendUpdateLog(
+                    UpdateLogEvent(
+                        type = UpdateLogEvent.DOWNLOAD,
+                        outcome = UpdateLogEvent.FAILED,
+                        bundleId = selection.desiredBundleId,
+                        fromBundleId = selection.input.currentBundleId,
+                        releaseId = selection.receipt.releaseId,
+                        channel = selection.receipt.channel,
+                        error = UpdateLogEvent.errorOf(cause),
+                    ),
+                )
+            }
             reportUpdateError(cause, failure, selection.errorScope)
             throw cause
         }

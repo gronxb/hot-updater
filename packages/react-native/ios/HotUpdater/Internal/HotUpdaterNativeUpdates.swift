@@ -26,6 +26,8 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
 
     func recordRecoveryRequest(_ request: NativeCheckRequest) { impl.recordRecoveryRequest(request) }
 
+    func appendUpdateLog(_ event: UpdateLogEvent) { impl.appendUpdateLog(event) }
+
     func crashHistory() -> [String] { impl.getCrashHistory() }
 
     func activeUpdateState() -> [String: Any] { impl.getActiveUpdateState() }
@@ -374,6 +376,124 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     @objc public func getDefaultChannel() -> String { impl.getDefaultChannel() }
 
     @objc public func getFingerprintHash() -> String? { impl.getFingerprintHash() }
+
+    /// Reads whether a check can run, whether the next launch runs another
+    /// bundle, and the running bundle, channel, app version, fingerprint, and
+    /// minimum bundle ID, as JavaScript's `getUpdateStatus` does. Reads files,
+    /// so call it off the main thread.
+    @objc public func getUpdateStatus() -> HotUpdaterUpdateStatusSnapshot {
+        let bundles = impl.runningBundles()
+        let appVersion = getAppVersion()
+        return HotUpdaterUpdateStatusSnapshot(
+            isEnabled: !(appVersion ?? "").isEmpty,
+            pendingBundleId: bundles.pendingBundleId,
+            bundleId: bundles.bundleId,
+            channel: getChannel(),
+            appVersion: appVersion,
+            fingerprintHash: getFingerprintHash(),
+            minBundleId: getMinBundleId()
+        )
+    }
+
+    /// This instance's update log, newest first, as JavaScript's
+    /// `getUpdateLogs` returns it: the entries at most `maxAge` seconds old,
+    /// then the newest `limit` of them. Reads a file, so call it off the main
+    /// thread.
+    public func getUpdateLogs(maxAge: TimeInterval? = nil, limit: Int? = nil) -> [HotUpdaterUpdateLogEntry] {
+        let oldest = maxAge.map { (Date().timeIntervalSince1970 - $0) * 1000 }
+        let entries: [HotUpdaterUpdateLogEntry] = impl.readUpdateLogEntries()
+            .reversed()
+            .compactMap(HotUpdaterUpdateLogEntry.init(entry:))
+            .filter { entry in oldest.map { entry.timestamp >= $0 } ?? true }
+        guard let limit else { return entries }
+        return Array(entries.prefix(max(0, limit)))
+    }
+
+    /// `getUpdateLogs` for Objective-C, with every entry.
+    @objc(getUpdateLogs)
+    public func getAllUpdateLogs() -> [HotUpdaterUpdateLogEntry] {
+        getUpdateLogs()
+    }
+
+    /// Deletes this instance's update log. Waits for its writes, so call it off
+    /// the main thread.
+    @objc public func clearUpdateLogs() -> Bool {
+        impl.clearUpdateLogEntries()
+    }
+}
+
+/// What `HotUpdaterInstance.getUpdateStatus` reads.
+@objc(HotUpdaterUpdateStatusSnapshot)
+public final class HotUpdaterUpdateStatusSnapshot: NSObject {
+    /// Whether a check can run: native checks need the app's version.
+    @objc public let isEnabled: Bool
+    /// The bundle the next launch runs, when it is not this one: a downloaded
+    /// update, or the built-in bundle after a rollback or a channel reset.
+    /// Before `bundleURL()` is read, a staged update counts.
+    @objc public let pendingBundleId: String?
+    /// The bundle running now, which a staged update does not change.
+    @objc public let bundleId: String
+    @objc public let channel: String
+    @objc public let appVersion: String?
+    @objc public let fingerprintHash: String?
+    @objc public let minBundleId: String
+    /// Whether the next launch runs another bundle than this one.
+    @objc public var isUpdatePending: Bool { pendingBundleId != nil }
+
+    init(
+        isEnabled: Bool,
+        pendingBundleId: String?,
+        bundleId: String,
+        channel: String,
+        appVersion: String?,
+        fingerprintHash: String?,
+        minBundleId: String
+    ) {
+        self.isEnabled = isEnabled
+        self.pendingBundleId = pendingBundleId
+        self.bundleId = bundleId
+        self.channel = channel
+        self.appVersion = appVersion
+        self.fingerprintHash = fingerprintHash
+        self.minBundleId = minBundleId
+    }
+}
+
+/// One update event `HotUpdaterInstance.getUpdateLogs` reads, with
+/// JavaScript's `UpdateLogEntry` values.
+@objc(HotUpdaterUpdateLogEntry)
+public final class HotUpdaterUpdateLogEntry: NSObject {
+    /// When it happened, in milliseconds since the epoch.
+    @objc public let timestamp: Double
+    /// CHECK, DOWNLOAD, APPLY, ROLLBACK, or CRASH_RECOVERY.
+    @objc public let type: String
+    /// What came of it, such as STAGED or ROLLED_BACK_AFTER_CRASH.
+    @objc public let outcome: String
+    @objc public let bundleId: String?
+    @objc public let fromBundleId: String?
+    @objc public let releaseId: String?
+    @objc public let channel: String?
+    @objc public let errorCode: String?
+    /// The error's message, with every URL cut down to its host.
+    @objc public let errorMessage: String?
+
+    init?(entry: [String: Any]) {
+        guard let timestamp = entry["timestamp"] as? NSNumber,
+              let type = entry["type"] as? String,
+              let outcome = entry["outcome"] as? String else {
+            return nil
+        }
+        let error = entry["error"] as? [String: Any]
+        self.timestamp = timestamp.doubleValue
+        self.type = type
+        self.outcome = outcome
+        bundleId = entry["bundleId"] as? String
+        fromBundleId = entry["fromBundleId"] as? String
+        releaseId = entry["releaseId"] as? String
+        channel = entry["channel"] as? String
+        errorCode = error?["code"] as? String
+        errorMessage = error?["message"] as? String
+    }
 }
 
 /// A native update call started from Objective-C; cancelling it cancels the

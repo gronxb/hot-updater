@@ -1,0 +1,108 @@
+---
+title: "getUpdateLogs"
+description: "Read this device's log of update checks, downloads, applied updates, rollbacks, and crash recoveries."
+icon: ScrollText
+---
+
+## Usage
+
+Use `hotUpdater.getUpdateLogs()` to show what happened to updates on this device,
+such as in a debug menu or a report a user sends to support.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+const logs = await hotUpdater.getUpdateLogs({ maxAge: 24 * 60 * 60 * 1000 });
+
+for (const entry of logs ?? []) {
+  console.log(
+    new Date(entry.timestamp),
+    entry.type,
+    entry.outcome,
+    entry.bundleId,
+  );
+}
+```
+
+## Parameters
+
+| Option   | Type     | Meaning                                               |
+| -------- | -------- | ----------------------------------------------------- |
+| `maxAge` | `number` | Only entries at most this many milliseconds old.      |
+| `limit`  | `number` | Only this many of the newest entries, after `maxAge`. |
+
+## Return value
+
+```ts
+type UpdateLogEntry = {
+  readonly timestamp: number;
+  readonly type: UpdateLogType;
+  readonly outcome: UpdateLogOutcome;
+  readonly bundleId: string | null;
+  readonly fromBundleId: string | null;
+  readonly releaseId: string | null;
+  readonly channel: string | null;
+  readonly error: {
+    readonly code: string | null;
+    readonly message: string | null;
+    readonly stage: string | null;
+    readonly reason: string | null;
+  } | null;
+};
+
+getUpdateLogs(options?: {
+  readonly maxAge?: number;
+  readonly limit?: number;
+}): Promise<UpdateLogEntry[] | null>
+```
+
+Entries come newest first. `bundleId` is the artifact the event is about,
+`fromBundleId` the one the app moved away from, and `releaseId` the Console's
+update ID when the event has one.
+
+It resolves with `null` when native was built from an earlier SDK, which keeps no
+log. That is not the same as an empty log, `[]`.
+
+## What it records
+
+| `type`           | `outcome`                       | When                                                                  |
+| ---------------- | ------------------------------- | --------------------------------------------------------------------- |
+| `CHECK`          | `UP_TO_DATE`                    | A check found nothing to apply.                                       |
+| `CHECK`          | `UPDATE_AVAILABLE`              | A check selected an update.                                           |
+| `CHECK`          | `ROLLBACK_AVAILABLE`            | A check selected a rollback.                                          |
+| `CHECK`          | `FAILED`                        | A check failed; `error` says why.                                     |
+| `DOWNLOAD`       | `STAGED`                        | A bundle was downloaded and waits for the next launch.                |
+| `DOWNLOAD`       | `FAILED`                        | A download failed; `error` says why.                                  |
+| `APPLY`          | `APPLIED`                       | A staged bundle reached its first content.                            |
+| `ROLLBACK`       | `BUILT_IN_SELECTED`             | The server selected the built-in bundle.                              |
+| `ROLLBACK`       | `CHANNEL_RESET`                 | The runtime channel was reset.                                        |
+| `CRASH_RECOVERY` | `ROLLED_BACK_AFTER_CRASH`       | A staged bundle crashed before its first content and was rolled back. |
+| `CRASH_RECOVERY` | `ROLLED_BACK_UNFINISHED_LAUNCH` | A staged bundle's launch ended before its first content.              |
+| `CRASH_RECOVERY` | `ROLLED_BACK_MISSING_BUNDLE`    | A staged bundle's files were gone at launch.                          |
+| `CRASH_RECOVERY` | `KEPT_AFTER_CRASH`              | A verified bundle crashed; it keeps running and a fix is checked for. |
+
+Native records these with the time they happened. A crash is recorded at the
+launch after it, since a crashing process can't write safely. A native update
+check, from [a brownfield app](/docs/guides/brownfield) or after a crash, records
+its checks too. Native built from this SDK records its downloads, applied updates,
+rollbacks, and recoveries under any JavaScript; `CHECK` entries from JavaScript
+need JavaScript from this SDK.
+
+## Retention and privacy
+
+The device keeps the newest 200 entries of the last 7 days, whichever is fewer, in
+a file of its own outside device backups, for each native instance. Reinstalling
+the app removes it, and an upgrade keeps it.
+
+The log stays on the device: reading it makes no network request, and Hot Updater
+never uploads it. Entries hold no request headers, and an error's `message` keeps
+only the host of any URL, so a signed URL's query never reaches the log.
+
+Recording never slows a launch or fails an update: native writes in the background
+and ignores a write that fails, and a line it can't read back is skipped.
+
+## Related
+
+- [`clearUpdateLogs`](/docs/react-native-api/clearUpdateLogs)
+- [`getUpdateStatus`](/docs/react-native-api/getUpdateStatus)
+- [Automatic rollback](/docs/concepts/automatic-rollback)

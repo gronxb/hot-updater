@@ -249,6 +249,12 @@ struct HotUpdaterInstanceEnvironment {
             .appendingPathComponent(name, isDirectory: true)
     }
 
+    /// The directory of the update log, beside the key-value store and outside
+    /// the bundle store, whose sweeps delete it.
+    func updateLogDirectory(in fileSystem: FileSystemService) -> URL {
+        keyValueStorageDirectory(in: fileSystem)
+    }
+
     /// Per name, so one instance's entry limit never evicts another's.
     func releaseCatalogCacheDirectory(in fileSystem: FileSystemService) -> URL {
         guard !isMain else {

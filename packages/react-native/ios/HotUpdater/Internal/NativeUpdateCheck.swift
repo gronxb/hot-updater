@@ -388,10 +388,13 @@ protocol NativeUpdateHost: NativeUpdateEventStorage {
     /// The server answered `request`: main keeps it for its check after a
     /// crash, as JavaScript's checks do.
     func recordRecoveryRequest(_ request: NativeCheckRequest)
+    /// Records this check's outcome in the update log.
+    func appendUpdateLog(_ event: UpdateLogEvent)
 }
 
 extension NativeUpdateHost {
     func recordRecoveryRequest(_ request: NativeCheckRequest) {}
+    func appendUpdateLog(_ event: UpdateLogEvent) {}
 }
 
 /// A promise rejection from a native method, as JavaScript receives it.
@@ -1199,6 +1202,15 @@ final class NativeUpdateChecker {
                 fingerprintHash: fingerprintHash
             )
         } catch {
+            if !(error is CancellationError) {
+                host.appendUpdateLog(UpdateLogEvent(
+                    type: UpdateLogEvent.check,
+                    outcome: UpdateLogEvent.failed,
+                    bundleId: currentBundleId,
+                    channel: targetChannel,
+                    error: UpdateLogEvent.errorFields(of: error)
+                ))
+            }
             reportUpdateError(
                 error,
                 stage: "check",
@@ -1491,6 +1503,18 @@ final class NativeUpdateChecker {
             do {
                 return try await installSelection(progress)
             } catch {
+                // A failure from native staging is already in the update log.
+                if !(error is NativeUpdateRejection || error is CancellationError) {
+                    host.appendUpdateLog(UpdateLogEvent(
+                        type: UpdateLogEvent.download,
+                        outcome: UpdateLogEvent.failed,
+                        bundleId: desired.bundleId,
+                        fromBundleId: currentBundleId,
+                        releaseId: desired.releaseId,
+                        channel: targetChannel,
+                        error: UpdateLogEvent.errorFields(of: error)
+                    ))
+                }
                 reportUpdateError(error, stage: "download", resource: "artifact", scope: errorScope)
                 throw error
             }
@@ -1499,6 +1523,14 @@ final class NativeUpdateChecker {
         // Adopting the bundle the app already runs needs no reload; adopting a
         // staged one does when the selector forces it.
         let shouldForceUpdate = desired.bundleId.jsEquals(currentBundleId) ? false : desired.shouldForceUpdate
+        host.appendUpdateLog(UpdateLogEvent(
+            type: UpdateLogEvent.check,
+            outcome: desired.status == .rollback ? UpdateLogEvent.rollbackAvailable : UpdateLogEvent.updateAvailable,
+            bundleId: desired.bundleId,
+            fromBundleId: currentBundleId,
+            releaseId: desired.releaseId,
+            channel: targetChannel
+        ))
         queueEvent("onUpdateCheck", [
             "status": "UPDATE_AVAILABLE",
             "channel": targetChannel,
@@ -1587,6 +1619,13 @@ final class NativeUpdateChecker {
             }
         }
         let fromReleaseId = runningReleaseId(bundleId: currentBundleId, channel: channel)
+        host.appendUpdateLog(UpdateLogEvent(
+            type: UpdateLogEvent.check,
+            outcome: UpdateLogEvent.rollbackAvailable,
+            bundleId: minimumReleaseId,
+            fromBundleId: currentBundleId,
+            channel: channel
+        ))
         queueEvent("onUpdateCheck", [
             "status": "UPDATE_AVAILABLE",
             "channel": channel,
@@ -1631,6 +1670,13 @@ final class NativeUpdateChecker {
     }
 
     private func queueUnchanged(channel: String, bundleId: String, releaseId: String?, previousReleaseId: String?) {
+        host.appendUpdateLog(UpdateLogEvent(
+            type: UpdateLogEvent.check,
+            outcome: UpdateLogEvent.upToDate,
+            bundleId: bundleId,
+            releaseId: releaseId,
+            channel: channel
+        ))
         queueEvent("onUpdateCheck", [
             "status": "UNCHANGED",
             "channel": channel,

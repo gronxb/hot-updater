@@ -296,7 +296,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(38);
+    expect(new Set(listScenarioNames()).size).toBe(39);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {

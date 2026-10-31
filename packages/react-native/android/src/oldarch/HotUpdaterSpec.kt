@@ -76,6 +76,14 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun takeNativeUpdateEvents(): String?
 
+    abstract fun getUpdateStatus(promise: Promise)
+
+    abstract fun getUpdateLogs(promise: Promise)
+
+    abstract fun clearUpdateLogs(promise: Promise)
+
+    abstract fun appendUpdateLog(entry: String)
+
     abstract fun resetChannel(promise: Promise)
 
     abstract fun resetChannelIfSelectionCurrent(

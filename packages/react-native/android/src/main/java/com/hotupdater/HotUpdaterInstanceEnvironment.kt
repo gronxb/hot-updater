@@ -102,6 +102,9 @@ internal class HotUpdaterInstanceEnvironment private constructor(
             File(noBackupRoot(context), KeyValueStorageService.FILENAME)
         }
 
+    /** The instance's update log, beside its key-value store and outside `bundle-store`, whose sweeps delete it. */
+    fun updateLogFile(context: Context): File = File(keyValueStorageFile(context).parentFile, UpdateLogService.FILENAME)
+
     /** Each directory trims to its own entries, so one instance never evicts another's. */
     fun releaseCatalogCacheDirectory(context: Context): File =
         if (isMain) {

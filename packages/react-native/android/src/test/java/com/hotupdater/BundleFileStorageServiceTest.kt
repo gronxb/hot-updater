@@ -53,6 +53,209 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `the next launch is the staged bundle, then the stable one when its files are gone`() {
+        val rootDir = temporaryFolder.newFolder()
+        createCompleteBundle(rootDir, "stable-bundle", "stable")
+        val staged = createCompleteBundle(rootDir, "staged-bundle", "staged")
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            ),
+        )
+        val service = createService(rootDir)
+
+        assertEquals("staged-bundle", service.peekLaunchBundleId())
+
+        staged.deleteRecursively()
+
+        assertEquals("stable-bundle", service.peekLaunchBundleId())
+    }
+
+    @Test
+    fun `the next launch is what prepareLaunch then selects`() {
+        val rootDir = temporaryFolder.newFolder()
+        createCompleteBundle(rootDir, "staged-bundle", "staged")
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            ),
+        )
+        val service = createService(rootDir)
+        val next = service.peekLaunchBundleId()
+
+        assertEquals(next, service.prepareLaunch(null).launchedBundleId)
+        // Its own launch is still the next one: a restart runs it again.
+        assertEquals(next, service.peekLaunchBundleId())
+
+        service.markLaunchCompleted(next)
+
+        assertEquals(next, service.peekLaunchBundleId())
+    }
+
+    @Test
+    fun `the first content of a staged bundle logs that it applied`() {
+        val rootDir = temporaryFolder.newFolder()
+        val log = logOf(rootDir)
+        createCompleteBundle(rootDir, "staged-bundle", "staged")
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingBundleId = "staged-bundle",
+                stagingSelection = releaseSelection("release-one", "staged-bundle", 1, "hash-1", "context-1"),
+                verificationPending = true,
+                pendingTransition = PendingSelectionTransition(null, "built-in", "release-one", "staged-bundle"),
+            ),
+        )
+        val service = createService(rootDir, updateLog = log)
+        service.prepareLaunch(null)
+
+        service.markLaunchCompleted("staged-bundle")
+        // First content of the same launch again, as after an activity recreation.
+        service.markLaunchCompleted("staged-bundle")
+
+        val entry = loggedEntries(log).single()
+        assertEquals("APPLY", entry.getString("type"))
+        assertEquals("APPLIED", entry.getString("outcome"))
+        assertEquals("staged-bundle", entry.getString("bundleId"))
+        assertEquals("built-in", entry.getString("fromBundleId"))
+        assertEquals("release-one", entry.getString("releaseId"))
+        assertEquals("production", entry.getString("channel"))
+    }
+
+    @Test
+    fun `a crash of the staged bundle logs the rollback`() {
+        val rootDir = temporaryFolder.newFolder()
+        val log = logOf(rootDir)
+        createCompleteBundle(rootDir, "stable-bundle", "stable")
+        createCompleteBundle(rootDir, "staged-bundle", "staged")
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            ),
+        )
+
+        createService(rootDir, updateLog = log).prepareLaunch(PendingCrashRecovery("staged-bundle", shouldRollback = true))
+
+        val entry = loggedEntries(log).single()
+        assertEquals("CRASH_RECOVERY", entry.getString("type"))
+        assertEquals("ROLLED_BACK_AFTER_CRASH", entry.getString("outcome"))
+        assertEquals("stable-bundle", entry.getString("bundleId"))
+        assertEquals("staged-bundle", entry.getString("fromBundleId"))
+    }
+
+    @Test
+    fun `an unfinished launch and a missing bundle log their own rollbacks`() {
+        val unfinishedRoot = temporaryFolder.newFolder()
+        val unfinishedLog = logOf(unfinishedRoot)
+        createCompleteBundle(unfinishedRoot, "hung-bundle", "hung")
+        writeMetadata(
+            unfinishedRoot,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingBundleId = "hung-bundle",
+                verificationPending = true,
+                launchInProgress = true,
+            ),
+        )
+        createService(unfinishedRoot, updateLog = unfinishedLog).prepareLaunch(null)
+        assertEquals("ROLLED_BACK_UNFINISHED_LAUNCH", loggedEntries(unfinishedLog).single().getString("outcome"))
+
+        val missingRoot = temporaryFolder.newFolder()
+        val missingLog = logOf(missingRoot)
+        writeMetadata(
+            missingRoot,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingBundleId = "gone-bundle",
+                verificationPending = true,
+            ),
+        )
+        createService(missingRoot, updateLog = missingLog).prepareLaunch(null)
+        assertEquals("ROLLED_BACK_MISSING_BUNDLE", loggedEntries(missingLog).single().getString("outcome"))
+    }
+
+    @Test
+    fun `a channel reset logs the return to the built-in bundle and leaves the log file`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val log = logOf(rootDir)
+            createCompleteBundle(rootDir, "channel-bundle", "channel")
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = "channel-bundle",
+                    verificationPending = false,
+                ),
+            )
+            val service = createService(rootDir, minBundleId = "built-in", updateLog = log)
+
+            assertTrue(service.resetChannel())
+
+            assertNull(service.peekLaunchBundleId())
+            val entry = loggedEntries(log).single()
+            assertEquals("ROLLBACK", entry.getString("type"))
+            assertEquals("CHANNEL_RESET", entry.getString("outcome"))
+            assertEquals("built-in", entry.getString("bundleId"))
+            assertEquals("channel-bundle", entry.getString("fromBundleId"))
+        }
+
+    @Test
+    fun `a committed built-in selection logs the rollback and clears the next launch's bundle`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val log = logOf(rootDir)
+            createCompleteBundle(rootDir, "downloaded-bundle", "downloaded")
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = "downloaded-bundle",
+                    verificationPending = false,
+                ),
+            )
+            val service = createService(rootDir, minBundleId = "built-in", updateLog = log)
+            assertTrue(
+                service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2"),
+            )
+
+            assertTrue(
+                service.commitReleaseSelection(
+                    PersistedSelection(
+                        kind = "BUILTIN",
+                        releaseId = null,
+                        bundleId = "built-in",
+                        catalogId = "project-a",
+                        scopeKey = "scope-production",
+                        generation = 2,
+                        catalogHash = "hash-2",
+                        channel = "production",
+                        selectionContextHash = "context-2",
+                    ),
+                ),
+            )
+
+            assertNull(service.peekLaunchBundleId())
+            val entry = loggedEntries(log).single()
+            assertEquals("ROLLBACK", entry.getString("type"))
+            assertEquals("BUILT_IN_SELECTED", entry.getString("outcome"))
+            assertEquals("built-in", entry.getString("bundleId"))
+            assertEquals("downloaded-bundle", entry.getString("fromBundleId"))
+        }
+
+    @Test
     fun `settling before the launch rolls back an unfinished launch and keeps its RECOVERED report`() {
         val rootDir = temporaryFolder.newFolder()
         val preferences = InMemoryPreferencesService()
@@ -3389,6 +3592,7 @@ class BundleFileStorageServiceTest {
         publicKey: String? = null,
         fallbackBundleURL: String = "assets://index.android.bundle",
         minBundleId: String = HotUpdaterImpl.getMinBundleId(),
+        updateLog: UpdateLogService? = null,
     ): BundleFileStorageService =
         BundleFileStorageService(
             context = ContextWrapper(null),
@@ -3405,7 +3609,13 @@ class BundleFileStorageServiceTest {
             builtInAssetResolver = builtInAssetResolver,
             metadataWriter = metadataWriter,
             directoryRenamer = directoryRenamer,
+            updateLog = updateLog,
         )
+
+    private fun logOf(rootDir: File) = UpdateLogService(File(rootDir, "logs/${UpdateLogService.FILENAME}"))
+
+    private fun loggedEntries(log: UpdateLogService): List<JSONObject> =
+        org.json.JSONArray(log.read()).let { array -> (0 until array.length()).map(array::getJSONObject) }
 
     private fun releaseSelection(
         releaseId: String,

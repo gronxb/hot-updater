@@ -1,0 +1,33 @@
+---
+title: "clearUpdateLogs"
+description: "Delete this device's update log."
+icon: Eraser
+---
+
+## Usage
+
+Use `hotUpdater.clearUpdateLogs()` before reproducing a problem, so
+[`getUpdateLogs()`](/docs/react-native-api/getUpdateLogs) shows only what follows.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+await hotUpdater.clearUpdateLogs();
+```
+
+## Return value
+
+```ts
+clearUpdateLogs(): Promise<boolean>
+```
+
+It resolves with `true` once the log is gone, and with `false` when the file
+could not be deleted or native was built from an earlier SDK, which keeps no log.
+
+It changes nothing else. To allow a rejected bundle to install again, use
+[`clearCrashHistory()`](/docs/react-native-api/clearCrashHistory).
+
+## Related
+
+- [`getUpdateLogs`](/docs/react-native-api/getUpdateLogs)
+- [`getUpdateStatus`](/docs/react-native-api/getUpdateStatus)

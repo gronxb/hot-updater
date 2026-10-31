@@ -260,6 +260,34 @@ export interface Spec extends TurboModule {
    */
   takeNativeUpdateEvents: () => string | null;
 
+  /**
+   * Reads `{ bundleId, pendingBundleId }` as JSON: the bundle this runtime
+   * runs and, when the next launch runs another, that bundle. Optional because
+   * native built from an earlier SDK lacks it; JavaScript checks for it.
+   */
+  getUpdateStatus?: () => Promise<string>;
+
+  /**
+   * Reads the retained update log as a JSON array, oldest first. Optional
+   * because native built from an earlier SDK lacks it; JavaScript checks for
+   * it.
+   */
+  getUpdateLogs?: () => Promise<string>;
+
+  /**
+   * Deletes the update log. Optional because native built from an earlier SDK
+   * lacks it; JavaScript checks for it.
+   */
+  clearUpdateLogs?: () => Promise<boolean>;
+
+  /**
+   * Appends one JSON entry of an update check JavaScript ran to the update
+   * log; native stamps its time and keeps only the fields it knows. Optional
+   * because native built from an earlier SDK lacks it; JavaScript checks for
+   * it.
+   */
+  appendUpdateLog?: (entry: string) => void;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

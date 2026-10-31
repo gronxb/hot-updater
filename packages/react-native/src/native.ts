@@ -660,6 +660,35 @@ export const takeNativeUpdateEvents = (): string | null => {
 };
 
 /**
+ * Reads `{ bundleId, pendingBundleId }` as JSON. Native built from an earlier
+ * SDK has no `getUpdateStatus`, and an OTA can bring this JavaScript to such
+ * native code, so this is then null.
+ */
+export const readNativeUpdateStatus = (): Promise<string> | null =>
+  typeof HotUpdaterNative.getUpdateStatus === "function"
+    ? HotUpdaterNative.getUpdateStatus()
+    : null;
+
+/** Reads the update log as JSON, or null on native without it. */
+export const readNativeUpdateLogs = (): Promise<string> | null =>
+  typeof HotUpdaterNative.getUpdateLogs === "function"
+    ? HotUpdaterNative.getUpdateLogs()
+    : null;
+
+/** Deletes the update log, or is null on native without it. */
+export const clearNativeUpdateLogs = (): Promise<boolean> | null =>
+  typeof HotUpdaterNative.clearUpdateLogs === "function"
+    ? HotUpdaterNative.clearUpdateLogs()
+    : null;
+
+/** Appends a JSON entry to the update log; native without it has no log. */
+export const appendNativeUpdateLog = (entry: string): void => {
+  if (typeof HotUpdaterNative.appendUpdateLog === "function") {
+    HotUpdaterNative.appendUpdateLog(entry);
+  }
+};
+
+/**
  * Result returned by notifyAppReady()
  */
 export type NotifyAppReadyResult =

@@ -1177,6 +1177,25 @@ RCT_EXPORT_MODULE();
     return [HotUpdaterNativeUpdates() takeEventsWithImpl:[self instanceImpl]];
 }
 
+- (void)getUpdateStatus:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject {
+    [[self instanceImpl] getUpdateStatus:resolve rejecter:reject];
+}
+
+- (void)getUpdateLogs:(RCTPromiseResolveBlock)resolve
+               reject:(RCTPromiseRejectBlock)reject {
+    [[self instanceImpl] getUpdateLogs:resolve rejecter:reject];
+}
+
+- (void)clearUpdateLogs:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject {
+    [[self instanceImpl] clearUpdateLogs:resolve rejecter:reject];
+}
+
+- (void)appendUpdateLog:(NSString *)entry {
+    [[self instanceImpl] appendUpdateLog:entry];
+}
+
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [self instanceImpl];
@@ -1365,6 +1384,25 @@ RCT_EXPORT_METHOD(setStorageItem:(NSString *)key value:(NSString * _Nullable)val
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(takeNativeUpdateEvents) {
     return [HotUpdaterNativeUpdates() takeEventsWithImpl:[self instanceImpl]];
+}
+
+RCT_EXPORT_METHOD(getUpdateStatus:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[self instanceImpl] getUpdateStatus:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(getUpdateLogs:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[self instanceImpl] getUpdateLogs:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(clearUpdateLogs:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[self instanceImpl] clearUpdateLogs:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(appendUpdateLog:(NSString *)entry) {
+    [[self instanceImpl] appendUpdateLog:entry];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
