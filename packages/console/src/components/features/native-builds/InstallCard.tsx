@@ -255,7 +255,8 @@ export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
               Download {fileName}
             </span>
           </a>
-          <DownloadLink build={build} />
+          {/* A link's token holds for one build, so another build starts over. */}
+          <DownloadLink build={build} key={build.id} />
         </div>
       </CardContent>
     </Card>

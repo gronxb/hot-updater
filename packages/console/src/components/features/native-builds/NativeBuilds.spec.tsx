@@ -1,7 +1,7 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -374,6 +374,41 @@ describe("InstallCard", () => {
           name: "Create a link without sign-in",
         }),
       ).toBeNull();
+    });
+
+    it("drops a build's link on moving to another build, whose token it isn't", () => {
+      downloadUrlQuery.mockReturnValue({ data: { url: null } });
+      downloadLinkMutation.mockImplementation(() => {
+        const [data, setData] = useState<unknown>();
+        return {
+          data,
+          isError: false,
+          isPending: false,
+          mutate: () =>
+            setData({
+              status: "issued",
+              token: "1798761600.signature",
+              expiresAt: "2026-11-30T12:00:00.000Z",
+            }),
+        };
+      });
+      const first = build();
+      const { rerender } = render(<InstallCard build={first} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Create a link without sign-in" }),
+      );
+      expect(
+        screen.getByRole("button", { name: "Copy the download link" }),
+      ).toBeTruthy();
+
+      rerender(<InstallCard build={{ ...first, id: id(99) }} />);
+
+      expect(
+        screen.queryByRole("button", { name: "Copy the download link" }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Create a link without sign-in" }),
+      ).toBeTruthy();
     });
 
     it("says what's wrong and the next step when no link can be made", () => {
