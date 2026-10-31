@@ -55,6 +55,23 @@ describe("createCli", () => {
     expect(write.mock.calls.join("")).not.toContain(DOWNLOAD_URL);
   });
 
+  it("prints why a quiet command failed, which the CLI says on stdout", async () => {
+    await fs.writeFile(
+      path.join(directory, "cli.cjs"),
+      `console.log("scheme release is not in nativeBuild.android"); process.exit(1);`,
+    );
+
+    const { code } = await cli()(["native-build"], {
+      capture: true,
+      quiet: true,
+    });
+
+    expect(code).toBe(1);
+    expect(write.mock.calls.join("")).toContain(
+      "scheme release is not in nativeBuild.android",
+    );
+  });
+
   it("keeps the download URL of native-build find out of the job's log", async () => {
     const found = await findNativeBuild(
       { cli: cli() },

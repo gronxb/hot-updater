@@ -246,6 +246,10 @@ see [Expo](#expo). Then, for each platform:
    The action checks that the bundle targets the build's fingerprint or app
    version.
 
+After a build, `native-build find` runs once more for the new build's
+[download URL](#outputs). A failed lookup or another match leaves that output
+empty and fails nothing.
+
 When a native build fails, the job's log shows the build's errors and the
 path of the CLI's build log, which keeps the whole output of `xcodebuild` or
 Gradle, and the action uploads that log as the

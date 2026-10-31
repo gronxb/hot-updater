@@ -211,8 +211,9 @@ export const reportBuildLogs = (deps, name, since) => {
  * @typedef {(args: string[], options?: { capture?: boolean, quiet?: boolean }) => Promise<{ code: number, stdout: string }>} Cli
  *   Runs the project's hot-updater CLI. Without `capture`, it prints the
  *   command's output and throws when the command fails; with it, it returns
- *   the output and the exit code, and with `quiet` too, it keeps that output
- *   out of the job's log.
+ *   the output and the exit code, and with `quiet` too, it keeps the output
+ *   of a command that succeeds out of the job's log. A failed command's output
+ *   says why, as the CLI prints its errors on stdout.
  */
 
 /**
@@ -247,6 +248,7 @@ export const createCli = ({ env, actionEnv = process.env }) => {
       });
       child.on("error", reject);
       child.on("close", (code) => {
+        if (quiet && code !== 0) process.stdout.write(stdout);
         if (capture) {
           resolve({ code: code ?? 1, stdout });
         } else if (code === 0) {
