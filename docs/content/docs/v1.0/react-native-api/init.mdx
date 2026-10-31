@@ -1,0 +1,179 @@
+---
+title: "init"
+description: "`HotUpdater.init` configures the update server, its request settings, and the app's client plugins, and returns the app's HotUpdater instance."
+icon: Settings2
+---
+
+## Usage
+
+Call `HotUpdater.init` once, at the top level of a module, outside React
+components and effects. It configures the update server and the client
+plugins, handles native startup verification, and returns the app's
+HotUpdater instance. Export the instance: every HotUpdater method is on it.
+
+Use the client handler URL and client API key produced by your infrastructure
+setup. For a custom server, follow
+[API key authentication](/docs/v1.0/custom/api-key-authentication) to add the
+`apiKeys()` plugin and create a key.
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  onError: (error) => {
+    console.error("Hot Updater failed", error);
+  },
+});
+```
+
+`init` does not check for updates. Wrap the app's root with
+[`hotUpdater.wrap`](/docs/v1.0/react-native-api/wrap) to check when it mounts, or
+call [`hotUpdater.checkForUpdate()`](/docs/v1.0/react-native-api/checkForUpdate)
+from your own [update flow](/docs/v1.0/guides/custom-update):
+
+```tsx title="App.tsx"
+import { hotUpdater } from "./src/hotUpdater";
+
+function App() {
+  return null; // Your app's root.
+}
+
+export default hotUpdater.wrap({
+  updateStrategy: "appVersion", // or "fingerprint"
+})(App);
+```
+
+Each call returns an instance with its own server configuration and plugins.
+Native update state and progress are shared across instances.
+Create one instance per app: keep the call in its own module, at the top level,
+so it runs once per app start. Two instances each read the launch and report it
+through their own plugins.
+
+Point `baseURL` at the client handler root, for example
+`https://example.com/hot-updater`. Never embed the admin bearer token in a
+React Native app. When the server runs the `apiKeys()` plugin, send only the
+API key, in `x-api-key` as shown above or in the plugin's configured
+`headerName`.
+
+To report launches, downloads, and update results to
+[Insights](/docs/v1.0/guides/insights), add the
+[Insights plugin](/docs/v1.0/react-native-api/insights) to `plugins`:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [insights()], // [!code ++]
+});
+```
+
+Without it, the app sends no Insights reports. `plugins` takes any
+[client plugin](/docs/v1.0/react-native-api/client-plugins); plugin ids must be
+unique, and `init` throws when two plugins share one.
+
+## Use the instance init returns
+
+`init` returns the app's HotUpdater instance. It has every HotUpdater method,
+such as `wrap`, `checkForUpdate`, and `reload`, and each plugin's API under
+the plugin's id: `remoteConfig()` adds `hotUpdater.remoteConfig`, and
+`insights()` adds `hotUpdater.insights`. Import the instance wherever the app
+uses HotUpdater:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [
+    insights(),
+    remoteConfig({ defaults: { welcome_message: "Welcome back" } }),
+  ],
+});
+```
+
+```tsx title="src/Welcome.tsx"
+import { hotUpdater } from "./hotUpdater";
+
+hotUpdater.insights.setUser({ userId: "user-123" });
+const title = hotUpdater.remoteConfig.getString("welcome_message");
+const channel = hotUpdater.getChannel();
+```
+
+A plugin's API exists only on the instance, once `init` has set the plugin up,
+and its types follow from `plugins`: `hotUpdater.remoteConfig` knows the keys
+of its `defaults`. Annotating the list as `HotUpdaterClientPlugin[]` drops
+those types, so let TypeScript infer it. A plugin cannot use the name of one of
+the instance's own members, such as `reload`.
+
+`baseURL` can also be resolved at runtime. The function may return a string or
+a promise, and Hot Updater calls it before each update check and plugin
+request.
+
+```tsx title="src/hotUpdater.ts"
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>", // [!code --]
+  baseURL: () => getUpdateServerURL(), // [!code ++]
+});
+```
+
+## Configuration reference
+
+| Option             | Type                                          | Required | Description                                                                                        |
+| ------------------ | --------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                                                    |
+| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/v1.0/react-native-api/client-plugins), such as `insights()` and `remoteConfig()` |
+| `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                                           |
+| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                                    |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                                         |
+| `onError`          | `(error) => void`                             | No       | Default error handler for native launch reporting, `wrap`, update checks, and plugin errors        |
+
+`baseURL` is the only React Native transport configuration. A GraphQL, RPC,
+or other custom backend must expose the Hot Updater HTTP protocol through an
+adapter or proxy and use that endpoint as `baseURL`.
+
+See [`NotifyAppReadyResult`](/docs/v1.0/react-native-api/notifyAppReady#return-value)
+for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
+callback example. A callback result describes local native state; it does not
+confirm Insights delivery to the server.
+
+Every update check the server answers saves the server, headers, timeout, and
+update strategy it used on the device. After a crash that doesn't roll back,
+native repeats that request to check for a fix without your JavaScript; see
+[crashes after the first render](/docs/v1.0/concepts/automatic-rollback#crashes-after-the-first-render).
+A device saves nothing until its first check, so deferring `init` and your
+checks, for example until the user accepts your privacy terms, also defers
+every native request.
+
+`hotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
+`HotUpdater.init` for that specific update check.
+
+If the server intentionally uses the unauthenticated
+`clientAccess: "public"` alternative, omit `x-api-key` from
+`requestHeaders`.
+
+## Recommended flow
+
+Call `init` once in its own module, such as `src/hotUpdater.ts`, export the
+instance, and import it wherever the app uses HotUpdater. Wrap the root with
+`hotUpdater.wrap` for a check at startup, or call `hotUpdater.checkForUpdate`
+from the point where your app should check. No effect, readiness state or
+`onNotifyAppReady` callback is required. Use that callback only when your app
+needs to observe the native startup result.
+
+## Related
+
+- [`hotUpdater.wrap`](/docs/v1.0/react-native-api/wrap)
+- [`hotUpdater.checkForUpdate()`](/docs/v1.0/react-native-api/checkForUpdate)
+- [Custom Update](/docs/v1.0/guides/custom-update)

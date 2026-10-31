@@ -51,12 +51,12 @@ files through your own tooling, use
 
 Review the setup result:
 
-| Output | What to verify |
-| --- | --- |
-| `hot-updater.config.ts` | Selected build, storage, database, the managed server's plugins, and update strategy |
-| `.env.hotupdater` | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
-| Update server base URL | The actual deployed endpoint, including a provider base path when required |
-| Remote resources | The selected account/project, database and storage match the local config |
+| Output                  | What to verify                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `hot-updater.config.ts` | Selected build, storage, database, the managed server's plugins, and update strategy   |
+| `.env.hotupdater`       | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
+| Update server base URL  | The actual deployed endpoint, including a provider base path when required             |
+| Remote resources        | The selected account/project, database and storage match the local config              |
 
 For every managed provider, `init` imports `apiKeys`, `insights`, and
 `remoteConfig` from `hot-updater/plugins` and writes
@@ -64,6 +64,12 @@ For every managed provider, `init` imports `apiKeys`, `insights`, and
 If it cannot safely merge an existing config, it keeps the file and prints the
 imports and settings to add. A later spread or computed property must not
 override the `plugins` list.
+
+`init` also writes `secrets: localSecrets()`, which keeps the CLI's keys on
+this machine only. Working alone, keep it; when teammates or CI must share the
+same keys, switch to a
+[team store](/docs/concepts/secrets#this-machine-or-the-team): `infisical()`
+with any provider, or the store of the cloud you already use.
 
 The server URL and **client** API key connect the app to the server.
 `.env.hotupdater` is not automatically loaded into the mobile app. Provider,

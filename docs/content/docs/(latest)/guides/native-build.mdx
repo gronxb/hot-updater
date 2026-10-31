@@ -1,0 +1,697 @@
+---
+title: "Build"
+description: "Build an Android .apk or .aab, an iOS .ipa, or a simulator .app with the Hot Updater CLI, and track it with your server."
+icon: Hammer
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## What a build compiles in
+
+`hot-updater native-build android` and `hot-updater native-build ios` build
+the native app from a scheme in `hot-updater.config.ts`, and track it in Hot
+Updater: the build, its artifact, and the JavaScript bundle it compiled in are
+recorded with your server, where they serve as a patch base, a preview build,
+and a Console install link. Each build compiles in the values that select its
+OTA updates, and prints them with the artifact:
+
+| Value         | What the build compiles in                                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                                                                                 |
+| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)                                                         |
+| Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint)                                                       |
+| App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version)                                                       |
+| Channel       | The [default channel](/docs/guides/channel-management): what `channel set` wrote, or in an Expo project the `@hot-updater/expo` config plugin's `channel` |
+
+The build reads the app version and channel from the artifact it built, so
+the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
+`extraParams` sets are the ones it reports. On Android it reads them with the
+SDK's `aapt2`.
+
+To run the app on a device, emulator or simulator, install the artifact, as
+[Build](#build) shows, or use your framework's run command.
+
+## Prerequisites
+
+- The platform toolchain: the Android SDK and the project's Gradle wrapper, or
+  Xcode with CocoaPods.
+- A Hot Updater setup that a release build already passes: the
+  [App Setup](/docs/get-started/app-setup) native integration and the
+  [default channel](/docs/guides/channel-management).
+- With the fingerprint strategy, the build updates `fingerprint.json` before
+  it compiles. With the app version strategy, delete any `fingerprint.json` first
+  (`hot-updater doctor` reports one), or the app reports the fingerprint
+  strategy.
+
+## Configure schemes
+
+Add one scheme per artifact under `nativeBuild.android` and `nativeBuild.ios`.
+Keep the other settings of `hot-updater.config.ts` as they are.
+
+```ts title="hot-updater.config.ts (partial)"
+import { defineConfig, secret } from "hot-updater";
+
+export default defineConfig({
+  // build, storage, database and plugins stay as they are
+  nativeBuild: {
+    android: {
+      release: {
+        packageName: "com.example.app",
+        // An .aab by default; aab: false builds an .apk.
+        signing: { keystore: secret("release-keystore") },
+      },
+      previewApk: {
+        packageName: "com.example.app",
+        aab: false,
+        signing: { keystore: secret("release-keystore") },
+      },
+    },
+    ios: {
+      release: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        installPods: true,
+        signing: { ascApiKey: secret("asc-api-key") },
+      },
+      simulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        installPods: true,
+        simulator: true,
+      },
+    },
+  },
+});
+```
+
+Android schemes build the `Release` variant unless `variant` names another,
+such as `stagingRelease`. iOS schemes build the `Release` configuration unless
+`configuration` names another.
+
+An iOS scheme without `simulator` archives the app and exports an `.ipa`. It
+needs `signing.ascApiKey`, which exports for App Store Connect, or an
+`exportOptionsPlist` for another export method.
+
+`signing` names a secret as `secret("<name>")`, which the CLI reads from the
+config's [`secrets` adapter](/docs/custom/cli-configuration#secrets) while it
+builds. The build resolves it only when it signs: a Debug variant keeps the
+debug keystore, and a simulator build signs nothing. A scheme without `signing`
+keeps the project's own signing settings.
+[Credentials](/docs/native-builds/credentials) lists the credentials a build
+reads and how to store them once.
+
+The Android build passes the keystore to Gradle as the signing properties
+Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
+whatever the variant's `signingConfig` says. The iOS build signs with automatic
+signing: `xcodebuild` uses the App Store Connect API key to create or update
+certificates and provisioning profiles. The Xcode project needs its
+development team (`DEVELOPMENT_TEAM`), in the project or in `extraParams`.
+In CI (`CI` is set), the archive and the export sign in a keychain of the
+build's own, and the CLI revokes the development certificates Xcode created
+in it before deleting it, as
+[What a CI build does](/docs/guides/ci-native-build#what-a-ci-build-does)
+describes.
+
+## Build
+
+```package-install
+npx hot-updater native-build android --scheme release
+```
+
+```package-install
+npx hot-updater native-build ios --scheme simulator
+```
+
+Without `--scheme`, the CLI asks which scheme at a terminal, and in CI or
+without a terminal stops with the schemes to pass.
+
+The build copies its output to `.hot-updater/output/build/<platform>/<scheme>`,
+or to `--output-path`. It prints one line per step with its duration, and at a
+terminal the running step's line shows what the tool is doing, such as the
+Gradle task or the Xcode target it compiles. It ends with the artifact and its
+values:
+
+```txt
+◇  Prepared Android 1.7.0 · prebuild                                    4.1s
+│
+●  Cache miss · no build has this key                                   1.2s
+│
+◇  Built bundleRelease                                                 3m12s
+│
+◇  Registered native build 019a0f8e-7c41-7000-8000-0000000000b1         2.9s
+│
+◆  Android release 1.7.0 (42) built in 3m20s
+│  AAB            .hot-updater/output/build/android/…/app-release.aab · 31.2 MB
+│  Min bundle ID  019a0f8e-7c41-7000-8000-000000000000
+│  Channel        production
+│  Log            .hot-updater/log/10261157-android-release-build.log
+```
+
+In CI and without a terminal, each step prints only its finished line.
+
+A Debug build reports the nil UUID as its min bundle ID, as its native SDK
+does: an Android variant or iOS configuration whose name ends in `Debug`.
+
+A release build's min bundle ID is the UUIDv7 of the millisecond it started,
+with zero random bits, as the native SDK's build step makes it, so OTAs
+deployed before the build are older than its built-in bundle and those
+deployed after it are newer. Bundle IDs share one space across platforms:
+when the registry already holds a bundle at that ID, the build steps it 1 ms
+forward. Two builds that start in the same millisecond, such as an iOS and an
+Android job of one CI run, can still get the same ID, and the second one to
+finish is refused when it is tracked. Build it again for a new ID.
+
+[Install a tracked build](#install-a-build) with
+`npx hot-updater native-build install <build id>`. An untracked one installs
+with `xcrun simctl install booted <path-to-app>` or
+`adb install <path-to-apk>`.
+
+The build writes the command it runs and the whole output of `xcodebuild` or
+Gradle to a log in `.hot-updater/log`, such as
+`.hot-updater/log/10261157-ios-simulator-build.log`, after the native build
+key and what changed since this machine's cached build. An iOS archive and
+its export share one log. When the build fails, the CLI prints why on stderr:
+`xcodebuild`'s `error:` lines and the commands that failed, or Gradle's `What
+went wrong` block, or without those, the output's last 15 lines, then the
+log's path. With `--json`, stdout keeps only the JSON.
+
+```txt
+■  Build failed                                                         4m02s
+│
+■  /path/to/app/ios/App/AppDelegate.swift:12:5: error: cannot find 'missingSymbol' in scope
+│  ** BUILD FAILED **
+│  The following build commands failed:
+│  	SwiftCompile normal arm64 /path/to/app/ios/App/AppDelegate.swift (in target 'App' from project 'App')
+│  (1 failure)
+│
+│  Build log: .hot-updater/log/10261157-ios-simulator-build.log
+```
+
+## How a build is tracked
+
+Every native build is tracked in the native build registry of the server that
+`database` and `storage` in `hot-updater.config.ts` name, with the same
+credentials `hot-updater deploy` uses. Before it builds, and before any Apple
+sign-in, the CLI checks that it can: it asks the registry for the
+build's scope, or, when the build adapter's prebuild has yet to generate the
+native project, for its newest build, and reads back the artifact of a build
+the registry already tracks there. When the database or the storage can't be reached, it stops in
+seconds, naming which, and builds nothing.
+
+After the build, the CLI:
+
+1. Takes the JavaScript bundle the native build compiled in out of the
+   artifact, byte for byte: `assets/index.android.bundle` in an `.apk`,
+   `base/assets/index.android.bundle` in an `.aab`, and `main.jsbundle` in an
+   `.ipa` or `.app`.
+2. Uploads the artifact to `native-builds/<platform>/<build id>/` in your
+   storage. A simulator `.app` is uploaded as one `.app.zip` archive.
+3. Uploads that JavaScript bundle as the build's built-in bundle: a bundle
+   whose ID is the build's min bundle ID and whose manifest lists only that
+   file, at the path an OTA bundle's manifest gives it (`index.ios.bundle` or
+   `index.android.bundle`), in the shared asset storage.
+4. Registers the build and its built-in bundle in one database write. When
+   that write fails, the CLI deletes the uploaded artifact again; the built-in
+   bundle's files are left to `storage prune`.
+
+The Console's **Native builds** page lists tracked builds; see
+[Native builds in the Console](#native-builds-in-the-console).
+
+A registered build is found by its platform, its default channel, and its
+fingerprint or, with the app version strategy, its exact app version: the
+newest build of that scope.
+
+The built-in bundle is not an OTA update. No Release publishes it, so no
+device downloads it, and no update check changes. The bundle totals leave it
+out, a release of it and its deletion are refused, and `storage prune` keeps
+its files and the artifact. It is deleted
+with its build; see [Delete a build](#delete-a-build).
+
+`hot-updater deploy` uses it as a Hermes patch base: it adds the built-in
+bundle of the newest registered build of the deploy's channel, platform, and
+fingerprint or exact app version to the patch bases, so a fresh install's first
+OTA downloads a `.bsdiff` patch instead of the complete Hermes bundle. The app
+checks its packaged Hermes file against the hash registered from the artifact
+before it patches, and downloads the complete file when they differ. See
+[Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
+
+A Debug build loads its JavaScript from Metro and has no built-in bundle, so
+the CLI does not track it, and says so before it builds; `--json` reports
+`registration: { skipped: "debug" }`. When tracking fails after the build,
+the CLI exits with the artifact's path, and submits it to no store. A
+self-hosted server reached through `standaloneRepository` needs the native
+build routes of this release's `@hot-updater/server`; an older one answers
+`404`, and the CLI asks you to upgrade it before it builds.
+
+Every official storage adapter streams the artifact to storage except
+`standaloneStorage`, which reads it into memory to post it to your server. A
+Supabase project's Storage upload file size limit, 50 MB on the Free plan,
+caps the artifact size.
+
+## Native builds in the Console
+
+The Console's **Native builds** page lists the tracked builds, newest first,
+with each build's channel, its fingerprint or app version, its built-in
+bundle, and its commit. Pick a channel to list only the builds that embed it,
+such as `/native-builds?channel=pr-130` for a pull request's builds. A row
+opens the build's page, `/native-builds/<build id>`:
+
+- **Install**: a QR code and a download button of the build's
+  [signed download link](#signed-download-links), which a phone opens without
+  signing in to the Console. An `.apk` [installs from it](#install-an-apk-on-a-phone).
+  An `.apk` on an emulator or over USB, and a simulator `.app`, show the
+  [`native-build install`](#install-a-build) command. An `.aab` installs through
+  Google Play or bundletool, and an `.ipa` through Xcode, Apple Configurator, or
+  [TestFlight](/docs/native-builds/testflight#upload-to-testflight). Without a
+  token, `/api/native-builds/<build id>/download` asks for the session: a browser
+  that opens it without one goes to the build's page, which signs it in and
+  comes back to the build.
+- **Build number**: the `CFBundleVersion` or `versionCode` the artifact
+  reports, which the list shows as `build 66` too.
+- **Store**: for a build `testflight` or `google-play upload` submitted, the
+  store track and the store's version and build number, with when it was
+  submitted. The list marks those builds too.
+- **Built-in bundle**: the build's min bundle ID, the base its OTAs patch
+  from, how many bundles patch from it, and whether it is the newest build of
+  its scope. `deploy` patches from the newest build of a scope, so a
+  superseded build links to the build that replaced it.
+- **Served now**: the releases the update check offers an install of this
+  build now, newer than its built-in bundle, and whether each one's first OTA
+  downloads as a patch or as the full bundle.
+- **Patches from this build**: the bundles with a patch from its built-in
+  bundle, and each patch's size.
+
+**Import a build**, beside the refresh button and in an empty list, shows
+the command that tracks a build made elsewhere, such as by another build
+service,
+`npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>`,
+and links [Import a build made elsewhere](#import-a-build-made-elsewhere).
+The Console uploads nothing; the CLI reads the artifact where it is.
+
+### Signed download links
+
+A signed link downloads one build without a Console session, so a phone, a
+script, or a teammate can use it. On a hosted Console, the build's page creates
+one when it opens and shows it under **Install**, in the QR code, the download
+button, and a link to copy. The link is
+`/api/native-builds/<build id>/download?t=<token>`:
+
+```bash
+curl -fL -o app-release.apk "<signed link>"
+```
+
+- It works for 30 days, for this build only. The Console stores nothing, so a
+  link can't be revoked by itself: treat it and its QR code like a password.
+  Open the build's page again for a new one when it expires.
+- An expired or changed link answers `403`, even for a signed-in browser.
+  Open the build's page for a new link.
+- The Console signs links with a key derived from `BETTER_AUTH_SECRET`, the
+  secret in your [host's runtime environment](/docs/guides/console-deployment#set-up-sign-in).
+  Changing that secret ends every link, and every session. A Console with
+  [custom authentication](/docs/guides/console-deployment#custom-authentication)
+  sets the variable too, to a random value of at least 32 characters.
+- A local `hot-updater console` creates no links: it answers only on your
+  machine, and only with the session it prints. Its QR code holds the storage's
+  download URL, as does a hosted Console's without the secret. That URL expires
+  on the storage's own schedule, so reload the page if the download fails.
+
+A valid link answers with one request to the Console: a redirect to the storage
+adapter's `getDownloadUrl`, and the storage serves the file.
+
+<Callout type="warn">
+  When the storage gives no URL a browser can fetch, the Console streams the
+  file through `storage.get` instead, so your Console host serves and bills for
+  every byte, and its limits on duration and response size apply. This happens
+  with `r2Storage` from `@hot-updater/cloudflare/worker` without R2 credentials,
+  as the Cloudflare Console example sets it, and when any adapter can't sign,
+  such as without a signing credential. Give the adapter what it needs to sign
+  URLs to avoid it.
+</Callout>
+
+A bundle's detail sheet links to the newest build of its release's scope, and
+says whether the bundle has a patch from it. Deleting a build stays with
+[`native-build delete`](#delete-a-build).
+
+### Install an APK on a phone
+
+Scan the QR code on the build's page with an Android phone, or open its signed
+link. The browser downloads the `.apk`, served as
+`application/vnd.android.package-archive` under its file name, and opening it
+starts Android's installer. No device registration is needed.
+
+- Chrome warns that the file might be harmful, so confirm **Download anyway**.
+- Android asks you to allow the browser under **Install unknown apps** the first
+  time.
+- Android refuses to install over the same package signed with another key, such
+  as a copy from Google Play. Uninstall that copy first, which erases its data.
+- An `.aab` can't go on a device directly. Build with `aab: false` for an `.apk`.
+
+## Import a build made elsewhere
+
+A release build you didn't make with `native-build`, such as one from another
+build service or an earlier release, can serve as a patch base too.
+Import its store artifact, the `.ipa`, `.aab` or `.apk` you upload to a store,
+or a simulator `.app` (the directory, or its `.app.zip`):
+
+```package-install
+npx hot-updater native-build import ./app-release.aab
+```
+
+The CLI reads everything from the artifact, so it imports the build exactly as
+its app reports itself:
+
+| Value           | Where the CLI reads it                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| Platform        | The file's extension                                                                       |
+| App version     | `CFBundleShortVersionString` in the app's `Info.plist`, or `versionName` in the manifest   |
+| Build number    | `CFBundleVersion` in the app's `Info.plist`, or `versionCode` in the manifest              |
+| Channel         | `HOT_UPDATER_CHANNEL`, or the `com.hotupdater.CHANNEL` meta-data; `production` without one |
+| Min bundle ID   | The UUIDv7 string the native SDK's build step compiled into the app's code                 |
+| Fingerprint     | The SHA-256 string the build compiled into the app's code, with the fingerprint strategy   |
+| Built-in bundle | `main.jsbundle`, `assets/index.android.bundle`, or `base/assets/index.android.bundle`      |
+
+The app's code is its dex files' string pool on Android, and on iOS the
+`__cstring` section of the app's executable, or of the `HotUpdater` framework
+when the app links frameworks dynamically. The CLI prints what it read, then
+checks that the artifact can serve as a patch base, and refuses, saying why:
+
+- an artifact without a built-in bundle, such as a Debug build, which loads
+  its JavaScript from Metro, or a build that renames its bundle;
+- an app built without `@hot-updater/react-native`, or with a version that
+  doesn't compile the min bundle ID in, so its code holds none, and one whose
+  code holds several UUIDv7 strings;
+- with the fingerprint strategy, an app whose code holds no fingerprint, such
+  as one built without `fingerprint.json`; with the app version strategy, an
+  app whose version holds no `major.minor.patch` a device compares;
+- a channel given as a resource reference (`@string/...`) rather than a
+  literal, as `channel set` and the Expo plugin write it, unless `--channel`
+  names it;
+- an artifact whose min bundle ID is registered with another built-in bundle
+  or scope: the registry takes a min bundle ID once, and the CLI names the
+  native build that has it.
+
+Importing the same build again, the same built-in bundle in the same scope,
+changes nothing and succeeds, printing the registered build, so a CI job can
+run again; `--json` reports it with `alreadyImported: true`. An app ID that no
+`nativeBuild` scheme's `bundleIdentifier`, or `applicationId` (by default its
+`packageName`), names gets a warning, since a scheme names its app only to
+pick a target.
+
+The channel is the one the build compiled in. When the app's code sets
+another, such as `HotUpdaterOptions(channel = "beta")` in a
+[brownfield app](/docs/guides/brownfield), or the app switches to one at
+runtime, name it with `--channel`; the build is then found by that channel.
+
+Whether a build is Debug can't be read from its artifact. A Debug build packs
+no JavaScript bundle, so it's refused; one that bundles its JavaScript anyway
+reports no built-in bundle at runtime, so its first OTA downloads the complete
+bundle. A release variant made debuggable (`android:debuggable`) still runs the
+SDK's release code, which reports its built-in bundle, so it's imported.
+
+The CLI then uploads the artifact and the built-in bundle and registers them as
+it does [after a build](#how-a-build-is-tracked), with no build key, so no
+`native-build` run reuses it, and no git commit, since it wasn't built from
+this checkout. OTAs deployed after it to its channel and fingerprint or app
+version patch from its built-in bundle.
+
+Add `--dry-run` to read and check the artifact and record nothing, and
+`--json` to print what was read, and the registered build or the refusals, as
+JSON on the last line.
+
+## Reuse a build
+
+Each build computes a native build key, `nbk1:` and a SHA-256, of every input
+that can change the artifact, after the build adapter's prebuild and, for an
+iOS scheme with `installPods: true`, after `pod install`, so the key holds the
+`Podfile.lock` the pods resolved to even when the prebuild generates `ios/`, as
+`expo prebuild` does:
+
+- every file of the git repository as a commit would record it, staged or
+  not, except the build output, `cacheDir`, and `.hot-updater`;
+- the files git ignores that the build reads: the native project's ignored
+  files except what builds write (`build`, `Pods` but its `Manifest.lock`,
+  `.gradle`, `.cxx`), a generated Xcode project by its structure, whatever
+  object IDs `pod install` gives it,
+  `.env*` files, the package manager's install state, the files of each
+  native package installed in `node_modules`, and the ignored files of each
+  package of the repository the app depends on, such as generated codegen
+  sources or a built `lib/`;
+- what autolinking links, asked with the command the native project runs:
+  React Native CLI's `config` (`rock config` with Rock, and
+  `expo-modules-autolinking react-native-config` in an Expo app), and
+  `expo-modules-autolinking resolve` for the Expo modules. The config it
+  prints counts without this machine's directories, so linking a package,
+  dropping one, or changing a `sourceDir`, podspec, or script phase rebuilds;
+  and each linked package counts file by file, wherever autolinking finds it
+  and wherever its native code is: all its files in `node_modules` or outside
+  the repository, its ignored files in the repository, never what builds
+  write or the other platform's folder;
+- the scheme's settings and the files it names, such as `xcconfig` and
+  `exportOptionsPlist`, the artifact's kind, the channel, and the fingerprint
+  or app version;
+- who signs: the release keystore's certificate and alias, or the App Store
+  Connect API key's ID, the export method, and the installed provisioning
+  profiles a manual export names;
+- the tools: Xcode and its SDK, CocoaPods, or the JDK, the Android SDK's
+  installed components, and Gradle's machine-wide properties, with Node.js,
+  the OS, the architecture, and Hot Updater's version;
+- the environment variables the build reads: `EXPO_PUBLIC_*`, `RCT_*`,
+  `ORG_GRADLE_PROJECT_*`, `HOT_UPDATER_*`, `NODE_ENV`, `BABEL_ENV`,
+  `ENVFILE`, and each name the Gradle files, the Podfile, the Xcode project,
+  and the Babel, Metro, and app configs read.
+
+Passwords, tokens, and other credentials never enter the key, nor this
+machine's directories, so another machine computes the same key from the same
+inputs. The key is not the [fingerprint](/docs/guides/update-strategies/fingerprint):
+the fingerprint changes only with the native interface JavaScript runs
+against, and decides which OTA updates a build takes; the key changes with
+anything that changes the artifact.
+
+With the key, the CLI looks for a build to reuse before it builds:
+
+1. The registry's newest build of the scope tracked with this key, whose
+   artifact your storage still holds. The CLI copies it to the output path,
+   from this machine when it has it, else downloaded from storage, and builds,
+   tracks, and uploads nothing.
+2. Otherwise, this machine's cached build with this key, such as a
+   `--dry-run`'s: it is tracked with the min bundle ID it was built with.
+3. Otherwise, it builds, and tracks the build with its key.
+
+```txt
+◇  Cache hit · storage · 019a0f8e-7c41-7000-8000-0000000000b1          2.1s
+```
+
+```txt
+●  Cache miss · src/App.tsx +2 changed                                 3.4s
+```
+
+The build log starts with the whole key and every change since this
+machine's cached build.
+
+This machine keeps the newest build of each platform and scheme in
+`<cacheDir>/native-build/<platform>/<scheme>`, which the next build replaces;
+`cacheDir: null` turns that copy off. A build whose inputs no key can cover
+always builds, and says why: a Debug build, a project outside git,
+autolinking that can't run, pods
+without `ios/Podfile.lock` on a scheme that doesn't set `installPods`, Swift packages without `Package.resolved`, a
+dynamic Gradle dependency version (`1.+`) without a `gradle.lockfile`, a file
+that reads environment variables by a computed name, an export method that
+signs for a list of devices, or a provisioning profile not installed on this
+machine. `--no-cache` builds anyway, after a change outside the project no key
+covers, and still tracks the build with its key.
+
+A reused build has the same build number (`CFBundleVersion` or
+`versionCode`), and App Store Connect and Google Play take each build number
+once. So with `--submit`, as in `testflight` and `google-play upload`, a
+reused build is uploaded only when the store doesn't have it yet:
+
+- A tracked build already submitted to that store is skipped without asking
+  the store:
+
+  ```txt
+  ◇  Already on TestFlight
+  │  Version  1.7.0 (66)
+  │  Since    2026-10-27 04:02 UTC
+  ```
+
+- A reused build with no submission recorded is looked up in the store. An
+  `.ipa` whose build number App Store Connect already has, or an `.aab` whose
+  version code Google Play's internal track releases, is skipped the same
+  way. Nothing is recorded: the store matched the build number, not the
+  artifact.
+- When the store refuses the build number anyway, because a build with that
+  number came from another upload or tool, the CLI skips the same way instead
+  of printing the store's error, adds `Bump the build number to upload this
+  build.`, and records nothing, since the store's build may be another
+  artifact.
+
+Each skip exits 0, so rerunning a CI job that already submitted its build
+succeeds. With `--json`, the last line has `submission: { destination,
+skipped: "already-submitted", existing }`, where `existing` has the
+`destination`, the store's `version` label, `submittedAtMs` (null when the
+store said so), and `source` (`recorded` or `store`). Bump the build number
+to upload a new build. With `--json`, the last line also has `cache: { hit,
+key, uncacheable, changed }`: `hit` is `storage`, `local`, or null.
+
+Preview jobs keep finding builds by scope with
+[`native-build find`](#find-a-build), whatever their key.
+
+## Rehearse a build
+
+`--dry-run` builds, but records and submits nothing, as `npm publish
+--dry-run` does:
+
+```package-install
+npx hot-updater native-build ios --scheme release --submit testflight --dry-run
+```
+
+It resolves the scheme, the app version or fingerprint, and the channel, runs
+the tracking check read-only, and reads the store key `--submit` would use
+without signing in or issuing one. Then it builds, keeps the artifact on this
+machine, and prints what it skipped in one line, such as
+`Dry run: not recorded or submitted to TestFlight`. It writes no record, uploads nothing to your storage, and
+submits to no store. A missing store key is reported, the build still runs,
+and the command exits with an error at the end. With `--json`, the last line
+has `dryRun: true`, `registration: { skipped: "dry-run" }`, and
+`submission: { skipped: "dry-run", destination }`.
+
+## Find a build
+
+`hot-updater native-build find` prints the newest registered build that a
+build of the project would match, as a
+[pull request preview](/docs/guides/pull-request-previews) does before it
+builds:
+
+```package-install
+npx hot-updater native-build find -p ios -s release
+```
+
+It reads the native projects and writes nothing to them. With the Expo build
+adapter it reads the app version and channel `expo prebuild` would write from
+the Expo config, with the project's own config plugins, and doesn't run
+prebuild; `ios/` and `android/` stay as they are. A product flavor's own
+`versionName` in `android/` still overrides the Expo version, as it does in
+the build. Other adapters read
+`ios/` and `android/` as they are. Only when no native project declares an
+app version, and the build adapter can't tell, does it run the adapter's
+prebuild, and it says so first.
+
+`-c, --channel` names the channel the build embeds, instead of the native
+project's default channel, and `--json` prints the scope, the build or `null`,
+and `downloadUrl`.
+
+`downloadUrl` is the URL the config's storage adapter gives for the artifact
+through `getDownloadUrl`, and it may expire. It is `null` without a build, and
+when the storage gives no URL a script can fetch, such as without a signing
+credential; stderr says why when the adapter fails. It is never a
+[signed download link](#signed-download-links): only the Console holds the
+secret that signs those. Whatever the URL, a script can always
+[download the build by its ID](#download-a-build):
+
+```bash
+id=$(npx hot-updater native-build find -p android -s release --json | jq -r .nativeBuild.id)
+npx hot-updater native-build download "$id" -o app.apk
+```
+
+## Download a build
+
+Download a tracked build's artifact through the config's storage:
+
+```package-install
+npx hot-updater native-build download <build id>
+```
+
+The command reads the artifact with the storage adapter's `get`, so it needs no
+Console and no download URL, and it works on a storage that can't sign one.
+It writes the artifact's name in the current directory; `-o, --output <path>`
+names another file or a directory. The file appears only once all of it
+arrived. `--json` prints its `path` and `byteSize`.
+
+## Install a build
+
+Install a tracked simulator `.app` or `.apk` and open it, with one command:
+
+```package-install
+npx hot-updater native-build install <build id>
+```
+
+The command checks the device first, downloads the build, installs it with
+`xcrun simctl` or `adb`, and opens the app the artifact names. A build with an
+application ID of its own installs beside the app you already have.
+
+- **iOS Simulator**: it uses the only booted simulator. With several booted,
+  `--simulator <udid>` picks one. None booted is an error that says how to boot
+  one. It needs Xcode on a Mac.
+- **Android**: it uses the only connected device or emulator. With several,
+  `--device <serial>`, as `adb devices` lists it, picks one, or adb's own
+  `ANDROID_SERIAL`. It finds `adb` in `ANDROID_HOME` or `ANDROID_SDK_ROOT`, then
+  on your `PATH`. When an installed app signed with another key stands in the
+  way, the error gives the `adb uninstall` command; it doesn't uninstall anything
+  by itself, because that erases the app's data.
+
+An `.ipa` or an `.aab` doesn't install this way: the command says what installs
+it. `--json` prints the `device` and the `appId`.
+
+## Delete a build
+
+Delete a registered build you no longer need, such as a finished QA build:
+
+```package-install
+npx hot-updater native-build delete <build id>
+```
+
+The command shows the build and asks before it deletes it. It then deletes
+the build and its built-in bundle from the database, then the artifact from
+storage. Bundles deployed with a `.bsdiff` patch from the built-in bundle lose
+that patch, so a device with that build installed downloads the complete
+bundle; installed apps keep working. The built-in bundle's files stay until
+[`hot-updater storage prune`](/docs/guides/storage-cleanup) deletes them.
+
+The database goes first, so no registered build names a deleted artifact.
+When the artifact's deletion fails, the command prints its storage URI and
+exits with status 1; delete that object from storage. A build that isn't
+registered deletes nothing, and the command succeeds, so a cleanup job can
+run again. A channel a native build embeds as its default channel can be
+deleted once its builds are.
+
+Add `-y, --yes` to skip the confirmation; without a terminal, the command
+refuses to ask and exits with status 1. Add `--json` to print the result,
+with `artifactDeleted`.
+
+A self-hosted server reached through `standaloneRepository` needs this
+release's `@hot-updater/server`; an older one answers `404`, and the CLI asks
+you to upgrade it.
+
+## Sign and upload
+
+<a id="provide-signing-credentials" />
+<a id="sign-in-with-your-apple-account" />
+<a id="where-an-issued-key-goes" />
+<a id="upload-to-testflight" />
+<a id="upload-to-google-play" />
+<a id="set-up-google-play" />
+
+[Credentials](/docs/native-builds/credentials) stores the keys a build signs
+and uploads with. [TestFlight](/docs/native-builds/testflight) and
+[Google Play](/docs/native-builds/google-play) upload a build to the stores.
+
+## Command options
+
+`native-build ios` and `native-build android` take:
+
+| Option                    | Description                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `-s, --scheme <scheme>`   | The `nativeBuild` scheme to build; without it, a prompt at a terminal                        |
+| `-o, --output-path <dir>` | Where to copy the build output                                                               |
+| `--submit testflight`     | `ios`: upload the `.ipa` to App Store Connect for TestFlight                                 |
+| `--submit play-internal`  | `android`: release the `.aab` to Google Play's internal testing track                        |
+| `--dry-run`               | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))                 |
+| `--no-cache`              | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build)) |
+| `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line    |
+
+The commands of the registry, `native-build find`, `native-build download`,
+`native-build install`, `native-build delete`, and `native-build import`, are
+described in [Find a build](#find-a-build),
+[Download a build](#download-a-build), [Install a build](#install-a-build),
+[Delete a build](#delete-a-build), and
+[Import a build made elsewhere](#import-a-build-made-elsewhere).

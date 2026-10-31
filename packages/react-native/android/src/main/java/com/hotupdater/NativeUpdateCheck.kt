@@ -57,6 +57,8 @@ internal class HotUpdaterImplUpdateCheckState(
 
     override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = impl.commitReleaseSelection(selection)
 
+    override suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean = impl.resetChannelIfSelectionCurrent(guard)
+
     override suspend fun updateBundle(
         request: StageBundleRequest,
         onProgress: (Double) -> Unit,
@@ -171,4 +173,15 @@ internal object NativeUpdateCheck {
         name: String,
         impl: () -> HotUpdaterImpl,
     ): Boolean = checker(context, name, impl).resetChannel { impl().resetChannel() }
+
+    /**
+     * Clears [name]'s runtime channel, once a check or staging of that name
+     * finishes, only while the Release selection [guard] names is current.
+     */
+    suspend fun resetChannelIfSelectionCurrent(
+        context: Context,
+        name: String,
+        guard: ReleaseSelectionGuard,
+        impl: () -> HotUpdaterImpl,
+    ): Boolean = checker(context, name, impl).resetChannel { impl().resetChannelIfSelectionCurrent(guard) }
 }

@@ -129,11 +129,11 @@ describe("Bundle commands", () => {
     expect(rendered).not.toContain("APP_VERSION");
     expect(rendered).not.toContain("Source ID");
     expect(rendered).not.toContain("Operation");
-    expect(rendered).toMatch(/\bID:\s+/);
+    expect(rendered).toMatch(/^ID {2,}/mu);
     expect(rendered).toContain(release!.id);
     expect(rendered).not.toContain(seeded.bundle.id);
     expect(rendered).not.toContain(release!.scope_key);
-    expect(rendered).toMatch(/Revision:\s+1/);
+    expect(rendered).toMatch(/^Revision {2,}1/mu);
     expect(rendered).not.toMatch(/Release ID|Scope|Generation/);
   });
 
@@ -178,7 +178,7 @@ describe("Bundle commands", () => {
       ...log.message.mock.calls,
     ]) {
       const rendered = stripVTControlCharacters(String(rawRendered));
-      expect(rendered).toMatch(/\bID:\s+/);
+      expect(rendered).toMatch(/^ID {2,}/mu);
       expect(rendered).toContain(id);
       expect(rendered).not.toContain(seeded.bundle.id);
       expect(rendered).not.toContain(release!.scope_key);
@@ -337,4 +337,14 @@ describe("Bundle commands", () => {
     expect(log.message).not.toHaveBeenCalled();
     expect(log.warn).not.toHaveBeenCalled();
   });
+});
+
+// The terminal these specs simulate takes prompts only outside CI, and CI
+// runners set CI.
+beforeEach(() => {
+  vi.stubEnv("CI", "");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

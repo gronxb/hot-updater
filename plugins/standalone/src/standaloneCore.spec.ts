@@ -140,4 +140,237 @@ describe("createStandaloneCoreApi", () => {
     await expect(refusal).rejects.toBeInstanceOf(ReleaseManagementError);
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
   });
+
+  it("asks for a server upgrade when the server has no native build routes", async () => {
+    server.use(
+      version(2),
+      http.all(
+        `${BASE_URL}/native-builds*`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const upgrade = `The server at ${BASE_URL} has no native build route`;
+
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+        appVersion: null,
+      }),
+    ).rejects.toThrow(upgrade);
+    await expect(
+      core.registerNativeBuild(
+        {} as Parameters<typeof core.registerNativeBuild>[0],
+      ),
+    ).rejects.toThrow(upgrade);
+    await expect(core.getNativeBuild("build-1")).rejects.toThrow(upgrade);
+    await expect(core.deleteNativeBuild("build-1")).rejects.toThrow(
+      `The server at ${BASE_URL} has no native build deletion route`,
+    );
+    // Such a server holds no native builds, so doctor's scan finds none.
+    await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
+  });
+
+  it("deletes a native build by ID, and answers an unknown ID as not_found", async () => {
+    const deleted: string[] = [];
+    server.use(
+      version(2),
+      http.delete(`${BASE_URL}/native-builds/:id`, ({ params }) => {
+        deleted.push(String(params.id));
+        return HttpResponse.json({
+          data:
+            params.id === "build-1"
+              ? { deleted: true, nativeBuild: { id: "build-1" } }
+              : { deleted: false, reason: "not_found" },
+        });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.deleteNativeBuild("build-1")).resolves.toEqual({
+      deleted: true,
+      nativeBuild: { id: "build-1" },
+    });
+    await expect(core.deleteNativeBuild("build/2")).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+    expect(deleted).toEqual(["build-1", "build/2"]);
+  });
+
+  it("reads a native build by ID, and an unknown ID as null", async () => {
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/:id`, ({ params }) =>
+        HttpResponse.json({
+          data: params.id === "build-1" ? { id: "build-1" } : null,
+        }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.getNativeBuild("build-1")).resolves.toEqual({
+      id: "build-1",
+    });
+    await expect(core.getNativeBuild("build-2")).resolves.toBeNull();
+  });
+
+  it("records a native build's store submission, and asks for an upgrade on a server without the route", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      version(2),
+      http.post(
+        `${BASE_URL}/native-builds/:id/submission`,
+        async ({ params, request }) => {
+          bodies.push(await request.json());
+          return params.id === "build-1"
+            ? HttpResponse.json({
+                data: { id: "build-1", submitted_to: "testflight" },
+              })
+            : HttpResponse.json({ data: null });
+        },
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const submission = {
+      destination: "testflight",
+      version: "1.7.0 (66)",
+    } as const;
+
+    await expect(
+      core.recordNativeBuildSubmission("build-1", submission),
+    ).resolves.toEqual({ id: "build-1", submitted_to: "testflight" });
+    await expect(
+      core.recordNativeBuildSubmission("build-2", submission),
+    ).resolves.toBeNull();
+    expect(bodies).toEqual([submission, submission]);
+
+    server.use(
+      http.post(
+        `${BASE_URL}/native-builds/:id/submission`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await expect(
+      core.recordNativeBuildSubmission("build-1", submission),
+    ).rejects.toThrow(
+      `The server at ${BASE_URL} has no native build submission route`,
+    );
+  });
+
+  it("lists a channel's native builds with the channel in the query", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds`, ({ request }) => {
+        queries.push(
+          Object.fromEntries(new URL(request.url).searchParams.entries()),
+        );
+        return HttpResponse.json({ data: [{ id: "build-1" }] });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.listNativeBuilds({
+        channelId: "channel:pr-130",
+        order: "desc",
+        after: "build-2",
+        limit: 20,
+      }),
+    ).resolves.toEqual([{ id: "build-1" }]);
+    await core.listNativeBuilds({ limit: 5 });
+    expect(queries).toEqual([
+      {
+        channelId: "channel:pr-130",
+        order: "desc",
+        cursor: "build-2",
+        limit: "20",
+      },
+      { limit: "5" },
+    ]);
+  });
+
+  it("finds a native build by scope, and reads a scope without one as null", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+        const query = Object.fromEntries(new URL(request.url).searchParams);
+        queries.push(query);
+        return HttpResponse.json({
+          data: query.appVersion === undefined ? { id: "build-1" } : null,
+        });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+        appVersion: null,
+      }),
+    ).resolves.toEqual({ id: "build-1" });
+    await expect(
+      core.findNativeBuild({
+        platform: "android",
+        channel: "beta",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+    expect(queries).toEqual([
+      {
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+      },
+      { platform: "android", channel: "beta", appVersion: "1.0.0" },
+    ]);
+  });
+
+  it("finds a native build by key, and reads an answer with another key as none", async () => {
+    const key = `nbk1:${"a".repeat(64)}`;
+    const queries: Record<string, string>[] = [];
+    let answer: unknown;
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+        queries.push(Object.fromEntries(new URL(request.url).searchParams));
+        return HttpResponse.json({ data: answer });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      appVersion: null,
+    } as const;
+
+    answer = { id: "build-1", build_key: key };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toEqual(answer);
+    // A server that predates build keys ignores the parameter and answers
+    // the scope's newest build: a row without the key is no match.
+    answer = { id: "build-2" };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toBeNull();
+    answer = { id: "build-3", build_key: null };
+    await expect(
+      core.findNativeBuild(scope, { buildKey: key }),
+    ).resolves.toBeNull();
+    expect(queries[0]).toEqual({
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      buildKey: key,
+    });
+  });
 });

@@ -1,6 +1,5 @@
 import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
-import { storeBundles } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
@@ -109,7 +108,9 @@ describe("doctor's release catalog check", () => {
   it("skips the check when hot-updater.config.ts names no database", async () => {
     vi.mocked(loadConfig).mockResolvedValue({ plugins: [] } as never);
 
-    await expect(doctor()).resolves.toBe(true);
+    const result = await doctor();
+    expect(result).toMatchObject({ success: true });
+    expect(result).not.toHaveProperty("details.releaseCatalogs");
     expect(loadServer).not.toHaveBeenCalled();
   });
 
@@ -130,7 +131,6 @@ describe("doctor's release catalog check", () => {
               message: expect.stringContaining("ECONNREFUSED"),
               resolution:
                 "Check that database in hot-updater.config.ts is reachable from here, then rerun doctor.",
-              fixability: "blocked",
             },
           ],
         },
@@ -173,8 +173,13 @@ describe("doctor's release catalog check", () => {
               type: "error",
               code: "RELEASE_CATALOG_STALE",
               scopeKey,
-              fixability: "command",
-              commands: ["npx hot-updater doctor --fix"],
+              resolution: expect.stringContaining(
+                "Every release change in the scope recompiles its catalog",
+              ),
+              commands: [
+                "npx hot-updater deploy",
+                "npx hot-updater bundle update <id>",
+              ],
             },
           ],
         },
@@ -182,25 +187,16 @@ describe("doctor's release catalog check", () => {
     });
   });
 
-  it("rebuilds a stale catalog with --fix, names it, and checks again", async () => {
+  it("verifies a stale catalog once a deploy to its scope recompiles it", async () => {
     const scopeKey = await deploy();
     await makeStale(scopeKey);
-    const output = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await handleDoctor({ json: true, fix: true });
+    // What the resolution names: the scope's next release change.
+    await expect(deploy(2)).resolves.toBe(scopeKey);
 
-    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject({
+    await expect(doctor()).resolves.toMatchObject({
       success: true,
       details: {
-        fixes: [
-          {
-            repair: "release-catalogs",
-            codes: ["RELEASE_CATALOG_STALE"],
-            status: "applied",
-            wrote: [`release catalog ${scopeKey}, generation 2`],
-            native: false,
-          },
-        ],
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "verified", generation: 2 }],
           issues: [],
@@ -262,14 +258,13 @@ describe("doctor's release catalog check", () => {
     ).toHaveLength(2);
   });
 
-  it("finds a scope whose releases have no catalog row, and leaves it to a backup restore under --fix", async () => {
+  it("finds a scope whose releases have no catalog row, and leaves it to a backup restore", async () => {
     const scopeKey = await deploy();
     await loseCatalogRow(scopeKey);
 
-    await expect(doctor({ fix: true })).resolves.toMatchObject({
+    await expect(doctor()).resolves.toMatchObject({
       success: false,
       details: {
-        fixes: [],
         releaseCatalogs: {
           scopes: [{ scopeKey, state: "missing", generation: null }],
           issues: [
@@ -277,51 +272,10 @@ describe("doctor's release catalog check", () => {
               type: "error",
               code: "RELEASE_CATALOG_IDENTITY_MISSING",
               scopeKey,
-              fixability: "blocked",
             },
           ],
         },
       },
     });
-  });
-
-  it("warns about artifact records no release uses, and --fix deletes them", async () => {
-    const orphan = bundle(9);
-    await deploy();
-    await storeBundles(harness.database, [orphan]);
-
-    await expect(doctor()).resolves.toMatchObject({
-      success: true,
-      details: {
-        artifacts: {
-          unreferenced: [orphan.id],
-          issues: [
-            {
-              type: "warning",
-              code: "UNREFERENCED_ARTIFACTS",
-              artifactIds: [orphan.id],
-              commands: ["npx hot-updater doctor --fix"],
-            },
-          ],
-        },
-      },
-    });
-
-    await expect(doctor({ fix: true })).resolves.toMatchObject({
-      success: true,
-      details: {
-        fixes: [
-          {
-            repair: "unreferenced-artifacts",
-            status: "applied",
-            wrote: [`artifact record ${orphan.id}`],
-            native: false,
-          },
-        ],
-        artifacts: { unreferenced: [], issues: [] },
-      },
-    });
-    await expect(harness.core.getBundle(orphan.id)).resolves.toBeNull();
-    expect(loadServer).toHaveBeenCalledTimes(2);
   });
 });

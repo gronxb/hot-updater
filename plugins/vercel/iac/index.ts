@@ -451,10 +451,14 @@ const selectDatabaseUrl = async ({
   );
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,

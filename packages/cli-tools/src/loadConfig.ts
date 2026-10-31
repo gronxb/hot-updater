@@ -6,14 +6,23 @@ import type {
   ConfiguredDatabase,
   Platform,
   RequiredDeep,
+  SecretsAdapter,
+  SigningConfig,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
 import { mergeWith } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
+import { bundleSigningSecretRef } from "./bundleSigning.js";
 import { getCwd } from "./cwd.js";
-import { normalizeSigningConfig } from "./localBundleSigning.js";
+import {
+  isSecretRef,
+  type SecretsScope,
+  setConfiguredSecrets,
+  resolveSecretsAdapter,
+  withSecretsScope,
+} from "./secrets.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -99,7 +108,7 @@ const getDefaultConfig = (): Omit<ConfigInput, "database" | "storage"> => {
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing">
+  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing" | "secrets">
 > & {
   /** The server's database, or `standaloneRepository(...)`; absent when the config names none. */
   database?: ConfiguredDatabase;
@@ -107,7 +116,18 @@ export type ConfigResponse = RequiredDeep<
   storage?: StorageAdapter;
   /** The plugins the server runs; none when the config lists none. */
   plugins: readonly AnyHotUpdaterPlugin[];
-  signing?: ReturnType<typeof normalizeSigningConfig>;
+  /**
+   * As the config sets it, read only when a command signs: deploy refuses a
+   * value it doesn't take (`readBundleSigningState`), and other commands,
+   * such as the `secrets put` that fixes it, still load the config.
+   */
+  signing?: SigningConfig;
+  /**
+   * Where `secret()` references and issued keys are read and stored: the
+   * config's adapter alone, or `localSecrets()` when it sets none
+   * (`resolveSecretsAdapter`).
+   */
+  secrets: SecretsAdapter;
 };
 
 type ConfigSource = Partial<ConfigInput> | null | undefined;
@@ -134,12 +154,14 @@ const mergeConfigSources = (...sources: ConfigSource[]) => {
   // without their symbol keys, such as the brand on Hot Updater's own plugins.
   const database = sources.find((source) => source?.database)?.database;
   const plugins = sources.find((source) => source?.plugins)?.plugins;
+  const secrets = sources.find((source) => source?.secrets)?.secrets;
   const signing = sources.find((source) => source?.signing)?.signing;
   const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
     ...(plugins ? { plugins } : {}),
+    ...(secrets ? { secrets } : {}),
     ...(signing ? { signing } : {}),
     ...(storage ? { storage } : {}),
   };
@@ -166,24 +188,41 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
-/** Each load runs the config file again, which creates its adapters again. */
-const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
-  const { config } = await loadUnconfig<ConfigFileExport>(
-    getConfigLoaderOptions(),
-  );
-  return config;
+/** A loaded config file: its export, and the scope of the `secret()` its top level creates. */
+type LoadedConfigFile = {
+  readonly source: ConfigFileExport | undefined;
+  readonly scope: SecretsScope;
 };
 
+/** Each load runs the config file again, which creates its adapters again. */
+const loadConfigFile = async (): Promise<LoadedConfigFile> => {
+  const scope: SecretsScope = {};
+  const { config } = await withSecretsScope(scope, () =>
+    loadUnconfig<ConfigFileExport>(getConfigLoaderOptions()),
+  );
+  return { source: config, scope };
+};
+
+/**
+ * The config `options` select, resolved: a config function runs in a scope
+ * of its own, so the `secret()` it creates reads this config's `secrets`,
+ * and the file's top-level `secret()` reads the first config's.
+ */
 const configFor = async (
-  source: ConfigFileExport | undefined,
+  { source, scope: fileScope }: LoadedConfigFile,
   options: HotUpdaterConfigOptions,
-): Promise<ConfigInput | undefined> =>
-  typeof source === "function" ? await source(options) : source;
+): Promise<ConfigResponse> => {
+  if (typeof source !== "function") {
+    return resolveConfig(source, [fileScope]);
+  }
+  const scope: SecretsScope = {};
+  const config = await withSecretsScope(scope, () => source(options));
+  return resolveConfig(config, [scope, fileScope]);
+};
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-): Promise<ConfigResponse> =>
-  resolveConfig(await configFor(await loadConfigFile(), options));
+): Promise<ConfigResponse> => configFor(await loadConfigFile(), options);
 
 /**
  * hot-updater.config for each of `platforms`, with the file loaded once. A
@@ -197,22 +236,88 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
 ): Promise<
   { readonly platform: TPlatform; readonly config: ConfigResponse }[]
 > => {
-  const source = await loadConfigFile();
+  const file = await loadConfigFile();
   const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
   for (const platform of platforms) {
     configs.push({
       platform,
-      config: resolveConfig(await configFor(source, { channel, platform })),
+      config: await configFor(file, { channel, platform }),
     });
   }
   return configs;
 };
 
-const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
+/**
+ * The names the config's build credentials reference, which the CLI reads
+ * for their kind: `signing`'s, and each scheme's
+ * `signing.ascApiKey` and `signing.keystore`.
+ */
+const buildSecretNames = (config: Partial<ConfigInput>): string[] => {
+  const references: unknown[] = [
+    bundleSigningSecretRef(config.signing),
+    ...Object.values(config.nativeBuild?.ios ?? {}).map(
+      (scheme) => scheme?.signing?.ascApiKey,
+    ),
+    ...Object.values(config.nativeBuild?.android ?? {}).map(
+      (scheme) => scheme?.signing?.keystore,
+    ),
+  ];
+  return references.filter(isSecretRef).map(({ name }) => name);
+};
+
+/**
+ * The config with its defaults. Its `secrets` adapter fills `scopes` not yet
+ * filled, which the `secret()` its evaluation created read, and becomes the
+ * default of credential resolvers.
+ */
+const resolveConfig = (
+  config: ConfigInput | undefined,
+  scopes: readonly SecretsScope[],
+): ConfigResponse => {
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
-  const signing = normalizeSigningConfig(mergedConfig.signing);
-  return {
+  const secrets = resolveSecretsAdapter(mergedConfig.secrets);
+  const buildNames = buildSecretNames(mergedConfig);
+  for (const scope of scopes) {
+    scope.secrets ??= secrets;
+    scope.buildNames ??= new Set();
+    for (const name of buildNames) scope.buildNames.add(name);
+  }
+  setConfiguredSecrets(secrets);
+  const resolved = {
     ...mergedConfig,
-    signing,
+    secrets,
   } as ConfigResponse;
+  Object.defineProperty(resolved, DEPLOY_SECRET_NAMES, {
+    value: [
+      ...new Set(scopes.flatMap((scope) => [...(scope.names ?? [])])),
+    ].filter((name) => !buildNames.includes(name)),
+  });
+  return resolved;
+};
+
+/**
+ * The names the config's build credentials reference, such as
+ * `release-keystore`, which builds read from the `secrets` adapter for their
+ * kind: `signing`'s, and each scheme's `signing.ascApiKey` and
+ * `signing.keystore`.
+ */
+export const getBuildSecretNames = (
+  config: ConfigResponse,
+): readonly string[] => [...new Set(buildSecretNames(config))];
+
+const DEPLOY_SECRET_NAMES = Symbol.for(
+  "@hot-updater/cli-tools/deploy-secret-names",
+);
+
+/**
+ * The names the config's `secret()`s reference for its adapters, such as
+ * `HOT_UPDATER_CLOUDFLARE_API_TOKEN`, in the order the config created
+ * them: every name but those of build credentials, which `doctor` lists
+ * by field.
+ */
+export const getDeploySecretNames = (
+  config: ConfigResponse,
+): readonly string[] => {
+  const names: unknown = Reflect.get(config, DEPLOY_SECRET_NAMES);
+  return Array.isArray(names) ? names : [];
 };

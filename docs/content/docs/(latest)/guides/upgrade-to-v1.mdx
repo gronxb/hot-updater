@@ -7,8 +7,8 @@ icon: BetweenHorizontalStart
 ## Plan the migration
 
 <Callout type="warn">
-  **Prepare a new v1 backend endpoint and keep the existing v0 URL running.**
-  v0 apps cannot use a v1 backend, and v1 apps cannot use a v0 backend. Replacing
+  **Prepare a new v1 backend endpoint and keep the existing v0 URL running.** v0
+  apps cannot use a v1 backend, and v1 apps cannot use a v0 backend. Replacing
   the server behind the existing URL, or redirecting that URL to v1, breaks OTA
   delivery for installed v0 apps. Ship the new URL only in a new native build
   containing the v1 SDK.
@@ -28,13 +28,13 @@ for as long as installed v0 apps need OTA service.
 
 ## Compatibility boundary
 
-| Combination                           | Supported | Action                                                               |
-| ------------------------------------- | --------- | -------------------------------------------------------------------- |
-| v0 native app → v0 infrastructure     | Yes       | Keep the old endpoint running while those binaries need OTA updates. |
-| v0 native app → v1 infrastructure     | No        | v1 does not expose the v0 app-version or fingerprint routes.         |
-| v1 native app → v0 infrastructure     | No        | Release Catalog and artifact routes are required.                    |
-| v1 setup → v0 database layout or endpoint | No     | Use a separate v1 database namespace and endpoint.                    |
-| v1 native app → new v1 infrastructure | Yes       | This is the supported target.                                        |
+| Combination                               | Supported | Action                                                               |
+| ----------------------------------------- | --------- | -------------------------------------------------------------------- |
+| v0 native app → v0 infrastructure         | Yes       | Keep the old endpoint running while those binaries need OTA updates. |
+| v0 native app → v1 infrastructure         | No        | v1 does not expose the v0 app-version or fingerprint routes.         |
+| v1 native app → v0 infrastructure         | No        | Release Catalog and artifact routes are required.                    |
+| v1 setup → v0 database layout or endpoint | No        | Use a separate v1 database namespace and endpoint.                   |
+| v1 native app → new v1 infrastructure     | Yes       | This is the supported target.                                        |
 
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
 by OTA. Receipt and rollback behavior requires the v1 native module.
@@ -78,7 +78,7 @@ URLs, platform, channel and version with your own values. Keep secrets in
 ignored local files or your provider's secret store.
 
 Use Node.js 22.23.4+, 24.22.1+, or 26.12.1+ for the CLI and its generated infrastructure helpers. Have the native toolchain available for each supported platform;
-OTA verification requires a Release build, not Expo Go or Metro.
+OTA verification requires a Release build, not a development server.
 
 ### 1. Preserve v0
 
@@ -199,13 +199,13 @@ archives or copy v0 policy rows.
 Before deploying, merge the generated v1 `hot-updater.config.ts` and remove
 obsolete options; init can add replacements beside the old fields:
 
-| Existing configuration | v1 change |
-| --- | --- |
-| `compressStrategy`, `releaseChannel` | Remove both. Set the native channel through `channel set` or the Expo plugin. |
-| AWS `s3Database` | Use `dynamoDB` with the new table; the deploy identity needs DynamoDB read/write access. |
-| Cloudflare `r2Storage({ cloudflareApiToken })` | Use `credentials: { accessKeyId, secretAccessKey }` from the R2 S3 credentials. The Cloudflare API token still configures D1. |
-| Supabase `supabaseAnonKey` | Use `supabaseServiceRoleKey` in both adapters, from `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`. v0 init stored a service-role key under `HOT_UPDATER_SUPABASE_ANON_KEY`; an actual anon key cannot replace it. |
-| Managed configuration without `plugins` | Import `apiKeys`, `insights` and `remoteConfig` from `hot-updater/plugins` and set `plugins: [apiKeys(), insights(), remoteConfig()]` to match the managed server. |
+| Existing configuration                         | v1 change                                                                                                                                                                                                   |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compressStrategy`, `releaseChannel`           | Remove both. Set the native channel through `channel set` or the Expo plugin.                                                                                                                               |
+| AWS `s3Database`                               | Use `dynamoDB` with the new table; the deploy identity needs DynamoDB read/write access.                                                                                                                    |
+| Cloudflare `r2Storage({ cloudflareApiToken })` | Use `credentials: { accessKeyId, secretAccessKey }` from the R2 S3 credentials. The Cloudflare API token still configures D1.                                                                               |
+| Supabase `supabaseAnonKey`                     | Use `supabaseServiceRoleKey` in both adapters, from `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`. v0 init stored a service-role key under `HOT_UPDATER_SUPABASE_ANON_KEY`; an actual anon key cannot replace it. |
+| Managed configuration without `plugins`        | Import `apiKeys`, `insights` and `remoteConfig` from `hot-updater/plugins` and set `plugins: [apiKeys(), insights(), remoteConfig()]` to match the managed server.                                          |
 
 ### 3. Update the app URL, client key and build environment
 
@@ -215,13 +215,13 @@ URL. For example, replace a v0 URL ending in
 and artifact routes itself. Preserve any base path required by your provider
 or custom server. Use the endpoint created in step 2:
 
-| Provider | v1 app `baseURL` |
-| --- | --- |
-| AWS | The new CloudFront distribution URL, without `/api/check-update`. |
-| Cloudflare | The new Worker's URL, without `/api/check-update`. |
-| Firebase | The new `hot-updater-v1` function URL, without `/api/check-update`. |
-| Supabase | `https://<ref>.supabase.co/functions/v1/hot-updater-v1`. |
-| Custom server | The new mount of `handlers.client`, not `handlers.admin`. |
+| Provider      | v1 app `baseURL`                                                    |
+| ------------- | ------------------------------------------------------------------- |
+| AWS           | The new CloudFront distribution URL, without `/api/check-update`.   |
+| Cloudflare    | The new Worker's URL, without `/api/check-update`.                  |
+| Firebase      | The new `hot-updater-v1` function URL, without `/api/check-update`. |
+| Supabase      | `https://<ref>.supabase.co/functions/v1/hot-updater-v1`.            |
+| Custom server | The new mount of `handlers.client`, not `handlers.admin`.           |
 
 Managed providers require the client API key in `requestHeaders["x-api-key"]`.
 The agent registers or reuses that key in the new v1 infrastructure and connects
@@ -395,11 +395,11 @@ entry looks like this:
         "@hot-updater/expo", // [!code ++]
         {
           "channel": "production",
-          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
-        }
-      ]
-    ]
-  }
+          "publicKeyPath": "./keys/public-key.pem", // [!code ++]
+        },
+      ],
+    ],
+  },
 }
 ```
 
@@ -556,18 +556,18 @@ compatibility bridge between them.
 Managed users should apply their provider's v1 scaffold. If you maintain custom
 server code or plugins, update these boundaries before connecting a v1 app:
 
-| v0 surface | v1 replacement |
+| v0 surface                                                                                                                       | v1 replacement                                                                                                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unified `createHandler`, `createHotUpdater().handler`, `HandlerOptions` | `createHotUpdater().handlers.client` and `.admin`. Mount the admin handler behind framework authentication before the broader client mount. |
-| `toNodeHandler(hotUpdater)` from `@hot-updater/server/node` | Import it from `@hot-updater/server` and pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`. |
+| Unified `createHandler`, `createHotUpdater().handler`, `HandlerOptions`                                                          | `createHotUpdater().handlers.client` and `.admin`. Mount the admin handler behind framework authentication before the broader client mount.                                                                         |
+| `toNodeHandler(hotUpdater)` from `@hot-updater/server/node`                                                                      | Import it from `@hot-updater/server` and pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`.                                                                                           |
 | Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core`, where the public Bundle ID is a Release ID: `getRelease`, `listReleases`, `deploy`, `updateReleasePolicy`, `deleteRelease` and `listChannels`. `getBundle` and `listBundles` read the artifacts. |
-| `storages: [adapter]`, `storagePlugins` | `storage: adapter` in `createHotUpdater`, required: one storage adapter, the one `hot-updater.config.ts` uploads with. |
-| Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. List the server's plugins in `plugins` of both. |
-| Client routes without authentication | Choose a policy: `apiKeys()` from `@hot-updater/server/plugins` in `plugins` requires `x-api-key`, or the `headerName` you pass. To keep the v0 behavior, set `clientAccess: "public"` instead. |
-| `routes: { updateCheck, bundles }` and the authentication on `/api/*` | Mount the handler surfaces explicitly: `handlers.client` for update checks, and `handlers.admin` for Bundle management behind the authentication that guarded `/api/*`. |
-| Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |
-| Server `cwd`, runtime request-context parameters | Remove these settings. Capture credentials, SDK clients and runtime bindings when constructing adapters. Handlers take one `Request`. |
-| `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2. |
+| `storages: [adapter]`, `storagePlugins`                                                                                          | `storage: adapter` in `createHotUpdater`, required: one storage adapter, the one `hot-updater.config.ts` uploads with.                                                                                              |
+| Database/storage `() => plugin` thunks                                                                                           | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. List the server's plugins in `plugins` of both.                      |
+| Client routes without authentication                                                                                             | Choose a policy: `apiKeys()` from `@hot-updater/server/plugins` in `plugins` requires `x-api-key`, or the `headerName` you pass. To keep the v0 behavior, set `clientAccess: "public"` instead.                     |
+| `routes: { updateCheck, bundles }` and the authentication on `/api/*`                                                            | Mount the handler surfaces explicitly: `handlers.client` for update checks, and `handlers.admin` for Bundle management behind the authentication that guarded `/api/*`.                                             |
+| Server `basePath`                                                                                                                | Let the framework own the mount path and use that client root as the app's `baseURL`.                                                                                                                               |
+| Server `cwd`, runtime request-context parameters                                                                                 | Remove these settings. Capture credentials, SDK clients and runtime bindings when constructing adapters. Handlers take one `Request`.                                                                               |
+| `standaloneRepository.baseUrl` pointing at a shared client root                                                                  | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2.                                                                |
 
 A v1 server lists the plugins it runs; `plugins` defaults to none:
 
@@ -623,17 +623,16 @@ fields with the following excerpt. Load the environment using your existing
 
 ```ts title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins";
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   // Keep your build, storage, signing and updateStrategy fields here.
   database: standaloneRepository({
     baseUrl: "https://updates-v1.example.com/hot-updater/admin",
-    commonHeaders: { Authorization: `Bearer ${adminToken}` },
+    commonHeaders: { Authorization: async () => `Bearer ${await adminToken()}` },
   }),
   plugins: [insights(), apiKeys()],
 });
@@ -758,38 +757,38 @@ still needs a storage adapter that produces device download URLs; see
 
 ### Replace removed provider exports
 
-| Package and removed surface | Replacement |
+| Package and removed surface                                                                                         | Replacement                                                                                                                                                                                                    |
 | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@hot-updater/core` | `@hot-updater/protocol`, the data formats and pure functions the app and the server share, under its v1 name. |
-| `@hot-updater/aws`: `s3Database` | `dynamoDB`; S3 stores artifacts. |
-| `@hot-updater/aws`: `s3LambdaEdgeStorage` | `s3Storage`. |
-| `@hot-updater/aws`: `withCloudFrontSignedUrl` | `s3Storage({ getDownloadUrl: cloudFrontDownloadUrl(...) })`; see [S3 download URLs](/docs/storage-adapters/aws). |
-| `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, accountId, credentials })` with native bindings; the R2 credentials presign download URLs. See [Worker storage](/docs/storage-adapters/cloudflare). |
-| `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl` | None: devices download from the presigned R2 URLs that `r2Storage` returns. |
-| `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`. |
-| `@hot-updater/js`: the package | None: a storage adapter's `getDownloadUrl` returns the URL devices download from. |
-| `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo` | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback. |
-| `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A database adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
-| `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStorageAdapter` with flat operations. |
-| `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds` | None: core resolves an artifact with one batch read of both Bundles and one read of their patch. |
+| `@hot-updater/core`                                                                                                 | `@hot-updater/protocol`, the data formats and pure functions the app and the server share, under its v1 name.                                                                                                  |
+| `@hot-updater/aws`: `s3Database`                                                                                    | `dynamoDB`; S3 stores artifacts.                                                                                                                                                                               |
+| `@hot-updater/aws`: `s3LambdaEdgeStorage`                                                                           | `s3Storage`.                                                                                                                                                                                                   |
+| `@hot-updater/aws`: `withCloudFrontSignedUrl`                                                                       | `s3Storage({ getDownloadUrl: cloudFrontDownloadUrl(...) })`; see [S3 download URLs](/docs/storage-adapters/aws).                                                                                               |
+| `@hot-updater/cloudflare/worker`: context-derived database/storage                                                  | `d1Database(binding)` and `r2Storage({ bucket, bucketName, accountId, credentials })` with native bindings; the R2 credentials presign download URLs. See [Worker storage](/docs/storage-adapters/cloudflare). |
+| `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl`                                                              | None: devices download from the presigned R2 URLs that `r2Storage` returns.                                                                                                                                    |
+| `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage`                      | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`.                                                                                                                                    |
+| `@hot-updater/js`: the package                                                                                      | None: a storage adapter's `getDownloadUrl` returns the URL devices download from.                                                                                                                              |
+| `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo`                                                         | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback.                                                                                                    |
+| `@hot-updater/plugin-core`: `createBlobDatabasePlugin`                                                              | A database adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes.                  |
+| `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStorageAdapter` with flat operations.                                                                                                                                                                   |
+| `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds`                      | None: core resolves an artifact with one batch read of both Bundles and one read of their patch.                                                                                                               |
 
 ## Update deployment automation
 
 The public CLI keeps the v0 Bundle workflow. The ID printed by deploy is the
 same ID shown in the Console and returned by `hotUpdater.getBundleId()`:
 
-| v0 command or assumption | v1 command or meaning |
-| --- | --- |
-| `bundle list --channel ... --target-app-version ...` | Unchanged; the rows use the Console ID. |
-| `bundle show <bundle-id>` | `bundle show <id>` with the deploy or Console ID. |
-| `bundle update <bundle-id>` | `bundle update <id>` |
-| `bundle enable <bundle-id>` | `bundle enable <id>` |
-| `bundle disable <bundle-id>` | `bundle disable <id>` |
-| `bundle promote <bundle-id>` | `bundle promote <source-id> --target <channel>` |
-| `bundle delete <bundle-ids...>` | Delete one disabled public Bundle at a time with `bundle delete <id>`. |
-| `patch --bundle-id ... --base-bundle-id ...` | `patch --artifact-id ... --base-artifact-id ...` with the Artifact IDs from Advanced diagnostics. |
-| top-level `rollback <channel>` | Identify the exact ID and run `bundle disable <id>`. |
-| Delete old immutable bytes directly | Delete the public bundles that use them; the last one deletes the artifact record. Then preview `storage prune`. |
+| v0 command or assumption                             | v1 command or meaning                                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bundle list --channel ... --target-app-version ...` | Unchanged; the rows use the Console ID.                                                                          |
+| `bundle show <bundle-id>`                            | `bundle show <id>` with the deploy or Console ID.                                                                |
+| `bundle update <bundle-id>`                          | `bundle update <id>`                                                                                             |
+| `bundle enable <bundle-id>`                          | `bundle enable <id>`                                                                                             |
+| `bundle disable <bundle-id>`                         | `bundle disable <id>`                                                                                            |
+| `bundle promote <bundle-id>`                         | `bundle promote <source-id> --target <channel>`                                                                  |
+| `bundle delete <bundle-ids...>`                      | Delete one disabled public Bundle at a time with `bundle delete <id>`.                                           |
+| `patch --bundle-id ... --base-bundle-id ...`         | `patch --artifact-id ... --base-artifact-id ...` with the Artifact IDs from Advanced diagnostics.                |
+| top-level `rollback <channel>`                       | Identify the exact ID and run `bundle disable <id>`.                                                             |
+| Delete old immutable bytes directly                  | Delete the public bundles that use them; the last one deletes the artifact record. Then preview `storage prune`. |
 
 Deploy and promote create independent update IDs. Multiple updates can reuse
 the same files.
@@ -802,14 +801,14 @@ list wrapper or v0 Bundle DTO fields. `bundle update --json` returns
 is an identity rather than a channel name, and `bundle_id` is the artifact ID.
 
 Also check scripts that parse human-readable deploy output: the success line
-is now `Deployment successful`, followed by `ID: <id>` (or `iOS ID` and
+is now `Deployment successful`, followed by `ID  <id>` (or `iOS ID` and
 `Android ID`), rather than `Deployment Successful (<id>)`.
 
 Replace bare `fingerprint` validation with `doctor`, and bare `channel`
 inspection with `doctor --json` (`details.native.ios.channel` and
 `details.native.android.channel`). `fingerprint create` and `channel set`
 remain available. Remove `keys export-public --input`; configure `signing` in
-`hot-updater.config.ts` instead. `build:android` now requires `EXPERIMENTAL=1`.
+`hot-updater.config.ts` instead.
 
 Promotion reuses uploaded bytes and never copies Storage objects. The target
 bundle is enabled with a 100% numeric rollout, no target cohorts, and a new
@@ -817,9 +816,8 @@ rollout seed. Review those settings before confirming, especially when the
 source bundle had a partial or QA-only rollout.
 
 Use [`bundle update --dry-run` and `--expected-revision`](/docs/guides/console#preview-and-protect-automated-changes)
-before automated policy writes. Use
-[`doctor` and `doctor --fix`](/docs/guides/doctor#check-release-catalogs)
-to check and rebuild compiled projections; they do not migrate v0 policy.
+before automated policy writes. Use [`doctor`](/docs/guides/doctor#check-release-catalogs) to check compiled
+projections; it does not migrate v0 policy.
 
 ## Rollback
 

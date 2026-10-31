@@ -13,8 +13,14 @@ import {
   getBundleChildren,
   getChannels,
   getConfig,
+  getNativeBuildDetail,
+  createNativeBuildDownloadLink,
+  getNativeBuildDownloadUrl,
+  getNativeBuildPatches,
+  getNativeBuilds,
   getRelease,
   getReleaseCatalogDiagnostics,
+  getReleaseNativeBuild,
   getReleases,
   preflightRelease as preflightReleaseApi,
   promoteRelease as promoteReleaseApi,
@@ -40,7 +46,53 @@ export const queryKeys = {
       ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
+  nativeBuilds: {
+    all: ["native-builds"] as const,
+    list: (page: NativeBuildPage) => ["native-builds", page] as const,
+  },
+  nativeBuild: (id: string) => ["native-build", id] as const,
+  nativeBuildPatches: (minBundleId: string, page: KeysetPage) =>
+    ["native-build-patches", minBundleId, page] as const,
+  nativeBuildDownloadUrl: (id: string) =>
+    ["native-build-download-url", id] as const,
+  nativeBuildDownloadLink: (id: string) =>
+    ["native-build-download-link", id] as const,
+  releaseNativeBuild: (release: ReleaseNativeBuildInput) =>
+    ["release-native-build", release] as const,
 };
+
+export type KeysetPage = {
+  /** Rows older than this key: the next page. */
+  before?: string;
+  /** Rows newer than this key: the previous page. */
+  after?: string;
+};
+
+export type NativeBuildPage = KeysetPage & {
+  /** Only the builds that embed this channel. */
+  channel?: string;
+};
+
+export type ReleaseNativeBuildInput = {
+  platform: "ios" | "android";
+  channel: string;
+  fingerprintHash: string | null;
+  targetAppVersion: string | null;
+};
+
+/**
+ * How long a storage download URL counts as fresh. Storage gives no lifetime
+ * with the URL, and adapters let it be configured down to minutes, so a
+ * person coming back to the page after this gets a new one.
+ */
+const DOWNLOAD_URL_STALE_MS = 60_000;
+
+/**
+ * How long a build page's signed link counts as fresh: far inside its 30 days,
+ * so a page left open never shows an expired one, and it costs one request
+ * a day.
+ */
+const DOWNLOAD_LINK_STALE_MS = 24 * 60 * 60 * 1000;
 
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */
@@ -122,6 +174,92 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
       getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
+  });
+}
+
+/** One page of native builds, newest first, kept on screen while the next loads. */
+export function useNativeBuildsQuery(page: NativeBuildPage) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuilds.list(page),
+    queryFn: () => getNativeBuilds({ data: page }),
+    placeholderData: (previousData) => previousData,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * A native build's page in one round trip, or null for an unknown ID. The
+ * page reads it again when it opens, since its catalog and patches change
+ * with each deploy.
+ */
+export function useNativeBuildDetailQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuild(id),
+    queryFn: () => getNativeBuildDetail({ data: { id } }),
+    enabled: id.length > 0,
+  });
+}
+
+/**
+ * A page of patches from a built-in bundle other than the newest, which the
+ * build's page already holds; kept on screen while the next one loads.
+ */
+export function useNativeBuildPatchesQuery(
+  minBundleId: string,
+  page: KeysetPage,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildPatches(minBundleId, page),
+    queryFn: () => getNativeBuildPatches({ data: { minBundleId, ...page } }),
+    enabled: enabled && minBundleId.length > 0,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+/**
+ * The newest native build of a release's scope, or none: read only for a
+ * release one build can serve, by its fingerprint or one exact app version.
+ */
+export function useReleaseNativeBuildQuery(
+  release: ReleaseNativeBuildInput | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.releaseNativeBuild(
+      release ?? {
+        platform: "ios",
+        channel: "",
+        fingerprintHash: null,
+        targetAppVersion: null,
+      },
+    ),
+    queryFn: () => getReleaseNativeBuild({ data: release! }),
+    enabled: release !== null,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * The signed link of a build's page, which its QR code, download button, and
+ * copyable link all use: one request when the page opens.
+ */
+export function useNativeBuildDownloadLinkQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildDownloadLink(id),
+    queryFn: () => createNativeBuildDownloadLink({ data: { id } }),
+    staleTime: DOWNLOAD_LINK_STALE_MS,
+  });
+}
+
+/**
+ * The storage URL a phone downloads a build from when the Console can't sign
+ * a link: read once, and again only when someone comes back to the page.
+ */
+export function useNativeBuildDownloadUrlQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildDownloadUrl(id),
+    queryFn: () => getNativeBuildDownloadUrl({ data: { id } }),
+    staleTime: DOWNLOAD_URL_STALE_MS,
   });
 }
 

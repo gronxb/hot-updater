@@ -1,0 +1,10 @@
+{
+  "title": "Build Adapters",
+  "description": "Bundle the app's JavaScript for deploy.",
+  "icon": "Hammer",
+  "pages": [
+    "bare",
+    "expo",
+    "rock"
+  ]
+}

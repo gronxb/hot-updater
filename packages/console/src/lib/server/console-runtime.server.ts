@@ -72,10 +72,8 @@ export const resolveConsoleConfig = async (
 
   const config = typeof source === "function" ? await source(request) : source;
   const { database, storage, plugins = [] } = config;
-  const gitUrl =
-    config.console?.gitUrl === undefined
-      ? {}
-      : { gitUrl: config.console.gitUrl };
+  const { gitUrl } = config.console ?? {};
+  const consoleOptions = gitUrl === undefined ? {} : { gitUrl };
   // A self-hosted server runs the plugins itself: core is its admin API.
   // The plugins are still checked as the server checks them, on a database
   // nothing reads, so one the server would refuse is refused here too.
@@ -86,7 +84,7 @@ export const resolveConsoleConfig = async (
       plugins,
     );
     return {
-      ...gitUrl,
+      ...consoleOptions,
       database,
       core: database.core,
       storage,
@@ -95,7 +93,7 @@ export const resolveConsoleConfig = async (
   }
   const server = assemble(database, storage, plugins);
   return {
-    ...gitUrl,
+    ...consoleOptions,
     database,
     core: server.core,
     storage,

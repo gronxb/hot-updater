@@ -344,6 +344,14 @@ public protocol BundleStorageService {
      * Restores the original bundle and clears downloaded bundle state.
      */
     func resetChannel() -> Result<Bool, Error>
+
+    /**
+     * Resets the channel only while the named Release selection is current,
+     * checked and reset in one critical section with the catalog checks, so
+     * a newer catalog accepted meanwhile keeps the channel. Success is false
+     * for a stale selection.
+     */
+    func resetChannelIfSelectionCurrent(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Result<Bool, Error>
 }
 
 public extension BundleStorageService {
@@ -356,10 +364,12 @@ public extension BundleStorageService {
     func getActiveUpdateState() -> [String: Any] { [:] }
     func isReleaseSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func commitReleaseSelection(_: PersistedSelection) -> Bool { false }
+    func resetChannelIfSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Result<Bool, Error> { .success(false) }
 }
 
 class BundleFileStorageService: BundleStorageService {
     private static let maximumSafeByteSize: Int64 = 9_007_199_254_740_991
+    private static let nilUUID = "00000000-0000-0000-0000-000000000000"
     /// Files downloaded at once when the archive is not used.
     static let parallelFileDownloads = 16
     /// What one request costs beyond the first `parallelFileDownloads`, in
@@ -564,8 +574,73 @@ class BundleFileStorageService: BundleStorageService {
         return (patchDirectory as NSString).appendingPathComponent("\(safeName).bsdiff")
     }
 
+    /// Copies, with no OTA bundle installed, the packaged file each built-in
+    /// patch was made from, when its bytes are the patch's base: store
+    /// processing may have changed them. Only these patches are priced and
+    /// applied; the others fall back to their files.
+    private func prepareBuiltInPatchBases(
+        downloads: [String: ChangedAssetDescriptor],
+        currentBundleId: String?,
+        tempDirectory: String
+    ) -> [String: String] {
+        guard currentBundleId == nil else { return [:] }
+        var bases: [String: String] = [:]
+        for (assetPath, descriptor) in downloads {
+            guard let patch = descriptor.patch,
+                  isPatchForRunningBundle(patch, currentBundleId: nil) else {
+                continue
+            }
+            let basePath = patchBaseTempPath(
+                tempDirectory: tempDirectory,
+                assetPath: assetPath
+            )
+            if builtInAssetResolver.copyIfMatches(
+                assetPath: assetPath,
+                expectedHash: patch.baseFileHash,
+                destination: basePath
+            ) {
+                bases[assetPath] = basePath
+            } else {
+                try? fileSystem.removeItem(atPath: basePath)
+            }
+        }
+        return bases
+    }
+
+    /// Where the built-in bundle's file is copied to serve as a patch's base.
+    private func patchBaseTempPath(
+        tempDirectory: String,
+        assetPath: String
+    ) -> String {
+        let safeName = assetPath
+            .replacingOccurrences(of: "/", with: "__")
+            .replacingOccurrences(of: "\\", with: "__")
+        let patchDirectory = (tempDirectory as NSString).appendingPathComponent("patches")
+        _ = fileSystem.createDirectory(atPath: patchDirectory)
+        return (patchDirectory as NSString).appendingPathComponent("\(safeName).base")
+    }
+
     private func patchDownloadPath(assetPath: String) -> String {
         return "\(assetPath).bsdiff"
+    }
+
+    /// Whether `patch` was made against the running bundle: the OTA bundle
+    /// `currentBundleId`, or with none, the built-in bundle, whose ID is
+    /// MIN_BUNDLE_ID once its native build is registered.
+    private func isPatchForRunningBundle(
+        _ patch: BsdiffPatchDescriptor,
+        currentBundleId: String?
+    ) -> Bool {
+        guard patch.algorithm == "bsdiff" else { return false }
+        if let currentBundleId {
+            return currentBundleId == patch.baseBundleId
+        }
+        // A Debug build reports the nil UUID, and has no built-in bundle.
+        guard let builtInBundleId = resolveBuiltInBundleId(),
+              builtInBundleId != Self.nilUUID else {
+            return false
+        }
+        return builtInBundleId == patch.baseBundleId
     }
 
     private func downloadPath(
@@ -609,6 +684,7 @@ class BundleFileStorageService: BundleStorageService {
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         currentBundleDir: String?,
+        builtInBasePath: String?,
         destinationPath: String,
         expectedHash: String,
         tempDirectory: String,
@@ -616,29 +692,34 @@ class BundleFileStorageService: BundleStorageService {
         progressHandler: @escaping (UpdateProgressPayload) -> Void
     ) -> Bool {
         guard let patch = changedAsset.patch,
-              patch.algorithm == "bsdiff",
-              currentBundleId == patch.baseBundleId,
-              let currentBundleDir
+              isPatchForRunningBundle(patch, currentBundleId: currentBundleId)
         else {
             return false
         }
 
         let sourcePath: String
-        do {
-            sourcePath = try FileUtilities.fileURL(
-                for: assetPath,
-                destinationRoot: currentBundleDir
-            ).path
-        } catch {
-            return false
-        }
-        guard self.fileSystem.fileExists(atPath: sourcePath),
-              HashUtils.verifyHash(
-                fileURL: URL(fileURLWithPath: sourcePath),
-                expectedHash: patch.baseFileHash
-              )
-        else {
-            return false
+        if currentBundleId == nil {
+            // Copied and checked before the plan priced the patch.
+            guard let builtInBasePath else { return false }
+            sourcePath = builtInBasePath
+        } else {
+            guard let currentBundleDir else { return false }
+            do {
+                sourcePath = try FileUtilities.fileURL(
+                    for: assetPath,
+                    destinationRoot: currentBundleDir
+                ).path
+            } catch {
+                return false
+            }
+            guard self.fileSystem.fileExists(atPath: sourcePath),
+                  HashUtils.verifyHash(
+                    fileURL: URL(fileURLWithPath: sourcePath),
+                    expectedHash: patch.baseFileHash
+                  )
+            else {
+                return false
+            }
         }
 
         let patchPath = patchTempPath(
@@ -648,6 +729,9 @@ class BundleFileStorageService: BundleStorageService {
 
         defer {
             try? self.fileSystem.removeItem(atPath: patchPath)
+            if currentBundleId == nil {
+                try? self.fileSystem.removeItem(atPath: sourcePath)
+            }
             if self.fileSystem.fileExists(atPath: destinationPath),
                !HashUtils.verifyHash(
                 fileURL: URL(fileURLWithPath: destinationPath),
@@ -1165,7 +1249,9 @@ class BundleFileStorageService: BundleStorageService {
         archive: ParsedArchive?,
         archiveUrl: URL?,
         downloads: [String: ChangedAssetDescriptor],
-        assets: [String: ParsedManifestAsset]
+        assets: [String: ParsedManifestAsset],
+        currentBundleId: String?,
+        builtInPatchBases: [String: String]
     ) -> Bool {
         guard downloads.count >= 2,
               archive != nil,
@@ -1181,7 +1267,11 @@ class BundleFileStorageService: BundleStorageService {
                 return false
             }
             let plannedByteSize: Int64
-            if let patch = descriptor.patch {
+            // Only a patch this device applies saves bytes.
+            if let patch = descriptor.patch,
+               currentBundleId == nil
+                ? builtInPatchBases[path] != nil
+                : isPatchForRunningBundle(patch, currentBundleId: currentBundleId) {
                 hasOfferedPatch = true
                 guard let patchByteSize = patch.byteSize,
                       patchByteSize >= 0,
@@ -2228,6 +2318,7 @@ class BundleFileStorageService: BundleStorageService {
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         currentBundleDir: String?,
+        builtInBasePath: String?,
         destinationPath: String,
         tempDirectory: String,
         progressFile: UpdateProgressPayload.DiffProgressFileSnapshot,
@@ -2240,6 +2331,7 @@ class BundleFileStorageService: BundleStorageService {
             changedAsset: changedAsset,
             currentBundleId: currentBundleId,
             currentBundleDir: currentBundleDir,
+            builtInBasePath: builtInBasePath,
             destinationPath: destinationPath,
             expectedHash: expectedHash,
             tempDirectory: tempDirectory,
@@ -2374,7 +2466,7 @@ class BundleFileStorageService: BundleStorageService {
             // A patch for the running bundle was offered, but the original
             // file came instead; a patch for another base was never tried.
             let patchWasTried = changedAsset.patch.map {
-                $0.algorithm == "bsdiff" && $0.baseBundleId == currentBundleId
+                isPatchForRunningBundle($0, currentBundleId: currentBundleId)
             } ?? false
             return .downloaded(patchFallback: patchWasTried)
         case .failure(let error):
@@ -2850,11 +2942,18 @@ class BundleFileStorageService: BundleStorageService {
             // The archive is chosen before any patch is tried, so only the
             // per-file install can fall back from a patch.
             var patchFallbacks = false
+            let builtInPatchBases = prepareBuiltInPatchBases(
+                downloads: downloads,
+                currentBundleId: currentBundleId,
+                tempDirectory: tempDirectory
+            )
             if shouldUseArchive(
                 archive: targetManifest.archive,
                 archiveUrl: archiveUrl,
                 downloads: downloads,
-                assets: targetManifest.assets
+                assets: targetManifest.assets,
+                currentBundleId: currentBundleId,
+                builtInPatchBases: builtInPatchBases
             ), let archive = targetManifest.archive, let archiveUrl {
                 do {
                     diffFiles = try UpdateFailureError.during(.storage, resource: .archive) {
@@ -2908,6 +3007,7 @@ class BundleFileStorageService: BundleStorageService {
                             let outcome = try self.downloadManifestAsset(
                                 assetPath: assetPath, expectedAsset: expectedAsset, changedAsset: descriptor,
                                 currentBundleId: currentBundleId, currentBundleDir: currentBundleDir,
+                                builtInBasePath: builtInPatchBases[assetPath],
                                 destinationPath: destinationPath, tempDirectory: workerTemp, progressFile: progressFile,
                                 progressHandler: { payload in
                                     progressLock.lock()
@@ -3214,6 +3314,31 @@ class BundleFileStorageService: BundleStorageService {
 
     func getManifest(forBundleId bundleId: String?) -> ManifestAssets {
         return getBundleMetadataSnapshot(bundleId: bundleId)?.manifest ?? [:]
+    }
+
+    func resetChannelIfSelectionCurrent(
+        catalogId: String,
+        scopeKey: String,
+        generation: Int64,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String
+    ) -> Result<Bool, Error> {
+        // The catalog checks take the same recursive lock, so none accepts a
+        // newer catalog between this check and the reset.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard isReleaseSelectionCurrent(
+            catalogId: catalogId,
+            scopeKey: scopeKey,
+            generation: generation,
+            catalogHash: catalogHash,
+            channel: channel,
+            selectionContextHash: selectionContextHash
+        ) else {
+            return .success(false)
+        }
+        return resetChannel()
     }
 
     func resetChannel() -> Result<Bool, Error> {

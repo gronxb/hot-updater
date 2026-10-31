@@ -3,9 +3,5 @@
   "description": "Choose infrastructure, install packages, and connect your app from your terminal.",
   "icon": "Terminal",
   "pagesIndex": "../basic-usage",
-  "pages": [
-    "../choose-provider",
-    "../installation",
-    "../app-setup"
-  ]
+  "pages": ["../choose-provider", "../installation", "../app-setup"]
 }

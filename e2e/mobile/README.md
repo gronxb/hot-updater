@@ -1,8 +1,8 @@
 # Mobile E2E runner
 
 The runner uses `e2e@0.18.0`, `@e2e-dev/mobile@0.10.0`, and
-`agent-device@0.21.22` to execute the 35 scenarios in
-[`../scenario-names.json`](../scenario-names.json), or the 35 of the
+`agent-device@0.21.22` to execute the 38 scenarios in
+[`../scenario-names.json`](../scenario-names.json), or the 36 of the
 brownfield target in
 [`../brownfield-scenario-names.json`](../brownfield-scenario-names.json). The shared control server
 prepares OTA fixtures and verifies native recovery and Console Insights.
@@ -77,7 +77,7 @@ pnpm -w e2e -- --prepared --platform android --device <emulator-serial>
 ```
 
 `--list` lists the shared scenarios. `--scenario <name>` selects one and can
-be repeated; `--suite default` selects all 35. `--target <name>` selects the
+be repeated; `--suite default` selects all 38. `--target <name>` selects the
 app (see [targets](../README.md#targets)), and `--track brownfield` the
 brownfield host apps (see [the brownfield target](../README.md#brownfield-target))
 with the `brownfield` suite; both `e2e:build` and the run take them. `--dry-run` prints the selection

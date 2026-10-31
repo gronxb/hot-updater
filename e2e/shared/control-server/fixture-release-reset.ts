@@ -14,24 +14,48 @@ export function getFixtureResetChannels(namespace: string | null) {
   );
 }
 
+type ReleaseResetCore = Pick<
+  HotUpdaterCoreApi,
+  "deleteRelease" | "listChannels" | "listReleases" | "updateReleasePolicy"
+>;
+
 /**
  * Disables and deletes this job's releases on one platform, through core.
- * Each channel's releases are read by the channel and platform index; the
- * read starts over after each page, since the page's releases are gone.
  */
 export async function resetFixtureReleases({
   core,
   namespace,
   platform,
 }: {
-  core: Pick<
-    HotUpdaterCoreApi,
-    "deleteRelease" | "listChannels" | "listReleases" | "updateReleasePolicy"
-  >;
+  core: ReleaseResetCore;
   namespace: string | null;
   platform: "ios" | "android";
 }) {
   const channels = getFixtureResetChannels(namespace);
+  return {
+    channels,
+    clearedReleaseIds: await deleteChannelReleases({
+      core,
+      channels,
+      platform,
+    }),
+  };
+}
+
+/**
+ * Disables and deletes the releases of `channels` on one platform. Each
+ * channel's releases are read by the channel and platform index; the read
+ * starts over after each page, since the page's releases are gone.
+ */
+export async function deleteChannelReleases({
+  core,
+  channels,
+  platform,
+}: {
+  core: ReleaseResetCore;
+  channels: readonly string[];
+  platform: "ios" | "android";
+}): Promise<string[]> {
   const channelIds = (await core.listChannels())
     .filter((channel) => channels.includes(channel.name))
     .map((channel) => channel.id);
@@ -58,5 +82,5 @@ export async function resetFixtureReleases({
   }
   // Core deletes an artifact with the last release on it, and the patches
   // built on it with it; an artifact another release uses stays.
-  return { channels, clearedReleaseIds };
+  return clearedReleaseIds;
 }

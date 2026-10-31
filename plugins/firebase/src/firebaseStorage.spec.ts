@@ -1,3 +1,5 @@
+import { Writable } from "node:stream";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { firebaseStorage } from "./firebaseStorage";
@@ -11,7 +13,7 @@ const { bucket, file, getStorage } = vi.hoisted(() => {
     exists: vi.fn(),
     getMetadata: vi.fn(),
     getSignedUrl: vi.fn(),
-    save: vi.fn(),
+    createWriteStream: vi.fn(),
   };
   const bucket = { file: vi.fn(() => file) };
   return {
@@ -36,6 +38,17 @@ describe("firebaseStorage", () => {
   const createStorage = () =>
     firebaseStorage({ projectId: "project", storageBucket: "updates" });
 
+  it("binds its app when created and opens the bucket on first use, so a config loads without its settings", async () => {
+    const storage = createStorage();
+    expect(getStorage).not.toHaveBeenCalled();
+    file.exists.mockResolvedValue([true]);
+
+    await storage.exists({ storageUri: "gs://updates/key" });
+    await storage.exists({ storageUri: "gs://updates/key" });
+
+    expect(getStorage).toHaveBeenCalledTimes(1);
+  });
+
   it("returns downloaded bytes as a Web Response", async () => {
     file.download.mockResolvedValue([Buffer.from("manifest")]);
     file.getMetadata.mockResolvedValue([
@@ -52,8 +65,17 @@ describe("firebaseStorage", () => {
     await expect(response?.text()).resolves.toBe("manifest");
   });
 
-  it("buffers a Web stream and returns an encoded object URI", async () => {
-    file.save.mockResolvedValue(undefined);
+  it("streams a Web stream and returns an encoded object URI", async () => {
+    const chunks: Buffer[] = [];
+    file.createWriteStream.mockImplementation(
+      () =>
+        new Writable({
+          write(chunk: Buffer, _encoding, callback) {
+            chunks.push(chunk);
+            callback();
+          },
+        }),
+    );
 
     await expect(
       createStorage().put({
@@ -66,12 +88,13 @@ describe("firebaseStorage", () => {
       storageUri: "gs://updates/releases/%ED%95%9C%EA%B8%80%402x%20%23%25.zip",
     });
     expect(bucket.file).toHaveBeenCalledWith("releases/한글@2x #%.zip");
-    expect(file.save).toHaveBeenCalledWith(new TextEncoder().encode("bundle"), {
+    expect(file.createWriteStream).toHaveBeenCalledWith({
       metadata: {
         cacheControl: "public, max-age=31536000, immutable",
         contentType: "application/zip",
       },
     });
+    expect(Buffer.concat(chunks).toString()).toBe("bundle");
   });
 
   it("deletes exactly one decoded Firebase object and is idempotent", async () => {

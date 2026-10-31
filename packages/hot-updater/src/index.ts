@@ -1,29 +1,36 @@
 #!/usr/bin/env node
 import {
+  Argument,
   Command,
   InvalidArgumentError,
   Option,
 } from "@commander-js/extra-typings";
-import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
-import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, p } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions } from "@hot-updater/plugin-core";
+import { banner, CREDENTIAL_LOGIN_GROUPS, p } from "@hot-updater/cli-tools";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
 import {
-  appIdSuffixCommandOption,
-  deviceCommandOption,
   interactiveCommandOption,
+  nativeBuildDryRunCommandOption,
+  nativeBuildNoCacheCommandOption,
   nativeBuildOutputCommandOption,
+  nativeBuildJsonCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
-  portCommandOption,
+  playSubmitCommandOption,
+  testFlightSubmitCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
-import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
-import { getConsolePort, openConsole } from "@/commands/console";
+import {
+  handleNativeBuildCreate,
+  type NativeBuildCreateOptions,
+} from "@/commands/buildNative";
+import {
+  getConsolePort,
+  withConsoleSession,
+  openConsole,
+} from "@/commands/console";
 import {
   type DeployOptions,
   deploy,
@@ -34,7 +41,11 @@ import { init } from "@/commands/init";
 import { initHelp } from "@/commands/initHelp";
 import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
-import { runAndroidNative, runIosNative } from "@/commands/runNative";
+import {
+  handleGooglePlayUpload,
+  handleTestFlight,
+  type StoreUploadOptions,
+} from "@/commands/storeUpload";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
@@ -51,7 +62,7 @@ import {
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import { handleSetChannel } from "./commands/channel";
+import { handleChannelDelete, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
@@ -66,8 +77,15 @@ import {
   INSIGHTS_OUTCOMES,
   INSIGHTS_WINDOWS,
 } from "./commands/insights";
-import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
+import { keysExportPublic, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import {
+  handleNativeBuildDelete,
+  handleNativeBuildDownload,
+  handleNativeBuildFind,
+  handleNativeBuildInstall,
+} from "./commands/nativeBuild";
+import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,
@@ -77,10 +95,25 @@ import {
   handleRemoteConfigVersions,
 } from "./commands/remoteConfig";
 import {
+  handleSecretsImport,
+  handleSecretsIssue,
+  handleSecretsPut,
+  ISSUED_KINDS,
+  SECRET_KINDS,
+} from "./commands/secrets";
+import {
+  DEFAULT_PULL_FILE,
+  handleSecretsPull,
+  type SecretsPullOptions,
+} from "./commands/secretsPull";
+import { handleSigningKeyIssue } from "./commands/signingKey";
+import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
   parseStoragePruneProtection,
 } from "./commands/storage";
+import { handleUploadKeyIssue } from "./commands/uploadKey";
+import { ui } from "./utils/cli-ui";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -206,19 +239,6 @@ program
   .option("--channel <channel>", "catalog channel to verify")
   .option("--app-version <version>", "app-version catalog target")
   .option("--fingerprint <hash>", "fingerprint catalog target")
-  .addOption(
-    new Option(
-      "--fix",
-      "run the repairs doctor can do itself, name every file they write, and check again",
-    ).conflicts([
-      "scope",
-      "infraDir",
-      "platform",
-      "channel",
-      "appVersion",
-      "fingerprint",
-    ]),
-  )
   .option("--json", "output machine-readable doctor result")
   .action(handleDoctor);
 
@@ -245,15 +265,151 @@ fingerprintCommand
   )
   .action(handleFingerprintHash);
 
-program
+const channelCommand = program
   .command("channel")
-  .description("Manage native default channels")
+  .description("Manage channels");
+
+channelCommand
   .command("set")
   .description(
     "Set the native default channel for Android (AndroidManifest.xml) and iOS (Info.plist)",
   )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+channelCommand
+  .command("delete")
+  .description(
+    "Delete a channel and its bundles, such as a closed pull request's",
+  )
+  .argument("<channel>", "the channel to delete")
+  .option(
+    "--native-builds",
+    "also delete the native builds that embed the channel, with their artifacts",
+  )
+  .option("--json", "output the result as JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleChannelDelete);
+
+const nativeBuildCommand = program
+  .command("native-build")
+  .description(
+    "Build native apps, and find, download, install and delete the builds Hot Updater tracks",
+  );
+
+nativeBuildCommand
+  .command("find")
+  .description(
+    "Find the newest registered native build a build of this project would match, such as before a pull request's preview build",
+  )
+  .addOption(
+    new Option("-p, --platform <platform>", "the build's platform")
+      .choices(["ios", "android"])
+      .makeOptionMandatory(),
+  )
+  .option(
+    "-c, --channel <channel>",
+    "the channel the build embeds (default: the native project's default channel)",
+  )
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild scheme, whose app's version the build has with the appVersion strategy",
+  )
+  .option(
+    "--json",
+    "output the scope, the build or null, and the storage's download URL or null, as JSON",
+  )
+  .action(handleNativeBuildFind);
+
+nativeBuildCommand
+  .command("download")
+  .description(
+    "Download a registered native build's artifact through the config's storage, such as in a script",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option(
+    "-o, --output <path>",
+    "the file or directory to write (default: the artifact's name in the current directory)",
+  )
+  .option("--json", "output the file's path and size as JSON")
+  .action(handleNativeBuildDownload);
+
+nativeBuildCommand
+  .command("install")
+  .description(
+    "Download a registered simulator .app or .apk, install it on a booted iOS Simulator or a connected Android device, and open it",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option(
+    "--simulator <udid>",
+    "the booted iOS Simulator (default: the only one booted)",
+  )
+  .option(
+    "--device <serial>",
+    "the Android device or emulator, as adb devices lists it (default: ANDROID_SERIAL, or the only one connected)",
+  )
+  .option("--json", "output the device and the app as JSON")
+  .action(handleNativeBuildInstall);
+
+nativeBuildCommand
+  .command("delete")
+  .description(
+    "Delete a registered native build and its stored artifact, such as a finished QA build's",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option("--json", "output the result as JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleNativeBuildDelete);
+
+nativeBuildCommand
+  .command("import")
+  .description(
+    "Track an .ipa, .aab, .apk or simulator .app built elsewhere, such as by another build service or an earlier release, as an OTA patch base: OTAs deployed after it patch from its built-in bundle. Importing the same build again succeeds and changes nothing",
+  )
+  .argument(
+    "<file>",
+    "the release build's .ipa, .aab or .apk, or a simulator .app (or its .app.zip)",
+  )
+  .option(
+    "-c, --channel <channel>",
+    "the channel the app reports, when its code sets one or it switches to one at runtime (default: the channel the build compiled in)",
+  )
+  .option("--dry-run", "read and check the artifact, and record nothing")
+  .option(
+    "--json",
+    "print what was read, and the registered build or why it can't be imported, as JSON on the last line of the output",
+  )
+  .action(handleNativeBuildImport);
+
+nativeBuildCommand
+  .command("ios")
+  .description(
+    "Build an iOS .ipa, or a simulator .app, and track it in Hot Updater as an OTA patch base and preview build",
+  )
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(testFlightSubmitCommandOption)
+  .addOption(nativeBuildDryRunCommandOption)
+  .addOption(nativeBuildNoCacheCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
+  .action(async (options: NativeBuildCreateOptions) => {
+    await handleNativeBuildCreate("ios", options);
+  });
+
+nativeBuildCommand
+  .command("android")
+  .description(
+    "Build an Android .aab or .apk, and track it in Hot Updater as an OTA patch base and preview build",
+  )
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(playSubmitCommandOption)
+  .addOption(nativeBuildDryRunCommandOption)
+  .addOption(nativeBuildNoCacheCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
+  .action(async (options: NativeBuildCreateOptions) => {
+    await handleNativeBuildCreate("android", options);
+  });
 
 const SERVER_PATH_HELP =
   "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";
@@ -308,6 +464,284 @@ const integerFrom =
     }
     return n;
   };
+
+/** A comma-separated option, which may also repeat. */
+const commaSeparated = (value: string, previous: readonly string[] = []) => [
+  ...previous,
+  ...value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean),
+];
+
+const secretsCommand = program
+  .command("secrets")
+  .description(
+    "Store build credentials in the secrets adapter, or pull deploy credentials to a local env file",
+  );
+
+secretsCommand
+  .command("put")
+  .description(
+    'Store a credential you have as the value secret("<name>") resolves',
+  )
+  .argument("<name>", "the secret's name, such as release-keystore")
+  .argument(
+    "[file]",
+    "the file to store: the service account's JSON key, the keystore, the .p8 key, or the signing key's PEM",
+  )
+  .addOption(
+    new Option(
+      "--kind <kind>",
+      "what the secret holds (default: the name, when it is a kind)",
+    ).choices(SECRET_KINDS),
+  )
+  .option("--p8 <file>", "asc-api-key: the .p8 key file")
+  .option("--key-id <id>", "asc-api-key: the key ID")
+  .option("--issuer-id <id>", "asc-api-key: the issuer ID")
+  .option(
+    "--keystore <file>",
+    "android-keystore: the keystore file; its passwords come from HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD and HOT_UPDATER_ANDROID_KEY_PASSWORD, or a prompt",
+  )
+  .option("--key-alias <alias>", "android-keystore: the key's alias")
+  .option(
+    "--service-account <file>",
+    "play-service-account: the service account's JSON key file",
+  )
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Google Play:",
+      "  secrets put play-service-account <key.json>",
+      "  secrets put android-keystore <upload.jks>",
+      "At a terminal, a keystore without --key-alias asks for its passwords.",
+      "",
+      "Bundle signing, with a key you have:",
+      "  secrets put bundle-signing-key <key.pem>",
+      "To sign in and issue an App Store Connect API key, run apple login.",
+    ].join("\n"),
+  )
+  .action((name: string, file: string | undefined, options) =>
+    handleSecretsPut(name, { ...options, ...(file ? { file } : {}) }),
+  );
+
+secretsCommand
+  .command("import")
+  .description(
+    "Store the deploy credentials an env file sets in the team secrets adapter",
+  )
+  .argument("[env-file]", "the env file to read (default: .env.hotupdater)")
+  .addHelpText(
+    "after",
+    "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter.",
+  )
+  .action((envFile?: string) => handleSecretsImport(envFile));
+
+secretsCommand
+  .command("pull")
+  .description(
+    "Write the deploy credentials the team secrets adapter holds to a local env file",
+  )
+  .option("--out <file>", "the env file to write", DEFAULT_PULL_FILE)
+  .option(
+    "--only <names>",
+    "pull exactly these secrets, comma-separated, whether the config names them or not",
+    commaSeparated,
+  )
+  .option("--force", "replace a value the file holds without asking")
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Stores are read by name, with no list of what they hold. Without --only",
+      "it pulls the names the config's secret()s read for its adapters, and",
+      "HOT_UPDATER_API_KEY. It is not for the app's runtime env.",
+      "",
+      "Build credentials stay in the store, where builds read them.",
+      "The file's lines override the store on this machine.",
+    ].join("\n"),
+  )
+  .action((options: SecretsPullOptions) => handleSecretsPull(options));
+
+secretsCommand
+  .command("issue")
+  .description(
+    "Sign in, at a terminal, and store the App Store Connect API key Hot Updater issues, or create an Android upload key or a bundle signing key",
+  )
+  .addArgument(
+    new Argument("<kind>", "what to issue").choices([
+      ...ISSUED_KINDS,
+      "android-keystore",
+      "bundle-signing-key",
+    ]),
+  )
+  .argument(
+    "[name]",
+    "the secret's name, which builds resolve (default: the kind)",
+  )
+  .option(
+    "--replace",
+    "issue a new key even when one is stored; the old key stays valid until you revoke it",
+  )
+  .option(
+    "--pem <file>",
+    "android-keystore: write the upload key's certificate, for Play Console's upload key reset",
+  )
+  .addHelpText(
+    "after",
+    [
+      "",
+      "asc-api-key signs in to your Apple Account in Hot Updater's own prompts.",
+      "",
+      "A key already stored, or set by the environment, is kept. --replace never",
+      "revokes the old key: it names the key and where to revoke it.",
+      "In CI or without a terminal it never signs in; store a key you have with",
+      "secrets put instead.",
+      "",
+      "android-keystore creates a new upload key with the JDK's keytool. It fits",
+      "only an app with no .aab on Google Play yet: Play keeps the first key.",
+      "A stored keystore is kept; --replace overwrites it, so back it up first.",
+      "",
+      "bundle-signing-key creates an RSA key and sets signing in the config.",
+      "A stored key is kept: apps already shipped reject a new key's bundles.",
+    ].join("\n"),
+  )
+  .action(async (kind, name, options) => {
+    if (kind === "android-keystore") {
+      await handleUploadKeyIssue(name ?? kind, options);
+      return;
+    }
+    if (options.pem !== undefined) {
+      p.log.error(`--pem is for android-keystore, not ${kind}.`);
+      process.exitCode = 1;
+      return;
+    }
+    if (kind === "bundle-signing-key") {
+      await handleSigningKeyIssue(name ?? kind, { replace: options.replace });
+      return;
+    }
+    await handleSecretsIssue(kind, name ?? kind, { replace: options.replace });
+  });
+
+/**
+ * `apple login`: the shortcut of `secrets issue` people meet first, with
+ * its handler and options. Hot Updater keeps no session, so there is no
+ * logout or whoami.
+ */
+const LOGIN_COMMANDS = [
+  {
+    kind: "asc-api-key",
+    group:
+      "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
+    description:
+      "Sign in to your Apple Account and store the App Store Connect API key Hot Updater issues",
+    signIn: "signs in to your Apple Account in Hot Updater's own prompts",
+  },
+] as const satisfies readonly {
+  kind: (typeof ISSUED_KINDS)[number];
+  group: string;
+  description: string;
+  signIn: string;
+}[];
+
+/**
+ * A shortcut takes nothing but what it declares: anything else, an option or
+ * an argument, exits 1 on two short lines, with the full command to run
+ * instead, labeled, as `instead` names it for what was passed.
+ */
+const onlyShortcut = (
+  command: { readonly args: readonly string[] },
+  shortcut: string,
+  takes: string,
+  instead: (args: readonly string[]) => readonly [label: string, run: string],
+) => {
+  if (command.args.length === 0) return true;
+  const [label, run] = instead(command.args);
+  p.log.error(
+    [
+      `${shortcut} takes ${takes}.`,
+      `${label}: ${ui.command(`npx hot-updater ${run}`)}`,
+    ].join("\n"),
+  );
+  process.exitCode = 1;
+  return false;
+};
+
+/** The `apple` command, by the kind it logs in for. */
+for (const { kind, group, description, signIn } of LOGIN_COMMANDS) {
+  const groupCommand = program
+    .command(CREDENTIAL_LOGIN_GROUPS[kind])
+    .description(group);
+  const shortcut = `${CREDENTIAL_LOGIN_GROUPS[kind]} login`;
+  groupCommand
+    .command("login")
+    .description(
+      `Alias of hot-updater secrets issue ${kind}: ${description[0]!.toLowerCase()}${description.slice(1)}`,
+    )
+    .allowUnknownOption()
+    .allowExcessArguments()
+    .addHelpText(
+      "after",
+      [
+        "",
+        `Alias of \`hot-updater secrets issue ${kind}\`: it ${signIn}, at a terminal only, never in CI.`,
+        "Hot Updater keeps no session: only the key it issues stays, so there is no logout or whoami.",
+        `A key already stored, or set by the environment, is kept. It takes no options: for another name or a new key, run \`hot-updater secrets issue ${kind} <name> --replace\`.`,
+      ].join("\n"),
+    )
+    .action(async (_options, command) => {
+      if (
+        !onlyShortcut(command, shortcut, "no options or arguments", (args) =>
+          args.includes("--replace")
+            ? ["New key", `secrets issue ${kind} --replace`]
+            : ["Full command", `secrets issue ${kind} --help`],
+        )
+      ) {
+        return;
+      }
+      await handleSecretsIssue(kind, kind);
+    });
+}
+
+program
+  .command("google-play")
+  .description(
+    "Google Play: upload builds an .aab and releases it to the internal track",
+  )
+  .command("upload")
+  .description(
+    "Shortcut for hot-updater native-build android --submit play-internal: build the .aab, track it, and release it to Google Play's internal track",
+  )
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.android scheme (default: the only one that uploads to Google Play, else a prompt at a terminal)",
+  )
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Shortcut for `hot-updater native-build android --scheme <scheme> --submit play-internal`.",
+      "It takes only --scheme; for --json or --output-path, run native-build android.",
+      "Before it builds, it checks the service account key, the upload keystore,",
+      "and Play access, and lists everything missing. Store the files with:",
+      "  secrets put play-service-account <key.json>",
+      "  secrets put android-keystore <upload.jks>",
+    ].join("\n"),
+  )
+  .action(async (options: StoreUploadOptions, command) => {
+    if (
+      !onlyShortcut(command, "google-play upload", "only --scheme", () => [
+        "Full command",
+        "native-build android --submit play-internal",
+      ])
+    ) {
+      return;
+    }
+    await handleGooglePlayUpload(options);
+  });
 
 const remoteConfigCommand = program
   .command("remote-config")
@@ -716,26 +1150,7 @@ Object listing and deletion require a capable Storage adapter such as s3Storage.
 
 const keysCommand = program
   .command("keys")
-  .description("Code signing key management");
-
-keysCommand
-  .command("generate")
-  .description("Generate RSA key pair for code signing")
-  .option("-o, --output <dir>", "output directory for keys", "./keys")
-  .option(
-    "-k, --key-size <size>",
-    "key size (2048 or 4096)",
-    (value) => {
-      const size = Number.parseInt(value, 10);
-      if (size !== 2048 && size !== 4096) {
-        p.log.error("Key size must be 2048 or 4096");
-        process.exit(1);
-      }
-      return size as 2048 | 4096;
-    },
-    4096,
-  )
-  .action(keysGenerate);
+  .description("Embed or remove the bundle signing public key");
 
 keysCommand
   .command("export-public")
@@ -854,11 +1269,19 @@ program
     const port = await getConsolePort();
 
     if (await isPortReachable(port, { host: "127.0.0.1" })) {
-      p.log.error(`Port ${port} is already in use.`);
+      p.log.error(
+        `Port ${port} is already in use.\nSet console.port in hot-updater.config.ts to use another port.`,
+      );
       process.exit(1);
     }
 
-    await openConsole(port);
+    await openConsole(port, ({ session }) => {
+      // The link carries this run's session: the console answers no
+      // other browser or process.
+      p.log.info(
+        `Console:\n${withConsoleSession(`http://localhost:${port}`, session)}`,
+      );
+    });
   });
 
 program
@@ -917,75 +1340,38 @@ dbCommand
     },
   );
 
-if (process.env["EXPERIMENTAL"]) {
-  program
-    .command("build:android")
-    .description("build a new Android native artifact")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-      await buildAndroidNative(options);
-    });
-
-  program
-    .command("build:ios")
-    .description("build a new iOS native artifact")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-      await buildIosNative(options);
-    });
-
-  program
-    .command("run:android")
-    .description("build and run Android app to device or emulator")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(deviceCommandOption)
-    .addOption(portCommandOption)
-    .addOption(appIdSuffixCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: AndroidNativeRunOptions) => {
-      await runAndroidNative(options);
-    });
-
-  program
-    .command("run:ios")
-    .description("build and run iOS app to device or simulator")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(deviceCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: IosNativeRunOptions) => {
-      await runIosNative(options);
-    });
-}
+program
+  .command("testflight")
+  .description(
+    "Shortcut for hot-updater native-build ios --submit testflight: build the .ipa, track it, and upload it to TestFlight",
+  )
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.ios scheme (default: the only one that uploads to TestFlight, else a prompt at a terminal)",
+  )
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Shortcut for `hot-updater native-build ios --scheme <scheme> --submit testflight`.",
+      "It takes only --scheme; for --json or --output-path, run native-build ios.",
+      "Without an App Store Connect API key, it signs in to your Apple Account at a",
+      "terminal, as native-build ios does; in CI it never signs in (run apple login once first).",
+    ].join("\n"),
+  )
+  .action(async (options: StoreUploadOptions, command) => {
+    if (
+      !onlyShortcut(command, "testflight", "only --scheme", () => [
+        "Full command",
+        "native-build ios --submit testflight",
+      ])
+    ) {
+      return;
+    }
+    await handleTestFlight(options);
+  });
 
 program.hook("preAction", (_command, actionCommand) => {
   if (

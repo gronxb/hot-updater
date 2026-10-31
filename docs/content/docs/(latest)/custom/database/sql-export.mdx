@@ -9,7 +9,8 @@ icon: FileText
 Export Hot Updater table schemas as plain SQL files for manual database setup. The command generates the SQL without a database connection, but it loads your server's file or `hot-updater.config.ts` to find the server's plugins.
 
 <Callout>
-For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
+  For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the
+  respective adapter documentation pages.
 </Callout>
 
 ## Interactive mode
@@ -21,6 +22,7 @@ npx hot-updater db generate --sql
 ```
 
 You'll be prompted to select:
+
 - PostgreSQL
 - MySQL
 - SQLite
@@ -84,6 +86,7 @@ npx hot-updater db generate --sql postgresql
 ```
 
 The command will:
+
 1. Generate SQL
 2. Show a formatted preview
 3. Warn if the file already exists
@@ -99,5 +102,6 @@ npx hot-updater db generate --sql postgresql --yes
 ```
 
 <Callout type="warn">
-If `hot-updater.sql` already exists, it will be overwritten. The command shows a warning before overwriting.
+  If `hot-updater.sql` already exists, it will be overwritten. The command shows
+  a warning before overwriting.
 </Callout>

@@ -24,12 +24,12 @@ Later OTA update:
 
 What the device downloads depends on what changed:
 
-| When this happens | What the device downloads |
-| --- | --- |
-| First OTA after native install | Reuse matching built-in files and download the rest |
-| Later OTA, unchanged file | Nothing; the file is copied locally |
-| Later OTA, changed regular asset | Complete new asset file |
-| Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
+| When this happens                     | What the device downloads                                                                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First OTA after native install        | Reuse matching built-in files, patch the built-in Hermes file when its native build is [registered](/docs/guides/native-build#how-a-build-is-tracked), and download the rest |
+| Later OTA, unchanged file             | Nothing; the file is copied locally                                                                                                                                          |
+| Later OTA, changed regular asset      | Complete new asset file                                                                                                                                                      |
+| Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file                                                                                                |
 
 These are the per-file transfer rules. After local reuse, the runtime can
 instead download the automatically generated `bundle.tar.br` archive when at
@@ -59,9 +59,9 @@ Bundle diffing has two separate optimizations:
 Assets are reused at the file level. Changed Hermes bundles can also be patched
 at the byte level.
 
-| File type | If unchanged | If changed |
-| --- | --- | --- |
-| Regular asset | Copy local file | Download the complete new asset file |
+| File type          | If unchanged    | If changed                                                                  |
+| ------------------ | --------------- | --------------------------------------------------------------------------- |
+| Regular asset      | Copy local file | Download the complete new asset file                                        |
 | Hermes bundle file | Copy local file | Apply `.bsdiff` patch, then fallback to the complete new Hermes bundle file |
 
 Regular assets include files such as images and fonts. They are not binary
@@ -118,10 +118,10 @@ This is the default behavior. Add the `patch` block only when you want to
 override it, for example to disable binary patch generation or change how many
 previous OTA bundles are used as patch bases.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `patch.enabled` | `true` | Generates `.bsdiff` patches for changed Hermes bundles. |
-| `patch.maxBaseBundles` | `3` | Uses up to this many previous compatible OTA bundles as patch bases. |
+| Option                 | Default | Meaning                                                              |
+| ---------------------- | ------- | -------------------------------------------------------------------- |
+| `patch.enabled`        | `true`  | Generates `.bsdiff` patches for changed Hermes bundles.              |
+| `patch.maxBaseBundles` | `3`     | Uses up to this many previous compatible OTA bundles as patch bases. |
 
 ### Binary patches
 
@@ -153,10 +153,18 @@ from:
 - `OTA A` to `OTA C`
 
 This means devices currently on `OTA A` or `OTA B` can download a small patch to
-`OTA C` instead of the complete new Hermes bundle file. A device on the built-in
-bundle reuses matching packaged files and downloads complete files for the rest.
-Devices on an older OTA outside the selected patch bases download the complete
-new Hermes bundle file.
+`OTA C` instead of the complete new Hermes bundle file. Devices on an older OTA
+outside the selected patch bases download the complete new Hermes bundle file.
+
+Deploy also adds one patch base beyond `maxBaseBundles`: the built-in bundle of
+the newest native build [registered](/docs/guides/native-build#how-a-build-is-tracked),
+by `native-build` or by
+[importing a build made elsewhere](/docs/guides/native-build#import-a-build-made-elsewhere),
+for the deploy's channel and platform, with the same fingerprint or, with the
+App Version strategy, the exact app version the build compiled in. Devices that
+run that build with no OTA installed, such as a fresh store install, then
+download a patch for their first OTA. A target app version range such as `1.x.x`
+matches no single build, so it adds no built-in base.
 
 Notes:
 
@@ -210,9 +218,19 @@ Hot Updater prepares the manifest delivery path:
 There is no older OTA bundle on the device yet. Hot Updater resolves each
 manifest path against the packaged app, verifies the packaged file's hash, and
 copies matches into staging. It downloads the remaining files individually or
-uses the archive when the transfer-cost comparison selects it. Hermes patching
-still starts with a later OTA because a patch from the built-in Hermes file is
-not generated yet.
+uses the archive when the transfer-cost comparison selects it.
+
+When the app's native build is registered, the server can offer a patch from
+the built-in bundle, whose ID is the build's min bundle ID. The app copies its
+packaged Hermes file, checks it against the hash registered from the build's
+artifact, and applies the patch to the copy. Store processing, such as App
+Store thinning or Android App Bundle splits, must leave that file byte for byte
+as built; if it does not, the hash check fails and the app downloads the
+complete Hermes bundle file instead.
+
+The Console's [Native builds](/docs/guides/native-build#native-builds-in-the-console)
+page shows a build's built-in bundle and the patches from it, and whether a
+served OTA downloads as a patch or as the full bundle.
 
 ### Later OTA updates
 
@@ -222,7 +240,8 @@ On the per-file route, later updates can be assembled from smaller pieces:
 2. Files that already exist in the current OTA bundle are copied locally.
 3. Files that are new or changed are downloaded.
 4. For the Hermes bundle, the app first checks whether there is a `.bsdiff`
-   patch that matches the currently installed OTA bundle.
+   patch that matches the currently installed OTA bundle, or with no OTA
+   installed, the built-in bundle.
 5. If the patch matches, the app downloads the patch and applies it to the
    existing Hermes bundle to produce the new Hermes bundle.
 
@@ -235,7 +254,9 @@ the archive's hash and sizes. There is no setting for compression or the
 archive, and ZIP and `tar.gz` archives are not supported.
 
 With at least two files left to download, the client compares the archive's
-bytes with the per-file transfer, patches included. When every target file
+bytes with the per-file transfer, counting the patches it can apply: those from
+the bundle it runs, and from the built-in bundle only once its packaged file
+matches the patch's base. When every target file
 needs downloading and no patch is offered, it also allows the archive's TAR
 framing and padding, which saves many requests for a complete bundle whose
 files compress poorly. Otherwise the archive must be smaller. Missing or
@@ -282,8 +303,7 @@ function UpdateDownloadProgress() {
       {artifactType === "diff" && details ? (
         <View>
           <Text>
-            Downloads: {details.completedFilesCount}/
-            {details.totalFilesCount}
+            Downloads: {details.completedFilesCount}/{details.totalFilesCount}
           </Text>
 
           {files.map((file) => (

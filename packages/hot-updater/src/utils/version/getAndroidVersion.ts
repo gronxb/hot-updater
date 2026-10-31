@@ -92,6 +92,7 @@ const variantBuildsFlavor = (variant: string, flavor: string) =>
  */
 const getAndroidVersionFromAppBuildGradle = async (
   scope: AndroidAppVersionScope = {},
+  baseVersion?: string,
 ): Promise<ResolvedAppVersion> => {
   const buildGradlePath = path.join(
     getCwd(),
@@ -104,14 +105,20 @@ const getAndroidVersionFromAppBuildGradle = async (
   try {
     buildGradle = stripComments(await fs.readFile(buildGradlePath, "utf8"));
   } catch {
-    return { version: null, candidates: [] };
+    return baseVersion === undefined
+      ? { version: null, candidates: [] }
+      : resolveFromCandidates([
+          { label: "defaultConfig", version: baseVersion },
+        ]);
   }
 
   const android = findBlock(buildGradle, "android")?.body ?? "";
   const defaultConfig = findBlock(android, "defaultConfig");
-  const defaultVersion = defaultConfig
-    ? readSetting(defaultConfig.body, "versionName")
-    : undefined;
+  const defaultVersion =
+    baseVersion ??
+    (defaultConfig
+      ? readSetting(defaultConfig.body, "versionName")
+      : undefined);
 
   const flavorsBlock = findBlock(android, "productFlavors");
   const flavors = (flavorsBlock ? readNamedBlocks(flavorsBlock.body) : []).map(
@@ -161,6 +168,12 @@ const getAndroidVersionFromAppBuildGradle = async (
   ]);
 };
 
+/**
+ * `baseVersion` stands for defaultConfig's versionName, as a prebuild
+ * writes it there; a product flavor's own versionName still overrides it.
+ */
 export const resolveAndroidAppVersion = (
   scope?: AndroidAppVersionScope,
-): Promise<ResolvedAppVersion> => getAndroidVersionFromAppBuildGradle(scope);
+  baseVersion?: string,
+): Promise<ResolvedAppVersion> =>
+  getAndroidVersionFromAppBuildGradle(scope, baseVersion);

@@ -19,7 +19,10 @@ const remainingArtifacts = hotUpdater.getCrashHistory();
 if (remainingArtifacts.length === 0) {
   console.log("Device crash history is empty");
 } else {
-  console.error("Crash history still contains rejected artifacts", remainingArtifacts);
+  console.error(
+    "Crash history still contains rejected artifacts",
+    remainingArtifacts,
+  );
 }
 ```
 

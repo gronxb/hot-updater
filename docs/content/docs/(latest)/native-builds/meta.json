@@ -1,0 +1,14 @@
+{
+  "title": "Native builds",
+  "description": "Build, track, and upload your native apps.",
+  "icon": "Smartphone",
+  "pages": [
+    "index",
+    "../guides/native-build",
+    "credentials",
+    "testflight",
+    "google-play",
+    "../guides/ci-native-build",
+    "../guides/release-from-ci"
+  ]
+}

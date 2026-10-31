@@ -6,14 +6,13 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { createE2eMinBundleId } from "../shared/built-in-bundle-id.ts";
 import {
   type E2eTarget,
   iosDerivedDataDir,
   loadE2eTarget,
   resolveE2eTargetName,
 } from "../shared/targets.ts";
-
-const minBundleId = "00000000-0000-7000-8000-000000000000";
 
 export type NativeBuildOptions = {
   platform: "ios" | "android";
@@ -81,6 +80,7 @@ export function createNativeBuildPlan(
   options: NativeBuildOptions,
   repositoryRoot: string,
   env: NodeJS.ProcessEnv = process.env,
+  minBundleId: string = createE2eMinBundleId(Date.now()),
 ): NativeBuildCommand[] {
   const { target } = options;
   const appDir = path.join(repositoryRoot, target.appDir);

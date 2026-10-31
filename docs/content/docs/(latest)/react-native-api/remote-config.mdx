@@ -18,7 +18,8 @@ export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: { "x-api-key": "<your-api-key>" },
   plugins: [
-    remoteConfig({ // [!code ++:3]
+    remoteConfig({
+      // [!code ++:3]
       defaults: { welcome_message: "Welcome back", max_items: 20 },
     }),
   ],
@@ -33,10 +34,10 @@ covers publishing values.
 
 ## Options
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `defaults` | `Record<string, string \| number \| boolean>` | `{}` | What reads return until the app activates fetched values, and for keys a template leaves to the app. |
-| `minimumFetchIntervalMs` | `number` | `43200000` (12 hours) | The shortest time between fetches that reach the server. `0` fetches every time. |
+| Option                   | Type                                          | Default               | Description                                                                                          |
+| ------------------------ | --------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------- |
+| `defaults`               | `Record<string, string \| number \| boolean>` | `{}`                  | What reads return until the app activates fetched values, and for keys a template leaves to the app. |
+| `minimumFetchIntervalMs` | `number`                                      | `43200000` (12 hours) | The shortest time between fetches that reach the server. `0` fetches every time.                     |
 
 ## Read values
 
@@ -51,13 +52,13 @@ any other key, until its first fetch and activate succeed. `init` loads the
 values an earlier launch activated before it returns, so later launches render
 them from the first frame.
 
-| Method | Returns |
-| --- | --- |
-| `getString(key)` | The value as text, or `null`. |
-| `getNumber(key)` | `Number(text)`, `0` when that is not a number, or `null`. |
-| `getBoolean(key)` | `true` for `1`, `true`, `t`, `yes`, `y`, and `on` in any case, `false` otherwise, or `null`. |
-| `getValue(key)` | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()` (`"remote"` or `"default"`), or `null`. |
-| `getAll()` | Every key in `defaults` or the active values, as `RemoteConfigValue`s. |
+| Method            | Returns                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `getString(key)`  | The value as text, or `null`.                                                                                                   |
+| `getNumber(key)`  | `Number(text)`, `0` when that is not a number, or `null`.                                                                       |
+| `getBoolean(key)` | `true` for `1`, `true`, `t`, `yes`, `y`, and `on` in any case, `false` otherwise, or `null`.                                    |
+| `getValue(key)`   | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()` (`"remote"` or `"default"`), or `null`. |
+| `getAll()`        | Every key in `defaults` or the active values, as `RemoteConfigValue`s.                                                          |
 
 Keys declared in `defaults` always have a value, so their reads are typed
 without `null`; other keys are typed `T | null`:
@@ -74,11 +75,11 @@ key to the app, reads return its default again, or `null` without one.
 
 ## Fetch and activate
 
-| Method | Does |
-| --- | --- |
-| `fetch(options?)` | Downloads this device's values and keeps them for `activate`. Reads don't change. |
-| `activate()` | Switches reads to the fetched values. Resolves `true` when they changed, `false` otherwise. |
-| `fetchAndActivate(options?)` | `fetch(options)`, then `activate()`. |
+| Method                       | Does                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `fetch(options?)`            | Downloads this device's values and keeps them for `activate`. Reads don't change.           |
+| `activate()`                 | Switches reads to the fetched values. Resolves `true` when they changed, `false` otherwise. |
+| `fetchAndActivate(options?)` | `fetch(options)`, then `activate()`.                                                        |
 
 ```ts
 // Apply as soon as they arrive:
@@ -105,11 +106,11 @@ hotUpdater.remoteConfig.fetch().catch(() => {});
 
 ## Status
 
-| Property | Value |
-| --- | --- |
-| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, or `"failure"`. |
-| `fetchedAtMs` | When the last successful fetch ended, in milliseconds since the epoch, or `null`. |
-| `activeVersion` | The template version of the active values, or `0` before the first activate. |
+| Property          | Value                                                                             |
+| ----------------- | --------------------------------------------------------------------------------- |
+| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, or `"failure"`.                                    |
+| `fetchedAtMs`     | When the last successful fetch ended, in milliseconds since the epoch, or `null`. |
+| `activeVersion`   | The template version of the active values, or `0` before the first activate.      |
 
 These persist across launches.
 

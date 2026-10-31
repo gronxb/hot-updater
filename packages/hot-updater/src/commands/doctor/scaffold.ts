@@ -53,7 +53,6 @@ export async function checkScaffold(infraDir: string): Promise<{
       status: "fail",
       message,
       paths: [file],
-      fixability: "auto",
       resolution,
     });
   let manifest: InfraManifest;
@@ -96,7 +95,6 @@ export async function checkScaffold(infraDir: string): Promise<{
       status: "blocked",
       message: "Scaffold versions do not match this CLI's packaged templates.",
       paths: ["manifest.json"],
-      fixability: "command",
       resolution:
         "Run the CLI version that generated this scaffold, or generate a fresh upgrade scaffold. Do not rewrite the manifest to bypass verification.",
     });

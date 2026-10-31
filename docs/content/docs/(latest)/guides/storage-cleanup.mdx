@@ -19,12 +19,15 @@ It can remove:
 - Unreferenced content-addressed assets under `assets/sha256/...`.
 
 Live bundle objects, referenced patches and assets, recently modified objects,
-objects without a modification timestamp, and unknown files are protected.
+objects without a modification timestamp, and unknown files are protected. A
+[registered native build](/docs/guides/native-build#how-a-build-is-tracked)'s
+artifact under `native-builds/` is never pruned, and its built-in bundle is a
+live bundle record, whose manifest and JavaScript bundle file stay.
 Root-level `<artifact-id>/...` paths are not recognized and remain protected.
 
 <Callout type="info">
-  Pruning does not delete live bundle records. Delete records you no longer
-  need before pruning their unreferenced objects.
+  Pruning does not delete live bundle records. Delete records you no longer need
+  before pruning their unreferenced objects.
 </Callout>
 
 ## Remove bundles
@@ -50,10 +53,6 @@ that bundle can no longer use it as a Hermes patch base. Unchanged files can
 still be reused from the device; changed files download in full.
 `bundle delete` reports the artifact deletion, and its `--json` output names
 the artifact in `deletedArtifactId`.
-
-`hot-updater doctor` reports artifact records no bundle uses as
-`UNREFERENCED_ARTIFACTS`, and `doctor --fix` deletes them so the prune below can
-reclaim their files.
 
 A delete removes database records only. Bundle files, patch objects, and shared
 assets remain until a reference-aware prune confirms that no remaining record

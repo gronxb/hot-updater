@@ -100,4 +100,62 @@ describe("Firebase managed config scaffold", () => {
       "databaseId: process.env.HOT_UPDATER_FIREBASE_DATABASE_ID,",
     );
   });
+
+  it("reads no credential, by process.env or a secret, in init's config or the agent scaffold's", () => {
+    for (const { text } of [
+      getConfigScaffold("bare", {
+        projectId: "demo-project",
+        storageBucket: "demo-project.firebasestorage.app",
+        databaseId: "(default)",
+      }),
+      getConfigScaffold("bare"),
+    ]) {
+      expect(text).not.toMatch(/secretEnv|"secret:|secret\(/u);
+      expect(text).toContain("const credential = applicationDefault();");
+    }
+  });
+
+  it("names the project, bucket, and database init set up, and reads no secret", () => {
+    expect(
+      getConfigScaffold("bare", {
+        projectId: "demo-project",
+        storageBucket: "demo-project.firebasestorage.app",
+        databaseId: "(default)",
+      }).text,
+    ).toMatchInlineSnapshot(`
+      "import { bare } from "@hot-updater/bare";
+      import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
+      import { applicationDefault } from "firebase-admin/app";
+      import { defineConfig, localSecrets } from "hot-updater";
+      import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+      import { existsSync } from "node:fs";
+
+      if (existsSync(".env.hotupdater")) {
+        process.loadEnvFile(".env.hotupdater");
+      }
+
+      // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+      // Reuse working application-default credentials (ADC).
+      // Only when a credential file is needed, set its private local path in .env.hotupdater:
+      // GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+      const credential = applicationDefault();
+
+      export default defineConfig({
+        build: bare({ enableHermes: true }),
+        storage: firebaseStorage({
+          projectId: "demo-project",
+          storageBucket: "demo-project.firebasestorage.app",
+          credential,
+        }),
+        database: firebaseDatabase({
+          projectId: "demo-project",
+          databaseId: "(default)",
+          credential,
+        }),
+        plugins: [apiKeys(), insights(), remoteConfig()],
+        secrets: localSecrets(),
+        updateStrategy: "appVersion", // or "fingerprint"
+      });"
+    `);
+  });
 });

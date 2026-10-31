@@ -14,6 +14,12 @@ import type {
   BundleRow,
   ChannelDeleteResult,
   ChannelRow,
+  DatabaseBundleMetadata,
+  NativeBuildArtifactKind,
+  NativeBuildDeleteResult,
+  NativeBuildRow,
+  NativeBuildSubmissionDestination,
+  Platform,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./types";
@@ -75,6 +81,54 @@ export interface StoredBundleDeployment {
 
 export type Deployment = BundleDeployment | StoredBundleDeployment;
 
+/**
+ * A native build's scope: its platform, the default channel it compiled in,
+ * and whichever of the fingerprint and the app version the update strategy
+ * selects by.
+ */
+export type NativeBuildScope = {
+  readonly platform: Platform;
+  readonly channel: string;
+} & (
+  | { readonly fingerprintHash: string; readonly appVersion: null }
+  | { readonly fingerprintHash: null; readonly appVersion: string }
+);
+
+/** A native build to register: its stored artifact and its built-in bundle. */
+export type NativeBuildRegistration = NativeBuildScope & {
+  /** A UUIDv7, which also names the artifact's storage directory. */
+  readonly id: string;
+  /** The MIN_BUNDLE_ID the build compiled in: the built-in bundle's ID. */
+  readonly minBundleId: string;
+  readonly gitCommitHash: string | null;
+  /**
+   * The native build key of every input the artifact was built from:
+   * `nbk1:` and a SHA-256. A build with the same key reuses this one. Null
+   * for a build whose inputs no key covers, which is never reused.
+   */
+  readonly buildKey: string | null;
+  /**
+   * The build number the artifact reports, its `CFBundleVersion` or
+   * `versionCode`, or null (or left out) when it can't be read.
+   */
+  readonly buildNumber?: string | null;
+  readonly artifact: {
+    readonly kind: NativeBuildArtifactKind;
+    readonly storageUri: string;
+    readonly byteSize: number;
+  };
+  /**
+   * The built-in bundle as deploy stores a bundle, with a manifest that
+   * lists only its JavaScript bundle file, taken from the artifact.
+   */
+  readonly embeddedBundle: {
+    readonly manifestStorageUri: string;
+    readonly manifestFileHash: string;
+    readonly assetBaseStorageUri: string;
+    readonly metadata?: DatabaseBundleMetadata;
+  };
+};
+
 export interface ReleaseTarget {
   readonly releaseId: string;
   /** Refuses the change when the release is at another revision. */
@@ -124,6 +178,24 @@ export interface HotUpdaterCoreApi {
   listReleaseCatalogs(input: KeysetInput): Promise<ReleaseCatalogRow[]>;
   listChannels(): Promise<ChannelRow[]>;
   findChannelByName(name: string): Promise<ChannelRow | null>;
+  /** A native build by ID: one read of its key. */
+  getNativeBuild(id: string): Promise<NativeBuildRow | null>;
+  /**
+   * The newest native build of a scope: one read of its index. With
+   * `buildKey`, the newest of the scope registered with that native build
+   * key, also one read.
+   */
+  findNativeBuild(
+    scope: NativeBuildScope,
+    options?: { readonly buildKey?: string },
+  ): Promise<NativeBuildRow | null>;
+  /**
+   * One page of native builds, by ID: oldest or newest first. With
+   * `channelId`, only the builds that embed that channel, also one read.
+   */
+  listNativeBuilds(
+    input: KeysetInput & { readonly channelId?: string },
+  ): Promise<NativeBuildRow[]>;
 
   /**
    * Writes each new bundle with its patches, and each release, with the next
@@ -164,6 +236,36 @@ export interface HotUpdaterCoreApi {
       readonly patches?: Bundle["patches"];
     },
   ): Promise<void>;
-  /** Deletes bundles with their patches; a bundle a release uses refuses. */
+  /**
+   * Deletes bundles with their patches; a bundle a release uses, or a native
+   * build's built-in bundle, refuses.
+   */
   deleteBundles(ids: readonly string[]): Promise<void>;
+  /**
+   * Writes a native build and its built-in bundle's row in one transaction.
+   * That row is no OTA bundle: no release publishes it, and the bundle
+   * totals leave it out.
+   */
+  registerNativeBuild(
+    registration: NativeBuildRegistration,
+  ): Promise<NativeBuildRow>;
+  /**
+   * Records that a store took a native build: the track and the store's
+   * label of the build, with the time of the record. One read and one write;
+   * the CLI calls it after the store accepted the upload, or found the build
+   * already there. Null for an unknown ID.
+   */
+  recordNativeBuildSubmission(
+    id: string,
+    submission: {
+      readonly destination: NativeBuildSubmissionDestination;
+      readonly version: string;
+    },
+  ): Promise<NativeBuildRow | null>;
+  /**
+   * Deletes a native build and its built-in bundle's row in one transaction,
+   * with the patches from that bundle: an installed build then downloads
+   * full bundles. Its artifact stays in storage for the caller to delete.
+   */
+  deleteNativeBuild(id: string): Promise<NativeBuildDeleteResult>;
 }

@@ -16,10 +16,13 @@ work:
 - `fingerprint.json` still matches the project, for the fingerprint update
   strategy
 - The app adds the client plugins that the server's plugins need
+- The server's database has run the migrations its core and plugins need
 - The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
+- Where each credential the config reads with `secret()` comes from
 
-With `--fix`, doctor also [repairs](#repair-issues) what it can repair itself.
+Doctor only reports: it writes nothing, and each issue names the command or
+edit that [resolves it](#resolve-issues).
 
 Run it during setup, after upgrading Hot Updater, or when OTA updates behave
 differently after a package update. The ordinary command validates local
@@ -34,6 +37,27 @@ npx hot-updater doctor
 
 In an interactive terminal, the command asks for your server base URL. Press
 Enter to skip the server check.
+
+The last line counts what doctor found. A run with warnings only passes, with
+exit code 0. A run with an error exits with code 1:
+
+```txt
+◆  All checks passed with 2 warnings.
+└  Doctor complete.
+```
+
+```txt
+└  Doctor found 1 error, 2 warnings.
+```
+
+A secrets adapter doctor can't read is a warning, with exit code 0, since CI may
+legitimately lack access. Nothing verified those names, so the last line says so
+instead of passing:
+
+```txt
+▲  2 secrets not checked, 1 warning.
+└  Doctor complete.
+```
 
 For AI agents and other automation, use JSON output:
 
@@ -96,12 +120,11 @@ An agent-written `verifiedSteps` entry never replaces a live check.
 
 Both scopes return `details.verification` with `schemaVersion: 1`, `scope`,
 `checks`, and `notChecked`. Each check has a stable `code`, a `status` of `pass`,
-`fail`, or `blocked`, and actionable `paths`, `fixability`, and `resolution` when
-available. Exit code 0 and `success: true` require every check in the selected
+`fail`, or `blocked`, and actionable `paths` and `resolution` when available. Exit code 0 and `success: true` require every check in the selected
 scope to pass. A failed prerequisite leaves dependent checks blocked.
 
-`fixability` describes remediation; it does not grant or revoke provider access.
-Agents may continue already authorized repairs and then rerun doctor. CI should
+A `resolution` describes remediation; it does not grant or revoke provider
+access. Agents may continue already authorized work and then rerun doctor. CI should
 use the exit code as the gate, rather than parsing human-readable output or
 accepting a recorded completion claim.
 
@@ -132,6 +155,31 @@ script, run `hot-updater app-version --json`, which prints
 If a required native setting is missing, run the command shown by `doctor`,
 then rebuild the native app.
 
+When `doctor` cannot read the signing key, it reports the warning
+`SIGNING_PUBLIC_KEY_UNAVAILABLE` with the reason and does not compare the
+native public keys. A signing key the `secrets` adapter doesn't hold also fails
+the [Secrets check](#check-secrets). Run doctor where the key's secret is set
+to compare the keys.
+
+Without `signing`, `doctor` warns as `deploy` does:
+
+```txt
+Bundles are unsigned.
+To sign them, run: npx hot-updater secrets issue bundle-signing-key
+```
+
+A `signing` value `deploy` refuses, such as a removed signing adapter, is an
+error with the same line:
+
+```txt
+signing takes secret("bundle-signing-key").
+Store your key: npx hot-updater secrets put bundle-signing-key <key.pem>
+```
+
+`signing: { enabled: false }` turns signing off without a warning. `--json`
+reports both as `details.signing`, with `type`, `message`, `next`, and
+`command`.
+
 `doctor` does not require a default channel in native files. If
 `HOT_UPDATER_CHANNEL` in iOS `Info.plist` or `com.hotupdater.CHANNEL` in Android
 manifest metadata exists, the command reports it as context only.
@@ -154,8 +202,7 @@ Under the App Version strategy, a `fingerprint.json` left in the project is
 would report the fingerprint strategy. Delete it, or set `updateStrategy` to
 `"fingerprint"` if that is the strategy you meant.
 
-Fix missing or stale fingerprint settings with `fingerprint create`, or with
-`doctor --fix`, which runs the same repair:
+Fix missing or stale fingerprint settings with `fingerprint create`:
 
 ```package-install
 npx hot-updater fingerprint create
@@ -175,56 +222,29 @@ The server runs a plugin whose client plugin insights the app does not add.
 ```
 
 Import it from the module the warning names and pass it to
-`HotUpdater.init({ plugins })`; the issue's `fixability` is `auto`. When
-`doctor` cannot load the config's `database` and `plugins`, it warns
-`CLIENT_PLUGINS_UNCHECKED` with the reason, with `fixability` `blocked`: make
-them load, then rerun `doctor`.
+`HotUpdater.init({ plugins })`. When `doctor` cannot load the config's
+`database` and `plugins`, it warns `CLIENT_PLUGINS_UNCHECKED` with the reason:
+make them load, then rerun `doctor`.
 
-## Repair issues
+## Resolve issues
 
-`--fix` runs the repairs doctor can make itself, then checks again:
+Doctor writes nothing. Each issue's `resolution` says what resolves it, and
+`commands` lists the commands to run when there are any:
 
-| Issues | Repair |
-| --- | --- |
-| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json` |
-| `FINGERPRINT_JSON_UNUSED` | `fingerprint.json`, deleted to match the configured `updateStrategy` |
-| `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
-| `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
-| `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |
+| Issues                                                                                | What resolves it                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SCHEMA_MIGRATION_PENDING`, on a deployment `hot-updater init` created                | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`: it migrates the database and redeploys the server back to back. See [Check the database schema](#check-the-database-schema)                         |
+| `SCHEMA_MIGRATION_PENDING`, on a server of your own                                   | `npx hot-updater db migrate <server file>` in the server's project; for Drizzle, Prisma, D1, and Supabase, `npx hot-updater db generate <server file>` and the database's tooling first                                         |
+| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | `npx hot-updater fingerprint create`, then rebuild the app when the fingerprint changed                                                                                                                                           |
+| `FINGERPRINT_JSON_UNUSED`                                                             | Delete `fingerprint.json`, then rebuild the apps, or set `updateStrategy` to `"fingerprint"`                                                                                                                                      |
+| `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH`                                           | `npx hot-updater keys export-public`, then rebuild and release the app. Apps already installed keep the previous key and reject bundles signed with the configured one                                                           |
+| `FINGERPRINT_ENGINE_CHANGED`                                                          | Your choice: go back to the engine `fingerprint.json` records to keep updating the apps you shipped, or run `fingerprint create` and rebuild them                                                                                |
+| `ORPHAN_PUBLIC_KEY`                                                                   | Your choice: `npx hot-updater keys remove`, or enable signing. Removing the key turns off signature verification in the app, which is wrong when signing is set up where this machine cannot see it, such as a variable only CI sets |
+| `RELEASE_CATALOG_STALE`                                                               | Any release change in the scope, such as a deploy or `bundle update`, which recompiles its catalog. See [Check Release Catalogs](#check-release-catalogs)                                                                         |
+| `RELEASE_CATALOG_IDENTITY_MISSING`                                                    | Restore the scope's catalog row from a backup                                                                                                                                                                                     |
 
-```package-install
-npx hot-updater doctor --fix
-```
-
-`--fix` is the confirmation, so it does not ask again. It names every file,
-release catalog, and artifact record it writes, and the checks after it
-describe the project as the repairs left it. When it writes a native file, its
-output ends by asking you to rebuild the native app: an installed app keeps the
-native files it was built with. A replaced public key only reaches new builds;
-apps already installed keep the previous key and reject bundles signed with the
-configured one.
-
-`--fix` leaves an issue with more than one remedy to you. It never rewrites
-`fingerprint.json` for `FINGERPRINT_ENGINE_CHANGED`: go back to the engine
-`fingerprint.json` records to keep updating the apps you shipped, or run
-`fingerprint create` and rebuild them. That choice is the user's, so the issue's
-`fixability` is `blocked` and it lists no command. It never removes a public
-key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
-signing yourself: removing it turns off signature verification in the app,
-which is wrong when signing is set up where this machine cannot see it, such as
-an environment variable only CI sets.
-
-On an Expo project whose `ios` and `android` folders `expo prebuild`
-generates, `--fix` skips the native-file repairs and says so, since the next
-prebuild would overwrite them; an Expo project outside git counts as one.
-Follow the issue's resolution there instead. Issues that need a code edit, such
-as the bundle provider or a client plugin, and infrastructure issues are not
-repaired by `--fix`.
-
-With `--json`, `details.fixes` lists each repair: its `repair`, the issue
-`codes` it repairs, a `status` of `applied`, `skipped`, or `failed`, what it
-`wrote`, whether that included a `native` file, and a `note` with the reason or
-what to know. `success` describes the project after the repairs.
+Issues that need a code edit, such as the bundle provider or a client plugin,
+name the edit. Infrastructure issues name the command that upgrades the server.
 
 ## AI Agent Iteration
 
@@ -236,26 +256,17 @@ Each native issue includes:
 - `code`: stable issue code, such as `MISSING_ANDROID_BUNDLE_PROVIDER`
 - `platform`: `ios`, `android`, or `project`
 - `paths`: related local files when available
-- `fixability`: whether the issue is suitable for an agent loop
-- `commands`: safe local commands when the fix is command-driven
-
-Read `fixability` as the repair prerequisite, within the user's authorized work:
-
-| Fixability | Meaning                                                                                            |
-| ---------- | -------------------------------------------------------------------------------------------------- |
-| `auto`     | The agent may inspect and edit local project files, then rerun doctor.                             |
-| `command`  | The agent may run the listed local command, then rerun doctor.                                     |
-| `blocked`  | The repair requires external context/access beyond doctor’s local fixes. |
+- `resolution`: what resolves it
+- `commands`: the local commands to run, when it is resolved by commands
 
 Native wiring, fingerprint creation, and native public key export/removal are
-intended to be iterated locally by an agent. `doctor --fix` creates the
-fingerprint and exports the public key in one step, naming every file it
-writes; it never removes a public key. Infrastructure failures are marked
-as blocked because applying migrations or redeploying a server usually depends
+intended to be iterated locally by an agent: make the edit or run the command,
+then rerun doctor. Migrating a database or redeploying a server usually depends
 on provider credentials and environment-specific access. During a requested
-setup or upgrade, an agent with that access should follow the generated
-infrastructure instructions and verify the result. Pause only for a missing
-prerequisite, uncertain remote state, or a new consequential decision.
+setup or upgrade, an agent with that access should run the command doctor
+names or follow the generated infrastructure instructions, and verify the
+result. Pause only for a missing prerequisite, uncertain remote state, or a new
+consequential decision.
 
 ## Check Infrastructure
 
@@ -271,6 +282,15 @@ npx hot-updater doctor --server-base-url https://updates.example.com
 ```txt
 https://updates.example.com/version
 ```
+
+Without `--server-base-url`, doctor checks the server an
+[agent infrastructure scaffold](/docs/guides/agent-infrastructure) records in
+the CLI's default output, `hot-updater-infra/<provider>/<scaffold>/deployment.json`,
+and names that file in `details.infrastructure.recordedIn`. When no scaffold
+there records a server, or they record more than one, doctor does not guess: it
+reports `details.infrastructureUnchecked`, a warning that the server's version
+was not checked, with the command that checks it. A scaffold written elsewhere
+with `--output` is verified with `--scope infrastructure --infra-dir <dir>`.
 
 A passing version check confirms the server meets the installed CLI's
 infrastructure requirement. It does not verify a client key, artifact download
@@ -311,6 +331,81 @@ A successful download followed by the changed screen after restart verifies
 the app's update path. A healthy `/version`, a key listing or a `null` check
 result alone does not.
 
+## Check the database schema
+
+When `hot-updater.config.ts` sets `database`, doctor reads it once through the
+schema fence, as the server does. The fence compares the database's settings
+rows, such as `schema.core` and `schema.<plugin>` for each plugin in the
+config's `plugins`, with what this CLI's core and those plugins expect. When a
+row is missing or older, doctor reports `SCHEMA_MIGRATION_PENDING` with each
+setting it found in `details.schema.settings`, and it checks the release
+catalogs only once the schema passes. This happens after upgrading Hot Updater
+to a release whose schema changed, or after adding a plugin to `plugins`.
+Until then the server answers 503 and the Console shows a migration notice.
+
+Doctor names the command that migrates the database. A server of an earlier
+release answers 503 once its database is migrated, and a server of the new
+release answers 503 until it is, so the migration and the server deploy run
+back to back, with nothing in between:
+
+| Database                                                                                                     | What doctor names                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A deployment `hot-updater init` created: `.env.hotupdater` records the provider, and the config's database is the one init saved | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`, which applies the release's migrations and then redeploys the server, so the 503 window is the deploy |
+| Kysely, MongoDB, PostgreSQL, DynamoDB, Firestore, and Cosmos DB behind your own server                       | `npx hot-updater db migrate <server file>` in the server's project, as the server of the new release deploys                                                                      |
+| Drizzle, Prisma, and D1 behind your own server                                                               | `npx hot-updater db generate <server file>`, the migration it writes applied with the ORM or `wrangler d1 migrations apply`, then `npx hot-updater db migrate <server file>`     |
+| Supabase behind your own server                                                                              | `npx hot-updater db generate <server file>`, the migration it writes applied with `supabase db push`                                                                              |
+
+Doctor compares the resource the config's database reaches, such as its D1
+database ID or DynamoDB table, with the one init saved. When they differ, it
+names your own server's command instead, since init replays against the saved
+resources. When it cannot tell, such as for a Vercel database URL init saved
+only with consent, it names both, each with its condition.
+
+Doctor reads init's saved inputs from the environment first, as init does. The
+command names `--from-env-file .env.hotupdater` only when that file holds
+`HOT_UPDATER_INIT_PROVIDER`, `HOT_UPDATER_INIT_BUILD` and each input doctor
+compared, with the values doctor read. When any came from the environment
+instead, such as CI's variables or a file the config loads, the command names
+`--build` and `--from-env-file <env file>`, and says that init needs those
+values too.
+
+When an agent infrastructure scaffold in `hot-updater-infra/<provider>/` keeps
+the deployment, that is, its `deployment.json` records a deployed server on the
+database the config names, and the config lists only the official plugins, the
+scaffold's server runs, doctor names `npx hot-updater agent infra upgrade --provider
+<provider> --build <build>` instead of init: apply the new scaffold as its
+`upgrades/README.md` says, uploading the new server version and previewing it,
+then migrating the database and deploying that version back to back. Running
+init again would deploy at once, without that preview, and leave the scaffold
+behind.
+
+Init reports every input `.env.hotupdater` lacks, such as a credential it saved
+only with consent, before it changes a resource: set those in the environment
+for the run, or run `npx hot-updater init` and answer its prompts. Each
+provider's migrations create core's tables and the official plugins'. Init
+deploys only the official `insights()`, `apiKeys()` and `remoteConfig()`, and
+sets the config's `plugins` to them, so while the config lists a plugin of your
+own, doctor does not name init, which would drop it: remove the plugin from
+`plugins` and run doctor again, or, if a server of your own runs it, migrate
+the database as your own server's. While the schema is `SCHEMA_NEWER_THAN_CLI`,
+`SCHEMA_NOT_MIGRATABLE` or `PLUGIN_SCHEMA_CHANGED`, an outdated server's
+remediation names no command either: upgrading it would migrate the database
+over those settings.
+
+A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
+was migrated by a newer Hot Updater, and Hot Updater never moves a schema
+back. Upgrade the CLI and the `@hot-updater` packages instead. A database Hot
+Updater v1 cannot migrate in place, such as a v0 database, is
+`SCHEMA_NOT_MIGRATABLE`.
+
+A plugin of your own whose stored `schemaVersion` differs from the configured
+one, such as `v1` against `v2`, is `PLUGIN_SCHEMA_CHANGED`. Hot Updater's
+migrations create missing tables and change no existing one, so apply the
+plugin's own migration for its changed tables first, then record its version
+with `hot-updater db migrate` in the server's project. While any of these
+issues stands, doctor names no migration, since a migration writes every
+configured setting.
+
 ## Check Release Catalogs
 
 When `hot-updater.config.ts` sets `database`, doctor opens it once for the
@@ -325,11 +420,14 @@ scope's Releases without writing, and reports each scope in
 - `byteSize` and `descriptorCount`: what its Releases compile to.
 
 Devices read the catalog, not the Releases, so a catalog that differs from its
-Releases is the error `RELEASE_CATALOG_STALE`. Rebuild the stale catalogs from
-their Releases with:
+Releases is the error `RELEASE_CATALOG_STALE`. Every release change writes its
+scope's catalog in the same transaction, so a stale catalog follows an edit made
+outside Hot Updater or a partial restore of the database. Any release change in
+the scope recompiles the catalog from all of its Releases: a deploy to it,
+`bundle update`, or enabling or disabling a bundle:
 
 ```package-install
-npx hot-updater doctor --fix
+npx hot-updater bundle update <id> --message "<message>"
 ```
 
 Then retry **Check and apply update** in the app and
@@ -342,23 +440,77 @@ credentials are not available where it runs, it warns
 skips the check.
 
 A scope with Releases but no catalog row answers devices with 404. Doctor
-reports it as the error `RELEASE_CATALOG_IDENTITY_MISSING`, and `--fix` does
-not create the row: restore it from a backup before rebuilding or deploying,
+reports it as the error `RELEASE_CATALOG_IDENTITY_MISSING`. Hot Updater never
+creates the row: restore it from a backup before deploying,
 since a new identity would not match the history devices already hold. A scope
 core cannot compile is the error `RELEASE_CATALOG_CHECK_FAILED` with the
-reason, beside what the other scopes report. These checks rebuild projections;
+reason, beside what the other scopes report. These checks compare projections;
 they do not recover missing source policy or replace a native OTA delivery
 test.
 
-The same run lists the artifact records no Release uses. Doctor warns
-`UNREFERENCED_ARTIFACTS` with their IDs, since `storage prune` keeps the files
-of every artifact record. `--fix` deletes the records, and a later
-`storage prune` reclaims the files. When it cannot read the artifact records,
-it warns `ARTIFACTS_UNCHECKED`; like the catalog warning, it never fails the
-run.
-
 To preview a proposed change to one Bundle's policy, use
 [`bundle update --dry-run`](/docs/guides/console#preview-and-protect-automated-changes).
+
+## Check secrets
+
+Doctor lists each name the config reads with
+[`secret()`](/docs/concepts/secrets#name-a-secret), and
+where a command finds it: set by the environment, which wins, in the
+`secrets` adapter, or missing. It reads the adapter once and writes nothing.
+
+A missing name that a build or a deploy reads fails doctor, with the command
+that imports the existing key:
+
+```txt
+■  release-keystore isn't in the infisical secrets adapter.
+│  Check the name and your access, or import your key:
+│  npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>
+```
+
+Builds read an iOS device scheme's `signing.ascApiKey`, a release variant's
+`signing.keystore`, and `signing` while bundle signing is on. The Google Play
+row then marks the package `upload keystore missing`, since its release has
+nothing to sign with. That `✗` is the Secrets error's, counted once: the Google
+Play row isn't a warning for it. In `--json`, each reference in
+`details.secrets.references` has `required`, and a `message` when it is
+required and missing; `details.googlePlay.packages[].missingKeystore` names the
+same secret.
+
+A missing name nothing reads yet, such as a simulator scheme's key, a debug
+variant's keystore, or `signing` with `enabled: false`, is a warning, and the
+run still passes. Its row says `missing, unused`, and the warning names the
+command that stores it, one command for names that take the same action:
+
+```txt
+▲  debug-keystore isn't in the infisical secrets adapter.
+│  No build or deploy reads it yet.
+│  npx hot-updater secrets put debug-keystore --kind android-keystore <upload.jks>
+```
+
+A missing name an adapter's `secret()` reads, such as a storage credential, is
+a warning too, since the next deploy reads it. With a team store, a teammate
+adds its variable to `.env.hotupdater` and runs
+[`secrets import`](/docs/concepts/secrets#managed-projects):
+
+```txt
+▲  r2-access-key-id isn't in the infisical secrets adapter.
+│  The next deploy will fail without it.
+│  Set HOT_UPDATER_R2_ACCESS_KEY_ID in .env.hotupdater, then run:
+│  npx hot-updater secrets import
+```
+
+In `--json`, these are a `SECRETS_MISSING_UNUSED` warning in
+`details.secrets.issues` and a `DEPLOY_SECRETS_MISSING` warning in
+`details.deploySecrets.issues`, with the same `message` and `resolution`. When
+doctor can't read the adapter, it warns with the adapter's error instead.
+
+With a team store, doctor also names a managed credential the config still
+reads with `process.env`, which the store never supplies. For a deployment
+`init` manages, it prints init's command, which rewrites the config. For one
+an agent infrastructure scaffold keeps, or a config of your own, it links
+[`secret()`](/docs/concepts/secrets#adapter-credentials)
+instead: read those names with it in `hot-updater.config.ts`, and never run
+init there.
 
 ## Update Package Versions
 
@@ -369,14 +521,29 @@ doctor after installation.
 
 ## Update Outdated Infrastructure
 
-If your server is outdated, `doctor` prints:
+With `--server-base-url`, doctor reads the server's `/version`. If the server
+is older than the release this CLI needs, it prints the required version, why,
+and the command that upgrades it:
 
 ```txt
-Infrastructure update required. Deploy server infrastructure version x.x.x or newer.
+■  Infrastructure update required: 1.2.0+
+│  Core schema 1.2.0: the native build registry table and the tables of the
+│  official plugins added beside it
+│
+●  Migrate the database and redeploy the server in one run:
+│  npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater
 ```
 
-For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`, `vercel`, `azure`), choose your
-upgrade workflow. If the app/server is still on v0, follow
+When doctor read init's saved inputs from the environment rather than
+`.env.hotupdater`, such as CI's variables, the command names `<env file>`:
+pass the file that holds them. When the database also has migrations to run,
+the schema check names the command instead, once.
+
+For a deployment `hot-updater init` created (`aws`, `cloudflare`, `supabase`,
+`firebase`, `vercel`, `azure`), the command is init with the inputs it saved
+in `.env.hotupdater`. It applies the release's migrations and redeploys the
+server back to back, as the release's upgrade file describes; doctor does not
+deploy servers. If the app/server is still on v0, follow
 [Move from v0 to v1](/docs/guides/upgrade-to-v1) before applying templates.
 
 <Tabs items={["AI agent", "Terminal"]}>
@@ -397,42 +564,38 @@ See [Agent Infrastructure](/docs/guides/agent-infrastructure#upgrade-an-existing
   </Tab>
   <Tab value="Terminal">
 
-Install the compatible package set for the desired release first. Extract that
-release's templates for your provider, for example:
+Install the compatible package set for the desired release first, then run
+init with the inputs it saved and verify the server:
 
 ```package-install
-npx hot-updater infra scaffold --provider cloudflare
-```
-
-Read the returned `upgrades/README.md` and relevant version files, including
-intermediate releases, for compatibility and migration order. Apply the required
-steps, then use interactive init to deploy to the compatible existing resources:
-
-```package-install
-npx hot-updater init
+npx hot-updater init --provider cloudflare --from-env-file .env.hotupdater
 npx hot-updater doctor --server-base-url https://updates.example.com
 ```
 
-Use the actual server URL for verification. Preserve existing data, keys and
-customizations, and follow any resource separation required by the upgrade files.
+Init reports every input `.env.hotupdater` lacks, such as a credential it saved
+only with consent, before it changes a resource; set those in the environment
+for the run, or run `npx hot-updater init` and answer its prompts. Use the
+actual server URL for verification. Each release's upgrade file, which
+`npx hot-updater infra scaffold --provider <provider>` writes to
+`upgrades/<version>.md`, says what the release changes on each provider.
 
   </Tab>
 </Tabs>
 
 For a **self-hosted server using `createHotUpdater`**, update all Hot Updater
-packages together, including `@hot-updater/server`, apply the relevant migrations,
-then redeploy your server and verify it with doctor.
+packages together, including `@hot-updater/server`, and run
+`hot-updater db migrate` in the server's project as the server deploys, then
+verify it with doctor.
 
 ## Options
 
-| Option                    | Description                                             |
-| ------------------------- | ------------------------------------------------------- |
-| `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks. |
-| `--json`                  | Print a machine-readable result for agents and scripts. |
-| `--fix` | Run the repairs doctor can make itself, then check again. Cannot be combined with scoped verification options. |
-| `--scope <scope>` | Require `scaffold` or `infrastructure` verification. |
-| `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding. |
-| `--platform <platform>` | `ios` or `android` for a live catalog check. |
-| `--channel <channel>` | Actual app channel for a live catalog check. |
-| `--app-version <version>` | App-version catalog target; exclusive with fingerprint. |
-| `--fingerprint <hash>` | Fingerprint catalog target; exclusive with app version. |
+| Option                    | Description                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks.                                             |
+| `--json`                  | Print a machine-readable result for agents and scripts.                                                        |
+| `--scope <scope>`         | Require `scaffold` or `infrastructure` verification.                                                           |
+| `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding.                                                        |
+| `--platform <platform>`   | `ios` or `android` for a live catalog check.                                                                   |
+| `--channel <channel>`     | Actual app channel for a live catalog check.                                                                   |
+| `--app-version <version>` | App-version catalog target; exclusive with fingerprint.                                                        |
+| `--fingerprint <hash>`    | Fingerprint catalog target; exclusive with app version.                                                        |

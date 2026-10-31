@@ -673,6 +673,187 @@ const seeding = assembleServer({
   plugins,
 });
 const { core } = seeding;
+
+// Native builds, registered before the deploys so their built-in bundles are
+// stored before the patches from them: a superseded pair on one scope, each
+// artifact kind, submitted to a store or not, a pull request's builds on both
+// platforms, and enough older pull request builds to page. Their MIN_BUNDLE_IDs take both forms an app
+// in the field has: zero random bits, as builds issue them, and an earlier
+// CLI's platform byte (`01` iOS, `02` Android) and random bits.
+type DemoNativeBuild = {
+  readonly n: number;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+  readonly target:
+    | { readonly fingerprint: string }
+    | { readonly appVersion: string };
+  readonly minBundleId: string;
+  readonly kind: "apk" | "aab" | "ipa" | "app";
+  readonly gitCommitHash: string | null;
+  /** The demo bundles that patch from this build's built-in bundle. */
+  readonly patchTargets?: readonly DemoDeployment[];
+};
+const nativeBuildId = (n: number) =>
+  `019f6300-0000-7000-8000-${String(n).padStart(12, "0")}`;
+const artifactFile = {
+  apk: "app-release.apk",
+  aab: "app-release.aab",
+  ipa: "HotUpdaterExample.ipa",
+  app: "HotUpdaterExample.app.zip",
+} as const;
+const demoNativeBuilds: DemoNativeBuild[] = [
+  ...Array.from(
+    { length: 15 },
+    (_, index): DemoNativeBuild => ({
+      n: index + 1,
+      platform: "android",
+      channel: `pr-${110 + index}`,
+      target: { fingerprint: `fp-android-pr-${110 + index}` },
+      minBundleId: `019f6200-${(index + 1).toString(16).padStart(4, "0")}-7000-8000-000000000000`,
+      kind: "apk",
+      gitCommitHash: `a${String(index).padStart(2, "0")}c4e19`,
+    }),
+  ),
+  {
+    n: 20,
+    platform: "android",
+    channel: "staging",
+    target: { fingerprint: "fp-android-camera-v2" },
+    minBundleId: "01971f4e-0000-7000-8000-02a1b2c3d4e5",
+    kind: "apk",
+    gitCommitHash: "1d3e5f7a",
+    patchTargets: [androidStagingVisionBase],
+  },
+  {
+    n: 21,
+    platform: "ios",
+    channel: "production",
+    target: { appVersion: "1.4.2" },
+    minBundleId: "01971f0f-0000-7000-8000-01c4d2e8a7f3",
+    kind: "ipa",
+    gitCommitHash: "9c12ab40",
+    patchTargets: [iosProdCorePatchA, iosProdCorePatchB],
+  },
+  {
+    n: 22,
+    platform: "android",
+    channel: "production",
+    target: { appVersion: "1.3.0" },
+    minBundleId: "01971f2f-0000-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: "51b0e2d9",
+    patchTargets: [androidProdPatchA],
+  },
+  {
+    n: 23,
+    platform: "ios",
+    channel: "dev",
+    target: { appVersion: "1.6.0" },
+    minBundleId: "01971f5f-0000-7000-8000-000000000000",
+    kind: "app",
+    gitCommitHash: "c7d8e9f0",
+  },
+  {
+    n: 24,
+    platform: "android",
+    channel: "staging",
+    target: { fingerprint: "fp-android-camera-v2" },
+    minBundleId: "01971f4f-0000-7000-8000-029e7b3c1d5a",
+    kind: "apk",
+    gitCommitHash: "20be7311",
+    patchTargets: [androidStagingVisionPatchA, androidStagingVisionPatchB],
+  },
+  {
+    n: 25,
+    platform: "android",
+    channel: "pr-130",
+    target: { fingerprint: "fp-android-pr-130" },
+    minBundleId: "019f6300-00a5-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "e4f1a2b3",
+  },
+  {
+    n: 26,
+    platform: "ios",
+    channel: "pr-130",
+    target: { fingerprint: "fp-ios-pr-130" },
+    minBundleId: "019f6300-00a7-7000-8000-000000000000",
+    kind: "app",
+    gitCommitHash: "e4f1a2b3",
+  },
+  // An AAB built elsewhere and imported, which no store took: no commit.
+  {
+    n: 27,
+    platform: "android",
+    channel: "staging",
+    target: { appVersion: "1.3.1" },
+    minBundleId: "01971f31-0000-7000-8000-000000000000",
+    kind: "aab",
+    gitCommitHash: null,
+  },
+];
+for (const build of demoNativeBuilds) {
+  const id = nativeBuildId(build.n);
+  const file = artifactFile[build.kind];
+  await core.registerNativeBuild({
+    id,
+    platform: build.platform,
+    channel: build.channel,
+    ...("fingerprint" in build.target
+      ? {
+          fingerprintHash: toSeedHash("fingerprint", build.target.fingerprint),
+          appVersion: null,
+        }
+      : { fingerprintHash: null, appVersion: build.target.appVersion }),
+    minBundleId: build.minBundleId,
+    gitCommitHash: build.gitCommitHash,
+    buildKey: null,
+    buildNumber: String(100 + build.n),
+    artifact: {
+      kind: build.kind,
+      storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,
+      byteSize: {
+        apk: 48_201_331,
+        aab: 31_775_402,
+        ipa: 61_340_918,
+        app: 92_118_044,
+      }[build.kind],
+    },
+    embeddedBundle: {
+      manifestStorageUri: createManifestUri(build.minBundleId),
+      manifestFileHash: toSeedHash("manifest", build.minBundleId),
+      assetBaseStorageUri: createAssetBaseUri(build.minBundleId),
+    },
+  });
+  const builtIn = {
+    id: build.minBundleId,
+    platform: build.platform,
+    demoFileHash: toSeedHash("file", `builtin-${build.minBundleId}`),
+  } as unknown as Bundle;
+  for (const [index, target] of (build.patchTargets ?? []).entries()) {
+    Object.assign(target, {
+      patches: [
+        ...(target.patches ?? []),
+        {
+          ...createPatchArtifact(target.id, builtIn, `builtin-${target.id}`),
+          byteSize: 182_400 + index * 41_250,
+        },
+      ],
+    });
+  }
+}
+
+// The production IPA went to TestFlight and the AAB to Google Play's
+// internal track, which the CLI records once the store took each.
+await core.recordNativeBuildSubmission(nativeBuildId(21), {
+  destination: "testflight",
+  version: "1.4.2 (121)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(22), {
+  destination: "play-internal",
+  version: "1.3.0 (122)",
+});
+
 // Oldest first, one deploy each, so a patch's base is stored before it.
 const releaseIdByBundle = new Map<string, string>();
 for (const deployment of [...bundles].sort((left, right) =>

@@ -57,10 +57,13 @@ export const setEnv = async ({
 
   p.log.success("Firebase credentials have been successfully configured.");
 
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
-    cwd: process.cwd(),
-    settings: "Firebase",
-  });
+  await writeHotUpdaterFiles(
+    getConfigScaffold(build, { projectId, storageBucket, databaseId }),
+    {
+      cwd: process.cwd(),
+      settings: "Firebase",
+    },
+  );
 };
 
 const handleError: (err: unknown) => never = (err) => {

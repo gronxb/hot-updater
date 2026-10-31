@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 
 import { loadServer } from "../../utils/loadServer";
+import { canPrompt } from "../../utils/prompt";
 import {
   findDefaultConfigPaths,
   loadHotUpdater,
@@ -127,11 +128,7 @@ export const confirmAction = async (
   yes: boolean | undefined,
 ): Promise<boolean> => {
   if (yes) return true;
-  if (!process.stdin.isTTY) {
-    p.log.error(`${message} Re-run with -y in a non-interactive shell.`);
-    process.exitCode = 1;
-    return false;
-  }
+  if (!canPrompt(message)) return false;
   const confirmed = await p.confirm({ initialValue: false, message });
   if (p.isCancel(confirmed) || !confirmed) {
     process.exitCode = 2;

@@ -71,8 +71,12 @@ or `Deploying multiple platforms requires a shared storage configuration.`
 
 ```ts title="hot-updater.config.ts (excerpt)"
 // Created once, outside the function, so both platforms get the same adapters.
-const storage = s3Storage({ /* ... */ });
-const database = standaloneRepository({ /* ... */ });
+const storage = s3Storage({
+  /* ... */
+});
+const database = standaloneRepository({
+  /* ... */
+});
 
 // options is { platform, channel }, or null for a command without a platform.
 export default defineConfig((options) => ({
@@ -99,7 +103,7 @@ public Bundle ID:
 
 ```text
 Deployment successful
-    ID: 01a0586e-a286-7a74-a959-6d2c770b8793
+ID  01a0586e-a286-7a74-a959-6d2c770b8793
 ```
 
 Record the ID from each platform's command.
@@ -220,10 +224,10 @@ share a message.
 
 ## Force Update Flag Difference
 
-| Update Type  | Application in a custom flow                                                                 | How to Enable                             |
-| ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Default      | Download, then reload at a safe point or apply on the next app start.                        | Default setting                           |
-| Force Update | Read `shouldForceUpdate: true` and choose a reload point after download succeeds.            | Use the `--force-update` flag or console. |
+| Update Type  | Application in a custom flow                                                      | How to Enable                             |
+| ------------ | --------------------------------------------------------------------------------- | ----------------------------------------- |
+| Default      | Download, then reload at a safe point or apply on the next app start.             | Default setting                           |
+| Force Update | Read `shouldForceUpdate: true` and choose a reload point after download succeeds. | Use the `--force-update` flag or console. |
 
 In the custom flow, `shouldForceUpdate` is a signal for your application to
 call `reload()` after a successful download. Your code controls the restart;

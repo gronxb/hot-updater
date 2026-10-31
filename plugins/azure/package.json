@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/azure",
   "type": "module",
-  "version": "1.1.5",
+  "version": "1.2.0-rc.12",
   "description": "React Native OTA solution for self-hosted",
   "engines": {
     "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
@@ -42,6 +42,8 @@
   "dependencies": {
     "@azure/core-auth": "catalog:azure",
     "@azure/cosmos": "catalog:azure",
+    "@azure/identity": "catalog:azure",
+    "@azure/keyvault-secrets": "catalog:azure",
     "@azure/storage-blob": "catalog:azure",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",

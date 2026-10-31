@@ -3,6 +3,12 @@ import type { BuildType } from "./ConfigBuilder";
 export type RunInitOptions = {
   readonly build: BuildType;
   readonly envFile?: string;
+  /**
+   * Credentials the environment and the env files lack, read from the
+   * config's team `secrets` adapter (`InitProviderDefinition.secrets`):
+   * init reads them as if `.env.hotupdater` held them.
+   */
+  readonly secretsEnv?: Readonly<Record<string, string>>;
 };
 
 export class InitError extends Error {

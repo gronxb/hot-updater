@@ -108,7 +108,12 @@ const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",
   "commonOptions",
   "credential",
+  // The `secretEnv` helpers of earlier 1.2 configs, which `secret()` replaces.
+  "databaseSecrets",
+  "deploySecrets",
+  "storageSecrets",
 ]);
+
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 /** Build adapter packages, whose imports a kept build still needs. */
 const BUILD_IMPORT_PACKAGES = new Set(
@@ -313,6 +318,53 @@ const isDataProperty = (
   !property.method &&
   !property.shorthand;
 
+/** `process.env.HOT_UPDATER_*`, with or without `!`. */
+const isHotUpdaterEnvRead = (expression: Expression): boolean => {
+  const read =
+    expression.type === "TSNonNullExpression"
+      ? expression.expression
+      : expression;
+  return (
+    read.type === "MemberExpression" &&
+    !read.computed &&
+    read.property.type === "Identifier" &&
+    read.property.name.startsWith("HOT_UPDATER_") &&
+    read.object.type === "MemberExpression" &&
+    !read.object.computed &&
+    read.object.object.type === "Identifier" &&
+    read.object.object.name === "process" &&
+    read.object.property.type === "Identifier" &&
+    read.object.property.name === "env"
+  );
+};
+
+/** `secret("<name>")`, the credential init writes. */
+const isSecretCall = (expression: Expression): boolean =>
+  expression.type === "CallExpression" &&
+  expression.callee.type === "Identifier" &&
+  expression.callee.name === "secret" &&
+  expression.arguments.length === 1 &&
+  expression.arguments[0]?.type === "Literal" &&
+  typeof expression.arguments[0].value === "string";
+
+/**
+ * A value init writes into a managed adapter's options: a string, a
+ * `process.env.HOT_UPDATER_*` read, as configs of 1.1 read every value, a
+ * `secret("<name>")`, or an object of only those, such as `credentials`.
+ * Init replaces it with what its run resolves; any other value is the
+ * project's own and kept.
+ */
+const isInitWrittenValue = (expression: Expression): boolean =>
+  (expression.type === "Literal" && typeof expression.value === "string") ||
+  isHotUpdaterEnvRead(expression) ||
+  isSecretCall(expression) ||
+  (expression.type === "ObjectExpression" &&
+    expression.properties.length > 0 &&
+    expression.properties.every(
+      (property) =>
+        isDataProperty(property) && isInitWrittenValue(property.value),
+    ));
+
 const dedentBlock = (text: string) => {
   const lines = text.replace(/\s+$/, "").split("\n");
   const indents = lines
@@ -453,14 +505,23 @@ const mergeObjectLiteralText = (
       continue;
     }
 
+    // A value init wrote, which init's run now resolves again.
+    if (isInitWrittenValue(property.value)) {
+      edits.push({
+        start: property.value.start - existingObject.objectExpression.start,
+        end: property.value.end - existingObject.objectExpression.start,
+        text: getNodeText(newObject.source, nextProperty.value),
+      });
+      continue;
+    }
+
     const existingCallee = getCallCallee(property.value);
     const nextCallee = getCallCallee(nextProperty.value);
     const hasIncompatibleValue =
       (existingCallee !== null &&
         nextCallee !== null &&
         existingCallee !== nextCallee) ||
-      (property.value.type === "ObjectExpression") !==
-        (nextProperty.value.type === "ObjectExpression");
+      property.value.type !== nextProperty.value.type;
     if (
       replaceIncompatibleProperties.includes(propertyName) &&
       hasIncompatibleValue
@@ -664,20 +725,26 @@ const findManagedProperty = (
   return property?.type === "Property" ? property : null;
 };
 
-/** The `plugins` property, written either way: `plugins: [...]` or `plugins`. */
-const findPluginsProperty = (
+/** The `name` property, written either way: `name: value` or `name`. */
+const findAnyProperty = (
   objectExpression: ObjectExpression,
+  name: string,
 ): ObjectProperty | null => {
   const property = objectExpression.properties.find(
     (candidate) =>
       candidate.type === "Property" &&
       candidate.kind === "init" &&
       !candidate.method &&
-      getObjectPropertyName(candidate) === "plugins",
+      getObjectPropertyName(candidate) === name,
   );
 
   return property?.type === "Property" ? property : null;
 };
+
+/** The `plugins` property, written either way: `plugins: [...]` or `plugins`. */
+const findPluginsProperty = (
+  objectExpression: ObjectExpression,
+): ObjectProperty | null => findAnyProperty(objectExpression, "plugins");
 
 const getCallCallee = (expression: Expression) => {
   if (
@@ -852,6 +919,13 @@ const updateManagedObject = (
     }
   }
 
+  // The secrets adapter is the project's: init adds localSecrets() only to a
+  // config that sets none.
+  const nextSecrets = findAnyProperty(next.objectExpression, "secrets");
+  if (nextSecrets && !findAnyProperty(existing.objectExpression, "secrets")) {
+    missingPropertyTexts.push(getPropertyBlockText(next.source, nextSecrets));
+  }
+
   return {
     text: applyTextEdits(objectText, [
       ...propertyEdits,
@@ -975,7 +1049,9 @@ const rebuildImportBlock = (
   },
 ): TextEdit => {
   // Keep environment-loading imports under the existing config's control,
-  // and a kept build's adapter import with it.
+  // and a kept build's adapter import with it. localSecrets() is imported only
+  // where the config uses it: a project's own secrets adapter stays.
+  const references = usedIdentifiers(usedText);
   const imports = scaffold.imports
     .filter((info) => !(keptBuild && BUILD_IMPORT_PACKAGES.has(info.pkg)))
     .map((info) =>
@@ -984,7 +1060,14 @@ const rebuildImportBlock = (
             ...info,
             named: info.named?.filter((name) => name !== "existsSync"),
           }
-        : info,
+        : info.pkg === "hot-updater" &&
+            references &&
+            !references.has("localSecrets")
+          ? {
+              ...info,
+              named: info.named?.filter((name) => name !== "localSecrets"),
+            }
+          : info,
     );
   const importDeclarations = importDeclarationsOf(source);
   const firstImport = importDeclarations[0];
@@ -1407,6 +1490,23 @@ const readTextFile = (filePath: string) =>
  * existing config with the scaffold's build, storage, database, plugins, and
  * helpers merged in, keeping the project's own settings.
  */
+/**
+ * Whether `hot-updater.config.ts` in `cwd` sets a team `secrets` adapter,
+ * read from its text: a `secrets` property other than `localSecrets(...)`,
+ * or a config whose shape init can't read. False without the file. Init
+ * reads the store through the loaded config, so one that sets a store but
+ * doesn't load must be fixed first.
+ */
+export const configSetsTeamSecrets = async (cwd: string): Promise<boolean> => {
+  const text = await readTextFile(path.join(cwd, HOT_UPDATER_CONFIG_PATH));
+  if (text === null) return false;
+  const source = parseConfigSource(text);
+  const config = source && findDefineConfigObject(source);
+  if (!config) return true;
+  const secrets = findAnyProperty(config.objectExpression, "secrets");
+  return secrets !== null && getCallCallee(secrets.value) !== "localSecrets";
+};
+
 export const writeHotUpdaterConfig = async (
   scaffold: HotUpdaterConfigScaffold,
   filePath = HOT_UPDATER_CONFIG_PATH,
@@ -1494,4 +1594,107 @@ export const writeHotUpdaterFiles = async (
     );
   }
   return { config };
+};
+
+/** What `addSigningSecretToConfigText` did. */
+export type AddSigningSecretResult =
+  | { readonly status: "added"; readonly text: string }
+  /** The config already sets `signing`, which stays as it is. */
+  | { readonly status: "kept" }
+  /** The file is no `export default defineConfig({ ... })` it can edit. */
+  | { readonly status: "unsupported" };
+
+/**
+ * The config text with `signing: secret("<name>")` added, and `secret` in
+ * its `hot-updater` import, once. A config that sets `signing` in any form,
+ * such as 1.1's `{ enabled: true, privateKeyPath }`, is kept.
+ */
+export const addSigningSecretToConfigText = (
+  text: string,
+  name: string,
+): AddSigningSecretResult => {
+  const source = parseConfigSource(text);
+  const config = source && findDefineConfigObject(source);
+  if (!source || !config) return { status: "unsupported" };
+  const { objectExpression } = config;
+  if (
+    objectExpression.properties.some(
+      (property) =>
+        property.type === "SpreadElement" ||
+        getObjectPropertyName(property) === "signing",
+    )
+  ) {
+    return { status: "kept" };
+  }
+
+  const edits: TextEdit[] = [];
+  const property = `signing: secret(${JSON.stringify(name)})`;
+  const last = objectExpression.properties.at(-1);
+  if (!last) {
+    edits.push({
+      start: objectExpression.start,
+      end: objectExpression.end,
+      text: `{\n  ${property},\n}`,
+    });
+  } else {
+    const lineStart = text.lastIndexOf("\n", last.start) + 1;
+    const indent = /^[ \t]*/u.exec(text.slice(lineStart, last.start))![0];
+    const between = text.slice(last.end, objectExpression.end - 1);
+    const comma = /^\s*,/u.exec(between);
+    // After the last property's line comment, such as `// optional`.
+    let at = last.end + (comma?.[0].length ?? 0);
+    const lineEnd = text.indexOf("\n", at);
+    if (lineEnd !== -1 && text.slice(at, lineEnd).trim().startsWith("//")) {
+      at = lineEnd;
+    }
+    // Listed first: at the same offset, the comma is applied after it, so
+    // it lands before it.
+    edits.push({ start: at, end: at, text: `\n${indent}${property},` });
+    if (!comma) edits.push({ start: last.end, end: last.end, text: "," });
+  }
+
+  const hotUpdaterImports = importDeclarationsOf(source).filter(
+    (declaration) =>
+      declaration.source.value === "hot-updater" &&
+      declaration.importKind !== "type",
+  );
+  const imported = hotUpdaterImports.some((declaration) =>
+    declaration.specifiers.some(
+      (specifier) =>
+        specifier.type === "ImportSpecifier" &&
+        specifier.local.name === "secret",
+    ),
+  );
+  if (!imported) {
+    const named = hotUpdaterImports.find((declaration) =>
+      declaration.specifiers.some(
+        (specifier) => specifier.type === "ImportSpecifier",
+      ),
+    );
+    const lastSpecifier = named?.specifiers.at(-1);
+    edits.push(
+      named && lastSpecifier
+        ? { start: lastSpecifier.end, end: lastSpecifier.end, text: ", secret" }
+        : { start: 0, end: 0, text: 'import { secret } from "hot-updater";\n' },
+    );
+  }
+  return { status: "added", text: applyTextEdits(text, edits) };
+};
+
+/**
+ * Adds `signing: secret("<name>")` to `hot-updater.config.ts` in `cwd`, as
+ * `addSigningSecretToConfigText` does. Without the file, nothing is written.
+ */
+export const addSigningSecretToConfig = async (
+  cwd: string,
+  name: string,
+): Promise<AddSigningSecretResult["status"] | "missing"> => {
+  const filePath = path.join(cwd, HOT_UPDATER_CONFIG_PATH);
+  const text = await readTextFile(filePath);
+  if (text === null) return "missing";
+  const result = addSigningSecretToConfigText(text, name);
+  if (result.status === "added") {
+    await fs.writeFile(filePath, result.text, "utf-8");
+  }
+  return result.status;
 };

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 const envFilePath =
@@ -20,6 +20,14 @@ export default defineConfig({
         configuration: "Release",
         installPods: true,
       },
+      // CI builds this one through `hot-updater native-build ios` from a fresh ios/.
+      releaseSimulator: {
+        bundleIdentifier: "org.reactjs.native.example.HotUpdaterExample",
+        scheme: "HotUpdaterExample",
+        configuration: "Release",
+        simulator: true,
+        installPods: true,
+      },
     },
     android: {
       releaseApk: { packageName: "com.hotupdaterexample", aab: false },
@@ -28,12 +36,12 @@ export default defineConfig({
   build: bare({ enableHermes: true, resetCache: false }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   fingerprint: { debug: true },

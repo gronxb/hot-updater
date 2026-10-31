@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
+  isChannelLeave: vi.fn(() => false),
   reportUpdateError: vi.fn(),
 }));
 

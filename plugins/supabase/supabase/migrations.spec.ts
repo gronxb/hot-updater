@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -29,14 +30,43 @@ import { supabaseDatabase as supabaseToolingDatabase } from "../src/supabaseMigr
 import {
   SUPABASE_APPLY_FUNCTION,
   SUPABASE_SETTINGS_TABLE,
+  supabaseMigrationSql,
+  supabaseMigrationStatements,
   supabaseSchemaSql,
   supabaseTableNames,
 } from "../src/supabaseSchema";
 
 const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
-const MIGRATION = path.join(MIGRATIONS, "0001_hot-updater_1.0.0.sql");
-/** The managed server's tables: core's, and its plugins' (Insights, API keys, and Remote Config). */
+
+/**
+ * The managed database's schema: core's tables, and those of the plugins the
+ * managed Edge Function runs (Insights, API keys, and Remote Config). An
+ * official plugin that only the CLI and console run joins this list, not the
+ * function's.
+ */
 const managed = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
+
+/**
+ * The migrations a release shipped, by their SHA-256: installed databases ran
+ * them, so they never change. When `LATEST` ships, move it here and name the
+ * next release's migration `LATEST`.
+ */
+const SHIPPED: Readonly<Record<string, string>> = {
+  "0001_hot-updater_1.0.0.sql":
+    "4d58fe718d49c6b47e6e7233fdef37e6ab0b0e86a407c3b47af2c097d9d9673b",
+};
+
+/**
+ * The migration the next release ships, regenerated with
+ * HOT_UPDATER_UPDATE_SQL=1 after the managed schema changes: what the
+ * shipped migrations do not create yet, with the apply RPC and its grants
+ * again when it names a new table, then every settings row. `hot-updater
+ * init` applies it to a project an earlier release initialized.
+ */
+const LATEST = "0002_hot-updater_1.2.0.sql";
+
+const readMigration = (name: string) =>
+  fs.readFile(path.join(MIGRATIONS, name), "utf8");
 
 const state = vi.hoisted(() => ({ db: undefined as PGlite | undefined }));
 
@@ -58,14 +88,16 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 
-/** A Supabase-like database: its three roles, the migration, and the service role's grants. */
+/** A Supabase-like database: its three roles, the migrations in order, and the service role's grants. */
 const createDatabase = async (before = "") => {
   const db = new PGlite();
   await db.exec(
     "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
   );
   if (before) await db.exec(before);
-  await db.exec(await fs.readFile(MIGRATION, "utf8"));
+  for (const name of [...Object.keys(SHIPPED), LATEST]) {
+    await db.exec(await readMigration(name));
+  }
   await db.exec(
     "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
   );
@@ -78,18 +110,95 @@ const apply = (db: PGlite, sql: string) =>
   ]);
 
 describe("Supabase schema", () => {
-  it("checks in exactly the generated migration as the only one", async () => {
+  it("checks in the shipped migrations unchanged and the next one generated", async () => {
+    const shipped = await Promise.all(
+      Object.keys(SHIPPED).map((name) => readMigration(name)),
+    );
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      await fs.writeFile(MIGRATION, supabaseSchemaSql(managed));
+      await fs.writeFile(
+        path.join(MIGRATIONS, LATEST),
+        supabaseMigrationSql(managed, shipped),
+      );
     }
     const files = (await fs.readdir(MIGRATIONS)).filter((file) =>
       file.endsWith(".sql"),
     );
-    expect(files).toEqual([path.basename(MIGRATION)]);
+    expect(files.sort()).toEqual([...Object.keys(SHIPPED), LATEST]);
+    expect(
+      shipped.map((sql) => createHash("sha256").update(sql).digest("hex")),
+    ).toEqual(Object.values(SHIPPED));
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
-    expect(await fs.readFile(MIGRATION, "utf8")).toBe(
-      supabaseSchemaSql(managed),
+    expect(await readMigration(LATEST)).toBe(
+      supabaseMigrationSql(managed, shipped),
     );
+  });
+
+  it("creates the managed schema from the migrations in order, as from the whole schema", async () => {
+    const describeSchema = async (db: PGlite) => ({
+      tables: (
+        await db.query(
+          "SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+        )
+      ).rows,
+      indexes: (
+        await db.query(
+          "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname",
+        )
+      ).rows,
+      apply: (
+        await db.query(
+          `SELECT prosrc FROM pg_proc WHERE proname = '${SUPABASE_APPLY_FUNCTION}'`,
+        )
+      ).rows,
+      settings: (
+        await db.query(
+          `SELECT key, value FROM public."${SUPABASE_SETTINGS_TABLE}" ORDER BY key`,
+        )
+      ).rows,
+    });
+    const migrated = await createDatabase();
+    const created = new PGlite();
+    await created.exec(
+      "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
+    );
+    await created.exec(supabaseSchemaSql(managed));
+    expect(await describeSchema(migrated)).toEqual(
+      await describeSchema(created),
+    );
+    await migrated.close();
+    await created.close();
+  });
+
+  it("writes into a later migration only what the earlier ones did not create, the apply RPC with its grants, and every settings row", async () => {
+    const audit = definePlugin({
+      id: "audit",
+      schemaVersion: "1",
+      schema: {
+        entries: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+      },
+      init: () => ({ api: {} }),
+    });
+    const later = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      audit,
+    ]);
+    const statements = supabaseMigrationStatements(
+      supabaseMigrationSql(later, [supabaseSchemaSql(managed)]),
+    );
+    expect(
+      statements.map((sql) => sql.split("\n")[0]!.replace(/ VALUES .*/u, "")),
+    ).toEqual([
+      'CREATE TABLE IF NOT EXISTS "hot_updater_v1_audit_entries" ("id" text COLLATE "C" NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
+      'ALTER TABLE "hot_updater_v1_audit_entries" ENABLE ROW LEVEL SECURITY',
+      `CREATE OR REPLACE FUNCTION public.${SUPABASE_APPLY_FUNCTION}(p_statements jsonb)`,
+      `REVOKE EXECUTE ON FUNCTION public.${SUPABASE_APPLY_FUNCTION}(jsonb) FROM PUBLIC, anon, authenticated`,
+      `GRANT EXECUTE ON FUNCTION public.${SUPABASE_APPLY_FUNCTION}(jsonb) TO service_role`,
+      ...Object.keys(later.settings).map(
+        () => `INSERT INTO "${SUPABASE_SETTINGS_TABLE}" ("key", "value", "_v")`,
+      ),
+    ]);
   });
 
   it("creates namespaced tables with row-level security beside a v0 schema it leaves alone", async () => {
@@ -213,7 +322,7 @@ describe("Supabase schema", () => {
     try {
       // Its tables come from migration files, which the fix names.
       await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `hot-updater db generate` and apply the file it writes',
+        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. On a database `hot-updater init` created, that is init again with its saved inputs; for your own server, run `hot-updater db generate` and apply the file it writes.',
       );
       await db.exec(
         `RESET ROLE; ${migration.code} GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;`,

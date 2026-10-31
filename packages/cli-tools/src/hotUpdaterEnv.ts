@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { parseEnv as parseNodeEnv } from "node:util";
 import path from "path";
 
 import { InitEnvFileError } from "./initOptions";
@@ -72,12 +73,21 @@ export const getHotUpdaterInitInputEnv = (
   nonInteractive: boolean,
 ) => (nonInteractive ? env : managedEnv);
 
+/**
+ * Init's inputs: `.env.hotupdater` (`managedEnv`), with `envFile`'s over
+ * it (`env`). `secretsEnv`, the credentials init read from a team secrets
+ * store, sits under both, as values the file would hold.
+ */
 export const readHotUpdaterInitEnv = async (
   cwd: string,
   envFile?: string,
+  secretsEnv: Readonly<Record<string, string>> = {},
 ): Promise<HotUpdaterInitEnv> => {
   const savedEnvPath = path.resolve(cwd, HOT_UPDATER_ENV_PATH);
-  const savedEnv = await readEnvFile(savedEnvPath, true);
+  const savedEnv = {
+    ...secretsEnv,
+    ...(await readEnvFile(savedEnvPath, true)),
+  };
 
   if (!envFile) {
     return { env: {}, managedEnv: savedEnv };
@@ -99,20 +109,68 @@ export const readHotUpdaterInitEnv = async (
   };
 };
 
-export const readHotUpdaterEnv = async (
-  cwd: string,
-): Promise<Readonly<Record<string, string>>> => {
-  const { managedEnv } = await readHotUpdaterInitEnv(cwd);
-  return managedEnv;
-};
+/** `key`'s own value in `record`, never a member such as `__proto__`. */
+const ownValue = (
+  record: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | undefined => (Object.hasOwn(record, key) ? record[key] : undefined);
 
 export const getHotUpdaterEnvValue = (
   env: Readonly<Record<string, string>>,
   key: string,
 ) => {
-  if (process.env[key] !== undefined) {
-    return process.env[key]?.trim() || undefined;
+  const fromProcess = ownValue(process.env, key);
+  if (fromProcess !== undefined) {
+    return fromProcess.trim() || undefined;
   }
 
-  return env[key]?.trim() || undefined;
+  return ownValue(env, key)?.trim() || undefined;
+};
+
+/**
+ * An env file's variables as `process.loadEnvFile` sets them, the way
+ * `hot-updater.config.ts` loads `.env.hotupdater`: inline comments, quotes,
+ * and `export` prefixes included.
+ */
+export const parseLoadedEnv = (
+  content: string,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    Object.entries(parseNodeEnv(content)).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+
+/** `cwd`'s `.env.hotupdater` as the config loads it; empty when there is none. */
+export const readLoadedHotUpdaterEnv = async (
+  cwd: string,
+): Promise<Readonly<Record<string, string>>> => {
+  try {
+    return parseLoadedEnv(
+      await fs.readFile(path.resolve(cwd, HOT_UPDATER_ENV_PATH), "utf-8"),
+    );
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
+};
+
+/**
+ * `file`, an env file a command was given, relative to `cwd`, as
+ * `parseLoadedEnv` reads it; a file that can't be read is refused by name.
+ */
+export const readLoadedEnvFile = async (
+  file: string,
+  cwd: string,
+): Promise<Readonly<Record<string, string>>> => {
+  try {
+    return parseLoadedEnv(await fs.readFile(path.resolve(cwd, file), "utf-8"));
+  } catch (error) {
+    throw new Error(
+      `Can't read ${file}.\n${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
 };

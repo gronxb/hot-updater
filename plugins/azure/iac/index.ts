@@ -168,10 +168,14 @@ const resolveName = async ({
   );
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
     nonInteractive,
@@ -449,10 +453,19 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Azure settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
-    cwd,
-    settings: "Azure",
-  });
+  const cosmosEndpoint = /AccountEndpoint=([^;]+)/iu.exec(
+    cosmosConnectionString,
+  )?.[1];
+  await writeHotUpdaterFiles(
+    getConfigScaffold(
+      build,
+      cosmosEndpoint === undefined ? {} : { cosmosEndpoint },
+    ),
+    {
+      cwd,
+      settings: "Azure",
+    },
+  );
 
   printAppSetup({
     baseURL,

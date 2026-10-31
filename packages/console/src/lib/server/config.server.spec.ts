@@ -182,4 +182,34 @@ describe("config.server", () => {
     expect(resolveConsoleConfigMock).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
+
+  it("loads the console for routes that authenticate their own callers, without the access check", async () => {
+    const database = createTestDatabase("db");
+    const storageAdapter = createTestStorageAdapter();
+    const plugins = [apiKeys()];
+    const server = createHotUpdater({
+      database,
+      storage: storageAdapter,
+      plugins,
+    });
+    resolveConsoleConfigMock.mockResolvedValue({
+      database,
+      core: server.core,
+      plugins,
+      api: server.api,
+      storage: storageAdapter,
+    });
+    requireConsoleAccessMock.mockRejectedValue(
+      new Response("Unauthorized", { status: 401 }),
+    );
+    const { loadConsole, prepareConfig } = await import("./config.server");
+
+    const loaded = await loadConsole(request);
+
+    expect(requireConsoleAccessMock).not.toHaveBeenCalled();
+    expect(loaded.core).toBe(server.core);
+    // Both share one config and runtime; prepareConfig still checks access.
+    await expect(prepareConfig(request)).rejects.toMatchObject({ status: 401 });
+    expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
+  });
 });

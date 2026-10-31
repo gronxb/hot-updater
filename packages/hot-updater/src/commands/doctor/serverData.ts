@@ -3,17 +3,10 @@ import type {
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 
-import type {
-  ArtifactStatus,
-  ReleaseCatalogIssue,
-  ReleaseCatalogStatus,
-} from "./issues";
+import type { ReleaseCatalogIssue, ReleaseCatalogStatus } from "./issues";
 
-// The admin API serves up to 500 releases or catalogs, and 100 bundles, a page.
+// The admin API serves up to 500 releases or catalogs a page.
 const RELEASE_PAGE = 500;
-const BUNDLE_PAGE = 100;
-
-const DOCTOR_FIX = "npx hot-updater doctor --fix";
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -32,43 +25,15 @@ export const releaseCatalogsUnchecked = (
       code: "RELEASE_CATALOGS_UNCHECKED",
       message: `Could not check the release catalogs: ${errorMessage(error)}`,
       resolution: unreachable,
-      fixability: "blocked",
     },
   ],
 });
 
-const artifactsUnchecked = (error: unknown): ArtifactStatus => ({
-  unreferenced: [],
-  issues: [
-    {
-      type: "warning",
-      code: "ARTIFACTS_UNCHECKED",
-      message: `Could not check the artifact records: ${errorMessage(error)}`,
-      resolution: unreachable,
-      fixability: "blocked",
-    },
-  ],
-});
-
-/** Every artifact record's ID. */
-const listArtifactIds = async (core: HotUpdaterCoreApi): Promise<string[]> => {
-  const ids: string[] = [];
-  for (let after: string | undefined; ; ) {
-    const page = await core.listBundles({
-      limit: BUNDLE_PAGE,
-      order: "asc",
-      ...(after === undefined ? {} : { after }),
-    });
-    ids.push(...page.map(({ bundle }) => bundle.id));
-    if (page.length < BUNDLE_PAGE) return ids;
-    after = page.at(-1)!.bundle.id;
-  }
-};
-
-/** Every release's scope, and every artifact a release uses. */
-const scanReleases = async (core: HotUpdaterCoreApi) => {
+/** Every release's scope. */
+const listReleaseScopeKeys = async (
+  core: HotUpdaterCoreApi,
+): Promise<Set<string>> => {
   const scopeKeys = new Set<string>();
-  const bundleIds = new Set<string>();
   for (let after: string | undefined; ; ) {
     const page = await core.listReleases({
       filter: { kind: "all" },
@@ -76,11 +41,8 @@ const scanReleases = async (core: HotUpdaterCoreApi) => {
       order: "asc",
       ...(after === undefined ? {} : { after }),
     });
-    for (const release of page) {
-      scopeKeys.add(release.scope_key);
-      if (release.bundle_id !== null) bundleIds.add(release.bundle_id);
-    }
-    if (page.length < RELEASE_PAGE) return { scopeKeys, bundleIds };
+    for (const release of page) scopeKeys.add(release.scope_key);
+    if (page.length < RELEASE_PAGE) return scopeKeys;
     after = page.at(-1)!.id;
   }
 };
@@ -156,8 +118,7 @@ const checkReleaseCatalogs = async (
               scopeKey,
               message: `${scopeKey} has releases but no catalog row, so devices get 404 for it.`,
               resolution:
-                "Restore the scope's catalog row from a backup. doctor --fix does not create one: a new catalog identity would not match the history devices already hold.",
-              fixability: "blocked",
+                "Restore the scope's catalog row from a backup. A new catalog identity would not match the history devices already hold, so Hot Updater never creates one for a scope that has releases.",
             }
           : {
               type: "error",
@@ -166,7 +127,6 @@ const checkReleaseCatalogs = async (
               message: `Could not compile the release catalog of ${scopeKey}: ${errorMessage(failure)}`,
               resolution:
                 "Check the scope's releases and the server's logs, then rerun doctor.",
-              fixability: "blocked",
             },
       );
       continue;
@@ -184,10 +144,13 @@ const checkReleaseCatalogs = async (
         type: "error",
         code: "RELEASE_CATALOG_STALE",
         scopeKey,
-        message: `The release catalog of ${scopeKey} differs from its releases.`,
-        resolution: `Run \`${DOCTOR_FIX}\` to rebuild it from its releases.`,
-        fixability: "command",
-        commands: [DOCTOR_FIX],
+        message: `The release catalog of ${scopeKey} differs from its releases, and devices read the catalog.`,
+        resolution:
+          "Every release change in the scope recompiles its catalog from its releases: deploy to it, change a release with `npx hot-updater bundle update`, or enable or disable one. Hot Updater writes a scope's catalog with each of its release changes, so a stale one follows an edit made outside Hot Updater or a partial restore of the database.",
+        commands: [
+          "npx hot-updater deploy",
+          "npx hot-updater bundle update <id>",
+        ],
       };
       status.issues.push(issue);
     }
@@ -195,90 +158,15 @@ const checkReleaseCatalogs = async (
   return status;
 };
 
-/**
- * The server's release catalogs, each against a rebuild from its releases,
- * and its artifact records against the releases that use them. Bundles are
- * listed before releases, so a deploy that lands between the two reads adds
- * a release for no artifact this check already holds.
- */
+/** The server's release catalogs, each against a rebuild from its releases. */
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
-): Promise<{
-  releaseCatalogs: ReleaseCatalogStatus;
-  artifacts: ArtifactStatus;
-}> => {
-  let artifactIds: string[] | Error;
+): Promise<ReleaseCatalogStatus> => {
+  let scopeKeys: Set<string>;
   try {
-    artifactIds = await listArtifactIds(core);
+    scopeKeys = await listReleaseScopeKeys(core);
   } catch (error) {
-    artifactIds = error instanceof Error ? error : new Error(String(error));
+    return releaseCatalogsUnchecked(error);
   }
-  let releases: Awaited<ReturnType<typeof scanReleases>>;
-  try {
-    releases = await scanReleases(core);
-  } catch (error) {
-    return {
-      releaseCatalogs: releaseCatalogsUnchecked(error),
-      artifacts: artifactsUnchecked(error),
-    };
-  }
-  const releaseCatalogs = await checkReleaseCatalogs(core, releases.scopeKeys);
-  if (artifactIds instanceof Error) {
-    return { releaseCatalogs, artifacts: artifactsUnchecked(artifactIds) };
-  }
-  const unreferenced = artifactIds.filter((id) => !releases.bundleIds.has(id));
-  return {
-    releaseCatalogs,
-    artifacts: {
-      unreferenced,
-      issues:
-        unreferenced.length === 0
-          ? []
-          : [
-              {
-                type: "warning",
-                code: "UNREFERENCED_ARTIFACTS",
-                artifactIds: unreferenced,
-                message: `${unreferenced.length} artifact record${unreferenced.length === 1 ? " has" : "s have"} no release, so storage prune keeps their files.`,
-                resolution: `Run \`${DOCTOR_FIX}\` to delete them, then \`npx hot-updater storage prune\` to reclaim their files.`,
-                fixability: "command",
-                commands: [DOCTOR_FIX],
-              },
-            ],
-    },
-  };
-};
-
-/**
- * Rebuilds each scope's catalog from its releases: what `doctor --fix`
- * writes for RELEASE_CATALOG_STALE. Returns the catalogs it wrote.
- */
-export const rebuildReleaseCatalogs = async (
-  core: HotUpdaterCoreApi,
-  scopeKeys: readonly string[],
-): Promise<string[]> => {
-  const wrote: string[] = [];
-  for (const scopeKey of scopeKeys) {
-    const { catalog, changed } = await core.rebuildReleaseCatalog(scopeKey);
-    if (changed) {
-      wrote.push(
-        `release catalog ${scopeKey}, generation ${catalog.generation}`,
-      );
-    }
-  }
-  return wrote;
-};
-
-/**
- * Deletes artifact records no release uses, with the patches from and to
- * them: what `doctor --fix` deletes for UNREFERENCED_ARTIFACTS. Core refuses
- * the batch if a release took one up since the check. Their stored files
- * stay until `storage prune`.
- */
-export const deleteUnreferencedArtifacts = async (
-  core: HotUpdaterCoreApi,
-  artifactIds: readonly string[],
-): Promise<string[]> => {
-  await core.deleteBundles(artifactIds);
-  return artifactIds.map((id) => `artifact record ${id}`);
+  return checkReleaseCatalogs(core, scopeKeys);
 };

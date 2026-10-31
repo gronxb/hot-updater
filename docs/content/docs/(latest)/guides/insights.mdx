@@ -6,13 +6,13 @@ icon: ChartNoAxesCombined
 
 Insights answers the questions you have after shipping an update:
 
-| Question | Where to look |
-| --- | --- |
-| Did devices download and launch it? | [Release health](#release-health) → **Adoption**, and the Bundles list |
-| Is it crashing? Should I roll it back? | [Release health](#release-health) → **Crashes** |
-| Why do updates fail? | [Update failures](#update-failures) |
-| What does this user's device run? | **All events** → search an installation or user ID |
-| How many devices use the app, on which versions? | **App usage** and **Distribution** |
+| Question                                         | Where to look                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| Did devices download and launch it?              | [Release health](#release-health) → **Adoption**, and the Bundles list |
+| Is it crashing? Should I roll it back?           | [Release health](#release-health) → **Crashes**                        |
+| Why do updates fail?                             | [Update failures](#update-failures)                                    |
+| What does this user's device run?                | **All events** → search an installation or user ID                     |
+| How many devices use the app, on which versions? | **App usage** and **Distribution**                                     |
 
 The app's `insights()` client plugin sends reports, and the server's
 `insights()` plugin stores and counts them. The numbers are **reports
@@ -218,13 +218,13 @@ the failure rate. App usage and Release health charts stay in the Console.
 
 ## What the app reports
 
-| Report | When | Console |
-| --- | --- | --- |
-| `UNCHANGED` | The app launched, or a check found nothing to install. | **Launch**, or the change it made |
-| `UPDATE_DOWNLOADED` | A bundle was downloaded, verified, and staged. The app runs the old bundle until it restarts. | **Downloaded** |
-| `UPDATE_APPLIED` | The app restarted into the new bundle. | **Launched** |
-| `RECOVERED` | The app crashed on the new bundle and rolled back. | **Crashed** |
-| `UPDATE_FAILED` | An update check, download, or install failed. | **Update failed** |
+| Report              | When                                                                                          | Console                           |
+| ------------------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| `UNCHANGED`         | The app launched, or a check found nothing to install.                                        | **Launch**, or the change it made |
+| `UPDATE_DOWNLOADED` | A bundle was downloaded, verified, and staged. The app runs the old bundle until it restarts. | **Downloaded**                    |
+| `UPDATE_APPLIED`    | The app restarted into the new bundle.                                                        | **Launched**                      |
+| `RECOVERED`         | The app crashed on the new bundle and rolled back.                                            | **Crashed**                       |
+| `UPDATE_FAILED`     | An update check, download, or install failed.                                                 | **Update failed**                 |
 
 - A plain launch is reported at most once per UTC day, unless the channel, app
   version, bundle, Release, or user changed. Downloads, launches of a new
@@ -242,12 +242,12 @@ the exact rules and the report format.
 
 ## How long Insights keeps data
 
-| Data | Kept by default |
-| --- | --- |
-| Raw events, hourly totals, and the failure breakdown | 90 days |
-| Daily totals and distributions | 13 months (400 days) |
-| An installation's latest report | 13 months after it last reports |
-| Lifetime counts per release (Bundles list) | Forever |
+| Data                                                 | Kept by default                 |
+| ---------------------------------------------------- | ------------------------------- |
+| Raw events, hourly totals, and the failure breakdown | 90 days                         |
+| Daily totals and distributions                       | 13 months (400 days)            |
+| An installation's latest report                      | 13 months after it last reports |
+| Lifetime counts per release (Bundles list)           | Forever                         |
 
 On a self-hosted server, change the periods on the plugin, in both the server's
 `createHotUpdater` and `hot-updater.config.ts`, so the CLI prunes as the
@@ -274,15 +274,15 @@ Most reports are launches, and a device sends at most one plain launch per UTC
 day. Each report the server records is one transaction. On DynamoDB, without
 batching (`aggregateBatching: false`), an installation costs about:
 
-| Report | Write request units (WRU) |
-| --- | --- |
-| First launch of a UTC day | 36 |
-| Another launch the same day, same bundle | 0 |
-| `UPDATE_DOWNLOADED` | 40 |
-| `UPDATE_APPLIED` | 42 |
-| `RECOVERED` | 56 |
-| `UPDATE_FAILED` (download or install / check) | 34 / 20 |
-| A launch on another bundle, without `UPDATE_APPLIED` | 58 |
+| Report                                               | Write request units (WRU) |
+| ---------------------------------------------------- | ------------------------- |
+| First launch of a UTC day                            | 36                        |
+| Another launch the same day, same bundle             | 0                         |
+| `UPDATE_DOWNLOADED`                                  | 40                        |
+| `UPDATE_APPLIED`                                     | 42                        |
+| `RECOVERED`                                          | 56                        |
+| `UPDATE_FAILED` (download or install / check)        | 34 / 20                   |
+| A launch on another bundle, without `UPDATE_APPLIED` | 58                        |
 
 So 10,000 devices that open the app every day cost about 360,000 WRU a day.
 DynamoDB and Firestore **batch** totals by default, which cuts a report to
@@ -302,12 +302,12 @@ again.
 `POST /events` takes one report of at most 16 KB. Unknown fields are ignored,
 so a newer SDK's report still records on an older server.
 
-| Status | Meaning |
-| --- | --- |
-| `204` | Recorded, or already recorded under the same `eventId` |
-| `400` | A missing or invalid field |
-| `413` | The body is larger than 16 KB |
-| `503` | The database is busy; retry after `Retry-After` seconds |
+| Status | Meaning                                                 |
+| ------ | ------------------------------------------------------- |
+| `204`  | Recorded, or already recorded under the same `eventId`  |
+| `400`  | A missing or invalid field                              |
+| `413`  | The body is larger than 16 KB                           |
+| `503`  | The database is busy; retry after `Retry-After` seconds |
 
 ### Admin routes and API
 

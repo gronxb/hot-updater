@@ -1,5 +1,5 @@
 import { CosmosClient, type CosmosClientOptions } from "@azure/cosmos";
-import type { EngineDatabase } from "@hot-updater/plugin-core";
+import type { EngineDatabase, Lazy } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
@@ -20,8 +20,15 @@ import { createCosmosStore, currentCosmosEngine } from "./cosmosStore";
  */
 export type CosmosDatabaseConfig = Omit<
   CosmosClientOptions,
-  "consistencyLevel"
+  "consistencyLevel" | "connectionString"
 > & {
+  /**
+   * The account's connection string, or a function that returns it, such as
+   * `secret("<name>")` in `hot-updater.config.ts`: called on the first
+   * request, so a config loads without it. `endpoint` beside a function
+   * names the account to `hot-updater doctor`.
+   */
+  readonly connectionString?: Lazy<string>;
   readonly consistencyLevel?: "Strong";
   /** The database the container lives in. @default "hot-updater" */
   readonly databaseId?: string;
@@ -53,15 +60,27 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
       `cosmosDatabase reads with strong consistency; consistencyLevel "${String(connection.consistencyLevel)}" is weaker.`,
     );
   }
-  const client = new CosmosClient(connection);
+  // Created on the first request, so a config loads without the connection.
+  let client: CosmosClient | undefined;
+  const { connectionString } = connection;
   const store = createCosmosStore({
-    client,
+    client: async () =>
+      (client ??= new CosmosClient({
+        ...connection,
+        connectionString:
+          typeof connectionString === "function"
+            ? await connectionString()
+            : connectionString,
+      })),
     databaseId,
     containerId,
     // What every migration path checks a reused container against.
     engine: currentCosmosEngine(),
   });
-  return { client, adapter: createKvAdapter({ store }) };
+  return {
+    dispose: () => client?.dispose(),
+    adapter: createKvAdapter({ store }),
+  };
 };
 
 /**
@@ -75,10 +94,32 @@ export const migrateCosmosDatabase = (
   config: CosmosDatabaseConfig,
   plugins: readonly PluginTables[] = [],
 ) => {
-  const { client, adapter } = adapterOf(config);
-  return migrateCoreSchema(adapter, "cosmosDatabase", plugins).finally(() =>
-    client.dispose(),
-  );
+  const { dispose, adapter } = adapterOf(config);
+  return migrateCoreSchema(adapter, "cosmosDatabase", plugins).finally(dispose);
+};
+
+/**
+ * The resource this database reaches, without credentials, under the key
+ * `hot-updater doctor` reads to tell the database `hot-updater init` saved
+ * from another (a convention CLAUDE.md documents).
+ */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** The account host a client reaches: its endpoint, or the connection string's. */
+const accountHostOf = ({
+  endpoint,
+  connectionString,
+}: CosmosDatabaseConfig) => {
+  const url =
+    endpoint ??
+    (typeof connectionString === "string"
+      ? connectionString.match(/AccountEndpoint=([^;]+)/iu)?.[1]
+      : undefined);
+  try {
+    return url === undefined ? undefined : new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
 };
 
 /**
@@ -90,16 +131,18 @@ export const migrateCosmosDatabase = (
 export const cosmosDatabase = (
   config: CosmosDatabaseConfig,
 ): EngineDatabase => {
-  const { client, adapter } = adapterOf(config);
+  const { dispose, adapter } = adapterOf(config);
+  const host = accountHostOf(config);
   return {
     ...createEngineDatabase({
       name: "cosmosDatabase",
       adapter,
       aggregateBatching: config.aggregateBatching ?? {},
     }),
+    ...(host === undefined ? {} : { [DATABASE_TARGET]: `cosmos/${host}` }),
     async dispose() {
       await adapter.dispose?.();
-      client.dispose();
+      dispose();
     },
   };
 };

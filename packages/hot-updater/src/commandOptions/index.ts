@@ -23,17 +23,27 @@ export const nativeBuildOutputCommandOption = new Option(
   "the path where the artifacts will be generated",
 );
 
-export const deviceCommandOption = new Option(
-  "-d, --device [deviceName | deviceId]",
-  "specify the ADB device name or use default",
+export const nativeBuildJsonCommandOption = new Option(
+  "--json",
+  "print the build, its record in Hot Updater, or null and why it has none, as JSON on the last line of the output",
+).default(false);
+
+export const testFlightSubmitCommandOption = new Option(
+  "--submit <destination>",
+  "submit the .ipa to a store: testflight uploads it to App Store Connect with the scheme's App Store Connect API key",
+).choices(["testflight"]);
+
+export const playSubmitCommandOption = new Option(
+  "--submit <destination>",
+  "submit the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",
+).choices(["play-internal"]);
+
+export const nativeBuildDryRunCommandOption = new Option(
+  "--dry-run",
+  "Build, but record and submit nothing: no Hot Updater tracking, no store submission (like npm publish --dry-run)",
 );
 
-export const portCommandOption = new Option(
-  "--port <port>",
-  "specify the port number",
-);
-
-export const appIdSuffixCommandOption = new Option(
-  "--app-id-suffix <appIdSuffix>",
-  "specify the app ID suffix",
+export const nativeBuildNoCacheCommandOption = new Option(
+  "--no-cache",
+  "Build even when a build with the same inputs can be reused, such as after a change no key covers, like a provisioning profile",
 );

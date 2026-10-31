@@ -154,7 +154,7 @@ it was built from and warns that `fingerprint.json` is stale. The build embeds
 no fingerprint when the app root has no `fingerprint.json`, so delete it when
 you switch a project to App Version: an app with a fingerprint reports the
 fingerprint strategy. Under App Version, `doctor` reports a leftover
-`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and `doctor --fix` deletes it,
+`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and says to delete it,
 `deploy` warns about it, the native build commands refuse to build, and the
 Expo config plugin removes it at prebuild.
 Keep `hot-updater` and `@hot-updater/react-native` on the same version: the
@@ -169,8 +169,16 @@ Example `fingerprint.json` (sources shortened):
     "engine": "hot-updater/interface@1",
     "hash": "af69cc634ddceb474dfd73469f46361be584787cd8046a186c24f9b393ba170b",
     "sources": [
-      { "type": "contents", "id": "runtime", "contents": "react-native@0.85.2" },
-      { "type": "contents", "id": "dependency:react-native-screens", "contents": "react-native-screens@4.25.2" },
+      {
+        "type": "contents",
+        "id": "runtime",
+        "contents": "react-native@0.85.2"
+      },
+      {
+        "type": "contents",
+        "id": "dependency:react-native-screens",
+        "contents": "react-native-screens@4.25.2"
+      },
       { "type": "file", "filePath": "src/specs/NativeDevice.ts" }
     ]
   },
@@ -214,8 +222,7 @@ npx hot-updater doctor
 
 Doctor compares `fingerprint.json` with the project's fingerprint now. When
 they differ, it reports `FINGERPRINT_JSON_STALE` and lists the sources that
-changed. Create a new fingerprint then, or run `doctor --fix`, which does the
-same:
+changed, with the command that creates a new one:
 
 ```package-install
 npx hot-updater fingerprint create

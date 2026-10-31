@@ -166,19 +166,25 @@ export function showFingerprintChanges(
     return;
   }
 
-  p.log.info(`${colors.bold(`${platform} Fingerprint Changes:`)}`);
-
-  if (added.length > 0) {
-    p.log.info(`  ${colors.green("Added:")} ${added.join(", ")}`);
-  }
-
-  if (removed.length > 0) {
-    p.log.info(`  ${colors.red("Removed:")} ${removed.join(", ")}`);
-  }
-
-  if (changed.length > 0) {
-    p.log.info(`  ${colors.yellow("Changed:")} ${changed.join(", ")}`);
-  }
+  // One file per line, under its kind: a list of them would wrap.
+  const kinds = [
+    { label: "Added", files: added, color: colors.green },
+    { label: "Removed", files: removed, color: colors.red },
+    { label: "Changed", files: changed, color: colors.yellow },
+  ].filter(({ files }) => files.length > 0);
+  const width = Math.max(...kinds.map(({ label }) => label.length)) + 2;
+  p.log.info(
+    [
+      `${platform} fingerprint changes`,
+      ...kinds.flatMap(({ label, files, color }) =>
+        files.map((file, index) =>
+          index === 0
+            ? `${color(label.padEnd(width))}${file}`
+            : `${" ".repeat(width)}${file}`,
+        ),
+      ),
+    ].join("\n"),
+  );
 }
 
 export function showFingerprintDiff(

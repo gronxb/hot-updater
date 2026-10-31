@@ -36,17 +36,14 @@ import { existsSync } from "node:fs";
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights } from "hot-updater/plugins"; // [!code ++]
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -54,18 +51,21 @@ export default defineConfig({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      accessKeyId: secret("R2_ACCESS_KEY_ID"),
+      secretAccessKey: secret("R2_SECRET_ACCESS_KEY"),
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
-  database: standaloneRepository({ // [!code ++]
+  database: standaloneRepository({
+    // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
-    commonHeaders: { // [!code ++]
-      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    commonHeaders: {
+      // [!code ++]
+      Authorization: async () => `Bearer ${await adminToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
   plugins: [insights(), apiKeys()], // [!code ++]
+  secrets: localSecrets(), // keys from apple login and secrets put
   updateStrategy: "appVersion",
 });
 ```
@@ -109,13 +109,14 @@ adapter instead, such as `kyselyAdapter(...)`. The CLI then assembles core over
 through it, the path the server's own writes take:
 
 - A plugin whose migration has not run stops a command before it reads or
-  writes. The error names the plugin and the fix. For a self-hosted server,
-  run `hot-updater db migrate`, or `hot-updater db generate` for a database
-  migrated from files, in the server's project: the `db` commands load the
-  server file, such as `src/hotUpdater.ts`, and don't read
-  `hot-updater.config.ts`. For a managed server, rerun
-  `hot-updater init --provider <provider>`. A plugin the server doesn't run
-  has no settings row, so listing one stops these commands too.
+  writes. The error names the plugin. Run
+  [`hot-updater doctor`](/docs/guides/doctor#check-the-database-schema) in
+  this project: it names the command that migrates the database. In the
+  server's project, that is `hot-updater db migrate`, or `hot-updater db
+  generate` for a database migrated from files: the `db` commands load the server file,
+  such as `src/hotUpdater.ts`, and don't read `hot-updater.config.ts`. A
+  plugin the server doesn't run has no settings row, so listing one stops
+  these commands too.
 - When a retention pass is due, a write first deletes expired rows of plugins'
   tables, such as Insights' events. The server and the CLI share one lease,
   due every hour, or every minute while a backlog remains. A pass deletes at
@@ -124,12 +125,65 @@ through it, the path the server's own writes take:
   once, so the next writer that can delete, such as the server, runs it.
 - A write that changes a Release Catalog purges the CDN once.
 
+## Secrets
+
+`secrets` is where the CLI reads the secrets the config names with
+[`secret("<name>")`](/docs/concepts/secrets#name-a-secret): native build
+credentials and adapter credentials alike. It defaults to
+[`localSecrets()`](/docs/guides/secrets-adapters/local-secrets) from
+`hot-updater`, which reads each name from an environment variable, in the
+environment or `.env.hotupdater`, then from a file in your home directory
+that only you can read, where it stores the keys Hot Updater issues. In CI,
+map the CI's secrets to the job's environment, which `localSecrets()` reads first.
+For a team, [`infisical()`](/docs/guides/secrets-adapters/infisical) from
+`hot-updater` keeps them in an Infisical project, on Infisical Cloud or your
+own instance, whatever provider you deploy to.
+AWS Secrets Manager, Google Secret Manager, and Azure Key Vault have adapters
+in their provider packages, [`secretsManager()`](/docs/guides/secrets-adapters/aws-secrets-manager)
+from `@hot-updater/aws`, [`secretManager()`](/docs/guides/secrets-adapters/google-secret-manager)
+from `@hot-updater/firebase`, and [`keyVault()`](/docs/guides/secrets-adapters/azure-key-vault)
+from `@hot-updater/azure`. Any other store is a short adapter you paste,
+such as [dotenvx](/docs/guides/secrets-adapters/dotenvx) or
+[Bitwarden](/docs/guides/secrets-adapters/bitwarden):
+[Choose an adapter](/docs/concepts/secrets#choose-an-adapter) compares them.
+
+An adapter reads a `secret()` when it needs the credential, so loading the
+config reads no secret. A name set in the environment wins; the config's
+others come from `secrets` in one call, except with `localSecrets()`, whose
+files hold only the keys Hot Updater stores. The values go only to that
+adapter, never into the CLI's `process.env`, and are masked in the CLI's
+output. Names that change how a process loads code, such as `NODE_OPTIONS`,
+`PATH`, or `LD_PRELOAD`, are refused. `secret()` is for
+`hot-updater.config.ts`: a server passes its own environment's values.
+
+```typescript title="hot-updater.config.ts (partial)"
+import { s3Storage } from "@hot-updater/aws";
+import { defineConfig, localSecrets, secret } from "hot-updater";
+
+export default defineConfig({
+  secrets: localSecrets(),
+  storage: s3Storage({
+    bucketName: "bundles",
+    region: "us-east-1",
+    credentials: {
+      accessKeyId: secret("S3_ACCESS_KEY_ID"),
+      secretAccessKey: secret("S3_SECRET_ACCESS_KEY"),
+    },
+  }),
+  // build, database and plugins stay as they are
+});
+```
+
+[Secrets](/docs/concepts/secrets) covers the adapter contract and
+storing build credentials.
+
 ## Standalone Repository configuration
 
 `baseUrl` is the exact root where the server mounts `handlers.admin`.
-`commonHeaders` must match the authentication middleware on that mount. Keep
-these values in the CLI's environment; the mobile app connects to the client
-root with its own API key.
+`commonHeaders` must match the authentication middleware on that mount; a
+header's value may be `secret("<name>")`. Keep these values in the CLI's
+environment or secrets store; the mobile app connects to the client root
+with its own API key.
 
 `standaloneRepository` takes only these two options. Its routes are the
 server's admin API, so they cannot be remapped. See the

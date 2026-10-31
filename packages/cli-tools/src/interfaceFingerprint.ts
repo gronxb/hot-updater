@@ -124,6 +124,14 @@ export interface NativeInterface {
    * engine, read from the files the framework itself reads.
    */
   settings?: Record<string, string>;
+  /**
+   * What autolinking printed, as parsed: the React Native config, and
+   * expo-modules-autolinking's `resolve` when the app links Expo modules.
+   */
+  autolinking?: {
+    reactNative: unknown;
+    expoModules: unknown;
+  };
 }
 
 interface AutolinkingConfig {
@@ -232,6 +240,77 @@ const atLeast = (version: string, minimum: [number, number, number]) => {
   return true;
 };
 
+/** The arguments that run React Native CLI's `config` with Node.js. */
+const reactNativeCliConfig = (cwd: string) => [
+  path.join(
+    path.dirname(
+      require.resolve("react-native/package.json", { paths: [cwd] }),
+    ),
+    "cli.js",
+  ),
+  "config",
+];
+
+/**
+ * The command, run with Node.js, that lists the React Native packages a
+ * build links, chosen as Expo and @expo/fingerprint choose it: Expo's
+ * autolinking from expo-modules-autolinking 1.12 (SDK 52), else React Native
+ * CLI, as for an app without Expo. The native templates also fall back to
+ * React Native CLI when `EXPO_USE_COMMUNITY_AUTOLINKING=1`, as Expo
+ * documents.
+ */
+export const reactNativeConfigCommand = (
+  cwd: string,
+  platform: Platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] => {
+  let autolinking: ReturnType<typeof resolveExpoAutolinking> | null = null;
+  try {
+    autolinking = resolveExpoAutolinking(cwd);
+  } catch {
+    // No Expo: React Native CLI links the app.
+  }
+  if (
+    autolinking?.linksReactNative &&
+    env["EXPO_USE_COMMUNITY_AUTOLINKING"] !== "1"
+  ) {
+    return [
+      autolinking.bin,
+      "react-native-config",
+      "--platform",
+      platform,
+      "--json",
+    ];
+  }
+  return reactNativeCliConfig(cwd);
+};
+
+/**
+ * The command that lists the React Native packages the native project of a
+ * build adapter links, as the adapter's own fingerprint runs it: `rock config`
+ * for Rock, React Native CLI's `config` for the bare adapter, and
+ * {@link reactNativeConfigCommand} for Expo and any other adapter.
+ */
+export const autolinkingConfigCommand = (
+  cwd: string,
+  platform: Platform,
+  {
+    buildAdapter,
+    env = process.env,
+  }: { buildAdapter?: string; env?: NodeJS.ProcessEnv } = {},
+): { command: string; args: string[] } => {
+  if (buildAdapter === "rock") {
+    return { command: "npx", args: ["rock", "config", "-p", platform] };
+  }
+  return {
+    command: process.execPath,
+    args:
+      buildAdapter === "bare"
+        ? reactNativeCliConfig(cwd)
+        : reactNativeConfigCommand(cwd, platform, env),
+  };
+};
+
 /**
  * The expo-modules-autolinking an Expo app builds with, resolved from its
  * `expo` package as the native templates resolve it.
@@ -271,7 +350,7 @@ export const resolveExpoAutolinking = (
 const readExpoModules = async (
   cwd: string,
   platform: Platform,
-): Promise<NativeDependency[]> => {
+): Promise<{ dependencies: NativeDependency[]; output: unknown }> => {
   const { bin, version } = resolveExpoAutolinking(cwd);
   // expo-modules-autolinking 1.10 renamed the iOS platform `apple`.
   const name =
@@ -288,11 +367,14 @@ const readExpoModules = async (
   if (result.exitCode !== 0) {
     throw new Error("`expo-modules-autolinking resolve` failed.");
   }
-  const { modules = [] } = parseJsonOutput<{ modules?: ExpoModule[] }>(
+  const output = parseJsonOutput<{ modules?: ExpoModule[] }>(
     result.stdout,
     "expo-modules-autolinking resolve",
   );
-  return readExpoModuleDependencies(modules);
+  return {
+    dependencies: await readExpoModuleDependencies(output.modules ?? []),
+    output,
+  };
 };
 
 const readExpoModuleDependencies = (
@@ -437,9 +519,10 @@ export const readReactNativeInterface = async ({
       : [],
   );
   const linksExpoModules = dependencies.some(({ name }) => name === "expo");
-  const expoModules = linksExpoModules
+  const expo = linksExpoModules
     ? await readExpoModules(cwd, platform)
-    : [];
+    : { dependencies: [], output: null };
+  const expoModules = expo.dependencies;
   const names = new Set(dependencies.map(({ name }) => name));
   // iOS declares no engine setting React Native's pods read from a file:
   // `pod install` takes them from the environment.
@@ -457,6 +540,7 @@ export const readReactNativeInterface = async ({
       ...expoModules.filter(({ name }) => !names.has(name)),
     ],
     settings,
+    autolinking: { reactNative: config, expoModules: expo.output },
   };
 };
 
@@ -856,15 +940,7 @@ export const reactNativeCliFingerprint = async (
     await readReactNativeInterface({
       cwd,
       command: process.execPath,
-      args: [
-        path.join(
-          path.dirname(
-            require.resolve("react-native/package.json", { paths: [cwd] }),
-          ),
-          "cli.js",
-        ),
-        "config",
-      ],
+      args: reactNativeCliConfig(cwd),
       platform: options.platform,
     }),
   );

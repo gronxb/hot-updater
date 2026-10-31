@@ -622,11 +622,11 @@ describe("config scaffold", () => {
       'import { azureBlobStorage, cosmosDatabase } from "@hot-updater/azure";',
     );
     expect(text).toContain(
-      "connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!",
+      'connectionString: secret("HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING")',
     );
     expect(text).toContain('containerName: "hot-updater"');
     expect(text).toContain(
-      "connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!",
+      'connectionString: secret("HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING")',
     );
     expect(text).toContain("plugins: [apiKeys(), insights(), remoteConfig()]");
   });

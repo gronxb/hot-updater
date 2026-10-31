@@ -1,5 +1,5 @@
 {
-  "title": "Deliver updates",
+  "title": "OTA updates",
   "description": "Build, target, and release compatible updates.",
   "icon": "Send",
   "pages": [
@@ -7,6 +7,7 @@
     "../guides/custom-update",
     "../guides/channel-management",
     "../guides/runtime-channel-switch",
+    "../guides/pull-request-previews",
     "../guides/rollout-cohorts",
     "../guides/remote-config",
     "../guides/update-strategies",

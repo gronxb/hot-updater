@@ -57,14 +57,15 @@ const rowsRead = (database: D1Database) => {
 setupReadBudgetTestSuite({
   name: "d1 (workerd)",
   createAdapter: async () => {
-    const [migration] = inject("d1Migrations");
     // `exec` runs one statement per line, and a comment line is not one.
-    await env.DB.exec(
-      migration!.sql
-        .split("\n")
-        .filter((line) => line.trim() !== "" && !line.startsWith("--"))
-        .join("\n"),
-    );
+    for (const migration of inject("d1Migrations")) {
+      await env.DB.exec(
+        migration.sql
+          .split("\n")
+          .filter((line) => line.trim() !== "" && !line.startsWith("--"))
+          .join("\n"),
+      );
+    }
     const { binding, examined } = rowsRead(env.DB);
     return { adapter: d1Database(binding).adapter, examined };
   },

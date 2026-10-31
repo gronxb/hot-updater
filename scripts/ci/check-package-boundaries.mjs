@@ -5,10 +5,15 @@
  *
  * - @hot-updater/server exports its root, the built-in adapters and the
  *   built-in plugins, and nothing else;
+ * - hot-updater exports its root, which holds the config helpers,
+ *   `secret`, and the built-in secrets adapters, `localSecrets()` and
+ *   `infisical()`, and `./plugins`, and nothing else;
  * - no package has an export whose key names `internal` or test code, and no
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
- * - @hot-updater/protocol has no dependencies;
+ * - @hot-updater/protocol has no dependencies, and exports its root and
+ *   `./native-artifact`, the artifact reader of `native-build import`, which
+ *   no app imports;
  * - @hot-updater/react-native exports only its root, and neither it nor the
  *   packages it pulls in (dependencies, optional dependencies, and peers that
  *   are not optional) depend on @hot-updater/plugin-core or
@@ -22,7 +27,12 @@
  *   import() or `vi` load whose specifier is computed is one this script
  *   lists; a spec this script lists may reach another package's private
  *   source, for the reason it gives;
- * - no package has an export only @hot-updater/test-utils imports.
+ * - no package has an export only @hot-updater/test-utils imports;
+ * - a hosted console never loads @hot-updater/cli-tools: @hot-updater/console
+ *   doesn't install it, and no source under its `src/`, which a hosted
+ *   build compiles, imports it. The local console's config module, which
+ *   `hot-updater console` runs from the CLI that installs cli-tools, is the
+ *   one source this script lists that may name it.
  *
  *   node scripts/ci/check-package-boundaries.mjs
  */
@@ -47,6 +57,12 @@ const SERVER_EXPORTS = [
   "./plugins",
   "./package.json",
 ];
+
+/**
+ * The CLI package's exports: its root, `defineConfig` with `secret`,
+ * `localSecrets()`, and `infisical()`, and the official plugin factories.
+ */
+const HOT_UPDATER_EXPORTS = [".", "./package.json", "./plugins"];
 
 /**
  * Sources whose import() computes its specifier: each loads a file by path,
@@ -81,6 +97,10 @@ const COMPUTED_IMPORTS = new Map([
   [
     "packages/hot-updater/src/commands/agent/infra.spec.ts",
     "loads the scaffold it generated",
+  ],
+  [
+    "packages/hot-updater/src/secretsSnippets.spec.ts",
+    "runs the dotenvx snippet it extracted from the docs",
   ],
   [
     "packages/server/src/adapters/drizzle.spec.ts",
@@ -160,6 +180,19 @@ if (server) {
   }
 }
 
+// hot-updater exports exactly its root and plugins.
+const cli = byName.get("hot-updater");
+if (cli) {
+  const keys = exportKeys(cli).sort();
+  const expected = [...HOT_UPDATER_EXPORTS].sort();
+  if (JSON.stringify(keys) !== JSON.stringify(expected)) {
+    fail(
+      "hot-updater-exports",
+      `hot-updater exports ${keys.join(", ")}; it may export only ${expected.join(", ")}.`,
+    );
+  }
+}
+
 /** Export keys that name test code. */
 const TEST_EXPORT = /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
 
@@ -181,9 +214,25 @@ for (const pkg of packages) {
   }
 }
 
+/**
+ * Protocol's exports: its root, which apps import, and the store artifact
+ * reader, a subpath so an app's JavaScript bundle never carries it.
+ */
+const PROTOCOL_EXPORTS = [".", "./native-artifact", "./package.json"];
+
 // Protocol stands alone.
 const protocol = byName.get("@hot-updater/protocol");
 if (protocol) {
+  const keys = exportKeys(protocol);
+  if (
+    keys.length !== PROTOCOL_EXPORTS.length ||
+    !PROTOCOL_EXPORTS.every((key) => keys.includes(key))
+  ) {
+    fail(
+      "protocol-exports",
+      `@hot-updater/protocol exports ${keys.join(", ")}; it exports ${PROTOCOL_EXPORTS.join(", ")}.`,
+    );
+  }
   for (const field of [
     "dependencies",
     "peerDependencies",
@@ -401,17 +450,22 @@ const SKIP = new Set([
   "node_modules",
   "dist",
   "build",
-  "lib",
   "ios",
   "android",
   ".nx",
   ".output",
   ".turbo",
 ]);
+/**
+ * A package's build output: `lib` beside its `src`, as react-native's and
+ * the console's; `src/lib` is source.
+ */
+const isOutput = (/** @type {string} */ dir, /** @type {string} */ name) =>
+  SKIP.has(name) || (name === "lib" && existsSync(path.join(dir, "src")));
 /** @param {string} dir @returns {string[]} */
 const sources = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (SKIP.has(entry.name) || entry.name.startsWith(".")) return [];
+    if (isOutput(dir, entry.name) || entry.name.startsWith(".")) return [];
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) return sources(full);
     return SOURCE.test(entry.name) ? [full] : [];
@@ -520,6 +574,66 @@ for (const pkg of [...packages, ...OUTSIDE]) {
         if (!importers.has(key)) importers.set(key, new Set());
         importers.get(key)?.add(pkg.name);
       }
+    }
+  }
+}
+
+// The store artifact reader is tooling's: an app's bundle never carries it.
+if (
+  importers
+    .get("@hot-updater/protocol ./native-artifact")
+    ?.has("@hot-updater/react-native")
+) {
+  fail(
+    "protocol-exports",
+    "@hot-updater/react-native imports @hot-updater/protocol/native-artifact, the artifact reader of `native-build import`; an app imports protocol's root only.",
+  );
+}
+
+/**
+ * Console sources that may name cli-tools, each with the reason. A hosted
+ * build compiles every other source under the console's `src/`.
+ */
+const LOCAL_CONSOLE_CLI_TOOLS = new Map([
+  [
+    "packages/console/src/vite-internal.ts",
+    "the local console's virtual config module, a string only the local mode loads",
+  ],
+]);
+
+// A hosted console never loads cli-tools, whose native bindings
+// (oxc-parser, oxc-transform) and unconfig don't belong in it.
+const consolePackage = byName.get("@hot-updater/console");
+if (consolePackage) {
+  const CLI_TOOLS = "@hot-updater/cli-tools";
+  if (installed(consolePackage).includes(CLI_TOOLS)) {
+    fail(
+      "hosted-console",
+      `@hot-updater/console installs ${CLI_TOOLS}; a hosted console never loads it, and the local console takes it, an optional peer, from the CLI that runs it.`,
+    );
+  }
+  const src = path.join(consolePackage.dir, "src");
+  for (const file of existsSync(src) ? sources(src) : []) {
+    const at = path.relative(root, file).split(path.sep).join("/");
+    if (TEST_FILE.test(at)) continue;
+    const text = readFileSync(file, "utf8");
+    if (!text.includes(CLI_TOOLS)) continue;
+    const { specifiers } = importsOf(file, text);
+    if (
+      specifiers.some(
+        (specifier) =>
+          specifier === CLI_TOOLS || specifier.startsWith(`${CLI_TOOLS}/`),
+      )
+    ) {
+      fail(
+        "hosted-console",
+        `${at} imports ${CLI_TOOLS}, which a hosted console build would bundle; keep the console's own copy of what it needs.`,
+      );
+    } else if (!LOCAL_CONSOLE_CLI_TOOLS.has(at)) {
+      fail(
+        "hosted-console",
+        `${at} names ${CLI_TOOLS}; only the local console's config module loads it. List the file in LOCAL_CONSOLE_CLI_TOOLS with the reason, if only the local console runs it.`,
+      );
     }
   }
 }

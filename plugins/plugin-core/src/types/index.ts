@@ -8,6 +8,38 @@ export type { Bundle, Platform } from "@hot-updater/protocol";
 export * from "./utils";
 export * from "./public";
 
+/**
+ * A value, or a function that returns it, called on first use: an
+ * adapter shared by servers and the CLI takes its credentials so, as a
+ * string from a server's own environment or as `secret("<name>")` from
+ * `hot-updater.config.ts`, which loads without reading a secret.
+ */
+export type Lazy<T> = T | (() => T | Promise<T>);
+
+/** The value of a `Lazy`, calling its function. */
+export const resolveLazy = async <T>(value: Lazy<T>): Promise<T> =>
+  typeof value === "function" ? await (value as () => T | Promise<T>)() : value;
+
+/**
+ * The brand of a `SecretRef`, `Symbol.for("@hot-updater/secret-ref")` at
+ * runtime: `hot-updater`'s `secret()` sets it, and the CLI recognizes a
+ * reference by it, so a plain string or function is none.
+ */
+declare const secretRefBrand: unique symbol;
+
+/**
+ * `secret("<name>")` in `hot-updater.config.ts`: the secret the config's
+ * `secrets` adapter holds as `name`. Called, it reads the value, the
+ * environment first, so it is a `Lazy<string>` any adapter credential
+ * takes; the build credentials, such as `signing.keystore`, take only a
+ * reference, which the CLI resolves by `name` for its kind.
+ */
+export type SecretRef = (() => Promise<string>) & {
+  readonly [secretRefBrand]: true;
+  /** The secret's name in the config's `secrets` adapter. */
+  readonly name: string;
+};
+
 export interface BuildAdapterArgs {
   cwd: string;
 }
@@ -83,6 +115,22 @@ export interface BuildAdapter {
     } | null>;
     /** Resolves native configuration files that must affect the fingerprint. */
     getFingerprintExtraSources?: () => Promise<readonly string[]>;
+    /**
+     * What `prebuild` would write into a platform's native project, read
+     * without writing it, for commands that only look the project up, such
+     * as `native-build find`. A value it leaves out is read from the native
+     * project as it is.
+     */
+    getNativeProjectValues?: (args: { platform: Platform }) => Promise<{
+      /**
+       * The app version the prebuild writes as the app's own: Android's
+       * `defaultConfig` `versionName`, which a product flavor's still
+       * overrides, and the iOS app's Info.plist.
+       */
+      readonly appVersion?: string;
+      /** The channel the native build would embed. */
+      readonly channel?: string;
+    }>;
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;
   };
@@ -110,7 +158,7 @@ export interface NativeBuildAndroidScheme {
    * Artifact type.
    *
    * If `true`, the generated artifact type is `.aab`.
-   * If `flase`, the generated artifact type is `apk`.
+   * If `false`, the generated artifact type is `.apk`.
    *
    * @default true
    */
@@ -134,6 +182,17 @@ export interface NativeBuildAndroidScheme {
    * @default same as packageName
    */
   applicationId?: string;
+
+  /**
+   * Signs a release variant with a keystore the CLI resolves: `keystore` is
+   * `secret("<name>")`, the `android-keystore` the config's `secrets` adapter
+   * holds as `<name>`, which the `HOT_UPDATER_ANDROID_KEYSTORE_*`
+   * environment variables override. Debug variants keep the debug keystore
+   * and resolve nothing. Without it, the variant's own `signingConfig` signs.
+   *
+   * @example { keystore: secret("release-keystore") }
+   */
+  signing?: { keystore: SecretRef };
 }
 
 export type IosBuildDestination =
@@ -206,7 +265,9 @@ export interface NativeBuildIosScheme {
   destination?: IosBuildDestination[];
 
   /**
-   * Path to a plist file that specifies options for exporting the archive.
+   * Path to a plist file that specifies options for exporting the archive
+   * into an `.ipa`. A device build needs it unless `signing.ascApiKey` is
+   * set, which exports for App Store Connect with automatic signing.
    *
    * @example "exportOptions.plist"
    */
@@ -242,11 +303,21 @@ export interface NativeBuildIosScheme {
    * Convenience shortcut option for simulator builds.
    * When true, this option should not be used together with the destination option.
    *
-   * This option only affects build:ios, not run:ios.
-   *
    * @default false
    */
   simulator?: boolean;
+
+  /**
+   * Signs a device build with automatic signing, authenticated by an App
+   * Store Connect API key the CLI resolves: `ascApiKey` is `secret("<name>")`,
+   * the `asc-api-key` the config's `secrets` adapter holds as `<name>`,
+   * which the `HOT_UPDATER_ASC_KEY*` environment variables override.
+   * Simulator builds resolve nothing. Without it, the project's signing
+   * settings and Xcode's accounts sign.
+   *
+   * @example { ascApiKey: secret("asc-api-key") }
+   */
+  signing?: { ascApiKey: SecretRef };
 }
 
 export interface PlatformConfig {
@@ -376,39 +447,85 @@ export interface StorageAdapter {
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
-export interface BundleSigningAdapter {
-  readonly name: string;
-  /** Returns the RSA public key used by this provider in SPKI PEM format. */
-  readonly getPublicKey: (input?: {
-    readonly cwd?: string;
-  }) => Promise<{ readonly publicKey: string }>;
-  /**
-   * Signs `message` with RSA PKCS#1 v1.5 SHA-256.
-   *
-   * Hot Updater passes the 32 raw bytes decoded from a SHA-256 file hash.
-   * Remote signing services must treat this value as the raw message, not as
-   * an already-computed digest.
-   */
-  readonly sign: (input: {
-    readonly message: Uint8Array;
-    readonly cwd?: string;
-  }) => Promise<{ readonly signature: Uint8Array }>;
+/**
+ * What a secrets adapter is given with each call. It carries no secret: an
+ * adapter reads its own credentials, such as a token or a CLI sign-in.
+ */
+export interface SecretsContext {
+  /** The project directory the CLI runs in. */
+  readonly cwd: string;
 }
 
-/** Built-in local PEM signing. */
+/**
+ * Where the CLI reads the secrets `secret("<name>")` names in a config: build
+ * credentials, such as a keystore, and adapter credentials. Values
+ * are strings: binary is base64, and a credential with several fields is one
+ * JSON value per name. `localSecrets()`, an export of `hot-updater`, keeps them
+ * in files on this machine, and `infisical()`, another, in an Infisical
+ * project; a store of your own implements this.
+ */
+export interface SecretsAdapter {
+  readonly name: string;
+  /**
+   * Reads `names` in one call. A name the store does not hold maps to
+   * `undefined`; any other failure, such as a missing permission or an
+   * unreachable store, throws.
+   */
+  readonly get: (
+    names: readonly string[],
+    context: SecretsContext,
+  ) => Promise<Readonly<Record<string, string | undefined>>>;
+  /**
+   * Stores `value` as `name`, replacing what it held. Every adapter stores:
+   * the CLI keeps the keys it issues and imports here, and nowhere else. A
+   * write the store refuses, such as with a read-only token, throws.
+   */
+  readonly set: (
+    name: string,
+    value: string,
+    context: SecretsContext,
+  ) => Promise<void>;
+  /** Where the user finds `name` in the store, such as a URL or a path, for messages. */
+  readonly describe?: (name: string) => string;
+}
+
+/**
+ * Built-in local PEM signing, with the RSA private key from a file or from
+ * the config's `secrets` adapter.
+ */
 export type LocalSigningConfig =
   | {
       readonly enabled: true;
       /** Path to an RSA private key in PEM format. */
       readonly privateKeyPath: string;
+      readonly privateKey?: never;
+    }
+  | {
+      readonly enabled: true;
+      /**
+       * `secret("<name>")`, the RSA private key in PEM format that the
+       * config's `secrets` adapter holds as `<name>`. The CLI reads it once
+       * per run, when it first signs or derives the public key, and keeps it
+       * in memory only.
+       *
+       * @example { enabled: true, privateKey: secret("bundle-signing-key") }
+       */
+      readonly privateKey: SecretRef;
+      readonly privateKeyPath?: never;
     }
   | {
       readonly enabled: false;
       readonly privateKeyPath?: string;
+      readonly privateKey?: SecretRef;
     };
 
-/** Local config or signing adapter. Signing is disabled when omitted. */
-export type SigningConfig = BundleSigningAdapter | LocalSigningConfig;
+/**
+ * Bundle signing with an RSA private key in PEM. `secret("<name>")` is the
+ * shorthand of `{ enabled: true, privateKey: secret("<name>") }`. Without
+ * `signing`, bundles are unsigned and deploy warns; `enabled: false` turns
+ * signing off without the warning.
+ */
+export type SigningConfig = SecretRef | LocalSigningConfig;
 
 /**
  * Extra fingerprint sources.
@@ -517,20 +634,27 @@ export type ConfigInput = {
   platform?: PlatformConfig;
   nativeBuild?: NativeBuildArgs;
   /**
-   * Code signing configuration for bundle verification.
-   * Enables RSA-SHA256 cryptographic signatures for bundle integrity.
-   *
-   * @optional Feature is opt-in.
+   * Signs each bundle with RSA-SHA256, which the app verifies with the
+   * public key it embeds. `secret("bundle-signing-key")` reads the RSA
+   * private key in PEM from the config's `secrets` adapter; the object
+   * forms take it from a secret (`privateKey`) or a file
+   * (`privateKeyPath`). Without `signing`, bundles are unsigned and deploy
+   * warns; `{ enabled: false }` turns signing off without the warning.
    *
    * @example
    * ```ts
-   * signing: {
-   *   enabled: true,
-   *   privateKeyPath: './keys/private-key.pem',
-   * }
+   * signing: secret("bundle-signing-key"),
    * ```
    */
   signing?: SigningConfig;
+  /**
+   * Where the CLI reads the secrets the config names with `secret("<name>")`,
+   * after the environment, and stores the keys it issues. It is the only
+   * store: nothing is kept on this machine under it.
+   *
+   * @default localSecrets()
+   */
+  secrets?: SecretsAdapter;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
   /** Where the CLI uploads bundles: the same adapter as the server's `storage`. */
   storage: StorageAdapter;
@@ -551,6 +675,5 @@ export type ConfigInput = {
 export interface NativeBuildOptions {
   outputPath?: string;
   interactive: boolean;
-  message?: string;
   scheme?: string;
 }

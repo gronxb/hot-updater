@@ -13,6 +13,8 @@ Use the console for:
 - Advanced immutable artifact inspection
 - Quick access to git history for updates
 - [Remote Config](#remote-config) parameters, conditions, and versions
+- [Native builds](/docs/guides/native-build#native-builds-in-the-console):
+  tracked builds, their downloads, and the OTAs that patch from each one
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
@@ -28,10 +30,10 @@ Console configuration does not change bundle delivery settings or artifacts.
 Set console options in `hot-updater.config.ts`, along with its `storage`,
 `database`, and `plugins`:
 
-| Option           | Description                                              | Default |
-| ---------------- | -------------------------------------------------------- | ------- |
-| `console.gitUrl` | Enables commit shortcuts by linking to git commit hashes | -       |
-| `console.port`   | Sets the console server port                             | `1422`  |
+| Option                      | Description                                                                                       | Default |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ------- |
+| `console.gitUrl`            | Enables commit shortcuts by linking to git commit hashes                                          | -       |
+| `console.port`              | Sets the console server port                                                                      | `1422`  |
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -66,16 +68,36 @@ The Bundles list and its detail sheet show an **ID** that matches
 [`hotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
 
-Start the local console:
+Start the local console, then open the link it prints:
 
 ```package-install
 npx hot-updater console
 ```
 
+The link carries a session made for that run, such as
+`http://localhost:1422/?hot-updater-session=...`. Opening it once gives the
+browser a cookie for the run; the console answers no other browser or
+process.
+
+When the database has not run a migration its schema or a configured plugin
+needs, such as after an upgrade or after adding a plugin to `plugins`, the
+Console shows a migration notice instead of its pages, with the settings the
+migration writes, and points to
+[`npx hot-updater doctor`](/docs/guides/doctor#check-the-database-schema).
+Run it where `hot-updater.config.ts` names the database: it names the command
+that migrates it. Run that command, then select **Check again**. For a
+database that a newer Hot Updater migrated, or one Hot Updater can't migrate in
+place, doctor explains what it needs instead.
+
 ## Security model
 
 The CLI Console binds to loopback and loads the configured database and storage
-adapters on its server. With a direct database adapter, it does not call the Hot
+adapters on its server. Each run makes a new session that only the link it
+prints carries, as an HttpOnly, `SameSite=Strict` cookie once opened. Every
+page and server function needs that session, and the console refuses a
+request whose `Host` is not `localhost`, `127.0.0.1`, or `[::1]` on its port,
+so a site that points its name at your machine reaches nothing, and changes
+sent from another origin. With a direct database adapter, it does not call the Hot
 Updater HTTP handlers at all.
 
 When the configured database is `standaloneRepository`, point its `baseUrl` at
@@ -132,8 +154,9 @@ the Bundle and review its policy before retrying; do not remove the revision
 check just to make a retry succeed.
 
 For existing Catalog projection problems, run
-[`doctor`](/docs/guides/doctor#check-release-catalogs), and `doctor --fix` to
-rebuild the stale catalogs it reports.
+[`doctor`](/docs/guides/doctor#check-release-catalogs). A stale catalog is
+recompiled by the next release change in its scope, such as a deploy or
+`bundle update`.
 
 ### Advanced artifact diagnostics
 

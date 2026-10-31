@@ -21,7 +21,8 @@ export const hotUpdater = HotUpdater.init({
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
-  onNotifyAppReady: (result) => { // [!code ++:13]
+  onNotifyAppReady: (result) => {
+    // [!code ++:13]
     switch (result.status) {
       case "UNCHANGED":
         console.log("No applied or recovered transition to report");
@@ -69,13 +70,13 @@ notifyAppReady(): NotifyAppReadyResult
 
 The package exports `NotifyAppReadyResult` for your own callback types.
 
-| Field or status | Meaning |
-| --- | --- |
-| `UNCHANGED` | No qualifying applied or recovered OTA transition is available. This variant has no transition IDs. |
-| `UPDATE_APPLIED` | A pending OTA transition became active. |
-| `RECOVERED` | Native crash recovery restored another Bundle. |
-| `fromBundleId` | The previous artifact identity; for recovery, the failed artifact. |
-| `toBundleId` | The artifact identity now in use, including the native build's identifier for a built-in Bundle. |
+| Field or status                | Meaning                                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `UNCHANGED`                    | No qualifying applied or recovered OTA transition is available. This variant has no transition IDs. |
+| `UPDATE_APPLIED`               | A pending OTA transition became active.                                                             |
+| `RECOVERED`                    | Native crash recovery restored another Bundle.                                                      |
+| `fromBundleId`                 | The previous artifact identity; for recovery, the failed artifact.                                  |
+| `toBundleId`                   | The artifact identity now in use, including the native build's identifier for a built-in Bundle.    |
 | `fromReleaseId`, `toReleaseId` | Optional Release selection IDs. A built-in or retained local Bundle can have no associated Release. |
 
 The result describes the launch of the current process. A Bundle downloaded

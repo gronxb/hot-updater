@@ -65,4 +65,28 @@ describe("createS3Storage", () => {
     ).rejects.toThrow('Bucket name mismatch: expected "updates"');
     expect(getDownloadUrl).toHaveBeenCalledOnce();
   });
+
+  it("signs with access keys whose fields are lazy, read once on first use", async () => {
+    const accessKeyId = vi.fn(async () => "lazy-access-key-id");
+    const secretAccessKey = vi.fn(async () => "lazy-secret-access-key");
+    const storage = createS3Storage(identity, {
+      ...options,
+      credentials: { accessKeyId, secretAccessKey },
+    });
+    expect(accessKeyId).not.toHaveBeenCalled();
+
+    const urls = await Promise.all(
+      ["a.zip", "b.zip"].map((key) =>
+        storage.getDownloadUrl({ storageUri: `test://updates/${key}` }),
+      ),
+    );
+
+    for (const { url } of urls) {
+      expect(new URL(url).searchParams.get("X-Amz-Credential")).toMatch(
+        /^lazy-access-key-id\//,
+      );
+    }
+    expect(accessKeyId).toHaveBeenCalledTimes(1);
+    expect(secretAccessKey).toHaveBeenCalledTimes(1);
+  });
 });

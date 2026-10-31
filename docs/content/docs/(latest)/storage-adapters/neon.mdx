@@ -31,7 +31,9 @@ neon env pull --file .env.hotupdater -s object-storage,postgres
 
 The command writes `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` for the bucket, and `DATABASE_URL`
-for the branch's database.
+for the branch's database. `secret()` in the config reads the credentials
+and `DATABASE_URL` from that file; copy the endpoint and region into the
+config.
 
 ## Configuration
 
@@ -60,31 +62,26 @@ Neon accepts a signature for any region.
 so one package covers both the bundles and their metadata:
 
 ```typescript title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
-
 import { bare } from "@hot-updater/bare";
 import { neonStorage, postgres } from "@hot-updater/neon"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets, secret } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
   updateStrategy: "appVersion",
+  secrets: localSecrets(),
   storage: neonStorage({ // [!code ++]
-    endpoint: process.env.AWS_ENDPOINT_URL_S3!, // [!code ++]
+    endpoint: "https://br-xxx.storage.c-5.us-east-2.aws.neon.tech", // [!code ++]
     bucketName: "hot-updater-bundles", // [!code ++]
     credentials: { // [!code ++]
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+      accessKeyId: secret("AWS_ACCESS_KEY_ID"), // [!code ++]
+      secretAccessKey: secret("AWS_SECRET_ACCESS_KEY"), // [!code ++]
     }, // [!code ++]
-    region: process.env.AWS_REGION, // [!code ++]
+    region: "us-east-2", // [!code ++]
   }), // [!code ++]
   database: postgres({ // [!code ++]
-    connectionString: process.env.DATABASE_URL!, // [!code ++]
+    connectionString: secret("DATABASE_URL"), // [!code ++]
   }), // [!code ++]
   plugins: [apiKeys(), insights(), remoteConfig()],
 });

@@ -132,6 +132,11 @@ async function restoreDefaultChannel() {
 - If a runtime channel switch is already active, `checkForUpdate({ channel: "..." })`
   cannot move directly to a different runtime channel. Call
   `hotUpdater.resetChannel()` before starting another switch.
+- When the switched channel holds nothing for the build any more, as after
+  `hot-updater channel delete`, a check without `channel` returns a forced
+  rollback to the built-in bundle (`status: "ROLLBACK"`, `transitionKind:
+  "USE_BUILTIN"`). Its `updateBundle()` also clears the switch, as
+  `resetChannel()` does, so the next check reads the default channel.
 - `hotUpdater.resetChannel()` clears downloaded OTA state even on the default
   channel. After reloading, the app runs its built-in bundle. Guard with
   `hotUpdater.isChannelSwitched()` if the action should only leave an active
@@ -142,6 +147,10 @@ async function restoreDefaultChannel() {
   the embedded default channel, rejects before requesting a catalog. Call
   `hotUpdater.resetChannel()` and reload before checking another channel.
 </Callout>
+
+To give testers a pull request's bundle without code in the app, build the
+app on the pull request's own channel instead; see
+[Pull Request Previews](/docs/guides/pull-request-previews).
 
 ## Related APIs
 

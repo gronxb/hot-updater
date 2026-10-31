@@ -4,3 +4,4 @@
 dist
 .source
 src/pages.gen.ts
+.vercel

@@ -22,11 +22,10 @@ configuration below. Managed setup applies the migration for you.
 
 The settings below connect to an initialized database; they do not create its
 tables or RPC function, and `hot-updater db migrate` does not run for
-Supabase. To prepare a project yourself, copy
-`0001_hot-updater_1.0.0.sql` from the installed
-`@hot-updater/supabase` package's `supabase/migrations` directory into your
-project's `supabase/migrations` directory, then apply it with the Supabase CLI
-linked to that project:
+Supabase. To prepare a project yourself, copy the numbered migration files
+from the installed `@hot-updater/supabase` package's `supabase/migrations`
+directory into your project's `supabase/migrations` directory, then apply them
+with the Supabase CLI linked to that project:
 
 ```bash
 npx supabase db push
@@ -96,7 +95,7 @@ These CLI examples load the `HOT_UPDATER_SUPABASE_*` variables written to
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { existsSync } from "node:fs";
 import { supabaseDatabase } from "@hot-updater/supabase"; // [!code ++]
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -104,9 +103,10 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: supabaseDatabase({ // [!code ++]
+  database: supabaseDatabase({
+    // [!code ++]
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, // [!code ++]
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"), // [!code ++]
   }), // [!code ++]
 });
 ```
@@ -123,7 +123,8 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { supabaseDatabase } from "@hot-updater/supabase/edge"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
-  database: supabaseDatabase({ // [!code ++]
+  database: supabaseDatabase({
+    // [!code ++]
     supabaseUrl: Deno.env.get("SUPABASE_URL")!, // [!code ++]
     supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, // [!code ++]
   }), // [!code ++]
@@ -148,7 +149,7 @@ Function runs:
 import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -159,12 +160,12 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"

@@ -1,9 +1,12 @@
 import {
   DatabaseBundleNotFoundError,
+  DatabaseConstraintError,
   ReleaseCatalogMutationError,
   ReleaseManagementError,
   type Deployment,
   type KeysetInput,
+  type NativeBuildRegistration,
+  type NativeBuildScope,
   type ReleaseFilter,
   type ReleasePolicyPatch,
   DatabaseRowReferencedError,
@@ -11,6 +14,7 @@ import {
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { NativeBuildInputError } from "./core/nativeBuilds";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
@@ -70,6 +74,19 @@ export const answer = async (
     }
     if (error instanceof DatabaseRowReferencedError) {
       return json({ code: "REFERENCED", error: error.message }, 409);
+    }
+    if (
+      error instanceof DatabaseConstraintError &&
+      error.model === "native_builds"
+    ) {
+      return json(
+        {
+          code: "NATIVE_BUILD_EXISTS",
+          error:
+            "A native build with this ID or built-in bundle ID is already registered.",
+        },
+        409,
+      );
     }
     throw error;
   }
@@ -243,6 +260,71 @@ const bundleUpdateOf = (value: unknown, bundleId: string): BundleUpdate => {
   }
   return update as BundleUpdate;
 };
+
+const NATIVE_BUILD_ARTIFACT_KINDS = new Set(["apk", "aab", "ipa", "app"]);
+
+/** A native build's scope: `fingerprintHash` or `appVersion`, never both. */
+const nativeBuildScopeOf = (url: URL): NativeBuildScope => {
+  const params = url.searchParams;
+  const platform = platformOf(url);
+  const channel = params.get("channel");
+  const fingerprintHash = params.get("fingerprintHash");
+  const appVersion = params.get("appVersion");
+  if (
+    platform === undefined ||
+    !isText(channel) ||
+    (fingerprintHash === null) === (appVersion === null) ||
+    fingerprintHash === "" ||
+    appVersion === ""
+  ) {
+    throw new HandlerBadRequestError(
+      "A native build lookup needs platform, channel, and fingerprintHash or appVersion.",
+    );
+  }
+  return fingerprintHash !== null
+    ? { platform, channel, fingerprintHash, appVersion: null }
+    : { platform, channel, fingerprintHash: null, appVersion: appVersion! };
+};
+
+/** A native build or scope core refuses: a bad request. */
+const refusingInvalid = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof NativeBuildInputError) {
+      throw new HandlerBadRequestError(error.message);
+    }
+    throw error;
+  }
+};
+
+const isNativeBuildRegistration = (
+  value: unknown,
+): value is NativeBuildRegistration =>
+  isRecord(value) &&
+  isText(value.id) &&
+  isText(value.minBundleId) &&
+  typeof value.platform === "string" &&
+  isPlatform(value.platform) &&
+  isText(value.channel) &&
+  isTextOrNull(value.fingerprintHash) &&
+  isTextOrNull(value.appVersion) &&
+  (value.fingerprintHash === null) !== (value.appVersion === null) &&
+  isTextOrNull(value.gitCommitHash) &&
+  isTextOrNull(value.buildKey) &&
+  (value.buildNumber === undefined || isTextOrNull(value.buildNumber)) &&
+  isRecord(value.artifact) &&
+  typeof value.artifact.kind === "string" &&
+  NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&
+  isText(value.artifact.storageUri) &&
+  Number.isSafeInteger(value.artifact.byteSize) &&
+  (value.artifact.byteSize as number) >= 0 &&
+  isRecord(value.embeddedBundle) &&
+  isText(value.embeddedBundle.manifestStorageUri) &&
+  isText(value.embeddedBundle.manifestFileHash) &&
+  isText(value.embeddedBundle.assetBaseStorageUri) &&
+  (value.embeddedBundle.metadata === undefined ||
+    isRecord(value.embeddedBundle.metadata));
 
 const scopeKeyOf = (params: Record<string, string>) =>
   decodeMaybe(requireRouteParam(params, "scopeKey")) ?? "";
@@ -463,6 +545,91 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     }),
   ),
 
+  registerNativeBuild: onCore(async (core, request) => {
+    const input = await body(request);
+    if (!isNativeBuildRegistration(input)) {
+      throw new HandlerBadRequestError("Invalid native build");
+    }
+    return json(
+      { data: await refusingInvalid(() => core.registerNativeBuild(input)) },
+      201,
+    );
+  }),
+
+  // A scope without a build answers 200 with null data, so a 404 means a
+  // server without these routes.
+  // With `buildKey`, the newest build of the scope with that native build key.
+  findNativeBuild: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const scope = nativeBuildScopeOf(url);
+    const buildKey = url.searchParams.get("buildKey");
+    return json({
+      data: await refusingInvalid(() =>
+        buildKey === null
+          ? core.findNativeBuild(scope)
+          : core.findNativeBuild(scope, { buildKey }),
+      ),
+    });
+  }),
+
+  // An unknown ID answers 200 with null data, as a scope without a build
+  // does, so a 404 means a server without the route.
+  getNativeBuild: onCore(async (core, _request, params) =>
+    json({
+      data: await core.getNativeBuild(requireRouteParam(params, "id")),
+    }),
+  ),
+
+  listNativeBuilds: onCore(async (core, request) => {
+    const url = new URL(request.url);
+    const input = keyset(url);
+    const channelId = url.searchParams.get("channelId");
+    return page(
+      await core.listNativeBuilds({
+        ...input,
+        ...(channelId === null ? {} : { channelId }),
+      }),
+      input,
+      ({ id }) => id,
+    );
+  }),
+
+  // An unknown ID answers 200 with the not_found result, so a 404 means a
+  // server without the route.
+  // An unknown ID answers 200 with null data, so a 404 means a server
+  // without the route.
+  recordNativeBuildSubmission: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (
+      !isRecord(input) ||
+      (input.destination !== "testflight" &&
+        input.destination !== "play-internal") ||
+      !isText(input.version)
+    ) {
+      throw new HandlerBadRequestError(
+        "A native build submission needs destination (testflight or play-internal) and version.",
+      );
+    }
+    const submission = {
+      destination: input.destination,
+      version: input.version,
+    } as const;
+    return json({
+      data: await refusingInvalid(() =>
+        core.recordNativeBuildSubmission(
+          requireRouteParam(params, "id"),
+          submission,
+        ),
+      ),
+    });
+  }),
+
+  deleteNativeBuild: onCore(async (core, _request, params) =>
+    json({
+      data: await core.deleteNativeBuild(requireRouteParam(params, "id")),
+    }),
+  ),
+
   deleteBundles: onCore(async (core, request) => {
     const { ids } = await body(request);
     if (
@@ -531,5 +698,19 @@ export const ADMIN_ROUTES: readonly {
     method: "GET",
     path: "/base-candidates/:candidateKey",
     handler: "findBaseCandidates",
+  },
+  { method: "POST", path: "/native-builds", handler: "registerNativeBuild" },
+  { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
+  { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
+  { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
+  {
+    method: "POST",
+    path: "/native-builds/:id/submission",
+    handler: "recordNativeBuildSubmission",
+  },
+  {
+    method: "DELETE",
+    path: "/native-builds/:id",
+    handler: "deleteNativeBuild",
   },
 ];

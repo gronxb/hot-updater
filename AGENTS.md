@@ -36,7 +36,9 @@
 - Keep CLI output concise and action-oriented. Prefer the minimum useful state, target, and result over explanatory context or next-step tutorials.
 - Keep short code snippets or commands when they are directly actionable, such as config blocks, generated SQL previews, or exact commands to run next.
 - Use color semantically: green for success/enabled, red for disabled/errors, yellow for ids/warnings, cyan for platforms/titles, blue for channels, magenta for versions, and dim for paths/secondary text.
-- Use `ui.block`, `ui.kv`, and `ui.line` for human-readable summaries; use `ui.table` for list output, including `hot-updater bundle list`, with a Wrangler-like bordered table.
+- Use `ui.block`, `ui.kv`, and `ui.line` for human-readable summaries; use `ui.table` for list output, including `hot-updater bundle list`, with a Wrangler-like bordered table. `ui.block` pads its `ui.kv` labels to the widest one plus two spaces, without colons or indent; print it with `p.log.step` (a result with nothing to do), `p.log.success`, or `p.log.warn`, whose symbol marks its heading.
+- Say what is wrong and one next step, usually in 1 to 3 lines: no sentence that restates the line before it, explains internals, or applies only rarely. One idea per line, paths through `ui.fitPath` (`~`, relative to the project, a long middle shortened to `…`), commands bare and highlighted through `ui.command` or `ui.withCommand`, never in backticks, and text `--json` also prints, such as doctor issues, through `ui.prose`. `p` wraps prose at spaces, around 76 columns by default, for readability (`fitText` in cli-tools); a command, a URL, or a path stays whole on its own line, however long, because people copy it, so never break one with ` \`.
+- Print a next step only when the user has to act; a result with nothing to do states the result and stops. Rare alternatives such as `--replace` belong in `--help` and the docs.
 - Avoid emojis, long notes, and verbose fallback explanations in command output unless the text is required to prevent a destructive or irreversible action.
 - `deploy`, `console`, and `init` are currently excluded from this CLI output migration unless explicitly requested.
 
@@ -112,4 +114,5 @@ Patch releases of one minor (such as 1.0.x) may change native code, the server, 
 ## Security & Configuration
 
 - Do not commit secrets. Use `.env.hotupdater` for provider credentials (Supabase, Cloudflare, AWS, Firebase, Vercel, Azure, etc.).
+- Every credential read, write, and "already stored" check goes through the config's `secrets` adapter; a local copy is only a fallback. `localSecrets()` is one machine's; a team store shares every credential with the team.
 - Keep tokens local; review `.gitignore` and provider guides in `README.md`/site docs.

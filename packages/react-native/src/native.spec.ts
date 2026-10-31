@@ -26,6 +26,7 @@ const nativeModuleMock = vi.hoisted(() => {
     reload: vi.fn(),
     reloadProcess: vi.fn(),
     resetChannel: vi.fn(),
+    isReleaseSelectionCurrent: vi.fn<(guard: unknown) => boolean>(() => true),
     setCohort: vi.fn(),
     setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
     setBundleURL: vi.fn(),
@@ -1063,5 +1064,61 @@ describe("takeNativeUpdateEvents", () => {
     const native = await import("./native");
 
     expect(native.takeNativeUpdateEvents()).toBeNull();
+  });
+});
+
+describe("resetChannelIfSelectionCurrent", () => {
+  const guard = {
+    catalogId: "catalog-1",
+    catalogHash: "sha256:a",
+    channel: "pr-2",
+    generation: 3,
+    scopeKey: "v1:app-version:ios:cHItMg",
+    selectionContextHash: "context",
+  };
+
+  beforeEach(() => {
+    vi.resetModules();
+    nativeModuleMock.resetChannel.mockReset();
+    nativeModuleMock.isReleaseSelectionCurrent.mockReset();
+    Reflect.deleteProperty(nativeModuleMock, "resetChannelIfSelectionCurrent");
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(nativeModuleMock, "resetChannelIfSelectionCurrent");
+  });
+
+  it("lets native check the selection and reset in one step", async () => {
+    const guarded = vi.fn(async () => false);
+    Reflect.set(nativeModuleMock, "resetChannelIfSelectionCurrent", guarded);
+    const native = await import("./native");
+
+    await expect(native.resetChannelIfSelectionCurrent(guard)).resolves.toBe(
+      false,
+    );
+    expect(guarded).toHaveBeenCalledWith(guard);
+    // The two-step path never runs next to the native one.
+    expect(nativeModuleMock.isReleaseSelectionCurrent).not.toHaveBeenCalled();
+    expect(nativeModuleMock.resetChannel).not.toHaveBeenCalled();
+  });
+
+  it("checks, then resets, on native from an earlier SDK", async () => {
+    nativeModuleMock.isReleaseSelectionCurrent.mockReturnValueOnce(false);
+    const native = await import("./native");
+
+    await expect(native.resetChannelIfSelectionCurrent(guard)).resolves.toBe(
+      false,
+    );
+    expect(nativeModuleMock.resetChannel).not.toHaveBeenCalled();
+
+    nativeModuleMock.isReleaseSelectionCurrent.mockReturnValueOnce(true);
+    nativeModuleMock.resetChannel.mockResolvedValueOnce(true as never);
+    await expect(native.resetChannelIfSelectionCurrent(guard)).resolves.toBe(
+      true,
+    );
+    expect(nativeModuleMock.isReleaseSelectionCurrent).toHaveBeenCalledWith(
+      guard,
+    );
+    expect(nativeModuleMock.resetChannel).toHaveBeenCalledTimes(1);
   });
 });

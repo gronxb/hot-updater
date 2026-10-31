@@ -24,6 +24,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
+import { isBuiltInBundle } from "./nativeBuilds";
 import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
 import {
   changeRelease,
@@ -268,6 +269,14 @@ export const createCoreOperations = (
       const row = await db.findOne("bundles", { id: deployment.bundleId });
       if (row === null) {
         throw new DatabaseBundleNotFoundError(deployment.bundleId);
+      }
+      // A built-in bundle's manifest holds only its JavaScript bundle file,
+      // so a release of it would drop every asset the app ships.
+      if (await isBuiltInBundle(db, deployment.bundleId)) {
+        throw new ReleaseManagementError(
+          "TARGET_RELEASE_INVALID",
+          `Bundle "${deployment.bundleId}" is a native build's built-in bundle, which no release publishes.`,
+        );
       }
       platforms.set(deployment.bundleId, toBundleRow(row).platform);
     }
@@ -530,7 +539,10 @@ export const createCoreOperations = (
         const { patches, ...fields } = update;
         const next = { ...rowToBundle(toBundleRow(current)), ...fields, id };
         const { id: _id, ...set } = bundleToRow(next);
-        updateBundle(tx, current, set);
+        // Only a platform change moves totals, and a built-in bundle has none.
+        const counted =
+          set.platform === current.platform || !(await isBuiltInBundle(tx, id));
+        updateBundle(tx, current, set, { counted });
         if (patches !== undefined) {
           await replaceBundlePatches(
             tx,
@@ -545,7 +557,12 @@ export const createCoreOperations = (
         await db.transaction(async (tx) => {
           for (const id of new Set(ids)) {
             const current = await tx.findOne("bundles", { id });
-            if (current !== null) await deleteBundle(tx, current);
+            if (current === null) continue;
+            // A native build's built-in bundle stays as long as its build.
+            if (await isBuiltInBundle(tx, id)) {
+              throw new DatabaseRowReferencedError();
+            }
+            await deleteBundle(tx, current);
           }
         });
       } catch (error) {

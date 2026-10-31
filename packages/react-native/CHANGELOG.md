@@ -1,5 +1,118 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.12
+  - @hot-updater/plugin-insights@1.2.0-rc.12
+  - @hot-updater/plugin-remote-config@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.11
+  - @hot-updater/plugin-insights@1.2.0-rc.11
+  - @hot-updater/plugin-remote-config@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.10
+  - @hot-updater/plugin-insights@1.2.0-rc.10
+  - @hot-updater/plugin-remote-config@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.9
+  - @hot-updater/plugin-insights@1.2.0-rc.9
+  - @hot-updater/plugin-remote-config@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.8
+  - @hot-updater/plugin-remote-config@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/plugin-insights@1.2.0-rc.7
+  - @hot-updater/plugin-remote-config@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/plugin-insights@1.2.0-rc.6
+  - @hot-updater/plugin-remote-config@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.5
+  - @hot-updater/plugin-remote-config@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/plugin-insights@1.2.0-rc.4
+  - @hot-updater/plugin-remote-config@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/plugin-insights@1.2.0-rc.3
+  - @hot-updater/plugin-remote-config@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/plugin-insights@1.2.0-rc.2
+  - @hot-updater/plugin-remote-config@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/plugin-insights@1.2.0-rc.1
+  - @hot-updater/plugin-remote-config@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- 3462a9a: A store install's first OTA downloads a Hermes patch from the built-in bundle of its registered native build.
+  - `hot-updater deploy` adds the built-in bundle of the newest native build `native-build ios|android` tracked for the deploy's channel, platform, and fingerprint or exact app version to its patch bases, beside the `patch.maxBaseBundles` released ones, in one indexed read. A built-in bundle newer than the deployed bundle, or a self-hosted server without the native build routes, adds none.
+  - With no OTA installed, the iOS and Android runtimes apply a patch whose base is the app's MIN_BUNDLE_ID to a copy of the packaged Hermes file, after checking it against the patch's base file hash. When store processing changed the file, they download the complete file instead, and report `patchFallback`.
+  - The runtimes choose between per-file downloads and `bundle.tar.br` counting only the patches they can apply: a built-in patch counts once the packaged file has been checked against its base.
+
+### Patch Changes
+
+- a47b582: A device switched to a channel that holds nothing for its build any more, as after `hot-updater channel delete`, leaves the switch. The server answers the deleted channel's scope with an empty catalog; a check without `channel` then returns a forced rollback to the built-in bundle whose `updateBundle()` also clears the runtime channel, as `resetChannel()` does, so the next check reads the build's default channel. Native builds of this version reset through a new `resetChannelIfSelectionCurrent` method, which checks the catalog and resets in one step, so a newer catalog accepted meanwhile, such as by a native `HotUpdaterInstance` check, keeps the channel. JavaScript checks for the method and, on native builds of earlier 1.x versions, checks the catalog and then calls `resetChannel`, so the fix also ships over the air. The native `HotUpdaterInstance` checks on iOS and Android follow the same rule.
+- Updated dependencies [ed37acf]
+  - @hot-updater/protocol@1.2.0-rc.0
+  - @hot-updater/plugin-insights@1.2.0-rc.0
+  - @hot-updater/plugin-remote-config@1.2.0-rc.0
+
 ## 1.1.5
 
 ### Patch Changes

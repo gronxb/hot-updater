@@ -96,6 +96,8 @@ const defaultScenarioNames = [
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
+  "store-install-patches-from-built-in",
+  "store-install-built-in-mismatch-downloads",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",
@@ -121,6 +123,7 @@ const defaultScenarioNames = [
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
+  "foreign-signing-key-refused",
 ] as const;
 const standaloneDatabaseProfileSources = [
   "examples-server/elysia-drizzle-libsql/src/db.ts",
@@ -293,7 +296,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(35);
+    expect(new Set(listScenarioNames()).size).toBe(38);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {
@@ -303,6 +306,10 @@ describe("E2E scenario contract", () => {
       "headless-launch-keeps-staged-bundle",
       "force-update-auto-reload",
       "skipped-force-update-propagates",
+      // A host app embeds React Native's bundle in a framework, not as a
+      // native build `native-build ios|android` tracks.
+      "store-install-patches-from-built-in",
+      "store-install-built-in-mismatch-downloads",
       // The post-crash native check is proved on the example app first; a
       // host's runtime may outlive a fatal of the React Native it embeds.
       "post-content-crash-native-recovery",
@@ -997,12 +1004,33 @@ describe("E2E scenario contract", () => {
         }),
     });
     const buildOutput = ["Release ID", "Bundle ID", "Artifact ID", "Build ID"]
-      .map((label) => `│  ${label}: ${file.id}`)
+      .map((label) => `│  \u001b[2m${label}  \u001b[22m${file.id}`)
       .join("\n");
-    const output = `${buildOutput}\n└  Deployment successful\n    \u001b[2mID:      \u001b[22m \u001b[33m${release!.id}\u001b[39m\n`;
+    // The tail of a deploy's output, as the workspace CLI prints it: the
+    // outro's heading, then its `ID` row, outside the frame.
+    const output = [
+      buildOutput,
+      "│",
+      "◆  Skipped (no compatible base bundles)",
+      "│",
+      "└  Deployment successful",
+      `\u001b[2mID  \u001b[22m\u001b[33m${release!.id}\u001b[39m`,
+      "",
+      "",
+    ].join("\n");
+    // A deploy refused for its signing key, as deploy prints the refusal
+    // (hot-updater's signingRefusal.spec.ts renders it from the CLI).
+    const refused = await fs.readFile(
+      path.join(
+        import.meta.dirname,
+        "control-server/__fixtures__/missing-signing-secret-refusal.txt",
+      ),
+      "utf8",
+    );
 
     expect(release!.id).not.toBe(file.id);
     expect(controller.extractDeployReleaseId(buildOutput)).toBeNull();
+    expect(controller.extractDeployReleaseId(refused)).toBeNull();
     const id = controller.extractDeployReleaseId(output);
     expect(id).toBe(release!.id);
     const deployed = await controller.resolveDeployedRelease(id, "production");

@@ -282,12 +282,12 @@ An adapter over a document store, which is neither SQL nor key-value, reads
 the physical schema through four names from `@hot-updater/plugin-core`, as
 the MongoDB adapter does:
 
-| Name                      | What it gives the adapter                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `rowKey(table, row)`      | A row's primary key, in key-column order: what `get` takes for it, and how the adapter addresses the document     |
-| `findPhysicalIndex(table, name)` | The index a query names, or a `DatabaseSchemaError`                                                        |
-| `findPhysicalColumn(table, name)` | A column and its type, or a `DatabaseSchemaError`                                                         |
-| `DATABASE_VERSION_COLUMN` | `"_v"`, the version every stored row carries, which a guarded write compares and bumps                           |
+| Name                              | What it gives the adapter                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `rowKey(table, row)`              | A row's primary key, in key-column order: what `get` takes for it, and how the adapter addresses the document |
+| `findPhysicalIndex(table, name)`  | The index a query names, or a `DatabaseSchemaError`                                                           |
+| `findPhysicalColumn(table, name)` | A column and its type, or a `DatabaseSchemaError`                                                             |
+| `DATABASE_VERSION_COLUMN`         | `"_v"`, the version every stored row carries, which a guarded write compares and bumps                        |
 
 ### Adapters over an ORM
 
@@ -296,11 +296,11 @@ are, runs core's SQL through `createSqlAdapter` and gives its database a
 migrator from `@hot-updater/plugin-core`, which its `createMigrator` returns:
 
 - `createEngineSqlMigrator({ executor, adapterName, schema, settings,
-  tablePrefix })` when Hot Updater creates the tables: it applies the
+tablePrefix })` when Hot Updater creates the tables: it applies the
   generated SQL schema when a settings row is missing or different, as
   `kyselyAdapter`'s does.
 - `createSettingsMigrator({ executor, adapterName, settings, applyTables,
-  fixups })` when the ORM applies the DDL itself, as Drizzle's and Prisma's
+fixups })` when the ORM applies the DDL itself, as Drizzle's and Prisma's
   do: `fixups` sets what the ORM cannot declare, then it writes the settings
   rows. `applyTables` says how the ORM creates the tables, for the error when
   they are missing.
@@ -317,14 +317,14 @@ the schema fence and forwards the adapter's `dispose`. Add your own `dispose`
 when the factory opens a client. When the adapter has `migrations`, the
 database also carries the migration that `hot-updater db migrate` runs.
 
-| Option                 | Meaning                                                                                                                                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                 |
-| `adapter`              | The `DatabaseAdapter`                                                                                                                                                                            |
-| `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
-| `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
+| Option                 | Meaning                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                                                                                                                                                                                     |
+| `adapter`              | The `DatabaseAdapter`                                                                                                                                                                                                                                                                                                                                              |
+| `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here.                                                                                                                                                                     |
+| `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode.                                                   |
 | `retry`                | Optional. How a transaction that conflicts with another write runs again: `{ attempts?, baseDelayMs?, maxDelayMs?, onRetry? }`, 8 attempts 5 ms apart at first, doubling to at most 250 ms. A store many writers contend on, such as DynamoDB under a burst of events, can take more attempts; `onRetry(kind, attempt)` observes each rerun, such as for a metric. |
-| `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key. By default the migrator reads the engine's keys through the adapter; an adapter whose v0 database kept other settings rows reads every row itself, so the migrator refuses a v0 database, as the MongoDB adapter does. |
+| `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key. By default the migrator reads the engine's keys through the adapter; an adapter whose v0 database kept other settings rows reads every row itself, so the migrator refuses a v0 database, as the MongoDB adapter does.                                                              |
 
 Pass the database to the CLI and the server, with the same plugins. Partial
 configuration:
@@ -460,10 +460,10 @@ directly; without them, as with Supabase, it points to `db generate`.
 `@hot-updater/test-utils` publishes the suites that every official database
 runs. Register all three:
 
-| Suite                                  | Runs                                                                                             | Against                                  |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-adapters/adapter-contract), case by case                   | your adapter, on three test tables       |
-| `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                         | your adapter, on their tables            |
+| Suite                                  | Runs                                                                                                           | Against                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-adapters/adapter-contract), case by case                                 | your adapter, on three test tables       |
+| `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                                       | your adapter, on their tables            |
 | `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and opted-in plugin suites, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 
 The examples expect `TEST_DATABASE_URL` to name an empty PostgreSQL database.
@@ -521,7 +521,7 @@ setupDatabaseAdapterConformanceSuite({
 | `createAdapter` | Returns `{ adapter, cleanup? }` over newly created, empty `tables`, for each case; `cleanup` runs after the case. One case passes `nativePageSize: 2`: fetch at most that many rows per native page. A backend without native pages ignores it. |
 | `maxOps`        | The most ops one write accepts. The suite then checks that `fits` refuses one more op and that nothing is written. Omit it when the backend has no limit.                                                                                       |
 | `writers`       | Concurrent writers in the contention cases (default 32)                                                                                                                                                                                         |
-| `retention`     | `"prune"` (default) checks the adapter's `prune`. `"ttl"` checks that `prune` is absent and expired rows remain readable until the backend deletes them. Test the provider's TTL settings and expiry fields separately. |
+| `retention`     | `"prune"` (default) checks the adapter's `prune`. `"ttl"` checks that `prune` is absent and expired rows remain readable until the backend deletes them. Test the provider's TTL settings and expiry fields separately.                         |
 
 The cases cover value round-trips, point reads in key order, each op's guard,
 all-or-nothing writes with a failure at every position, unique indexes and the
@@ -583,8 +583,8 @@ The suite runs core and the server's `insights()`, `apiKeys()`, and
 `meterReads({ name, adapter: verifyAdapter(adapter) })`, so every adapter call
 is checked and measured, without the schema fence. `now` is the plugins'
 clock. It loads `@hot-updater/server`, which your project installs for the
-tests. The suite seeds Bundles, Releases, Channels, an API key, Insights events,
-and Remote Config versions,
+tests. The suite seeds Bundles, Releases, Channels, an API key,
+Insights events, and Remote Config versions,
 caps native pages at two rows, and checks each API's reads exactly, at the
 adapter and at the engine. For example, the update check is one point read of
 a catalog row, and artifact resolution is one batch read of two Bundles plus
@@ -592,7 +592,7 @@ one patch read.
 
 | `createAdapter` result | Meaning                                                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adapter`              | Your adapter over newly created, empty `tables`: core's, those of `insights()`, `apiKeys()`, and `remoteConfig()`, and `SETTINGS_TABLE`, where retention passes keep their lease                       |
+| `adapter`              | Your adapter over newly created, empty `tables`: core's, those of `insights()`, `apiKeys()`, and `remoteConfig()`, and `SETTINGS_TABLE`, where retention passes keep their lease                   |
 | `cleanup`              | Runs after the suite                                                                                                                                                                                          |
 | `examined`             | SQL backends: the rows the database examined. `postgresRowsExamined(query)` and `mysqlRowsExamined(query)` explain each read the wrapped executor runs, so a read that scans more rows than it returns fails. |
 | `indexCopies`          | `true` when index reads return row copies without `_v`, as `createKvAdapter` does; a transaction then reads the rows it guards again                                                                          |
@@ -655,14 +655,14 @@ setupDatabaseTestSuite({
 });
 ```
 
-| Option                | Meaning                                                                                                                                                                                                        |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `migrate`             | Creates the tables and settings rows, once, before `createDatabase`                                                                                                                                            |
-| `createDatabase`      | Your database, as your factory returns it                                                                                                                                                                      |
-| `reset`               | Empties every data table before each test and keeps the settings rows                                                                                                                                          |
-| `dispose`             | Closes the database after the suite                                                                                                                                                                            |
-| `createHttpClient`    | Serves the handlers of `createHotUpdater({ database, storage, plugins, clientAccess: "public" })` with the plugins whose suites `plugins` lists: `startHttpTestServer` on loopback in Node, or `createHandlerHttpTestClient` in a Workers pool |
-| `plugins`             | Optional. Server plugins' suites to run too, such as `insightsTestSuite()` from `@hot-updater/test-utils`: the Insights routes, and with `createModel` its report contract in process |
+| Option             | Meaning                                                                                                                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrate`          | Creates the tables and settings rows, once, before `createDatabase`                                                                                                                                                                            |
+| `createDatabase`   | Your database, as your factory returns it                                                                                                                                                                                                      |
+| `reset`            | Empties every data table before each test and keeps the settings rows                                                                                                                                                                          |
+| `dispose`          | Closes the database after the suite                                                                                                                                                                                                            |
+| `createHttpClient` | Serves the handlers of `createHotUpdater({ database, storage, plugins, clientAccess: "public" })` with the plugins whose suites `plugins` lists: `startHttpTestServer` on loopback in Node, or `createHandlerHttpTestClient` in a Workers pool |
+| `plugins`          | Optional. Server plugins' suites to run too, such as `insightsTestSuite()` from `@hot-updater/test-utils`: the Insights routes, and with `createModel` its report contract in process                                                          |
 
 The suite sends real requests to the admin API and the client routes. It runs
 core's operations, the Bundle admin API, the Release Catalog contract, and each

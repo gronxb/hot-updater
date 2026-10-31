@@ -3,11 +3,21 @@ import path from "path";
 
 import {
   type ConfigResponse,
+  credentialPutCommand,
   getBundleSigningPublicKey,
   getCwd,
+  getPackageManager,
+  INVALID_SIGNING_NEXT_STEP,
+  ISSUE_SIGNING_KEY_COMMAND,
   loadConfig,
+  LOCAL_SECRETS_NAME,
   p,
+  PUT_SIGNING_KEY_COMMAND,
+  readBundleSigningState,
   readPackageUp,
+  nonInteractiveReason,
+  UNSIGNED_BUNDLES_NEXT_STEP,
+  UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
@@ -20,7 +30,7 @@ import {
 } from "verkit";
 
 import { packageJsonData } from "../packageJson";
-import { ui } from "../utils/cli-ui";
+import { type MaybeRow, ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
 import type { FingerprintResult } from "../utils/fingerprint/common";
@@ -33,18 +43,40 @@ import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
 import { findMissingClientPlugins } from "./doctor/clientPlugins";
 import { createDoctorContext, type DoctorContext } from "./doctor/context";
 import {
+  checkDeploySecrets,
+  deploySecretsAdvice,
+  type DeploySecretsStatus,
+  deploySecretsInitCommand,
+} from "./doctor/deploySecrets";
+import {
   checkFingerprintJson,
   checkUnusedFingerprintJson,
 } from "./doctor/fingerprint";
-import { applyDoctorFixes } from "./doctor/fix";
 import {
-  type ArtifactStatus,
-  type DoctorFix,
-  fixesWroteNativeFiles,
+  checkGooglePlay,
+  formatGooglePlayStatus,
+  type GooglePlayStatus,
+} from "./doctor/googlePlay";
+import { humanText, unusedSecretsText } from "./doctor/humanText";
+import {
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
+  type SchemaStatus,
 } from "./doctor/issues";
+import {
+  findScaffoldDeployments,
+  recordedBaseUrls,
+} from "./doctor/scaffoldRecords";
+import { checkSchema } from "./doctor/schema";
+import {
+  checkSecrets,
+  distinctSecretFailures,
+  listNames,
+  missingRequiredSecrets,
+  type SecretsStatus,
+  uncheckedSecretNames,
+} from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
   hasVerificationOptions,
@@ -58,6 +90,7 @@ import {
   getRequiredUpdateTarget,
   type InfrastructureStatus,
 } from "./doctorInfrastructure";
+import { INIT_PROVIDER_PACKAGES } from "./initProviders";
 
 export {
   checkInfrastructureStatus,
@@ -103,17 +136,32 @@ interface LocalFingerprint {
 
 interface DoctorDetails {
   verification?: DoctorVerification;
-  /** What `--fix` repaired, with every file it wrote; checks ran again after it. */
-  fixes?: DoctorFix[];
   // Version related
   hotUpdaterVersion?: string;
   versionMismatches?: VersionMismatch[];
-  infrastructure?: InfrastructureStatus;
+  infrastructure?: InfrastructureStatus & {
+    /** The scaffold deployment record the server's URL came from, without --server-base-url. */
+    recordedIn?: string;
+  };
+  /** The server's version was not checked: no URL was given or recorded. */
+  infrastructureUnchecked?: {
+    message: string;
+    resolution: string;
+    commands: string[];
+  };
   native?: NativeStatus;
+  /** The schema the server's fence checks, when it does not pass. */
+  schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
-  /** The server's artifact records against the releases that use them. */
-  artifacts?: ArtifactStatus;
+  /** No `signing`, or a value deploy refuses. */
+  signing?: SigningStatus;
+  /** Where each build credential's `secret()` is read from. */
+  secrets?: SecretsStatus;
+  /** Where each name the config's adapter `secret()`s read comes from. */
+  deploySecrets?: DeploySecretsStatus;
+  /** The Play service account's access to each Android package. */
+  googlePlay?: GooglePlayStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -122,6 +170,15 @@ interface DoctorDetails {
   // Future extensibility - can add more checks here
   // e.g., configurationIssues?: ConfigIssue[];
   // e.g., compatibilityWarnings?: Warning[];
+}
+
+/** What doctor says about `signing`, as deploy says it, with the next step. */
+interface SigningStatus {
+  readonly type: "error" | "warning";
+  readonly message: string;
+  /** The lead of the next-step line, before `command`. */
+  readonly next: string;
+  readonly command: string;
 }
 
 interface DoctorResult {
@@ -134,14 +191,11 @@ interface DoctorOptions extends VerificationOptions {
   cwd?: string;
   serverBaseUrl?: string;
   fetch?: typeof fetch;
-  /** Runs every repair doctor can do itself, then checks again. */
-  fix?: boolean;
 }
 
 interface HandleDoctorOptions extends VerificationOptions {
   serverBaseUrl?: string;
   json?: boolean;
-  fix?: boolean;
 }
 
 const FINGERPRINT_RECOVERY_COMMANDS = [
@@ -335,7 +389,6 @@ const checkIosNativeStatus = async ({
       message: "iOS Info.plist files were not found.",
       resolution:
         "Check platform.ios.infoPlistPaths in hot-updater.config.ts or run iOS prebuild first.",
-      fixability: "auto",
       paths: configuredPaths,
     });
   }
@@ -356,7 +409,6 @@ const checkIosNativeStatus = async ({
       message: "iOS AppDelegate or SceneDelegate file was not found.",
       resolution:
         "Add HotUpdater.bundleURL() to the app's iOS bundleURL provider.",
-      fixability: "auto",
     });
   } else {
     const matchedFile = await findFirstMatchingFile({
@@ -378,7 +430,6 @@ const checkIosNativeStatus = async ({
           "iOS AppDelegate/SceneDelegate does not use HotUpdater.bundleURL().",
         resolution:
           "Replace the release JS bundle URL provider with HotUpdater.bundleURL().",
-        fixability: "auto",
         paths: appDelegateFiles,
       });
     }
@@ -428,7 +479,6 @@ const checkAndroidNativeStatus = async ({
       message: "Android native config files were not found.",
       resolution:
         "Check platform.android.androidManifestPaths in hot-updater.config.ts or run Android prebuild first.",
-      fixability: "auto",
       paths: configuredManifestPaths,
     });
   }
@@ -449,7 +499,6 @@ const checkAndroidNativeStatus = async ({
       message: "Android MainApplication file was not found.",
       resolution:
         "Add HotUpdater.getJSBundleFile(applicationContext) to the Android host configuration.",
-      fixability: "auto",
     });
   } else {
     const matchedFile = await findFirstMatchingFile({
@@ -470,7 +519,6 @@ const checkAndroidNativeStatus = async ({
           "Android MainApplication does not use HotUpdater.getJSBundleFile().",
         resolution:
           "Pass HotUpdater.getJSBundleFile(applicationContext) to React Native's JS bundle provider.",
-        fixability: "auto",
         paths: mainApplicationFiles,
       });
     }
@@ -497,7 +545,6 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
       code: issue.code,
       message: issue.message,
       resolution: issue.resolution,
-      fixability: "auto",
     };
   }
 
@@ -507,12 +554,87 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
     code: issue.code,
     message: issue.message,
     resolution: issue.resolution,
-    fixability: "command",
     commands:
       issue.code === "ORPHAN_PUBLIC_KEY"
         ? [...REMOVE_PUBLIC_KEY_COMMANDS]
         : [...EXPORT_PUBLIC_KEY_COMMANDS],
   };
+};
+
+/**
+ * The configured signing key's public key, or, when doctor cannot read it,
+ * such as a secret this machine lacks, which the Secrets rows report as
+ * an error, a warning with the reason: the native
+ * public keys are then not compared, rather than reported as a mismatch
+ * whose resolution is a new native release. A `signing` value deploy
+ * refuses is the signing row's (`checkSigning`): its native keys are not
+ * checked either.
+ */
+const readSigningPublicKey = async (
+  config: ConfigResponse,
+  cwd: string,
+): Promise<{
+  publicKey: string | undefined;
+  issues: NativeCheckIssue[];
+  checked: boolean;
+}> => {
+  if (readBundleSigningState(config.signing).status === "invalid") {
+    return { publicKey: undefined, issues: [], checked: false };
+  }
+  try {
+    return {
+      publicKey:
+        (await getBundleSigningPublicKey(config.signing, {
+          cwd,
+          secrets: config.secrets,
+        })) ?? undefined,
+      issues: [],
+      checked: true,
+    };
+  } catch (error) {
+    return {
+      publicKey: undefined,
+      issues: [
+        {
+          type: "warning",
+          platform: "project",
+          code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
+          message: `The native public keys were not checked against the configured bundle signing key: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          resolution:
+            "Run doctor where the signing key's secret is set to check the native public keys.",
+        },
+      ],
+      checked: true,
+    };
+  }
+};
+
+/**
+ * The signing row: a `signing` value deploy refuses, as an error, or no
+ * `signing`, which deploy warns about, as a warning. Nothing for a config
+ * that signs or sets `{ enabled: false }`.
+ */
+const checkSigning = (config: ConfigResponse): SigningStatus | undefined => {
+  const state = readBundleSigningState(config.signing);
+  if (state.status === "invalid") {
+    return {
+      type: "error",
+      message: state.message,
+      next: INVALID_SIGNING_NEXT_STEP,
+      command: PUT_SIGNING_KEY_COMMAND,
+    };
+  }
+  if (state.status === "unsigned") {
+    return {
+      type: "warning",
+      message: UNSIGNED_BUNDLES_WARNING,
+      next: UNSIGNED_BUNDLES_NEXT_STEP,
+      command: ISSUE_SIGNING_KEY_COMMAND,
+    };
+  }
+  return undefined;
 };
 
 async function checkNativeStatus({
@@ -541,12 +663,10 @@ async function checkNativeStatus({
     const [nativeSigningPublicKey, expectedSigningPublicKey] =
       await Promise.all([
         getNativeSigningPublicKey(),
-        getBundleSigningPublicKey(config.signing, { cwd }).catch(
-          () => "invalid configured bundle signing public key",
-        ),
+        readSigningPublicKey(config, cwd),
       ]);
     const signing = await validateSigningConfig(config, {
-      expectedPublicKey: expectedSigningPublicKey ?? undefined,
+      expectedPublicKey: expectedSigningPublicKey.publicKey,
       nativePublicKey: nativeSigningPublicKey?.publicKey ?? null,
     });
     const localFingerprint =
@@ -559,7 +679,10 @@ async function checkNativeStatus({
         ? { fingerprintJsonPath: localFingerprint.path }
         : {}),
       issues: [
-        ...signing.issues.map(toNativeIssue),
+        ...expectedSigningPublicKey.issues,
+        ...(expectedSigningPublicKey.checked
+          ? signing.issues.map(toNativeIssue)
+          : []),
         ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
         ...(localFingerprint
           ? await checkFingerprintJson(
@@ -574,23 +697,23 @@ async function checkNativeStatus({
   const config = await loadConfig(null);
   const localFingerprint = await readLocalFingerprintFile(cwd);
   const requireFingerprint = config.updateStrategy === "fingerprint";
-  const expectedSigningPublicKey =
-    (await getBundleSigningPublicKey(config.signing, { cwd }).catch(
-      () => "invalid configured bundle signing public key",
-    )) ?? undefined;
+  const expectedSigningPublicKey = await readSigningPublicKey(config, cwd);
 
   const [ios, android, signing] = await Promise.all([
     checkIosNativeStatus({ cwd, config }),
     checkAndroidNativeStatus({ cwd, config }),
     validateSigningConfig(config, {
-      expectedPublicKey: expectedSigningPublicKey,
+      expectedPublicKey: expectedSigningPublicKey.publicKey,
     }),
   ]);
 
   const issues = [
     ...ios.issues,
     ...android.issues,
-    ...signing.issues.map(toNativeIssue),
+    ...expectedSigningPublicKey.issues,
+    ...(expectedSigningPublicKey.checked
+      ? signing.issues.map(toNativeIssue)
+      : []),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
   ];
 
@@ -610,7 +733,6 @@ async function checkNativeStatus({
       code: "MISSING_FINGERPRINT_JSON",
       message: "fingerprint.json is missing for fingerprint update strategy.",
       resolution: "Run `npx hot-updater fingerprint create`.",
-      fixability: "command",
       commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: ["fingerprint.json"],
     });
@@ -625,21 +747,17 @@ async function checkNativeStatus({
   };
 }
 
-/**
- * The server's release catalogs and artifact records, when
- * hot-updater.config.ts names a database.
- */
-async function checkServer(context: DoctorContext): Promise<{
-  releaseCatalogs?: ReleaseCatalogStatus;
-  artifacts?: ArtifactStatus;
-}> {
+/** The server's release catalogs, when hot-updater.config.ts names a database. */
+async function checkServer(
+  context: DoctorContext,
+): Promise<ReleaseCatalogStatus | undefined> {
   let server: Awaited<ReturnType<DoctorContext["server"]>>;
   try {
     server = await context.server();
   } catch (error) {
-    return { releaseCatalogs: releaseCatalogsUnchecked(error) };
+    return releaseCatalogsUnchecked(error);
   }
-  return server === null ? {} : await checkServerData(server.core);
+  return server === null ? undefined : await checkServerData(server.core);
 }
 
 /**
@@ -671,7 +789,6 @@ async function checkClientPlugins({
         message: `Could not read the plugins in hot-updater.config.ts to check the app's client plugins: ${error instanceof Error ? error.message : String(error)}`,
         resolution:
           "Check that plugins in hot-updater.config.ts load, then rerun doctor.",
-        fixability: "blocked",
       },
     ];
   }
@@ -681,7 +798,6 @@ async function checkClientPlugins({
     code: "MISSING_CLIENT_PLUGIN",
     message: `The server runs a plugin whose client plugin ${name} the app does not add.`,
     resolution: `Import { ${name} } from "${module}" and pass ${name}() to HotUpdater.init({ plugins }).`,
-    fixability: "auto",
   }));
 }
 
@@ -726,9 +842,15 @@ async function checkProject(
     const hotUpdaterVersion = allDependencies["hot-updater"];
 
     if (!hotUpdaterVersion) {
+      const packageManager = getPackageManager();
       return {
         success: false,
-        error: "hot-updater CLI not found. Please install it first.",
+        error: [
+          "hot-updater isn't in this project's package.json. Add it:",
+          packageManager === "npm"
+            ? "npm install hot-updater --save-dev"
+            : `${packageManager} add -D hot-updater`,
+        ].join("\n"),
       };
     }
 
@@ -764,23 +886,40 @@ async function checkProject(
       installedHotUpdaterPackages: hotUpdaterPackages,
     };
 
-    if (serverBaseUrl) {
+    // Without --server-base-url, the server an agent scaffold records.
+    const records = serverBaseUrl ? [] : await context.scaffolds();
+    const recorded = recordedBaseUrls(records);
+    const baseUrl =
+      serverBaseUrl ?? (recorded.length === 1 ? recorded[0] : undefined);
+    if (baseUrl) {
       const requiredTarget = getRequiredUpdateTarget(packageJsonData.version);
-      details.infrastructure = await checkInfrastructureStatus({
-        serverBaseUrl,
-        fetchImpl,
-        requiredTarget,
-      });
-
-      if (
-        details.infrastructure.error !== undefined ||
-        details.infrastructure.needsUpdate === true ||
-        details.infrastructure.upgradeBlocked === true
-      ) {
-        details.infrastructure.remediation = createInfrastructureRemediation({
-          upgradeBlocked: details.infrastructure.upgradeBlocked,
-        });
-      }
+      details.infrastructure = {
+        ...(await checkInfrastructureStatus({
+          serverBaseUrl: baseUrl,
+          fetchImpl,
+          requiredTarget,
+        })),
+        ...(serverBaseUrl
+          ? {}
+          : {
+              recordedIn: path.join(
+                records.find(
+                  (record) => record.baseUrl?.replace(/\/+$/u, "") === baseUrl,
+                )!.dir,
+                "deployment.json",
+              ),
+            }),
+      };
+    } else {
+      details.infrastructureUnchecked = {
+        message:
+          recorded.length === 0
+            ? "The server's version was not checked: doctor was given no --server-base-url, and no agent infrastructure scaffold in hot-updater-infra/ records the server."
+            : `The server's version was not checked: the agent infrastructure scaffolds in hot-updater-infra/ record more than one server (${recorded.join(", ")}).`,
+        resolution:
+          "Run doctor with --server-base-url and the baseURL the app passes to HotUpdater.init, to check that the server runs the release this CLI needs.",
+        commands: ["npx hot-updater doctor --server-base-url <url>"],
+      };
     }
 
     if (hasReactNativePackage) {
@@ -795,9 +934,78 @@ async function checkProject(
       }
     }
 
-    const { releaseCatalogs, artifacts } = await checkServer(context);
-    if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
-    if (artifacts) details.artifacts = artifacts;
+    // Rows to read, never a failure: a config that doesn't load is reported
+    // by the checks that need it, and an adapter that can't be read is a row.
+    const config = await loadConfig(null).catch(() => undefined);
+    if (config) {
+      const signing = checkSigning(config);
+      if (signing) details.signing = signing;
+      const secrets = await checkSecrets(config, cwd);
+      if (secrets) details.secrets = secrets;
+      const googlePlay = await checkGooglePlay(config, {
+        cwd,
+        ...(fetchImpl ? { fetch: fetchImpl } : {}),
+        ...(secrets ? { secrets } : {}),
+      }).catch(() => undefined);
+      if (googlePlay) details.googlePlay = googlePlay;
+      const deploySecrets = await checkDeploySecrets(config, {
+        cwd,
+        // Read only with a team store: the provider's own init lists them.
+        managedSecrets: async () => {
+          const managed = await context.managed();
+          if (managed === null) return [];
+          const provider = await INIT_PROVIDER_PACKAGES[managed.provider]
+            .load()
+            .catch(() => null);
+          return provider?.initProvider.secrets ?? [];
+        },
+      }).catch(() => undefined);
+      if (deploySecrets) {
+        const initCommand =
+          deploySecrets.processEnvReads.length === 0
+            ? undefined
+            : deploySecretsInitCommand({
+                managed: await context.managed(),
+                scaffolds: await context.scaffolds(),
+              });
+        details.deploySecrets =
+          initCommand === undefined
+            ? deploySecrets
+            : { ...deploySecrets, initCommand };
+      }
+    }
+
+    // The server's data reads through the fence, so it is checked once the
+    // schema passes.
+    const schema = await checkSchema(context);
+    if (schema) {
+      details.schema = schema;
+    } else {
+      const releaseCatalogs = await checkServer(context);
+      if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
+    }
+
+    // Named once the schema is known: an upgrade migrates the database.
+    if (
+      details.infrastructure &&
+      (details.infrastructure.error !== undefined ||
+        details.infrastructure.needsUpdate === true ||
+        details.infrastructure.upgradeBlocked === true)
+    ) {
+      details.infrastructure.remediation = createInfrastructureRemediation({
+        upgradeBlocked: details.infrastructure.upgradeBlocked,
+        requiredVersion: details.infrastructure.requiredVersion,
+        managed: await context.managed(),
+        scaffold: await context.scaffoldUpgrade(),
+        schemaBlockers: [
+          ...new Set(
+            (schema?.issues ?? [])
+              .filter(({ code }) => code !== "SCHEMA_MIGRATION_PENDING")
+              .map(({ code }) => code),
+          ),
+        ],
+      });
+    }
 
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
@@ -812,13 +1020,15 @@ async function checkProject(
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
     const hasServerDataIssue = [
+      ...(details.schema?.issues ?? []),
       ...(details.releaseCatalogs?.issues ?? []),
-      ...(details.artifacts?.issues ?? []),
     ].some((issue) => issue.type === "error");
     const hasIssues =
       versionMismatches.length > 0 ||
       hasInfrastructureIssue ||
       hasNativeIssue ||
+      details.signing?.type === "error" ||
+      missingRequiredSecrets(details.secrets).length > 0 ||
       hasServerDataIssue;
     // Future: || configurationIssues.length > 0 || etc.
 
@@ -836,7 +1046,16 @@ async function checkProject(
       };
     }
 
-    if (details.native || details.releaseCatalogs || details.artifacts) {
+    if (
+      details.native ||
+      details.schema ||
+      details.releaseCatalogs ||
+      details.signing ||
+      details.secrets ||
+      details.deploySecrets ||
+      details.googlePlay ||
+      details.infrastructureUnchecked
+    ) {
       return {
         success: true,
         details,
@@ -872,34 +1091,14 @@ export async function doctor(
   // One server and one fingerprint for the whole run, closed once at its end.
   const context = createDoctorContext(options.cwd ?? getCwd());
   try {
-    const result = await checkProject(options, context);
-    // Scoped verification never repairs: the CLI refuses --fix with its
-    // options, and a caller that passes both gets the verification alone.
-    if (!options.fix || hasVerificationOptions(options)) return result;
-
-    // --fix runs the repairs the first checks call for, then checks again,
-    // so the result describes the project after them.
-    const before = normalizeDoctorResult(result);
-    if (before.error !== undefined) return before;
-    const fixes = await applyDoctorFixes(
-      [
-        ...(before.details?.native?.issues ?? []),
-        ...(before.details?.releaseCatalogs?.issues ?? []),
-        ...(before.details?.artifacts?.issues ?? []),
-      ],
-      context,
-    );
-    const after = fixes.some(({ status }) => status === "applied")
-      ? normalizeDoctorResult(await checkProject(options, context))
-      : before;
-    return { ...after, details: { ...after.details, fixes } };
+    return await checkProject(options, context);
   } finally {
     await context.dispose();
   }
 }
 
 const promptServerBaseUrl = async () => {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (nonInteractiveReason() !== undefined || !process.stdout.isTTY) {
     return undefined;
   }
 
@@ -929,69 +1128,67 @@ const promptServerBaseUrl = async () => {
   return trimmed ? trimmed : undefined;
 };
 
-const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
-  fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
-  "fingerprint-engine": "Record the changed fingerprint engine's hashes",
-  "unused-fingerprint":
-    "Delete the fingerprint.json the update strategy does not use",
-  "public-key": "Write the configured public key into the native files",
-  "orphan-public-key": "Remove the public key from the native files",
-  "release-catalogs": "Rebuild the stale release catalogs from their releases",
-  "unreferenced-artifacts": "Delete the artifact records no release uses",
+/** Each issue and its resolution, which `--json` prints as they are, as one entry. */
+const reportIssues = (
+  log: Pick<typeof p.log, "error" | "warn">,
+  issues: readonly {
+    readonly type: "error" | "warning";
+    readonly code?: string;
+    readonly names?: readonly string[];
+    readonly message: string;
+    readonly resolution: string;
+  }[],
+) => {
+  for (const issue of issues) {
+    const report = issue.type === "error" ? log.error : log.warn;
+    report(
+      issue.code === "SECRETS_MISSING_UNUSED"
+        ? ui.prose(unusedSecretsText({ ...issue, names: issue.names ?? [] }))
+        : `${ui.prose(humanText(issue.message))}\n${ui.prose(humanText(issue.resolution))}`,
+    );
+  }
 };
 
-/** What each repair's writes are, in its output. */
-const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
-  fingerprint: "Path",
-  "fingerprint-engine": "Path",
-  "unused-fingerprint": "Path",
-  "public-key": "Path",
-  "orphan-public-key": "Path",
-  "release-catalogs": "Catalog",
-  "unreferenced-artifacts": "Artifact",
-};
+/** `1 error`, `2 warnings`. */
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
-const REBUILD_NATIVE_APP =
-  "Rebuild the native app: doctor --fix changed its native files.";
+/** A failing run's closing line: `Doctor found 1 error, 2 warnings.` */
+const found = ({ errors, warnings }: { errors: number; warnings: number }) =>
+  `Doctor found ${[
+    count(errors, "error"),
+    ...(warnings > 0 ? [count(warnings, "warning")] : []),
+  ].join(", ")}.`;
 
-/** What `--fix` did: each repair, every file it wrote, or why it did not. */
-const printFixes = (fixes: readonly DoctorFix[]) => {
-  if (fixes.length === 0) {
-    p.log.info("--fix found nothing it can repair.");
-    return;
-  }
-  for (const fix of fixes) {
-    const description = FIX_DESCRIPTIONS[fix.repair];
-    if (fix.status === "applied") {
-      p.log.success(`Fixed: ${description}.`);
-      p.log.message(
-        ui.block(
-          "Wrote",
-          fix.wrote.map((written) =>
-            WROTE_LABELS[fix.repair] === "Path"
-              ? ui.kv("Path", ui.path(written))
-              : ui.kv(WROTE_LABELS[fix.repair], written),
-          ),
-        ),
-      );
-      if (fix.note) p.log.warn(fix.note);
-    } else if (fix.status === "skipped") {
-      p.log.warn(`Skipped: ${description}. ${fix.note ?? ""}`.trim());
-    } else {
-      p.log.error(`Failed: ${description}. ${fix.note ?? ""}`.trim());
-    }
-  }
+/**
+ * `p.log` that counts the errors and warnings it prints, so the run's
+ * closing line says how many there are.
+ */
+const countingLog = () => {
+  const counts = { errors: 0, warnings: 0 };
+  return {
+    counts,
+    error: (message: string) => {
+      counts.errors += 1;
+      p.log.error(message);
+    },
+    warn: (message: string) => {
+      counts.warnings += 1;
+      p.log.warn(message);
+    },
+  };
 };
 
 export const handleDoctor = async ({
   serverBaseUrl,
   json = false,
-  fix = false,
   ...verificationOptions
 }: HandleDoctorOptions = {}) => {
   if (json) {
     const result = normalizeDoctorResult(
-      await doctor({ serverBaseUrl, fix, ...verificationOptions }),
+      await doctor({
+        serverBaseUrl,
+        ...verificationOptions,
+      }),
     );
     console.log(JSON.stringify(result, null, 2));
     if (!result.success) {
@@ -1002,12 +1199,15 @@ export const handleDoctor = async ({
 
   p.intro("Hot Updater doctor");
 
-  const resolvedServerBaseUrl = hasVerificationOptions(verificationOptions)
-    ? serverBaseUrl
-    : (serverBaseUrl ?? (await promptServerBaseUrl()));
+  // A server an agent scaffold records is checked without asking.
+  const resolvedServerBaseUrl =
+    hasVerificationOptions(verificationOptions) ||
+    serverBaseUrl !== undefined ||
+    recordedBaseUrls(await findScaffoldDeployments(getCwd())).length === 1
+      ? serverBaseUrl
+      : await promptServerBaseUrl();
   const result = await doctor({
     serverBaseUrl: resolvedServerBaseUrl,
-    fix,
     ...verificationOptions,
   });
 
@@ -1027,150 +1227,312 @@ export const handleDoctor = async ({
 
   // Handle issues with details
   const { details } = result;
-  let shouldExitWithFailure = !result.success;
-
-  if (details?.fixes) printFixes(details.fixes);
+  const shouldExitWithFailure = !result.success;
+  // From here on, each ■ and ▲ is counted for the closing line.
+  const log = countingLog();
 
   if (details?.verification) {
     const { scope, checks, notChecked } = details.verification;
-    p.log.message(ui.block("Verification", [ui.kv("Scope", scope)]));
+    p.log.step(ui.block("Verification", [ui.kv("Scope", scope)]));
     for (const check of checks) {
-      const message = ui.line([check.status, check.code, check.message]);
+      const message = [
+        ui.prose(`${check.status} ${check.code} ${check.message}`),
+        check.paths?.length
+          ? check.paths.map((file) => ui.path(ui.fitPath(file))).join("\n")
+          : "",
+        check.resolution ? ui.prose(check.resolution) : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
       if (check.status === "pass") p.log.success(message);
-      else p.log.error(message);
-      if (check.paths?.length)
-        p.log.info(check.paths.map((file) => ui.path(file)).join(", "));
-      if (check.resolution) p.log.info(check.resolution);
+      else log.error(message);
     }
-    p.log.info(`Not checked: ${notChecked.join(", ")}`);
-    if (!result.success) process.exit(1);
+    p.log.info(ui.prose(`Not checked: ${notChecked.join(", ")}`));
+    if (!result.success) {
+      p.outro(found(log.counts));
+      process.exit(1);
+    }
     p.outro(`${scope} checks passed.`);
     return;
   }
 
   if (details?.hotUpdaterVersion) {
-    p.log.message(
+    p.log.step(
       ui.block("Version", [
         ui.kv("CLI", ui.version(details.hotUpdaterVersion)),
       ]),
     );
   }
 
+  if (details?.infrastructureUnchecked) {
+    const [command] = details.infrastructureUnchecked.commands;
+    // --json keeps the message and resolution; the command says the rest.
+    log.warn(
+      [
+        "Server version not checked.",
+        command ? ui.withCommand("To check it:", command) : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
   if (details?.infrastructure) {
     const infrastructure = details.infrastructure;
-    const lines = [ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint))];
+    p.log.step(
+      ui.block("Infrastructure", [
+        ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint)),
+        infrastructure.recordedIn &&
+          ui.kv("Recorded in", ui.path(ui.fitPath(infrastructure.recordedIn))),
+        infrastructure.serverVersion &&
+          ui.kv("Server", ui.version(infrastructure.serverVersion)),
+        infrastructure.serverVersion &&
+          ui.kv("Required", ui.version(infrastructure.requiredVersion)),
+        infrastructure.infrastructureGeneration !== undefined &&
+          ui.kv("Generation", String(infrastructure.infrastructureGeneration)),
+      ]),
+    );
 
-    if (infrastructure.serverVersion) {
-      lines.push(ui.kv("Server", ui.version(infrastructure.serverVersion)));
-      lines.push(ui.kv("Required", ui.version(infrastructure.requiredVersion)));
-    }
-    if (infrastructure.infrastructureGeneration !== undefined) {
-      lines.push(
-        ui.kv("Generation", String(infrastructure.infrastructureGeneration)),
-      );
-    }
-    p.log.message(ui.block("Infrastructure", lines));
-
+    const reason = infrastructure.updateReason
+      ? `\n${ui.prose(infrastructure.updateReason)}`
+      : "";
     if (infrastructure.upgradeBlocked) {
-      p.log.error("In-place v0 to v1 infrastructure upgrade is not supported.");
-      if (infrastructure.updateReason) {
-        p.log.info(`Reason: ${infrastructure.updateReason}`);
-      }
-    } else if (infrastructure.needsUpdate) {
-      p.log.error(
-        `Infrastructure update required: ${infrastructure.requiredVersion}+`,
+      log.error(
+        `In-place v0 to v1 infrastructure upgrade is not supported.${reason}`,
       );
-      if (infrastructure.updateReason) {
-        p.log.info(`Reason: ${infrastructure.updateReason}`);
-      }
+    } else if (infrastructure.needsUpdate) {
+      log.error(
+        `Infrastructure update required: ${infrastructure.requiredVersion}+${reason}`,
+      );
     } else if (infrastructure.error) {
-      p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
+      log.error(
+        ui.prose(`Infrastructure check failed: ${infrastructure.error}`),
+      );
     } else {
       p.log.success("Infrastructure is up to date.");
     }
 
     if (infrastructure.catalogMode) {
-      p.log.info(
-        `Release catalog: ${infrastructure.catalogMode}. ${infrastructure.catalogModeNote}`,
-      );
+      p.log.info(ui.prose(`Release catalog: ${infrastructure.catalogMode}.`));
     }
 
-    if (infrastructure.remediation) {
-      const recoveryLines = infrastructure.remediation.commands.map(
-        (command, index) =>
-          ui.kv(
-            index === 0 ? "Command" : `Command ${index + 1}`,
+    // The schema check below names the same commands when the upgrade is
+    // the migration it reports: they are printed once, there.
+    const schemaCommands = new Set(
+      details.schema?.issues.flatMap(({ commands }) => commands ?? []) ?? [],
+    );
+    const repeated =
+      infrastructure.remediation !== undefined &&
+      infrastructure.remediation.commands.length > 0 &&
+      infrastructure.remediation.commands.every((command) =>
+        schemaCommands.has(command),
+      );
+    if (infrastructure.remediation && !repeated) {
+      p.log.info(
+        [
+          ui.prose(humanText(infrastructure.remediation.reason)),
+          ...infrastructure.remediation.commands.map((command) =>
             ui.command(command),
           ),
+        ].join("\n"),
       );
-      p.log.message(ui.block("Recovery", recoveryLines));
     }
   }
 
   if (details?.native) {
     const native = details.native;
-    const lines = [ui.kv("Strategy", native.updateStrategy)];
+    const platformRows = (
+      label: string,
+      platform: NativeStatus["ios"] | NativeStatus["android"],
+    ): MaybeRow[] =>
+      platform?.detected
+        ? [
+            ui.kv(label, ui.status(platform.bundleProviderConfigured === true)),
+            platform.appVersion &&
+              ui.kv(`${label} app version`, ui.version(platform.appVersion)),
+            platform.channel &&
+              ui.kv(`${label} channel`, ui.channel(platform.channel)),
+          ]
+        : [];
+    p.log.step(
+      ui.block("Native", [
+        ui.kv("Strategy", native.updateStrategy),
+        ...platformRows("iOS", native.ios),
+        ...platformRows("Android", native.android),
+      ]),
+    );
 
-    if (native.ios?.detected) {
-      lines.push(
-        ui.kv(
-          "iOS",
-          native.ios.bundleProviderConfigured
-            ? ui.status(true)
-            : ui.status(false),
-        ),
+    // A signing key this machine lacks is the Secrets rows' error, with
+    // the command that imports it: here it only explains the unchecked keys.
+    const signingKeyMissing = missingRequiredSecrets(details.secrets).some(
+      ({ fields }) => fields.some((field) => field.startsWith("signing")),
+    );
+    // Each platform's --json issue says the same thing to do: said once.
+    const orphans = native.issues.filter(
+      ({ code }) => code === "ORPHAN_PUBLIC_KEY",
+    );
+    const [orphan] = orphans;
+    if (orphan) {
+      log.warn(
+        [
+          `Signing is off, but ${orphans.map(({ platform }) => platform).join(" and ")} keep a public key: OTAs get rejected.`,
+          ui.prose(humanText(orphan.resolution)),
+        ].join("\n"),
       );
-      if (native.ios.appVersion) {
-        lines.push(ui.kv("iOS app version", ui.version(native.ios.appVersion)));
-      }
-      if (native.ios.channel) {
-        lines.push(ui.kv("iOS channel", ui.channel(native.ios.channel)));
-      }
     }
-
-    if (native.android?.detected) {
-      lines.push(
-        ui.kv(
-          "Android",
-          native.android.bundleProviderConfigured
-            ? ui.status(true)
-            : ui.status(false),
-        ),
-      );
-      if (native.android.appVersion) {
-        lines.push(
-          ui.kv("Android app version", ui.version(native.android.appVersion)),
-        );
-      }
-      if (native.android.channel) {
-        lines.push(
-          ui.kv("Android channel", ui.channel(native.android.channel)),
-        );
-      }
-    }
-
-    p.log.message(ui.block("Native", lines));
-
     for (const issue of native.issues) {
-      const message = `${issue.platform}: ${issue.message}`;
-      if (issue.type === "error") {
-        p.log.error(message);
-      } else {
-        p.log.warn(message);
+      if (issue.code === "ORPHAN_PUBLIC_KEY") continue;
+      if (
+        issue.code === "SIGNING_PUBLIC_KEY_UNAVAILABLE" &&
+        signingKeyMissing
+      ) {
+        log.warn("Native public keys not checked without the signing key.");
+        continue;
       }
+      const message = ui.prose(
+        `${issue.platform}: ${humanText(issue.message)}`,
+      );
+      const report = issue.type === "error" ? log.error : log.warn;
       if (issue.changes) {
+        report(message);
         showFingerprintChanges(
           issue.changes,
           issue.platform === "ios" ? "iOS" : "Android",
         );
+        p.log.info(ui.prose(humanText(issue.resolution)));
+      } else {
+        report(`${message}\n${ui.prose(humanText(issue.resolution))}`);
       }
-      p.log.info(issue.resolution);
     }
+  }
+
+  if (details?.signing) {
+    const { type, message, next, command } = details.signing;
+    (type === "error" ? log.error : log.warn)(
+      `${message}\n${ui.withCommand(next, command)}`,
+    );
+  }
+
+  if (details?.secrets || details?.deploySecrets) {
+    const { secrets, deploySecrets } = details;
+    const adapter =
+      secrets?.adapter ?? deploySecrets?.adapter ?? LOCAL_SECRETS_NAME;
+    // The build credentials' `secret()`s, then the adapters', each with
+    // where a command finds it.
+    const rows = [
+      ...(secrets?.references ?? []),
+      ...(deploySecrets?.names ?? []),
+    ];
+    // The rows say where each name is; what is wrong, and what to do,
+    // follows them as an error or a warning of its own, counted once.
+    if (rows.length > 0) {
+      p.log.step(
+        ui.block("Secrets", [
+          ui.kv("Adapter", adapter),
+          ...rows.map((row) =>
+            ui.kv(
+              row.name,
+              row.source === "environment"
+                ? row.inAdapter === false
+                  ? ui.warning("set by the environment, none in the adapter")
+                  : "set by the environment"
+                : row.source === "adapter"
+                  ? "refused" in row && row.refused !== undefined
+                    ? ui.warning("in the adapter, doesn't open")
+                    : "in the adapter"
+                  : row.source === "missing"
+                    ? !("required" in row)
+                      ? ui.warning("missing")
+                      : row.required
+                        ? ui.danger("missing")
+                        : ui.warning("missing, unused")
+                    : "not checked",
+            ),
+          ),
+        ]),
+      );
+    }
+    for (const { message } of missingRequiredSecrets(secrets)) {
+      if (message !== undefined) log.error(message);
+    }
+    // A missing name nothing reads yet, or one the next deploy reads.
+    reportIssues(log, [
+      ...(secrets?.issues ?? []),
+      ...(deploySecrets?.issues ?? []),
+    ]);
+    for (const { name, refused } of secrets?.references ?? []) {
+      if (refused === undefined) continue;
+      log.warn(
+        [
+          `${name}: ${refused}`,
+          ui.withCommand(
+            "Store it again:",
+            credentialPutCommand("android-keystore", name),
+          ),
+        ].join("\n"),
+      );
+    }
+    // One block for the adapter, with each distinct reason its reads failed.
+    const failures = distinctSecretFailures([
+      {
+        ...(secrets?.error === undefined ? {} : { error: secrets.error }),
+        names: secrets?.references.map(({ name }) => name) ?? [],
+      },
+      {
+        ...(deploySecrets?.error === undefined
+          ? {}
+          : { error: deploySecrets.error }),
+        names: deploySecrets?.names.map(({ name }) => name) ?? [],
+      },
+    ]);
+    if (failures.length > 0) {
+      const unchecked = uncheckedSecretNames(rows);
+      log.warn(
+        ui.prose(
+          [
+            `Couldn't read the ${adapter} secrets adapter${unchecked.length > 0 ? ` for ${listNames(unchecked)}` : ""}.`,
+            ...failures,
+          ].join("\n"),
+        ),
+      );
+    }
+    const processEnvReads = deploySecrets?.processEnvReads ?? [];
+    if (processEnvReads.length > 0) {
+      const them = processEnvReads.length === 1 ? "it" : "them";
+      log.warn(
+        [
+          ui.prose(
+            `hot-updater.config.ts reads ${processEnvReads.join(", ")} with process.env, so ${adapter} never supplies ${them}.`,
+          ),
+          ...deploySecretsAdvice(them, deploySecrets?.initCommand),
+        ].join("\n"),
+      );
+    }
+  }
+
+  if (details?.googlePlay) {
+    // A package whose only ✗ is the upload keystore the Secrets error
+    // names isn't counted again.
+    const { warned, text } = formatGooglePlayStatus(details.googlePlay);
+    (warned ? log.warn : p.log.step)(text);
+  }
+
+  if (details?.schema) {
+    p.log.step(
+      ui.block(
+        "Schema",
+        details.schema.settings.map(({ key, expected, found }) => [
+          key,
+          `${found === null ? "missing" : ui.version(found)} → ${ui.version(expected)}`,
+        ]),
+      ),
+    );
+    reportIssues(log, details.schema.issues);
   }
 
   if (details?.releaseCatalogs) {
     const { scopes, issues } = details.releaseCatalogs;
-    p.log.message(
+    p.log.step(
       ui.block("Release catalogs", [
         ui.kv("Scopes", String(scopes.length)),
         ui.kv(
@@ -1179,44 +1541,43 @@ export const handleDoctor = async ({
         ),
       ]),
     );
-    for (const issue of issues) {
-      if (issue.type === "error") {
-        p.log.error(issue.message);
-      } else {
-        p.log.warn(issue.message);
-      }
-      p.log.info(issue.resolution);
-    }
-  }
-
-  for (const issue of details?.artifacts?.issues ?? []) {
-    if (issue.type === "error") {
-      p.log.error(issue.message);
-    } else {
-      p.log.warn(issue.message);
-    }
-    if (issue.artifactIds) p.log.info(issue.artifactIds.join(", "));
-    p.log.info(issue.resolution);
+    reportIssues(log, issues);
   }
 
   if (details?.versionMismatches && details.versionMismatches.length > 0) {
-    p.log.warn("Version mismatches found:");
-
-    for (const mismatch of details.versionMismatches) {
-      p.log.error(
-        `${mismatch.packageName}: ${mismatch.currentVersion} ` +
-          `(expected ${mismatch.expectedVersion})`,
-      );
-    }
+    log.error(
+      ui.block(
+        "Version mismatches",
+        details.versionMismatches.map((mismatch) => [
+          mismatch.packageName,
+          `${mismatch.currentVersion} (expected ${mismatch.expectedVersion})`,
+        ]),
+      ),
+    );
   }
 
-  // Whenever --fix wrote native files, the last line says to rebuild.
-  const rebuildNativeApp = fixesWroteNativeFiles(details?.fixes ?? []);
   if (shouldExitWithFailure) {
-    if (rebuildNativeApp) p.log.warn(REBUILD_NATIVE_APP);
+    // A failing run closes as a passing one does, with what it found.
+    p.outro(found(log.counts));
     process.exit(1);
   }
 
-  p.log.success("All checks passed.");
-  p.outro(rebuildNativeApp ? REBUILD_NATIVE_APP : "Doctor complete.");
+  const { warnings } = log.counts;
+  const unchecked = uncheckedSecretNames([
+    ...(details?.secrets?.references ?? []),
+    ...(details?.deploySecrets?.names ?? []),
+  ]);
+  if (unchecked.length > 0) {
+    // Nothing verified these names, so this run can't call itself a pass.
+    p.log.warn(
+      `${count(unchecked.length, "secret")} not checked, ${count(warnings, "warning")}.`,
+    );
+  } else {
+    p.log.success(
+      warnings > 0
+        ? `All checks passed with ${count(warnings, "warning")}.`
+        : "All checks passed.",
+    );
+  }
+  p.outro("Doctor complete.");
 };
