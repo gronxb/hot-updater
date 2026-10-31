@@ -174,7 +174,7 @@ export const formatCommand = (
 
 /** A line that is a command to copy, which breaks with ` \`, not as prose. */
 const COMMAND_LINE =
-  /^\s*(?:\$ )?(?:npx|pnpx|bunx|pnpm|npm|yarn|bun|hot-updater|git|gh|aws|gcloud|supabase|wrangler|brew)\s/u;
+  /^\s*(?:\$ )?(?:npx|pnpx|bunx|pnpm|npm|yarn|bun|hot-updater)\s/u;
 
 /**
  * The one rule for what the CLI prints for people: `text` with each line at
