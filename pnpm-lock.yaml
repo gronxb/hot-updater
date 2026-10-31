@@ -149,12 +149,33 @@ importers:
       '@hono/node-server':
         specifier: catalog:hono
         version: 1.19.17(hono@4.12.34)
+      '@hot-updater/aws':
+        specifier: workspace:*
+        version: link:plugins/aws
+      '@hot-updater/azure':
+        specifier: workspace:*
+        version: link:plugins/azure
+      '@hot-updater/cloudflare':
+        specifier: workspace:*
+        version: link:plugins/cloudflare
+      '@hot-updater/firebase':
+        specifier: workspace:*
+        version: link:plugins/firebase
+      '@hot-updater/neon':
+        specifier: workspace:*
+        version: link:plugins/neon
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:plugins/standalone
+      '@hot-updater/supabase':
+        specifier: workspace:*
+        version: link:plugins/supabase
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:packages/test-utils
+      '@hot-updater/vercel':
+        specifier: workspace:*
+        version: link:plugins/vercel
       '@nx/js':
         specifier: 22.6.3
         version: 22.6.3(@babel/traverse@7.29.7)(nx@22.6.3)

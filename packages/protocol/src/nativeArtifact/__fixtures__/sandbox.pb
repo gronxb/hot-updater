@@ -1,7 +1,7 @@
 
-±
+¹
 9
-android*http://schemas.android.com/apk/res/androidmanifest"packagecom.example.app"L
+android*http://schemas.android.com/apk/res/androidmanifest""packagecom.example.app.sandbox"L
 *http://schemas.android.com/apk/res/androidversionCode42"(›„„2:0*"E
 *http://schemas.android.com/apk/res/androidversionName1.4.0(œ„„"R
 *http://schemas.android.com/apk/res/androidcompileSdkVersion37"(òŠ„2:0%"(platformBuildVersionCode37"2:0%"P

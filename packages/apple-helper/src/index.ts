@@ -16,6 +16,13 @@ export {
   type SandboxArchivePlan,
 } from "./sandboxTestFlight";
 export {
+  extractSimulatorApp,
+  installOnSimulator,
+  listSimulators,
+  selectSimulator,
+  type Simulator,
+} from "./simulator";
+export {
   assertTestFlightExportOptions,
   findTestFlightBuild,
   resolveTestFlightUploadKey,

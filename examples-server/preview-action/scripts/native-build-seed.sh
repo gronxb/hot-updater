@@ -12,6 +12,8 @@
 # It needs the backend's variables (scripts/backend.sh) in its environment,
 # and prints HOT_UPDATER_RELEASE_KEYSTORE as a NAME=value line.
 #
+# PROOF_APP_CONFIG names the config to re-export (default native-build.config.ts).
+#
 #   bash scripts/native-build-seed.sh <log-dir>
 set -euo pipefail
 
@@ -22,7 +24,8 @@ app="$root/examples/v0.85.0"
 cli=(node "$root/packages/hot-updater/dist/index.mjs")
 mkdir -p "$log_dir"
 
-printf 'export { default } from "../../examples-server/preview-action/native-build.config.ts";\n' \
+printf 'export { default } from "../../examples-server/preview-action/%s";\n' \
+  "${PROOF_APP_CONFIG:-native-build.config.ts}" \
   >"$app/hot-updater.config.ts"
 
 node "$fixture/proof.ts" create-bucket

@@ -202,6 +202,15 @@ describe("guardLocalConsoleRequest", () => {
     ).toBeUndefined();
   });
 
+  it("keeps its lock on a signed download link: a token is no session", () => {
+    const path =
+      "/api/native-builds/019a0000-0000-7000-8000-00000000b001/download?t=1.signature";
+    expect(
+      guardLocalConsoleRequest(request(`http://localhost:1422${path}`), OPTIONS)
+        ?.status,
+    ).toBe(401);
+  });
+
   it("leaves the Host to Vite's dev server, which checks it itself", () => {
     expect(
       guardLocalConsoleRequest(

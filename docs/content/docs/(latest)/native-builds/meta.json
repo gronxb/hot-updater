@@ -9,6 +9,7 @@
     "testflight",
     "google-play",
     "sandbox",
-    "../guides/ci-native-build"
+    "../guides/ci-native-build",
+    "../guides/release-from-ci"
   ]
 }

@@ -45,8 +45,28 @@ it("passes its environment to Gradle without printing it", async () => {
   });
 
   expect(execa).toHaveBeenCalledWith(
-    "./gradlew",
-    ["app:assembleRelease", "-x", "lint", "-PMIN_BUNDLE_ID=id"],
+    "bash",
+    ["./gradlew", "app:assembleRelease", "-x", "lint", "-PMIN_BUNDLE_ID=id"],
     expect.objectContaining({ cwd: "/app/android", env }),
+  );
+});
+
+it("runs the wrapper itself when its environment needs no bash", async () => {
+  vi.spyOn(fs, "existsSync").mockReturnValue(true);
+  vi.mocked(execa).mockClear();
+
+  await runGradle({
+    tasks: ["assembleRelease"],
+    logPrefix: "android-release-build",
+    appModuleName: "app",
+    args: {},
+    env: { JAVA_HOME: "/jdk" },
+    androidProjectPath: "/app/android",
+  });
+
+  expect(execa).toHaveBeenCalledWith(
+    "./gradlew",
+    ["app:assembleRelease", "-x", "lint"],
+    expect.objectContaining({ env: { JAVA_HOME: "/jdk" } }),
   );
 });

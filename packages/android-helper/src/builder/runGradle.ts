@@ -43,6 +43,25 @@ function getTaskNames(moduleName: string, tasks: string[]): Array<string> {
 const getGradleWrapper = () =>
   process.platform.startsWith("win") ? "gradlew.bat" : "./gradlew";
 
+/** A variable a POSIX shell can't name, as the signing environment's are. */
+const isShellName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+
+/**
+ * The command that runs the wrapper with `env`. The wrapper's `#!/bin/sh` is
+ * dash on Debian and Ubuntu, which silently drops a variable whose name isn't
+ * a shell name, such as `ORG_GRADLE_PROJECT_android.injected.signing.store.file`:
+ * the build then signs with the project's own config. bash keeps them.
+ */
+const gradleCommand = (
+  env: Record<string, string> | undefined,
+): [string, string[]] => {
+  const wrapper = getGradleWrapper();
+  return wrapper === "./gradlew" &&
+    Object.keys(env ?? {}).some((name) => !isShellName(name))
+    ? ["bash", [wrapper]]
+    : [wrapper, []];
+};
+
 /**
  * Run gradle build with specified tasks and arguments
  */
@@ -87,7 +106,8 @@ export async function runGradle({
   let logFilePath: string | null = null;
 
   try {
-    const gradle = execa(getGradleWrapper(), gradleArgs, {
+    const [command, prefix] = gradleCommand(env);
+    const gradle = execa(command, [...prefix, ...gradleArgs], {
       cwd: androidProjectPath,
       env,
       all: true,

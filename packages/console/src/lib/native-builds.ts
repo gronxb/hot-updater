@@ -31,6 +31,26 @@ export const platformLabel = (platform: "ios" | "android") =>
 export const nativeBuildDownloadPath = (id: string) =>
   `/api/native-builds/${encodeURIComponent(id)}/download`;
 
+/** The query parameter of a signed download link: its token. */
+export const NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM = "t";
+
+/**
+ * A build's signed download link, under the console's path on the page's own
+ * address, whatever the page, so it opens where the person who copied it
+ * reached the console.
+ */
+export const nativeBuildSignedDownloadUrl = (
+  location: { readonly origin: string; readonly pathname: string },
+  id: string,
+  token: string,
+) => {
+  const page = nativeBuildDetailPath(id);
+  const base = location.pathname.endsWith(page)
+    ? location.pathname.slice(0, -page.length)
+    : "";
+  return `${location.origin}${base}${nativeBuildDownloadPath(id)}?${NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM}=${encodeURIComponent(token)}`;
+};
+
 /** The console page of one native build. */
 export const nativeBuildDetailPath = (id: string) =>
   `/native-builds/${encodeURIComponent(id)}`;
@@ -148,14 +168,11 @@ export const formatByteSize = (bytes: number): string => {
 };
 
 /**
- * The commands that install a simulator build: unzip the download, then
- * install the `.app` on the booted simulator.
+ * The command that downloads a simulator build, installs it on the booted
+ * simulator and opens it, in the project with its `hot-updater.config.ts`.
  */
-export const simulatorInstallCommand = (build: NativeBuildRow) => {
-  const archive = nativeBuildFileName(build);
-  const app = archive.replace(/\.zip$/, "");
-  return `unzip -o ${shellQuote(archive)} && xcrun simctl install booted ${shellQuote(app)}`;
-};
+export const simulatorInstallCommand = (build: NativeBuildRow) =>
+  `npx hot-updater native-build install ${shellQuote(build.id)}`;
 
 /** The command that installs a downloaded APK on an Android device or emulator. */
 export const apkInstallCommand = (build: NativeBuildRow) =>

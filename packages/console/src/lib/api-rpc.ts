@@ -340,3 +340,16 @@ export const getNativeBuildDownloadUrl = createServerFn({ method: "GET" })
     ]);
     return { url: await resolveNativeBuildDownloadUrl(data.id, deps) };
   });
+
+/**
+ * A new signed link to one build's download, which works without the
+ * console's sign-in until it expires: only for a signed-in caller.
+ */
+export const createNativeBuildDownloadLink = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const { issueNativeBuildDownloadLink } =
+      await import("./server/nativeBuildDownloadLink");
+    return issueNativeBuildDownloadLink(data.id);
+  });
