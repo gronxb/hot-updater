@@ -104,7 +104,8 @@ npx hot-updater google-play upload
 It is the shortcut for `native-build android --scheme <scheme> --submit
 play-internal`, which runs the same build. It builds the one
 `nativeBuild.android` scheme whose build Google Play takes, skipping `.apk`
-(`aab: false`) and `Debug` schemes, and says which; with several, it asks which
+(`aab: false`), `Debug`, and [sandbox](/docs/native-builds/sandbox) schemes, and
+says which; with several, it asks which
 one at a terminal, and in CI or without a terminal it stops and lists them. It
 takes only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the
 full command:

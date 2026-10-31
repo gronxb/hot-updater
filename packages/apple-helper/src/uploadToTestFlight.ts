@@ -42,7 +42,7 @@ const IN_PROGRESS_STATES = new Set(["AWAITING_UPLOAD", "PROCESSING"]);
 /** The error App Store Connect answers with when a build number is taken. */
 const DUPLICATE_ERROR_CODE = "ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE";
 
-type AppStoreConnectApiKey = Credentials["asc-api-key"];
+export type AppStoreConnectApiKey = Credentials["asc-api-key"];
 
 interface ApiError {
   readonly status?: string;
@@ -149,7 +149,7 @@ export const createAppStoreConnectToken = ({
   return `${signingInput}.${signature.toString("base64url")}`;
 };
 
-const readPrivateKey = async (keyPath: string) => {
+export const readPrivateKey = async (keyPath: string) => {
   try {
     return crypto.createPrivateKey(
       await fs.promises.readFile(keyPath, "utf-8"),
@@ -195,7 +195,7 @@ const isRateLimited = (error: unknown) =>
  * Runs `request`, again after a failure `retryable` accepts, up to the
  * attempts.
  */
-const retrying = async <T>(
+export const retrying = async <T>(
   request: () => Promise<T>,
   retryable: (error: unknown) => boolean = isRetryable,
 ): Promise<T> => {
@@ -211,7 +211,7 @@ const retrying = async <T>(
   }
 };
 
-const sleep = (ms: number) =>
+export const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The longest wait before a retry, so a run stays bounded. */
@@ -489,7 +489,7 @@ export interface UploadToTestFlightResult {
 }
 
 /** An App Store Connect API request, which answers its JSON or throws. */
-type AppStoreConnectRequest = <T>(
+export type AppStoreConnectRequest = <T>(
   action: string,
   method: string,
   pathname: string,
@@ -500,7 +500,7 @@ type AppStoreConnectRequest = <T>(
  * Requests to the App Store Connect API with `apiKey`: each carries a token
  * signed with its private key, replaced well before it expires.
  */
-const createAppStoreConnectRequest = ({
+export const createAppStoreConnectRequest = ({
   apiKey,
   privateKey,
   fetch,
@@ -569,7 +569,10 @@ const createAppStoreConnectRequest = ({
 };
 
 /** The App Store Connect app of `bundleId`, and its TestFlight page. */
-const findApp = async (request: AppStoreConnectRequest, bundleId: string) => {
+export const findApp = async (
+  request: AppStoreConnectRequest,
+  bundleId: string,
+) => {
   const { data: apps } = await retrying(() =>
     request<{
       data: { id: string; attributes?: { bundleId?: string } }[];

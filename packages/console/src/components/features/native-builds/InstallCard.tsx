@@ -144,7 +144,8 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
           </p>
           <p className="text-xs text-muted-foreground">
             If this package is already installed with another signing key, such
-            as a Play copy, the install fails. Uninstall that copy first.
+            as a Play copy, the install fails. Uninstall that copy first, or
+            build with sandbox: true, whose .sandbox ID installs beside it.
           </p>
           <p className="text-xs text-muted-foreground">
             On an emulator or a phone over USB, install and open it from your

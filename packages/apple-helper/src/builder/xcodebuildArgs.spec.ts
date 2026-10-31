@@ -89,6 +89,11 @@ const AUTOMATIC_SIGNING = settings({
   PROVISIONING_PROFILE_SPECIFIER: "",
   CODE_SIGN_IDENTITY: "Apple Development",
 });
+// A build that isn't a sandbox's keeps the sandbox layer's sources out, over
+// any xcconfig it includes.
+const EXCLUDED_SANDBOX = settings({
+  EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) HotUpdaterSandbox*",
+});
 const MIN_BUNDLE_ID_SETTINGS = settings({
   HOT_UPDATER_MIN_BUNDLE_ID: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
 });
@@ -120,7 +125,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}`,
+      `${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}${EXCLUDED_SANDBOX}`,
     );
   });
 
@@ -144,7 +149,7 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain("-quiet");
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}`,
+      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}${EXCLUDED_SANDBOX}`,
     );
   });
 
@@ -165,7 +170,7 @@ describe("xcodebuild arguments", () => {
     // An xcconfig that sets HOT_UPDATER_MIN_BUNDLE_ID cannot replace it.
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Release.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}`,
+      `#include "/app/ios/Release.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${EXCLUDED_SANDBOX}`,
     );
   });
 
@@ -217,7 +222,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `${MIN_BUNDLE_ID_SETTINGS}`,
+      `${MIN_BUNDLE_ID_SETTINGS}${EXCLUDED_SANDBOX}`,
     );
   });
 
@@ -306,7 +311,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Manual.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}`,
+      `#include "/app/ios/Manual.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}${EXCLUDED_SANDBOX}`,
     );
   });
 });

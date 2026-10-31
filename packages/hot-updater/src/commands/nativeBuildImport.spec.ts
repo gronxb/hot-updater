@@ -307,6 +307,44 @@ describe("native-build import", () => {
     });
   });
 
+  describe("the sandbox layer", () => {
+    const refused = async (
+      file: string,
+      options: { channel?: string } = {},
+    ) => {
+      const logged = vi.spyOn(console, "log").mockImplementation(() => {});
+      await handleNativeBuildImport(file, { json: true, ...options });
+      const printed = printedJson(logged);
+      logged.mockRestore();
+      process.exitCode = undefined;
+      return printed.ok ? [] : printed.problems.map((p: any) => p.code);
+    };
+    const sandboxAab = () =>
+      aab({
+        "base/manifest/AndroidManifest.xml": fixture("sandbox.pb"),
+        "base/dex/classes.dex": fixture("sandbox.dex"),
+      });
+
+    it("registers a sandbox build on its reserved channel", async () => {
+      const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
+      expect(await refused(file)).toEqual([]);
+    });
+
+    it("refuses a sandbox build on another channel", async () => {
+      const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
+      expect(await refused(file, { channel: "production" })).toEqual([
+        "SANDBOX_MISMATCH",
+      ]);
+    });
+
+    it("refuses a normal build on a reserved channel", async () => {
+      const file = await writeArtifact(dir, "app.aab", aab());
+      expect(await refused(file, { channel: "sandbox-beta" })).toEqual([
+        "SANDBOX_MISMATCH",
+      ]);
+    });
+  });
+
   it("reads and checks with --dry-run, and records nothing", async () => {
     const file = await writeArtifact(dir, "app-release.aab", aab());
 

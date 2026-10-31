@@ -141,6 +141,18 @@ describe.each(SHORTCUTS)("hot-updater $command", (shortcut) => {
     expect(built()).toEqual([[full, { scheme: "release", submit: upload }]]);
   });
 
+  it(`leaves a sandbox scheme out of the choice, so adding one doesn't change what a release uploads to ${store}`, async () => {
+    configure({
+      beta: { ...shortcut.uploadable, sandbox: true },
+      release: shortcut.uploadable,
+    });
+
+    await withTTY(false, () => shortcut.run({}));
+
+    expect(process.exitCode).toBeUndefined();
+    expect(built()).toEqual([[full, { scheme: "release", submit: upload }]]);
+  });
+
   it(`asks which scheme at a terminal when several upload to ${store}`, async () => {
     configure({
       staging: shortcut.uploadable,

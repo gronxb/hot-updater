@@ -64,6 +64,7 @@ import {
   type ReleaseCatalogStatus,
   type SchemaStatus,
 } from "./doctor/issues";
+import { checkSandboxSchemes } from "./doctor/sandbox";
 import {
   findScaffoldDeployments,
   recordedBaseUrls,
@@ -715,6 +716,7 @@ async function checkNativeStatus({
       ? signing.issues.map(toNativeIssue)
       : []),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
+    ...(await checkSandboxSchemes(config, cwd)),
   ];
 
   if (requireFingerprint && localFingerprint) {

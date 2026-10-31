@@ -4,9 +4,11 @@ import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
  * Validated scheme filled nullish values with default values.
  */
 export type EnrichedNativeBuildAndroidScheme = Required<
-  Omit<NativeBuildAndroidScheme, "signing">
+  Omit<NativeBuildAndroidScheme, "signing" | "sandbox">
 > &
-  Pick<NativeBuildAndroidScheme, "signing"> & { hotUpdaterSchemeName: string };
+  Pick<NativeBuildAndroidScheme, "signing" | "sandbox"> & {
+    hotUpdaterSchemeName: string;
+  };
 export const enrichNativeBuildAndroidScheme = async ({
   schemeConfig,
   hotUpdaterSchemeName,

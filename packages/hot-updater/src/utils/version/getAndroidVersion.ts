@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import { getCwd } from "@hot-updater/cli-tools";
+import { SANDBOX_APPLICATION_ID_SUFFIX } from "@hot-updater/protocol/native-artifact";
 
 import {
   type AppVersionCandidate,
@@ -41,8 +42,10 @@ type NamedBlock = { name: string; body: string };
 /** The top-level `name { ... }` blocks in a block body. */
 const readNamedBlocks = (body: string) => {
   const blocks: NamedBlock[] = [];
-  // Groovy `staging {`, Kotlin DSL `create("staging") {`.
-  const header = /(?:create\(\s*["']([\w-]+)["']\s*\)|([\w-]+))\s*\{/g;
+  // Groovy `staging {`, Kotlin DSL `create("staging") {` or
+  // `getByName("release") {`.
+  const header =
+    /(?:(?:create|register|getByName|named)\(\s*["']([\w-]+)["']\s*\)|([\w-]+))\s*\{/g;
 
   let match: RegExpExecArray | null;
   while ((match = header.exec(body))) {
@@ -84,6 +87,62 @@ const capitalize = (value: string) =>
  */
 const variantBuildsFlavor = (variant: string, flavor: string) =>
   new RegExp(`${capitalize(flavor)}(?=[A-Z]|$)`).test(capitalize(variant));
+
+/** The `applicationIdSuffix` of a block, with the dot AGP adds. */
+const readSuffix = (body: string): string => {
+  const suffix = readSetting(body, "applicationIdSuffix");
+  return suffix ? (suffix.startsWith(".") ? suffix : `.${suffix}`) : "";
+};
+
+/**
+ * The application ID a sandbox build of `scheme` gets: AGP joins defaultConfig's
+ * ID and suffix, where the sandbox appends its own, with each flavor's and the
+ * build type's suffix, so the sandbox's doesn't always sit last.
+ */
+export const resolveSandboxApplicationId = async ({
+  variant = "Release",
+  applicationId,
+  packageName,
+  appModuleName = "app",
+}: {
+  variant?: string;
+  applicationId?: string;
+  packageName: string;
+  appModuleName?: string;
+}): Promise<string> => {
+  const moduleDir = path.join(getCwd(), "android", appModuleName);
+  const source = await Promise.any(
+    ["build.gradle", "build.gradle.kts"].map((file) =>
+      fs.readFile(path.join(moduleDir, file), "utf8"),
+    ),
+  ).catch(() => "");
+  const android = findBlock(stripComments(source), "android")?.body ?? "";
+  const defaultConfig = findBlock(android, "defaultConfig")?.body ?? "";
+  const flavorsBlock = findBlock(android, "productFlavors");
+  const flavors = (
+    flavorsBlock ? readNamedBlocks(flavorsBlock.body) : []
+  ).filter((flavor) => variantBuildsFlavor(variant, flavor.name));
+  const buildTypesBlock = findBlock(android, "buildTypes");
+  const buildType = (
+    buildTypesBlock ? readNamedBlocks(buildTypesBlock.body) : []
+  )
+    .filter(({ name }) => variant.toLowerCase().endsWith(name.toLowerCase()))
+    .sort((a, b) => b.name.length - a.name.length)[0];
+  const baseId =
+    flavors
+      .map((flavor) => readSetting(flavor.body, "applicationId"))
+      .find(Boolean) ??
+    readSetting(defaultConfig, "applicationId") ??
+    applicationId ??
+    packageName;
+  return [
+    baseId,
+    readSuffix(defaultConfig),
+    SANDBOX_APPLICATION_ID_SUFFIX,
+    ...flavors.map((flavor) => readSuffix(flavor.body)),
+    buildType ? readSuffix(buildType.body) : "",
+  ].join("");
+};
 
 /**
  * Reads versionName from defaultConfig and from each product flavor, so an
