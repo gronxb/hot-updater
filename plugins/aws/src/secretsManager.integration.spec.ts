@@ -150,11 +150,8 @@ describe("secretsManager (LocalStack)", () => {
 
     await expect(secrets.get(["asc-api-key"], context)).rejects.toThrow(
       [
-        "AWS Secrets Manager can't read a secret.",
-        `Secret: ${prefix}asc-api-key`,
-        "It is scheduled for deletion. Restore it, or wait until it is gone:",
-        "aws secretsmanager restore-secret \\",
-        `  --secret-id ${prefix}asc-api-key`,
+        `${prefix}asc-api-key is scheduled for deletion. Restore it, or wait until it is gone:`,
+        `aws secretsmanager restore-secret --secret-id ${prefix}asc-api-key`,
       ].join("\n"),
     );
   });

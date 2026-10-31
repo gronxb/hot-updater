@@ -3,7 +3,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { getCwd, reactNativeCliFingerprint } from "@hot-updater/cli-tools";
+import {
+  fitText,
+  getCwd,
+  reactNativeCliFingerprint,
+} from "@hot-updater/cli-tools";
 import type {
   NativeFingerprint,
   NativeFingerprintOptions,
@@ -80,7 +84,7 @@ export const computeRecordedFingerprintHash = async (
         `fingerprint.json has no ${platform} fingerprint. Run \`npx hot-updater fingerprint create\`.`,
       );
     }
-    console.error(`warning: ${reason} The build embeds ${recorded}.`);
+    console.error(fitText(`warning: ${reason} The build embeds ${recorded}.`));
     return { hash: recorded, recorded };
   };
 

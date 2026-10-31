@@ -7,7 +7,6 @@ import {
   describeMissingSecret,
   displayWidth,
   fitMessage,
-  formatCommand,
   getConfiguredAdapter,
   getHotUpdaterEnvValue,
   isSecretRef,
@@ -128,7 +127,7 @@ export const missingUnusedIssue = (
     ]),
     resolution: [
       fitMessage([`Store ${it} before a build or a deploy reads ${it}:`]),
-      ...missing.map(({ command }) => formatCommand(command)),
+      ...missing.map(({ command }) => command),
     ].join("\n"),
   };
 };

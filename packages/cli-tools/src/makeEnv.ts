@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { p } from "./prompts";
+
 type EnvVarValue = string | { comment: string; value: string };
 
 const isFileSystemError = (error: unknown): error is NodeJS.ErrnoException =>
@@ -186,7 +188,9 @@ export const makeEnv = async (
     await writeEnvAtomically(resolvedFilePath, updatedContent);
     return updatedContent;
   } catch (error) {
-    console.error("Error while updating .env.hotupdater file:", error);
+    p.log.error(
+      `Error while updating .env.hotupdater file: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 };

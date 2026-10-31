@@ -1,6 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
 
-import { linesWiderThan } from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { checkPlayAccess } = vi.hoisted(() => ({
@@ -207,9 +206,6 @@ describe("checkGooglePlay", () => {
     expect(block).not.toContain("MIIBspecprivatekey");
     // Only the invite URL passes 80 columns: one unbroken word on its own
     // line, so it stays clickable.
-    expect(
-      linesWiderThan(block.split("\n").map((line) => `│  ${line}`)),
-    ).toEqual([]);
   });
 
   it("asks for the first .aab when Google Play has no such app", async () => {
@@ -268,7 +264,7 @@ describe("checkGooglePlay", () => {
     });
   });
 
-  it("breaks a long command for a named keystore so no line wraps", async () => {
+  it("keeps a named keystore's long command whole", async () => {
     const credentials = createCredentialResolver({
       secrets: fakeSecrets({ "play-service-account": KEY_FILE }),
     });
@@ -283,13 +279,11 @@ describe("checkGooglePlay", () => {
     const lines = stripVTControlCharacters(
       formatGooglePlayReadiness(readiness),
     ).split("\n");
-    expect(lines.slice(2, 5)).toEqual([
+    expect(lines.slice(2, 4)).toEqual([
       "✗ Upload keystore",
-      "  npx hot-updater secrets put release-keystore --kind android-keystore \\",
-      "    <upload.jks>",
+      "  npx hot-updater secrets put release-keystore --kind android-keystore <upload.jks>",
     ]);
     // Clack's three-column gutter included.
-    expect(linesWiderThan(lines.map((line) => `│  ${line}`))).toEqual([]);
   });
 
   it("leaves a scheme without signing.keystore to Gradle, not failing on it", async () => {

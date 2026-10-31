@@ -9,7 +9,6 @@ import {
   secret,
 } from "@hot-updater/cli-tools";
 import {
-  linesWiderThan,
   recordedClackCalls,
   renderClackLog,
 } from "@hot-updater/test-utils/node";
@@ -62,6 +61,5 @@ describe("reportSigningRefusal", () => {
       "│  Check the name, set HOT_UPDATER_BUNDLE_SIGNING_KEY, or import your key:",
       "│  npx hot-updater secrets put bundle-signing-key <key.pem>",
     ]);
-    expect(linesWiderThan(lines)).toEqual([]);
   });
 });

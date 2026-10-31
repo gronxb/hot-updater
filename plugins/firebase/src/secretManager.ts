@@ -137,28 +137,14 @@ const trackedVersions = (secret: GoogleSecret): string[] =>
 const versionOf = (name: unknown) =>
   typeof name === "string" ? name.slice(name.lastIndexOf("/") + 1) : "";
 
-/** The widest line a message has: the CLI prints no wider. */
-const LINE_WIDTH = 76;
-
-/** `text`, such as Google's own message, in lines that fit, broken at spaces. */
-const wrap = (text: string): string[] => {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(/\s+/u).filter(Boolean)) {
-    if (line && line.length + 1 + word.length > LINE_WIDTH) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-};
-
 /** An error of one line each, for a terminal. */
 const failure = (lines: readonly string[], cause?: unknown) =>
   new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
+
+const signInHint = () =>
+  process.env["CI"]
+    ? "Check the job's Workload Identity Federation."
+    : "Run gcloud auth application-default login.";
 
 const hint = (response: GoogleResponse, permission: string): string[] => {
   const { status, error } = response;
@@ -169,14 +155,10 @@ const hint = (response: GoogleResponse, permission: string): string[] => {
     ];
   }
   if (status === 401) {
-    return [
-      "Google rejected the access token.",
-      "Sign in again with gcloud auth application-default login.",
-      "In CI, check the job's Workload Identity Federation.",
-    ];
+    return ["Google rejected the access token.", signInHint()];
   }
   if (status === 403) {
-    return wrap(`The Google identity needs ${permission}.`);
+    return [`The identity needs ${permission}.`];
   }
   if (status === 429) {
     return ["Secret Manager's quota is exhausted: try again later."];
@@ -185,9 +167,9 @@ const hint = (response: GoogleResponse, permission: string): string[] => {
 };
 
 /**
- * An error for a failed request on `resource`, a line each: the HTTP
- * status, the resource, Google's status and message, which name resources
- * but never a value, `notes`, and what to fix.
+ * An error for a failed request on `resource`, a line each: the HTTP status,
+ * the resource, `notes`, and what to fix, or Google's own status and message,
+ * which name resources but never a value, when nothing here says what to fix.
  */
 const requestError = (
   action: string,
@@ -197,13 +179,14 @@ const requestError = (
   notes: readonly string[] = [],
 ) => {
   const { status, message } = response.error;
-  const detail = [status, message?.slice(0, 300)].filter(Boolean).join(": ");
+  const fix = hint(response, permission);
   return failure([
     `${ADAPTER_NAME} couldn't ${action} (${response.status}).`,
     resourceLine(resource),
-    ...wrap(detail),
     ...notes,
-    ...hint(response, permission),
+    ...(fix.length > 0
+      ? fix
+      : [[status, message?.slice(0, 300)].filter(Boolean).join(": ")]),
   ]);
 };
 
@@ -270,15 +253,9 @@ const createAccessToken = (
       throw failure(
         [
           `${ADAPTER_NAME} found no Google credentials.`,
-          ...wrap(
-            error instanceof Error
-              ? error.message.split("\n")[0]!
-              : String(error),
-          ),
-          "On your machine, run gcloud auth application-default login.",
-          "In CI, use google-github-actions/auth.",
-          "Or set GOOGLE_APPLICATION_CREDENTIALS to a service account key.",
-          `Or set ${ACCESS_TOKEN_ENV_NAMES.join(" or ")} to a token.`,
+          process.env["CI"]
+            ? "Use google-github-actions/auth."
+            : "Run gcloud auth application-default login.",
         ],
         error,
       );
@@ -522,12 +499,8 @@ export const secretManager = ({
       throw failure([
         `${ADAPTER_NAME} can't store a value.`,
         resourceLine(secret),
-        ...wrap(`The Google identity lacks ${missing.join(", ")} on it.`),
-        "It adds a version, then destroys the versions it added before.",
-        "Grant roles/secretmanager.admin, or a custom role with:",
-        ...wrap(
-          "secretmanager.secrets.get, secretmanager.secrets.update, secretmanager.versions.add, secretmanager.versions.destroy, secretmanager.versions.access",
-        ),
+        `The identity lacks ${missing.join(", ")} on it.`,
+        "Grant roles/secretmanager.admin.",
       ]);
     }
   };
@@ -671,7 +644,7 @@ export const secretManager = ({
           [
             `${ADAPTER_NAME} couldn't ${notListed}.`,
             resourceLine(secret),
-            ...wrap(error instanceof Error ? error.message : String(error)),
+            error instanceof Error ? error.message : String(error),
             notDestroyed,
           ],
           error,

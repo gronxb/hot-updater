@@ -1011,7 +1011,7 @@ const catchError = (e: unknown): never => {
   } else if (e instanceof Error) {
     p.log.error(e.stack ?? e.message);
   } else {
-    console.error(e);
+    p.log.error(String(e));
   }
   process.exit(1);
 };

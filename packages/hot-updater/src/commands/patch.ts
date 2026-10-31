@@ -14,6 +14,7 @@ import { loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
+import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 
 export interface PatchOptions {
   baseBundleId: string;
@@ -77,7 +78,7 @@ export const createPatch = async (options: PatchOptions) => {
 
     p.outro("Patch ready.");
   } catch (error) {
-    console.error(error);
+    reportUnexpectedError(error);
     process.exit(1);
   } finally {
     await server.dispose();

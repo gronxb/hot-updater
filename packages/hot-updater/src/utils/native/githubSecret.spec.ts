@@ -1,11 +1,5 @@
 import os from "node:os";
 
-import { p } from "@hot-updater/cli-tools";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { confirm, gh } = vi.hoisted(() => ({
@@ -165,11 +159,4 @@ describe("offerGitHubSecret", () => {
       }),
     );
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

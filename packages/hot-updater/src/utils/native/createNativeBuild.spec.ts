@@ -2,13 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { p, getCwd } from "@hot-updater/cli-tools";
+import { getCwd } from "@hot-updater/cli-tools";
 import type { BuildAdapter } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createNativeBuild } from "./createNativeBuild";
@@ -281,11 +276,4 @@ describe("createNativeBuild", () => {
       }),
     ).rejects.toThrow("Unexpected native build artifact");
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

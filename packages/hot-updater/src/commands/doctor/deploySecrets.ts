@@ -4,7 +4,6 @@ import path from "node:path";
 import {
   type ConfigResponse,
   fitMessage,
-  formatCommand,
   getConfiguredAdapter,
   getHotUpdaterEnvValue,
   getDeploySecretNames,
@@ -99,7 +98,7 @@ export const deploySecretsAdvice = (
       ]
     : [
         `Run init again to read ${them} with secret():`,
-        ui.commandLines(initCommand),
+        ui.command(initCommand),
       ];
 
 /**
@@ -204,7 +203,7 @@ export const deploySecretsIssue = (
             fitMessage(
               headAndTail(`Set ${variables}`, "in .env.hotupdater, then run:"),
             ),
-            formatCommand(SECRETS_IMPORT_COMMAND),
+            SECRETS_IMPORT_COMMAND,
           ].join("\n"),
   };
 };

@@ -75,7 +75,7 @@ const handleSupabaseDatabaseCommandError = (
   if (err instanceof ExecaError) {
     p.log.error(supabaseDatabaseCommandErrorMessage(err, options));
   } else {
-    console.error(err);
+    p.log.error(err instanceof Error ? err.message : String(err));
   }
 
   process.exit(1);
