@@ -22,7 +22,8 @@ vi.mock("./utils/readBuiltApp", () => ({
 }));
 vi.mock("./utils/sandboxManifest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./utils/sandboxManifest")>()),
-  readMergedManifest: () => `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  readMergedManifest:
+    () => `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
     <activity android:name="com.example.MainActivity">
       <intent-filter>

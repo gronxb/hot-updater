@@ -36,7 +36,8 @@ const scheme = {
   packageName: "com.example.app",
 };
 
-const mergedManifest = async () => `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+const mergedManifest =
+  async () => `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
     <activity android:name="com.example.app.MainActivity">
       <intent-filter>
@@ -77,7 +78,9 @@ describe("withSandboxGradleArgs", () => {
         );
         const overlay = fs.readFileSync(written.overlay, "utf-8");
         expect(overlay).toContain('android:value="sandbox-release"');
-        expect(overlay).toContain('android:scheme="hu-sandbox-com-example-app"');
+        expect(overlay).toContain(
+          'android:scheme="hu-sandbox-com-example-app"',
+        );
         return gradleArgs;
       },
     );

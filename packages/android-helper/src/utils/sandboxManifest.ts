@@ -66,7 +66,10 @@ const opensAsLauncher = ({ actions, categories }: ManifestIntentFilter) =>
 /** Task settings a sandbox activity can't share a task with: what, and how to fix it. */
 const taskRefusal = (name: string, activity: XmlElement): string | null => {
   const launchMode = attribute(activity, "launchMode");
-  if (launchMode === "singleInstance" || launchMode === "singleInstancePerTask") {
+  if (
+    launchMode === "singleInstance" ||
+    launchMode === "singleInstancePerTask"
+  ) {
     return `Sandbox builds don't support launchMode ${launchMode} on the launcher ${name}.\nUse singleTask or the default launch mode.`;
   }
   if (attribute(activity, "taskAffinity") !== undefined) {
@@ -85,7 +88,9 @@ const taskRefusal = (name: string, activity: XmlElement): string | null => {
  * build can't take over: none or several entries, a filter it can't move whole,
  * and task settings its activity can't share a task with.
  */
-export const resolveSandboxLauncher = (mergedManifest: string): SandboxLauncher => {
+export const resolveSandboxLauncher = (
+  mergedManifest: string,
+): SandboxLauncher => {
   const application = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "",
@@ -123,7 +128,9 @@ export const resolveSandboxLauncher = (mergedManifest: string): SandboxLauncher 
     );
   }
   const targetActivity =
-    kind === "activity-alias" ? attribute(element, "targetActivity") : undefined;
+    kind === "activity-alias"
+      ? attribute(element, "targetActivity")
+      : undefined;
   const activity =
     kind === "activity"
       ? element
@@ -150,7 +157,9 @@ export const resolveSandboxLauncher = (mergedManifest: string): SandboxLauncher 
     ...(label === undefined ? {} : { label }),
     ...(icon === undefined ? {} : { icon }),
     ...(roundIcon === undefined ? {} : { roundIcon }),
-    ...(shortcutsResource === undefined ? {} : { shortcuts: shortcutsResource }),
+    ...(shortcutsResource === undefined
+      ? {}
+      : { shortcuts: shortcutsResource }),
   };
 };
 

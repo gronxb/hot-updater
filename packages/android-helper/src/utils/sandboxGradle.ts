@@ -9,7 +9,10 @@ import {
   sandboxChannelOf,
 } from "@hot-updater/protocol/native-artifact";
 
-import { resolveSandboxLauncher, sandboxManifestOverlay } from "./sandboxManifest";
+import {
+  resolveSandboxLauncher,
+  sandboxManifestOverlay,
+} from "./sandboxManifest";
 
 const UNSUPPORTED_DSL = `Sandbox builds don't support AGP 9's default DSL yet.
 Set android.newDsl=false in android/gradle.properties.`;

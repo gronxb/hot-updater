@@ -139,18 +139,25 @@ describe("checkSandboxSchemes", () => {
       expect.objectContaining({
         type: "warning",
         code: "SANDBOX_UNQUALIFIED",
-        message: "Sandbox builds aren't tested with the rock build adapter yet.",
+        message:
+          "Sandbox builds aren't tested with the rock build adapter yet.",
       }),
     ]);
   });
 
   it("takes the Expo SDK sandbox builds ran on, and warns about any other", async () => {
-    write("package.json", JSON.stringify({ dependencies: { expo: "~52.0.49" } }));
+    write(
+      "package.json",
+      JSON.stringify({ dependencies: { expo: "~52.0.49" } }),
+    );
     expect(
       await checkSandboxSchemes(config(androidSandbox, "expo"), root),
     ).toEqual([]);
 
-    write("package.json", JSON.stringify({ devDependencies: { expo: "^54.0.0" } }));
+    write(
+      "package.json",
+      JSON.stringify({ devDependencies: { expo: "^54.0.0" } }),
+    );
     expect(
       await checkSandboxSchemes(config(androidSandbox, "expo"), root),
     ).toEqual([

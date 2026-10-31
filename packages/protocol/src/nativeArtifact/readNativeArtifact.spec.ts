@@ -580,7 +580,10 @@ describe("the sandbox layer", () => {
       const manifest = fixture(`launcher.${format}`);
       const files =
         format === "axml"
-          ? { "AndroidManifest.xml": manifest, "classes.dex": fixture("classes.dex") }
+          ? {
+              "AndroidManifest.xml": manifest,
+              "classes.dex": fixture("classes.dex"),
+            }
           : {
               "base/manifest/AndroidManifest.xml": manifest,
               "base/dex/classes.dex": fixture("classes.dex"),
@@ -668,7 +671,10 @@ describe("the sandbox layer", () => {
   describe("preview links", () => {
     const vectors = JSON.parse(
       readFileSync(
-        join(fixtures, "../../../../test-utils/fixtures/sandbox-preview-links.json"),
+        join(
+          fixtures,
+          "../../../../test-utils/fixtures/sandbox-preview-links.json",
+        ),
         "utf-8",
       ),
     ) as {

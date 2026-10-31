@@ -374,7 +374,11 @@ export const readAndroidManifest = (
   const metaData = new Map<string, ManifestValue>();
   const launchers: string[] = [];
   const urlSchemes = new Map<string, string[]>();
-  const stringAttribute = (element: ManifestElement, id: number, name: string) => {
+  const stringAttribute = (
+    element: ManifestElement,
+    id: number,
+    name: string,
+  ) => {
     const value = attributeOf(element, id, name);
     return value?.type === "string" ? value.value : null;
   };

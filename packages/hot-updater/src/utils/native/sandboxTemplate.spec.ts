@@ -55,9 +55,10 @@ describe("the gate's hold on React Native", () => {
         SDK,
         `../../examples/${example}/node_modules/react-native/Libraries/AppDelegate/RCTRootViewFactory.mm`,
       );
-      expect(declares(fs.readFileSync(factory, "utf-8"), selector), example).toBe(
-        true,
-      );
+      expect(
+        declares(fs.readFileSync(factory, "utf-8"), selector),
+        example,
+      ).toBe(true);
     }
   });
 
@@ -66,9 +67,7 @@ describe("the gate's hold on React Native", () => {
       read("android/src/main/java/com/hotupdater/HotUpdaterRestartActivity.kt"),
     ).toContain("Intent.makeRestartActivityTask(component)");
     expect(
-      read(
-        "android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxStart.kt",
-      ),
+      read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxStart.kt"),
     ).toContain("Intent.FLAG_ACTIVITY_CLEAR_TASK != 0");
   });
 });
