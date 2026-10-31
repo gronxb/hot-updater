@@ -2,10 +2,10 @@
 "hot-updater": patch
 ---
 
-Keep the CLI's human output within 76 columns.
+Make the CLI's human output shorter and easier to read. `--json` is unchanged.
 
-- `p` now fits every line it prints at print time, to 73 display columns after clack's 3-column gutter (70 in a note's box). Prose breaks at spaces, a command breaks with ` \`, which counts toward the width, and a word longer than a line, such as a URL or a path, gets a line of its own. Width is display width: East Asian wide characters and emoji take two columns. Text a tool wrote, such as a build's output, prints as the tool wrote it, and `--json` is unchanged.
+- Messages say what is wrong and one next step. Doctor, `secrets`, `deploy`, and the secrets adapters drop sentences that restated a line, explained internals, or applied only rarely.
+- `p` wraps prose at word boundaries. A command, a URL, or a path stays whole on its own line, however long: no command is split with ` \` any more, so each one copies as printed. Text a tool wrote, such as a build's output, prints as the tool wrote it.
 - An error or a warning shows a provider's message instead of its raw JSON, such as Cloudflare's `errors[].message`: doctor now says `Could not check the release catalogs: 401 Authentication error`.
 - `secrets put --kind android-keystore` without a terminal refuses once, listing all it needs: `--key-alias` and the password variables that aren't set.
-- A table wider than a line stays bordered, with a `label │ value` row for each column, and a section for each of its rows.
 - An unexpected failure in `deploy`, `patch`, or `fingerprint` prints its message as an error. `DEBUG=1` adds the stack.

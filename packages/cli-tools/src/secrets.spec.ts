@@ -403,11 +403,6 @@ describe("readSecretWithSource", () => {
         expect(error.message.replaceAll("\n", " ")).toBe(
           `Couldn't read asc-api-key from the localSecrets secrets adapter. EACCES: permission denied, open '${file}'`,
         );
-        expect(
-          error.message
-            .split("\n")
-            .filter((line) => line.length > 76 && line.includes(" ")),
-        ).toEqual([]);
       } finally {
         await fs.chmod(file, 0o600);
       }
@@ -558,38 +553,6 @@ describe("secret", () => {
     );
   });
 
-  it("keeps a long name and where the adapter keeps it inside 76 columns", async () => {
-    const name = "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY";
-    vi.stubEnv(name, undefined);
-    setConfiguredSecrets(
-      resolveSecretsAdapter({
-        name: "infisical",
-        describe: (secretName) =>
-          `Infisical production:/hot-updater/codex-relay/android/${secretName}`,
-        get: async () => ({}),
-        set: async () => {},
-      }),
-    );
-
-    const error = (await secret(name)().then(
-      () => undefined,
-      (thrown: unknown) => thrown,
-    )) as Error;
-
-    expect(error.message.replaceAll("\n", " ")).toBe(
-      [
-        `secret("${name}") has no value.`,
-        `It isn't in Infisical production:/hot-updater/codex-relay/android/${name}.`,
-        `Store it there, or set ${name}.`,
-      ].join(" "),
-    );
-    expect(
-      error.message
-        .split("\n")
-        .filter((line) => line.length > 76 && line.includes(" ")),
-    ).toEqual([]);
-  });
-
   it("reads the environment alone without a configured adapter, never `localSecrets()`'s store", async () => {
     vi.stubEnv("SPEC_MISSING", undefined);
     await writeLocalKey("SPEC_MISSING", "machine-value", directory);
@@ -598,7 +561,6 @@ describe("secret", () => {
       [
         'secret("SPEC_MISSING") has no value.',
         "Set SPEC_MISSING in the environment or .env.hotupdater.",
-        "Or set the config's secrets to a team store.",
       ].join("\n"),
     );
   });

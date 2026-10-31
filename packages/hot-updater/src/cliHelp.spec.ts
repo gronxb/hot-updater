@@ -19,17 +19,12 @@ const run = (...args: string[]) => {
 /** asc, the App Store Connect CLI, which Hot Updater no longer runs. */
 const NAMES_ASC = /App Store Connect CLI|\basc\b(?!-api-key)/u;
 
-/**
- * The lines of a refusal clack prints, without the gutter, each under 77
- * columns with it, so an 80-column terminal never wraps one.
- */
-const refusal = (result: { stdout: string; stderr: string }) => {
-  const lines = stripVTControlCharacters(result.stdout + result.stderr)
+/** The lines of a refusal clack prints, without the gutter. */
+const refusal = (result: { stdout: string; stderr: string }) =>
+  stripVTControlCharacters(result.stdout + result.stderr)
     .split("\n")
-    .filter((line) => /^[■│] {2}\S/u.test(line));
-  for (const line of lines) expect(line.length).toBeLessThanOrEqual(76);
-  return lines.map((line) => line.slice(3));
-};
+    .filter((line) => /^[■│] {2}\S/u.test(line))
+    .map((line) => line.slice(3));
 
 const help = (...command: string[]): string => {
   const result = run(...command, "--help");

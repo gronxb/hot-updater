@@ -33,66 +33,31 @@ describe("what p prints", () => {
     vi.unstubAllEnvs();
   });
 
-  const LONG_PROSE =
-    "Signing is disabled but HOT_UPDATER_PUBLIC_KEY exists in Info.plist, so this will cause OTA updates to be rejected on every device that has it.";
-  const LONG_COMMAND =
-    "npx hot-updater secrets put qa-missing-signing --kind bundle-signing-key <key.pem>";
   const LONG_URL = `https://example.com/${"x".repeat(90)}`;
-  const WIDE = `🔑 ${"프로젝트 ".repeat(30).trim()}`;
-  const COLORED = `\u001B[32m${"word ".repeat(30).trim()}\u001B[39m`;
-  const MESSAGES = [LONG_PROSE, LONG_COMMAND, WIDE, COLORED];
 
-  /** The lines wider than 76 columns that a space could have broken. */
-  const tooWide = (text: string) =>
-    text
-      .split("\n")
-      .filter(
-        (line) => displayWidth(line) > 76 && /\s/u.test(line.slice(3).trim()),
-      );
-
-  it.each([
-    "message",
-    "info",
-    "success",
-    "step",
-    "warn",
-    "warning",
-    "error",
-  ] as const)("fits p.log.%s within 76 columns", (level) => {
-    const { output, read } = capturePlainOutput();
-    for (const message of MESSAGES) p.log[level](message, { output });
-    expect(read()).toContain("hot-updater secrets put");
-    expect(tooWide(read())).toEqual([]);
-  });
-
-  it("fits a message of lines", () => {
-    const { output, read } = capturePlainOutput();
-    p.log.message(MESSAGES, { output });
-    expect(tooWide(read())).toEqual([]);
-  });
-
-  it("fits p.cancel, p.intro, p.outro, and p.note, whose box takes more", () => {
-    const { output, read } = capturePlainOutput();
-    for (const message of MESSAGES) {
-      p.cancel(message, { output });
-      p.intro(message, { output });
-      p.outro(message, { output });
-      p.note(message, "Title", { output });
-    }
-    expect(tooWide(read())).toEqual([]);
-  });
-
-  it("fits a spinner's and a task's lines in CI", async () => {
+  it("wraps prose and keeps a command whole, in each way p prints", async () => {
     vi.stubEnv("CI", "true");
+    const prose = `Signing is off ${"word ".repeat(30).trim()}`;
+    const command =
+      "npx hot-updater secrets put qa-missing-signing --kind bundle-signing-key <key.pem>";
     const { output, read } = capturePlainOutput();
-    const spinner = p.spinner({ output });
-    spinner.start(LONG_PROSE);
-    spinner.stop(LONG_PROSE);
-    await p.tasks([{ title: LONG_PROSE, task: () => LONG_COMMAND }], {
-      output,
-    });
-    expect(read()).toContain("hot-updater secrets put");
-    expect(tooWide(read())).toEqual([]);
+    p.log.error(`${prose}\n${command}`, { output });
+    p.log.message([prose, command], { output });
+    p.cancel(prose, { output });
+    p.outro(prose, { output });
+    await p.tasks([{ title: prose, task: () => command }], { output });
+
+    expect(
+      read()
+        .split("\n")
+        .filter((line) => line.includes(command)),
+    ).toHaveLength(3);
+    expect(
+      read()
+        .split("\n")
+        .filter((line) => !line.includes(command))
+        .every((line) => displayWidth(line) <= 76),
+    ).toBe(true);
   });
 
   it("keeps a URL whole on its own line", () => {

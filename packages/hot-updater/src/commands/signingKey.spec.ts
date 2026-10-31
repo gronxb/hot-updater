@@ -6,18 +6,12 @@ import { stripVTControlCharacters } from "node:util";
 
 import {
   loadConfig,
-  p,
   readLocalKey,
   resolveSecretsAdapter,
   secret,
   writeLocalKey,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter, SigningConfig } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateBundleSigningKey } from "../utils/signing/bundleSigningKey";
@@ -324,11 +318,4 @@ describe("hot-updater secrets issue bundle-signing-key", () => {
     );
     expect(logged("step")).toContain("Name        release-signing-key");
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

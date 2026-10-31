@@ -7,12 +7,7 @@ import { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
 import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
 import { getCwd } from "./cwd";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
-import {
-  displayWidth,
-  fitMessage,
-  formatCommand,
-  MESSAGE_WIDTH,
-} from "./messageLines";
+import { displayWidth, fitMessage, MESSAGE_WIDTH } from "./messageLines";
 import { registerSecretValue } from "./secretMasking";
 import {
   describeSecret,
@@ -104,7 +99,7 @@ const describeFields = (fields: readonly EnvField[]) => {
 const withLead = (lead: string, command: string): string =>
   displayWidth(`${lead} ${command}`) <= MESSAGE_WIDTH
     ? `${lead} ${command}`
-    : `${lead}\n${formatCommand(command)}`;
+    : `${lead}\n${command}`;
 
 /**
  * Why a build has no upload keystore, steering away from a second key:
@@ -123,7 +118,7 @@ const describeMissingKeystore = (
     return [
       `No ${item} in ${describeSecret(configured, name)}.`,
       "Ask whoever set it up to store it there, or import it with:",
-      formatCommand(credentialPutCommand("android-keystore", name)),
+      credentialPutCommand("android-keystore", name),
     ].join("\n");
   }
   return [
@@ -226,7 +221,7 @@ export const describeMissingSecret = (
             `Check the name, set ${secretVariableName(name)}, or ${action}:`,
           ],
     ),
-    formatCommand(command),
+    command,
   ].join("\n");
 
 export class CredentialUnavailableError extends Error {
@@ -672,7 +667,7 @@ export const createCredentialResolver = ({
         kind,
         kind === "android-keystore"
           ? describeMissingKeystore(store, item, name)
-          : `No ${item} in the ${store.name} secrets adapter.\nStore it once with:\n${formatCommand(credentialStoreCommand(kind, name))}`,
+          : `No ${item} in the ${store.name} secrets adapter.\nStore it once with:\n${credentialStoreCommand(kind, name)}`,
       );
     }
     registerSecretValue(value);

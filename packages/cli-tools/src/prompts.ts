@@ -1,7 +1,7 @@
 import * as clack from "@clack/prompts";
 
 import { nonInteractiveReason } from "./interactive";
-import { fitText, NOTE_WIDTH, withProviderMessages } from "./messageLines";
+import { fitText, withProviderMessages } from "./messageLines";
 import { maskSecretValues } from "./secretMasking";
 import { type StepCapture, stepCapture } from "./stepCapture";
 
@@ -11,10 +11,10 @@ type Progress = ReturnType<typeof clack.progress>;
 
 /**
  * A message as people read it: masked first, so a line break never splits
- * a value, then fitted within 76 columns after clack's gutter.
+ * a value, then its prose wrapped.
  */
-const printable = (message: string, width?: number): string =>
-  fitText(maskSecretValues(message), width);
+const printable = (message: string): string =>
+  fitText(maskSecretValues(message));
 
 /** An error or a warning, which says what a provider's JSON body says. */
 const printableFailure = (message: string): string =>
@@ -274,10 +274,10 @@ const fitPromptMessage = <Options>(options: Options): Options => {
 
 /**
  * `@clack/prompts` with CI-safe spinners, with every message a registered
- * credential value appears in masked (`registerSecretValue`) and each of its
- * lines fitted within 76 columns (`fitText`), with a provider's JSON body in
- * an error or a warning replaced with its message, and with prompts that
- * refuse to ask without a terminal.
+ * credential value appears in masked (`registerSecretValue`) and its prose
+ * wrapped (`fitText`), with a provider's JSON body in an error or a warning
+ * replaced with its message, and with prompts that refuse to ask without a
+ * terminal.
  */
 export const p: typeof clack = {
   ...clack,
@@ -299,7 +299,7 @@ export const p: typeof clack = {
   intro: (title, options) => clack.intro(printableMessage(title), options),
   note: (message, title, options) =>
     clack.note(
-      message === undefined ? message : printable(message, NOTE_WIDTH),
+      message === undefined ? message : maskSecretValues(message),
       title === undefined ? title : maskSecretValues(title),
       options,
     ),

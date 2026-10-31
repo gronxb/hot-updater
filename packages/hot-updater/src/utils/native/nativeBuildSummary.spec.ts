@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { linesWiderThan, renderClackLog } from "@hot-updater/test-utils/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -80,7 +79,6 @@ describe("formatNativeBuildSummary", () => {
     const text = summary({ storeUrl: url });
 
     expect(text.split("\n").at(-2)).toBe(url);
-    expect(linesWiderThan(renderClackLog([["success", text]]))).toEqual([]);
   });
 
   it("names a fingerprint build's fingerprint, and leaves out what it can't read", () => {
@@ -114,7 +112,6 @@ describe("formatNativeBuildSummary", () => {
       },
     });
 
-    expect(linesWiderThan(renderClackLog([["success", text]]))).toEqual([]);
     expect(text).toContain("…/CodexRelay.ipa · 48.0 MB");
   });
 });

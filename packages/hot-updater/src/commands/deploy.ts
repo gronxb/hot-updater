@@ -648,7 +648,7 @@ const deployPlatform = async ({
     s.start(`Fingerprinting (${platform})`);
     if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       s.error(
-        "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        "fingerprint.json not found. Run:\nnpx hot-updater fingerprint create",
       );
       process.exit(1);
     }
@@ -664,9 +664,7 @@ const deployPlatform = async ({
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
-      s.error(
-        "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
-      );
+      s.error("Fingerprint mismatch. Run:\nnpx hot-updater fingerprint create");
 
       const engineChange = getFingerprintEngineChange(
         projectFingerprint?.[platform],
@@ -768,11 +766,11 @@ const deployPlatform = async ({
   if (!target.fingerprintHash && !target.appVersion) {
     if (config.updateStrategy === "fingerprint") {
       p.log.error(
-        "Fingerprint hash not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        "Fingerprint hash not found. Run:\nnpx hot-updater fingerprint create",
       );
     } else {
       p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+        "Target app version not found. Pass -t <targetAppVersion>, such as 1.x.x.",
       );
     }
     process.exit(1);

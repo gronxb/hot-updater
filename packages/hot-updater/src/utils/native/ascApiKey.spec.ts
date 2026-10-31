@@ -3,11 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, text, confirm, select, isCancel, git } = vi.hoisted(() => ({
@@ -58,7 +53,6 @@ import type {
   IssuedAscApiKey,
 } from "@hot-updater/apple-helper";
 import {
-  p,
   getCwd,
   getLocalKeyFile,
   maskSecretValues,
@@ -728,11 +722,4 @@ describe("ensureAscApiKey", () => {
     );
     expect(issued.revoke).not.toHaveBeenCalled();
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

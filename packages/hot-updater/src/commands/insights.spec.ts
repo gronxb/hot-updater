@@ -172,10 +172,11 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
 
     const printed = messages();
     expect(printed).toContain("Insights · iOS · production · last 7d");
-    // install-2 downloaded the bundle and has not launched it yet.
     expect(printed).toMatch(
-      /Reporting installations │ 2\s+│\n│ On the bundle\s+│ 1\s+│\n│ Downloaded\s+│ 2\s+│\n│ Launched\s+│ 1\s+│\n│ Crashed\s+│ 0\s+│\n│ Failed\s+│ 1\s+│/u,
+      /Reporting installations │ On the bundle │ Downloaded │ Launched │ Crashed │ Failed/u,
     );
+    // install-2 downloaded the bundle and has not launched it yet.
+    expect(printed).toMatch(/│ 2\s+│ 1\s+│ 2\s+│ 1\s+│ 0\s+│ 1\s+│/u);
     expect(printBanner).toHaveBeenCalledOnce();
     expect(database.dispose).toHaveBeenCalledOnce();
     expect(process.exitCode).toBeUndefined();
@@ -203,9 +204,7 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     expect(printed).toContain(
       `Update failures of ${release.id} · iOS · production · last 24h`,
     );
-    expect(printed).toMatch(
-      /Failure rate\s+│ 33\.33%\s+│\n│ Failed updates\s+│ 1 of 3\s+│\n│ Affected installations │ 1\s+│\n│ Downloads\s+│ 2\s+│/u,
-    );
+    expect(printed).toMatch(/│ 33\.33%\s+│ 1 of 3\s+│ 1\s+│ 2\s+│/u);
     expect(printed).toMatch(/download\s*│ network\s*│ 1/u);
 
     await handleInsightsFailures({
@@ -238,10 +237,8 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
 
     await handleInsightsEvents({ install: "install-1" });
     const printed = messages();
-    expect(printed).toMatch(/Event\s+│ Launched\s+│\n│ Install\s+│ install-1/u);
-    expect(printed).toMatch(
-      /Event\s+│ Downloaded\s+│\n│ Install\s+│ install-1/u,
-    );
+    expect(printed).toMatch(/Launched\s*│ install-1/u);
+    expect(printed).toMatch(/Downloaded\s*│ install-1/u);
     expect(printed).not.toContain("install-2");
 
     await handleInsightsEvents({ bundle: release.id });

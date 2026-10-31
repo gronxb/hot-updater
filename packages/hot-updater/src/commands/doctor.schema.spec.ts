@@ -1,5 +1,4 @@
 import {
-  p,
   createMigrator,
   loadConfig,
   readPackageUp,
@@ -15,11 +14,6 @@ import {
   SETTINGS_TABLE,
   type ToolingDatabase,
 } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiKeys, insights, remoteConfig } from "../plugins";
@@ -519,11 +513,4 @@ describe("doctor's schema check", () => {
       },
     });
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

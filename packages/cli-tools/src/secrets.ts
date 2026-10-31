@@ -414,7 +414,6 @@ const readSecretRef = async (
       fitMessage([
         `secret("${name}") has no value.`,
         `Set ${variable} in the environment or .env.hotupdater.`,
-        "Or set the config's secrets to a team store.",
       ]),
     );
   }

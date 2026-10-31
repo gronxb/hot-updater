@@ -142,9 +142,7 @@ const assertPrivateDirectory = async (directory: string) => {
   throw new Error(
     fitMessage([
       `localSecrets() refuses ${directory}: its secrets could be committed.`,
-      `The git repository ${top} doesn't ignore it.`,
-      `Add ${path.relative(top, real).split(path.sep).join("/")}/ to its .gitignore,`,
-      "or set localSecrets({ path }).",
+      `Add ${path.relative(top, real).split(path.sep).join("/")}/ to ${top}'s .gitignore, or set localSecrets({ path }).`,
     ]),
   );
 };

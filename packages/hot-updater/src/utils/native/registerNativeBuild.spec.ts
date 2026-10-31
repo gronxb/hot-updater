@@ -4,18 +4,13 @@ import path from "path";
 
 import { extractBuiltInBundle as extractAndroid } from "@hot-updater/android-helper";
 import { archiveAppBundle } from "@hot-updater/apple-helper";
-import { p, loadConfig } from "@hot-updater/cli-tools";
+import { loadConfig } from "@hot-updater/cli-tools";
 import {
   createStorageAdapter,
   createStorageUri,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabaseHarness } from "../../commands/database.testFixtures";
@@ -549,11 +544,4 @@ describe("issueMinBundleId", () => {
     );
     expect(getBundle).toHaveBeenCalledTimes(10);
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

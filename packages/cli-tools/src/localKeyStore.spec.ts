@@ -121,15 +121,9 @@ describe("localSecrets({ path })", () => {
     expect(refused.message.replaceAll("\n", " ")).toBe(
       [
         `localSecrets() refuses ${path.join(app, "secrets")}: its secrets could be committed.`,
-        `The git repository ${app} doesn't ignore it.`,
-        "Add secrets/ to its .gitignore, or set localSecrets({ path }).",
+        `Add secrets/ to ${app}'s .gitignore, or set localSecrets({ path }).`,
       ].join(" "),
     );
-    expect(
-      refused.message
-        .split("\n")
-        .filter((line) => line.length > 76 && line.includes(" ")),
-    ).toEqual([]);
     await expect(store.read("asc-api-key", app)).rejects.toThrow(
       /could\s+be\s+committed/u,
     );
@@ -151,11 +145,6 @@ describe("localSecrets({ path })", () => {
         "It is not a directory: set its path to one.",
       ].join(" "),
     );
-    expect(
-      refused.message
-        .split("\n")
-        .filter((line) => line.length > 76 && line.includes(" ")),
-    ).toEqual([]);
   });
 
   it("stores outside any git work tree as it is", async () => {

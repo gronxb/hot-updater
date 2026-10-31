@@ -3,16 +3,11 @@ import { stripVTControlCharacters } from "node:util";
 import { maskSecretValues } from "./secretMasking";
 
 /**
- * The widest line of a message the CLI prints: clack puts it after its
- * 3-column gutter (`│  `), and the whole line stays within 76 columns.
+ * Where the CLI wraps a message's prose, so it reads well after clack's
+ * 3-column gutter. It is a default for readability: a command, a URL, or a
+ * path stays whole, however long.
  */
 export const MESSAGE_WIDTH = 73;
-
-/**
- * The widest line in a `p.note` box, whose gutter, padding, and right edge
- * take 6 columns of the same 76.
- */
-export const NOTE_WIDTH = 70;
 
 const graphemes = new Intl.Segmenter();
 /** Combining marks, format and control characters: they take no column. */
@@ -54,9 +49,6 @@ export const truncateLine = (text: string, width: number): string => {
   return `${cut.trimEnd()}…`;
 };
 
-/** The room a command's continuation, ` \`, takes at the end of a line. */
-const CONTINUATION_WIDTH = 2;
-
 // oxlint-disable-next-line no-control-regex -- a color code starts with ESC.
 const COLOR_CODE = /\u001B\[(\d+)(?:;\d+)*m/gu;
 
@@ -91,10 +83,10 @@ const carryColors = (lines: readonly string[]): string[] => {
 };
 
 /** A line's words, with a color code on its own joined to the next word. */
-const wordsOf = (line: string, pattern: RegExp): string[] => {
+const wordsOf = (line: string): string[] => {
   const words: string[] = [];
   let colors = "";
-  for (const word of line.match(pattern) ?? []) {
+  for (const word of line.match(/\S+/gu) ?? []) {
     if (displayWidth(word) === 0) colors += word;
     else {
       words.push(`${colors}${word}`);
@@ -105,15 +97,25 @@ const wordsOf = (line: string, pattern: RegExp): string[] => {
   return words;
 };
 
-const indentOf = (line: string): string =>
-  /^\s*/u.exec(stripVTControlCharacters(line))?.[0] ?? "";
+/**
+ * Whether a line is a command to copy, by the program it runs, rather than
+ * prose: the next word is an argument, so "aws CLI not found" is prose.
+ */
+export const isCommandLine = (line: string): boolean =>
+  /^\s*(?:\$ )?(?:npx|pnpx|bunx|pnpm|npm|yarn|bun|hot-updater|aws|az|gcloud|gh|git)\s+[a-z0-9@./<-]/u.test(
+    stripVTControlCharacters(line),
+  );
+
+/** A row of a bordered table, which a line break would garble. */
+const isTableRow = (line: string): boolean =>
+  /^\s*[┌├└│]/u.test(stripVTControlCharacters(line));
 
 /** Prose's lines, broken at spaces, each with the line's indentation. */
 const wrapProse = (line: string, width: number): string[] => {
-  const indent = indentOf(line);
+  const indent = /^\s*/u.exec(stripVTControlCharacters(line))?.[0] ?? "";
   const lines: string[] = [];
   let current = "";
-  for (const word of wordsOf(line, /\S+/gu)) {
+  for (const word of wordsOf(line)) {
     if (current && displayWidth(`${indent}${current} ${word}`) > width) {
       lines.push(`${indent}${current}`);
       current = word;
@@ -125,87 +127,30 @@ const wrapProse = (line: string, width: number): string[] => {
 };
 
 /**
- * A command's lines, broken at spaces with ` \`, which counts toward the
- * width, so it still pastes as one command. A placeholder such as
- * `<env file>` stays whole. Each new line is indented two more spaces, but
- * for a line that continues a command already.
- */
-const wrapCommand = (
-  line: string,
-  width: number,
-  continued: boolean,
-): string[] => {
-  const indent = indentOf(line);
-  const nextIndent = continued ? indent : `${indent}  `;
-  const words = wordsOf(line, /(?:<[^<>]*>|\S)+/gu);
-  // A line that a command continues past keeps its ` \` at its end.
-  const ending =
-    stripVTControlCharacters(words.at(-1) ?? "") === "\\"
-      ? words.pop()
-      : undefined;
-  const lines: string[] = [];
-  let current = "";
-  words.forEach((word, index) => {
-    const reserved =
-      index === words.length - 1 && ending === undefined
-        ? 0
-        : CONTINUATION_WIDTH;
-    const candidate = current ? `${current} ${word}` : `${indent}${word}`;
-    if (current && displayWidth(candidate) + reserved > width) {
-      lines.push(`${current} \\`);
-      current = `${nextIndent}${word}`;
-    } else {
-      current = candidate;
-    }
-  });
-  return [...lines, ending === undefined ? current : `${current} ${ending}`];
-};
-
-/**
- * A command to print, broken at spaces with ` \` once a line would pass
- * `width` with it, each new line indented two spaces, so a terminal never
- * wraps it mid-word and it still pastes as one command.
- */
-export const formatCommand = (
-  command: string,
-  width: number = MESSAGE_WIDTH,
-): string =>
-  displayWidth(command) <= width
-    ? command
-    : carryColors(wrapCommand(command, width, false)).join("\n");
-
-/** A line that is a command to copy, which breaks with ` \`, not as prose. */
-const COMMAND_LINE =
-  /^\s*(?:\$ )?(?:npx|pnpx|bunx|pnpm|npm|yarn|bun|hot-updater)\s/u;
-
-/**
- * The one rule for what the CLI prints for people: `text` with each line at
- * most `width` display columns. Prose breaks at spaces, a command with ` \`,
- * and a word longer than a line, such as a URL or a path, gets a line of its
- * own, which is the one line that may be wider. A line that fits stays as it
- * is, so fitting twice changes nothing. `p` applies it to all it prints;
- * text printed another way, such as to stderr under `--json`, calls it.
+ * What the CLI prints for people, readable: prose wraps at spaces around
+ * `width` display columns, and a command to copy, a table's row, and a word
+ * longer than a line, such as a URL or a path, stay whole on their lines.
+ * A line that fits stays as it is, so fitting twice changes nothing. `p`
+ * applies it to all it prints; text printed another way, such as to stderr
+ * under `--json`, calls it.
  */
 export const fitText = (
   text: string,
   width: number = MESSAGE_WIDTH,
 ): string => {
-  const lines: string[] = [];
-  let continued = false;
-  for (const line of text.split("\n")) {
-    const plain = stripVTControlCharacters(line);
-    const command: boolean = continued || COMMAND_LINE.test(plain);
-    if (displayWidth(line) <= width) lines.push(line);
-    else if (command) lines.push(...wrapCommand(line, width, continued));
-    else lines.push(...wrapProse(line, width));
-    continued = command && plain.endsWith(" \\");
-  }
+  const lines = text
+    .split("\n")
+    .flatMap((line) =>
+      displayWidth(line) <= width || isCommandLine(line) || isTableRow(line)
+        ? [line]
+        : wrapProse(line, width),
+    );
   return (text.includes("\u001B[") ? carryColors(lines) : lines).join("\n");
 };
 
 /**
  * A message of `lines`, each fitted as `fitText` does, so a name, a path, or
- * a list it embeds never widens a line.
+ * a list it embeds doesn't run on.
  */
 export const fitMessage = (lines: readonly string[]): string =>
   fitText(lines.join("\n"));

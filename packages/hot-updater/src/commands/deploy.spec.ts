@@ -1,12 +1,7 @@
 import { pipeline } from "stream/promises";
 
-import { p, secret } from "@hot-updater/cli-tools";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { secret } from "@hot-updater/cli-tools";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
   vi.hoisted(() => {
@@ -773,11 +768,6 @@ describe("deploy rollout wiring", () => {
         "Bundles are unsigned.\nTo sign them, run: npx hot-updater secrets issue bundle-signing-key",
       ],
     ]);
-    expect(
-      String(unsigned[0]![0])
-        .split("\n")
-        .every((line) => line.length <= 76),
-    ).toBe(true);
     expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
   });
 
@@ -2367,11 +2357,4 @@ describe("deploy rollout wiring", () => {
       target_app_version: "1.7.0",
     });
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

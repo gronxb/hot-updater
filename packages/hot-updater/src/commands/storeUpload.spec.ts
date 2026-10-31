@@ -3,11 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { log, select, isCancel, handleNativeBuildCreate } = vi.hoisted(() => ({
@@ -29,7 +24,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("./buildNative", () => ({ handleNativeBuildCreate }));
 
-import { p, loadConfig } from "@hot-updater/cli-tools";
+import { loadConfig } from "@hot-updater/cli-tools";
 import { secret } from "@hot-updater/cli-tools";
 
 import { handleGooglePlayUpload, handleTestFlight } from "./storeUpload";
@@ -307,11 +302,4 @@ describe("hot-updater testflight scheme eligibility", () => {
       "The scheme development's exportOptionsPlist uses method development.",
     );
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

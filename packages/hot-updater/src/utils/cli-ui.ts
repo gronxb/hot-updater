@@ -5,8 +5,8 @@ import {
   colors,
   displayWidth,
   fitText,
-  formatCommand,
   getCwd,
+  isCommandLine,
   MESSAGE_WIDTH,
   withProviderMessages,
 } from "@hot-updater/cli-tools";
@@ -96,48 +96,29 @@ export const ui = {
       .join("\n");
   },
   /**
-   * A command to copy, highlighted, broken at spaces with ` \` when it is
-   * longer than `width`, each continuation indented two spaces, so the
-   * terminal never wraps it mid-word. A placeholder such as `<env file>`
-   * stays whole.
-   */
-  commandLines: (command: string, width: number = MESSAGE_WIDTH): string =>
-    formatCommand(command, width)
-      .split("\n")
-      .map((text) => colors.green(text))
-      .join("\n"),
-  /**
    * `lead` and the command it names, on one line when they fit, else the
    * command on the lines after it: `Run in a terminal: npx hot-updater …`.
    */
   withCommand: (lead: string, command: string): string =>
     displayWidth(`${lead} ${command}`) <= MESSAGE_WIDTH
       ? `${lead} ${colors.green(command)}`
-      : `${lead}\n${ui.commandLines(command)}`,
+      : `${lead}\n${colors.green(command)}`,
   /**
    * Text written once for both `--json` and people, such as a doctor
    * issue's resolution, laid out for a terminal: one sentence per line,
    * wrapped at spaces, with each `command` highlighted, without its
-   * backticks, and on lines of its own when it is too long to share one.
+   * backticks, and on a line of its own when it is too long to share one.
    * Text already laid out in lines, such as an error's, keeps them: only
-   * a line too wide is broken, and a command, such as its next step, and
-   * the ` \` lines continuing it, stay whole. A provider's JSON body in it
-   * shows as the message it says.
+   * a line too wide is broken, and a command, such as its next step, stays
+   * whole. A provider's JSON body in it shows as the message it says.
    */
   prose: (text: string, width: number = MESSAGE_WIDTH): string => {
     const lines: string[] = [];
     const message = withProviderMessages(text);
     const laidOut = message.includes("\n");
-    let continued = false;
     for (const line of message.split("\n")) {
-      if (continued || line.startsWith("npx ")) {
-        // One the text didn't break is broken as a command is.
-        lines.push(
-          continued || line.endsWith(" \\") || displayWidth(line) <= width
-            ? colors.green(line)
-            : ui.commandLines(line, width),
-        );
-        continued = line.endsWith(" \\");
+      if (isCommandLine(line)) {
+        lines.push(colors.green(line));
         continue;
       }
       if (laidOut && displayWidth(line) <= width) {
@@ -164,17 +145,13 @@ export const ui = {
     columns: readonly TableColumn<TKey>[],
     rows: readonly Record<TKey, StringValue>[],
   ): string => {
-    const widths = columns.map((column) =>
-      Math.max(
-        displayWidth(column.label ?? column.key),
-        ...rows.map((row) => displayWidth(stringify(row[column.key]))),
-      ),
-    );
-
-    // A table wider than a line gives each column a row of its own.
-    const tableWidth =
-      widths.reduce((total, width) => total + width + 3, 0) + 1;
-    if (tableWidth > MESSAGE_WIDTH) return recordsTable(columns, rows);
+    const widths = columns.map((column) => {
+      const label = column.label ?? column.key;
+      return Math.max(
+        label.length,
+        ...rows.map((row) => stringify(row[column.key]).length),
+      );
+    });
 
     const border = (left: string, join: string, right: string): string =>
       `${left}${widths
@@ -188,8 +165,7 @@ export const ui = {
       `│ ${columns
         .map((column, index) => {
           const width = widths[index] ?? 0;
-          const text = getValue(column);
-          const value = `${text}${" ".repeat(width - displayWidth(text))}`;
+          const value = getValue(column).padEnd(width);
           return format && column.format ? column.format(value) : value;
         })
         .join(" │ ")} │`;
@@ -207,67 +183,6 @@ export const ui = {
       border("└", "┴", "┘"),
     ].join("\n");
   },
-};
-
-/**
- * A bordered table of `label │ value` rows, each of the table's rows in a
- * section of its own, for columns too wide to sit side by side on a line.
- */
-const recordsTable = <TKey extends string>(
-  columns: readonly TableColumn<TKey>[],
-  rows: readonly Record<TKey, StringValue>[],
-): string => {
-  if (rows.length === 0) return colors.dim("(none)");
-  const labelOf = (column: TableColumn<TKey>) => column.label ?? column.key;
-  const labelWidth = Math.max(
-    ...columns.map((column) => displayWidth(labelOf(column))),
-  );
-  // `│ ` + label + ` │ ` + value + ` │`.
-  const cellWidth = MESSAGE_WIDTH - labelWidth - 7;
-  const sections = rows.map((row) =>
-    columns.flatMap((column) =>
-      fitText(stringify(row[column.key]), cellWidth)
-        .split("\n")
-        .map((text, index) => ({
-          label: index === 0 ? labelOf(column) : "",
-          text,
-          format: column.format,
-        })),
-    ),
-  );
-  const fits = ({ text }: { readonly text: string }) =>
-    displayWidth(text) <= cellWidth;
-  const valueWidth = Math.max(
-    ...sections
-      .flat()
-      .map((cell) => (fits(cell) ? displayWidth(cell.text) : 0)),
-  );
-  const pad = (text: string, width: number) =>
-    `${text}${" ".repeat(width - displayWidth(text))}`;
-  const border = (left: string, join: string, right: string) =>
-    `${left}${"─".repeat(labelWidth + 2)}${join}${"─".repeat(valueWidth + 2)}${right}`;
-  const row = (label: string, value: string) =>
-    `│ ${colors.dim(pad(label, labelWidth))} │ ${value} │`;
-  return [
-    border("┌", "┬", "┐"),
-    ...sections.flatMap((section, index) => [
-      ...(index === 0 ? [] : [border("├", "┼", "┤")]),
-      ...section.flatMap((cell) => {
-        const { label, text, format } = cell;
-        if (fits(cell)) {
-          const value = pad(text, valueWidth);
-          return [row(label, format ? format(value) : value)];
-        }
-        // A word wider than the cell, such as a path, stays whole on its own
-        // line, as everywhere the CLI prints one.
-        return [
-          ...(label ? [row(label, " ".repeat(valueWidth))] : []),
-          format ? format(text) : text,
-        ];
-      }),
-    ]),
-    border("└", "┴", "┘"),
-  ].join("\n");
 };
 
 const displayPath = (file: string): string => {
@@ -324,7 +239,7 @@ const wrapWords = (sentence: string, width: number): string[] => {
     if (command && visibleWidth > width) {
       flush();
       // Punctuation after it, such as a sentence's period, ends its line.
-      lines.push(`${ui.commandLines(command[1] ?? "", width)}${command[2]}`);
+      lines.push(`${colors.green(command[1] ?? "")}${command[2]}`);
       continue;
     }
     if (length > 0 && length + 1 + visibleWidth > width) flush();
