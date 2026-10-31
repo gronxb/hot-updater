@@ -223,6 +223,8 @@ let metadataWarningFiltered = false;
  * runtime fails oddly: credentials are about to be reported as missing, and
  * the warning has nothing to act on. It stays filtered for the process, as
  * the library caches the probe; every other warning passes through.
+ * `METADATA_SERVER_DETECTION=none` would also silence it, but skips the probe,
+ * and with it the credentials of a Google runtime.
  */
 const filterMetadataWarning = () => {
   if (metadataWarningFiltered) return;

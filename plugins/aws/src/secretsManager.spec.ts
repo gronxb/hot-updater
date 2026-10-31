@@ -234,6 +234,18 @@ describe("secretsManager get", () => {
       expect(message).not.toContain("aws sso login");
     });
 
+    it("points at the profile in CI too, since the SDK uses it over all else", async () => {
+      vi.stubEnv("CI", "true");
+      vi.stubEnv("AWS_PROFILE", "release");
+
+      expect(await rejected()).toBe(
+        [
+          "AWS rejected the credentials: expired or invalid.",
+          "Check the AWS profile release, which AWS_PROFILE selects.",
+        ].join("\n"),
+      );
+    });
+
     it("says to set them in CI, with neither a profile nor variables", async () => {
       vi.stubEnv("CI", "true");
 

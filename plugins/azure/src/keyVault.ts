@@ -297,7 +297,11 @@ export const keyVault = ({
         error,
       );
     }
-    if (code === "ENOTFOUND" || /\bENOTFOUND\b/u.test(errorMessage(error))) {
+    // Only the vault's own host: Entra's not resolving says nothing about it.
+    if (
+      /\bENOTFOUND\b/u.test(`${code} ${errorMessage(error)}`) &&
+      errorMessage(error).includes(vault().hostname)
+    ) {
       return failure(
         [
           `${NAME} can't find ${vault().hostname}.`,

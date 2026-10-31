@@ -279,11 +279,13 @@ describe("keyVault get", () => {
   });
 
   it("says to check vaultName when the vault's host doesn't resolve", async () => {
-    vaults.getSecret.mockRejectedValue(
-      Object.assign(
-        new Error("getaddrinfo ENOTFOUND no-such-vault.vault.azure.net"),
-        { name: "RestError", code: "ENOTFOUND" },
-      ),
+    const unresolved = (host: string) =>
+      Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), {
+        name: "RestError",
+        code: "ENOTFOUND",
+      });
+    vaults.getSecret.mockRejectedValueOnce(
+      unresolved("no-such-vault.vault.azure.net"),
     );
 
     await expect(
@@ -296,12 +298,31 @@ describe("keyVault get", () => {
         ].join("\n"),
       ),
     );
+
+    vaults.getSecret.mockRejectedValueOnce(
+      unresolved("no-such-vault.vault.azure.cn"),
+    );
     await expect(
       keyVault({
         vaultUrl: "https://no-such-vault.vault.azure.cn",
         credential,
       }).get(["n"], context),
     ).rejects.toThrow("Check vaultUrl.");
+  });
+
+  it("doesn't blame vaultName when another host doesn't resolve", async () => {
+    vaults.getSecret.mockRejectedValue(
+      Object.assign(
+        new Error("getaddrinfo ENOTFOUND login.microsoftonline.com"),
+        { name: "RestError", code: "ENOTFOUND" },
+      ),
+    );
+
+    await expect(
+      keyVault({ vaultName: "my-vault", credential }).get(["n"], context),
+    ).rejects.toThrow(
+      "Azure Key Vault failed to read hot-updater-n.\nENOTFOUND: getaddrinfo ENOTFOUND login.microsoftonline.com.",
+    );
   });
 
   it("checks its settings on first use, not when the config loads", async () => {

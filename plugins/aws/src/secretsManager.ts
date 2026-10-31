@@ -113,12 +113,12 @@ const credentialHint = (
   }
   const ci = Boolean(process.env["CI"]);
   const profile = process.env["AWS_PROFILE"]?.trim();
-  if (profile && !ci) {
-    return /\bsso\b/iu.test(errorMessage(error))
+  if (profile) {
+    return !ci && /\bsso\b/iu.test(errorMessage(error))
       ? ["Sign in again:", `aws sso login --profile ${profile}`]
       : [`Check the AWS profile ${profile}, which AWS_PROFILE selects.`];
   }
-  const variables = profile ? undefined : accessKeyVariables();
+  const variables = accessKeyVariables();
   if (variables) return [`Fix or unset ${variables}.`];
   return ci
     ? ["Set them with aws-actions/configure-aws-credentials."]
