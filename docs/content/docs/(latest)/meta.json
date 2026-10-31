@@ -17,6 +17,7 @@
     "security",
     "---Guides---",
     "guides/brownfield",
+    "guides/migrate-from-expo-updates",
     "---Adapters and Plugins---",
     "concepts/plugin-system",
     "build-adapters",
