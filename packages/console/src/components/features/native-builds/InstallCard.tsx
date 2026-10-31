@@ -12,11 +12,10 @@ import {
   useNativeBuildDownloadUrlQuery,
 } from "@/lib/api";
 import {
-  apkInstallCommand,
   nativeBuildDownloadPath,
   nativeBuildFileName,
+  nativeBuildInstallCommand,
   nativeBuildSignedDownloadUrl,
-  simulatorInstallCommand,
 } from "@/lib/native-builds";
 import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDownloadLink";
 
@@ -145,18 +144,15 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
           </p>
           <p className="text-xs text-muted-foreground">
             If this package is already installed with another signing key, such
-            as a Play copy, the install fails. A sandbox build's{" "}
-            <span className="font-mono text-foreground" translate="no">
-              .sandbox
-            </span>{" "}
-            applicationId installs beside it.
+            as a Play copy, the install fails. Uninstall that copy first.
           </p>
           <p className="text-xs text-muted-foreground">
-            On an emulator or a phone over USB, download the APK and install it:
+            On an emulator or a phone over USB, install and open it from your
+            project:
           </p>
           <CopyableText
             label="the install command"
-            value={apkInstallCommand(build)}
+            value={nativeBuildInstallCommand(build)}
           />
         </div>
       );
@@ -164,11 +160,12 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       return (
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            It runs only in the iOS Simulator. Install it on the booted one:
+            It runs only in the iOS Simulator. In your project, install and open
+            it on the booted one:
           </p>
           <CopyableText
             label="the install command"
-            value={simulatorInstallCommand(build)}
+            value={nativeBuildInstallCommand(build)}
           />
         </div>
       );
@@ -243,7 +240,7 @@ function SignedLink({
 /**
  * Installs one native build: every artifact by a QR code of its signed link,
  * which a phone without a session scans, and by download here or the link
- * itself; an APK also with `adb`, a simulator app with `xcrun simctl`, and an
+ * itself; an APK or a simulator app also with `native-build install`, and an
  * IPA's or an AAB's testers through its store. Where the Console can't sign,
  * the QR code holds the storage's URL and the download asks for the session.
  */

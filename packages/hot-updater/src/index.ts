@@ -81,7 +81,9 @@ import { keysExportPublic, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import {
   handleNativeBuildDelete,
+  handleNativeBuildDownload,
   handleNativeBuildFind,
+  handleNativeBuildInstall,
 } from "./commands/nativeBuild";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
@@ -292,7 +294,7 @@ channelCommand
 const nativeBuildCommand = program
   .command("native-build")
   .description(
-    "Build native apps, and find and delete the builds Hot Updater tracks",
+    "Build native apps, and find, download, install and delete the builds Hot Updater tracks",
   );
 
 nativeBuildCommand
@@ -313,8 +315,41 @@ nativeBuildCommand
     "-s, --scheme <scheme>",
     "the nativeBuild scheme, whose app's version the build has with the appVersion strategy",
   )
-  .option("--json", "output the scope and the build, or null, as JSON")
+  .option(
+    "--json",
+    "output the scope, the build or null, and the storage's download URL or null, as JSON",
+  )
   .action(handleNativeBuildFind);
+
+nativeBuildCommand
+  .command("download")
+  .description(
+    "Download a registered native build's artifact through the config's storage, such as in a script",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option(
+    "-o, --output <path>",
+    "the file or directory to write (default: the artifact's name in the current directory)",
+  )
+  .option("--json", "output the file's path and size as JSON")
+  .action(handleNativeBuildDownload);
+
+nativeBuildCommand
+  .command("install")
+  .description(
+    "Download a registered simulator .app or .apk, install it on a booted iOS Simulator or a connected Android device, and open it",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option(
+    "--simulator <udid>",
+    "the booted iOS Simulator (default: the only one booted)",
+  )
+  .option(
+    "--device <serial>",
+    "the Android device or emulator, as adb devices lists it (default: ANDROID_SERIAL, or the only one connected)",
+  )
+  .option("--json", "output the device and the app as JSON")
+  .action(handleNativeBuildInstall);
 
 nativeBuildCommand
   .command("delete")

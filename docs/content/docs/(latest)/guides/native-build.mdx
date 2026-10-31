@@ -161,8 +161,9 @@ forward. Two builds that start in the same millisecond, such as an iOS and an
 Android job of one CI run, can still get the same ID, and the second one to
 finish is refused when it is tracked. Build it again for a new ID.
 
-Install a simulator `.app` with
-`xcrun simctl install booted <path-to-app>`, and an `.apk` with
+[Install a tracked build](#install-a-build) with
+`npx hot-updater native-build install <build id>`. An untracked one installs
+with `xcrun simctl install booted <path-to-app>` or
 `adb install <path-to-apk>`.
 
 The build writes the command it runs and the whole output of `xcodebuild` or
@@ -257,10 +258,10 @@ opens the build's page, `/native-builds/<build id>`:
 
 - **Install**: a QR code and a download button of the build's
   [signed download link](#signed-download-links), which a phone opens without
-  signing in to the Console. An `.apk` [installs from it](#install-an-apk-on-a-phone)
-  and shows the `adb install` command. A simulator `.app` shows the
-  `xcrun simctl install` command. An `.aab` installs through Google Play or
-  bundletool, and an `.ipa` through Xcode, Apple Configurator, or
+  signing in to the Console. An `.apk` [installs from it](#install-an-apk-on-a-phone).
+  An `.apk` on an emulator or over USB, and a simulator `.app`, show the
+  [`native-build install`](#install-a-build) command. An `.aab` installs through
+  Google Play or bundletool, and an `.ipa` through Xcode, Apple Configurator, or
   [TestFlight](/docs/native-builds/testflight#upload-to-testflight). Without a
   token, `/api/native-builds/<build id>/download` asks for the session: a browser
   that opens it without one goes to the build's page, which signs it in and
@@ -342,9 +343,7 @@ starts Android's installer. No device registration is needed.
 - Android asks you to allow the browser under **Install unknown apps** the first
   time.
 - Android refuses to install over the same package signed with another key, such
-  as a copy from Google Play. Uninstall that copy first. A sandbox build avoids
-  this: its `.sandbox` applicationId suffix makes it a separate app that sits
-  beside the other one.
+  as a copy from Google Play. Uninstall that copy first, which erases its data.
 - An `.aab` can't go on a device directly. Build with `aab: false` for an `.apk`.
 
 ## Import a build made elsewhere
@@ -578,8 +577,60 @@ app version, and the build adapter can't tell, does it run the adapter's
 prebuild, and it says so first.
 
 `-c, --channel` names the channel the build embeds, instead of the native
-project's default channel, and `--json` prints the scope and the build, or
-`null`.
+project's default channel, and `--json` prints the scope, the build or `null`,
+and `downloadUrl`.
+
+`downloadUrl` is the URL the config's storage adapter gives for the artifact
+through `getDownloadUrl`, and it may expire. It is `null` without a build, and
+when the storage gives no URL a script can fetch, such as without a signing
+credential; stderr says why when the adapter fails. It is never a
+[signed download link](#signed-download-links): only the Console holds the
+secret that signs those. Whatever the URL, a script can always
+[download the build by its ID](#download-a-build):
+
+```bash
+id=$(npx hot-updater native-build find -p android -s release --json | jq -r .nativeBuild.id)
+npx hot-updater native-build download "$id" -o app.apk
+```
+
+## Download a build
+
+Download a tracked build's artifact through the config's storage:
+
+```package-install
+npx hot-updater native-build download <build id>
+```
+
+The command reads the artifact with the storage adapter's `get`, so it needs no
+Console and no download URL, and it works on a storage that can't sign one.
+It writes the artifact's name in the current directory; `-o, --output <path>`
+names another file or a directory. The file appears only once all of it
+arrived. `--json` prints its `path` and `byteSize`.
+
+## Install a build
+
+Install a tracked simulator `.app` or `.apk` and open it, with one command:
+
+```package-install
+npx hot-updater native-build install <build id>
+```
+
+The command checks the device first, downloads the build, installs it with
+`xcrun simctl` or `adb`, and opens the app the artifact names. A build with an
+application ID of its own installs beside the app you already have.
+
+- **iOS Simulator**: it uses the only booted simulator. With several booted,
+  `--simulator <udid>` picks one. None booted is an error that says how to boot
+  one. It needs Xcode on a Mac.
+- **Android**: it uses the only connected device or emulator. With several,
+  `--device <serial>`, as `adb devices` lists it, picks one, or adb's own
+  `ANDROID_SERIAL`. It finds `adb` in `ANDROID_HOME` or `ANDROID_SDK_ROOT`, then
+  on your `PATH`. When an installed app signed with another key stands in the
+  way, the error gives the `adb uninstall` command; it doesn't uninstall anything
+  by itself, because that erases the app's data.
+
+An `.ipa` or an `.aab` doesn't install this way: the command says what installs
+it. `--json` prints the `device` and the `appId`.
 
 ## Delete a build
 
@@ -638,7 +689,9 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 | `--no-cache`              | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build)) |
 | `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line    |
 
-The commands of the registry, `native-build find`, `native-build delete`,
-and `native-build import`, are described in [Find a build](#find-a-build),
+The commands of the registry, `native-build find`, `native-build download`,
+`native-build install`, `native-build delete`, and `native-build import`, are
+described in [Find a build](#find-a-build),
+[Download a build](#download-a-build), [Install a build](#install-a-build),
 [Delete a build](#delete-a-build), and
 [Import a build made elsewhere](#import-a-build-made-elsewhere).

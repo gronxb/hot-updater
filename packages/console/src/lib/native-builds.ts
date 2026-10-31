@@ -168,15 +168,9 @@ export const formatByteSize = (bytes: number): string => {
 };
 
 /**
- * The commands that install a simulator build: unzip the download, then
- * install the `.app` on the booted simulator.
+ * The command that downloads a simulator build or an APK, installs it on the
+ * booted simulator or the connected device, and opens it, in the project with
+ * its `hot-updater.config.ts`.
  */
-export const simulatorInstallCommand = (build: NativeBuildRow) => {
-  const archive = nativeBuildFileName(build);
-  const app = archive.replace(/\.zip$/, "");
-  return `unzip -o ${shellQuote(archive)} && xcrun simctl install booted ${shellQuote(app)}`;
-};
-
-/** The command that installs a downloaded APK on an Android device or emulator. */
-export const apkInstallCommand = (build: NativeBuildRow) =>
-  `adb install -r ${shellQuote(nativeBuildFileName(build))}`;
+export const nativeBuildInstallCommand = (build: NativeBuildRow) =>
+  `npx hot-updater native-build install ${shellQuote(build.id)}`;

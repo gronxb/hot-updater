@@ -484,14 +484,20 @@ describe("InstallCard", () => {
     });
   });
 
-  it("tells an APK's installer what Android needs, and how a sandbox build avoids the conflict", () => {
+  it("tells an APK's installer what Android needs, and the way past another key", () => {
     const { container } = render(<InstallCard build={build()} />);
     const copy = container.textContent;
 
     expect(copy).toContain('"Install unknown apps" permission');
-    expect(copy).toMatch(/another signing key, such as a Play copy/);
-    expect(copy).toMatch(/A sandbox build's \.sandbox applicationId/);
-    expect(screen.getByText("adb install -r app-release.apk")).toBeTruthy();
+    expect(copy).toMatch(
+      /another signing key, such as a Play copy, the install fails\. Uninstall that copy first\./,
+    );
+    // Only what works today: no sandbox build ships yet.
+    expect(copy).not.toMatch(/sandbox/i);
+    expect(
+      screen.getByText(`npx hot-updater native-build install ${id(1)}`),
+    ).toBeTruthy();
+    expect(copy).not.toMatch(/adb install/);
     expect(copy).not.toMatch(CHANNEL_LINK_TEXT);
   });
 
@@ -502,7 +508,7 @@ describe("InstallCard", () => {
         <InstallCard build={build({ artifact_kind: kind })} />,
       );
 
-      expect(container.textContent).not.toMatch(/unknown apps|\.sandbox/);
+      expect(container.textContent).not.toMatch(/unknown apps|signing key/);
     },
   );
 
@@ -666,9 +672,7 @@ describe("InstallCard", () => {
     );
 
     expect(
-      screen.getByText(
-        "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
-      ),
+      screen.getByText(`npx hot-updater native-build install ${id(1)}`),
     ).toBeTruthy();
   });
 

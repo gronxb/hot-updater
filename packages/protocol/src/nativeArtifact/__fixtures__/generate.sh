@@ -51,10 +51,10 @@ cat > "$tmp/res/values/strings.xml" <<'EOF'
 EOF
 "$build_tools/aapt2" compile --dir "$tmp/res" -o "$tmp/res.zip"
 manifest() {
-  local name=$1 application=$2
+  local name=$1 application=$2 package=${3:-com.example.app}
   cat > "$tmp/AndroidManifest.xml" <<EOF
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.app" android:versionCode="42"
+    package="$package" android:versionCode="42"
     android:versionName="1.4.0">
   <application $application
   </application>
@@ -77,6 +77,7 @@ manifest empty '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:value=""/>'
 manifest resource '>
     <meta-data android:name="com.hotupdater.CHANNEL" android:resource="@string/channel"/>'
+manifest sandbox '>' com.example.app.sandbox
 
 # Mach-O: an executable whose __cstring holds the literals, one holding
 # another UUIDv7, and a universal binary whose x86_64 slice holds another
