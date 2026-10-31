@@ -100,16 +100,20 @@ describe("a sandbox scheme's export options", () => {
 });
 
 describe("buildSettingsOverScheme", () => {
-  it("brings the sandbox sources back only for a sandbox scheme", () => {
+  it("brings the sandbox sources back for a sandbox scheme", () => {
     expect(
       buildSettingsOverScheme({ minBundleId: "id", sandbox: true }),
     ).toEqual({
       HOT_UPDATER_MIN_BUNDLE_ID: "id",
       INCLUDED_SOURCE_FILE_NAMES: "HotUpdaterSandbox*",
     });
+  });
+
+  it("excludes them again for any other, over a scheme's own xcconfig", () => {
     for (const sandbox of [false, undefined]) {
       expect(buildSettingsOverScheme({ minBundleId: "id", sandbox })).toEqual({
         HOT_UPDATER_MIN_BUNDLE_ID: "id",
+        EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) HotUpdaterSandbox*",
       });
     }
   });
