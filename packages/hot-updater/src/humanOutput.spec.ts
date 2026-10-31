@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import {
   credentialPutCommand,
   describeMissingSecret,
@@ -28,7 +30,7 @@ describe("the lines of what commands refuse, through the real printer", () => {
     await print();
     vi.restoreAllMocks();
     expect(text).not.toBe("");
-    return text.split("\n");
+    return stripVTControlCharacters(text).split("\n");
   };
 
   const CLOUDFLARE_401 =

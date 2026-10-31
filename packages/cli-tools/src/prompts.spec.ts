@@ -1,4 +1,5 @@
 import { PassThrough } from "node:stream";
+import { stripVTControlCharacters } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,12 @@ const captureOutput = () => {
 };
 
 describe("what p prints", () => {
+  /** The output without its colors, which CI may turn on. */
+  const capturePlainOutput = () => {
+    const { output, read } = captureOutput();
+    return { output, read: () => stripVTControlCharacters(read()) };
+  };
+
   afterEach(() => {
     vi.unstubAllEnvs();
   });
@@ -52,20 +59,20 @@ describe("what p prints", () => {
     "warning",
     "error",
   ] as const)("fits p.log.%s within 76 columns", (level) => {
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     for (const message of MESSAGES) p.log[level](message, { output });
     expect(read()).toContain("hot-updater secrets put");
     expect(tooWide(read())).toEqual([]);
   });
 
   it("fits a message of lines", () => {
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     p.log.message(MESSAGES, { output });
     expect(tooWide(read())).toEqual([]);
   });
 
   it("fits p.cancel, p.intro, p.outro, and p.note, whose box takes more", () => {
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     for (const message of MESSAGES) {
       p.cancel(message, { output });
       p.intro(message, { output });
@@ -77,7 +84,7 @@ describe("what p prints", () => {
 
   it("fits a spinner's and a task's lines in CI", async () => {
     vi.stubEnv("CI", "true");
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     const spinner = p.spinner({ output });
     spinner.start(LONG_PROSE);
     spinner.stop(LONG_PROSE);
@@ -89,7 +96,7 @@ describe("what p prints", () => {
   });
 
   it("keeps a URL whole on its own line", () => {
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     p.log.error(`Read ${LONG_URL} first.`, { output });
     expect(read()).toContain(`│  ${LONG_URL}\n`);
   });
@@ -97,7 +104,7 @@ describe("what p prints", () => {
   it("shows a provider's message for its JSON in an error or a warning", () => {
     const body =
       '401 {"result":null,"success":false,"errors":[{"code":10000,"message":"Authentication error"}],"messages":[]}';
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     p.log.error(`Failed: ${body}`, { output });
     p.log.warn(`Failed: ${body}`, { output });
     p.cancel(`Failed: ${body}`, { output });
@@ -106,7 +113,7 @@ describe("what p prints", () => {
   });
 
   it("leaves JSON that isn't an error alone", () => {
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     p.log.info('{"message":"a stored value"}', { output });
     expect(read()).toContain('{"message":"a stored value"}');
   });
@@ -114,7 +121,7 @@ describe("what p prints", () => {
   it("masks a value before it fits a line, so no break splits it", () => {
     const value = "super secret value with spaces in it";
     registerSecretValue(value);
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     p.log.error(`${"word ".repeat(10)}${value}${" word".repeat(10)}`, {
       output,
     });
@@ -127,7 +134,7 @@ describe("what p prints", () => {
     const escaped = 'sensitive "quoted" provider value';
     registerSecretValue(token);
     registerSecretValue(escaped);
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     p.log.error(JSON.stringify({ token }), { output });
     p.log.error(JSON.stringify({ message: `${"word ".repeat(28)}${token}` }), {
       output,
@@ -139,7 +146,7 @@ describe("what p prints", () => {
 
   it("prints a tool's output as the tool wrote it", () => {
     const line = `error: ${"word ".repeat(30).trim()}`;
-    const { output, read } = captureOutput();
+    const { output, read } = capturePlainOutput();
     toolOutput.error(line, { output });
     expect(read()).toContain(line);
   });
