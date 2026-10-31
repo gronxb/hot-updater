@@ -3,14 +3,16 @@ import type { Writable } from "node:stream";
 import * as clack from "@clack/prompts";
 
 import { colors } from "./colors";
-import { displayWidth, truncateLine } from "./messageLines";
+import {
+  displayWidth,
+  MESSAGE_WIDTH,
+  truncateLine,
+  withProviderMessages,
+} from "./messageLines";
 import { maskSecretValues } from "./secretMasking";
 import { type StepCapture, setStepCapture, stepCapture } from "./stepCapture";
 
 type Output = Writable & { isTTY?: boolean; columns?: number };
-
-/** The widest a finished step's line is, after clack's 3-column gutter. */
-const STEP_WIDTH = 73;
 
 /** The room the spinner's symbol and its `[12m 34s]` timer take. */
 const LIVE_LINE_CHROME = 3 + 10;
@@ -34,7 +36,7 @@ export const formatDuration = (ms: number): string => {
 export const withDuration = (
   message: string,
   ms: number,
-  width: number = STEP_WIDTH,
+  width: number = MESSAGE_WIDTH,
 ): string => {
   const duration = formatDuration(ms);
   // Never wraps: a longer message is cut.
@@ -181,7 +183,9 @@ export const createStep = (
       }
       finish(() => {
         clack.log.error(
-          maskSecretValues(withDuration(message, elapsed)),
+          maskSecretValues(
+            withDuration(withProviderMessages(message), elapsed),
+          ),
           logOptions(),
         );
       });

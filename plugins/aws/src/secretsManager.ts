@@ -75,29 +75,10 @@ const NO_CREDENTIAL_ERRORS = new Set([
   "TokenProviderError",
 ]);
 
-const SIGN_IN_HINT = [
-  "In CI, set them with aws-actions/configure-aws-credentials.",
-  "On your machine: aws sso login --profile <profile>, then set AWS_PROFILE.",
-];
-
-/** The widest line a message has: the CLI prints no wider. */
-const LINE_WIDTH = 76;
-
-/** `text`, such as AWS's own message, in lines that fit, broken at spaces. */
-const wrap = (text: string): string[] => {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(/\s+/u).filter(Boolean)) {
-    if (line && line.length + 1 + word.length > LINE_WIDTH) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-};
+const signInHint = () =>
+  process.env["CI"]
+    ? "Set them with aws-actions/configure-aws-credentials."
+    : "Run aws sso login --profile <profile>, then set AWS_PROFILE.";
 
 /** An error of one line each, for a terminal. */
 const failure = (lines: readonly string[], cause?: unknown) =>
@@ -108,6 +89,16 @@ const errorName = (error: unknown) =>
 
 const errorMessage = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).replace(/\.+$/u, "");
+
+/**
+ * The caller's ARN in a refusal, `User: arn:aws:sts::…`, so the message names
+ * who to grant. Only that token is read: the rest of AWS's message, such as
+ * the resource it refused, stays out.
+ */
+const refusedCaller = (message: string) =>
+  /\bUser: (arn:aws[a-z-]*:(?:iam|sts)::\d*:[\w+=,.@/-]*[\w-])/u.exec(
+    message,
+  )?.[1];
 
 const resolveEndpoint = (endpoint: string) => {
   let url: URL;
@@ -255,42 +246,27 @@ export const secretsManager = ({
     const name = errorName(error);
     const status = (error as { $metadata?: { httpStatusCode?: number } })
       ?.$metadata?.httpStatusCode;
-    const detail = wrap(
-      `${name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}.`,
-    );
-    // On a line of its own: a name and its prefix are a line's worth.
-    const secret = `Secret: ${id}`;
     if (NO_CREDENTIAL_ERRORS.has(name)) {
       return failure(
-        [
-          `${NAME} found no AWS credentials to ${verb} a secret.`,
-          secret,
-          ...wrap(`${errorMessage(error)}.`),
-          ...SIGN_IN_HINT,
-        ],
+        [`${NAME} found no AWS credentials to ${verb} ${id}.`, signInHint()],
         error,
       );
     }
     if (EXPIRED_CREDENTIAL_ERRORS.has(name)) {
       return failure(
         [
-          `AWS Secrets Manager refused the sign-in to ${verb} a secret.`,
-          secret,
-          ...detail,
-          "They are expired or invalid: sign in again.",
-          ...SIGN_IN_HINT,
+          `AWS rejected the credentials to ${verb} ${id}: expired or invalid.`,
+          signInHint(),
         ],
         error,
       );
     }
     if (name === "AccessDeniedException") {
+      const key = verb === "read" ? "kms:Decrypt" : "kms:GenerateDataKey";
       return failure(
         [
-          `AWS Secrets Manager refused to ${verb} a secret.`,
-          secret,
-          ...detail,
-          `The AWS identity needs ${permissions} on it.`,
-          `With a customer managed KMS key, it needs ${verb === "read" ? "kms:Decrypt" : "kms:GenerateDataKey"} too.`,
+          `AWS Secrets Manager refused to ${verb} ${id}.`,
+          `${refusedCaller(errorMessage(error)) ?? "The identity"} needs ${/\bkms\b/iu.test(errorMessage(error)) ? key : permissions} on it.`,
         ],
         error,
       );
@@ -300,18 +276,17 @@ export const secretsManager = ({
     ) {
       return failure(
         [
-          `AWS Secrets Manager can't ${verb} a secret.`,
-          secret,
-          "It is scheduled for deletion. Restore it, or wait until it is gone:",
-          // Broken with \ so it never passes 76 columns.
-          "aws secretsmanager restore-secret \\",
-          `  --secret-id ${id}`,
+          `${id} is scheduled for deletion. Restore it, or wait until it is gone:`,
+          `aws secretsmanager restore-secret --secret-id ${id}`,
         ],
         error,
       );
     }
     return failure(
-      [`AWS Secrets Manager failed to ${verb} a secret.`, secret, ...detail],
+      [
+        `AWS Secrets Manager failed to ${verb} ${id}.`,
+        `${name || "Error"}${status ? ` (${status})` : ""}: ${errorMessage(error)}.`,
+      ],
       error,
     );
   };

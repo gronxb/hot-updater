@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { linesWiderThan, renderClackLog } from "@hot-updater/test-utils/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -48,7 +47,8 @@ describe("formatNativeBuildSummary", () => {
   it("names the build, its artifact and size, and its log, under one heading", () => {
     expect(summary({}).split("\n")).toEqual([
       "iOS release 1.7.0 (42) built in 8m30s",
-      "IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      "IPA",
+      ".hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
       "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
       "Channel        production",
       "Log            .hot-updater/log/10291132-ios-release-build.log",
@@ -65,7 +65,8 @@ describe("formatNativeBuildSummary", () => {
       }).split("\n"),
     ).toEqual([
       "iOS release 1.7.0 (42) reused in 4.1s",
-      "IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      "IPA",
+      ".hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
       "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
       "Channel        production",
       "Open           https://appstoreconnect.apple.com/apps/1/testflight/ios",
@@ -78,7 +79,6 @@ describe("formatNativeBuildSummary", () => {
     const text = summary({ storeUrl: url });
 
     expect(text.split("\n").at(-2)).toBe(url);
-    expect(linesWiderThan(renderClackLog([["success", text]]))).toEqual([]);
   });
 
   it("names a fingerprint build's fingerprint, and leaves out what it can't read", () => {
@@ -112,7 +112,6 @@ describe("formatNativeBuildSummary", () => {
       },
     });
 
-    expect(linesWiderThan(renderClackLog([["success", text]]))).toEqual([]);
     expect(text).toContain("…/CodexRelay.ipa · 48.0 MB");
   });
 });

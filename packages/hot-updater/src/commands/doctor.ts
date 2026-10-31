@@ -56,6 +56,7 @@ import {
   formatGooglePlayStatus,
   type GooglePlayStatus,
 } from "./doctor/googlePlay";
+import { humanText, unusedSecretsText } from "./doctor/humanText";
 import {
   type NativeCheckIssue,
   type NativePlatform,
@@ -1122,13 +1123,19 @@ const reportIssues = (
   log: Pick<typeof p.log, "error" | "warn">,
   issues: readonly {
     readonly type: "error" | "warning";
+    readonly code?: string;
+    readonly names?: readonly string[];
     readonly message: string;
     readonly resolution: string;
   }[],
 ) => {
   for (const issue of issues) {
     const report = issue.type === "error" ? log.error : log.warn;
-    report(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+    report(
+      issue.code === "SECRETS_MISSING_UNUSED"
+        ? ui.prose(unusedSecretsText({ ...issue, names: issue.names ?? [] }))
+        : `${ui.prose(humanText(issue.message))}\n${ui.prose(humanText(issue.resolution))}`,
+    );
   }
 };
 
@@ -1296,11 +1303,7 @@ export const handleDoctor = async ({
     }
 
     if (infrastructure.catalogMode) {
-      p.log.info(
-        ui.prose(
-          `Release catalog: ${infrastructure.catalogMode}. ${infrastructure.catalogModeNote}`,
-        ),
-      );
+      p.log.info(ui.prose(`Release catalog: ${infrastructure.catalogMode}.`));
     }
 
     // The schema check below names the same commands when the upgrade is
@@ -1317,9 +1320,9 @@ export const handleDoctor = async ({
     if (infrastructure.remediation && !repeated) {
       p.log.info(
         [
-          ui.prose(infrastructure.remediation.reason),
+          ui.prose(humanText(infrastructure.remediation.reason)),
           ...infrastructure.remediation.commands.map((command) =>
-            ui.commandLines(command),
+            ui.command(command),
           ),
         ].join("\n"),
       );
@@ -1354,7 +1357,21 @@ export const handleDoctor = async ({
     const signingKeyMissing = missingRequiredSecrets(details.secrets).some(
       ({ fields }) => fields.some((field) => field.startsWith("signing")),
     );
+    // Each platform's --json issue says the same thing to do: said once.
+    const orphans = native.issues.filter(
+      ({ code }) => code === "ORPHAN_PUBLIC_KEY",
+    );
+    const [orphan] = orphans;
+    if (orphan) {
+      log.warn(
+        [
+          `Signing is off, but ${orphans.map(({ platform }) => platform).join(" and ")} keep a public key: OTAs get rejected.`,
+          ui.prose(humanText(orphan.resolution)),
+        ].join("\n"),
+      );
+    }
     for (const issue of native.issues) {
+      if (issue.code === "ORPHAN_PUBLIC_KEY") continue;
       if (
         issue.code === "SIGNING_PUBLIC_KEY_UNAVAILABLE" &&
         signingKeyMissing
@@ -1362,7 +1379,9 @@ export const handleDoctor = async ({
         log.warn("Native public keys not checked without the signing key.");
         continue;
       }
-      const message = ui.prose(`${issue.platform}: ${issue.message}`);
+      const message = ui.prose(
+        `${issue.platform}: ${humanText(issue.message)}`,
+      );
       const report = issue.type === "error" ? log.error : log.warn;
       if (issue.changes) {
         report(message);
@@ -1370,9 +1389,9 @@ export const handleDoctor = async ({
           issue.changes,
           issue.platform === "ios" ? "iOS" : "Android",
         );
-        p.log.info(ui.prose(issue.resolution));
+        p.log.info(ui.prose(humanText(issue.resolution)));
       } else {
-        report(`${message}\n${ui.prose(issue.resolution)}`);
+        report(`${message}\n${ui.prose(humanText(issue.resolution))}`);
       }
     }
   }

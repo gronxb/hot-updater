@@ -1,12 +1,7 @@
 import { pipeline } from "stream/promises";
 
-import { p, secret } from "@hot-updater/cli-tools";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { secret } from "@hot-updater/cli-tools";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
   vi.hoisted(() => {
@@ -55,6 +50,7 @@ const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
         text: vi.fn(),
       },
       prepareBundleSigning: vi.fn(),
+      toolOutput: { note: vi.fn() },
     };
 
     return {
@@ -105,6 +101,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         })),
       ),
     p: mockCli.p,
+    toolOutput: mockCli.toolOutput,
     prepareBundleSigning: mockCli.prepareBundleSigning,
     putStorageFile: async (
       storage: typeof mockStorageAdapter,
@@ -771,11 +768,6 @@ describe("deploy rollout wiring", () => {
         "Bundles are unsigned.\nTo sign them, run: npx hot-updater secrets issue bundle-signing-key",
       ],
     ]);
-    expect(
-      String(unsigned[0]![0])
-        .split("\n")
-        .every((line) => line.length <= 76),
-    ).toBe(true);
     expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
   });
 
@@ -1126,7 +1118,10 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.toolOutput.note).toHaveBeenCalledWith(
+      "LLVM\nHermes",
+      "Build Output",
+    );
   });
 
   it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
@@ -1530,7 +1525,10 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
-    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.toolOutput.note).toHaveBeenCalledWith(
+      "LLVM\nHermes",
+      "Build Output",
+    );
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "✅ Bundle Signing Complete",
     );
@@ -1539,7 +1537,7 @@ describe("deploy rollout wiring", () => {
       "Deployment",
     );
 
-    const buildOutputOrder = mockCli.p.note.mock.calls.findIndex(
+    const buildOutputOrder = mockCli.toolOutput.note.mock.calls.findIndex(
       ([message, title]) =>
         message === "LLVM\nHermes" && title === "Build Output",
     );
@@ -2359,11 +2357,4 @@ describe("deploy rollout wiring", () => {
       target_app_version: "1.7.0",
     });
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

@@ -9,7 +9,7 @@ import {
   stripAnsi,
 } from "./LogWriter";
 import { truncateLine } from "./messageLines";
-import { p } from "./prompts";
+import { toolOutput } from "./prompts";
 import { type Step, startStep } from "./step";
 
 type LinePattern = string | RegExp;
@@ -359,7 +359,7 @@ export class BuildLogger {
         : []),
     ].join("\n");
     if (message) {
-      p.log.error(message, { output: process.stderr });
+      toolOutput.error(message, { output: process.stderr });
     }
   }
 }

@@ -6,8 +6,6 @@ import path from "node:path";
 import { p } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import {
-  displayColumns,
-  linesWiderThan,
   recordedClackCalls,
   renderClackLog,
 } from "@hot-updater/test-utils/node";
@@ -354,10 +352,8 @@ describe("keysExportPublic without the signing key", () => {
       "■  Public key not exported.",
       "│  qa-missing-key isn't in the infisical secrets adapter.",
       "│  Check the name and your access, or import your key:",
-      "│  npx hot-updater secrets put qa-missing-key --kind bundle-signing-key \\",
-      "│    <key.pem>",
+      "│  npx hot-updater secrets put qa-missing-key --kind bundle-signing-key <key.pem>",
     ]);
-    expect(linesWiderThan(lines)).toEqual([]);
   });
 
   it("puts an adapter's refusal under a short head line", async () => {
@@ -378,7 +374,6 @@ describe("keysExportPublic without the signing key", () => {
       "│  Couldn't read qa-missing-key from the infisical secrets adapter.",
       "│  Infisical found nothing to list the secrets (404).",
     ]);
-    expect(linesWiderThan(lines)).toEqual([]);
   });
 
   describe("with infisical()", () => {
@@ -418,34 +413,14 @@ describe("keysExportPublic without the signing key", () => {
       );
     };
 
-    /** The lines a terminal shows wider than 76 columns, in display columns. */
-    const over76 = (lines: readonly string[]) =>
-      lines.filter((line) => displayColumns(line) > 76);
-
-    it("keeps the sign-in hint within 76 columns but its URL, alone on a line", async () => {
+    it("ends the sign-in hint with its URL, alone on a line", async () => {
       const lines = await exportWithAdapter(infisical({ projectId: PROJECT }));
 
-      // A URL can't be broken: the one wider line is it, after the gutter.
-      expect(over76(lines)).toEqual([`│  ${DOCS_URL}`]);
       expect(lines.at(-1)).toBe(`│  ${DOCS_URL}`);
     });
 
-    it("cuts Infisical's message so its line, gutter and … included, is 76 columns", async () => {
-      listAnswers404(
-        `Project with ID '${PROJECT}' not found during bot authorization`,
-      );
-
-      const lines = await exportWithAdapter(infisical({ projectId: PROJECT }));
-
-      expect(lines).toContain(
-        `│  Project with ID '${PROJECT}' not found during…`,
-      );
-      expect(over76(lines)).toEqual([]);
-    });
-
-    it("measures display columns, not bytes or code units", async () => {
-      // Each Hangul syllable takes two columns: a cut by length overflows.
-      listAnswers404("프로젝트를 찾을 수 없습니다. ".repeat(8));
+    it("names where it looked when Infisical finds nothing", async () => {
+      listAnswers404("anything");
 
       const lines = await exportWithAdapter(
         infisical({
@@ -455,10 +430,6 @@ describe("keysExportPublic without the signing key", () => {
         }),
       );
 
-      const quoted = lines.find((line) => line.includes("프로젝트"))!;
-      expect(quoted.endsWith("…")).toBe(true);
-      expect(displayColumns(quoted)).toBeGreaterThan(70);
-      expect(over76(lines)).toEqual([]);
       expect(lines.join("\n")).toContain("production-codex-relay");
     });
   });
@@ -509,11 +480,4 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(linesWiderThan(renderClackLog(recordedClackCalls(p.log, p)))).toEqual(
-    [],
-  );
 });

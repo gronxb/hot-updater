@@ -6,7 +6,7 @@ import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 
 import { archiveAppBundle } from "@hot-updater/apple-helper";
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   type HotUpdaterCoreApi,
   type NativeBuildRow,
@@ -306,7 +306,7 @@ export const handleNativeBuildImport = async (
     warnings = check.warnings;
     for (const warning of warnings) {
       // Under --json, stdout stays the JSON line.
-      if (options.json) console.error(warning.message);
+      if (options.json) console.error(fitText(warning.message));
       else p.log.warn(warning.message);
     }
     if (!check.ok) return fail(check.problems, info);
