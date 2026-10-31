@@ -4,16 +4,26 @@
 // answers the first screen gets a stable container, and the real call waits. On a
 // host without that method, the gate stays off and the app starts as usual.
 #import <UIKit/UIKit.h>
-#import <objc/message.h>
 #import <objc/runtime.h>
 
-#if __has_include("HotUpdater/HotUpdater-Swift.h")
-#import "HotUpdater/HotUpdater-Swift.h"
-#else
-#import "HotUpdater-Swift.h"
-#endif
-
 extern BOOL HotUpdaterPerformRecoveryReload(void);
+
+// What this file calls in the sandbox's Swift. Declared here, since the generated
+// Swift header imports React, whose C++ headers a plain Objective-C file can't read
+// when React Native is a prebuilt framework.
+@interface HotUpdaterSandboxBridge : NSObject
++ (void)configureWithRelease:(void (^)(void))release reload:(BOOL (^)(void))reload isReleased:(BOOL (^)(void))isReleased;
++ (void)presentScreenIn:(nullable UIWindowScene *)scene;
++ (void)receiveLink:(NSURL *)url scene:(nullable UIWindowScene *)scene;
++ (void)hideScreen;
++ (void)keepKeyWindow:(UIWindow *)window;
+@end
+
+@interface HotUpdaterSandboxLaunchPolicy : NSObject
++ (BOOL)isForTheAppWithOptionKeys:(NSArray<NSString *> *)optionKeys urlScheme:(nullable NSString *)urlScheme;
++ (NSArray<NSString *> *)keysOfLink;
++ (BOOL)isSandboxScheme:(nullable NSString *)scheme;
+@end
 
 #define HULog(format, ...) NSLog(@"[HotUpdaterSandbox] " format, ##__VA_ARGS__)
 
@@ -25,6 +35,9 @@ static BOOL gReleased;
 static BOOL gScreenRequested;
 /// The app's own link that arrived while held, handed to the held calls.
 static NSURL *gOwnLinkWhileHeld;
+/// What named the app when it released: a root held earlier is the one that
+/// creates React Native's host, which keeps its launch options for `Linking`.
+static NSDictionary *gOptionsThatReleased;
 
 static BOOL IsSandboxLink(NSURL *url) {
   return url != nil && [HotUpdaterSandboxLaunchPolicy isSandboxScheme:url.scheme];
@@ -132,16 +145,14 @@ static void RequestScreen(void) {
                  });
 }
 
-/// Takes a sandbox link out of what the app's React Native sees, and gives it the
-/// app's own link that arrived while it was held.
-static NSDictionary *WithoutSandboxLink(NSDictionary *options) {
-  NSURL *url = options[UIApplicationLaunchOptionsURLKey];
-  NSMutableDictionary *clean = [options ?: @{} mutableCopy];
-  if (IsSandboxLink(url)) {
-    HULog(@"launch link kept from the app");
-    [HotUpdaterSandboxBridge receiveLink:url scene:ForegroundScene()];
+/// What React Native sees: never a sandbox link, and the app's own that arrived while held.
+static NSDictionary *CleanOptions(NSDictionary *options) {
+  NSMutableDictionary *clean = [NSMutableDictionary new];
+  [clean addEntriesFromDictionary:options ?: @{}];
+  if (IsSandboxLink(clean[UIApplicationLaunchOptionsURLKey])) {
     [clean removeObjectsForKeys:[HotUpdaterSandboxLaunchPolicy keysOfLink]];
   }
+  [clean addEntriesFromDictionary:gOptionsThatReleased ?: @{}];
   if (gOwnLinkWhileHeld && !clean[UIApplicationLaunchOptionsURLKey]) {
     clean[UIApplicationLaunchOptionsURLKey] = gOwnLinkWhileHeld;
   }
@@ -150,22 +161,20 @@ static NSDictionary *WithoutSandboxLink(NSDictionary *options) {
 
 static UIView *Hold(NSDictionary *options, UIView * (^start)(NSDictionary *)) {
   NSURL *url = options[UIApplicationLaunchOptionsURLKey];
+  if (IsSandboxLink(url)) {
+    HULog(@"launch link kept from the app");
+    [HotUpdaterSandboxBridge receiveLink:url scene:ForegroundScene()];
+  }
   if (!gReleased && [HotUpdaterSandboxLaunchPolicy isForTheAppWithOptionKeys:options.allKeys ?: @[] urlScheme:url.scheme]) {
+    gOptionsThatReleased = options;
     ReleaseReactNative(@"launch options name the app");
   }
-  if (gReleased) return start(WithoutSandboxLink(options));
-  // Links count on arrival. The call that waits reads the app's link when it runs.
-  if (IsSandboxLink(url)) WithoutSandboxLink(options);
+  if (gReleased) return start(CleanOptions(options));
   HotUpdaterSandboxPlaceholderView *placeholder = [HotUpdaterSandboxPlaceholderView new];
   placeholder.backgroundColor = UIColor.systemBackgroundColor;
   if (!gHeld) gHeld = [NSMutableArray new];
   [gHeld addObject:^{
-    NSMutableDictionary *clean = [options ?: @{} mutableCopy];
-    if (IsSandboxLink(url)) [clean removeObjectsForKeys:[HotUpdaterSandboxLaunchPolicy keysOfLink]];
-    if (gOwnLinkWhileHeld && !clean[UIApplicationLaunchOptionsURLKey]) {
-      clean[UIApplicationLaunchOptionsURLKey] = gOwnLinkWhileHeld;
-    }
-    [placeholder adoptRoot:start(clean)];
+    [placeholder adoptRoot:start(CleanOptions(options))];
   }];
   RequestScreen();
   return placeholder;
@@ -251,19 +260,19 @@ static void WrapApplicationDelegate(Class cls) {
       "v@:@@@?");
 
   // Background entry points: React Native starts before the host's handler runs.
+  // A host without a handler gets none: the system then ends the launch's time
+  // when the completion runs, before React Native could do anything.
   SEL remote = @selector(application:didReceiveRemoteNotification:fetchCompletionHandler:);
   void (*originalRemote)(id, SEL, UIApplication *, NSDictionary *, id) = (void *)OriginalOf(cls, remote);
-  class_replaceMethod(
-      cls, remote,
-      imp_implementationWithBlock(^(id self, UIApplication *app, NSDictionary *payload, void (^done)(UIBackgroundFetchResult)) {
-    ReleaseReactNative(@"remote notification");
-    if (originalRemote) {
-      originalRemote(self, remote, app, payload, done);
-    } else {
-      done(UIBackgroundFetchResultNoData);
-    }
-  }),
-      "v@:@@@?");
+  if (originalRemote) {
+    class_replaceMethod(
+        cls, remote,
+        imp_implementationWithBlock(^(id self, UIApplication *app, NSDictionary *payload, id done) {
+          ReleaseReactNative(@"remote notification");
+          originalRemote(self, remote, app, payload, done);
+        }),
+        "v@:@@@?");
+  }
 
   SEL fetch = @selector(application:performFetchWithCompletionHandler:);
   void (*originalFetch)(id, SEL, UIApplication *, id) = (void *)OriginalOf(cls, fetch);

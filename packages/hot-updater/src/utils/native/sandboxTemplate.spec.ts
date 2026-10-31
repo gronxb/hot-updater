@@ -119,7 +119,12 @@ describe("the sandbox template", () => {
 
   it("isn't named by any normal source, so nothing needs it to compile", () => {
     const normal = [
-      ...sourcesOf("ios", ["ios/HotUpdater/Sandbox", "ios/HotUpdater/Test/Sandbox"]),
+      ...sourcesOf("ios", [
+        "ios/HotUpdater/Sandbox",
+        "ios/HotUpdater/Test/Sandbox",
+        // Runs the tests above; the podspec and the published package leave it out.
+        "ios/HotUpdater/Package.swift",
+      ]),
       // Its prefix also covers src/sandboxTest, attached only by an init script.
       ...sourcesOf("android/src", ["android/src/sandbox"]),
     ];

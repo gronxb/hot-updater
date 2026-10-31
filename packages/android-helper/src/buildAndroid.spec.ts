@@ -20,6 +20,19 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 vi.mock("./utils/readBuiltApp", () => ({
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.0", channel: "beta" })),
 }));
+vi.mock("./utils/sandboxManifest", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./utils/sandboxManifest")>()),
+  readMergedManifest: () => `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity android:name="com.example.MainActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>`,
+}));
 vi.mock("./builder/runGradle", () => ({
   runGradleTasks: vi.fn(async () => null),
   runGradle: vi.fn(async () => ({
@@ -32,7 +45,7 @@ vi.mock("./builder/runGradle", () => ({
 import { secret } from "@hot-updater/cli-tools";
 
 import { buildAndroid } from "./buildAndroid";
-import { runGradle } from "./builder/runGradle";
+import { runGradle, runGradleTasks } from "./builder/runGradle";
 import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 
 const MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5";
@@ -98,6 +111,17 @@ describe("buildAndroid", () => {
       "-PhotUpdaterSandbox=release",
       "-Pkotlin.incremental=false",
     ]);
+    // The overlay comes from the variant's merged manifest, read before it.
+    expect(vi.mocked(runGradleTasks).mock.calls[0]![0]).toMatchObject({
+      tasks: ["processReleaseMainManifest"],
+      args: { extraParams: [`-PMIN_BUNDLE_ID=${MIN_BUNDLE_ID}`] },
+    });
+  });
+
+  it("merges no manifest ahead of a normal build", async () => {
+    vi.mocked(runGradleTasks).mockClear();
+    await buildAndroid({ schemeConfig: scheme(), minBundleId: MIN_BUNDLE_ID });
+    expect(runGradleTasks).not.toHaveBeenCalled();
   });
 
   it("signs a release variant with the scheme's keystore through the environment, off the command line", async () => {
