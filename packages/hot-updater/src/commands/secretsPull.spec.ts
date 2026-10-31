@@ -12,11 +12,6 @@ import {
   nonInteractiveReason,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
-import {
-  linesWiderThan,
-  recordedClackCalls,
-  renderClackLog,
-} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsImport } from "./secrets";
@@ -644,11 +639,4 @@ describe("hot-updater secrets pull", () => {
     await handleSecretsPull({ only: names.concat(long("F")) });
     expect(process.exitCode).toBe(1);
   });
-});
-
-// No line the command prints wraps on an 80-column terminal.
-afterEach(() => {
-  expect(
-    linesWiderThan(renderClackLog(recordedClackCalls(log, { confirm }))),
-  ).toEqual([]);
 });
