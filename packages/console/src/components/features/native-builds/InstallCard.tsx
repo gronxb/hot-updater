@@ -1,16 +1,21 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
-import { AlertTriangle, Download } from "lucide-react";
+import dayjs from "dayjs";
+import { AlertTriangle, Download, Link2 } from "lucide-react";
 
 import { QrCode } from "@/components/QrCode";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useNativeBuildDownloadUrlQuery } from "@/lib/api";
+import {
+  useCreateNativeBuildDownloadLinkMutation,
+  useNativeBuildDownloadUrlQuery,
+} from "@/lib/api";
 import {
   apkInstallCommand,
   nativeBuildDownloadPath,
   nativeBuildFileName,
+  nativeBuildSignedDownloadUrl,
   simulatorInstallCommand,
 } from "@/lib/native-builds";
 
@@ -166,10 +171,62 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
 }
 
 /**
+ * A signed link to the build's download, which a script or a teammate uses
+ * without signing in. It is made on request, so opening the page makes none.
+ */
+function DownloadLink({ build }: { readonly build: NativeBuildRow }) {
+  const link = useCreateNativeBuildDownloadLinkMutation();
+  const result = link.data;
+  if (result?.status === "issued") {
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        <CopyableText
+          label="the download link"
+          value={nativeBuildSignedDownloadUrl(
+            window.location,
+            build.id,
+            result.token,
+          )}
+        />
+        <p className="text-xs text-muted-foreground">
+          Anyone with this link can download this build until{" "}
+          {dayjs(result.expiresAt).format("YYYY-MM-DD")}.
+        </p>
+      </div>
+    );
+  }
+  const problem = link.isError
+    ? "The link couldn't be created. Try again."
+    : result?.status === "local-console"
+      ? "Only this machine reaches a local Console. Create links on a hosted Console."
+      : result?.status === "no-secret"
+        ? `Set ${result.secretName} on the Console to create links.`
+        : null;
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <Button
+        className="h-auto min-h-11 w-full sm:min-h-8 sm:w-fit"
+        disabled={link.isPending}
+        onClick={() => link.mutate(build.id)}
+        variant="ghost"
+      >
+        <Link2 data-icon="inline-start" />
+        Create a link without sign-in
+      </Button>
+      {problem === null ? null : (
+        <p className="text-xs text-muted-foreground" role="status">
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Installs one native build: every artifact by a QR code of its download,
- * which a phone scans, and by download here; an APK also with `adb`, a
- * simulator app with `xcrun simctl`, and an IPA's or an AAB's testers through
- * its store.
+ * which a phone scans, and by download here or a signed link; an APK also
+ * with `adb`, a simulator app with `xcrun simctl`, and an IPA's or an AAB's
+ * testers through its store.
  */
 export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
   const fileName = nativeBuildFileName(build);
@@ -198,6 +255,7 @@ export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
               Download {fileName}
             </span>
           </a>
+          <DownloadLink build={build} />
         </div>
       </CardContent>
     </Card>

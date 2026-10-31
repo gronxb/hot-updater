@@ -14,6 +14,7 @@ import {
   getChannels,
   getConfig,
   getNativeBuildDetail,
+  createNativeBuildDownloadLink,
   getNativeBuildDownloadUrl,
   getNativeBuildPatches,
   getNativeBuilds,
@@ -246,6 +247,12 @@ export function useNativeBuildDownloadUrlQuery(id: string, enabled: boolean) {
 }
 
 // Mutation Hooks
+export function useCreateNativeBuildDownloadLinkMutation() {
+  return useMutation({
+    mutationFn: (id: string) => createNativeBuildDownloadLink({ data: { id } }),
+  });
+}
+
 export function useCreateChannelMutation() {
   const queryClient = useQueryClient();
 

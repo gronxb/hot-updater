@@ -4,11 +4,31 @@ import { describe, expect, it } from "vitest";
 import {
   apkInstallCommand,
   nativeBuildFileName,
+  nativeBuildSignedDownloadUrl,
   simulatorInstallCommand,
 } from "./native-builds";
 
 const build = (artifact_storage_uri: string) =>
   ({ artifact_storage_uri }) as NativeBuildRow;
+
+describe("nativeBuildSignedDownloadUrl", () => {
+  it("stays on the page's address, under the console's own path", () => {
+    for (const [origin, base] of [
+      ["https://console.example.com", ""],
+      ["https://example.com", "/console"],
+    ] as const) {
+      expect(
+        nativeBuildSignedDownloadUrl(
+          { origin, pathname: `${base}/native-builds/b1` },
+          "b1",
+          "1798761600.a_b-c",
+        ),
+      ).toBe(
+        `${origin}${base}/api/native-builds/b1/download?t=1798761600.a_b-c`,
+      );
+    }
+  });
+});
 
 describe("nativeBuildFileName", () => {
   it("takes the last segment of a storage URI", () => {

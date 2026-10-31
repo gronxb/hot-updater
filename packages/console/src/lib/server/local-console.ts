@@ -25,7 +25,7 @@ export interface LocalConsoleGuardOptions {
 }
 
 /** Compares in time that depends only on the lengths. */
-const sameSecret = (given: string, expected: string): boolean => {
+export const sameSecret = (given: string, expected: string): boolean => {
   if (given.length !== expected.length) return false;
   let difference = 0;
   for (let index = 0; index < given.length; index += 1) {

@@ -150,7 +150,7 @@ Add these values to your host's **runtime** environment:
 | `GOOGLE_CLIENT_ID`                   | Client ID from your Google OAuth client             | `123456789012-example.apps.googleusercontent.com` |
 | `GOOGLE_CLIENT_SECRET`               | Client secret from the same Google client           | `<your-google-client-secret>`                     |
 
-Configure at least one complete OAuth pair and your backend's environment variables. Generate the session secret with:
+Configure at least one complete OAuth pair and your backend's environment variables. `BETTER_AUTH_SECRET` also signs native builds' [download links](/docs/guides/native-build#signed-download-links), so changing it ends those links with the sessions. Generate the secret with:
 
 ```bash
 openssl rand -base64 32

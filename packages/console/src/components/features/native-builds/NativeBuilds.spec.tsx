@@ -15,14 +15,17 @@ import { NativeBuildsTable } from "./NativeBuildsTable";
 import { PatchesCard } from "./PatchesCard";
 import { firstDownloadOf, ServedNowCard } from "./ServedNowCard";
 
-const { downloadUrlQuery, patchesQuery, navigate } = vi.hoisted(() => ({
-  downloadUrlQuery: vi.fn(),
-  patchesQuery: vi.fn(),
-  navigate: vi.fn(),
-}));
+const { downloadLinkMutation, downloadUrlQuery, patchesQuery, navigate } =
+  vi.hoisted(() => ({
+    downloadLinkMutation: vi.fn(),
+    downloadUrlQuery: vi.fn(),
+    patchesQuery: vi.fn(),
+    navigate: vi.fn(),
+  }));
 
 vi.mock("@/lib/api", () => ({
   useConfigQuery: () => ({ data: { console: {} } }),
+  useCreateNativeBuildDownloadLinkMutation: downloadLinkMutation,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
   useNativeBuildPatchesQuery: patchesQuery,
 }));
@@ -312,6 +315,94 @@ describe("NativeBuildsTable", () => {
 });
 
 describe("InstallCard", () => {
+  beforeEach(() => {
+    downloadLinkMutation.mockReturnValue({
+      isError: false,
+      isPending: false,
+      mutate: vi.fn(),
+    });
+  });
+
+  describe("the signed download link", () => {
+    const renderCard = () => {
+      downloadUrlQuery.mockReturnValue({ data: { url: null } });
+      render(<InstallCard build={build()} />);
+    };
+
+    it("makes no link until asked, and asks for this build's", () => {
+      const mutate = vi.fn();
+      downloadLinkMutation.mockReturnValue({
+        isError: false,
+        isPending: false,
+        mutate,
+      });
+      renderCard();
+
+      expect(mutate).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Create a link without sign-in" }),
+      );
+      expect(mutate).toHaveBeenCalledWith(build().id);
+    });
+
+    it("shows the link to copy, who can use it, and until when", () => {
+      downloadLinkMutation.mockReturnValue({
+        data: {
+          status: "issued",
+          token: "1798761600.signature",
+          expiresAt: "2026-11-30T12:00:00.000Z",
+        },
+        isError: false,
+        isPending: false,
+        mutate: vi.fn(),
+      });
+      renderCard();
+
+      expect(
+        screen.getByText(
+          `http://localhost:3000/api/native-builds/${build().id}/download?t=1798761600.signature`,
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Copy the download link" }),
+      ).toBeTruthy();
+      expect(document.body.textContent).toMatch(
+        /Anyone with this link can download this build until 2026-11-30\./,
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: "Create a link without sign-in",
+        }),
+      ).toBeNull();
+    });
+
+    it("says what's wrong and the next step when no link can be made", () => {
+      const answers = [
+        [
+          { data: { status: "local-console" } },
+          "Only this machine reaches a local Console. Create links on a hosted Console.",
+        ],
+        [
+          { data: { status: "no-secret", secretName: "BETTER_AUTH_SECRET" } },
+          "Set BETTER_AUTH_SECRET on the Console to create links.",
+        ],
+        [{ isError: true }, "The link couldn't be created. Try again."],
+      ] as const;
+      for (const [state, message] of answers) {
+        downloadLinkMutation.mockReturnValue({
+          isError: false,
+          isPending: false,
+          mutate: vi.fn(),
+          ...state,
+        });
+        renderCard();
+
+        expect(screen.getByRole("status").textContent).toBe(message);
+        cleanup();
+      }
+    });
+  });
+
   it("shows an APK's storage URL as a QR code and downloads through the console", () => {
     const row = build();
     downloadUrlQuery.mockReturnValue({
