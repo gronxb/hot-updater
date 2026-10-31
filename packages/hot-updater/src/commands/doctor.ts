@@ -57,7 +57,6 @@ import {
   formatGooglePlayStatus,
   type GooglePlayStatus,
 } from "./doctor/googlePlay";
-import { checkSandboxSchemes } from "./doctor/sandbox";
 import { humanText, unusedSecretsText } from "./doctor/humanText";
 import {
   type NativeCheckIssue,
@@ -65,6 +64,7 @@ import {
   type ReleaseCatalogStatus,
   type SchemaStatus,
 } from "./doctor/issues";
+import { checkSandboxSchemes } from "./doctor/sandbox";
 import {
   findScaffoldDeployments,
   recordedBaseUrls,
