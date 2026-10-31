@@ -45,10 +45,13 @@ export const buildXcodeProject = async ({
   extraParams,
   minBundleId,
   authenticationArgs,
+  sandbox,
   header = [],
 }: {
   /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
   authenticationArgs?: string[];
+  /** Compiles the sandbox layer in. */
+  sandbox?: boolean;
   sourceDir: string;
   /** Where the built `.app` is copied to. */
   outputDirectory: string;
@@ -97,7 +100,11 @@ export const buildXcodeProject = async ({
       directory: tmpDir,
       sourceDir,
       extraParams,
-      settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+      settings: buildSettingsOverScheme({
+        minBundleId,
+        authenticationArgs,
+        sandbox,
+      }),
     });
 
     const buildArgs = prepareBuildArgs({

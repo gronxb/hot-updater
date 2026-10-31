@@ -91,6 +91,11 @@ vi.mock("./builder/exportXcodeArchive", () => ({
   ),
 }));
 
+vi.mock("./utils/sandboxInfoPlist", () => ({
+  patchSandboxArchive: vi.fn(),
+  patchSandboxSimulatorApp: vi.fn(),
+}));
+
 import { secret } from "@hot-updater/cli-tools";
 
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
@@ -99,6 +104,11 @@ import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { buildIos } from "./buildIos";
 import { withSigningKeychain } from "./utils/ciSigningKeychain";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { readBuiltApp } from "./utils/readBuiltApp";
+import {
+  patchSandboxArchive,
+  patchSandboxSimulatorApp,
+} from "./utils/sandboxInfoPlist";
 
 const MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5";
 
@@ -144,6 +154,75 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
+});
+
+describe("buildIos of a sandbox scheme", () => {
+  const plan = {
+    updateStrategy: "fingerprint",
+    train: { highestClosedVersion: "1.6.2", highestBuildNumber: 68 },
+  } as const;
+
+  it("compiles the layer in, and patches the simulator app before reading it", async () => {
+    await buildIos({
+      schemeConfig: scheme({ simulator: true, sandbox: true }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(buildXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ sandbox: true }),
+    );
+    const [patched] = vi.mocked(patchSandboxSimulatorApp).mock
+      .invocationCallOrder;
+    const [read] = vi.mocked(readBuiltApp).mock.invocationCallOrder;
+    expect(patched).toBeLessThan(read!);
+  });
+
+  it("patches the archive before it copies the app out and exports, internal testing only", async () => {
+    await buildIos({
+      schemeConfig: scheme({
+        sandbox: true,
+        signing: { ascApiKey: secret("asc-api-key") },
+      }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+      sandbox: plan,
+    });
+
+    expect(archiveXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ sandbox: true }),
+    );
+    expect(patchSandboxArchive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plan,
+        appPath: expect.stringMatching(/Products\/Applications\/App\.app$/),
+      }),
+    );
+    const [patched] = vi.mocked(patchSandboxArchive).mock.invocationCallOrder;
+    const [exported] = vi.mocked(exportXcodeArchive).mock.invocationCallOrder;
+    const [read] = vi.mocked(readBuiltApp).mock.invocationCallOrder;
+    expect(patched).toBeLessThan(read!);
+    expect(patched).toBeLessThan(exported!);
+    expect(exportOptions[0]).toContain("testFlightInternalTestingOnly");
+  });
+
+  it("never patches or marks a normal scheme's build", async () => {
+    await buildIos({
+      schemeConfig: scheme({ signing: { ascApiKey: secret("asc-api-key") } }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+    await buildIos({
+      schemeConfig: scheme({ simulator: true }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(patchSandboxArchive).not.toHaveBeenCalled();
+    expect(patchSandboxSimulatorApp).not.toHaveBeenCalled();
+    expect(exportOptions[0]).not.toContain("testFlightInternalTestingOnly");
+    expect(
+      vi.mocked(archiveXcodeProject).mock.calls[0]![0].sandbox,
+    ).toBeFalsy();
+  });
 });
 
 describe("buildIos", () => {

@@ -1652,6 +1652,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      '@hot-updater/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       execa:
         specifier: catalog:tools
         version: 9.5.2

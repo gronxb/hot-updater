@@ -56,6 +56,7 @@ import {
   formatGooglePlayStatus,
   type GooglePlayStatus,
 } from "./doctor/googlePlay";
+import { checkSandboxSchemes } from "./doctor/sandbox";
 import { humanText, unusedSecretsText } from "./doctor/humanText";
 import {
   type NativeCheckIssue,
@@ -711,6 +712,7 @@ async function checkNativeStatus({
       ? signing.issues.map(toNativeIssue)
       : []),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
+    ...(await checkSandboxSchemes(config, cwd)),
   ];
 
   if (requireFingerprint && localFingerprint) {

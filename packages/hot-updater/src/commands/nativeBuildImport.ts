@@ -36,6 +36,7 @@ import {
   registerNativeBuild,
 } from "../utils/native/registerNativeBuild";
 import { printBanner } from "../utils/printBanner";
+import { resolveSandboxApplicationId } from "../utils/version/getAndroidVersion";
 import { safeDispose } from "./release";
 
 export interface NativeBuildImportOptions {
@@ -81,18 +82,23 @@ const findRegistered = async (
 };
 
 /** The app identifiers the config's `nativeBuild` schemes declare. */
-const declaredAppIds = (
+const declaredAppIds = async (
   config: Awaited<ReturnType<typeof loadConfig>>,
   platform: "ios" | "android",
-): string[] => {
+): Promise<string[]> => {
   const ids =
     platform === "ios"
       ? Object.values(config.nativeBuild.ios).map(
           (scheme) => scheme?.bundleIdentifier,
         )
-      : // A scheme's application ID defaults to its package name.
-        Object.values(config.nativeBuild.android).map(
-          (scheme) => scheme?.applicationId ?? scheme?.packageName,
+      : // A scheme's application ID defaults to its package name; a sandbox
+        // scheme's has its suffix.
+        await Promise.all(
+          Object.values(config.nativeBuild.android).map((scheme) =>
+            scheme?.sandbox
+              ? resolveSandboxApplicationId(scheme)
+              : (scheme?.applicationId ?? scheme?.packageName),
+          ),
         );
   return [...new Set(ids.filter((id): id is string => Boolean(id)))];
 };
@@ -300,7 +306,7 @@ export const handleNativeBuildImport = async (
     }
     const check = checkNativeArtifact(info, {
       updateStrategy: config.updateStrategy,
-      appIds: declaredAppIds(config, info.platform),
+      appIds: await declaredAppIds(config, info.platform),
       ...(options.channel === undefined ? {} : { channel: options.channel }),
     });
     warnings = check.warnings;

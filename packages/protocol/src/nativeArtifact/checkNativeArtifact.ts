@@ -7,6 +7,7 @@ import {
   type NativeArtifactKind,
   type UnreadableValue,
 } from "./readNativeArtifact";
+import { isSandboxChannel } from "./sandbox";
 
 /** Why an artifact can't be imported, as `native-build import` says it. */
 export interface NativeArtifactProblem {
@@ -45,6 +46,39 @@ export type NativeArtifactCheck = (
 
 /** The channel an app without a default channel reports. */
 const DEFAULT_CHANNEL = "production";
+
+/**
+ * Why an artifact can't register on `channel`: the sandbox layer must be whole
+ * or absent, and only a sandbox build registers on a `sandbox-*` channel.
+ */
+export const sandboxArtifactProblem = (
+  { kind, platform, sandbox }: NativeArtifactInfo,
+  channel: string,
+): NativeArtifactProblem | null => {
+  const declaration =
+    platform === "ios" ? "Info.plist key" : "manifest meta-data";
+  if (sandbox.code !== sandbox.declared) {
+    return {
+      code: "SANDBOX_MISMATCH",
+      message: sandbox.code
+        ? `The .${kind} has the sandbox layer's code, but no sandbox ${declaration}.\nBuild it again with hot-updater native-build.`
+        : `The .${kind} has a sandbox ${declaration}, but not the sandbox layer's code.\nBuild it again with hot-updater native-build.`,
+    };
+  }
+  if (sandbox.code && !isSandboxChannel(channel)) {
+    return {
+      code: "SANDBOX_MISMATCH",
+      message: `The .${kind} is a sandbox build, which can't register on channel ${channel}.\nUse a sandbox-<scheme> channel.`,
+    };
+  }
+  if (!sandbox.code && isSandboxChannel(channel)) {
+    return {
+      code: "SANDBOX_MISMATCH",
+      message: `Channel ${channel} is reserved for sandbox builds, and the .${kind} isn't one.\nUse another channel, or build it with sandbox: true.`,
+    };
+  }
+  return null;
+};
 
 const isUnreadable = (value: unknown): value is UnreadableValue =>
   typeof value === "object" && value !== null && "unreadable" in value;
@@ -160,6 +194,9 @@ export const checkNativeArtifact = (
       );
     }
   }
+
+  const sandboxProblem = sandboxArtifactProblem(info, channel);
+  if (sandboxProblem !== null) problems.push(sandboxProblem);
 
   if (
     appIds.length > 0 &&

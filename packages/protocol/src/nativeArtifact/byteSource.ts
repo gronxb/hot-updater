@@ -56,5 +56,6 @@ export type NativeArtifactProblemCode =
   | "AMBIGUOUS_FINGERPRINT"
   | "NO_APP_VERSION"
   | "INVALID_SCOPE"
+  | "SANDBOX_MISMATCH"
   | "APP_ID_MISMATCH"
   | "ALREADY_IMPORTED";

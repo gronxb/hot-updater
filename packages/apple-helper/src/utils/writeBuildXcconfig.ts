@@ -113,17 +113,27 @@ const AUTOMATIC_SIGNING = {
 };
 
 /**
+ * Brings back the sandbox layer's sources, which the podspec's
+ * `EXCLUDED_SOURCE_FILE_NAMES` leaves out of every other build.
+ */
+const SANDBOX_SOURCES = { INCLUDED_SOURCE_FILE_NAMES: "HotUpdaterSandbox*" };
+
+/**
  * The settings a build sets over the scheme's: the MIN_BUNDLE_ID the CLI
- * issues and reports, and automatic signing when an App Store Connect API
- * key signs, which a target set to manual signing would not use.
+ * issues and reports, automatic signing when an App Store Connect API key
+ * signs, which a target set to manual signing would not use, and the sandbox
+ * layer's sources for a sandbox scheme.
  */
 export const buildSettingsOverScheme = ({
   minBundleId,
   authenticationArgs,
+  sandbox = false,
 }: {
   minBundleId: string;
   authenticationArgs?: string[];
+  sandbox?: boolean;
 }): Record<string, string> => ({
   HOT_UPDATER_MIN_BUNDLE_ID: minBundleId,
   ...(authenticationArgs ? AUTOMATIC_SIGNING : {}),
+  ...(sandbox ? SANDBOX_SOURCES : {}),
 });

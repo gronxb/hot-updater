@@ -1,0 +1,109 @@
+---
+title: "Sandbox builds"
+description: "Build your own app with a native testing layer that store builds never compile, and keep it out of store review."
+icon: FlaskConical
+---
+
+## What a sandbox build is
+
+A sandbox build is your own app, with the same native modules and the same
+fingerprint, plus a native layer for testing. Set `sandbox: true` on a scheme
+in `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  nativeBuild: {
+    ios: {
+      release: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+      },
+      sandbox: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+        sandbox: true,
+      },
+    },
+    android: {
+      sandbox: {
+        packageName: "com.example.app",
+        aab: false,
+        sandbox: true,
+      },
+    },
+  },
+});
+```
+
+Build it like any other scheme:
+
+```package-install
+npx hot-updater native-build ios --scheme sandbox
+```
+
+No project file changes. Any other scheme, and any build from Xcode or Gradle
+directly, doesn't compile the layer, even after a sandbox build in the same
+checkout. Before a build is tracked or uploaded, the CLI reads the artifact and
+refuses one that holds the wrong thing.
+
+## What changes in the app
+
+|                 | iOS                                 | Android                                |
+| --------------- | ----------------------------------- | -------------------------------------- |
+| App ID          | Same bundle ID                      | `.sandbox` added to the application ID |
+| Default channel | `sandbox-<scheme>`                  | `sandbox-<scheme>`                     |
+| URL scheme      | `hu-sandbox-<app ID>`               | None yet                               |
+| Install         | TestFlight internal, or a simulator | Direct `.apk`, or internal testing     |
+
+On iOS, the sandbox build replaces the store app on a device. On Android, the
+two install side by side. The suffix goes after `defaultConfig`'s suffix and
+before a flavor's, as in `com.example.app.base.sandbox.staging`.
+
+The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
+`sandbox-*` channel, and a sandbox build can't register on any other.
+`native-build find --scheme <scheme>` looks on that channel by itself.
+
+## Stores
+
+A sandbox build can't reach store review.
+
+**iOS.** The export sets `testFlightInternalTestingOnly`. The CLI checks the flag
+in the `.ipa` before it uploads, and reads `buildAudienceType` afterwards. A build
+that isn't `INTERNAL_ONLY` fails. Internal groups with access to all builds
+receive it, as they do any other build.
+
+A scheme's own `exportOptionsPlist` that sets
+`testFlightInternalTestingOnly` to `false` is refused.
+
+**Android.** `--submit play-internal` is the only upload it takes. Google Play
+needs its own app record for the `.sandbox` ID, and a first upload by hand. Play
+Console can still promote an internal build, so keep that in mind when you grant
+access.
+
+### Closed versions on iOS
+
+App Store Connect refuses a build of a version it already approved, or of a
+lower one. With an App Store Connect API key, the CLI reads the approved versions
+before it exports:
+
+- Under the `fingerprint` strategy, it raises the sandbox build's version past the
+  approved one, in the app and its extensions.
+- Under the `appVersion` strategy, the version is what updates target, so it stops
+  and asks you to raise the app version.
+
+The build number becomes the one after the app's highest.
+
+## What can't build yet
+
+`hot-updater doctor` reports each of these for a sandbox scheme.
+
+| The project has                                            | What happens                                     |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| A `Debug` configuration or variant                         | Refused: it skips OTA updates                    |
+| Swift Package Manager on iOS                               | Refused                                          |
+| AGP 9's default DSL                                        | Refused: set `android.newDsl=false`              |
+| Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
+| A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
+| The Expo or Rock adapter, `use_frameworks`, app extensions | Builds, but untested: check it on a device first |

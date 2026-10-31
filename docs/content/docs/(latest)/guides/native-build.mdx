@@ -98,6 +98,9 @@ keeps the project's own signing settings.
 [Credentials](/docs/native-builds/credentials) lists the credentials a build
 reads and how to store them once.
 
+`sandbox: true` on a scheme builds the app with a native testing layer. See
+[Sandbox builds](/docs/native-builds/sandbox).
+
 The Android build passes the keystore to Gradle as the signing properties
 Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
 whatever the variant's `signingConfig` says. The iOS build signs with automatic

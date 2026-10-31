@@ -28,6 +28,18 @@ def isNewArchitectureEnabled() {
   return !project.hasProperty("newArchEnabled") || project.property("newArchEnabled").toString().toBoolean()
 }
 
+// Only the CLI passes -PhotUpdaterSandbox=<scheme>, for a nativeBuild scheme with
+// `sandbox: true`. Any other build never compiles src/sandbox.
+def isSandboxBuild() {
+  return project.hasProperty("hotUpdaterSandbox")
+}
+
+// Each build's MIN_BUNDLE_ID is a new value in a generated Java class. Kotlin 2's
+// incremental compile then rejects this module's own `internal` classes ("it is
+// internal in file"), and nothing could reuse it anyway: compile from scratch.
+// The Kotlin plugin reads this property, and overwrites the task's own setting.
+project.ext.set("kotlin.incremental", "false")
+
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 apply from: "$projectDir/react-native-helpers.gradle"
@@ -72,6 +84,9 @@ android {
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
     consumerProguardFiles 'proguard-rules.pro'
+    if (isSandboxBuild()) {
+      consumerProguardFiles 'src/sandbox/proguard-rules.pro'
+    }
 
     ndk {
       abiFilters(*reactNativeArchitectures())
@@ -109,6 +124,10 @@ android {
 
   sourceSets {
     main {
+      if (isSandboxBuild()) {
+        java.srcDirs += ["src/sandbox/java"]
+        res.srcDirs += ["src/sandbox/res"]
+      }
       if (!isNewArchitectureEnabled()) {
         java.srcDirs += ["src/oldarch"]
       } else {

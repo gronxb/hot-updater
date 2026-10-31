@@ -193,6 +193,16 @@ export interface NativeBuildAndroidScheme {
    * @example { keystore: secret("release-keystore") }
    */
   signing?: { keystore: SecretRef };
+
+  /**
+   * Builds the app with the sandbox native layer, for testing OTA bundles on
+   * a device, as a separate app: the application ID gets a `.sandbox` suffix.
+   * It registers on the reserved channel `sandbox-<scheme>`, and reaches
+   * Google Play's internal testing only. No other build compiles the layer.
+   *
+   * @default false
+   */
+  sandbox?: boolean;
 }
 
 export type IosBuildDestination =
@@ -318,6 +328,16 @@ export interface NativeBuildIosScheme {
    * @example { ascApiKey: secret("asc-api-key") }
    */
   signing?: { ascApiKey: SecretRef };
+
+  /**
+   * Builds the app with the sandbox native layer, for testing OTA bundles on
+   * a device, with the same bundle identifier. It registers on the reserved
+   * channel `sandbox-<scheme>`, and its `.ipa` is for TestFlight internal
+   * testing only, never App Store review. No other build compiles the layer.
+   *
+   * @default false
+   */
+  sandbox?: boolean;
 }
 
 export interface PlatformConfig {

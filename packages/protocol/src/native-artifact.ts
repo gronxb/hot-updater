@@ -14,6 +14,7 @@ export {
 export {
   alreadyImportedProblem,
   checkNativeArtifact,
+  sandboxArtifactProblem,
   type ImportableNativeBuild,
   type NativeArtifactCheck,
   type NativeArtifactProblem,
@@ -30,3 +31,12 @@ export {
   readZipDirectory,
   type ZipEntry,
 } from "./nativeArtifact/zip";
+export {
+  isSandboxChannel,
+  SANDBOX_APPLICATION_ID_SUFFIX,
+  SANDBOX_CODE_MARKER,
+  SANDBOX_INFO_PLIST_KEY,
+  SANDBOX_META_DATA,
+  sandboxChannelOf,
+  sandboxUrlSchemeOf,
+} from "./nativeArtifact/sandbox";

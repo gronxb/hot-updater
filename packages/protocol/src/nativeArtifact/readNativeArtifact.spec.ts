@@ -14,12 +14,18 @@ import {
 import {
   alreadyImportedProblem,
   checkNativeArtifact,
+  sandboxArtifactProblem,
 } from "./checkNativeArtifact";
 import {
   type NativeArtifactInfo,
   nativeArtifactKindOf,
   readNativeArtifact,
 } from "./readNativeArtifact";
+import {
+  isSandboxChannel,
+  sandboxChannelOf,
+  sandboxUrlSchemeOf,
+} from "./sandbox";
 import { openZipEntry, readZipDirectory } from "./zip";
 
 // The values __fixtures__/generate.sh compiled into the fixtures with javac,
@@ -80,6 +86,7 @@ const RELEASE_ANDROID = {
   channel: "beta",
   minBundleIdCandidates: [MIN_BUNDLE_ID],
   fingerprintCandidates: [FINGERPRINT],
+  sandbox: { code: false, declared: false },
 } as const;
 
 describe("readNativeArtifact", () => {
@@ -455,6 +462,111 @@ describe("checkNativeArtifact", () => {
     });
     expect(alreadyImportedProblem(MIN_BUNDLE_ID, null)).not.toHaveProperty(
       "nativeBuildId",
+    );
+  });
+});
+
+describe("the sandbox layer", () => {
+  const sandboxApk = (overrides: Record<string, Uint8Array> = {}) =>
+    apk({
+      "AndroidManifest.xml": fixture("sandbox.axml"),
+      "classes.dex": fixture("sandbox.dex"),
+      ...overrides,
+    });
+  const sandboxIpa = (overrides: Record<string, Uint8Array> = {}) =>
+    ipa({
+      "Payload/App.app/Info.plist": fixture("Info.sandbox.plist"),
+      "Payload/App.app/App": fixture("App-sandbox"),
+      ...overrides,
+    });
+
+  it.each([
+    ["apk", apk()],
+    ["ipa", ipa()],
+  ] as const)("finds none of it in a normal .%s", async (kind, files) => {
+    const { sandbox } = await read(files, `app.${kind}`);
+    expect(sandbox).toEqual({ code: false, declared: false });
+  });
+
+  it("finds it in an .apk, an .aab and an .ipa from the real toolchains", async () => {
+    const whole = { code: true, declared: true };
+    expect((await read(sandboxApk(), "app.apk")).sandbox).toEqual(whole);
+    expect((await read(sandboxIpa(), "app.ipa")).sandbox).toEqual(whole);
+    expect(
+      (
+        await read(
+          aab({
+            "base/manifest/AndroidManifest.xml": fixture("sandbox.pb"),
+            "base/dex/classes.dex": fixture("sandbox.dex"),
+          }),
+          "app.aab",
+        )
+      ).sandbox,
+    ).toEqual(whole);
+  });
+
+  it.each([
+    ["only its code", { "AndroidManifest.xml": fixture("release.axml") }],
+    ["only its manifest entry", { "classes.dex": fixture("classes.dex") }],
+  ] as const)("refuses an .apk with %s", async (_, files) => {
+    const checked = checkNativeArtifact(
+      await read(sandboxApk(files), "app.apk"),
+      { updateStrategy: "fingerprint", channel: "sandbox-release" },
+    );
+    expect(codes(checked)).toEqual(["SANDBOX_MISMATCH"]);
+  });
+
+  it("registers a sandbox build on its reserved channel, and a normal one elsewhere", async () => {
+    expect(
+      checkNativeArtifact(await read(sandboxApk(), "app.apk"), {
+        updateStrategy: "fingerprint",
+      }),
+    ).toMatchObject({ ok: true, build: { channel: "sandbox-release" } });
+    expect(
+      checkNativeArtifact(await read(apk(), "app.apk"), {
+        updateStrategy: "fingerprint",
+      }),
+    ).toMatchObject({ ok: true, build: { channel: "beta" } });
+  });
+
+  it("refuses a sandbox build on another channel, and a normal build on a reserved one", async () => {
+    const onChannel = async (
+      files: Record<string, Uint8Array | string>,
+      channel: string,
+    ) =>
+      checkNativeArtifact(await read(files, "app.apk"), {
+        updateStrategy: "fingerprint",
+        channel,
+      });
+    expect(codes(await onChannel(sandboxApk(), "production"))).toEqual([
+      "SANDBOX_MISMATCH",
+    ]);
+    expect(codes(await onChannel(apk(), "sandbox-release"))).toEqual([
+      "SANDBOX_MISMATCH",
+    ]);
+  });
+
+  it("says what is wrong and what to do, in a line each", () => {
+    expect(
+      sandboxArtifactProblem(
+        info({ sandbox: { code: true, declared: true } }),
+        "production",
+      )?.message,
+    ).toBe(
+      "The .aab is a sandbox build, which can't register on channel production.\nUse a sandbox-<scheme> channel.",
+    );
+    expect(sandboxArtifactProblem(info({}), "sandbox-release")?.message).toBe(
+      "Channel sandbox-release is reserved for sandbox builds, and the .aab isn't one.\nUse another channel, or build it with sandbox: true.",
+    );
+  });
+
+  it("derives the reserved channel and a URL scheme any platform takes", () => {
+    expect(sandboxChannelOf("release")).toBe("sandbox-release");
+    expect(isSandboxChannel("sandbox-release")).toBe(true);
+    expect(isSandboxChannel("sandboxes")).toBe(false);
+    expect(isSandboxChannel("production")).toBe(false);
+    expect(sandboxUrlSchemeOf("com.GronStudio.codex_relay")).toBe(
+      "hu-sandbox-com-gronstudio-codex-relay",
     );
   });
 });

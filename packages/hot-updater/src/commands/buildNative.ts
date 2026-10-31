@@ -13,11 +13,16 @@ import {
   uploadToPlay,
 } from "@hot-updater/android-helper";
 import {
+  assertBuildIsInternalOnly,
+  assertIpaIsInternalOnly,
   assertTestFlightExportOptions,
   buildIos,
   type EnrichedNativeBuildIosScheme,
   findTestFlightBuild,
   installPodsIfNeeded,
+  isVersionTrainClosed,
+  prepareSandboxArchive,
+  type SandboxArchivePlan,
   TestFlightBuildExistsError,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
@@ -48,6 +53,7 @@ import type {
   SecretsAdapter,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
+import { sandboxChannelOf } from "@hot-updater/protocol/native-artifact";
 import { ExecaError } from "execa";
 
 import {
@@ -92,9 +98,15 @@ import {
   reuseNativeBuild,
 } from "../utils/native/reuseNativeBuild";
 import {
+  assertBuiltArtifact,
+  assertSandboxBuildAllowed,
+  readBuiltArtifact,
+} from "../utils/native/sandbox";
+import {
   resolvesAscApiKey,
   signsWithKeystore,
 } from "../utils/native/signingCredentials";
+import { resolveSandboxApplicationId } from "../utils/version/getAndroidVersion";
 
 /**
  * `native-build ios` and `native-build android`: every build but a Debug
@@ -197,6 +209,15 @@ const buildNativeInternal = async ({
             androidScheme,
           }) => {
             secrets = configured;
+            await reportUploadFailure(() =>
+              assertSandboxBuildAllowed({
+                platform,
+                scheme,
+                iosScheme,
+                androidScheme,
+                submit: upload,
+              }),
+            );
             const uploadKey =
               upload === "testflight"
                 ? await reportUploadFailure(async () =>
@@ -222,8 +243,10 @@ const buildNativeInternal = async ({
               const keystore = androidSigningKeystore(androidScheme);
               const readiness = await checkGooglePlay({
                 credentials,
-                packageName:
-                  androidScheme!.applicationId ?? androidScheme!.packageName,
+                packageName: androidScheme!.sandbox
+                  ? await resolveSandboxApplicationId(androidScheme!)
+                  : (androidScheme!.applicationId ??
+                    androidScheme!.packageName),
                 serviceAccount: uploadServiceAccount,
                 ...(keystore ? { keystore } : {}),
               });
@@ -310,6 +333,19 @@ const buildNativeInternal = async ({
           androidSchemeConfig,
           iosSchemeConfig,
         } = preparedConfig;
+        const schemeConfig = iosSchemeConfig ?? androidSchemeConfig;
+        const sandbox = schemeConfig?.sandbox === true;
+        // Again over what the adapter's prebuild wrote, such as the native
+        // project or the export options.
+        await reportUploadFailure(() =>
+          assertSandboxBuildAllowed({
+            platform,
+            scheme,
+            iosScheme: iosSchemeConfig,
+            androidScheme: androidSchemeConfig,
+            submit: upload,
+          }),
+        );
         if (ascApiKey) {
           // The prebuild may write the export options, which it reads.
           await reportUploadFailure(() =>
@@ -335,6 +371,22 @@ const buildNativeInternal = async ({
             .filter(Boolean)
             .join(" · "),
         );
+        // A sandbox device build's version and build number follow the store.
+        const sandboxArchive =
+          sandbox && iosSchemeConfig && !iosSchemeConfig.simulator
+            ? await reportUploadFailure(async () =>
+                prepareSandboxArchive({
+                  schemeConfig: iosSchemeConfig,
+                  apiKey: await sandboxAscApiKey(
+                    credentials,
+                    iosSchemeConfig,
+                    ascApiKey,
+                  ),
+                  updateStrategy: config.updateStrategy,
+                  appVersion: target.appVersion,
+                }),
+              )
+            : undefined;
         // Debug builds are neither tracked nor cached.
         const cache: NativeBuildCache | null =
           trackingSkipped === "debug"
@@ -351,7 +403,15 @@ const buildNativeInternal = async ({
                 noCache: !useCache,
                 buildAdapter: buildAdapter.name,
               });
-        const reused = cache?.hit ?? null;
+        // A store refuses a version it closed since this build was cached.
+        const closedVersion = await closedVersionOfCachedBuild(
+          cache?.hit ?? null,
+          sandboxArchive,
+        );
+        if (closedVersion !== null) {
+          p.log.info(`Cache skipped · version ${closedVersion} is closed`);
+        }
+        const reused = closedVersion === null ? (cache?.hit ?? null) : null;
         // The build's log, which the summary names.
         const buildLog: { path: string | null } = { path: null };
         const result = reused
@@ -368,12 +428,30 @@ const buildNativeInternal = async ({
                 ? { ...iosSchemeConfig!, installPods: false }
                 : iosSchemeConfig,
               credentials,
+              sandboxArchive,
               tracked: trackingSkipped === null,
               logHeader: [...(cache?.logHeader ?? []), ""],
               onLog: (file) => {
                 buildLog.path = file;
               },
             });
+        // What the artifact holds, read before anything records it. A Debug
+        // build is neither recorded nor patched from.
+        const artifact =
+          trackingSkipped === "debug"
+            ? null
+            : await reportUploadFailure(
+                () =>
+                  assertBuiltArtifact({
+                    artifactPath: result.artifactPath,
+                    platform,
+                    scheme,
+                    sandbox,
+                    channel: result.channel,
+                    fingerprintHash: target.fingerprintHash,
+                  }),
+                stays(result.artifactPath),
+              );
         if (!reused) await cache?.remember(result, null);
         if (dryRun) trackingSkipped = "dry-run";
         // A build reused from storage is tracked already; one reused from
@@ -426,6 +504,12 @@ const buildNativeInternal = async ({
           }
         }
         if (apiKey && !existingSubmission) {
+          if (sandbox) {
+            await reportUploadFailure(
+              () => assertIpaIsInternalOnly(result.artifactPath),
+              stays(result.artifactPath),
+            );
+          }
           const uploaded = await storeRefusal(
             reportUploadFailure(
               () =>
@@ -449,7 +533,15 @@ const buildNativeInternal = async ({
           );
           if ("refused" in uploaded) {
             existingSubmission = uploaded.refused;
-          } else if (uploaded.state === "COMPLETE") {
+          } else if (sandbox) {
+            await reportUploadFailure(() =>
+              assertBuildIsInternalOnly({
+                ipaPath: result.artifactPath,
+                apiKey,
+              }),
+            );
+          }
+          if (!("refused" in uploaded) && uploaded.state === "COMPLETE") {
             storeUrl = uploaded.testFlightUrl;
             // Recorded once App Store Connect accepted the build. A build
             // still processing stays unrecorded: a later run that finds it
@@ -468,7 +560,9 @@ const buildNativeInternal = async ({
             (await readBuiltPackageName({
               artifactPath: result.artifactPath,
               androidProjectPath,
-            })) ?? androidSchemeConfig!.applicationId;
+            })) ??
+            artifact?.appId ??
+            androidSchemeConfig!.applicationId;
           const playVersionLabel = async (versionCode: string | number) =>
             storeVersionLabel(
               await readVersionName(result, androidProjectPath),
@@ -588,12 +682,20 @@ const buildNativeInternal = async ({
                 // The store's build that kept this one from uploading.
                 existing: existingSubmission,
               },
-              cache: cache?.report ?? {
-                hit: null,
-                key: null,
-                uncacheable: "a Debug build loads its JavaScript from Metro",
-                changed: [],
-              },
+              cache:
+                cache && closedVersion !== null
+                  ? {
+                      ...cache.report,
+                      hit: null,
+                      uncacheable: `App Store Connect closed version ${closedVersion}`,
+                    }
+                  : (cache?.report ?? {
+                      hit: null,
+                      key: null,
+                      uncacheable:
+                        "a Debug build loads its JavaScript from Metro",
+                      changed: [],
+                    }),
             }),
           );
         }
@@ -627,6 +729,7 @@ const buildNow = async ({
   androidSchemeConfig,
   iosSchemeConfig,
   credentials,
+  sandboxArchive,
   tracked,
   logHeader,
   onLog,
@@ -640,6 +743,8 @@ const buildNow = async ({
   androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
   iosSchemeConfig?: EnrichedNativeBuildIosScheme;
   credentials: CredentialResolver;
+  /** What a sandbox device build takes from App Store Connect. */
+  sandboxArchive?: SandboxArchivePlan;
   tracked: boolean;
   /** Lines the build log starts with: the cache's key and what changed. */
   logHeader: string[];
@@ -674,7 +779,10 @@ const buildNow = async ({
         ? androidSchemeConfig!.variant
         : iosSchemeConfig!.configuration,
     ),
-    readChannel: async () => (await getChannel(platform)).value,
+    readChannel: async () =>
+      (platform === "android" ? androidSchemeConfig : iosSchemeConfig)?.sandbox
+        ? sandboxChannelOf(scheme)
+        : (await getChannel(platform)).value,
     buildAdapter,
     outputPath,
     builder: async () => {
@@ -695,6 +803,7 @@ const buildNow = async ({
               schemeConfig: iosSchemeConfig!,
               minBundleId,
               credentials,
+              sandbox: sandboxArchive,
               logHeader: header,
             });
       onLog(built.logFilePath);
@@ -702,6 +811,46 @@ const buildNow = async ({
     },
   });
   return result;
+};
+
+/**
+ * The App Store Connect key a sandbox device build reads the store with: its
+ * upload's, or the one it signs with.
+ */
+const sandboxAscApiKey = async (
+  credentials: CredentialResolver,
+  iosScheme: EnrichedNativeBuildIosScheme,
+  uploadKey: Credentials["asc-api-key"] | undefined,
+): Promise<Credentials["asc-api-key"] | undefined> =>
+  uploadKey ??
+  (resolvesAscApiKey(iosScheme) && iosScheme.signing?.ascApiKey
+    ? await credentials.resolve({
+        kind: "asc-api-key",
+        name: parseSecretReference(
+          iosScheme.signing.ascApiKey,
+          "signing.ascApiKey",
+        ),
+      })
+    : undefined);
+
+/**
+ * The version of a cached sandbox `.ipa` App Store Connect has closed since,
+ * which a new build raises, or null when it can be reused.
+ */
+const closedVersionOfCachedBuild = async (
+  hit: NativeBuildCacheHit | null,
+  plan: SandboxArchivePlan | undefined,
+): Promise<string | null> => {
+  if (!hit || !plan?.train) return null;
+  // One it can't read fails the check every build gets, after this.
+  const appVersion = await readBuiltArtifact(hit.result.artifactPath).then(
+    (info) => info.appVersion,
+    () => null,
+  );
+  return typeof appVersion === "string" &&
+    isVersionTrainClosed(appVersion, plan.train)
+    ? appVersion
+    : null;
 };
 
 /**

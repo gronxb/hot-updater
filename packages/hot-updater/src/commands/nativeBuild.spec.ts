@@ -480,6 +480,80 @@ describe("handleNativeBuildFind", () => {
     expect(loadServer).not.toHaveBeenCalled();
   });
 
+  describe("a sandbox scheme", () => {
+    const find = async (
+      options: Parameters<
+        typeof import("./nativeBuild").handleNativeBuildFind
+      >[0],
+    ) => (await import("./nativeBuild")).handleNativeBuildFind(options);
+    const withSandbox = {
+      android: {
+        ...nativeBuild.android,
+        beta: {
+          packageName: "com.example",
+          variant: "Release",
+          aab: false,
+          sandbox: true,
+        },
+      },
+      ios: nativeBuild.ios,
+    };
+
+    beforeEach(() => {
+      loadConfig.mockResolvedValue({
+        updateStrategy: "fingerprint",
+        nativeBuild: withSandbox,
+        build,
+      });
+    });
+
+    it("looks on its reserved channel, whatever the native project's is, with the existing read", async () => {
+      const scope = {
+        platform: "android",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      } as const;
+      await register("1", { ...scope, channel: "sandbox-beta" });
+      await register("2", { ...scope, channel: "preview" });
+
+      await find({
+        platform: "android",
+        scheme: "beta",
+        json: true,
+      });
+
+      const printed = output();
+      expect(printed.channel).toBe("sandbox-beta");
+      expect(printed.nativeBuild.id).toContain("1");
+      expect(getChannel).not.toHaveBeenCalled();
+    });
+
+    it("refuses another channel for a sandbox scheme, and a reserved one for a normal scheme", async () => {
+      await expect(
+        find({
+          platform: "android",
+          scheme: "beta",
+          channel: "preview",
+          json: true,
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(log.error).toHaveBeenCalledWith(
+        "The sandbox scheme beta builds channel sandbox-beta, not preview.\nRemove --channel.",
+      );
+      await expect(
+        find({
+          platform: "android",
+          scheme: "releaseApk",
+          channel: "sandbox-beta",
+          json: true,
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(log.error).toHaveBeenCalledWith(
+        "Channel sandbox-beta is reserved for sandbox builds, and the scheme releaseApk isn't one.\nPass another --channel.",
+      );
+    });
+  });
+
   it("fails on a scheme the config doesn't define", async () => {
     const { handleNativeBuildFind } = await import("./nativeBuild");
 

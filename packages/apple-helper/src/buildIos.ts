@@ -12,13 +12,19 @@ import {
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
+import type { SandboxArchivePlan } from "./sandboxTestFlight";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { withSigningKeychain } from "./utils/ciSigningKeychain";
 import { createRandomTmpDir, removeTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { readBuiltApp } from "./utils/readBuiltApp";
 import {
+  patchSandboxArchive,
+  patchSandboxSimulatorApp,
+} from "./utils/sandboxInfoPlist";
+import {
   exportsForAppStoreConnect,
+  resolveSandboxExportOptions,
   resolveXcodeSigning,
   writeAppStoreConnectExportOptions,
 } from "./utils/xcodeSigning";
@@ -36,6 +42,7 @@ export const buildIos = async ({
   schemeConfig,
   minBundleId = createMinBundleId(),
   credentials,
+  sandbox,
   logHeader = [],
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
@@ -43,6 +50,11 @@ export const buildIos = async ({
   minBundleId?: string;
   /** Resolves the scheme's `signing` key, when a device build signs with one. */
   credentials?: Pick<CredentialResolver, "resolve">;
+  /**
+   * What a `sandbox` scheme's archive takes from App Store Connect: its
+   * closed version train and next build number, and what a closed train does.
+   */
+  sandbox?: SandboxArchivePlan;
   /** Lines the build log starts with, such as the native build key. */
   logHeader?: string[];
 }): Promise<{
@@ -74,6 +86,7 @@ export const buildIos = async ({
       schemeConfig,
       minBundleId,
       credentials,
+      sandbox,
       buildDirectory,
       logHeader,
     });
@@ -88,12 +101,14 @@ const buildInto = async ({
   schemeConfig,
   minBundleId,
   credentials,
+  sandbox,
   buildDirectory,
   logHeader,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
   credentials?: Pick<CredentialResolver, "resolve">;
+  sandbox?: SandboxArchivePlan;
   buildDirectory: string;
   logHeader: string[];
 }) => {
@@ -116,7 +131,11 @@ const buildInto = async ({
       extraParams: schemeConfig.extraParams,
       useGenericDestination: true,
       minBundleId,
+      sandbox: schemeConfig.sandbox,
     });
+    if (schemeConfig.sandbox) {
+      await patchSandboxSimulatorApp(appPath, schemeConfig);
+    }
 
     return {
       buildDirectory: buildDirectory,
@@ -130,6 +149,7 @@ const buildInto = async ({
       return archiveAndExport({
         schemeConfig,
         minBundleId,
+        sandbox,
         buildDirectory,
         logHeader,
       });
@@ -152,6 +172,7 @@ const buildInto = async ({
         archiveAndExport({
           schemeConfig,
           minBundleId,
+          sandbox,
           buildDirectory,
           logHeader,
           authenticationArgs: signing.authenticationArgs,
@@ -167,12 +188,14 @@ const buildInto = async ({
 const archiveAndExport = async ({
   schemeConfig,
   minBundleId,
+  sandbox,
   buildDirectory,
   logHeader,
   authenticationArgs,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   minBundleId: string;
+  sandbox?: SandboxArchivePlan;
   buildDirectory: string;
   logHeader: string[];
   /** Signing arguments from `resolveXcodeSigning`. */
@@ -197,10 +220,25 @@ const archiveAndExport = async ({
     installPods: schemeConfig.installPods,
     logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
     header: logHeader,
+    sandbox: schemeConfig.sandbox,
   });
 
   // Extract .app from xcarchive if present
   const appFromArchive = extractAppFromXcarchive(archivePath);
+
+  // Before the copy, which reports what the app does, and before the export,
+  // which signs the patched app.
+  if (schemeConfig.sandbox) {
+    if (!appFromArchive) {
+      throw new Error(`The archive ${archivePath} has no app to patch.`);
+    }
+    await patchSandboxArchive({
+      archivePath,
+      appPath: appFromArchive,
+      schemeConfig,
+      plan: sandbox,
+    });
+  }
 
   const archivedAppPath = appFromArchive
     ? path.join(archiveDir, path.basename(appFromArchive))
@@ -239,13 +277,22 @@ const archiveAndExport = async ({
       logFilePath: logFilePath ?? undefined,
       title: schemeConfig.scheme,
     });
-  if (schemeConfig.exportOptionsPlist) {
-    await exportArchive(schemeConfig.exportOptionsPlist);
+  const { exportOptionsPlist } = schemeConfig;
+  if (exportOptionsPlist && !schemeConfig.sandbox) {
+    await exportArchive(exportOptionsPlist);
   } else {
     const exportOptionsDir = await createRandomTmpDir();
     try {
       await exportArchive(
-        await writeAppStoreConnectExportOptions(exportOptionsDir),
+        exportOptionsPlist
+          ? await resolveSandboxExportOptions(
+              schemeConfig.hotUpdaterSchemeName,
+              exportOptionsPlist,
+              exportOptionsDir,
+            )
+          : await writeAppStoreConnectExportOptions(exportOptionsDir, {
+              internalTestingOnly: schemeConfig.sandbox,
+            }),
       );
     } finally {
       await removeTmpDir(exportOptionsDir);

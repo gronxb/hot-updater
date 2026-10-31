@@ -13,6 +13,7 @@ export {
 export type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 export { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 export { extractBuiltInBundle } from "./utils/extractBuiltInBundle";
+export { findSandboxGradleBlocker } from "./utils/sandboxGradle";
 export {
   readBuiltApp,
   readBuiltPackageName,

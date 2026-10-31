@@ -41,9 +41,12 @@ export const archiveXcodeProject = async ({
   header = [],
   minBundleId,
   authenticationArgs,
+  sandbox,
 }: {
   /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
   authenticationArgs?: string[];
+  /** Compiles the sandbox layer in. */
+  sandbox?: boolean;
   configuration?: string;
   destination?: IosBuildDestination[];
   extraParams?: string[];
@@ -78,7 +81,11 @@ export const archiveXcodeProject = async ({
       sourceDir,
       xcconfig,
       extraParams,
-      settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+      settings: buildSettingsOverScheme({
+        minBundleId,
+        authenticationArgs,
+        sandbox,
+      }),
     });
 
     const archiveArgs = prepareArchiveArgs({

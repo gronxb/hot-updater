@@ -56,16 +56,19 @@ const GOOGLE_PLAY: StoreShortcut = {
 
 /**
  * The config's schemes of the shortcut's platform whose build the store
- * takes, and why each other one is not.
+ * takes, and why each other one is not. A sandbox scheme goes only by name:
+ * adding one must not change which scheme a release uploads.
  */
 const storeSchemes = async ({ platform, check }: StoreShortcut) => {
   const config = await loadConfig({ platform, channel: "" });
   const uploadable: string[] = [];
   const refused: string[] = [];
-  const schemes: Record<string, unknown> = config.nativeBuild[platform];
+  const schemes: Record<string, { sandbox?: boolean } | undefined> =
+    config.nativeBuild[platform];
   for (const [scheme, schemeConfig] of Object.entries(schemes).sort(
     ([a], [b]) => a.localeCompare(b),
   )) {
+    if (schemeConfig?.sandbox) continue;
     try {
       await check(scheme, schemeConfig as never);
       uploadable.push(scheme);
