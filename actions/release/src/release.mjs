@@ -133,6 +133,9 @@ export const decide = (found, { submit }) => {
   if (!submit || (build.build_key ?? null) === null) {
     return { decision: "ota", reason: `native build ${build.id} is tracked` };
   }
+  if (build.submitted_to === store.id) {
+    return { decision: "build", reason: "sabotage: always build" };
+  }
   return build.submitted_to === store.id
     ? {
         decision: "ota",
