@@ -111,7 +111,7 @@ describe("secretsManager get", () => {
     expect(error.message).toBe(
       [
         "AWS Secrets Manager refused to read hot-updater/asc-api-key.",
-        "The identity needs secretsmanager:GetSecretValue on it.",
+        "arn:aws:sts::1:assumed-role/ci needs secretsmanager:GetSecretValue on it.",
       ].join("\n"),
     );
   });
@@ -386,6 +386,85 @@ describe("secretsManager's next step", () => {
 
     expect(error.message).toBe(
       "secretsManager found no AWS credentials to read hot-updater/asc-api-key.\nSet them with aws-actions/configure-aws-credentials.",
+    );
+  });
+
+  it("names the caller and the KMS permission, not the key AWS refused", async () => {
+    sm.on(GetSecretValueCommand).rejects(
+      awsError(
+        "AccessDeniedException",
+        "User: arn:aws-us-gov:iam::123456789012:user/deploy.bot@example.com is not authorized to perform: kms:Decrypt on resource: arn:aws:kms:us-east-1:123456789012:key/abc",
+      ),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message.split("\n").at(-1)).toBe(
+      "arn:aws-us-gov:iam::123456789012:user/deploy.bot@example.com needs kms:Decrypt on it.",
+    );
+  });
+
+  it.each([
+    ["no caller", "not authorized"],
+    [
+      "a resource's ARN where the caller's would be",
+      "User: arn:aws:secretsmanager:us-east-1:1:secret:hot-updater/x is not authorized",
+    ],
+    ["no ARN after User:", "User: someone is not authorized"],
+  ])("says the identity when AWS's message has %s", async (_case, message) => {
+    sm.on(GetSecretValueCommand).rejects(
+      awsError("AccessDeniedException", message),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message.split("\n").at(-1)).toBe(
+      "The identity needs secretsmanager:GetSecretValue on it.",
+    );
+  });
+
+  it("takes only the ARN from AWS's message, so nothing else in it can print", async () => {
+    const value = "super-secret-value";
+    sm.on(GetSecretValueCommand).rejects(
+      awsError(
+        "AccessDeniedException",
+        `User: arn:aws:sts::1:assumed-role/ci"${value}" is not authorized: ${value}`,
+      ),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(error.message).not.toContain(value);
+    expect(error.message.split("\n").at(-1)).toBe(
+      "arn:aws:sts::1:assumed-role/ci needs secretsmanager:GetSecretValue on it.",
+    );
+  });
+
+  it("leaves the caller's ARN unmasked after the adapter read values", async () => {
+    sm.on(GetSecretValueCommand)
+      .resolvesOnce({ SecretString: "ci" })
+      .resolvesOnce({ SecretString: "a-longer-secret-value" });
+    await secretsManager({ region: REGION }).get(["short", "long"], context);
+    sm.reset();
+    sm.on(GetSecretValueCommand).rejects(
+      awsError(
+        "AccessDeniedException",
+        "User: arn:aws:sts::1:assumed-role/ci is not authorized",
+      ),
+    );
+
+    const error = await rejectionOf(
+      secretsManager({ region: REGION }).get(["asc-api-key"], context),
+    );
+
+    expect(maskSecretValues(error.message)).toContain(
+      "arn:aws:sts::1:assumed-role/ci needs",
     );
   });
 

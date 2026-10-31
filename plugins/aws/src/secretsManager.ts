@@ -90,6 +90,16 @@ const errorName = (error: unknown) =>
 const errorMessage = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).replace(/\.+$/u, "");
 
+/**
+ * The caller's ARN in a refusal, `User: arn:aws:sts::…`, so the message names
+ * who to grant. Only that token is read: the rest of AWS's message, such as
+ * the resource it refused, stays out.
+ */
+const refusedCaller = (message: string) =>
+  /\bUser: (arn:aws[a-z-]*:(?:iam|sts)::\d*:[\w+=,.@/-]*[\w-])/u.exec(
+    message,
+  )?.[1];
+
 const resolveEndpoint = (endpoint: string) => {
   let url: URL;
   try {
@@ -256,7 +266,7 @@ export const secretsManager = ({
       return failure(
         [
           `AWS Secrets Manager refused to ${verb} ${id}.`,
-          `The identity needs ${/\bkms\b/iu.test(errorMessage(error)) ? key : permissions} on it.`,
+          `${refusedCaller(errorMessage(error)) ?? "The identity"} needs ${/\bkms\b/iu.test(errorMessage(error)) ? key : permissions} on it.`,
         ],
         error,
       );
