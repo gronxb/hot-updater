@@ -100,6 +100,40 @@ jobs:
           : > "$PROOF_COMMANDS"
           : > "$PROOF_PLAY_LOG"
 
+      - name: Release on a sandbox channel input
+        id: sandbox-input
+        continue-on-error: true
+        uses: ./actions/release
+        with:
+          platforms: android
+          android-scheme: release
+          channel: sandbox-release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it refused before running the CLI
+        run: |
+          test "${{ steps.sandbox-input.outcome }}" = failure
+          test ! -s "$PROOF_COMMANDS"
+      - name: Set a sandbox channel in the native project
+        working-directory: examples/v0.85.0
+        run: |
+          $PROOF_CLI channel set sandbox-release
+          : > "$PROOF_COMMANDS"
+      - name: Release on the native project's sandbox channel
+        id: sandbox-channel
+        continue-on-error: true
+        uses: ./actions/release
+        with:
+          platforms: android
+          android-scheme: release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it decided nothing and ran nothing else
+        env:
+          PROOF_OUTCOME: ${{ steps.sandbox-channel.outcome }}
+          PROOF_RESULT: ${{ steps.sandbox-channel.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts sandbox-channel
+
       - name: Decide with nothing tracked
         id: first-dry-run
         uses: ./actions/release

@@ -38,7 +38,8 @@ environment. It never signs in to an Apple or Google account.
 - Set the channel. The action releases on the channel a build of your native
   project embeds, or on its `channel` input, which it sets in the native project
   before a build. An Expo project sets it in the
-  [`@hot-updater/expo` config plugin](/docs/build-adapters/expo).
+  [`@hot-updater/expo` config plugin](/docs/build-adapters/expo). Channels named
+  `sandbox-*` are reserved, and the action refuses them.
 
 <Callout type="info">
   The fingerprint hashes the native interface, so an edit inside a native
@@ -179,6 +180,7 @@ same as JSON, also when a platform fails:
 
 - **The lookup fails**, as when the database doesn't answer. A failed lookup
   isn't "no build", so the decision is `none`, and nothing is built or deployed.
+  The native project's channel being a `sandbox-*` one ends the same way.
 - **One platform fails.** The other still runs, the result and the summary show
   both, and the run fails, naming what finished: a job with both platforms may
   have released one.

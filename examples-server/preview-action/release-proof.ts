@@ -68,6 +68,22 @@ const AFTER_NATIVE = {
 } as const;
 
 const STAGES: Readonly<Record<string, Expected>> = {
+  // The native project embeds a sandbox channel: no decision, and nothing runs.
+  "sandbox-channel": {
+    platforms: {
+      android: {
+        decision: "none",
+        outcome: "failed",
+        error: "is a sandbox channel",
+      },
+    },
+    fails: true,
+    builds: [],
+    releases: noBundles,
+    uploads: 0,
+    refused: [],
+    commands: [FIND],
+  },
   // Nothing is tracked: a native build, which the dry run only says.
   "first-dry-run": {
     platforms: { android: { decision: "build", outcome: "decided" } },

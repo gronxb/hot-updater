@@ -14,7 +14,6 @@ type Row = {
   id: string;
   build_key: string | null;
   submitted_to: string | null;
-  sandbox?: boolean;
 };
 
 const row = (overrides: Partial<Row> = {}): Row => ({
@@ -208,8 +207,6 @@ describe("decide", () => {
       true,
       "ota",
     ],
-    ["a sandbox build", row({ sandbox: true }), true, "build"],
-    ["a sandbox build without a store", row({ sandbox: true }), false, "build"],
     ["a build without a store", row({ submitted_to: null }), false, "ota"],
     ["no build without a store", null, false, "build"],
   ])("%s", (_name, nativeBuild, submit, decision) => {
@@ -534,6 +531,50 @@ describe("runAction", () => {
       "embeds the staging channel, not production.",
     );
     expect(result.platforms[0].outcome).toBe("failed");
+  });
+
+  it("refuses a sandbox channel input before anything runs", async () => {
+    const fake = fakeCli({ registry: { android: row() } });
+    const { error, outputs } = await run(fake, {
+      INPUT_CHANNEL: "sandbox-release",
+    });
+
+    expect(error?.message).toBe(
+      "sandbox-release is a sandbox channel, which never goes to a store. Release on another channel.",
+    );
+    expect(fake.calls).toEqual([]);
+    expect(outputs).toEqual({});
+  });
+
+  it.each([
+    ["with a build", { android: row() }],
+    ["without a build", {}],
+  ])(
+    "deploys and builds nothing when the native project embeds a sandbox channel, %s",
+    async (_name, registry) => {
+      const fake = fakeCli({ channel: "sandbox-release", registry });
+      const { error, result, lines } = await run(fake);
+
+      expect(error?.message).toContain("sandbox-release is a sandbox channel");
+      expect(fake.calls).toEqual([
+        "native-build find -p android -s release --json",
+      ]);
+      expect(result.platforms[0]).toMatchObject({
+        channel: "sandbox-release",
+        decision: "none",
+        outcome: "failed",
+      });
+      expect(lines).toEqual([
+        "android · fingerprint fp-abcde · none · sandbox-release is a sandbox channel",
+      ]);
+    },
+  );
+
+  it("takes a channel that only starts like a sandbox one", async () => {
+    const fake = fakeCli();
+    const { error } = await run(fake, { INPUT_CHANNEL: "sandboxed" });
+    expect(error).toBeUndefined();
+    expect(fake.calls[0]).toContain("-c sandboxed");
   });
 
   it("sets nothing when the inputs are wrong", async () => {

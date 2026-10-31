@@ -43,7 +43,8 @@ import {
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
  * @property {Decision | "none"} decision `none` when the lookup failed, which
- *   says nothing about the registry, so nothing runs.
+ *   says nothing about the registry, or the channel is a sandbox channel: nothing
+ *   runs.
  * @property {string} reason
  * @property {"deployed" | "built" | "decided" | "failed"} outcome
  * @property {string | null} nativeBuildId
@@ -57,6 +58,19 @@ const STORES = /** @type {const} */ ({
   ios: { id: "testflight", name: "TestFlight" },
   android: { id: "play-internal", name: "Google Play internal testing" },
 });
+
+/**
+ * Whether a channel is the reserved `sandbox-<scheme>` channel of a scheme's
+ * sandbox builds. A sandbox build lives only there, so a release that never
+ * runs on one never counts a sandbox build as a store build.
+ *
+ * @param {string} channel
+ */
+export const isSandboxChannel = (channel) => channel.startsWith("sandbox-");
+
+/** @param {string} channel */
+const sandboxChannelMessage = (channel) =>
+  `${channel} is a sandbox channel, which never goes to a store. Release on another channel.`;
 
 /**
  * The action's inputs, from the environment its composite step passes.
@@ -81,25 +95,18 @@ export const parseInputs = (env) => {
       );
     }
   }
+  const channel = input("CHANNEL") || null;
+  if (channel !== null && isSandboxChannel(channel)) {
+    throw new Error(sandboxChannelMessage(channel));
+  }
   return {
     platforms: parsed,
     schemes,
-    channel: input("CHANNEL") || null,
+    channel,
     submit: parseFlag(input, "SUBMIT", true),
     dryRun: parseFlag(input, "DRY_RUN", false),
   };
 };
-
-/**
- * Whether a tracked build is one the store can take. HOT-72 adds sandbox
- * builds, which keep the store build's fingerprint but never replace it, so
- * this names the column it adds. `native-build find` returns only the newest
- * build of a scope, so HOT-72 must also skip sandbox builds there: otherwise
- * a sandbox build newer than the store build reads as no store build here.
- *
- * @param {NativeBuildRow & { sandbox?: boolean | null }} build
- */
-export const isStoreBuild = (build) => build.sandbox !== true;
 
 /**
  * Whether the release deploys a bundle or needs a native build. A tracked
@@ -120,12 +127,6 @@ export const decide = (found, { submit }) => {
     return {
       decision: "build",
       reason: `no tracked native build on ${found.channel}`,
-    };
-  }
-  if (!isStoreBuild(build)) {
-    return {
-      decision: "build",
-      reason: `native build ${build.id} is a sandbox build`,
     };
   }
   const store = STORES[found.platform];
@@ -288,6 +289,12 @@ const releasePlatform = async (deps, inputs, env, platform) => {
     result.channel = found.channel;
     result.fingerprintHash = found.fingerprintHash;
     result.appVersion = found.appVersion;
+    // The channel the native project embeds, which only the lookup knows.
+    if (isSandboxChannel(found.channel)) {
+      result.reason = `${found.channel} is a sandbox channel`;
+      deps.log.info(formatDecision(result));
+      throw new Error(sandboxChannelMessage(found.channel));
+    }
     Object.assign(result, decide(found, inputs));
     deps.log.info(formatDecision(result));
 
