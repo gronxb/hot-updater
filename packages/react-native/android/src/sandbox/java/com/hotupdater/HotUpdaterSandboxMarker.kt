@@ -5,5 +5,5 @@ package com.hotupdater
  * SANDBOX_CODE_MARKER in @hot-updater/protocol.
  */
 object HotUpdaterSandboxMarker {
-  fun value(): String = "HOT_UPDATER_SANDBOX_NATIVE_LAYER"
+    fun value(): String = "HOT_UPDATER_SANDBOX_NATIVE_LAYER"
 }

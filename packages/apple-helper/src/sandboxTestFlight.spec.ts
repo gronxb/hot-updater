@@ -207,27 +207,12 @@ describe("prepareSandboxArchive", () => {
     "/v1/builds": { data: [{ attributes: { version: "68" } }] },
   };
 
-  it("refuses before the build under appVersion when the version is closed", async () => {
-    await expect(
-      prepareSandboxArchive({
-        schemeConfig: scheme(),
-        apiKey,
-        updateStrategy: "appVersion",
-        appVersion: "1.6.2",
-        fetch: asc(closed162).fetch,
-      }),
-    ).rejects.toThrow(
-      "App Store Connect closed version 1.6.2, so TestFlight refuses 1.6.2.\nRaise the app version.",
-    );
-  });
-
-  it("builds under appVersion when the version is open", async () => {
+  it("reads the train under appVersion, and leaves the refusal to the archive", async () => {
     expect(
       await prepareSandboxArchive({
         schemeConfig: scheme(),
         apiKey,
         updateStrategy: "appVersion",
-        appVersion: "1.7.0",
         fetch: asc(closed162).fetch,
       }),
     ).toEqual({
@@ -242,7 +227,6 @@ describe("prepareSandboxArchive", () => {
       await prepareSandboxArchive({
         schemeConfig: scheme(),
         updateStrategy: "fingerprint",
-        appVersion: null,
         fetch,
       }),
     ).toEqual({ updateStrategy: "fingerprint" });
@@ -264,7 +248,6 @@ describe("prepareSandboxArchive", () => {
         schemeConfig: scheme({ exportOptionsPlist: plist }),
         apiKey,
         updateStrategy: "fingerprint",
-        appVersion: null,
         fetch,
       }),
     ).toEqual({ updateStrategy: "fingerprint" });

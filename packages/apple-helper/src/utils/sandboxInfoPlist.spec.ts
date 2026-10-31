@@ -234,6 +234,42 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     ).rejects.toThrow("Raise the app version.");
   });
 
+  it("decides a closed train under appVersion by the version the archive holds, not the project's", async () => {
+    const plan = {
+      updateStrategy: "appVersion",
+      train: { highestClosedVersion: "1.0.0", highestBuildNumber: null },
+    } as const;
+    // An xcconfig built 1.1.0 over a project that declares the closed 1.0.0.
+    await writePlist(path.join(app, "Info.plist"), {
+      CFBundleIdentifier: "com.example.App",
+      CFBundleShortVersionString: "1.1.0",
+    });
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: scheme,
+      plan,
+    });
+    expect(read(path.join(app, "Info.plist"))).toMatchObject({
+      CFBundleShortVersionString: "1.1.0",
+    });
+
+    await writePlist(path.join(app, "Info.plist"), {
+      CFBundleIdentifier: "com.example.App",
+      CFBundleShortVersionString: "1.0.0",
+    });
+    await expect(
+      patchSandboxArchive({
+        archivePath: archive,
+        appPath: app,
+        schemeConfig: scheme,
+        plan,
+      }),
+    ).rejects.toThrow(
+      "App Store Connect closed version 1.0.0, so TestFlight refuses 1.0.0.\nRaise the app version.",
+    );
+  });
+
   it("signs a patched simulator app again, so its signature verifies", async () => {
     const simulatorApp = path.join(root, "Sim.app");
     await fs.mkdir(simulatorApp);

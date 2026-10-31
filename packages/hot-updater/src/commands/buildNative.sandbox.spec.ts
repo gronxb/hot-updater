@@ -177,6 +177,7 @@ vi.mock("../utils/native/nativeBuildSubmission", () => ({
     `${version} (${build})`,
 }));
 
+import { prepareSandboxArchive } from "@hot-updater/apple-helper";
 import { p, secret } from "@hot-updater/cli-tools";
 
 import { assertBuiltArtifact } from "../utils/native/sandbox";
@@ -291,6 +292,27 @@ describe("native-build of a sandbox scheme", () => {
     cachedVersion = "1.7.0";
     await handleNativeBuildCreate("ios", { scheme: "release" });
     expect(events).not.toContain("build");
+  });
+
+  it("builds under appVersion when the project's files declare a closed version, which an xcconfig may override", async () => {
+    target = { fingerprintHash: null, appVersion: "1.6.2" };
+    // Refuses as it would for a version that really is closed: only what the
+    // archive holds may decide, so the project's version must not reach it.
+    vi.mocked(prepareSandboxArchive).mockImplementationOnce((async ({
+      appVersion,
+    }: {
+      appVersion?: string;
+    }) => {
+      if (appVersion === "1.6.2") {
+        throw new Error("App Store Connect closed version 1.6.2.");
+      }
+      return APP_VERSION_TRAIN;
+    }) as never);
+
+    await handleNativeBuildCreate("ios", { scheme: "release" });
+
+    expect(events).toContain("build");
+    expect(p.log.error).not.toHaveBeenCalled();
   });
 
   it("reads no store for a simulator scheme", async () => {

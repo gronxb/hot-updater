@@ -383,7 +383,6 @@ const buildNativeInternal = async ({
                     ascApiKey,
                   ),
                   updateStrategy: config.updateStrategy,
-                  appVersion: target.appVersion,
                 }),
               )
             : undefined;

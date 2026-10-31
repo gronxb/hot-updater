@@ -154,21 +154,20 @@ export const readAppStoreTrain = async ({
 /**
  * What a sandbox device build needs from App Store Connect, read before the
  * build. An export for elsewhere has no train, and without an API key it
- * can't be read: the store would say so after the upload. A version the
- * appVersion strategy can't raise fails here, before anything is built.
+ * can't be read: the store would say so after the upload. What a closed train
+ * does to the build waits for the archive (`patchSandboxArchive`): only the
+ * archived app holds the version an `xcconfig` or `extraParams` settled on,
+ * which the project's files don't.
  */
 export const prepareSandboxArchive = async ({
   schemeConfig,
   apiKey,
   updateStrategy,
-  appVersion,
   fetch,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   apiKey?: AppStoreConnectApiKey;
   updateStrategy: "fingerprint" | "appVersion";
-  /** The project's app version under the appVersion strategy. */
-  appVersion: string | null;
   fetch?: typeof globalThis.fetch;
 }): Promise<SandboxArchivePlan> => {
   if (!(await exportsForAppStoreConnect(schemeConfig))) {
@@ -185,14 +184,6 @@ export const prepareSandboxArchive = async ({
     apiKey,
     ...(fetch ? { fetch } : {}),
   });
-  if (appVersion !== null) {
-    const decision = sandboxVersionDecision({
-      version: appVersion,
-      train,
-      updateStrategy,
-    });
-    if (decision.kind === "refuse") throw new Error(decision.message);
-  }
   return { train, updateStrategy };
 };
 
