@@ -242,6 +242,38 @@ export const uncheckedSecretNames = (
   ),
 ];
 
+/**
+ * Each read's failure once: two that differ only in the name they failed on
+ * say the same thing, while a disabled secret and a missing role both need
+ * fixing, so both stay.
+ */
+export const distinctSecretFailures = (
+  reads: readonly {
+    readonly error?: string;
+    readonly names: readonly string[];
+  }[],
+): string[] => {
+  const failures = new Map<string, string>();
+  for (const { error, names } of reads) {
+    if (error === undefined) continue;
+    const shape = [...names]
+      .sort((a, b) => b.length - a.length)
+      .reduce(
+        (text, name) =>
+          text.replace(
+            new RegExp(
+              `(?<![A-Za-z0-9_])${name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![A-Za-z0-9_])`,
+              "gu",
+            ),
+            "<name>",
+          ),
+        error,
+      );
+    if (!failures.has(shape)) failures.set(shape, error);
+  }
+  return [...failures.values()];
+};
+
 /** The `secret()`s a build or a deploy reads that resolve nowhere. */
 export const missingRequiredSecrets = (
   status: SecretsStatus | undefined,

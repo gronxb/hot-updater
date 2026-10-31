@@ -71,6 +71,7 @@ import {
 import { checkSchema } from "./doctor/schema";
 import {
   checkSecrets,
+  distinctSecretFailures,
   listNames,
   missingRequiredSecrets,
   type SecretsStatus,
@@ -1471,13 +1472,27 @@ export const handleDoctor = async ({
         ].join("\n"),
       );
     }
-    // One block for the adapter: each `get` fails the same way, on another name.
-    const unreadable = secrets?.error ?? deploySecrets?.error;
-    if (unreadable !== undefined) {
+    // One block for the adapter, with each distinct reason its reads failed.
+    const failures = distinctSecretFailures([
+      {
+        ...(secrets?.error === undefined ? {} : { error: secrets.error }),
+        names: secrets?.references.map(({ name }) => name) ?? [],
+      },
+      {
+        ...(deploySecrets?.error === undefined
+          ? {}
+          : { error: deploySecrets.error }),
+        names: deploySecrets?.names.map(({ name }) => name) ?? [],
+      },
+    ]);
+    if (failures.length > 0) {
       const unchecked = uncheckedSecretNames(rows);
       log.warn(
         ui.prose(
-          `Couldn't read the ${adapter} secrets adapter${unchecked.length > 0 ? ` for ${listNames(unchecked)}` : ""}.\n${unreadable}`,
+          [
+            `Couldn't read the ${adapter} secrets adapter${unchecked.length > 0 ? ` for ${listNames(unchecked)}` : ""}.`,
+            ...failures,
+          ].join("\n"),
         ),
       );
     }

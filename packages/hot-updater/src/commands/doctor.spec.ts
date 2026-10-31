@@ -917,6 +917,46 @@ describe("doctor", () => {
     expect(warnings).toContain("2 secrets not checked, 2 warnings.");
   });
 
+  it("shows both failures when a build credential's and a deploy credential's reads fail differently", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: {
+          name: "keyVault",
+          get: async (names: readonly string[]) => {
+            throw new Error(
+              names.includes("deploy-token")
+                ? "The identity needs the Key Vault Secrets User role."
+                : "hot-updater-bundle-signing-key's current version is disabled.",
+            );
+          },
+          set: async () => {},
+        },
+        signing: secret("bundle-signing-key"),
+      }),
+    );
+    vi.mocked(getDeploySecretNames).mockReturnValueOnce(["deploy-token"]);
+
+    await handleDoctor({ serverBaseUrl: undefined });
+
+    const warnings = vi
+      .mocked(p.log.warn)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
+    expect(
+      warnings.filter((message) => message.startsWith("Couldn't read")),
+    ).toEqual([
+      [
+        "Couldn't read the keyVault secrets adapter for bundle-signing-key and",
+        "deploy-token.",
+        "hot-updater-bundle-signing-key's current version is disabled.",
+        "The identity needs the Key Vault Secrets User role.",
+      ].join("\n"),
+    ]);
+  });
+
   it("still passes when the environment answers for every name of an unreadable adapter", async () => {
     vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PATH", "/tmp/release.jks");
     mockReadPackageUp.mockResolvedValue({
