@@ -252,6 +252,7 @@ bundle you deployed under `releases`, and the same request without the key
 returns `401`:
 
 ```bash
+source .env.hotupdater
 curl -H "x-api-key: $HOT_UPDATER_API_KEY" \
   <serverUrl>/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0
 ```
