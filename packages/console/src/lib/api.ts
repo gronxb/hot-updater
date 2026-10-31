@@ -55,6 +55,8 @@ export const queryKeys = {
     ["native-build-patches", minBundleId, page] as const,
   nativeBuildDownloadUrl: (id: string) =>
     ["native-build-download-url", id] as const,
+  nativeBuildDownloadLink: (id: string) =>
+    ["native-build-download-link", id] as const,
   releaseNativeBuild: (release: ReleaseNativeBuildInput) =>
     ["release-native-build", release] as const,
 };
@@ -79,11 +81,18 @@ export type ReleaseNativeBuildInput = {
 };
 
 /**
- * How often an open install QR reads its download URL again. Storage gives
- * no lifetime with the URL, and adapters let it be configured down to
- * minutes, so the QR never shows one older than this.
+ * How long a storage download URL counts as fresh. Storage gives no lifetime
+ * with the URL, and adapters let it be configured down to minutes, so a
+ * person coming back to the page after this gets a new one.
  */
-const DOWNLOAD_URL_REFRESH_MS = 30_000;
+const DOWNLOAD_URL_STALE_MS = 60_000;
+
+/**
+ * How long a build page's signed link counts as fresh: far inside its 30 days,
+ * so a page left open never shows an expired one, and it costs one request
+ * a day.
+ */
+const DOWNLOAD_LINK_STALE_MS = 24 * 60 * 60 * 1000;
 
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */
@@ -231,28 +240,30 @@ export function useReleaseNativeBuildQuery(
 }
 
 /**
- * The storage URL a phone downloads a build from, read while the install
- * QR is open and again before it expires.
+ * The signed link of a build's page, which its QR code, download button, and
+ * copyable link all use: one request when the page opens.
  */
-export function useNativeBuildDownloadUrlQuery(id: string, enabled: boolean) {
+export function useNativeBuildDownloadLinkQuery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildDownloadLink(id),
+    queryFn: () => createNativeBuildDownloadLink({ data: { id } }),
+    staleTime: DOWNLOAD_LINK_STALE_MS,
+  });
+}
+
+/**
+ * The storage URL a phone downloads a build from when the Console can't sign
+ * a link: read once, and again only when someone comes back to the page.
+ */
+export function useNativeBuildDownloadUrlQuery(id: string) {
   return useQuery({
     queryKey: queryKeys.nativeBuildDownloadUrl(id),
     queryFn: () => getNativeBuildDownloadUrl({ data: { id } }),
-    enabled,
-    staleTime: DOWNLOAD_URL_REFRESH_MS,
-    // A storage without download URLs has none to refresh.
-    refetchInterval: (query) =>
-      query.state.data?.url === null ? false : DOWNLOAD_URL_REFRESH_MS,
+    staleTime: DOWNLOAD_URL_STALE_MS,
   });
 }
 
 // Mutation Hooks
-export function useCreateNativeBuildDownloadLinkMutation() {
-  return useMutation({
-    mutationFn: (id: string) => createNativeBuildDownloadLink({ data: { id } }),
-  });
-}
-
 export function useCreateChannelMutation() {
   const queryClient = useQueryClient();
 
