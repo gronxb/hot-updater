@@ -507,7 +507,7 @@ reused build is uploaded only when the store doesn't have it yet:
 - When the store refuses the build number anyway, because a build with that
   number came from another upload or tool, the CLI skips the same way instead
   of printing the store's error, adds `Bump the build number to upload this
-build.`, and records nothing, since the store's build may be another
+  build.`, and records nothing, since the store's build may be another
   artifact.
 
 Each skip exits 0, so rerunning a CI job that already submitted its build

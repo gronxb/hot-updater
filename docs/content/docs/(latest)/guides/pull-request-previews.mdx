@@ -98,13 +98,13 @@ in the job. Write it from a repository secret before the action, readable
 only by the job's user:
 
 ```yaml
-- name: Write the bundle signing key
-  env:
-    BUNDLE_SIGNING_KEY: ${{ secrets.BUNDLE_SIGNING_KEY }}
-  run: |
-    umask 077
-    mkdir -p keys
-    printf '%s' "$BUNDLE_SIGNING_KEY" > keys/private-key.pem
+      - name: Write the bundle signing key
+        env:
+          BUNDLE_SIGNING_KEY: ${{ secrets.BUNDLE_SIGNING_KEY }}
+        run: |
+          umask 077
+          mkdir -p keys
+          printf '%s' "$BUNDLE_SIGNING_KEY" > keys/private-key.pem
 ```
 
 Write it under the action's `working-directory`, at the path the config sets,
@@ -161,22 +161,22 @@ With another package manager, install with it and pass its command. With
 pnpm:
 
 ```yaml
-steps:
-  - uses: actions/checkout@v4
-  - uses: pnpm/action-setup@v4
-  - uses: actions/setup-node@v4
-    with:
-      node-version: 24
-      cache: pnpm
-  # ...setup-java
-  - run: pnpm install --frozen-lockfile
-  - uses: gronxb/hot-updater/actions/preview@v1.2.0
-    env:
-      # ...the variables above
-    with:
-      console-url: ${{ vars.CONSOLE_URL }}
-      android-scheme: previewApk
-      cli: pnpm exec hot-updater
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # ...setup-java
+      - run: pnpm install --frozen-lockfile
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: previewApk
+          cli: pnpm exec hot-updater
 ```
 
 With Yarn, run `yarn install --immutable` (`--frozen-lockfile` on Yarn 1)
@@ -196,22 +196,22 @@ runs CocoaPods through Bundler, so set up Ruby with `ruby/setup-ruby` in the
 directory of the `Gemfile`:
 
 ```yaml
-runs-on: macos-latest
-steps:
-  # ...the steps above
-  - uses: ruby/setup-ruby@v1
-    with:
-      ruby-version: "3.3"
-      bundler-cache: true
-      working-directory: apps/mobile # the Gemfile's directory
-  - uses: gronxb/hot-updater/actions/preview@v1.2.0
-    env:
-      # ...the variables above
-    with:
-      console-url: ${{ vars.CONSOLE_URL }}
-      platforms: android,ios
-      android-scheme: previewApk
-      ios-scheme: previewSimulator
+    runs-on: macos-latest
+    steps:
+      # ...the steps above
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: apps/mobile # the Gemfile's directory
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android,ios
+          android-scheme: previewApk
+          ios-scheme: previewSimulator
 ```
 
 A pull request's first run builds each platform's native build, since the
@@ -287,11 +287,11 @@ with `adb install`. An `.ipa` installs on registered devices: for testers,
 upload it to TestFlight with `npx hot-updater testflight`.
 
 <Callout type="info">
-  GitHub shows a comment's images through its image proxy, which fetches them
-  from the internet. A private Console, such as one on a VPN or Tailscale, shows
-  no QR code in the comment, and the job's log says so. The **Download** link
-  still works on a phone on the Console's network, and the build's **Details**
-  page shows the APK's QR code there.
+  GitHub shows a comment's images through its image proxy, which fetches
+  them from the internet. A private Console, such as one on a VPN or
+  Tailscale, shows no QR code in the comment, and the job's log says so. The
+  **Download** link still works on a phone on the Console's network, and the
+  build's **Details** page shows the APK's QR code there.
 </Callout>
 
 The comment ends with "Preview by hot-updater". Set `credit: false` to leave
@@ -299,19 +299,19 @@ it out.
 
 ## Inputs
 
-| Input               | Default                        | Description                                                                                       |
-| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `console-url`       |                                | The Console's URL, which the comment's download links and QR code point at                        |
-| `platforms`         | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner             |
-| `android-scheme`    |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                |
-| `ios-scheme`        |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app |
-| `channel`           | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to               |
-| `credit`            | `true`                         | Whether the comment ends with "Preview by hot-updater"                                            |
-| `comment`           | `true`                         | Whether to write the comment                                                                      |
-| `mode`              | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`           |
-| `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                                                 |
-| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                                           |
-| `github-token`      | `github.token`                 | The token that writes the comment                                                                 |
+| Input               | Default                        | Description                                                                                                    |
+| ------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `console-url`       |                                | The Console's URL, which the comment's download links and QR code point at                                     |
+| `platforms`         | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
+| `android-scheme`    |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                             |
+| `ios-scheme`        |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
+| `channel`           | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to                            |
+| `credit`            | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                         |
+| `comment`           | `true`                         | Whether to write the comment                                                                                   |
+| `mode`              | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
+| `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                                                              |
+| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                        |
+| `github-token`      | `github.token`                 | The token that writes the comment                                                                              |
 
 The `comment-body` output holds the comment's Markdown, and `previews` a JSON
 array of each platform's native build ID, whether it was built, and bundle
