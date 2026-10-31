@@ -295,6 +295,16 @@ const resolveConfig = (
   return resolved;
 };
 
+/**
+ * The names the config's build credentials reference, such as
+ * `release-keystore`, which builds read from the `secrets` adapter for their
+ * kind: `signing`'s, and each scheme's `signing.ascApiKey` and
+ * `signing.keystore`.
+ */
+export const getBuildSecretNames = (
+  config: ConfigResponse,
+): readonly string[] => [...new Set(buildSecretNames(config))];
+
 const DEPLOY_SECRET_NAMES = Symbol.for(
   "@hot-updater/cli-tools/deploy-secret-names",
 );
