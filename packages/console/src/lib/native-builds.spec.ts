@@ -2,10 +2,9 @@ import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  apkInstallCommand,
   nativeBuildFileName,
+  nativeBuildInstallCommand,
   nativeBuildSignedDownloadUrl,
-  simulatorInstallCommand,
 } from "./native-builds";
 
 const build = (artifact_storage_uri: string, id = "019a") =>
@@ -53,12 +52,9 @@ describe("nativeBuildFileName", () => {
     );
   });
 
-  it("quotes a name a shell would expand in the install commands", () => {
-    expect(simulatorInstallCommand(build("r2://b/App.app.zip", "$(id)"))).toBe(
-      "npx hot-updater native-build install '$(id)'",
-    );
-    expect(apkInstallCommand(build("s3://bucket/builds/%60id%60.apk"))).toBe(
-      "adb install -r '`id`.apk'",
-    );
+  it("quotes an ID a shell would expand in the install command", () => {
+    expect(
+      nativeBuildInstallCommand(build("r2://b/App.app.zip", "$(id)")),
+    ).toBe("npx hot-updater native-build install '$(id)'");
   });
 });

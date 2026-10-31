@@ -147,11 +147,11 @@ export const refuseNativeBuildDownloadToken = async (
       return undefined;
     case "expired":
       return refusal(
-        "This download link has expired. Create a new one on the build's Console page.",
+        "This download link has expired. Open the build's Console page for a new one.",
       );
     case "invalid":
       return refusal(
-        "This download link isn't valid. Create a new one on the build's Console page.",
+        "This download link isn't valid. Open the build's Console page for a new one.",
       );
   }
 };

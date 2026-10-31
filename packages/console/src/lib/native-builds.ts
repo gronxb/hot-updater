@@ -168,12 +168,9 @@ export const formatByteSize = (bytes: number): string => {
 };
 
 /**
- * The command that downloads a simulator build, installs it on the booted
- * simulator and opens it, in the project with its `hot-updater.config.ts`.
+ * The command that downloads a simulator build or an APK, installs it on the
+ * booted simulator or the connected device, and opens it, in the project with
+ * its `hot-updater.config.ts`.
  */
-export const simulatorInstallCommand = (build: NativeBuildRow) =>
+export const nativeBuildInstallCommand = (build: NativeBuildRow) =>
   `npx hot-updater native-build install ${shellQuote(build.id)}`;
-
-/** The command that installs a downloaded APK on an Android device or emulator. */
-export const apkInstallCommand = (build: NativeBuildRow) =>
-  `adb install -r ${shellQuote(nativeBuildFileName(build))}`;

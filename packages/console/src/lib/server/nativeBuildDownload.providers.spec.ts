@@ -51,7 +51,10 @@ const download = (storage: StorageAdapter, storageUri: string) =>
   downloadNativeBuild("build-1", {
     core: {
       getNativeBuild: async () =>
-        ({ artifact_storage_uri: storageUri }) as NativeBuildRow,
+        ({
+          artifact_kind: "apk",
+          artifact_storage_uri: storageUri,
+        }) as NativeBuildRow,
     },
     storage,
   });
@@ -62,7 +65,10 @@ const expectRedirect = (response: Response, host: RegExp) => {
   const location = new URL(response.headers.get("location")!);
   expect(location.protocol).toBe("https:");
   expect(location.host).toMatch(host);
+  // A browser names the download after the URL's last segment, and the
+  // storage serves the type the upload stored: see storageFiles.spec.ts.
   expect(decodeURIComponent(location.pathname)).toContain(KEY);
+  expect(location.pathname.split("/").at(-1)).toBe(FILE_NAME);
   return location;
 };
 
@@ -133,8 +139,11 @@ describe("a native build's download on each storage", () => {
     expect(get).toHaveBeenCalledWith(KEY);
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toBe(
+      "application/vnd.android.package-archive",
+    );
     expect(response.headers.get("content-disposition")).toBe(
-      `attachment; filename*=UTF-8''${FILE_NAME}`,
+      `attachment; filename="${FILE_NAME}"; filename*=UTF-8''${FILE_NAME}`,
     );
     expect(response.headers.get("content-length")).toBe(
       String(bytes.byteLength),

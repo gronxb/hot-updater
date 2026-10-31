@@ -326,8 +326,8 @@ export const getReleaseNativeBuild = createServerFn({ method: "GET" })
   });
 
 /**
- * The URL a phone downloads a build from without the console's sign-in, or
- * null when the storage gives none: the storage's download URL, resolved
+ * The URL a phone downloads a build from when the Console can't sign a link,
+ * or null when the storage gives none: the storage's download URL, resolved
  * again each time it is read, since it may expire.
  */
 export const getNativeBuildDownloadUrl = createServerFn({ method: "GET" })

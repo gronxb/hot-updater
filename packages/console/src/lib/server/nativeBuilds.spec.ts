@@ -10,9 +10,13 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "./nativeBuilds";
 
-const build = (artifactStorageUri: string) =>
+const build = (
+  artifactStorageUri: string,
+  artifactKind: NativeBuildRow["artifact_kind"] = "apk",
+) =>
   ({
     id: "build-1",
+    artifact_kind: artifactKind,
     artifact_storage_uri: artifactStorageUri,
   }) as NativeBuildRow;
 
@@ -103,9 +107,49 @@ describe("downloadNativeBuild", () => {
     });
 
     expect(response.headers.get("content-disposition")).toBe(
-      "attachment; filename*=UTF-8''app%20release.apk",
+      `attachment; filename="app_release.apk"; filename*=UTF-8''app%20release.apk`,
     );
     await expect(response.text()).resolves.toBe("apk");
+  });
+
+  it("streams an APK as what Android installs, whatever type the storage kept", async () => {
+    const kept: readonly Record<string, string>[] = [
+      {},
+      { "content-type": "binary/octet-stream" },
+    ];
+    for (const headers of kept) {
+      const response = await downloadNativeBuild("build-1", {
+        core: coreWith(build(apkUri)),
+        storage: createStorageAdapter({
+          name: "r2Storage",
+          protocol: "r2",
+          get: async () => ({ response: new Response("apk", { headers }) }),
+        }),
+      });
+
+      expect(response.headers.get("content-type")).toBe(
+        "application/vnd.android.package-archive",
+      );
+    }
+  });
+
+  it("leaves the storage's type on any other artifact", async () => {
+    const response = await downloadNativeBuild("build-1", {
+      core: coreWith(build("r2://updates/native-builds/ios/1/App.ipa", "ipa")),
+      storage: createStorageAdapter({
+        name: "r2Storage",
+        protocol: "r2",
+        get: async () => ({
+          response: new Response("ipa", {
+            headers: { "content-type": "application/octet-stream" },
+          }),
+        }),
+      }),
+    });
+
+    expect(response.headers.get("content-type")).toBe(
+      "application/octet-stream",
+    );
   });
 
   it("redirects to a public URL no storage owns", async () => {
