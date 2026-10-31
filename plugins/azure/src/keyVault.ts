@@ -53,8 +53,34 @@ const NO_CREDENTIAL_ERRORS = new Set([
   "CredentialUnavailableError",
 ]);
 
-const signInHint = () =>
-  process.env["CI"] ? "Sign in with azure/login." : "Run az login.";
+/** The variables `DefaultAzureCredential` signs in with first, if complete. */
+const environmentCredentialVariables = () => {
+  const { env } = process;
+  if (!env["AZURE_TENANT_ID"] || !env["AZURE_CLIENT_ID"]) return undefined;
+  if (env["AZURE_CLIENT_SECRET"]) return "AZURE_CLIENT_SECRET";
+  if (env["AZURE_CLIENT_CERTIFICATE_PATH"]) {
+    return "AZURE_CLIENT_CERTIFICATE_PATH";
+  }
+  if (env["AZURE_USERNAME"] && env["AZURE_PASSWORD"]) return "AZURE_PASSWORD";
+  return undefined;
+};
+
+/**
+ * The one step that can fix the identity in use: `az login` changes nothing
+ * while the environment's identity comes first.
+ */
+const signInHint = (credential: TokenCredential | undefined): string[] => {
+  if (credential !== undefined) {
+    return [`Check the credential passed to ${NAME}().`];
+  }
+  const variable = environmentCredentialVariables();
+  if (variable) {
+    return [`Fix or unset ${variable}, AZURE_TENANT_ID, and AZURE_CLIENT_ID.`];
+  }
+  return process.env["CI"]
+    ? ["Sign in with azure/login."]
+    : ["Sign in:", "az login"];
+};
 
 /** An error of one line each, for a terminal. */
 const failure = (lines: readonly string[], cause?: unknown) =>
@@ -260,15 +286,22 @@ export const keyVault = ({
     const code = innerCode(error) ?? (error as RestErrorLike)?.code;
     if (NO_CREDENTIAL_ERRORS.has(name)) {
       return failure(
-        [`${NAME} found no Azure identity to ${verb} ${id}.`, signInHint()],
+        [`${NAME} found no Azure identity.`, ...signInHint(credential)],
         error,
       );
     }
-    if (status === 401) {
+    // AuthenticationError: Entra refused the identity, on any status.
+    if (status === 401 || name === "AuthenticationError") {
+      return failure(
+        ["Azure rejected the sign-in.", ...signInHint(credential)],
+        error,
+      );
+    }
+    if (code === "ENOTFOUND" || /\bENOTFOUND\b/u.test(errorMessage(error))) {
       return failure(
         [
-          `Azure Key Vault rejected the sign-in to ${verb} ${id}.`,
-          signInHint(),
+          `${NAME} can't find ${vault().hostname}.`,
+          `Check ${vaultUrl === undefined ? "vaultName" : "vaultUrl"}.`,
         ],
         error,
       );

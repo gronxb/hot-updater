@@ -141,12 +141,32 @@ const versionOf = (name: unknown) =>
 const failure = (lines: readonly string[], cause?: unknown) =>
   new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
 
-const signInHint = () =>
-  process.env["CI"]
-    ? "Check the job's Workload Identity Federation."
-    : "Run gcloud auth application-default login.";
+/**
+ * The one step that can fix the credentials in use, by the order they're
+ * tried: signing in with gcloud changes nothing while a variable comes first.
+ */
+const signInHint = (
+  credentials: SecretManagerCredentials | undefined,
+): string[] => {
+  if (credentials) {
+    return [`Check the credentials passed to ${ADAPTER_NAME}().`];
+  }
+  const variable =
+    ACCESS_TOKEN_ENV_NAMES.find((name) => process.env[name]?.trim()) ??
+    (process.env["GOOGLE_APPLICATION_CREDENTIALS"]?.trim()
+      ? "GOOGLE_APPLICATION_CREDENTIALS"
+      : undefined);
+  if (variable) return [`Fix or unset ${variable}.`];
+  return process.env["CI"]
+    ? ["Use google-github-actions/auth."]
+    : ["Sign in:", "gcloud auth application-default login"];
+};
 
-const hint = (response: GoogleResponse, permission: string): string[] => {
+const hint = (
+  response: GoogleResponse,
+  permission: string,
+  signIn: readonly string[],
+): string[] => {
   const { status, error } = response;
   if (error.details?.some((detail) => detail.reason === "SERVICE_DISABLED")) {
     return [
@@ -155,7 +175,7 @@ const hint = (response: GoogleResponse, permission: string): string[] => {
     ];
   }
   if (status === 401) {
-    return ["Google rejected the access token.", signInHint()];
+    return ["Google rejected the access token.", ...signIn];
   }
   if (status === 403) {
     return [`The identity needs ${permission}.`];
@@ -171,7 +191,8 @@ const hint = (response: GoogleResponse, permission: string): string[] => {
  * the resource, `notes`, and what to fix, or Google's own status and message,
  * which name resources but never a value, when nothing here says what to fix.
  */
-const requestError = (
+const requestErrorOf = (
+  signIn: readonly string[],
   action: string,
   resource: string,
   response: GoogleResponse,
@@ -179,7 +200,9 @@ const requestError = (
   notes: readonly string[] = [],
 ) => {
   const { status, message } = response.error;
-  const fix = hint(response, permission);
+  const fix = hint(response, permission, signIn);
+  // A rejected token isn't about this secret: every request gets the same.
+  if (response.status === 401 && notes.length === 0) return failure(fix);
   return failure([
     `${ADAPTER_NAME} couldn't ${action} (${response.status}).`,
     resourceLine(resource),
@@ -192,6 +215,24 @@ const requestError = (
 
 /** The line that names a secret: its resource name is a line's worth. */
 const resourceLine = (secret: string) => `Secret: ${secret}`;
+
+let metadataWarningFiltered = false;
+
+/**
+ * Drops the one warning `gcp-metadata` emits when its probe for a Google
+ * runtime fails oddly: credentials are about to be reported as missing, and
+ * the warning has nothing to act on. It stays filtered for the process, as
+ * the library caches the probe; every other warning passes through.
+ */
+const filterMetadataWarning = () => {
+  if (metadataWarningFiltered) return;
+  metadataWarningFiltered = true;
+  const emitWarning = process.emitWarning;
+  process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+    if (rest[0] === "MetadataLookupWarning") return;
+    Reflect.apply(emitWarning, process, [warning, ...rest]);
+  }) as typeof process.emitWarning;
+};
 
 /** Masks a value in the CLI's output, which loads `@hot-updater/cli-tools`. */
 const mask = async (value: string) => {
@@ -247,15 +288,14 @@ const createAccessToken = (
         throw error;
       });
     const client = await auth;
+    filterMetadataWarning();
     try {
       return (await client.getAccessToken()) ?? undefined;
     } catch (error) {
       throw failure(
         [
           `${ADAPTER_NAME} found no Google credentials.`,
-          process.env["CI"]
-            ? "Use google-github-actions/auth."
-            : "Run gcloud auth application-default login.",
+          ...signInHint(undefined),
         ],
         error,
       );
@@ -288,6 +328,21 @@ export const secretManager = ({
   credentials,
 }: SecretManagerOptions): SecretsAdapter => {
   const accessToken = createAccessToken(credentials, projectId);
+  const requestError = (
+    action: string,
+    resource: string,
+    response: GoogleResponse,
+    permission: string,
+    notes?: readonly string[],
+  ) =>
+    requestErrorOf(
+      signInHint(credentials),
+      action,
+      resource,
+      response,
+      permission,
+      notes,
+    );
 
   // Checked on first use, so a config loads without its options.
   const projectPath = () => {
@@ -670,7 +725,7 @@ export const secretManager = ({
     },
     describe: (name) => {
       const id = `${prefix}${name}`;
-      return `projects/${projectId}/secrets/${id} (https://console.cloud.google.com/security/secret-manager/secret/${encodeURIComponent(id)}/versions?project=${encodeURIComponent(projectId)})`;
+      return `the secret ${JSON.stringify(id)} in Google Secret Manager (https://console.cloud.google.com/security/secret-manager/secret/${encodeURIComponent(id)}/versions?project=${encodeURIComponent(projectId)})`;
     },
   };
 };

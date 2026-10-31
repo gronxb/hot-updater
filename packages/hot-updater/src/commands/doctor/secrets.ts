@@ -230,6 +230,18 @@ const describeMissing = (
     command: storeCommand(name, references),
   });
 
+/**
+ * The names an unreadable adapter left unverified, each once: a row with no
+ * source, so neither the environment nor the adapter answered for it.
+ */
+export const uncheckedSecretNames = (
+  rows: readonly { readonly name: string; readonly source?: string }[],
+): string[] => [
+  ...new Set(
+    rows.filter(({ source }) => source === undefined).map(({ name }) => name),
+  ),
+];
+
 /** The `secret()`s a build or a deploy reads that resolve nowhere. */
 export const missingRequiredSecrets = (
   status: SecretsStatus | undefined,

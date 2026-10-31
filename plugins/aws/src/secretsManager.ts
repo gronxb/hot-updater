@@ -75,11 +75,6 @@ const NO_CREDENTIAL_ERRORS = new Set([
   "TokenProviderError",
 ]);
 
-const signInHint = () =>
-  process.env["CI"]
-    ? "Set them with aws-actions/configure-aws-credentials."
-    : "Run aws sso login --profile <profile>, then set AWS_PROFILE.";
-
 /** An error of one line each, for a terminal. */
 const failure = (lines: readonly string[], cause?: unknown) =>
   new Error(lines.join("\n"), cause === undefined ? undefined : { cause });
@@ -89,6 +84,46 @@ const errorName = (error: unknown) =>
 
 const errorMessage = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).replace(/\.+$/u, "");
+
+/** The access key variables set, which the SDK's chain tries first. */
+const accessKeyVariables = () => {
+  if (
+    !process.env["AWS_ACCESS_KEY_ID"] ||
+    !process.env["AWS_SECRET_ACCESS_KEY"]
+  ) {
+    return undefined;
+  }
+  return process.env["AWS_SESSION_TOKEN"]
+    ? "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN"
+    : "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY";
+};
+
+/**
+ * The one step that can fix the credentials the SDK actually used. `AWS_PROFILE`
+ * wins over the access key variables in the SDK's chain, so it's looked at
+ * first; signing in fixes a profile only when it's an SSO one, as its error
+ * says, and fixes nothing when another source is in the way.
+ */
+const credentialHint = (
+  error: unknown,
+  configured: SecretsManagerOptions["credentials"],
+): string[] => {
+  if (configured !== undefined) {
+    return [`Check the credentials passed to ${NAME}().`];
+  }
+  const ci = Boolean(process.env["CI"]);
+  const profile = process.env["AWS_PROFILE"]?.trim();
+  if (profile && !ci) {
+    return /\bsso\b/iu.test(errorMessage(error))
+      ? ["Sign in again:", `aws sso login --profile ${profile}`]
+      : [`Check the AWS profile ${profile}, which AWS_PROFILE selects.`];
+  }
+  const variables = profile ? undefined : accessKeyVariables();
+  if (variables) return [`Fix or unset ${variables}.`];
+  return ci
+    ? ["Set them with aws-actions/configure-aws-credentials."]
+    : ["Sign in, then set AWS_PROFILE:", "aws sso login --profile <profile>"];
+};
 
 /**
  * The caller's ARN in a refusal, `User: arn:aws:sts::…`, so the message names
@@ -248,15 +283,18 @@ export const secretsManager = ({
       ?.$metadata?.httpStatusCode;
     if (NO_CREDENTIAL_ERRORS.has(name)) {
       return failure(
-        [`${NAME} found no AWS credentials to ${verb} ${id}.`, signInHint()],
+        [
+          `${NAME} found no AWS credentials.`,
+          ...credentialHint(error, credentials),
+        ],
         error,
       );
     }
     if (EXPIRED_CREDENTIAL_ERRORS.has(name)) {
       return failure(
         [
-          `AWS rejected the credentials to ${verb} ${id}: expired or invalid.`,
-          signInHint(),
+          "AWS rejected the credentials: expired or invalid.",
+          ...credentialHint(error, credentials),
         ],
         error,
       );

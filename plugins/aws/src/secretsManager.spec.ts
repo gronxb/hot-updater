@@ -15,6 +15,10 @@ import { secretsManager } from "./secretsManager";
 // What a failure says to do depends on CI: each spec picks one.
 beforeEach(() => {
   vi.stubEnv("CI", "");
+  vi.stubEnv("AWS_PROFILE", "");
+  vi.stubEnv("AWS_ACCESS_KEY_ID", "");
+  vi.stubEnv("AWS_SECRET_ACCESS_KEY", "");
+  vi.stubEnv("AWS_SESSION_TOKEN", "");
 });
 
 afterEach(() => {
@@ -128,7 +132,7 @@ describe("secretsManager get", () => {
       );
 
       expect(error.message).toContain(
-        "AWS rejected the credentials to read hot-updater/asc-api-key: expired or invalid.",
+        "AWS rejected the credentials: expired or invalid.",
       );
       expect(error.message).toContain("aws sso login --profile <profile>");
     },
@@ -147,12 +151,107 @@ describe("secretsManager get", () => {
 
       expect(error.message).toBe(
         [
-          "secretsManager found no AWS credentials to read hot-updater/asc-api-key.",
-          "Run aws sso login --profile <profile>, then set AWS_PROFILE.",
+          "secretsManager found no AWS credentials.",
+          "Sign in, then set AWS_PROFILE:",
+          "aws sso login --profile <profile>",
         ].join("\n"),
       );
     },
   );
+
+  describe("the next step for the credentials in use", () => {
+    const rejected = async (
+      options: Partial<Parameters<typeof secretsManager>[0]> = {},
+    ) => {
+      sm.on(GetSecretValueCommand).rejects(
+        awsError("InvalidClientTokenId", "The security token is invalid"),
+      );
+      return (
+        await rejectionOf(
+          secretsManager({ region: REGION, ...options }).get(["n"], context),
+        )
+      ).message;
+    };
+
+    it("names the access key variables, which signing in can't replace", async () => {
+      vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
+      vi.stubEnv("AWS_SECRET_ACCESS_KEY", "garbage");
+
+      const message = await rejected();
+
+      expect(message).toBe(
+        [
+          "AWS rejected the credentials: expired or invalid.",
+          "Fix or unset AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.",
+        ].join("\n"),
+      );
+      expect(message).not.toContain("aws sso login");
+    });
+
+    it("names the session token too when one is set", async () => {
+      vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
+      vi.stubEnv("AWS_SECRET_ACCESS_KEY", "garbage");
+      vi.stubEnv("AWS_SESSION_TOKEN", "garbage");
+
+      expect(await rejected()).toContain(
+        "Fix or unset AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN.",
+      );
+    });
+
+    it("signs in to the profile already set when its SSO session expired", async () => {
+      vi.stubEnv("AWS_PROFILE", "release");
+      // The SDK's chain uses the profile over the variables.
+      vi.stubEnv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE");
+      vi.stubEnv("AWS_SECRET_ACCESS_KEY", "garbage");
+      sm.on(GetSecretValueCommand).rejects(
+        awsError(
+          "TokenProviderError",
+          "The SSO session associated with this profile has expired",
+        ),
+      );
+
+      const { message } = await rejectionOf(
+        secretsManager({ region: REGION }).get(["n"], context),
+      );
+
+      expect(message).toBe(
+        [
+          "secretsManager found no AWS credentials.",
+          "Sign in again:",
+          "aws sso login --profile release",
+        ].join("\n"),
+      );
+    });
+
+    it("points at a profile that isn't an SSO one instead of signing in", async () => {
+      vi.stubEnv("AWS_PROFILE", "release");
+
+      const message = await rejected();
+
+      expect(message).toContain(
+        "Check the AWS profile release, which AWS_PROFILE selects.",
+      );
+      expect(message).not.toContain("aws sso login");
+    });
+
+    it("says to set them in CI, with neither a profile nor variables", async () => {
+      vi.stubEnv("CI", "true");
+
+      expect(await rejected()).toContain(
+        "Set them with aws-actions/configure-aws-credentials.",
+      );
+    });
+
+    it("points at the credentials option, which comes before them all", async () => {
+      vi.stubEnv("AWS_PROFILE", "release");
+
+      expect(
+        await rejected({
+          credentials: { accessKeyId: "a", secretAccessKey: "b" },
+        }),
+      ).toContain("Check the credentials passed to secretsManager().");
+    });
+  });
 
   it("says how to restore a secret scheduled for deletion", async () => {
     sm.on(GetSecretValueCommand).rejects(
@@ -385,7 +484,7 @@ describe("secretsManager's next step", () => {
     );
 
     expect(error.message).toBe(
-      "secretsManager found no AWS credentials to read hot-updater/asc-api-key.\nSet them with aws-actions/configure-aws-credentials.",
+      "secretsManager found no AWS credentials.\nSet them with aws-actions/configure-aws-credentials.",
     );
   });
 

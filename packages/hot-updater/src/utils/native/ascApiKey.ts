@@ -154,7 +154,7 @@ const storeIssued = async (
       [
         `Couldn't confirm the ${secrets.name} secrets adapter stored ${name}.`,
         errorText(error),
-        `If ${ui.fitPath(describeStoredSecret(secrets, name))} lacks key ${key.keyId}, revoke it at:`,
+        `If ${ui.source(describeStoredSecret(secrets, name))} lacks key ${key.keyId}, revoke it at:`,
         ASC_INTEGRATIONS_URL,
       ].join("\n"),
       { cause: error },
@@ -247,7 +247,7 @@ export const ensureAscApiKey = async ({
         name !== POLICY.kind && ui.kv("Name", name),
         ui.kv("Key ID", key.keyId),
         team && ui.kv("Team", team),
-        ui.kv("Source", ui.fitPath(describeStoredSecret(store, name))),
+        ui.kv("Source", ui.source(describeStoredSecret(store, name))),
       ]),
     );
     await offerIssuedKeyToGitHub({

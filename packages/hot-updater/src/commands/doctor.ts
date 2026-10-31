@@ -6,6 +6,7 @@ import {
   credentialPutCommand,
   getBundleSigningPublicKey,
   getCwd,
+  getPackageManager,
   INVALID_SIGNING_NEXT_STEP,
   ISSUE_SIGNING_KEY_COMMAND,
   loadConfig,
@@ -70,8 +71,10 @@ import {
 import { checkSchema } from "./doctor/schema";
 import {
   checkSecrets,
+  listNames,
   missingRequiredSecrets,
   type SecretsStatus,
+  uncheckedSecretNames,
 } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
@@ -838,9 +841,15 @@ async function checkProject(
     const hotUpdaterVersion = allDependencies["hot-updater"];
 
     if (!hotUpdaterVersion) {
+      const packageManager = getPackageManager();
       return {
         success: false,
-        error: "hot-updater CLI not found. Please install it first.",
+        error: [
+          "hot-updater isn't in this project's package.json. Add it:",
+          packageManager === "npm"
+            ? "npm install hot-updater --save-dev"
+            : `${packageManager} add -D hot-updater`,
+        ].join("\n"),
       };
     }
 
@@ -1462,13 +1471,14 @@ export const handleDoctor = async ({
         ].join("\n"),
       );
     }
-    for (const error of new Set(
-      [secrets?.error, deploySecrets?.error].filter(
-        (error): error is string => error !== undefined,
-      ),
-    )) {
+    // One block for the adapter: each `get` fails the same way, on another name.
+    const unreadable = secrets?.error ?? deploySecrets?.error;
+    if (unreadable !== undefined) {
+      const unchecked = uncheckedSecretNames(rows);
       log.warn(
-        ui.prose(`Couldn't read the ${adapter} secrets adapter.\n${error}`),
+        ui.prose(
+          `Couldn't read the ${adapter} secrets adapter${unchecked.length > 0 ? ` for ${listNames(unchecked)}` : ""}.\n${unreadable}`,
+        ),
       );
     }
     const processEnvReads = deploySecrets?.processEnvReads ?? [];
@@ -1538,10 +1548,21 @@ export const handleDoctor = async ({
   }
 
   const { warnings } = log.counts;
-  p.log.success(
-    warnings > 0
-      ? `All checks passed with ${count(warnings, "warning")}.`
-      : "All checks passed.",
-  );
+  const unchecked = uncheckedSecretNames([
+    ...(details?.secrets?.references ?? []),
+    ...(details?.deploySecrets?.names ?? []),
+  ]);
+  if (unchecked.length > 0) {
+    // Nothing verified these names, so this run can't call itself a pass.
+    p.log.warn(
+      `${count(unchecked.length, "secret")} not checked, ${count(warnings, "warning")}.`,
+    );
+  } else {
+    p.log.success(
+      warnings > 0
+        ? `All checks passed with ${count(warnings, "warning")}.`
+        : "All checks passed.",
+    );
+  }
   p.outro("Doctor complete.");
 };
