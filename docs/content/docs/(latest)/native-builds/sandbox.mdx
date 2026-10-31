@@ -108,15 +108,21 @@ answered. So open the app once, online, after a fresh install.
 
 | Platform | Tested with                                                  |
 | -------- | ------------------------------------------------------------ |
-| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo 52 |
-| Android  | React Native 0.74, 0.85 and 0.88, and Expo 52                |
+| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 52 |
+| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 52               |
+
+No other Expo SDK has been tested. On Xcode 27, Expo SDK 52's `fmt` 11.0.2 doesn't
+compile: compile that pod as C++17 in the `Podfile` after `expo prebuild`.
 
 On iOS, the screen holds your root view inside a stable container until **Open**,
 so overlays and constraints you add to it stay. Code that uses it as a React Native
 root before then starts your app at once, without the screen. On a host with no
-`RCTRootViewFactory`, the app logs that and starts as usual. A background launch
-that's neither a notification, a background fetch nor a registered task starts
-your app after 2 seconds.
+`RCTRootViewFactory`, or one that creates its root another way, the app logs that
+and starts as usual. A background launch that's neither a notification, a
+background fetch nor a registered task starts your app after 2 seconds.
+
+An Expo config plugin that returns its own root from a React delegate handler is
+one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
 
 ## Stores
 
@@ -193,6 +199,7 @@ The build number becomes the one after the app's highest.
 | Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
 | A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
 | The Rock adapter, `use_frameworks`, app extensions         | Builds, but untested: check it on a device first |
+| An Expo SDK other than 52                                  | Builds, but untested: check it on a device first |
 
 The build itself refuses, with the fix, a launcher its activity can't take over:
 

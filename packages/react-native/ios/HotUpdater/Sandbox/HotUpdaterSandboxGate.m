@@ -426,6 +426,22 @@ static BOOL RegisterTask(id self, SEL cmd, NSString *identifier, dispatch_queue_
                                                 if (delegate) WrapSceneDelegate(object_getClass(delegate));
                                               }];
 
+  // A host can start React Native by a route this method isn't on, such as an Expo
+  // delegate handler that returns its own root. Its app is already running by the
+  // time it's active, so links come up over it.
+  __block id activeObserver = [NSNotificationCenter.defaultCenter
+      addObserverForName:UIApplicationDidBecomeActiveNotification
+                  object:nil
+                   queue:NSOperationQueue.mainQueue
+              usingBlock:^(NSNotification *note) {
+                [NSNotificationCenter.defaultCenter removeObserver:activeObserver];
+                activeObserver = nil;
+                if (!gReleased && !gScreenRequested) {
+                  HULog(@"no root reached the gate: this host started React Native another way, so the app starts as usual");
+                  gReleased = YES;
+                }
+              }];
+
   Class scheduler = objc_getClass("BGTaskScheduler");
   Method registerTask = scheduler ? class_getInstanceMethod(scheduler, NSSelectorFromString(@"registerForTaskWithIdentifier:usingQueue:launchHandler:")) : NULL;
   if (registerTask) gRegisterTask = method_setImplementation(registerTask, (IMP)RegisterTask);

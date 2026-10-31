@@ -130,16 +130,42 @@ describe("checkSandboxSchemes", () => {
     );
   });
 
-  it.each(["expo", "rock"])("warns about the %s adapter", async (adapter) => {
+  it("warns about the rock adapter", async () => {
     const issues = await checkSandboxSchemes(
-      config(androidSandbox, adapter),
+      config(androidSandbox, "rock"),
       root,
     );
     expect(issues).toEqual([
       expect.objectContaining({
         type: "warning",
         code: "SANDBOX_UNQUALIFIED",
-        message: `Sandbox builds aren't tested with the ${adapter} build adapter yet.`,
+        message: "Sandbox builds aren't tested with the rock build adapter yet.",
+      }),
+    ]);
+  });
+
+  it("takes the Expo SDK sandbox builds ran on, and warns about any other", async () => {
+    write("package.json", JSON.stringify({ dependencies: { expo: "~52.0.49" } }));
+    expect(
+      await checkSandboxSchemes(config(androidSandbox, "expo"), root),
+    ).toEqual([]);
+
+    write("package.json", JSON.stringify({ devDependencies: { expo: "^54.0.0" } }));
+    expect(
+      await checkSandboxSchemes(config(androidSandbox, "expo"), root),
+    ).toEqual([
+      expect.objectContaining({
+        code: "SANDBOX_UNQUALIFIED",
+        message: "Sandbox builds aren't tested with Expo SDK 54 yet.",
+      }),
+    ]);
+
+    write("package.json", "{}");
+    expect(
+      await checkSandboxSchemes(config(androidSandbox, "expo"), root),
+    ).toEqual([
+      expect.objectContaining({
+        message: "Sandbox builds aren't tested with this Expo SDK yet.",
       }),
     ]);
   });
