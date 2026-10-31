@@ -43,6 +43,11 @@ const resultFields: Record<string, string> = {
 // An action route has started once its result leaves idle; the control
 // client's own screen-state wait then allows a minute for the result.
 const ROUTE_START_TIMEOUT_MS = 60_000;
+// agent-device bounds its simctl calls, and CoreSimulator can miss those bounds
+// on a busy host. The first is the boot check before openurl, so the link was
+// never sent. The second is openurl itself, so the Simulator may have received it.
+const IOS_LINK_NOT_SENT = /xcrun timed out after \d+ms/;
+const IOS_LINK_MAYBE_SENT = /xcrun simctl openurl did not answer within \d+ms/;
 
 // Scenarios list alternatives a result may contain; any one satisfies them.
 // Each is normalized the way the SDK normalizes the text it is matched against.
@@ -351,11 +356,8 @@ export class MobileAppDriver implements ScenarioAppDriver {
         await this.openApp({ relaunch: false });
       if (opensRoute) {
         this.options.signal.throwIfAborted();
-        await this.options.device.openLink(
+        await this.openRouteLink(
           (E2E_SCREEN_URLS as Record<string, string>)[screenPath],
-          {
-            app: this.options.appId,
-          },
         );
         openedLink = true;
         this.activeScreenPath = screenPath;
@@ -368,6 +370,29 @@ export class MobileAppDriver implements ScenarioAppDriver {
     if (openedLink && this.options.platform === "ios")
       await this.acceptAppLinkUntil(() => target.isVisible());
     return target;
+  }
+
+  // A slow Simulator does not fail a route by itself. A link that was never sent
+  // goes out once more. One that may have arrived is not sent again, since an
+  // action route runs on entry: the caller's wait for the route decides, and fails
+  // as it would have if the link never got through.
+  private async openRouteLink(url: string) {
+    const open = () =>
+      this.options.device.openLink(url, { app: this.options.appId });
+    try {
+      await open();
+    } catch (error) {
+      if (this.options.platform !== "ios") throw error;
+      const message = String(error);
+      if (IOS_LINK_MAYBE_SENT.test(message)) {
+        console.log(`[e2e-link:maybe-sent] ${url} ${message}`);
+        return;
+      }
+      if (!IOS_LINK_NOT_SENT.test(message)) throw error;
+      console.log(`[e2e-link:resend] ${url} ${message}`);
+      this.options.signal.throwIfAborted();
+      await open();
+    }
   }
 
   // iOS may ask to open a route in the app first. The poll only reads

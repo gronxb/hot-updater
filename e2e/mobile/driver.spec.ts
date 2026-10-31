@@ -421,6 +421,97 @@ describe("MobileAppDriver", () => {
     expect(f.locator.matchers.toContainText).toHaveBeenCalledTimes(2);
   });
 
+  describe("a slow Simulator while opening a route", () => {
+    const notSent = new Error(
+      "ENGINE_FAILURE: device.openLink failed: xcrun timed out after 15000ms",
+    );
+    const maybeSent = new Error(
+      "ENGINE_FAILURE: device.openLink failed: xcrun simctl openurl did not answer within 20000ms.",
+    );
+
+    it("sends a link that never went out once more, and reads the route", async () => {
+      const f = fixture();
+      f.device.openLink.mockRejectedValueOnce(notSent);
+      await f.app.assertText(
+        "read status",
+        "launch-status-result",
+        "UPDATE_APPLIED",
+      );
+      expect(f.device.openLink).toHaveBeenCalledTimes(2);
+      expect(f.device.openLink).toHaveBeenLastCalledWith(
+        "hotupdaterexample://e2e/launch-status",
+        { app: "org.example.app" },
+      );
+      expect(f.locator.matchers.toContainText).toHaveBeenCalledExactlyOnceWith(
+        "UPDATE_APPLIED",
+      );
+    });
+
+    it("fails when the link still cannot go out", async () => {
+      const f = fixture();
+      f.device.openLink
+        .mockRejectedValueOnce(notSent)
+        .mockRejectedValueOnce(notSent);
+      await expect(
+        f.app.assertText("read", "launch-status-result", "UPDATE_APPLIED"),
+      ).rejects.toBe(notSent);
+      expect(f.device.openLink).toHaveBeenCalledTimes(2);
+      expect(f.locator.matchers.toContainText).not.toHaveBeenCalled();
+    });
+
+    it("never sends an action route that may have arrived twice, and still waits for its result", async () => {
+      const f = fixture();
+      f.device.openLink.mockRejectedValueOnce(maybeSent);
+      await f.app.tap("install", "action-install-current-channel-update");
+      expect(f.device.openLink).toHaveBeenCalledTimes(1);
+      expect(f.calls).toEqual(["/e2e/screen-state", "wait-result"]);
+    });
+
+    it("fails an action route that never started after a link that may have arrived", async () => {
+      const f = fixture();
+      const never = new Error("route never started");
+      f.device.openLink.mockRejectedValueOnce(maybeSent);
+      f.client.waitForScreenStateField.mockRejectedValueOnce(never);
+      await expect(
+        f.app.tap("install", "action-install-current-channel-update"),
+      ).rejects.toBe(never);
+      expect(f.device.openLink).toHaveBeenCalledTimes(1);
+    });
+
+    it("still asserts the screen behind a link that may have arrived", async () => {
+      const f = fixture();
+      const wrong = new Error("expected UPDATE_APPLIED");
+      f.device.openLink.mockRejectedValueOnce(maybeSent);
+      f.locator.matchers.toContainText.mockRejectedValueOnce(wrong);
+      await expect(
+        f.app.assertText("read", "launch-status-result", "UPDATE_APPLIED"),
+      ).rejects.toBe(wrong);
+      expect(f.device.openLink).toHaveBeenCalledTimes(1);
+    });
+
+    it("propagates any other iOS route failure without sending again", async () => {
+      const f = fixture();
+      const error = new Error("route could not be opened");
+      f.device.openLink.mockRejectedValueOnce(error);
+      await expect(
+        f.app.assertText("read", "launch-status-result", "UPDATE_APPLIED"),
+      ).rejects.toBe(error);
+      expect(f.device.openLink).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([notSent, maybeSent])(
+      "leaves Android alone: %s",
+      async (error) => {
+        const f = fixture("android");
+        f.device.openLink.mockRejectedValueOnce(error);
+        await expect(
+          f.app.assertText("read", "launch-status-result", "UPDATE_APPLIED"),
+        ).rejects.toBe(error);
+        expect(f.device.openLink).toHaveBeenCalledTimes(1);
+      },
+    );
+  });
+
   it("propagates Android route failures without reopening the app or reading UI", async () => {
     const f = fixture("android");
     const error = new Error("route could not be opened");
