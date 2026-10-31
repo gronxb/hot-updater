@@ -81,6 +81,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ).assembleServer,
   colors: (await importOriginal<typeof import("@hot-updater/cli-tools")>())
     .colors,
+  getPackageManager: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).getPackageManager,
   nonInteractiveReason: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).nonInteractiveReason,
@@ -859,11 +862,133 @@ describe("doctor", () => {
         .mock.calls.map(([message]) =>
           stripVTControlCharacters(String(message)),
         ),
-    ).toContain(`Couldn't read the infisical secrets adapter.\n${cause}`);
-    // It can't tell what is missing: the run passes, and counts the
-    // warnings, the unchecked server's too.
+    ).toContain(
+      `Couldn't read the infisical secrets adapter for bundle-signing-key.\n${cause}`,
+    );
+    // It can't tell what is missing: the run doesn't fail, and doesn't call
+    // itself a pass, and counts the warnings, the unchecked server's too.
+    expect(p.log.success).not.toHaveBeenCalled();
+    expect(vi.mocked(p.log.warn)).toHaveBeenCalledWith(
+      "1 secret not checked, 2 warnings.",
+    );
+    expect(p.outro).toHaveBeenCalledWith("Doctor complete.");
+  });
+
+  it("prints one block for an unreadable adapter, listing every name, however many gets failed", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    // A build credential's and an adapter's `secret()` read in separate gets,
+    // and an adapter's error may name the one it failed on.
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: {
+          name: "keyVault",
+          get: async (names: readonly string[]) => {
+            throw new Error(
+              `Azure Key Vault refused to read ${names[0]}.\nThe identity needs a role.`,
+            );
+          },
+          set: async () => {},
+        },
+        signing: secret("bundle-signing-key"),
+      }),
+    );
+    vi.mocked(getDeploySecretNames).mockReturnValueOnce(["deploy-token"]);
+
+    await handleDoctor({ serverBaseUrl: undefined });
+
+    const warnings = vi
+      .mocked(p.log.warn)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
+    const blocks = warnings.filter((message) =>
+      message.startsWith("Couldn't read"),
+    );
+    expect(blocks).toEqual([
+      [
+        "Couldn't read the keyVault secrets adapter for bundle-signing-key and",
+        "deploy-token.",
+        "Azure Key Vault refused to read bundle-signing-key.",
+        "The identity needs a role.",
+      ].join("\n"),
+    ]);
+    expect(p.log.success).not.toHaveBeenCalled();
+    expect(warnings).toContain("2 secrets not checked, 2 warnings.");
+  });
+
+  it("shows both failures when a build credential's and a deploy credential's reads fail differently", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: {
+          name: "keyVault",
+          get: async (names: readonly string[]) => {
+            throw new Error(
+              names.includes("deploy-token")
+                ? "The identity needs the Key Vault Secrets User role."
+                : "hot-updater-bundle-signing-key's current version is disabled.",
+            );
+          },
+          set: async () => {},
+        },
+        signing: secret("bundle-signing-key"),
+      }),
+    );
+    vi.mocked(getDeploySecretNames).mockReturnValueOnce(["deploy-token"]);
+
+    await handleDoctor({ serverBaseUrl: undefined });
+
+    const warnings = vi
+      .mocked(p.log.warn)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
+    expect(
+      warnings.filter((message) => message.startsWith("Couldn't read")),
+    ).toEqual([
+      [
+        "Couldn't read the keyVault secrets adapter for bundle-signing-key and",
+        "deploy-token.",
+        "hot-updater-bundle-signing-key's current version is disabled.",
+        "The identity needs the Key Vault Secrets User role.",
+      ].join("\n"),
+    ]);
+  });
+
+  it("still passes when the environment answers for every name of an unreadable adapter", async () => {
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PATH", "/tmp/release.jks");
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: "/mock/cwd/package.json",
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        secrets: {
+          name: "keyVault",
+          get: async () => {
+            throw new Error("no identity");
+          },
+          set: async () => {},
+        },
+        nativeBuild: {
+          android: {
+            release: { signing: { keystore: secret("release-keystore") } },
+          },
+        },
+      }),
+    );
+
+    await handleDoctor({ serverBaseUrl: undefined });
+
+    expect(vi.mocked(p.log.warn)).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Couldn't read the keyVault secrets adapter.\nno identity",
+      ),
+    );
     expect(p.log.success).toHaveBeenCalledWith(
-      "All checks passed with 2 warnings.",
+      expect.stringMatching(/^All checks passed with \d warnings?\.$/u),
     );
   });
 
@@ -1367,10 +1492,13 @@ describe("doctor", () => {
       path: "/mock/cwd/package.json",
     });
 
+    vi.stubEnv("npm_config_user_agent", "pnpm/11.6.0 node/v24");
+
     const result = await doctor();
     expect(result).toEqual({
       success: false,
-      error: "hot-updater CLI not found. Please install it first.",
+      error:
+        "hot-updater isn't in this project's package.json. Add it:\npnpm add -D hot-updater",
     });
   });
 
@@ -1500,7 +1628,9 @@ describe("doctor", () => {
     const result3 = await doctor();
     expect(result3).toEqual({
       success: false,
-      error: "hot-updater CLI not found. Please install it first.",
+      error: expect.stringContaining(
+        "hot-updater isn't in this project's package.json.",
+      ),
     });
   });
 

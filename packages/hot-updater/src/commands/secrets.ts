@@ -408,7 +408,7 @@ export const handleSecretsPut = async (
         ui.kv("Kind", kind),
         email && ui.kv("Service account", email),
         fingerprint && ui.kv("Public key", fingerprint),
-        ui.kv("Source", ui.fitPath(describeStoredSecret(secrets, name))),
+        ui.kv("Source", ui.source(describeStoredSecret(secrets, name))),
       ]),
     );
   });
@@ -571,7 +571,7 @@ export const handleSecretsIssue = async (
         ui.block(`${issuer.label} already stored`, [
           name !== kind && ui.kv("Name", name),
           ...(previous?.rows ?? []),
-          ui.kv("Source", ui.fitPath(found.source)),
+          ui.kv("Source", ui.source(found.source)),
         ]),
       );
       return;

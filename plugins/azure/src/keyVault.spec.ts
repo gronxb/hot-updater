@@ -7,6 +7,9 @@ import { keyVault } from "./keyVault";
 // What a failure says to do depends on CI: each spec picks one.
 beforeEach(() => {
   vi.stubEnv("CI", "");
+  vi.stubEnv("AZURE_TENANT_ID", "");
+  vi.stubEnv("AZURE_CLIENT_ID", "");
+  vi.stubEnv("AZURE_CLIENT_SECRET", "");
 });
 
 afterEach(() => {
@@ -259,8 +262,8 @@ describe("keyVault get", () => {
       ),
     ).rejects.toThrow(
       [
-        "keyVault found no Azure identity to read hot-updater-asc-api-key.",
-        "Run az login.",
+        "keyVault found no Azure identity.",
+        "Check the credential passed to keyVault().",
       ].join("\n"),
     );
   });
@@ -272,7 +275,54 @@ describe("keyVault get", () => {
 
     await expect(
       keyVault({ vaultName: "my-vault", credential }).get(["n"], context),
-    ).rejects.toThrow("rejected the sign-in to read");
+    ).rejects.toThrow("Azure rejected the sign-in.");
+  });
+
+  it("says to check vaultName when the vault's host doesn't resolve", async () => {
+    const unresolved = (host: string) =>
+      Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), {
+        name: "RestError",
+        code: "ENOTFOUND",
+      });
+    vaults.getSecret.mockRejectedValueOnce(
+      unresolved("no-such-vault.vault.azure.net"),
+    );
+
+    await expect(
+      keyVault({ vaultName: "no-such-vault", credential }).get(["n"], context),
+    ).rejects.toThrow(
+      new Error(
+        [
+          "keyVault can't find no-such-vault.vault.azure.net.",
+          "Check vaultName.",
+        ].join("\n"),
+      ),
+    );
+
+    vaults.getSecret.mockRejectedValueOnce(
+      unresolved("no-such-vault.vault.azure.cn"),
+    );
+    await expect(
+      keyVault({
+        vaultUrl: "https://no-such-vault.vault.azure.cn",
+        credential,
+      }).get(["n"], context),
+    ).rejects.toThrow("Check vaultUrl.");
+  });
+
+  it("doesn't blame vaultName when another host doesn't resolve", async () => {
+    vaults.getSecret.mockRejectedValue(
+      Object.assign(
+        new Error("getaddrinfo ENOTFOUND login.microsoftonline.com"),
+        { name: "RestError", code: "ENOTFOUND" },
+      ),
+    );
+
+    await expect(
+      keyVault({ vaultName: "my-vault", credential }).get(["n"], context),
+    ).rejects.toThrow(
+      "Azure Key Vault failed to read hot-updater-n.\nENOTFOUND: getaddrinfo ENOTFOUND login.microsoftonline.com.",
+    );
   });
 
   it("checks its settings on first use, not when the config loads", async () => {
@@ -480,8 +530,64 @@ describe("keyVault's next step", () => {
     await expect(
       keyVault({ vaultName: "my-vault", credential }).get(["n"], context),
     ).rejects.toThrow(
-      "Azure Key Vault rejected the sign-in to read hot-updater-n.\nSign in with azure/login.",
+      "Azure rejected the sign-in.\nCheck the credential passed to keyVault().",
     );
+  });
+
+  describe("the next step without a credential option", () => {
+    const rejectedRead = async () => {
+      vaults.getSecret.mockRejectedValue(
+        restError(401, "Unauthorized", "AKV10032: Invalid issuer."),
+      );
+      return (
+        await rejectionOf(
+          keyVault({ vaultName: "my-vault" }).get(["n"], context),
+        )
+      ).message;
+    };
+
+    it("says az login on a machine, on a line of its own", async () => {
+      expect(await rejectedRead()).toBe(
+        ["Azure rejected the sign-in.", "Sign in:", "az login"].join("\n"),
+      );
+    });
+
+    it("says azure/login in CI", async () => {
+      vi.stubEnv("CI", "true");
+
+      expect(await rejectedRead()).toBe(
+        "Azure rejected the sign-in.\nSign in with azure/login.",
+      );
+    });
+
+    it("names the variables DefaultAzureCredential tries before az login", async () => {
+      vi.stubEnv("AZURE_TENANT_ID", "tenant");
+      vi.stubEnv("AZURE_CLIENT_ID", "client");
+      vi.stubEnv("AZURE_CLIENT_SECRET", "garbage");
+
+      const message = await rejectedRead();
+
+      expect(message).toBe(
+        [
+          "Azure rejected the sign-in.",
+          "Fix or unset AZURE_CLIENT_SECRET, AZURE_TENANT_ID, and AZURE_CLIENT_ID.",
+        ].join("\n"),
+      );
+      expect(message).not.toContain("az login");
+    });
+
+    it("treats Entra refusing the identity as a rejected sign-in", async () => {
+      vaults.getSecret.mockRejectedValue(
+        Object.assign(new Error("AADSTS7000215: Invalid client secret."), {
+          name: "AuthenticationError",
+          statusCode: 400,
+        }),
+      );
+
+      await expect(
+        keyVault({ vaultName: "my-vault", credential }).get(["n"], context),
+      ).rejects.toThrow("Azure rejected the sign-in.");
+    });
   });
 
   it.each([

@@ -346,10 +346,6 @@ describe("secretManager get", () => {
       "Enable the Secret Manager API in the project:\ngcloud services enable secretmanager.googleapis.com --project <project>",
     ],
     [
-      googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
-      "gcloud auth application-default login",
-    ],
-    [
       googleError(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
       "quota is exhausted",
     ],
@@ -377,6 +373,24 @@ describe("secretManager get", () => {
     },
   );
 
+  it("says a rejected token isn't about the secret, and how to replace it", async () => {
+    fake.fetchMock.mockResolvedValueOnce(
+      googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
+    );
+
+    const error = await secretManager({ projectId: "demo-project" })
+      .get(["name"], context)
+      .catch((caught: unknown) => caught);
+
+    expect((error as Error).message).toBe(
+      [
+        "Google rejected the access token.",
+        "Fix or unset CLOUDSDK_AUTH_ACCESS_TOKEN.",
+      ].join("\n"),
+    );
+    expect((error as Error).message).not.toContain(TOKEN);
+  });
+
   it("describes where a name is kept", () => {
     expect(
       secretManager({
@@ -384,7 +398,7 @@ describe("secretManager get", () => {
         prefix: "hu-",
       }).describe?.("asc-api-key"),
     ).toBe(
-      "projects/demo-project/secrets/hu-asc-api-key (https://console.cloud.google.com/security/secret-manager/secret/hu-asc-api-key/versions?project=demo-project)",
+      'the secret "hu-asc-api-key" in Google Secret Manager (https://console.cloud.google.com/security/secret-manager/secret/hu-asc-api-key/versions?project=demo-project)',
     );
   });
 });
@@ -427,10 +441,88 @@ describe("secretManager credentials", () => {
     await expect(read()).rejects.toThrow(
       [
         "secretManager found no Google credentials.",
-        "Run gcloud auth application-default login.",
+        "Sign in:",
+        "gcloud auth application-default login",
       ].join("\n"),
     );
     expect(fake.fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe("the next step for the credentials in use", () => {
+    const rejectedToken = async (
+      credentials?: Parameters<typeof secretManager>[0]["credentials"],
+    ) => {
+      fake.fetchMock.mockResolvedValue(
+        googleError(401, "UNAUTHENTICATED", "Invalid credentials."),
+      );
+      const error = await secretManager({
+        projectId: "demo-project",
+        ...(credentials ? { credentials } : {}),
+      })
+        .get(["name"], context)
+        .catch((caught: unknown) => caught);
+      return (error as Error).message;
+    };
+
+    it.each(["CLOUDSDK_AUTH_ACCESS_TOKEN", "GOOGLE_OAUTH_ACCESS_TOKEN"])(
+      "names %s, which is tried before gcloud's sign-in",
+      async (variable) => {
+        vi.stubEnv("CLOUDSDK_AUTH_ACCESS_TOKEN", "");
+        vi.stubEnv(variable, "garbage");
+
+        const message = await rejectedToken();
+
+        expect(message).toBe(
+          [
+            "Google rejected the access token.",
+            `Fix or unset ${variable}.`,
+          ].join("\n"),
+        );
+        expect(message).not.toContain("gcloud");
+      },
+    );
+
+    it("names GOOGLE_APPLICATION_CREDENTIALS when it finds none through it", async () => {
+      vi.stubEnv("CLOUDSDK_AUTH_ACCESS_TOKEN", "");
+      vi.stubEnv("GOOGLE_APPLICATION_CREDENTIALS", "/tmp/gone.json");
+      auth.getAccessToken.mockRejectedValue(new Error("ENOENT"));
+
+      await expect(read()).rejects.toThrow(
+        new Error(
+          [
+            "secretManager found no Google credentials.",
+            "Fix or unset GOOGLE_APPLICATION_CREDENTIALS.",
+          ].join("\n"),
+        ),
+      );
+    });
+
+    it("points at the credentials option, which comes before them all", async () => {
+      expect(await rejectedToken(async () => TOKEN)).toContain(
+        "Check the credentials passed to secretManager().",
+      );
+    });
+  });
+
+  it("drops only the metadata probe's warning", async () => {
+    vi.stubEnv("CLOUDSDK_AUTH_ACCESS_TOKEN", "");
+    const emitted: string[] = [];
+    const onWarning = (warning: Error) => emitted.push(warning.name);
+    process.on("warning", onWarning);
+    auth.getAccessToken.mockImplementation(async () => {
+      process.emitWarning(
+        "received unexpected error = Metadata server is down code = UNKNOWN",
+        "MetadataLookupWarning",
+      );
+      process.emitWarning("something the user can act on", "OtherWarning");
+      throw new Error("Could not load the default credentials.");
+    });
+
+    await expect(read()).rejects.toThrow("found no Google credentials");
+    await new Promise((resolve) => setImmediate(resolve));
+    process.off("warning", onWarning);
+
+    expect(emitted).toEqual(["OtherWarning"]);
   });
 
   it.each([
