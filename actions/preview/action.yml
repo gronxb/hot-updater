@@ -69,13 +69,15 @@ outputs:
   android-download-url:
     description: >-
       The storage's URL of the Android artifact, which a later step fetches
-      without a Console session. It may expire, and it is empty when the
+      without a Console session. It is read when every platform is done, and
+      lasts as long as the storage adapter gives it. It is empty when the
       storage gives none: hot-updater native-build download <id> always works.
     value: ${{ steps.run.outputs.android-download-url }}
   ios-download-url:
     description: >-
       The storage's URL of the iOS artifact, which a later step fetches
-      without a Console session. It may expire, and it is empty when the
+      without a Console session. It is read when every platform is done, and
+      lasts as long as the storage adapter gives it. It is empty when the
       storage gives none: hot-updater native-build download <id> always works.
     value: ${{ steps.run.outputs.ios-download-url }}
   ios-build-log:

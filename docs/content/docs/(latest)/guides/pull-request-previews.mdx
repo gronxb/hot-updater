@@ -246,9 +246,9 @@ see [Expo](#expo). Then, for each platform:
    The action checks that the bundle targets the build's fingerprint or app
    version.
 
-After a build, `native-build find` runs once more for the new build's
-[download URL](#outputs). A failed lookup or another match leaves that output
-empty and fails nothing.
+Once every platform is done, `native-build find` runs once more for each, for
+the build's [download URL](#outputs). A failed lookup or another match leaves
+that output empty and fails nothing.
 
 When a native build fails, the job's log shows the build's errors and the
 path of the CLI's build log, which keeps the whole output of `xcodebuild` or
@@ -330,6 +330,11 @@ it out.
 
 A platform's outputs are set when the action previews it, so a cleanup run and a
 pull request from a fork have none.
+
+The action reads the download URLs last, once every platform is done. From then,
+a URL lasts as long as
+[your storage adapter gives it](/docs/guides/native-build#which-storage-gives-a-download-url),
+so a step that runs after that lifetime gets an expired URL.
 
 ### Fetch the build in a later step
 

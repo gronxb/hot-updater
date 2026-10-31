@@ -61,8 +61,8 @@ const fakeCli = ({
   builtDebug = false,
   buildFails = false,
   downloadUrl = (build) => `https://storage.example.com/${build.id}?sig=1`,
-  findFailsAfterBuild = false,
-  foundAfterBuild,
+  findFailsLater = false,
+  foundLater,
   channelDelete = {
     code: 0,
     json: {
@@ -84,11 +84,11 @@ const fakeCli = ({
   /** Whether `native-build <platform>` fails, as a failed native build exits. */
   buildFails?: boolean;
   /** The URL `native-build find` prints for a build; null when the storage has none. */
-  downloadUrl?: (build: Build) => string | null;
-  /** Whether `native-build find` fails once a build is tracked. */
-  findFailsAfterBuild?: boolean;
-  /** The build `native-build find` matches once a build is tracked. */
-  foundAfterBuild?: Build;
+  downloadUrl?: (build: Build, at: { deploys: number }) => string | null;
+  /** Whether `native-build find` fails after the first build or deploy. */
+  findFailsLater?: boolean;
+  /** The build `native-build find` matches after the first build or deploy. */
+  foundLater?: Build;
   channelDelete?: { code: number; json: Record<string, unknown> };
 } = {}) => {
   const calls: string[] = [];
@@ -109,7 +109,7 @@ const fakeCli = ({
       return { code: 0, stdout: "" };
     }
     if (command === "native-build" && sub === "find") {
-      if (findFailsAfterBuild && builds.length > 0) {
+      if (findFailsLater && counter > 0) {
         return { code: 1, stdout: "" };
       }
       const scope = {
@@ -118,7 +118,7 @@ const fakeCli = ({
         ...target,
       };
       const found =
-        (counter > 0 ? foundAfterBuild : undefined) ??
+        (counter > 0 ? foundLater : undefined) ??
         builds
           .filter(
             (build) =>
@@ -140,7 +140,8 @@ const fakeCli = ({
               artifact_kind: found.kind,
               artifact_storage_uri: artifactUri(found),
             },
-            downloadUrl: found && downloadUrl(found),
+            downloadUrl:
+              found && downloadUrl(found, { deploys: releases.length }),
           },
           null,
           2,
@@ -268,7 +269,7 @@ describe("runAction preview", () => {
       "native-build android --scheme releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
-      // The build's own output has no download URL.
+      // The download URL, once every platform is done.
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
     expect(JSON.parse(outputs["previews"]!)).toEqual([
@@ -316,6 +317,7 @@ describe("runAction preview", () => {
       "fingerprint create",
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
+      "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
     expect(
       fake.calls.some((call) => /^native-build (ios|android) /.test(call)),
@@ -377,6 +379,7 @@ describe("runAction preview", () => {
       "native-build find -p android -c pr-12 -s releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header -t 1.4.0",
       "bundle list -c pr-12 -p android --limit 1 --json",
+      "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
   });
 
@@ -612,20 +615,57 @@ describe("runAction preview", () => {
       expect(outputs).not.toHaveProperty("ios-download-url");
     });
 
-    it("reads a reused build's URL from the first lookup, with no other read", async () => {
+    it("reads every platform's URL after the last platform finished, once each", async () => {
+      // A URL's age: how many deploys came before the CLI gave it.
       const fake = fakeCli({
         builds: [reusable("build-0", "android", "apk")],
+        downloadUrl: (build, { deploys }) =>
+          `https://storage.example.com/${build.id}?afterDeploys=${deploys}`,
+      });
+      const { deps: d, outputs } = deps(fake.cli);
+
+      await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
+
+      expect(outputs).toMatchObject({
+        "android-download-url":
+          "https://storage.example.com/build-0?afterDeploys=2",
+        "ios-download-url":
+          "https://storage.example.com/build-2?afterDeploys=2",
+      });
+      expect(
+        JSON.parse(outputs["previews"]!).map(
+          (preview: { downloadUrl: string }) => preview.downloadUrl,
+        ),
+      ).toEqual([
+        "https://storage.example.com/build-0?afterDeploys=2",
+        "https://storage.example.com/build-2?afterDeploys=2",
+      ]);
+      // One lookup per platform to decide what to build, one for its URL.
+      expect(
+        fake.calls.filter((call) => call.startsWith("native-build find")),
+      ).toEqual([
+        "native-build find -p android -c pr-12 -s releaseApk --json",
+        "native-build find -p ios -c pr-12 -s simulator --json",
+        "native-build find -p android -c pr-12 -s releaseApk --json",
+        "native-build find -p ios -c pr-12 -s simulator --json",
+      ]);
+      expect(fake.calls.at(-3)).toBe(
+        "bundle list -c pr-12 -p ios --limit 1 --json",
+      );
+    });
+
+    it("never falls back on the first lookup's URL, which may have expired", async () => {
+      const fake = fakeCli({
+        builds: [reusable("build-0", "android", "apk")],
+        downloadUrl: (build, { deploys }) =>
+          deploys === 0 ? `https://storage.example.com/${build.id}?old` : null,
       });
       const { deps: d, outputs } = deps(fake.cli);
 
       await runAction(d, env(), event);
 
-      expect(
-        fake.calls.filter((call) => call.startsWith("native-build find")),
-      ).toHaveLength(1);
-      expect(outputs["android-download-url"]).toBe(
-        "https://storage.example.com/build-0?sig=1",
-      );
+      expect(outputs["android-download-url"]).toBe("");
+      expect(JSON.parse(outputs["previews"]!)[0].downloadUrl).toBeNull();
     });
 
     it("sets an empty download-url and a null downloadUrl when the storage gives no URL, and keeps the install link", async () => {
@@ -658,40 +698,46 @@ describe("runAction preview", () => {
       expect(d.log.notice).not.toHaveBeenCalled();
     });
 
-    it("never takes another build's URL when the lookup after a build finds another one", async () => {
-      // A scheme that sets its version at build time: the lookup reads the
-      // project's version, which an older build has.
-      const fake = fakeCli({
-        foundAfterBuild: reusable("older", "android", "apk"),
+    describe.each([
+      ["a new build", [] as Build[], "build-1"],
+      ["a reused build", [reusable("build-0", "android", "apk")], "build-0"],
+    ])("the last lookup of %s", (_, builds, id) => {
+      it("never takes another build's URL", async () => {
+        // A scheme that sets its version at build time: the lookup reads the
+        // project's version, which another build has.
+        const fake = fakeCli({
+          builds: [...builds],
+          foundLater: reusable("other", "android", "apk"),
+        });
+        const { deps: d, outputs } = deps(fake.cli);
+
+        await runAction(d, env(), event);
+
+        expect(JSON.parse(outputs["previews"]!)[0]).toMatchObject({
+          nativeBuild: { id },
+          downloadUrl: null,
+        });
+        expect(outputs["android-download-url"]).toBe("");
+        expect(d.log.notice).toHaveBeenCalledWith(
+          `No android-download-url: native-build find didn't match ${id}.`,
+        );
       });
-      const { deps: d, outputs } = deps(fake.cli);
 
-      await runAction(d, env(), event);
+      it("keeps a deployed preview when it fails", async () => {
+        const fake = fakeCli({ builds: [...builds], findFailsLater: true });
+        const { deps: d, outputs } = deps(fake.cli);
 
-      expect(JSON.parse(outputs["previews"]!)[0]).toMatchObject({
-        nativeBuild: { id: "build-1" },
-        downloadUrl: null,
+        await runAction(d, env(), event);
+
+        expect(outputs["android-download-url"]).toBe("");
+        expect(outputs["android-install-url"]).toBe(
+          `https://console.example.com/api/native-builds/${id}/download`,
+        );
+        expect(outputs["comment-body"]).toContain("| Android |");
+        expect(d.log.notice).toHaveBeenCalledWith(
+          "No android-download-url: hot-updater native-build find -p android -c pr-12 -s releaseApk --json exited with 1.",
+        );
       });
-      expect(outputs["android-download-url"]).toBe("");
-      expect(d.log.notice).toHaveBeenCalledWith(
-        "No android-download-url: native-build find didn't match build-1.",
-      );
-    });
-
-    it("keeps a deployed preview when the lookup after its build fails", async () => {
-      const fake = fakeCli({ findFailsAfterBuild: true });
-      const { deps: d, outputs } = deps(fake.cli);
-
-      await runAction(d, env(), event);
-
-      expect(outputs["android-download-url"]).toBe("");
-      expect(outputs["android-install-url"]).toBe(
-        "https://console.example.com/api/native-builds/build-1/download",
-      );
-      expect(outputs["comment-body"]).toContain("| Android |");
-      expect(d.log.notice).toHaveBeenCalledWith(
-        "No android-download-url: hot-updater native-build find -p android -c pr-12 -s releaseApk --json exited with 1.",
-      );
     });
 
     it("keeps the storage URL out of the comment and the job's log", async () => {

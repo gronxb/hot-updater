@@ -142,20 +142,29 @@ const artifactFileName = (storageUri) => {
 };
 
 /**
- * The storage's URL of the build this run tracked, which the build's own
- * output doesn't have. `native-build find` finds what a build of the project
- * would match, so a scheme that sets its version at build time can find
- * another build, or none. No URL fails nothing: the preview is deployed, and
- * `native-build download` gets the build.
+ * The storage's URL of a platform's build, read once every platform is done,
+ * so a deploy or another platform's native build can't use up its lifetime.
+ * `native-build find` finds what a build of the project would match, so a
+ * scheme that sets its version at build time can find another build, or none.
+ * No URL fails nothing: the preview is deployed, and `native-build download`
+ * gets the build.
  *
  * @param {Deps} deps
- * @param {{ platform: Platform, scheme: string, channel: string, id: string }} build
+ * @param {Inputs} inputs
+ * @param {PlatformPreview} preview
  * @returns {Promise<string | null>}
  */
-const findBuiltDownloadUrl = async (deps, { id, ...lookup }) => {
-  const { platform } = lookup;
+const findDownloadUrl = async (
+  deps,
+  inputs,
+  { platform, nativeBuild: { id } },
+) => {
   try {
-    const found = await findNativeBuild(deps, lookup);
+    const found = await findNativeBuild(deps, {
+      platform,
+      scheme: /** @type {string} */ (inputs.schemes[platform]),
+      channel: inputs.channel,
+    });
     if (found.nativeBuild?.id === id) return found.downloadUrl ?? null;
     deps.log.notice(
       `No ${platform}-download-url: native-build find didn't match ${id}.`,
@@ -179,7 +188,7 @@ const findBuiltDownloadUrl = async (deps, { id, ...lookup }) => {
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
  * @param {Platform} platform
- * @returns {Promise<PlatformPreview & PreviewOutputs>}
+ * @returns {Promise<PlatformPreview & { installUrl: string }>}
  */
 const previewPlatform = async (deps, inputs, event, platform) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
@@ -262,15 +271,6 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     built,
     bundleId,
     installUrl: nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
-    // Looked up last, so a new build's URL has its whole lifetime left.
-    downloadUrl: built
-      ? await findBuiltDownloadUrl(deps, {
-          platform,
-          scheme,
-          channel: inputs.channel,
-          id: nativeBuild.id,
-        })
-      : (found.downloadUrl ?? null),
   };
 };
 
@@ -314,7 +314,7 @@ export const runPreview = async (deps, inputs, event) => {
   // The pull request's native builds embed its channel, so their first
   // update check finds its bundle.
   await deps.cli(["channel", "set", inputs.channel]);
-  /** @type {(PlatformPreview & PreviewOutputs)[]} */
+  /** @type {(PlatformPreview & { installUrl: string })[]} */
   const previews = [];
   for (const platform of inputs.platforms) {
     previews.push(
@@ -341,8 +341,16 @@ export const runPreview = async (deps, inputs, event) => {
     headSha: event.headSha,
     credit: inputs.credit,
   });
-  deps.setOutput("previews", JSON.stringify(previews));
-  for (const { platform, installUrl, downloadUrl } of previews) {
+  /** @type {(PlatformPreview & PreviewOutputs)[]} */
+  const outputs = [];
+  for (const preview of previews) {
+    outputs.push({
+      ...preview,
+      downloadUrl: await findDownloadUrl(deps, inputs, preview),
+    });
+  }
+  deps.setOutput("previews", JSON.stringify(outputs));
+  for (const { platform, installUrl, downloadUrl } of outputs) {
     deps.setOutput(`${platform}-install-url`, installUrl);
     deps.setOutput(`${platform}-download-url`, downloadUrl ?? "");
   }
@@ -350,7 +358,7 @@ export const runPreview = async (deps, inputs, event) => {
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);
   }
-  return { previews, body };
+  return { previews: outputs, body };
 };
 
 /**
