@@ -29,6 +29,8 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 
 /// How long a background root waits for a foreground or an entry point it knows.
 static const NSTimeInterval kAmbiguousBackgroundSeconds = 2.0;
+/// How long a silent push the host has no handler for keeps the app running.
+static const NSTimeInterval kUnhandledPushSeconds = 20.0;
 
 static NSMutableArray<dispatch_block_t> *gHeld;
 static BOOL gReleased;
@@ -260,19 +262,25 @@ static void WrapApplicationDelegate(Class cls) {
       "v@:@@@?");
 
   // Background entry points: React Native starts before the host's handler runs.
-  // A host without a handler gets none: the system then ends the launch's time
-  // when the completion runs, before React Native could do anything.
+  // A host without a handler gets one, since a silent push's launch is otherwise
+  // suspended before anything else could start React Native. It answers after most of
+  // the time the system allows, so the app's JavaScript gets it.
   SEL remote = @selector(application:didReceiveRemoteNotification:fetchCompletionHandler:);
   void (*originalRemote)(id, SEL, UIApplication *, NSDictionary *, id) = (void *)OriginalOf(cls, remote);
-  if (originalRemote) {
-    class_replaceMethod(
-        cls, remote,
-        imp_implementationWithBlock(^(id self, UIApplication *app, NSDictionary *payload, id done) {
-          ReleaseReactNative(@"remote notification");
+  class_replaceMethod(
+      cls, remote,
+      imp_implementationWithBlock(^(id self, UIApplication *app, NSDictionary *payload, void (^done)(UIBackgroundFetchResult)) {
+        ReleaseReactNative(@"remote notification");
+        if (originalRemote) {
           originalRemote(self, remote, app, payload, done);
-        }),
-        "v@:@@@?");
-  }
+          return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kUnhandledPushSeconds * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+                         done(UIBackgroundFetchResultNoData);
+                       });
+      }),
+      "v@:@@@?");
 
   SEL fetch = @selector(application:performFetchWithCompletionHandler:);
   void (*originalFetch)(id, SEL, UIApplication *, id) = (void *)OriginalOf(cls, fetch);
