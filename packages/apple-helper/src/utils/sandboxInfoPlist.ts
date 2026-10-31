@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
+import { BuildFailedError, p } from "@hot-updater/cli-tools";
 import {
   SANDBOX_INFO_PLIST_KEY,
   sandboxChannelOf,
@@ -15,6 +15,14 @@ import {
 } from "../sandboxTestFlight";
 
 const URL_TYPE_NAME = "hot-updater-sandbox";
+
+/** A refusal the command prints as it is: the build ran as it should. */
+const refusal = (message: string) =>
+  new BuildFailedError(message, {
+    logPath: null,
+    summary: [],
+    hint: message,
+  });
 
 const plutil = (args: string[]) => execa("plutil", args);
 
@@ -61,11 +69,22 @@ const addUrlScheme = async (plist: string, urlScheme: string) => {
   ]);
 };
 
-/** The app's dedicated URL scheme, default channel, and the sandbox's key. */
+/**
+ * The app's dedicated URL scheme, default channel, and the sandbox's key. The
+ * URL scheme and App Store Connect's app come from the scheme's
+ * `bundleIdentifier`, while Xcode's build settings decide the app's ID, so an
+ * app of another ID stops here, before anything is signed or uploaded.
+ */
 const patchAppInfoPlist = async (
   plist: string,
   scheme: { hotUpdaterSchemeName: string; bundleIdentifier: string },
 ) => {
+  const built = await readValue(plist, "CFBundleIdentifier");
+  if (built !== scheme.bundleIdentifier) {
+    throw refusal(
+      `The sandbox scheme ${scheme.hotUpdaterSchemeName} sets bundleIdentifier ${scheme.bundleIdentifier}, but Xcode built ${built ?? "no bundle ID"}.\nSet bundleIdentifier to the ID its configuration builds.`,
+    );
+  }
   await setString(
     plist,
     "HOT_UPDATER_CHANNEL",
@@ -118,7 +137,7 @@ export const patchSandboxArchive = async ({
           train,
           updateStrategy: plan.updateStrategy,
         });
-  if (raised?.kind === "refuse") throw new Error(raised.message);
+  if (raised?.kind === "refuse") throw refusal(raised.message);
   const newVersion = raised?.kind === "raise" ? raised.version : null;
   const newBuildNumber = nextBuildNumber(buildNumber, train.highestBuildNumber);
 

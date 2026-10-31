@@ -119,6 +119,7 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
 
   it("gives an app with no URL types the sandbox's", async () => {
     await writePlist(path.join(app, "Info.plist"), {
+      CFBundleIdentifier: "com.example.App",
       CFBundleShortVersionString: "1.0.0",
     });
     await patchSandboxArchive({
@@ -129,6 +130,55 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     expect(read(path.join(app, "Info.plist")).CFBundleURLTypes).toEqual([
       SANDBOX_URL_TYPE,
     ]);
+  });
+
+  it("derives the URL scheme from a separate app's ID", async () => {
+    await writePlist(path.join(app, "Info.plist"), {
+      CFBundleIdentifier: "com.example.App.sandbox",
+    });
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: {
+        hotUpdaterSchemeName: "release",
+        bundleIdentifier: "com.example.App.sandbox",
+      },
+    });
+    expect(read(path.join(app, "Info.plist"))).toMatchObject({
+      CFBundleIdentifier: "com.example.App.sandbox",
+      CFBundleURLTypes: [
+        {
+          CFBundleURLName: "hot-updater-sandbox",
+          CFBundleURLSchemes: ["hu-sandbox-com-example-app-sandbox"],
+        },
+      ],
+    });
+  });
+
+  it("refuses an app Xcode built with another ID than bundleIdentifier, and patches nothing", async () => {
+    const appPlist = path.join(app, "Info.plist");
+    const before = await fs.readFile(appPlist);
+    const message =
+      "The sandbox scheme release sets bundleIdentifier com.example.App.sandbox, but Xcode built com.example.App.\nSet bundleIdentifier to the ID its configuration builds.";
+
+    await expect(
+      patchSandboxArchive({
+        archivePath: archive,
+        appPath: app,
+        schemeConfig: {
+          hotUpdaterSchemeName: "release",
+          bundleIdentifier: "com.example.App.sandbox",
+        },
+      }),
+    ).rejects.toMatchObject({ message, hint: message });
+    expect(await fs.readFile(appPlist)).toEqual(before);
+
+    await expect(
+      patchSandboxSimulatorApp(app, {
+        hotUpdaterSchemeName: "release",
+        bundleIdentifier: "com.example.App.sandbox",
+      }),
+    ).rejects.toMatchObject({ message });
   });
 
   it("raises a closed version in the app, its extensions and the archive, with the next build number", async () => {

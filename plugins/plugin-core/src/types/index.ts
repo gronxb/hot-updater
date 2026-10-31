@@ -331,9 +331,12 @@ export interface NativeBuildIosScheme {
 
   /**
    * Builds the app with the sandbox native layer, for testing OTA bundles on
-   * a device, with the same bundle identifier. It registers on the reserved
-   * channel `sandbox-<scheme>`, and its `.ipa` is for TestFlight internal
-   * testing only, never App Store review. No other build compiles the layer.
+   * a device. It has the bundle identifier its Xcode configuration builds,
+   * which `bundleIdentifier` must name: the store app's by default, which it
+   * replaces on a device, or its own from a separate configuration. It
+   * registers on the reserved channel `sandbox-<scheme>`, and its `.ipa` is for
+   * TestFlight internal testing only, never App Store review. No other build
+   * compiles the layer.
    *
    * @default false
    */
