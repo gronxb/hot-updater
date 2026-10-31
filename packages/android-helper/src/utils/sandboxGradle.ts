@@ -34,14 +34,18 @@ export const sandboxInitScript = ({
   appModuleName,
   variant,
   overlay,
+  minVersionCode,
 }: {
   appModuleName: string;
   variant: string;
   overlay: string;
+  /** The lowest version code the build may have, which raises the project's. */
+  minVersionCode?: number;
 }) => `// Written by hot-updater for one sandbox build.
 def appModule = ${groovyString(`:${appModuleName}`)}
 def variant = ${groovyString(variant.toLowerCase())}
 def overlay = new File(${groovyString(overlay)})
+def minVersionCode = ${minVersionCode ?? "null"}
 allprojects { project ->
   if (project.path != appModule) return
   project.plugins.withId('com.android.application') {
@@ -63,6 +67,12 @@ allprojects { project ->
       }
       dsl.defaultConfig.applicationIdSuffix = (dsl.defaultConfig.applicationIdSuffix ?: '') + ${groovyString(SANDBOX_APPLICATION_ID_SUFFIX)}
       manifest.srcFile(overlay)
+      if (minVersionCode != null) {
+        dsl.defaultConfig.versionCode = Math.max(dsl.defaultConfig.versionCode ?: 0, minVersionCode)
+        dsl.productFlavors.each { flavor ->
+          if (flavor.versionCode != null) flavor.versionCode = Math.max(flavor.versionCode, minVersionCode)
+        }
+      }
     }
   }
 }
@@ -97,6 +107,12 @@ export const withSandboxGradleArgs = async <T>(
     readonly variant: string;
   },
   build: (args: string[]) => Promise<T>,
+  {
+    minVersionCode,
+  }: {
+    /** The lowest version code a sandbox build may have. */
+    minVersionCode?: number;
+  } = {},
 ): Promise<T> => {
   if (!scheme.sandbox) return build([]);
   const directory = await fs.promises.mkdtemp(
@@ -115,6 +131,7 @@ export const withSandboxGradleArgs = async <T>(
         appModuleName: scheme.appModuleName,
         variant: scheme.variant,
         overlay,
+        ...(minVersionCode === undefined ? {} : { minVersionCode }),
       }),
     );
     return await build([

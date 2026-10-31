@@ -14,7 +14,7 @@ import {
   type PlayCheck,
 } from "../../utils/native/playServiceAccount";
 import { signsWithKeystore } from "../../utils/native/signingCredentials";
-import { resolveSandboxApplicationId } from "../../utils/version/getAndroidVersion";
+import { playPackageName } from "../../utils/native/storeStatus";
 import { missingRequiredSecrets, type SecretsStatus } from "./secrets";
 
 /** How long doctor waits for each Google request. */
@@ -45,14 +45,6 @@ const playSchemes = (config: ConfigResponse) =>
   Object.values(config.nativeBuild?.android ?? {}).flatMap((scheme) =>
     scheme && scheme.aab !== false && signsWithKeystore(scheme) ? [scheme] : [],
   );
-
-/** The application ID a scheme releases to Google Play as. */
-const playPackageName = (
-  scheme: ReturnType<typeof playSchemes>[number],
-): Promise<string> | string =>
-  scheme.sandbox
-    ? resolveSandboxApplicationId(scheme)
-    : (scheme.applicationId ?? scheme.packageName);
 
 /**
  * The upload keystore `secret()` a release of `packageName` signs with

@@ -11,9 +11,14 @@ export { buildIos } from "./buildIos";
 export {
   assertBuildIsInternalOnly,
   assertIpaIsInternalOnly,
+  distributeTestFlightBuild,
+  findInternalBetaGroup,
+  type InternalBetaGroup,
   isVersionTrainClosed,
   prepareSandboxArchive,
+  readTestFlightBuildStatus,
   type SandboxArchivePlan,
+  type TestFlightBuildState,
 } from "./sandboxTestFlight";
 export {
   extractSimulatorApp,

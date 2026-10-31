@@ -35,6 +35,7 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import { readStoreStatus, type StoreStatus } from "../utils/native/storeStatus";
 import { printBanner } from "../utils/printBanner";
 import { confirmMutation, safeDispose } from "./release";
 
@@ -47,6 +48,11 @@ export interface NativeBuildFindOptions {
    * whose kind of artifact a registered build must be.
    */
   readonly scheme?: string;
+  /**
+   * Asks the store for what a build the project submitted is doing there, for
+   * a run that would reuse it. It takes `--scheme`, whose app and key it reads.
+   */
+  readonly storeStatus?: boolean;
   readonly json?: boolean;
 }
 
@@ -75,6 +81,11 @@ export const handleNativeBuildFind = async (
     ) {
       throw new Error(
         `scheme ${options.scheme} is not in nativeBuild.${options.platform} in hot-updater.config.ts.`,
+      );
+    }
+    if (options.storeStatus && options.scheme === undefined) {
+      throw new Error(
+        "--store-status reads the store's app of a scheme.\nPass --scheme.",
       );
     }
     const scope = await resolveNativeBuildScope(config, options);
@@ -106,9 +117,32 @@ export const handleNativeBuildFind = async (
       await safeDispose(server);
     }
 
+    const store: StoreStatus | null =
+      options.storeStatus && nativeBuild?.submitted_to
+        ? await readStoreStatus(config, {
+            platform: options.platform,
+            scheme: options.scheme!,
+            build: nativeBuild,
+            onError: (error) => {
+              const message = `Couldn't read the store's status of the build.\n${error instanceof Error ? error.message : String(error)}`;
+              if (options.json) console.error(fitText(message));
+              else p.log.warn(message);
+            },
+          })
+        : null;
+
     if (options.json) {
       console.log(
-        JSON.stringify({ ...scope, nativeBuild, downloadUrl }, null, 2),
+        JSON.stringify(
+          {
+            ...scope,
+            nativeBuild,
+            downloadUrl,
+            ...(options.storeStatus ? { store } : {}),
+          },
+          null,
+          2,
+        ),
       );
       return;
     }
@@ -135,6 +169,13 @@ export const handleNativeBuildFind = async (
         ui.kv("Kind", nativeBuild.artifact_kind),
         ui.kv("Min bundle ID", ui.id(nativeBuild.min_bundle_id)),
         ui.kv("Created", formatUtc(nativeBuild.created_at_ms)),
+        store !== null &&
+          ui.kv(
+            "Store",
+            [store.version, store.state, store.url]
+              .filter((part) => part !== null)
+              .join(" · "),
+          ),
       ]),
     );
   } catch (error) {

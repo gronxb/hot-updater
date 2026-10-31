@@ -18,7 +18,9 @@ import {
   nativeBuildSchemeCommandOption,
   platformCommandOption,
   playSubmitCommandOption,
+  testFlightGroupCommandOption,
   testFlightSubmitCommandOption,
+  whatToTestCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
@@ -316,6 +318,10 @@ nativeBuildCommand
     "the nativeBuild scheme, whose app's version the build has with the appVersion strategy",
   )
   .option(
+    "--store-status",
+    "ask the store what a build this project submitted is doing there (takes --scheme)",
+  )
+  .option(
     "--json",
     "output the scope, the build or null, and the storage's download URL or null, as JSON",
   )
@@ -389,6 +395,8 @@ nativeBuildCommand
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildOutputCommandOption)
   .addOption(testFlightSubmitCommandOption)
+  .addOption(testFlightGroupCommandOption)
+  .addOption(whatToTestCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)

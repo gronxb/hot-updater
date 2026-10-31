@@ -4,6 +4,8 @@ import { p } from "@hot-updater/cli-tools";
 
 import {
   type AppStoreConnectApiKey,
+  AppStoreConnectError,
+  type AppStoreConnectRequest,
   createAppStoreConnectRequest,
   findApp,
   readPrivateKey,
@@ -248,8 +250,106 @@ export const assertIpaIsInternalOnly = async (
 const AUDIENCE_TIMEOUT_MS = 5 * 60_000;
 
 /**
+ * What a tester can do with a build: `processing` until App Store Connect has
+ * processed it, `missing-compliance` until someone answers export compliance,
+ * and `ready` once it installs. `failed` and `expired` never install.
+ */
+export type TestFlightBuildState =
+  | "processing"
+  | "ready"
+  | "missing-compliance"
+  | "failed"
+  | "expired";
+
+/** A build App Store Connect lists, as one read of `/v1/builds` says. */
+export interface TestFlightBuildStatus {
+  readonly buildId: string;
+  /** The audience App Store Connect holds it for, or null until it says. */
+  readonly audience: string | null;
+  readonly state: TestFlightBuildState;
+  /** When TestFlight stops offering it, or null until it says. */
+  readonly expiresAtMs: number | null;
+}
+
+interface BuildsResponse {
+  readonly data: readonly {
+    readonly id: string;
+    readonly attributes?: {
+      readonly buildAudienceType?: string | null;
+      readonly processingState?: string | null;
+      readonly expirationDate?: string | null;
+      readonly expired?: boolean | null;
+    };
+  }[];
+  readonly included?: readonly {
+    readonly type?: string;
+    readonly attributes?: { readonly internalBuildState?: string | null };
+  }[];
+}
+
+const STATE_OF_INTERNAL_BUILD: Readonly<Record<string, TestFlightBuildState>> =
+  {
+    MISSING_EXPORT_COMPLIANCE: "missing-compliance",
+    IN_EXPORT_COMPLIANCE_REVIEW: "missing-compliance",
+    PROCESSING: "processing",
+    PROCESSING_EXCEPTION: "failed",
+    EXPIRED: "expired",
+  };
+
+/**
+ * One read of a version and build number: its audience, processing state,
+ * expiry, and internal testing state. Null while App Store Connect lists none.
+ */
+const readBuildStatus = async (
+  request: AppStoreConnectRequest,
+  {
+    appId,
+    shortVersion,
+    bundleVersion,
+  }: { appId: string; shortVersion: string | null; bundleVersion: string },
+): Promise<TestFlightBuildStatus | null> => {
+  const { data, included } = await retrying(() =>
+    request<BuildsResponse>(
+      "Reading the build",
+      "GET",
+      `/v1/builds?${new URLSearchParams({
+        "filter[app]": appId,
+        "filter[version]": bundleVersion,
+        ...(shortVersion === null
+          ? {}
+          : { "filter[preReleaseVersion.version]": shortVersion }),
+        "fields[builds]":
+          "buildAudienceType,processingState,expirationDate,expired,buildBetaDetail",
+        include: "buildBetaDetail",
+        "fields[buildBetaDetails]": "internalBuildState",
+        limit: "1",
+      })}`,
+    ),
+  );
+  const build = data[0];
+  if (!build) return null;
+  const internal = included?.find(({ type }) => type === "buildBetaDetails")
+    ?.attributes?.internalBuildState;
+  const processing = build.attributes?.processingState;
+  const expiration = build.attributes?.expirationDate;
+  return {
+    buildId: build.id,
+    audience: build.attributes?.buildAudienceType ?? null,
+    state: build.attributes?.expired
+      ? "expired"
+      : processing === "PROCESSING" || !processing
+        ? "processing"
+        : processing !== "VALID"
+          ? "failed"
+          : (STATE_OF_INTERNAL_BUILD[internal ?? ""] ?? "ready"),
+    expiresAtMs: expiration ? Date.parse(expiration) : null,
+  };
+};
+
+/**
  * Fails unless App Store Connect holds the uploaded sandbox build for internal
- * testing only, as `buildAudienceType` says once the build is listed.
+ * testing only, as `buildAudienceType` says once the build is listed, and
+ * returns what that read says of it.
  */
 export const assertBuildIsInternalOnly = async ({
   ipaPath,
@@ -263,7 +363,9 @@ export const assertBuildIsInternalOnly = async ({
   fetch?: typeof globalThis.fetch;
   pollIntervalMs?: number;
   timeoutMs?: number;
-}): Promise<void> => {
+}): Promise<
+  TestFlightBuildStatus & { appId: string; testFlightUrl: string }
+> => {
   const [info, privateKey] = await Promise.all([
     readIpaInfo(ipaPath),
     readPrivateKey(apiKey.keyPath),
@@ -273,26 +375,17 @@ export const assertBuildIsInternalOnly = async ({
   const label = `${info.shortVersion} (${info.bundleVersion})`;
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const { data: builds } = await retrying(() =>
-      request<{
-        data: { attributes?: { buildAudienceType?: string | null } }[];
-      }>(
-        "Reading the build's audience",
-        "GET",
-        `/v1/builds?${new URLSearchParams({
-          "filter[app]": app.id,
-          "filter[version]": info.bundleVersion,
-          "filter[preReleaseVersion.version]": info.shortVersion,
-          "fields[builds]": "buildAudienceType",
-          limit: "1",
-        })}`,
-      ),
-    );
-    const audience = builds[0]?.attributes?.buildAudienceType;
-    if (audience === "INTERNAL_ONLY") return;
-    if (audience) {
+    const status = await readBuildStatus(request, {
+      appId: app.id,
+      shortVersion: info.shortVersion,
+      bundleVersion: info.bundleVersion,
+    });
+    if (status?.audience === "INTERNAL_ONLY") {
+      return { ...status, appId: app.id, testFlightUrl };
+    }
+    if (status?.audience) {
       throw new Error(
-        `App Store Connect holds sandbox build ${label} for ${audience}, not INTERNAL_ONLY.\nExpire it in TestFlight:\n${testFlightUrl}`,
+        `App Store Connect holds sandbox build ${label} for ${status.audience}, not INTERNAL_ONLY.\nExpire it in TestFlight:\n${testFlightUrl}`,
       );
     }
     if (Date.now() >= deadline) {
@@ -302,4 +395,236 @@ export const assertBuildIsInternalOnly = async ({
     }
     await sleep(pollIntervalMs);
   }
+};
+
+/** An internal TestFlight group of an app. */
+export interface InternalBetaGroup {
+  readonly id: string;
+  readonly name: string;
+  /** A group that takes every build needs no build added to it. */
+  readonly hasAccessToAllBuilds: boolean;
+}
+
+/**
+ * The internal TestFlight group named `name`, read before anything is built.
+ * An external group is refused: its builds go to Beta App Review, and a sandbox
+ * build is for internal testing only.
+ */
+export const findInternalBetaGroup = async ({
+  bundleId,
+  name,
+  apiKey,
+  fetch = globalThis.fetch,
+}: {
+  bundleId: string;
+  name: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+}): Promise<InternalBetaGroup> => {
+  const privateKey = await readPrivateKey(apiKey.keyPath);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  const { app, testFlightUrl } = await findApp(request, bundleId);
+  const { data } = await retrying(() =>
+    request<{
+      data: {
+        id: string;
+        attributes?: {
+          name?: string;
+          isInternalGroup?: boolean;
+          hasAccessToAllBuilds?: boolean;
+        };
+      }[];
+    }>(
+      "Reading the TestFlight groups",
+      "GET",
+      `/v1/betaGroups?${new URLSearchParams({
+        "filter[app]": app.id,
+        "filter[name]": name,
+        "fields[betaGroups]": "name,isInternalGroup,hasAccessToAllBuilds",
+        limit: "200",
+      })}`,
+    ),
+  );
+  const group = data.find(({ attributes }) => attributes?.name === name);
+  if (!group) {
+    throw new Error(
+      `App Store Connect has no TestFlight group ${name} for ${bundleId}.\nCreate it as an internal group:\n${testFlightUrl}`,
+    );
+  }
+  if (group.attributes?.isInternalGroup !== true) {
+    throw new Error(
+      `TestFlight group ${name} is external, and a sandbox build is for internal testing only.\nName an internal group.`,
+    );
+  }
+  return {
+    id: group.id,
+    name,
+    hasAccessToAllBuilds: group.attributes.hasAccessToAllBuilds === true,
+  };
+};
+
+/** How long a build's processing may hold up its group and What to Test. */
+const DISTRIBUTION_TIMEOUT_MS = 15 * 60_000;
+
+/** What to Test's locale: the language the CLI writes it in. */
+const WHAT_TO_TEST_LOCALE = "en-US";
+
+/**
+ * Adds a processed build to its internal group and sets its What to Test, which
+ * App Store Connect takes once the build is processed. A build still processing
+ * after `timeoutMs` keeps its upload: a warning says what to do by hand. Returns
+ * the build's state.
+ */
+export const distributeTestFlightBuild = async ({
+  build: { appId, shortVersion, bundleVersion, testFlightUrl },
+  group,
+  whatToTest,
+  apiKey,
+  fetch = globalThis.fetch,
+  pollIntervalMs = 15_000,
+  timeoutMs = DISTRIBUTION_TIMEOUT_MS,
+}: {
+  build: {
+    appId: string;
+    shortVersion: string;
+    bundleVersion: string;
+    testFlightUrl: string;
+  };
+  group?: InternalBetaGroup;
+  whatToTest?: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+}): Promise<TestFlightBuildStatus | null> => {
+  const privateKey = await readPrivateKey(apiKey.keyPath);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  const label = `${shortVersion} (${bundleVersion})`;
+  const deadline = Date.now() + timeoutMs;
+  let status = await readBuildStatus(request, {
+    appId,
+    shortVersion,
+    bundleVersion,
+  });
+  while (!status || status.state === "processing") {
+    if (Date.now() >= deadline) {
+      p.log.warn(
+        `App Store Connect is still processing build ${label}, so its testers and What to Test aren't set.\nSet them in TestFlight:\n${testFlightUrl}`,
+      );
+      return status;
+    }
+    await sleep(pollIntervalMs);
+    status = await readBuildStatus(request, {
+      appId,
+      shortVersion,
+      bundleVersion,
+    });
+  }
+  if (status.state === "failed") {
+    throw new Error(
+      `App Store Connect couldn't process build ${label}.\nCheck it in TestFlight:\n${testFlightUrl}`,
+    );
+  }
+  const { buildId } = status;
+  if (group && !group.hasAccessToAllBuilds) {
+    await retrying(() =>
+      request(
+        `Adding build ${label} to ${group.name}`,
+        "POST",
+        `/v1/betaGroups/${group.id}/relationships/builds`,
+        { data: [{ type: "builds", id: buildId }] },
+      ),
+    );
+  }
+  if (whatToTest !== undefined) {
+    await setWhatToTest(request, buildId, whatToTest);
+  }
+  return status;
+};
+
+/** Sets a build's What to Test: creates it, or updates the one a rerun left. */
+const setWhatToTest = async (
+  request: AppStoreConnectRequest,
+  buildId: string,
+  whatsNew: string,
+) => {
+  try {
+    await retrying(() =>
+      request("Setting What to Test", "POST", "/v1/betaBuildLocalizations", {
+        data: {
+          type: "betaBuildLocalizations",
+          attributes: { locale: WHAT_TO_TEST_LOCALE, whatsNew },
+          relationships: {
+            build: { data: { type: "builds", id: buildId } },
+          },
+        },
+      }),
+    );
+  } catch (error) {
+    if (!(error instanceof AppStoreConnectError) || error.status !== 409) {
+      throw error;
+    }
+    const { data } = await retrying(() =>
+      request<{ data: { id: string; attributes?: { locale?: string } }[] }>(
+        "Reading What to Test",
+        "GET",
+        `/v1/builds/${buildId}/betaBuildLocalizations?${new URLSearchParams({
+          "fields[betaBuildLocalizations]": "locale",
+          limit: "200",
+        })}`,
+      ),
+    );
+    const existing = data.find(
+      ({ attributes }) => attributes?.locale === WHAT_TO_TEST_LOCALE,
+    );
+    if (!existing) throw error;
+    await retrying(() =>
+      request(
+        "Setting What to Test",
+        "PATCH",
+        `/v1/betaBuildLocalizations/${existing.id}`,
+        {
+          data: {
+            type: "betaBuildLocalizations",
+            id: existing.id,
+            attributes: { whatsNew },
+          },
+        },
+      ),
+    );
+  }
+};
+
+/**
+ * What App Store Connect says of a build a run recorded as uploaded, which a
+ * later run reuses: its page, and its state and expiry, or a null status when
+ * it no longer lists the build.
+ */
+export const readTestFlightBuildStatus = async ({
+  bundleId,
+  shortVersion,
+  bundleVersion,
+  apiKey,
+  fetch = globalThis.fetch,
+}: {
+  bundleId: string;
+  shortVersion: string | null;
+  bundleVersion: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+}): Promise<{
+  testFlightUrl: string;
+  status: TestFlightBuildStatus | null;
+}> => {
+  const privateKey = await readPrivateKey(apiKey.keyPath);
+  const request = createAppStoreConnectRequest({ apiKey, privateKey, fetch });
+  const { app, testFlightUrl } = await findApp(request, bundleId);
+  return {
+    testFlightUrl,
+    status: await readBuildStatus(request, {
+      appId: app.id,
+      shortVersion,
+      bundleVersion,
+    }),
+  };
 };

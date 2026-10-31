@@ -535,7 +535,8 @@ succeeds. With `--json`, the last line has `submission: { destination,
 skipped: "already-submitted", existing }`, where `existing` has the
 `destination`, the store's `version` label, `submittedAtMs` (null when the
 store said so), and `source` (`recorded` or `store`). Bump the build number
-to upload a new build. With `--json`, the last line also has `cache: { hit,
+to upload a new build. A sandbox build this run submitted also has
+`submission.store`, as [`--store-status`](#find-a-build) prints it. With `--json`, the last line also has `cache: { hit,
 key, uncacheable, changed }`: `hit` is `storage`, `local`, or null.
 
 Preview jobs keep finding builds by scope with
@@ -584,6 +585,12 @@ prebuild, and it says so first.
 `-c, --channel` names the channel the build embeds, instead of the native
 project's default channel, and `--json` prints the scope, the build or `null`,
 and `downloadUrl`.
+
+`--store-status` also asks the store what a build this project submitted is doing
+there, with `--scheme`, whose app and key it reads. `--json` adds `store`, with
+the store's link, its `version` label, `state`, `expiresAtMs`, and `reusable`, or
+`null` for a build no store took. A store that can't be read fails nothing: `url`
+and `state` are `null`, and stderr says why.
 
 `downloadUrl` is the URL the config's storage adapter gives for the artifact
 through `getDownloadUrl`, and it may expire. It is `null` without a build, and
@@ -707,15 +714,17 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 
 `native-build ios` and `native-build android` take:
 
-| Option                    | Description                                                                                  |
-| ------------------------- | -------------------------------------------------------------------------------------------- |
-| `-s, --scheme <scheme>`   | The `nativeBuild` scheme to build; without it, a prompt at a terminal                        |
-| `-o, --output-path <dir>` | Where to copy the build output                                                               |
-| `--submit testflight`     | `ios`: upload the `.ipa` to App Store Connect for TestFlight                                 |
-| `--submit play-internal`  | `android`: release the `.aab` to Google Play's internal testing track                        |
-| `--dry-run`               | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))                 |
-| `--no-cache`              | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build)) |
-| `--json`                  | Print the build, its record or why it has none, and its submission as JSON, the last line    |
+| Option                      | Description                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `-s, --scheme <scheme>`     | The `nativeBuild` scheme to build; without it, a prompt at a terminal                              |
+| `-o, --output-path <dir>`   | Where to copy the build output                                                                     |
+| `--submit testflight`       | `ios`: upload the `.ipa` to App Store Connect for TestFlight                                       |
+| `--submit play-internal`    | `android`: release the `.aab` to Google Play's internal testing track                              |
+| `--testflight-group <name>` | `ios`, a sandbox scheme's `--submit testflight`: the internal TestFlight group to add the build to |
+| `--what-to-test <text>`     | `ios`, a sandbox scheme's `--submit testflight`: the build's What to Test in TestFlight            |
+| `--dry-run`                 | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))                       |
+| `--no-cache`                | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build))       |
+| `--json`                    | Print the build, its record or why it has none, and its submission as JSON, the last line          |
 
 The commands of the registry, `native-build find`, `native-build download`,
 `native-build install`, `native-build delete`, and `native-build import`, are
