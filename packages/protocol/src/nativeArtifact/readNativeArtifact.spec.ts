@@ -198,6 +198,7 @@ describe("readNativeArtifact", () => {
       channel: "beta & gamma",
       minBundleIdCandidates: [MIN_BUNDLE_ID],
       fingerprintCandidates: [FINGERPRINT],
+      sandbox: { code: false, declared: false },
       builtInBundle: {
         path: "Payload/App.app/main.jsbundle",
         byteSize: BUNDLE.byteLength,
