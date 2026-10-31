@@ -12,6 +12,11 @@ import {
   nonInteractiveReason,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
+import {
+  linesWiderThan,
+  recordedClackCalls,
+  renderClackLog,
+} from "@hot-updater/test-utils/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleSecretsImport } from "./secrets";
@@ -356,11 +361,8 @@ describe("hot-updater secrets pull", () => {
       expect.anything(),
     );
     expect(await readEnv()).toEqual({ TOKEN: SECRET_VALUE });
-    expect(log.info).toHaveBeenCalledWith(
-      [
-        "Skipped asc-api-key, release-keystore, bundle-signing-key, and play-service-account.",
-        "Builds read build credentials from the store.",
-      ].join("\n"),
+    expect(String(log.info.mock.calls[0]?.[0]).replace(/\s+/gu, " ")).toBe(
+      "Skipped asc-api-key, release-keystore, bundle-signing-key, and play-service-account. Builds read build credentials from the store.",
     );
   });
 
@@ -607,4 +609,46 @@ describe("hot-updater secrets pull", () => {
     );
     await expect(fs.stat(envFile())).rejects.toThrow(/ENOENT/u);
   });
+
+  it("fits long names on an 80-column terminal, in each message", async () => {
+    const long = (letter: string) => `HOT_UPDATER_${letter.repeat(52)}`;
+    const names = [long("A"), long("B"), long("C")];
+    const { store } = teamStore(
+      Object.fromEntries(names.map((name) => [name, "store value"])),
+    );
+    const out = ".env.a-rather-long-file-name-for-this-project";
+    configure(store, {
+      deploy: names,
+      build: [long("D"), long("E")],
+    });
+    await fs.writeFile(
+      envFile(out),
+      names.map((name) => `${name}=local`).join("\n"),
+    );
+
+    await handleSecretsPull({ out });
+    expect(process.exitCode).toBe(1);
+
+    process.exitCode = undefined;
+    vi.mocked(nonInteractiveReason).mockReturnValue(undefined);
+    confirm
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    git("init", "--quiet");
+    await handleSecretsPull({ out });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(log.success).toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalled();
+    await handleSecretsPull({ only: names.concat(long("F")) });
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+// No line the command prints wraps on an 80-column terminal.
+afterEach(() => {
+  expect(
+    linesWiderThan(renderClackLog(recordedClackCalls(log, { confirm }))),
+  ).toEqual([]);
 });

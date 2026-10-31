@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
+  fitMessage,
   formatEnvValue,
   getBuildSecretNames,
   getConfiguredAdapter,
@@ -69,7 +70,9 @@ const askReplacements = async (
   const replacing: string[] = [];
   for (const variable of variables) {
     const answer = await p.confirm({
-      message: `Replace ${variable} in ${label} with the value in ${adapterName}?`,
+      message: fitMessage([
+        `Replace ${variable} in ${label} with the value in ${adapterName}?`,
+      ]),
       initialValue: false,
     });
     if (p.isCancel(answer)) {
@@ -89,12 +92,17 @@ const warnWhenCommittable = (target: string, label: string) => {
     })
   ) {
     p.log.warn(
-      `${label} is tracked by git.\nUntrack it: ${ui.command(`git rm --cached ${label}`)}`,
+      fitMessage([
+        `${label} is tracked by git.`,
+        ui.withCommand("Untrack it:", `git rm --cached ${label}`),
+      ]),
     );
     return;
   }
   if (isFileUnignoredByGit(target)) {
-    p.log.warn(`${label} isn't gitignored.\nAdd it to .gitignore.`);
+    p.log.warn(
+      fitMessage([`${label} isn't gitignored.`, "Add it to .gitignore."]),
+    );
   }
 };
 
@@ -156,13 +164,19 @@ export const handleSecretsPull = async ({
       const variable = secretVariableName(name);
       if (isReservedVariableName(variable)) {
         throw new Error(
-          `${variable} can't go in an env file.\nIt changes how a process loads code, or the credentials Hot Updater uses.`,
+          fitMessage([
+            `${variable} can't go in an env file.`,
+            "It changes how a process loads code, or the credentials Hot Updater uses.",
+          ]),
         );
       }
       const other = byVariable.get(variable);
       if (other !== undefined) {
         throw new Error(
-          `${other} and ${name} both write ${variable}.\nPull one with --only.`,
+          fitMessage([
+            `${other} and ${name} both write ${variable}.`,
+            "Pull one with --only.",
+          ]),
         );
       }
       byVariable.set(variable, name);
@@ -185,7 +199,10 @@ export const handleSecretsPull = async ({
     );
     if (only !== undefined && missing.length > 0) {
       throw new Error(
-        `${adapter.name} doesn't hold ${listNames(missing)}.\nCheck the names. Nothing was written.`,
+        fitMessage([
+          `${adapter.name} doesn't hold ${listNames(missing)}.`,
+          "Check the names. Nothing was written.",
+        ]),
       );
     }
     const missingReferenced = missing.filter((name) =>
@@ -193,21 +210,30 @@ export const handleSecretsPull = async ({
     );
     const skipLine =
       skipped.length > 0
-        ? `Skipped ${listNames(skipped)}.\nBuilds read build credentials from the store.`
+        ? fitMessage([
+            `Skipped ${listNames(skipped)}.`,
+            "Builds read build credentials from the store.",
+          ])
         : undefined;
     if (held.size === 0) {
       if (missingReferenced.length > 0) {
         throw new Error(
-          [
+          fitMessage([
             `${adapter.name} holds none of these:`,
             ...missingReferenced,
-            `Store them from an env file: ${ui.command("npx hot-updater secrets import")}`,
-          ].join("\n"),
+            ui.withCommand(
+              "Store them from an env file:",
+              "npx hot-updater secrets import",
+            ),
+          ]),
         );
       }
       p.log.info(
         skipLine ??
-          `The config names nothing to pull from ${adapter.name}.\nName secrets with --only.`,
+          fitMessage([
+            `The config names nothing to pull from ${adapter.name}.`,
+            "Name secrets with --only.",
+          ]),
       );
       return;
     }
@@ -228,11 +254,11 @@ export const handleSecretsPull = async ({
       const reason = nonInteractiveReason();
       if (reason !== undefined) {
         throw new Error(
-          [
+          fitMessage([
             `${label} holds another value for ${listNames(differing)}.`,
             `Can't ask ${reason}. Pass --force to replace it.`,
             "Nothing was written.",
-          ].join("\n"),
+          ]),
         );
       }
       replacing = await askReplacements(differing, label, adapter.name);
@@ -245,7 +271,10 @@ export const handleSecretsPull = async ({
       const formatted = formatEnvValue(value);
       if (formatted === undefined) {
         throw new Error(
-          `${variable} can't go in an env file: no quoting holds its value.\nNothing was written.`,
+          fitMessage([
+            `${variable} can't go in an env file: no quoting holds its value.`,
+            "Nothing was written.",
+          ]),
         );
       }
       updates.set(variable, formatted);
@@ -253,7 +282,10 @@ export const handleSecretsPull = async ({
     const merged = mergeEnvContent(content, updates);
     if (merged === undefined) {
       throw new Error(
-        `Can't update ${label}: it has a line this can't follow.\nFix its quoting, or pass another --out.`,
+        fitMessage([
+          `Can't update ${label}: it has a line this can't follow.`,
+          "Fix its quoting, or pass another --out.",
+        ]),
       );
     }
     // A prompt can sit for a while: never overwrite what changed under it.
@@ -270,19 +302,20 @@ export const handleSecretsPull = async ({
 
     if (updates.size > 0) {
       p.log.success(
-        ui.block(`Pulled from ${adapter.name} to ${label}`, [
+        fitMessage([
+          `Pulled from ${adapter.name} to ${label}`,
           ...updates.keys(),
         ]),
       );
     }
     if (unchanged.length > 0) {
-      p.log.info(ui.block(`Already in ${label}`, unchanged));
+      p.log.info(fitMessage([`Already in ${label}`, ...unchanged]));
     }
     if (kept.length > 0) {
-      p.log.info(ui.block(`Kept your value in ${label}`, kept));
+      p.log.info(fitMessage([`Kept your value in ${label}`, ...kept]));
     }
     if (missingReferenced.length > 0) {
-      p.log.info(ui.block(`Not in ${adapter.name}`, missingReferenced));
+      p.log.info(fitMessage([`Not in ${adapter.name}`, ...missingReferenced]));
     }
     if (skipLine !== undefined) p.log.info(skipLine);
     warnWhenCommittable(target, label);
