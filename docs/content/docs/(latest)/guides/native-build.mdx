@@ -346,7 +346,9 @@ starts Android's installer. No device registration is needed.
 - Android asks you to allow the browser under **Install unknown apps** the first
   time.
 - Android refuses to install over the same package signed with another key, such
-  as a copy from Google Play. Uninstall that copy first, which erases its data.
+  as a copy from Google Play. Uninstall that copy first, which erases its data,
+  or build with [`sandbox: true`](/docs/native-builds/sandbox), whose `.sandbox`
+  ID installs beside it.
 - An `.aab` can't go on a device directly. Build with `aab: false` for an `.apk`.
 
 ## Import a build made elsewhere
@@ -620,7 +622,8 @@ npx hot-updater native-build install <build id>
 
 The command checks the device first, downloads the build, installs it with
 `xcrun simctl` or `adb`, and opens the app the artifact names. A build with an
-application ID of its own installs beside the app you already have.
+application ID of its own, such as a sandbox build's `.sandbox`, installs beside
+the app you already have.
 
 - **iOS Simulator**: it uses the only booted simulator. With several booted,
   `--simulator <udid>` picks one. None booted is an error that says how to boot

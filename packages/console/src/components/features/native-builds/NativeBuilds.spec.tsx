@@ -490,10 +490,8 @@ describe("InstallCard", () => {
 
     expect(copy).toContain('"Install unknown apps" permission');
     expect(copy).toMatch(
-      /another signing key, such as a Play copy, the install fails\. Uninstall that copy first\./,
+      /another signing key, such as a Play copy, the install fails\. Uninstall that copy first, or build with sandbox: true, whose \.sandbox ID installs beside it\./,
     );
-    // Only what works today: no sandbox build ships yet.
-    expect(copy).not.toMatch(/sandbox/i);
     expect(
       screen.getByText(`npx hot-updater native-build install ${id(1)}`),
     ).toBeTruthy();
