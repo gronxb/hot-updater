@@ -20,7 +20,7 @@
     "e2e": "node --experimental-strip-types ./e2e/run.ts",
     "e2e:build": "node --experimental-strip-types ./e2e/mobile/build.ts",
     "e2e:test:type": "tsc --project e2e/mobile/tsconfig.json",
-    "actions:test:type": "tsc --project actions/preview/tsconfig.json && tsc --project actions/native-build/tsconfig.json",
+    "actions:test:type": "tsc --project actions/preview/tsconfig.json && tsc --project actions/native-build/tsconfig.json && tsc --project actions/release/tsconfig.json",
     "test:type": "nx run-many --target=test:type --projects=packages/*,plugins/*,docs,examples-server/* && pnpm -w e2e:test:type && pnpm -w actions:test:type",
     "release:test": "nx release --dry-run",
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
