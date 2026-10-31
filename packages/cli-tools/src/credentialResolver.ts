@@ -7,7 +7,12 @@ import { CREDENTIAL_ENV_NAMES } from "./credentialEnvNames";
 import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
 import { getCwd } from "./cwd";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
-import { fitMessage } from "./messageLines";
+import {
+  displayWidth,
+  fitMessage,
+  formatCommand,
+  MESSAGE_WIDTH,
+} from "./messageLines";
 import { registerSecretValue } from "./secretMasking";
 import {
   describeSecret,
@@ -93,32 +98,11 @@ const describeFields = (fields: readonly EnvField[]) => {
 };
 
 /**
- * A command to print, broken at spaces with ` \` once a line would pass
- * 74 columns, each continuation indented two spaces, so a terminal never
- * wraps it mid-word and it still pastes as one command.
- */
-export const formatCommand = (command: string): string => {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of command.split(" ")) {
-    const next = line ? `${line} ${word}` : word;
-    if (line && next.length > 72) {
-      lines.push(`${line} \\`);
-      line = `  ${word}`;
-    } else {
-      line = next;
-    }
-  }
-  lines.push(line);
-  return lines.join("\n");
-};
-
-/**
- * `lead` and the command it names on one line when they fit 77 columns,
- * else the command on the lines after it.
+ * `lead` and the command it names on one line when they fit, else the
+ * command on the lines after it.
  */
 const withLead = (lead: string, command: string): string =>
-  lead.length + 1 + command.length <= 77
+  displayWidth(`${lead} ${command}`) <= MESSAGE_WIDTH
     ? `${lead} ${command}`
     : `${lead}\n${formatCommand(command)}`;
 

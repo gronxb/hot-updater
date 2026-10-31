@@ -1,8 +1,15 @@
 import os from "node:os";
 import path from "node:path";
-import { stripVTControlCharacters } from "node:util";
 
-import { colors, getCwd } from "@hot-updater/cli-tools";
+import {
+  colors,
+  displayWidth,
+  fitText,
+  formatCommand,
+  getCwd,
+  MESSAGE_WIDTH,
+  withProviderMessages,
+} from "@hot-updater/cli-tools";
 
 type StringValue = string | number | boolean | null | undefined;
 
@@ -19,13 +26,7 @@ const PATH_WIDTH = 48;
  * The widest an artifact's path is shown, after a 15-column label: a path
  * to install or copy is shortened only when its row would wrap.
  */
-export const ARTIFACT_PATH_WIDTH = 62;
-
-/** The widest a line is, after clack's 3-column gutter on 80 columns. */
-const LINE_WIDTH = 77;
-
-/** The widest a command line is shown, after clack's 3-column gutter. */
-const COMMAND_WIDTH = 74;
+export const ARTIFACT_PATH_WIDTH = 58;
 
 interface TableColumn<TKey extends string> {
   key: TKey;
@@ -100,27 +101,17 @@ export const ui = {
    * terminal never wraps it mid-word. A placeholder such as `<env file>`
    * stays whole.
    */
-  commandLines: (command: string, width: number = COMMAND_WIDTH): string => {
-    const lines: string[] = [];
-    let line = "";
-    for (const word of command.match(/(?:<[^<>]*>|\S)+/gu) ?? []) {
-      const next = line ? `${line} ${word}` : word;
-      if (line && next.length > width - 2) {
-        lines.push(`${line} \\`);
-        line = `  ${word}`;
-      } else {
-        line = next;
-      }
-    }
-    lines.push(line);
-    return lines.map((text) => colors.green(text)).join("\n");
-  },
+  commandLines: (command: string, width: number = MESSAGE_WIDTH): string =>
+    formatCommand(command, width)
+      .split("\n")
+      .map((text) => colors.green(text))
+      .join("\n"),
   /**
    * `lead` and the command it names, on one line when they fit, else the
    * command on the lines after it: `Run in a terminal: npx hot-updater …`.
    */
   withCommand: (lead: string, command: string): string =>
-    lead.length + 1 + command.length <= LINE_WIDTH
+    displayWidth(`${lead} ${command}`) <= MESSAGE_WIDTH
       ? `${lead} ${colors.green(command)}`
       : `${lead}\n${ui.commandLines(command)}`,
   /**
@@ -130,24 +121,26 @@ export const ui = {
    * backticks, and on lines of its own when it is too long to share one.
    * Text already laid out in lines, such as an error's, keeps them: only
    * a line too wide is broken, and a command, such as its next step, and
-   * the ` \` lines continuing it, stay whole.
+   * the ` \` lines continuing it, stay whole. A provider's JSON body in it
+   * shows as the message it says.
    */
-  prose: (text: string, width: number = LINE_WIDTH): string => {
+  prose: (text: string, width: number = MESSAGE_WIDTH): string => {
     const lines: string[] = [];
-    const laidOut = text.includes("\n");
+    const message = withProviderMessages(text);
+    const laidOut = message.includes("\n");
     let continued = false;
-    for (const line of text.split("\n")) {
+    for (const line of message.split("\n")) {
       if (continued || line.startsWith("npx ")) {
         // One the text didn't break is broken as a command is.
         lines.push(
-          continued || line.endsWith(" \\") || line.length <= width
+          continued || line.endsWith(" \\") || displayWidth(line) <= width
             ? colors.green(line)
-            : ui.commandLines(line),
+            : ui.commandLines(line, width),
         );
         continued = line.endsWith(" \\");
         continue;
       }
-      if (laidOut && line.length <= width) {
+      if (laidOut && displayWidth(line) <= width) {
         // A line of its own, with a `command` in it still highlighted.
         lines.push(...(line.includes("`") ? wrapWords(line, width) : [line]));
         continue;
@@ -171,13 +164,32 @@ export const ui = {
     columns: readonly TableColumn<TKey>[],
     rows: readonly Record<TKey, StringValue>[],
   ): string => {
-    const widths = columns.map((column) => {
-      const label = column.label ?? column.key;
-      return Math.max(
-        label.length,
-        ...rows.map((row) => stringify(row[column.key]).length),
-      );
-    });
+    const widths = columns.map((column) =>
+      Math.max(
+        displayWidth(column.label ?? column.key),
+        ...rows.map((row) => displayWidth(stringify(row[column.key]))),
+      ),
+    );
+
+    // A table wider than a line shows each row as its own `label  value`s.
+    const tableWidth =
+      widths.reduce((total, width) => total + width + 3, 0) + 1;
+    if (tableWidth > MESSAGE_WIDTH) {
+      return rows
+        .map((row) =>
+          ui.block(
+            "",
+            columns.map((column) => {
+              const value = stringify(row[column.key]);
+              return ui.kv(
+                column.label ?? column.key,
+                value && column.format ? column.format(value) : value,
+              );
+            }),
+          ),
+        )
+        .join("\n\n");
+    }
 
     const border = (left: string, join: string, right: string): string =>
       `${left}${widths
@@ -191,7 +203,8 @@ export const ui = {
       `│ ${columns
         .map((column, index) => {
           const width = widths[index] ?? 0;
-          const value = getValue(column).padEnd(width);
+          const text = getValue(column);
+          const value = `${text}${" ".repeat(width - displayWidth(text))}`;
           return format && column.format ? column.format(value) : value;
         })
         .join(" │ ")} │`;
@@ -228,12 +241,12 @@ const displayPath = (file: string): string => {
  * the directories between: `~/.hot-updater/secrets/…/asc-api-key.json`.
  */
 const shortenPath = (file: string, width: number): string => {
-  if (file.length <= width) return file;
+  if (displayWidth(file) <= width) return file;
   const segments = file.split("/");
   const last = segments.pop() ?? "";
   const head: string[] = [];
   for (const segment of segments) {
-    if ([...head, segment, "…", last].join("/").length > width) break;
+    if (displayWidth([...head, segment, "…", last].join("/")) > width) break;
     head.push(segment);
   }
   return head.length === segments.length
@@ -261,15 +274,16 @@ const wrapWords = (sentence: string, width: number): string[] => {
     const text = command
       ? `${colors.green(command[1] ?? "")}${command[2]}`
       : token;
-    if (command && visible.length > width) {
+    const visibleWidth = displayWidth(visible);
+    if (command && visibleWidth > width) {
       flush();
       // Punctuation after it, such as a sentence's period, ends its line.
-      lines.push(`${ui.commandLines(command[1] ?? "")}${command[2]}`);
+      lines.push(`${ui.commandLines(command[1] ?? "", width)}${command[2]}`);
       continue;
     }
-    if (length > 0 && length + 1 + visible.length > width) flush();
+    if (length > 0 && length + 1 + visibleWidth > width) flush();
     line = length > 0 ? `${line} ${text}` : text;
-    length += (length > 0 ? 1 : 0) + visible.length;
+    length += (length > 0 ? 1 : 0) + visibleWidth;
   }
   flush();
   return lines;
@@ -283,11 +297,8 @@ const renderRow = ([label, value]: Row, width: number): string => {
   const [first = "", ...more] = (stringify(value) || colors.dim("-")).split(
     "\n",
   );
-  if (
-    more.length === 0 &&
-    width + stripVTControlCharacters(first).length > LINE_WIDTH
-  ) {
-    return `${colors.dim(label)}\n${first}`;
+  if (more.length === 0 && width + displayWidth(first) > MESSAGE_WIDTH) {
+    return `${colors.dim(label)}\n${fitText(first)}`;
   }
   return [
     `${colors.dim(label.padEnd(width))}${first}`,

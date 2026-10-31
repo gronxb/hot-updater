@@ -742,7 +742,7 @@ describe("hot-updater secrets put android-keystore <file>", () => {
     );
   });
 
-  it("refuses in one line without a terminal and --key-alias, asking and storing nothing", async () => {
+  it("refuses once without a terminal, naming all it needs, asking and storing nothing", async () => {
     const { store } = writableStore();
     const { file } = await existingKeystore();
 
@@ -750,7 +750,32 @@ describe("hot-updater secrets put android-keystore <file>", () => {
 
     expect(process.exitCode).toBe(1);
     expect(logged("error")).toBe(
-      "Can't ask for the keystore's passwords without a terminal: pass --key-alias.",
+      [
+        "Can't ask for these without a terminal:",
+        "--key-alias <alias>",
+        "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD",
+        "HOT_UPDATER_ANDROID_KEY_PASSWORD",
+      ].join("\n"),
+    );
+    expect(password).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it("names only what is missing without a terminal", async () => {
+    const { store } = writableStore();
+    const { file } = await existingKeystore();
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-secret-1");
+
+    await withTTY(false, () =>
+      handleSecretsPut("android-keystore", { file, keyAlias: "upload" }),
+    );
+
+    expect(process.exitCode).toBe(1);
+    expect(logged("error")).toBe(
+      [
+        "Can't ask for these without a terminal:",
+        "HOT_UPDATER_ANDROID_KEY_PASSWORD",
+      ].join("\n"),
     );
     expect(password).not.toHaveBeenCalled();
     expect(store.set).not.toHaveBeenCalled();

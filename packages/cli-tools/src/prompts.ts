@@ -1,6 +1,7 @@
 import * as clack from "@clack/prompts";
 
 import { nonInteractiveReason } from "./interactive";
+import { fitText, NOTE_WIDTH, withProviderMessages } from "./messageLines";
 import { maskSecretValues } from "./secretMasking";
 import { type StepCapture, stepCapture } from "./stepCapture";
 
@@ -8,8 +9,22 @@ type SpinnerOptions = NonNullable<Parameters<typeof clack.spinner>[0]>;
 type Spinner = ReturnType<typeof clack.spinner>;
 type Progress = ReturnType<typeof clack.progress>;
 
-const maskMessage = (message: string | undefined) =>
-  message === undefined ? message : maskSecretValues(message);
+/**
+ * A message as people read it: masked first, so a line break never splits
+ * a value, then fitted within 76 columns after clack's gutter.
+ */
+const printable = (message: string, width?: number): string =>
+  fitText(maskSecretValues(message), width);
+
+/** An error or a warning, which says what a provider's JSON body says. */
+const printableFailure = (message: string): string =>
+  printable(withProviderMessages(message));
+
+const printableMessage = (message: string | undefined) =>
+  message === undefined ? message : printable(message);
+
+const printableFailureMessage = (message: string | undefined) =>
+  message === undefined ? message : printableFailure(message);
 
 /**
  * Prints a log line, or, while a step runs, holds it until the step's line
@@ -44,31 +59,53 @@ const log: typeof clack.log = {
   message: logThroughStep((message, options) =>
     clack.log.message(
       Array.isArray(message)
-        ? message.map(maskSecretValues)
-        : maskMessage(message),
+        ? message.map((line) => printable(line))
+        : printableMessage(message),
       options,
     ),
   ),
   info: logThroughStep(
-    (message, options) => clack.log.info(maskSecretValues(message), options),
+    (message, options) => clack.log.info(printable(message), options),
     { inStep: "detail" },
   ),
   success: logThroughStep((message, options) =>
-    clack.log.success(maskSecretValues(message), options),
+    clack.log.success(printable(message), options),
   ),
   step: logThroughStep((message, options) =>
-    clack.log.step(maskSecretValues(message), options),
+    clack.log.step(printable(message), options),
   ),
   warn: logThroughStep((message, options) =>
-    clack.log.warn(maskSecretValues(message), options),
+    clack.log.warn(printableFailure(message), options),
   ),
   warning: logThroughStep((message, options) =>
-    clack.log.warning(maskSecretValues(message), options),
+    clack.log.warning(printableFailure(message), options),
   ),
   error: logThroughStep(
-    (message, options) => clack.log.error(maskSecretValues(message), options),
+    (message, options) => clack.log.error(printableFailure(message), options),
     { inStep: "interrupt" },
   ),
+};
+
+/**
+ * What a tool wrote, such as a build's output: masked, but printed as the
+ * tool wrote it, while everything the CLI writes goes through `p`.
+ */
+export const toolOutput = {
+  error: logThroughStep(
+    (message: string, options?: Parameters<typeof clack.log.error>[1]) =>
+      clack.log.error(maskSecretValues(message), options),
+    { inStep: "interrupt" },
+  ),
+  note: (
+    message: string,
+    title?: string,
+    options?: Parameters<typeof clack.note>[2],
+  ): void =>
+    clack.note(
+      maskSecretValues(message),
+      title === undefined ? title : maskSecretValues(title),
+      options,
+    ),
 };
 
 /** A spinner inside a running step, whose messages are the step's detail. */
@@ -84,21 +121,21 @@ const spinnerInStep = (capture: StepCapture): Spinner => ({
   },
 });
 
-const maskSpinner = (target: Spinner): Spinner => ({
-  start: (message) => target.start(maskMessage(message)),
-  stop: (message) => target.stop(maskMessage(message)),
-  cancel: (message) => target.cancel(maskMessage(message)),
-  error: (message) => target.error(maskMessage(message)),
-  message: (message) => target.message(maskMessage(message)),
+const printableSpinner = (target: Spinner): Spinner => ({
+  start: (message) => target.start(printableMessage(message)),
+  stop: (message) => target.stop(printableMessage(message)),
+  cancel: (message) => target.cancel(printableFailureMessage(message)),
+  error: (message) => target.error(printableFailureMessage(message)),
+  message: (message) => target.message(printableMessage(message)),
   clear: () => target.clear(),
   get isCancelled() {
     return target.isCancelled;
   },
 });
 
-const maskProgress = (target: Progress): Progress => ({
-  ...maskSpinner(target),
-  advance: (step, message) => target.advance(step, maskMessage(message)),
+const printableProgress = (target: Progress): Progress => ({
+  ...printableSpinner(target),
+  advance: (step, message) => target.advance(step, printableMessage(message)),
   get isCancelled() {
     return target.isCancelled;
   },
@@ -154,7 +191,7 @@ const spinner: typeof clack.spinner = (options = {}) => {
   if (capture) return spinnerInStep(capture);
   const output = options.output ?? process.stdout;
   const isInteractive = clack.isTTY(output) && !clack.isCI();
-  return maskSpinner(
+  return printableSpinner(
     isInteractive ? clack.spinner(options) : createStaticSpinner(options),
   );
 };
@@ -175,9 +212,9 @@ const progress: typeof clack.progress = (options = {}) => {
   }
   const output = options.output ?? process.stdout;
   const isInteractive = clack.isTTY(output) && !clack.isCI();
-  if (isInteractive) return maskProgress(clack.progress(options));
+  if (isInteractive) return printableProgress(clack.progress(options));
 
-  const staticSpinner = maskSpinner(createStaticSpinner(options));
+  const staticSpinner = printableSpinner(createStaticSpinner(options));
   return {
     ...staticSpinner,
     advance: (_step, message) => staticSpinner.message(message),
@@ -223,14 +260,24 @@ const requireTerminal = <Options extends { input?: unknown }, Result>(
         ),
       );
     }
-    return prompt(options);
+    return prompt(fitPromptMessage(options));
   };
+};
+
+/** Prompt `options` whose message, when it has one, is fitted. */
+const fitPromptMessage = <Options>(options: Options): Options => {
+  const { message } = options as { message?: unknown };
+  return typeof message === "string"
+    ? { ...options, message: printable(message) }
+    : options;
 };
 
 /**
  * `@clack/prompts` with CI-safe spinners, with every message a registered
- * credential value appears in masked (`registerSecretValue`), and with
- * prompts that refuse to ask without a terminal.
+ * credential value appears in masked (`registerSecretValue`) and each of its
+ * lines fitted within 76 columns (`fitText`), with a provider's JSON body in
+ * an error or a warning replaced with its message, and with prompts that
+ * refuse to ask without a terminal.
  */
 export const p: typeof clack = {
   ...clack,
@@ -247,11 +294,16 @@ export const p: typeof clack = {
   selectKey: requireTerminal(clack.selectKey),
   text: requireTerminal(clack.text),
   log,
-  cancel: (message, options) => clack.cancel(maskMessage(message), options),
-  intro: (title, options) => clack.intro(maskMessage(title), options),
+  cancel: (message, options) =>
+    clack.cancel(printableFailureMessage(message), options),
+  intro: (title, options) => clack.intro(printableMessage(title), options),
   note: (message, title, options) =>
-    clack.note(maskMessage(message), maskMessage(title), options),
-  outro: (message, options) => clack.outro(maskMessage(message), options),
+    clack.note(
+      message === undefined ? message : printable(message, NOTE_WIDTH),
+      title === undefined ? title : maskSecretValues(title),
+      options,
+    ),
+  outro: (message, options) => clack.outro(printableMessage(message), options),
   progress,
   spinner,
   tasks,

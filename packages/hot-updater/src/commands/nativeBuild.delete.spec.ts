@@ -216,7 +216,9 @@ describe("handleNativeBuildDelete", () => {
       [
         "The native build is deleted, but its artifact is not.",
         "access denied",
-        `Delete ${ARTIFACT_URI} from storage.`,
+        "Delete",
+        ARTIFACT_URI,
+        "from storage.",
       ].join("\n"),
     );
     expect(process.exitCode).toBe(1);

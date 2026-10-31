@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import {
+  fitText,
+  getCwd,
+  p,
+  withProviderMessages,
+} from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
@@ -21,15 +26,10 @@ import {
 } from "@/utils/fingerprint/diff";
 
 import { ui } from "../utils/cli-ui";
+import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 
 const exitWithFingerprintError = (error: unknown): never => {
-  if (error instanceof Error) {
-    p.log.error(error.message);
-  } else {
-    p.log.error(String(error));
-  }
-
-  console.error(error);
+  reportUnexpectedError(error);
   process.exit(1);
 };
 
@@ -134,12 +134,20 @@ export const handleFingerprintHash = async ({
     const { hash, recorded } = await computeRecordedFingerprintHash(platform);
     if (recorded !== null && recorded !== hash) {
       console.error(
-        `warning: fingerprint.json is stale for ${platform}: it records ${recorded} and the project now hashes to ${hash}. The build embeds ${hash}; run \`npx hot-updater fingerprint create\` before deploying.`,
+        fitText(
+          `warning: fingerprint.json is stale for ${platform}: it records ${recorded} and the project now hashes to ${hash}. The build embeds ${hash}; run \`npx hot-updater fingerprint create\` before deploying.`,
+        ),
       );
     }
     console.log(hash);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(
+      fitText(
+        withProviderMessages(
+          error instanceof Error ? error.message : String(error),
+        ),
+      ),
+    );
     process.exit(1);
   }
 };

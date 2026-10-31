@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   type NativeBuildArtifactKind,
@@ -226,7 +226,7 @@ export const handleNativeBuildDelete = async (
           reason,
           `Delete ${result.nativeBuild.artifact_storage_uri} from storage.`,
         ].join("\n");
-        if (options.json) console.error(message);
+        if (options.json) console.error(fitText(message));
         else p.log.error(message);
         process.exitCode = 1;
         return;

@@ -1,11 +1,12 @@
 import picocolors from "picocolors";
 
+import { fitText } from "./messageLines";
 import { maskSecretValues } from "./secretMasking";
 
 type LogMessage = string | number | null | undefined;
 
 const mask = (message: LogMessage) =>
-  typeof message === "string" ? maskSecretValues(message) : message;
+  typeof message === "string" ? fitText(maskSecretValues(message)) : message;
 
 export const log = {
   normal: (message: LogMessage) => console.log(mask(message)),

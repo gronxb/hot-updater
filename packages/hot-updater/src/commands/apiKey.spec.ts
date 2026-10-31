@@ -204,7 +204,7 @@ describe("hot-updater api-key over hot-updater.config.ts", () => {
 
     expect(messages()[0]).toMatch(
       new RegExp(
-        `${created.record.id}\\s*│ Production app\\s*│ ${created.apiKey.slice(0, 6)}\\s*│ revoked`,
+        `ID\\s+${created.record.id}\\nName\\s+Production app\\nPrefix\\s+${created.apiKey.slice(0, 6)}\\nStatus\\s+revoked`,
         "u",
       ),
     );

@@ -97,6 +97,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     describeMissingSecret,
     displayWidth,
     fitMessage,
+    fitText,
     formatCommand,
     getConfiguredAdapter,
     getHotUpdaterEnvValue,
@@ -109,6 +110,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     secret,
     secretVariableName,
     withCredentialResolver,
+    withProviderMessages,
   }) => ({
     bundleSigningPutCommand,
     CREDENTIAL_ENV_NAMES,
@@ -117,6 +119,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     describeMissingSecret,
     displayWidth,
     fitMessage,
+    fitText,
     formatCommand,
     getConfiguredAdapter,
     getHotUpdaterEnvValue,
@@ -129,6 +132,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     secret,
     secretVariableName,
     withCredentialResolver,
+    withProviderMessages,
   }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   // A spec names the adapter secret()s a config's evaluation would create.
   getDeploySecretNames: vi.fn(() => []),
@@ -1685,6 +1689,103 @@ describe("doctor", () => {
         },
       },
     });
+  });
+
+  it("keeps its lines within 76 columns, and reads a provider's JSON error", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+          "@hot-updater/react-native": "^0.18.2",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_PUBLIC_KEY</key>\n<string>stale</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeAndroidManifest(
+      cwd,
+      '    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="stale" />',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+    // As the Cloudflare SDK's APIError says an invalid token's 401.
+    const body =
+      '401 {"result":null,"success":false,"errors":[{"code":10000,"message":"Authentication error"}],"messages":[]}';
+    const { core } = assembleServer({
+      database: { name: "memory", adapter: createMemoryAdapter() },
+    });
+    const config = createConfig({
+      secrets: holding({}),
+      signing: { enabled: false, privateKey: secret("qa-missing-signing") },
+      platform: {
+        ios: { infoPlistPaths: ["ios/App/Info.plist"] },
+        android: {
+          androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+        },
+      },
+      database: {
+        name: "cloudflare",
+        core: new Proxy(core, {
+          get: (target, key) =>
+            String(key).startsWith("list")
+              ? async () => {
+                  throw new Error(body);
+                }
+              : Reflect.get(target, key),
+        }),
+        fetchAdmin: vi.fn(),
+      },
+    });
+    mockLoadConfig.mockResolvedValue(config);
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit:${code}`);
+    }) as typeof process.exit);
+
+    await handleDoctor({ serverBaseUrl: undefined }).catch(() => undefined);
+
+    const lines = renderClackLog(recordedClackCalls(p.log, p));
+    const printed = lines.join("\n");
+    expect(linesWiderThan(lines, 76)).toEqual([]);
+    expect(printed).toContain(
+      [
+        "│  npx hot-updater secrets put qa-missing-signing --kind \\",
+        "│    bundle-signing-key <key.pem>",
+      ].join("\n"),
+    );
+    expect(printed).toContain(
+      [
+        "│  Run npx hot-updater keys remove to remove public keys, or enable signing",
+        "│  in hot-updater.config.ts",
+      ].join("\n"),
+    );
+    expect(printed).toContain(
+      "▲  Could not check the release catalogs: 401 Authentication error",
+    );
+    expect(printed).not.toContain('"errors"');
+
+    // --json keeps what the check found.
+    const result = await doctor();
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.details?.releaseCatalogs?.issues[0]?.message).toBe(
+        `Could not check the release catalogs: ${body}`,
+      );
+    }
   });
 
   it.each<[string, () => ConfiguredDatabase]>([

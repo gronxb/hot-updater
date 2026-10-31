@@ -48,7 +48,8 @@ describe("formatNativeBuildSummary", () => {
   it("names the build, its artifact and size, and its log, under one heading", () => {
     expect(summary({}).split("\n")).toEqual([
       "iOS release 1.7.0 (42) built in 8m30s",
-      "IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      "IPA",
+      ".hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
       "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
       "Channel        production",
       "Log            .hot-updater/log/10291132-ios-release-build.log",
@@ -65,7 +66,8 @@ describe("formatNativeBuildSummary", () => {
       }).split("\n"),
     ).toEqual([
       "iOS release 1.7.0 (42) reused in 4.1s",
-      "IPA            .hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      "IPA",
+      ".hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
       "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
       "Channel        production",
       "Open           https://appstoreconnect.apple.com/apps/1/testflight/ios",

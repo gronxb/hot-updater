@@ -664,7 +664,8 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       "the outdated server",
       "1.2.0",
       [
-        "●  Pass init's saved inputs as <env file> to migrate and redeploy in one run:",
+        "●  Pass init's saved inputs as <env file> to migrate and redeploy in one",
+        "│  run:",
         "│  npx hot-updater init --provider aws --build bare --from-env-file \\",
         "│    <env file>",
       ],
@@ -673,8 +674,10 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       "the pending migration, which the outdated server's upgrade is",
       "1.0.0",
       [
-        "│  Pass init's saved inputs as <env file> to migrate and redeploy in one run:",
-        "│  npx hot-updater init --provider aws --build bare --from-env-file <env file>.",
+        "│  Pass init's saved inputs as <env file> to migrate and redeploy in one",
+        "│  run:",
+        "│  npx hot-updater init --provider aws --build bare --from-env-file \\",
+        "│    <env file>.",
       ],
     ],
   ])(
@@ -713,7 +716,7 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       const start = lines.indexOf(printed[0]!);
       expect(lines.slice(start, start + printed.length)).toEqual(printed);
       expect(lines.filter((line) => line.includes("hot-updater init"))).toEqual(
-        [printed[1]],
+        printed.filter((line) => line.includes("hot-updater init")),
       );
     },
   );

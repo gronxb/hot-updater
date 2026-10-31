@@ -55,6 +55,7 @@ const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
         text: vi.fn(),
       },
       prepareBundleSigning: vi.fn(),
+      toolOutput: { note: vi.fn() },
     };
 
     return {
@@ -105,6 +106,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         })),
       ),
     p: mockCli.p,
+    toolOutput: mockCli.toolOutput,
     prepareBundleSigning: mockCli.prepareBundleSigning,
     putStorageFile: async (
       storage: typeof mockStorageAdapter,
@@ -1126,7 +1128,10 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.toolOutput.note).toHaveBeenCalledWith(
+      "LLVM\nHermes",
+      "Build Output",
+    );
   });
 
   it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
@@ -1530,7 +1535,10 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
-    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.toolOutput.note).toHaveBeenCalledWith(
+      "LLVM\nHermes",
+      "Build Output",
+    );
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "✅ Bundle Signing Complete",
     );
@@ -1539,7 +1547,7 @@ describe("deploy rollout wiring", () => {
       "Deployment",
     );
 
-    const buildOutputOrder = mockCli.p.note.mock.calls.findIndex(
+    const buildOutputOrder = mockCli.toolOutput.note.mock.calls.findIndex(
       ([message, title]) =>
         message === "LLVM\nHermes" && title === "Build Output",
     );

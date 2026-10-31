@@ -443,7 +443,7 @@ export const selectProject = async (
   } catch (err) {
     spinner.stop();
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`Failed to fetch Supabase projects: ${message}`);
+    p.log.error(`Failed to fetch Supabase projects: ${message}`);
     process.exit(1);
   }
 

@@ -232,7 +232,8 @@ describe("ensureAscApiKey", () => {
       [
         "widget-asc (asc-api-key) is not in the spec-store secrets adapter.",
         "Can't sign in to your Apple Account without a terminal.",
-        "Run once in a terminal: npx hot-updater secrets issue asc-api-key widget-asc",
+        "Run once in a terminal:",
+        "npx hot-updater secrets issue asc-api-key widget-asc",
       ].join("\n"),
     );
     expect(process.exitCode).toBe(1);

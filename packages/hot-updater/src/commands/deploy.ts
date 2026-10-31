@@ -15,6 +15,7 @@ import {
   putStorageFile,
   readBundleSigningState,
   UNSIGNED_BUNDLES_NEXT_STEP,
+  toolOutput,
   UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
 import type {
@@ -79,6 +80,7 @@ import {
   runWithConcurrency,
   uploadContentAddressedAsset,
 } from "../utils/contentAddressedAssets";
+import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 import {
   DEPLOYMENT_BLOCKED,
   reportSigningRefusal,
@@ -909,7 +911,7 @@ const deployPlatform = async ({
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.note(
+      toolOutput.note(
         taskRef.buildResult.stdout.trim(),
         multiPlatform ? `Build Output (${platformName})` : "Build Output",
       );
@@ -1111,7 +1113,7 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    console.error(e);
+    reportUnexpectedError(e);
     process.exit(1);
   }
 };
