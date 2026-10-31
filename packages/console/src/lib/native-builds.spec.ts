@@ -8,8 +8,8 @@ import {
   simulatorInstallCommand,
 } from "./native-builds";
 
-const build = (artifact_storage_uri: string) =>
-  ({ artifact_storage_uri }) as NativeBuildRow;
+const build = (artifact_storage_uri: string, id = "019a") =>
+  ({ id, artifact_storage_uri }) as NativeBuildRow;
 
 describe("nativeBuildSignedDownloadUrl", () => {
   it("stays on the page's address, under the console's own path", () => {
@@ -45,11 +45,6 @@ describe("nativeBuildFileName", () => {
         build("https://cdn.example.com/builds/App.app.zip?version=2#top"),
       ),
     ).toBe("App.app.zip");
-    expect(
-      simulatorInstallCommand(
-        build("https://cdn.example.com/builds/App.app.zip?version=2"),
-      ),
-    ).toBe("unzip -o App.app.zip && xcrun simctl install booted App.app");
   });
 
   it("decodes an encoded segment", () => {
@@ -59,9 +54,8 @@ describe("nativeBuildFileName", () => {
   });
 
   it("quotes a name a shell would expand in the install commands", () => {
-    const named = build("s3://bucket/builds/%24(touch%20x).app.zip");
-    expect(simulatorInstallCommand(named)).toBe(
-      "unzip -o '$(touch x).app.zip' && xcrun simctl install booted '$(touch x).app'",
+    expect(simulatorInstallCommand(build("r2://b/App.app.zip", "$(id)"))).toBe(
+      "npx hot-updater native-build install '$(id)'",
     );
     expect(apkInstallCommand(build("s3://bucket/builds/%60id%60.apk"))).toBe(
       "adb install -r '`id`.apk'",
