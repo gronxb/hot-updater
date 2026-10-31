@@ -61,15 +61,44 @@ export const consolePath = (consoleUrl, path) =>
   `${consoleUrl.replace(/\/+$/, "")}/${path}`;
 
 /**
- * The Console's links of a native build: its download, which signs a phone
- * in and fetches a fresh storage URL each time, and its page.
+ * The Console's download of a native build, which signs a person in first
+ * and fetches a fresh storage URL each time.
  * @param {string} consoleUrl
  * @param {string} id
  */
-const nativeBuildLinks = (consoleUrl, id) => {
-  const encoded = encodeURIComponent(id);
-  return `[Download](${consolePath(consoleUrl, `api/native-builds/${encoded}/download`)}) · [Details](${consolePath(consoleUrl, `native-builds/${encoded}`)})`;
-};
+export const nativeBuildDownloadLink = (consoleUrl, id) =>
+  consolePath(
+    consoleUrl,
+    `api/native-builds/${encodeURIComponent(id)}/download`,
+  );
+
+/**
+ * The Console's links of a native build: its download and its page.
+ * @param {string} consoleUrl
+ * @param {string} id
+ */
+const nativeBuildLinks = (consoleUrl, id) =>
+  `[Download](${nativeBuildDownloadLink(consoleUrl, id)}) · [Details](${consolePath(consoleUrl, `native-builds/${encodeURIComponent(id)}`)})`;
+
+/**
+ * The command that downloads a simulator build, installs it on the booted
+ * Simulator, and opens it, in the project with its `hot-updater.config.ts`.
+ * The Console's `nativeBuildInstallCommand` shows the same one.
+ * @param {string} id
+ */
+const nativeBuildInstallCommand = (id) =>
+  `npx hot-updater native-build install ${shellQuote(id)}`;
+
+/**
+ * What a person opens to install a native build: the install command for a
+ * simulator build, which no link installs, else the comment's Download link.
+ * @param {string} consoleUrl
+ * @param {{ id: string, artifactKind: ArtifactKind }} nativeBuild
+ */
+export const nativeBuildInstallUrl = (consoleUrl, { id, artifactKind }) =>
+  artifactKind === "app"
+    ? nativeBuildInstallCommand(id)
+    : nativeBuildDownloadLink(consoleUrl, id);
 
 /** @param {string} text */
 const code = (text) => `\`${text}\``;
@@ -94,34 +123,42 @@ const footer = (notes, credit) => {
 };
 
 /**
- * How to install the downloaded artifacts on an emulator or simulator, or
- * none when no build installs that way.
+ * How to install the builds on an emulator or simulator, or none when no
+ * build installs that way: an APK once it is downloaded, and a simulator build
+ * with the command that downloads it too.
  * @param {PlatformPreview[]} previews
  */
 const installCommands = (previews) => {
-  const lines = previews.flatMap(
-    ({ nativeBuild: { artifactKind, fileName } }) =>
-      artifactKind === "apk"
-        ? [`adb install -r ${shellQuote(fileName)}`]
-        : artifactKind === "app"
-          ? [
-              `unzip -o ${shellQuote(fileName)} && xcrun simctl install booted ${shellQuote(fileName.replace(/\.zip$/, ""))}`,
-            ]
+  /**
+   * @param {string} lead
+   * @param {string[]} lines
+   */
+  const section = (lead, lines) =>
+    lines.length === 0 ? [] : [lead, "", "```sh", ...lines, "```", ""];
+  const sections = [
+    ...section(
+      "Download the build, then:",
+      previews.flatMap(({ nativeBuild: { artifactKind, fileName } }) =>
+        artifactKind === "apk"
+          ? [`adb install -r ${shellQuote(fileName)}`]
           : [],
-  );
-  return lines.length === 0
+      ),
+    ),
+    ...section(
+      "In your project, this downloads the build, installs it on the booted Simulator, and opens it:",
+      previews.flatMap(({ nativeBuild: { artifactKind, id } }) =>
+        artifactKind === "app" ? [nativeBuildInstallCommand(id)] : [],
+      ),
+    ),
+  ];
+  return sections.length === 0
     ? []
     : [
         [
           "<details>",
           "<summary>Install on an emulator or simulator</summary>",
           "",
-          "Download the build, then:",
-          "",
-          "```sh",
-          ...lines,
-          "```",
-          "",
+          ...sections,
           "</details>",
         ].join("\n"),
       ];

@@ -19,8 +19,9 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
  *
- * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null }} NativeBuildFindResult
- *   What `native-build find --json` prints.
+ * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null }} NativeBuildFindResult
+ *   What `native-build find --json` prints. `downloadUrl` is the storage's URL
+ *   of the artifact, which anyone who has it can fetch until it expires.
  *
  * @typedef {object} ShellDeps
  * @property {import("./cli.mjs").Cli} cli
@@ -88,9 +89,11 @@ export const parseFlag = (input, name, fallback) => {
  *
  * @param {ShellDeps} deps
  * @param {string[]} args
+ * @param {{ quiet?: boolean }} [options] `quiet` keeps the JSON out of the
+ *   job's log.
  */
-export const runJson = async (deps, args) => {
-  const { code, stdout } = await deps.cli(args, { capture: true });
+export const runJson = async (deps, args, { quiet = false } = {}) => {
+  const { code, stdout } = await deps.cli(args, { capture: true, quiet });
   if (code !== 0) {
     throw new Error(`hot-updater ${args.join(" ")} exited with ${code}.`);
   }
@@ -101,23 +104,28 @@ export const runJson = async (deps, args) => {
  * The newest tracked build a build of the scheme would match. Without a
  * channel, it looks on the channel a build would embed. A command that fails
  * throws, which says nothing about the registry: no build is a `null`
- * `nativeBuild` in the result.
+ * `nativeBuild` in the result. The job's log never gets the result, whose
+ * `downloadUrl` a public repository's log would hand to anyone.
  *
  * @param {ShellDeps} deps
  * @param {{ platform: Platform, scheme: string, channel?: string | null }} options
  */
 export const findNativeBuild = async (deps, { platform, scheme, channel }) =>
   /** @type {NativeBuildFindResult} */ (
-    await runJson(deps, [
-      "native-build",
-      "find",
-      "-p",
-      platform,
-      ...(channel ? ["-c", channel] : []),
-      "-s",
-      scheme,
-      "--json",
-    ])
+    await runJson(
+      deps,
+      [
+        "native-build",
+        "find",
+        "-p",
+        platform,
+        ...(channel ? ["-c", channel] : []),
+        "-s",
+        scheme,
+        "--json",
+      ],
+      { quiet: true },
+    )
   );
 
 /** @param {BuildTarget} scope */

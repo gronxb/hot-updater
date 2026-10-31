@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  nativeBuildInstallUrl,
   renderClosedComment,
   renderPreviewComment,
   shellQuote,
@@ -68,12 +69,43 @@ Download the build, then:
 
 \`\`\`sh
 adb install -r app-release.apk
-unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app
+\`\`\`
+
+In your project, this downloads the build, installs it on the booted Simulator, and opens it:
+
+\`\`\`sh
+npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
 \`\`\`
 
 </details>
 
 <sub>Deployed \`0123456\` · Preview by [hot-updater](https://hot-updater.dev)</sub>`);
+  });
+
+  it("doesn't tell a simulator build to download first, since its command does", () => {
+    const body = renderPreviewComment({ ...base, previews: [ios] });
+
+    expect(body).toContain(
+      "npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002",
+    );
+    expect(body).not.toContain("Download the build, then:");
+    expect(body).not.toMatch(/xcrun|simctl|unzip/);
+  });
+
+  it("keeps an APK's download and adb command as they are", () => {
+    const body = renderPreviewComment({ ...base, previews: [android] });
+
+    expect(body).toContain(`<details>
+<summary>Install on an emulator or simulator</summary>
+
+Download the build, then:
+
+\`\`\`sh
+adb install -r app-release.apk
+\`\`\`
+
+</details>`);
+    expect(body).not.toContain("native-build install");
   });
 
   it("shows no QR code for a build the runner found no QR code of", () => {
@@ -186,6 +218,39 @@ unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExam
     expect(body).not.toMatch(
       /hot-updater\/channel\/|openurl|am start|channel-qr/,
     );
+  });
+});
+
+describe("nativeBuildInstallUrl", () => {
+  it.each(["apk", "aab", "ipa"] as const)(
+    "is the Console's download link, under its own path, for an %s",
+    (artifactKind) => {
+      expect(
+        nativeBuildInstallUrl("https://example.com/console/", {
+          id: "build 1",
+          artifactKind,
+        }),
+      ).toBe(
+        "https://example.com/console/api/native-builds/build%201/download",
+      );
+    },
+  );
+
+  it("is the install command for a simulator build, as the Console shows it", () => {
+    expect(
+      nativeBuildInstallUrl("https://example.com", {
+        id: "019a0000-0000-7000-8000-00000000b002",
+        artifactKind: "app",
+      }),
+    ).toBe(
+      "npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002",
+    );
+    expect(
+      nativeBuildInstallUrl("https://example.com", {
+        id: "build 1",
+        artifactKind: "app",
+      }),
+    ).toBe("npx hot-updater native-build install 'build 1'");
   });
 });
 
