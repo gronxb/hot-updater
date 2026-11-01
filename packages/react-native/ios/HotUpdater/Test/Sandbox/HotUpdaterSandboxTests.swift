@@ -684,6 +684,14 @@ struct HotUpdaterSandboxDevHostTests {
     }
 
     @Test
+    func anExpoManifestNamesTheEntry() {
+        let manifest = #"{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=ios&dev=true"}}"#
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(manifest.utf8)) == "examples/expo-52/index.ts")
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data("<html>".utf8)) == nil)
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(#"{"launchAsset":{}}"#.utf8)) == nil)
+    }
+
+    @Test
     func theBundleIsDevFalse() {
         #expect(HotUpdaterSandboxDevHost.bundleURL(host: "http://a:1")?.absoluteString == "http://a:1/index.bundle?platform=ios&dev=false&minify=false")
     }

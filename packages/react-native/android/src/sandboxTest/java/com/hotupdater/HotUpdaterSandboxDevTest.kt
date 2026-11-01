@@ -281,6 +281,18 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
+    fun `an Expo manifest names the entry, without its query or host`() {
+        assertEquals(
+            "examples/expo-52/index.ts",
+            HotUpdaterSandboxDevFetcher.entryOfManifest(
+                """{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=android&dev=true"}}""",
+            ),
+        )
+        assertNull(HotUpdaterSandboxDevFetcher.entryOfManifest("<html>"))
+        assertNull(HotUpdaterSandboxDevFetcher.entryOfManifest("""{"launchAsset":{}}"""))
+    }
+
+    @Test
     fun `assets take the names React Native reads beside a bundle file`() {
         assertEquals("src_assets_logo", HotUpdaterSandboxDevFetcher.resourceName("/assets/src/assets", "logo"))
         assertEquals("node_modules_foo_logo2", HotUpdaterSandboxDevFetcher.resourceName("/assets/node_modules/foo", "logo-2"))

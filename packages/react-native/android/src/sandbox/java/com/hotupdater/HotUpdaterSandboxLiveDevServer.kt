@@ -91,10 +91,10 @@ internal class HotUpdaterSandboxDevFetcher(
     ) {
         session.mkdirs()
         try {
-            download("$host/index.bundle?$query", File(session, bundleName))
+            val entry = downloadBundle(host, File(session, bundleName))
             val assets =
                 try {
-                    JSONArray(text("$host/index.assets?$query", notFound = HotUpdaterSandboxDevFetcher.NO_ASSET_LIST))
+                    JSONArray(text("$host/$entry.assets?$query", notFound = NO_ASSET_LIST))
                 } catch (error: org.json.JSONException) {
                     throw IOException(NO_ASSET_LIST)
                 }
@@ -105,6 +105,33 @@ internal class HotUpdaterSandboxDevFetcher(
             session.deleteRecursively()
             throw error
         }
+    }
+
+    /**
+     * Downloads the JavaScript, and returns the entry that served it: `index`, or
+     * what Expo's manifest names, since its server resolves from a workspace's root.
+     */
+    private fun downloadBundle(
+        host: String,
+        target: File,
+    ): String {
+        if (tryDownload("$host/$DEFAULT_ENTRY.bundle?$query", target)) return DEFAULT_ENTRY
+        val manifest =
+            client
+                .newCall(
+                    Request
+                        .Builder()
+                        .url(host)
+                        .header("expo-platform", "android")
+                        .header("accept", "application/expo+json,application/json")
+                        .build(),
+                ).execute()
+                .use { response -> if (response.isSuccessful) response.body?.string() else null }
+        val entry =
+            manifest?.let(::entryOfManifest)
+                ?: throw IOException("$host has no /$DEFAULT_ENTRY.bundle.")
+        download("$host/$entry.bundle?$query", target)
+        return entry
     }
 
     private fun downloadAsset(
@@ -143,16 +170,39 @@ internal class HotUpdaterSandboxDevFetcher(
         url: String,
         target: File,
     ) {
+        if (!tryDownload(url, target)) throw IOException("$url answered 404.")
+    }
+
+    /** False on a 404, which says the entry isn't there; any other failure throws. */
+    private fun tryDownload(
+        url: String,
+        target: File,
+    ): Boolean =
         request(url).use { response ->
+            if (response.code == 404) return@use false
             if (!response.isSuccessful) throw IOException("$url answered ${response.code}.")
             target.parentFile?.mkdirs()
             val body = response.body ?: throw IOException("$url answered with nothing.")
             body.byteStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+            true
         }
-    }
 
     companion object {
         private val DRAWABLE_TYPES = setOf("gif", "jpeg", "jpg", "ktx", "png", "webp", "xml")
+
+        const val DEFAULT_ENTRY = "index"
+
+        /** The entry an Expo manifest's `launchAsset` names, or null. */
+        fun entryOfManifest(manifest: String): String? =
+            runCatching {
+                val url = JSONObject(manifest).getJSONObject("launchAsset").getString("url")
+                url
+                    .substringBefore('?')
+                    .substringAfter("://")
+                    .substringAfter('/')
+                    .removeSuffix(".bundle")
+                    .takeIf { it.isNotEmpty() }
+            }.getOrNull()
 
         /** Re.Pack's dev server, for one. */
         const val NO_ASSET_LIST = "This dev server has no /index.assets, which Android needs for its assets, and Metro has."

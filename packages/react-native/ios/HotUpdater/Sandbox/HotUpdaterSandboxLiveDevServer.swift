@@ -88,6 +88,11 @@ enum HotUpdaterSandboxDevLeftover {
     }
 }
 
+/// What a person reads when a dev server can't run.
+private struct DevServerFailure: Error {
+    let message: String
+}
+
 /// The one owner of connecting and reloading on iOS, where a reload is in place:
 /// connections run one at a time, and a launch of the normal selection that was
 /// already prepared stops being watched, so the dev JavaScript's first content
@@ -180,8 +185,15 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
         }
     }
 
+    /// What a fetch of the JavaScript came to.
+    private enum Fetched {
+        case found
+        case notFound
+        case failed(String)
+    }
+
     /// Whether the JavaScript can be read: a release build dies if React Native can't load it.
-    private nonisolated static func failureOfFetching(_ bundle: URL, host: String) async -> String? {
+    private nonisolated static func fetch(_ bundle: URL, host: String) async -> Fetched {
         var request = URLRequest(url: bundle)
         request.timeoutInterval = fetchSeconds
         return await withCheckedContinuation { continuation in
@@ -189,16 +201,53 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
                 if let file { try? FileManager.default.removeItem(at: file) }
                 let name = HotUpdaterSandboxDevHost.display(host)
                 if let error = error as? URLError, error.code == .appTransportSecurityRequiresSecureConnection {
-                    continuation.resume(returning: "App Transport Security blocks http to \(name). Use a local address, or serve the dev server over https.")
+                    continuation.resume(returning: .failed("App Transport Security blocks http to \(name). Use a local address, or serve the dev server over https."))
                 } else if let error {
-                    continuation.resume(returning: "Couldn't load JavaScript from \(name): \(error.localizedDescription) Check that the dev server runs and this device can reach it.")
+                    continuation.resume(returning: .failed("Couldn't load JavaScript from \(name). \(error.localizedDescription) Check that the dev server runs and this device can reach it."))
+                } else if let status = (response as? HTTPURLResponse)?.statusCode, status == 404 {
+                    continuation.resume(returning: .notFound)
                 } else if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
-                    continuation.resume(returning: "\(name) answered \(status) for its JavaScript. Check the dev server's output.")
+                    continuation.resume(returning: .failed("\(name) answered \(status) for its JavaScript. Check the dev server's output."))
                 } else {
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: .found)
                 }
             }.resume()
         }
+    }
+
+    /// The entry an Expo server's manifest names.
+    private nonisolated static func manifestEntry(host: String) async -> String? {
+        guard let url = URL(string: host) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = fetchSeconds
+        request.setValue("ios", forHTTPHeaderField: "expo-platform")
+        request.setValue("application/expo+json,application/json", forHTTPHeaderField: "accept")
+        return await withCheckedContinuation { continuation in
+            URLSession.shared.dataTask(with: request) { data, _, _ in
+                continuation.resume(returning: data.flatMap(HotUpdaterSandboxDevHost.entry(ofManifest:)))
+            }.resume()
+        }
+    }
+
+    /// The JavaScript's URL at this host, or what's wrong.
+    private nonisolated static func resolveBundle(host: String) async -> Result<URL, DevServerFailure> {
+        let name = HotUpdaterSandboxDevHost.display(host)
+        var entry = HotUpdaterSandboxDevHost.defaultEntry
+        for attempt in 0 ..< 2 {
+            guard let bundle = HotUpdaterSandboxDevHost.bundleURL(host: host, entry: entry) else { break }
+            switch await fetch(bundle, host: host) {
+            case .found:
+                return .success(bundle)
+            case .failed(let message):
+                return .failure(DevServerFailure(message: message))
+            case .notFound:
+                guard attempt == 0, let named = await manifestEntry(host: host) else {
+                    return .failure(DevServerFailure(message: "\(name) has no /\(entry).bundle. Check the dev server's output."))
+                }
+                entry = named
+            }
+        }
+        return .failure(DevServerFailure(message: "\(name) has no JavaScript to load. Check the dev server's output."))
     }
 
     func connect(host: String, completion: @escaping (String?) -> Void) {
@@ -206,16 +255,19 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
             completion("This build of the SDK can't run a dev server. Rebuild the sandbox with this CLI's version of @hot-updater/react-native.")
             return
         }
-        guard let url = HotUpdaterSandboxDevHost.normalize(host), let bundle = HotUpdaterSandboxDevHost.bundleURL(host: url) else {
+        guard let url = HotUpdaterSandboxDevHost.normalize(host) else {
             completion("\"\(host)\" isn't a dev server address. Enter one like 192.168.0.2:8081.")
             return
         }
         let previous = connections
         connections = Task { @MainActor in
             await previous?.value
-            if let failure = await Self.failureOfFetching(bundle, host: url) {
-                completion(failure)
-                onDevServerChange?()
+            let bundle: URL
+            switch await Self.resolveBundle(host: url) {
+            case .success(let resolved):
+                bundle = resolved
+            case .failure(let failure):
+                completion(failure.message)
                 return
             }
             remember(url)
