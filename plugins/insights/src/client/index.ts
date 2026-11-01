@@ -65,6 +65,8 @@ type Movement = Pick<
 type PendingEvent = QueuedEvent & {
   /** For UPDATE_FAILED: a later success for its target made it moot. */
   superseded?: boolean;
+  /** Stored for the next launch. An answer to a request in flight still counts. */
+  handedOff?: boolean;
 };
 
 const normalizeUserId = (user: InsightsUser | null): string | null => {
@@ -268,9 +270,9 @@ const setUpInsights = (
       info.occurredAt === undefined && info.toBundleId === forcedBundleId;
     if (forced) {
       // The server stores an event once, so one in flight can be sent again.
-      for (const [body, event] of pending) {
+      for (const event of pending.values()) {
         state?.handOffEvent(event);
-        pending.delete(body);
+        event.handedOff = true;
       }
     }
     const selection = JSON.stringify([
@@ -384,6 +386,10 @@ const setUpInsights = (
     if (event === undefined || state === null || context === null) {
       return false;
     }
+    if (event.handedOff === true) {
+      pending.delete(body);
+      return false;
+    }
     if (event.superseded === true || state.isPaused(context.now())) {
       pending.delete(body);
       state.forgetHandedOffEvent(body.eventId);
@@ -404,11 +410,10 @@ const setUpInsights = (
   };
 
   const settle = (body: InsightsEventBody, delivery: InsightsDelivery) => {
-    // An event handed off while in flight has left `pending`, but is answered.
-    state?.forgetHandedOffEvent(body.eventId);
     const event = pending.get(body);
     pending.delete(body);
     if (event === undefined || state === null || context === null) return;
+    state.forgetHandedOffEvent(body.eventId);
     if (delivery === "failed") return;
     if (delivery === "disabled") {
       state.pause(context.now());

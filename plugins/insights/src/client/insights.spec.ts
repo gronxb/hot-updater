@@ -1141,6 +1141,37 @@ describe("insights() client plugin", () => {
       expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_DOWNLOADED"]);
     });
 
+    it("pauses when a report in flight at staging learns Insights is off", async () => {
+      let answer = (_response: Response) => {};
+      responses = [
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+      ];
+      const app = await launch();
+      app.appReady(unchangedLaunch());
+      await settle();
+      expect(sentTypes()).toEqual(["UNCHANGED"]);
+
+      stageForcedBundle(app);
+      answer(disabledResponse());
+      await settle();
+      expect(storage.get("insights", "pausedAt")).toBe(String(MORNING));
+
+      // No reload came: a later report stays off this server.
+      app.updateError(downloadFailure({ targetBundleId: "bundle-c" }));
+      await settle();
+      expect(sentTypes()).toEqual(["UNCHANGED"]);
+
+      // Nor does the next launch resend anything to it.
+      await launch();
+      await flush();
+
+      expect(sentTypes()).toEqual(["UNCHANGED"]);
+      expect(storage.get("insights", "handedOffEvents")).toBeNull();
+    });
+
     it("moves a queued report to the next launch", async () => {
       let answer = (_response: Response) => {};
       responses = [
