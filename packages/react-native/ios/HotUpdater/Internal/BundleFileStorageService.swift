@@ -1359,11 +1359,20 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     /**
-     * Removes all bundle directories during migration.
-     * Called when isolationKey format changes.
+     * Removes all bundle directories during migration, and the metadata naming them.
+     * Called when isolationKey changes, such as when another build is installed.
      */
     private func cleanupAllBundlesForMigration() {
         guard case .success(let storeDir) = bundleStoreDir() else {
+            return
+        }
+
+        // Replaced atomically before anything is deleted: a crash after this write
+        // leaves only files nothing names, and a failed write changes nothing, so
+        // the next start repeats this. Left in place, the old metadata comes back
+        // to life when its build is installed again.
+        guard saveMetadata(createInitialMetadata()) else {
+            NSLog("[BundleStorage] Failed to clear metadata; keeping bundles until the next start")
             return
         }
 
@@ -2196,14 +2205,49 @@ class BundleFileStorageService: BundleStorageService {
         if let metadata = loadMetadataOrNull(),
            metadata.verificationPending,
            let stagingBundleId = metadata.stagingBundleId,
-           case .success(let storeDir) = bundleStoreDir() {
-            let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingBundleId)
-            if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir, expectedBundleId: stagingBundleId),
-               bundlePath != nil {
-                return
-            }
+           !hasBundleFiles(stagingBundleId) {
             rollbackPendingBundle(stagingBundleId)
         }
+        forgetVerifiedBundlesWithoutFiles()
+    }
+
+    private func hasBundleFiles(_ bundleId: String) -> Bool {
+        guard case .success(let storeDir) = bundleStoreDir() else { return false }
+        let directory = (storeDir as NSString).appendingPathComponent(bundleId)
+        guard case .success(let bundlePath) = findBundleFile(in: directory, expectedBundleId: bundleId) else {
+            return false
+        }
+        return bundlePath != nil
+    }
+
+    /// Drops a verified bundle whose files are gone. The launch already skips it,
+    /// so the state then says what runs, and a check installs the Release instead
+    /// of adopting files that do not exist. It did not fail, so unlike a pending
+    /// bundle's rollback this adds nothing to crash history. A released version's
+    /// isolation key cleanup left such metadata for a later build of the same key.
+    private func forgetVerifiedBundlesWithoutFiles() {
+        guard var metadata = loadMetadataOrNull() else { return }
+        func isGone(_ bundleId: String?, _ selection: PersistedSelection?) -> Bool {
+            // A rollback can leave a selection without its id. A BUILTIN selection
+            // and the built-in bundle as the stable one have no files by design.
+            let named = bundleId ?? (selection?.kind == "BUNDLE" ? selection?.bundleId : nil)
+            guard let named, named != resolveBuiltInBundleId() else { return false }
+            return !hasBundleFiles(named)
+        }
+        let stagingIsGone = !metadata.verificationPending
+            && isGone(metadata.stagingBundleId, metadata.stagingSelection)
+        let stableIsGone = isGone(metadata.stableBundleId, metadata.stableSelection)
+        guard stagingIsGone || stableIsGone else { return }
+        if stagingIsGone {
+            metadata.stagingBundleId = nil
+            metadata.stagingSelection = nil
+        }
+        if stableIsGone {
+            metadata.stableBundleId = nil
+            metadata.stableSelection = nil
+        }
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        _ = saveMetadata(metadata)
     }
 
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {

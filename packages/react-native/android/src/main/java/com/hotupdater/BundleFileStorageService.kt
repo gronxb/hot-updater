@@ -1176,13 +1176,22 @@ class BundleFileStorageService(
     }
 
     /**
-     * Removes all bundle directories during migration.
-     * Called when isolationKey format changes.
+     * Removes all bundle directories during migration, and the metadata naming them.
+     * Called when isolationKey changes, such as when another build is installed.
      */
     private fun cleanupAllBundlesForMigration() {
         val bundleStoreDir = getBundleStoreDir()
 
         if (!bundleStoreDir.exists()) {
+            return
+        }
+
+        // Replaced atomically before anything is deleted: a crash after this write
+        // leaves only files nothing names, and a failed write changes nothing, so
+        // the next start repeats this. Left in place, the old metadata comes back
+        // to life when its build is installed again.
+        if (!saveMetadata(createInitialMetadata())) {
+            Log.e(TAG, "Failed to clear metadata; keeping bundles until the next start")
             return
         }
 
@@ -1794,8 +1803,43 @@ class BundleFileStorageService(
                         rollbackPendingBundle(stagingBundleId)
                     }
                 }
+                forgetVerifiedBundlesWithoutFiles()
             }
         }
+    }
+
+    /**
+     * Drops a verified bundle whose files are gone. The launch already skips it,
+     * so the state then says what runs, and a check installs the Release instead
+     * of adopting files that do not exist. It did not fail, so unlike a pending
+     * bundle's rollback this adds nothing to crash history. A released version's
+     * isolation key cleanup left such metadata for a later build of the same key.
+     */
+    private fun forgetVerifiedBundlesWithoutFiles() {
+        val metadata = loadMetadataOrNull() ?: return
+
+        fun isGone(
+            bundleId: String?,
+            selection: PersistedSelection?,
+        ): Boolean {
+            // A rollback can leave a selection without its id. A BUILTIN selection
+            // has no files by design.
+            val named = bundleId ?: selection?.takeIf { it.kind == "BUNDLE" }?.bundleId ?: return false
+            return named != minBundleIdProvider() && getBundleUrlForId(named) == null
+        }
+        val stagingIsGone = !metadata.verificationPending && isGone(metadata.stagingBundleId, metadata.stagingSelection)
+        val stableIsGone = isGone(metadata.stableBundleId, metadata.stableSelection)
+        if (!stagingIsGone && !stableIsGone) return
+
+        saveMetadata(
+            metadata.copy(
+                stagingBundleId = metadata.stagingBundleId.takeUnless { stagingIsGone },
+                stagingSelection = metadata.stagingSelection.takeUnless { stagingIsGone },
+                stableBundleId = metadata.stableBundleId.takeUnless { stableIsGone },
+                stableSelection = metadata.stableSelection.takeUnless { stableIsGone },
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
     }
 
     override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {

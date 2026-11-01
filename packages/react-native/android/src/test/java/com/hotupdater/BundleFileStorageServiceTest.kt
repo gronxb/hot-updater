@@ -120,6 +120,177 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `an isolation key change forgets the verified bundle it deletes`() {
+        assertKeyChangeForgetsBundle(verificationPending = false)
+    }
+
+    @Test
+    fun `an isolation key change forgets a pending bundle without calling it crashed`() {
+        assertKeyChangeForgetsBundle(verificationPending = true)
+    }
+
+    private fun assertKeyChangeForgetsBundle(verificationPending: Boolean) {
+        val rootDir = temporaryFolder.newFolder()
+        val bundle = stageBundleUnderTestKey(rootDir, verificationPending)
+
+        // A build of another key that writes nothing, such as one with no network.
+        val otherBuild = createService(rootDir, isolationKey = "other-key")
+        otherBuild.prepareLaunch(null)
+        assertFalse(bundle.exists())
+
+        // The original build finds its key again, and nothing it names.
+        val back = createService(rootDir)
+        assertNull(back.prepareLaunch(null).launchedBundleId)
+        assertNull(back.getActiveUpdateState()["activeSelection"])
+        assertNull(back.getActiveUpdateState()["stableSelection"])
+        // It never launched here, so nothing refuses it when it is offered again.
+        assertFalse(back.getCrashHistory().contains("ota-bundle"))
+    }
+
+    @Test
+    fun `an isolation key change clears the metadata before it deletes the bundles`() {
+        val rootDir = temporaryFolder.newFolder()
+        val bundle = stageBundleUnderTestKey(rootDir)
+        var bundleExistedAtWrite: Boolean? = null
+        var written: BundleMetadata? = null
+
+        createService(
+            rootDir,
+            isolationKey = "other-key",
+            metadataWriter = { metadata, file ->
+                bundleExistedAtWrite = bundle.exists()
+                written = metadata
+                metadata.saveToFile(file)
+            },
+        )
+
+        // A crash after this write leaves only files that nothing names.
+        assertEquals(true, bundleExistedAtWrite)
+        assertEquals("other-key", written?.isolationKey)
+        assertNull(written?.stagingBundleId)
+        assertNull(written?.stagingSelection)
+        assertFalse(bundle.exists())
+    }
+
+    @Test
+    fun `a failed metadata write keeps the bundles and the next start cleans them`() {
+        val rootDir = temporaryFolder.newFolder()
+        val bundle = stageBundleUnderTestKey(rootDir)
+
+        createService(rootDir, isolationKey = "other-key", metadataWriter = { _, _ -> false })
+
+        // What is stored and what is on disk still agree.
+        assertTrue(bundle.exists())
+        assertEquals("ota-bundle", createService(rootDir).peekLaunchBundleId())
+
+        createService(rootDir, isolationKey = "other-key")
+        assertFalse(bundle.exists())
+    }
+
+    @Test
+    fun `a key change reads metadata a released version wrote`() {
+        val rootDir = temporaryFolder.newFolder()
+        val bundle = stageBundleUnderTestKey(rootDir)
+        writeReleasedMetadata(rootDir, stagingBundleId = "ota-bundle")
+
+        createService(rootDir, isolationKey = "other-key")
+
+        assertFalse(bundle.exists())
+        assertNull(createService(rootDir).getActiveUpdateState()["activeSelection"])
+    }
+
+    // The state a released version's cleanup left behind, under the same key:
+    // an appVersion build of the same version, or the deprecated verbatim key.
+    @Test
+    fun `settling forgets a verified bundle without files`() {
+        val rootDir = temporaryFolder.newFolder()
+        writeMetadata(
+            rootDir,
+            BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stagingBundleId = "ota-bundle", stagingSelection = otaSelection()),
+        )
+        assertSettlingForgetsTheBundle(rootDir)
+    }
+
+    @Test
+    fun `settling forgets a bundle without files in metadata a released version wrote`() {
+        val rootDir = temporaryFolder.newFolder()
+        writeReleasedMetadata(rootDir, stagingBundleId = "ota-bundle")
+        assertSettlingForgetsTheBundle(rootDir)
+    }
+
+    private fun assertSettlingForgetsTheBundle(rootDir: File) {
+        val service = createService(rootDir)
+
+        service.settlePreviousLaunch { null }
+
+        assertNull(service.getActiveUpdateState()["activeSelection"])
+        assertNull(service.prepareLaunch(null).launchedBundleId)
+        assertTrue(service.getCrashHistory().bundles.isEmpty())
+        assertEquals("UNCHANGED", service.notifyAppReady()["status"])
+    }
+
+    @Test
+    fun `settling keeps the stable bundle when only the staged one lost its files`() {
+        val rootDir = temporaryFolder.newFolder()
+        val stable = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stable, "index.android.bundle")
+        writeManifest(stable, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "ota-bundle",
+                stagingSelection = otaSelection(),
+            ),
+        )
+        val service = createService(rootDir)
+
+        assertEquals("stable-bundle", service.prepareLaunch(null).launchedBundleId)
+
+        val active = service.getActiveUpdateState()["activeSelection"] as Map<*, *>
+        assertEquals("stable-bundle", active["bundleId"])
+    }
+
+    // A rollback to a stable bundle whose files were gone left its selection active.
+    @Test
+    fun `settling forgets a selection a rollback left without a bundle`() {
+        val rootDir = temporaryFolder.newFolder()
+        writeMetadata(rootDir, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stagingSelection = otaSelection()))
+        val service = createService(rootDir)
+
+        service.settlePreviousLaunch { null }
+
+        assertNull(service.getActiveUpdateState()["activeSelection"])
+    }
+
+    @Test
+    fun `settling keeps a built in selection and a pending bundle with files`() {
+        val rootDir = temporaryFolder.newFolder()
+        val pending = createBundleDir(rootDir, "pending-bundle")
+        writeFile(pending, "index.android.bundle")
+        writeManifest(pending, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stagingBundleId = "pending-bundle", verificationPending = true),
+        )
+        createService(rootDir).settlePreviousLaunch { null }
+        assertEquals("pending-bundle", loadMetadata(rootDir)!!.stagingBundleId)
+        assertTrue(loadMetadata(rootDir)!!.verificationPending)
+
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingSelection = otaSelection().copy(kind = "BUILTIN", bundleId = HotUpdaterImpl.getMinBundleId()),
+            ),
+        )
+        val builtIn = createService(rootDir)
+        builtIn.settlePreviousLaunch { null }
+        assertEquals("BUILTIN", (builtIn.getActiveUpdateState()["activeSelection"] as Map<*, *>)["kind"])
+    }
+
+    @Test
     fun `metadata in another schema is not loaded`() {
         val rootDir = temporaryFolder.newFolder()
         val stableDir = createBundleDir(rootDir, "stable-bundle")
@@ -3463,6 +3634,52 @@ class BundleFileStorageServiceTest {
             JSONObject()
                 .put("bundleId", bundleDir.name)
                 .put("assets", assets)
+                .toString(),
+        )
+    }
+
+    private fun otaSelection(): PersistedSelection =
+        releaseSelection(
+            releaseId = "ota-release",
+            bundleId = "ota-bundle",
+            generation = 1,
+            catalogHash = "hash",
+            selectionContextHash = "context",
+        )
+
+    /** A build under the test key that holds one downloaded bundle. */
+    private fun stageBundleUnderTestKey(
+        rootDir: File,
+        verificationPending: Boolean = false,
+    ): File {
+        val bundle = createBundleDir(rootDir, "ota-bundle")
+        writeFile(bundle, "index.android.bundle")
+        writeManifest(bundle, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingBundleId = "ota-bundle",
+                stagingSelection = otaSelection(),
+                verificationPending = verificationPending,
+            ),
+        )
+        return bundle
+    }
+
+    /** metadata.json as a released version wrote it, without the selection fields. */
+    private fun writeReleasedMetadata(
+        rootDir: File,
+        stagingBundleId: String,
+    ) {
+        bundleStoreDir(rootDir).mkdirs()
+        File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME).writeText(
+            JSONObject()
+                .put("schema", BundleMetadata.SCHEMA_VERSION)
+                .put("isolationKey", TEST_ISOLATION_KEY)
+                .put("stagingBundleId", stagingBundleId)
+                .put("verificationPending", false)
+                .put("updatedAt", 1793553150125L)
                 .toString(),
         )
     }
