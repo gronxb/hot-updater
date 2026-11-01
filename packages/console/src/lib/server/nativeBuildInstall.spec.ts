@@ -141,6 +141,21 @@ describe("httpRangeSource", () => {
     expect(cancel).toHaveBeenCalled();
   });
 
+  it("stops at a 200 even with a Content-Range that fits", async () => {
+    const { stream, cancel } = body200();
+    const fetch = vi.fn(
+      async () =>
+        new Response(stream, {
+          headers: { "content-range": "bytes 0-19/20" },
+        }),
+    ) as never;
+
+    await expect(
+      httpRangeSource({ url: STORAGE_URL, size: 20, fetch }).read(0, 16),
+    ).rejects.toThrow(/answered 200/u);
+    expect(cancel).toHaveBeenCalled();
+  });
+
   it.each([
     ["no Content-Range", {}, 206],
     ["another offset", { "content-range": "bytes 5-20/100" }, 206],
