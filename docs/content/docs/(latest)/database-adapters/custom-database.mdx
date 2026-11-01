@@ -322,7 +322,7 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                                                                                                                                                                                     |
 | `adapter`              | The `DatabaseAdapter`                                                                                                                                                                                                                                                                                                                                              |
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here.                                                                                                                                                                     |
-| `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode.                                                   |
+| `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`. A key-value store keeps the log rows with its other items; on a store with a table per model, create `aggregateBatchingTables` yourself, since `hot-updater db migrate` does not.                                                   |
 | `retry`                | Optional. How a transaction that conflicts with another write runs again: `{ attempts?, baseDelayMs?, maxDelayMs?, onRetry? }`, 8 attempts 5 ms apart at first, doubling to at most 250 ms. A store many writers contend on, such as DynamoDB under a burst of events, can take more attempts; `onRetry(kind, attempt)` observes each rerun, such as for a metric. |
 | `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key. By default the migrator reads the engine's keys through the adapter; an adapter whose v0 database kept other settings rows reads every row itself, so the migrator refuses a v0 database, as the MongoDB adapter does.                                                              |
 
@@ -387,9 +387,8 @@ const { result, adapter, engine } = await database.measureReads(() =>
 asked for, and `query` calls and the rows they returned. `engine` counts the
 reads core or a plugin made and the rows they got back, where an aggregate row
 counts once however many shard rows the adapter read. Aggregate batching's
-reads count too: a compaction or a flush that runs during the call, including
-a memory-mode timer flush that lands in it, since a store bills those like any
-other read. A process's first schema-fence read and its retention passes
+reads count too: a compaction that runs during the call, since a store bills
+those like any other read. A process's first schema-fence read and its retention passes
 belong to no call and are not counted. Every engine on the database reports to
 the same meter.
 

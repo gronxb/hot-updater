@@ -136,7 +136,6 @@ events a second, and 32 to 37 with `aggregateBatching: false`.
 | Option                                  | Behavior                                                                                                                                                                                              |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `aggregateBatching: {}`                 | The default: log items and a compaction every `windowMs` (60 seconds). Safe on Lambda, Lambda@Edge, and any other runtime.                                                                            |
-| `aggregateBatching: { mode: "memory" }` | A long-lived server keeps totals in the process and writes them every `windowMs` (15 seconds), with no log items. A crash loses up to one window; call `hotUpdater.flush()` before the process exits. |
 | `aggregateBatching: false`              | Writes the totals in each event's transaction.                                                                                                                                                        |
 
 ## Configuration
@@ -149,7 +148,7 @@ interface DynamoDBConfig extends DynamoDBClientConfig {
   cloudfrontDistributionId?: string;
   apiBasePath?: string; // default: "/release-catalogs"
   shouldWaitForInvalidation?: boolean; // default: false
-  aggregateBatching?: { mode?: "log" | "memory"; windowMs?: number } | false; // default: {}, see Batched Insights totals
+  aggregateBatching?: { windowMs?: number } | false; // default: {}, see Batched Insights totals
 }
 ```
 

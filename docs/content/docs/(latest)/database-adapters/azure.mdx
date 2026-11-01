@@ -35,7 +35,7 @@ import type { CosmosClientOptions } from "@azure/cosmos";
 type CosmosDatabaseConfig = CosmosClientOptions & {
   databaseId?: string; // defaults to "hot-updater"
   containerId?: string; // The one container it uses; defaults to "hot_updater_v1"
-  aggregateBatching?: { mode?: "log" | "memory"; windowMs?: number } | false; // default: {}, see Batched Insights totals
+  aggregateBatching?: { windowMs?: number } | false; // default: {}, see Batched Insights totals
 };
 ```
 
@@ -131,11 +131,8 @@ in each event's transaction:
 - After an event, the server compacts when a minute has passed since the last
   compaction. A read of the totals, such as the Console's, compacts first.
 
-Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
-totals in the process and write them every 15 seconds, without log items. A
-crash then loses up to one window; call `hotUpdater.flush()` before the process
-exits. `aggregateBatching: false` writes the totals in each event's
-transaction.
+`aggregateBatching: { windowMs }` changes that minute.
+`aggregateBatching: false` writes the totals in each event's transaction.
 
 ## Environment variables
 
