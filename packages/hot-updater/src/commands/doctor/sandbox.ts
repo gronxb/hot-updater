@@ -24,7 +24,7 @@ const expoSdkOf = (cwd: string): number | null => {
       devDependencies?: Record<string, string>;
     };
     const declared = /(\d+)/u.exec(
-      dependencies?.expo ?? devDependencies?.expo ?? "",
+      dependencies?.["expo"] ?? devDependencies?.["expo"] ?? "",
     );
     return declared ? Number(declared[1]) : null;
   } catch {
