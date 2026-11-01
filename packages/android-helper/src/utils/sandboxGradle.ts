@@ -54,14 +54,15 @@ def appModule = ${groovyString(`:${appModuleName}`)}
 def variant = ${groovyString(variant.toLowerCase())}
 def overlay = new File(${groovyString(overlay)})
 def minVersionCode = ${minVersionCode ?? "null"}
-// The SDK's sandbox script sets this on the project it replaces sources in.
-gradle.taskGraph.whenReady {
-  if (!gradle.rootProject.ext.has('hotUpdaterSandboxSdkProject')) {
-    throw new GradleException(${groovyString(PREBUILT_SDK)})
-  }
-}
 allprojects { project ->
   if (project.path != appModule) return
+  // In this build alone: an init script also runs for React Native's included
+  // Gradle plugin. The SDK's sandbox script sets this on the project it compiles.
+  gradle.taskGraph.whenReady {
+    if (!gradle.rootProject.ext.has('hotUpdaterSandboxSdkProject')) {
+      throw new GradleException(${groovyString(PREBUILT_SDK)})
+    }
+  }
   project.plugins.withId('com.android.application') {
     def components = project.extensions.getByName('androidComponents')
     if (components.pluginVersion.major >= 9 && project.findProperty('android.newDsl')?.toString() != 'false') {
