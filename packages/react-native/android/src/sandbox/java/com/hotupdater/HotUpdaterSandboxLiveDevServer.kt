@@ -344,7 +344,7 @@ internal class HotUpdaterSandboxLiveDevServer(
             HotUpdaterSandboxDevFetcher().fetch(url, files.session(id), HotUpdaterSandboxDevFiles.BUNDLE)
         } catch (error: Exception) {
             Log.w(TAG, "connect to $url failed", error)
-            return "Couldn't load JavaScript from ${HotUpdaterSandboxDevHost.display(url)}. ${error.message ?: error} " +
+            return "Couldn't load JavaScript from ${HotUpdaterSandboxDevHost.display(url)}. ${(error.message ?: error.toString()).trimEnd('.')}. " +
                 "Check that the dev server runs and this device can reach it."
         }
         remember(url)
