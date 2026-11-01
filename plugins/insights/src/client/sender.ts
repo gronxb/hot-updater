@@ -64,9 +64,7 @@ export type InsightsDelivery =
   | "delivered"
   /** The server runs without Insights: a 404, since it mounts no `/events`. */
   | "disabled"
-  /** The server answered with a status retrying won't change, such as a 400. */
-  | "rejected"
-  /** Attempts ran out on a network error, a timeout, a 429 or a 5xx. */
+  /** No attempt got an answer the SDK accepts. */
   | "failed";
 
 export interface InsightsEventGate {
@@ -124,9 +122,7 @@ const wait = (ms: number) =>
 const postInsightsEvent = async (
   fetch: HotUpdaterClientContext["fetch"],
   event: InsightsEventBody,
-): Promise<
-  Exclude<InsightsDelivery, "failed" | "rejected"> | InsightsAttemptFailure
-> => {
+): Promise<Exclude<InsightsDelivery, "failed"> | InsightsAttemptFailure> => {
   try {
     const response = await fetch("events", {
       body: JSON.stringify(event),
@@ -201,7 +197,7 @@ export const createInsightsEventSender = (
               break;
             }
             if (!outcome.retryable || attempt === INSIGHTS_MAX_ATTEMPTS) {
-              gate.settle(event, outcome.retryable ? "failed" : "rejected");
+              gate.settle(event, "failed");
               waiting.delete(release);
               if (released) {
                 console.warn(

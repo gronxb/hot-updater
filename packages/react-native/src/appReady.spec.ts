@@ -339,36 +339,6 @@ describe("app-ready reporting to plugins", () => {
     ]);
   });
 
-  it("delivers a download before the caller that awaited it can reload", async () => {
-    stubNotifyFrame();
-    const { events, plugin } = recordingPlugin();
-    const launch = await configure([plugin]);
-    const readiness = launch.read({});
-    await vi.runOnlyPendingTimersAsync();
-    await readiness;
-
-    const updateBundle = async () => {
-      launch.emit("onBundleDownloaded", () => ({
-        channel: "production",
-        fromBundleId: "bundle-id",
-        fromReleaseId: null,
-        toBundleId: "next-bundle",
-        toReleaseId: "next-release",
-        updateStrategy: "appVersion",
-        delivery: "manifest",
-        patchFallback: false,
-      }));
-      return true;
-    };
-    await updateBundle();
-
-    // Where a forced update calls reload(): Insights hands off in this hook.
-    expect(events.map((event) => (event as [string])[0])).toEqual([
-      "onAppReady",
-      "onBundleDownloaded",
-    ]);
-  });
-
   it("builds no event when no plugin listens", async () => {
     stubNotifyFrame();
     const launch = await configure([]);

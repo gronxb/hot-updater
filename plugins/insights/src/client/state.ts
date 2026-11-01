@@ -1,12 +1,10 @@
 import type { HotUpdaterClientStorage } from "@hot-updater/protocol";
 
-import type { InsightsEventBody, InsightsHttpResponse } from "./sender";
+import type { InsightsHttpResponse } from "./sender";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A day's failure keys kept, so a failing app cannot grow its storage. */
 const MAX_FAILURE_KEYS = 32;
-/** Events kept for the next launch: the storage value holds this many large ones. */
-const MAX_HANDED_OFF_EVENTS = 4;
 
 /** The UTC day of a time, as `YYYY-MM-DD`. */
 export const utcDay = (time: number): string =>
@@ -26,16 +24,6 @@ export interface RunningReport {
   readonly userId: string | null;
 }
 
-/** A report the plugin built, with what the gate needs to decide on it. */
-export interface QueuedEvent {
-  readonly body: InsightsEventBody;
-  readonly day: string;
-  /** For UNCHANGED, UPDATE_APPLIED and RECOVERED: what the report says runs. */
-  readonly report: RunningReport | null;
-  /** For UPDATE_FAILED: the day's key the failure is reported under. */
-  readonly failureKey: string | null;
-}
-
 const sameReport = (left: RunningReport, right: RunningReport): boolean =>
   left.day === right.day &&
   left.channel === right.channel &&
@@ -50,64 +38,32 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
 
-const readReport = (report: unknown): RunningReport | null =>
-  isRecord(report) &&
-  typeof report.day === "string" &&
-  typeof report.channel === "string" &&
-  typeof report.appVersion === "string" &&
-  typeof report.bundleId === "string" &&
-  isNullableString(report.releaseId) &&
-  isNullableString(report.userId)
-    ? {
+const parseReport = (value: string | null): RunningReport | null => {
+  if (value === null) return null;
+  try {
+    const report: unknown = JSON.parse(value);
+    if (
+      isRecord(report) &&
+      typeof report.day === "string" &&
+      typeof report.channel === "string" &&
+      typeof report.appVersion === "string" &&
+      typeof report.bundleId === "string" &&
+      isNullableString(report.releaseId) &&
+      isNullableString(report.userId)
+    ) {
+      return {
         day: report.day,
         channel: report.channel,
         appVersion: report.appVersion,
         bundleId: report.bundleId,
         releaseId: report.releaseId,
         userId: report.userId,
-      }
-    : null;
-
-const parseReport = (value: string | null): RunningReport | null => {
-  if (value === null) return null;
-  try {
-    return readReport(JSON.parse(value));
+      };
+    }
   } catch {
     // An unreadable value counts as none.
-    return null;
   }
-};
-
-const parseHandedOffEvents = (value: string | null): QueuedEvent[] => {
-  if (value === null) return [];
-  try {
-    const events: unknown = JSON.parse(value);
-    if (!Array.isArray(events)) return [];
-    return events.flatMap((event: unknown) => {
-      if (
-        !isRecord(event) ||
-        !isRecord(event.body) ||
-        typeof event.body.eventId !== "string" ||
-        typeof event.day !== "string" ||
-        !isNullableString(event.failureKey)
-      ) {
-        return [];
-      }
-      const report = readReport(event.report);
-      if (event.report !== null && report === null) return [];
-      return [
-        {
-          body: event.body as unknown as InsightsEventBody,
-          day: event.day,
-          report,
-          failureKey: event.failureKey,
-        },
-      ];
-    });
-  } catch {
-    // An unreadable value counts as none.
-    return [];
-  }
+  return null;
 };
 
 const parseFailures = (
@@ -253,34 +209,6 @@ export const createInsightsState = (storage: HotUpdaterClientStorage) => {
       response: InsightsHttpResponse,
     ) {
       write("httpResponse", JSON.stringify({ channel, appVersion, response }));
-    },
-
-    /** The events held back for a later launch, oldest first. */
-    readHandedOffEvents(): QueuedEvent[] {
-      return parseHandedOffEvents(read("handedOffEvents"));
-    },
-    /** Keeps an event for the next launch, once; the oldest makes room. */
-    handOffEvent({ body, day, report, failureKey }: QueuedEvent) {
-      const events = parseHandedOffEvents(read("handedOffEvents"));
-      if (events.some((event) => event.body.eventId === body.eventId)) return;
-      write(
-        "handedOffEvents",
-        JSON.stringify(
-          [...events, { body, day, report, failureKey }].slice(
-            -MAX_HANDED_OFF_EVENTS,
-          ),
-        ),
-      );
-    },
-    /** An event ended, so no later launch sends it. */
-    forgetHandedOffEvent(eventId: string) {
-      const events = parseHandedOffEvents(read("handedOffEvents"));
-      const others = events.filter((event) => event.body.eventId !== eventId);
-      if (others.length === events.length) return;
-      write(
-        "handedOffEvents",
-        others.length === 0 ? null : JSON.stringify(others),
-      );
     },
 
     readUserId(): string | null {
