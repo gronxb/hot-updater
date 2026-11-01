@@ -74,6 +74,9 @@ internal interface HotUpdaterSandboxHost {
      */
     suspend fun launchBundleId(): String? = selection().bundleId
 
+    /** Whether the app is up under the screen, so opening it starts nothing. */
+    fun isAppRunning(): Boolean = false
+
     /** Whether the target channel has a bundle this build would run. Throws when the server can't say. */
     suspend fun preflight(channel: String): Boolean
 
@@ -203,8 +206,14 @@ internal class HotUpdaterSandboxCoordinator(
     /** The link a refusal on screen is about: the system can deliver a cold link twice. */
     private var refusedLink: String? = null
 
-    /** A finished switch that opens the app once the links queued behind it are answered. */
-    private var switchToOpen: Boolean? = null
+    /** A finished switch opens the app once the links queued behind it are answered. */
+    private var switchAwaitsOpen = false
+
+    /**
+     * Whether this process's launch runs something other than what the next one
+     * selects, as of the last [readSelection]: only a restart can apply that.
+     */
+    private var launchFixed = false
 
     var state =
         HotUpdaterSandboxState(
@@ -225,7 +234,7 @@ internal class HotUpdaterSandboxCoordinator(
     /** Reads what storage holds, and asks about the oldest unanswered link. */
     fun refresh() {
         scope.launch {
-            val selection = host.selection()
+            val selection = readSelection()
             publish(state.copy(selection = selection, hasServerConfig = host.hasServerConfig()))
             pump()
         }
@@ -322,12 +331,16 @@ internal class HotUpdaterSandboxCoordinator(
     /** Opens the app on what's selected, when no switch or question stands in the way. */
     fun open() {
         scope.launch {
-            val selection = host.selection()
-            // What opens is what this launch runs, which may not be the next one's.
+            val selection = readSelection()
+            // Over a running app, opening shows what it runs: what's selected waits
+            // for its launch. Before the app starts, what's selected is what opens.
+            val restarts = launchFixed && !host.isAppRunning()
             // A dev session runs no bundle, so it says nothing about one.
-            if (!host.isRunningDevServer) store.recordOpened(selection.copy(bundleId = host.launchBundleId()))
+            if (!host.isRunningDevServer) {
+                store.recordOpened(if (restarts) selection else selection.copy(bundleId = host.launchBundleId()))
+            }
             publish(state.copy(selection = selection))
-            openApp(false, false)
+            openApp(false, restarts)
         }
     }
 
@@ -403,37 +416,38 @@ internal class HotUpdaterSandboxCoordinator(
                 }
             }
         }
-        val expected = (staged as? HotUpdaterSandboxStaged.Update)?.bundleId
-        finish(operationId, expected)
+        finish(operationId)
     }
 
-    private suspend fun finish(
-        operationId: Long,
-        expectedBundleId: String? = null,
-    ) {
+    private suspend fun finish(operationId: Long) {
         linkInFlight?.let { url ->
             linkInFlight = null
             queue -= url
             persist()
         }
         retryTarget = null
-        val selection = host.selection()
+        val selection = readSelection()
         store.recordSelected(selection)
         publish(state.copy(selection = selection, phase = HotUpdaterSandboxPhase.Idle))
         log("operation $operationId selected ${selection.channel} ${selection.bundleId}")
-        // Before React Native starts, this reads what the switch staged. A
-        // different answer means this process already fixed its launch.
-        switchToOpen = expectedBundleId != null && host.launchBundleId() != expectedBundleId
+        switchAwaitsOpen = true
         pump()
         openSwitchIfAnswered()
     }
 
     private fun openSwitchIfAnswered() {
-        val fixed = switchToOpen ?: return
-        if (state.phase !is HotUpdaterSandboxPhase.Idle) return
-        switchToOpen = null
+        if (!switchAwaitsOpen || state.phase !is HotUpdaterSandboxPhase.Idle) return
+        switchAwaitsOpen = false
         state.selection?.let(store::recordOpened)
-        openApp(true, fixed)
+        openApp(true, launchFixed)
+    }
+
+    /** What the next launch selects, and with it whether this process's launch runs that. */
+    private suspend fun readSelection(): HotUpdaterSandboxSelection {
+        val selection = host.selection()
+        // A dev process runs no selection, and only Exit replaces it.
+        launchFixed = !host.isRunningDevServer && host.launchBundleId() != selection.bundleId
+        return selection
     }
 
     private fun step(
@@ -481,7 +495,7 @@ internal class HotUpdaterSandboxCoordinator(
             queue -= url
             persist()
         }
-        val selection = host.selection()
+        val selection = readSelection()
         store.recordSelected(selection)
         publish(
             state.copy(

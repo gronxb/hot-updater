@@ -21,7 +21,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
     )
 
     private static let host: HotUpdaterSandboxLiveHost = {
-        let host = HotUpdaterSandboxLiveHost()
+        let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
         host.exitDevServerAction = { devServer.exitDevServer() }
         return host
     }()

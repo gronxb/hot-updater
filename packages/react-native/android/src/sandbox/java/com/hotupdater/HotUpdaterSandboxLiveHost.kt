@@ -76,7 +76,14 @@ internal class HotUpdaterSandboxLiveHost(
         }
 
     override suspend fun launchBundleId(): String =
-        withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
+        if (isRunningDevServer) {
+            // The SDK's read answers for the dev session, which runs no bundle.
+            selection().bundleId ?: HotUpdaterImpl.getMinBundleId()
+        } else {
+            withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
+        }
+
+    override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
 
     override suspend fun preflight(channel: String): Boolean =
         withContext(Dispatchers.IO) {

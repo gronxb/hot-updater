@@ -5,6 +5,15 @@ import Foundation
 /// and the update are `HotUpdaterInstance`'s.
 final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     private var impl: HotUpdaterImpl { HotUpdaterNativeUpdateBridge.sharedImpl }
+    private let appIsRunning: () -> Bool
+
+    init(isAppRunning: @escaping () -> Bool) {
+        appIsRunning = isAppRunning
+    }
+
+    func isAppRunning() -> Bool {
+        appIsRunning()
+    }
 
     private func config() -> HotUpdaterRecoveryCheckConfig? {
         HotUpdaterRecoveryCheckConfig(json: impl.getStorageItem(HotUpdaterRecoveryCheckConfig.storageKey))
@@ -68,6 +77,10 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     }
 
     func launchBundleId() async -> String {
+        // In a dev session this process runs no bundle: it isn't behind the selection.
+        if isRunningDevServer {
+            return await selection().bundleId
+        }
         let impl = impl
         return await Task.detached {
             impl.bundleIdForUpdateCheck() ?? HotUpdaterImpl.minBundleId()

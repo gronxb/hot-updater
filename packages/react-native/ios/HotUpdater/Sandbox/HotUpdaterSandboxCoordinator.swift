@@ -57,6 +57,8 @@ protocol HotUpdaterSandboxHost: AnyObject {
     /// What this process's launch runs, or before one, what it would pick. It differs
     /// from a staged bundle once the launch is fixed, so only a reload applies a switch.
     func launchBundleId() async -> String
+    /// Whether the app is up under the screen, so opening it starts nothing.
+    func isAppRunning() -> Bool
     /// Whether the target channel has a bundle this build would run. Throws when the server can't say.
     func preflight(channel: String) async throws -> Bool
     /// Deletes downloaded bundles and returns to the default channel.
@@ -73,6 +75,10 @@ extension HotUpdaterSandboxHost {
 
     func launchBundleId() async -> String {
         await selection().bundleId
+    }
+
+    func isAppRunning() -> Bool {
+        false
     }
 }
 
@@ -156,8 +162,11 @@ final class HotUpdaterSandboxCoordinator {
     private var linkInFlight: String?
     /// The link a refusal on screen is about: the system can deliver a cold link twice.
     private var refusedLink: String?
-    /// A finished switch that opens the app once the links queued behind it are answered.
-    private var switchToOpen: Bool?
+    /// A finished switch opens the app once the links queued behind it are answered.
+    private var switchAwaitsOpen = false
+    /// Whether this process's launch runs something other than what the next one
+    /// selects, as of the last `readSelection()`: only a reload can apply that.
+    private var launchFixed = false
 
     private(set) var state = HotUpdaterSandboxState(
         selection: nil,
@@ -192,7 +201,7 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Reads what storage holds, and asks about the oldest unanswered link.
     func refresh() async {
-        let selection = await host.selection()
+        let selection = await readSelection()
         var next = state
         next.selection = selection
         next.hasServerConfig = host.hasServerConfig()
@@ -283,7 +292,7 @@ final class HotUpdaterSandboxCoordinator {
                 await fail(operationId, target, .reset, .resetFailed)
                 return
             }
-            await finish(operationId, expectedBundleId: nil)
+            await finish(operationId)
         }
         return true
     }
@@ -296,10 +305,15 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Opens the app on what's selected, when no switch or question stands in the way.
     func open() async {
-        let selection = await host.selection()
-        // What opens is what this launch runs, which may not be the next one's.
-        // A dev session runs no bundle, so it says nothing about one.
-        if !host.isRunningDevServer {
+        let selection = await readSelection()
+        // Over a running app, opening shows what it runs: what's selected waits for
+        // its launch. Before the app starts, what's selected is what opens.
+        let reloads = launchFixed && !host.isAppRunning()
+        if host.isRunningDevServer {
+            // A dev session runs no bundle, so it says nothing about one.
+        } else if reloads {
+            store.recordOpened(selection)
+        } else {
             let launchBundleId = await host.launchBundleId()
             store.recordOpened(HotUpdaterSandboxSelection(
                 channel: selection.channel,
@@ -311,7 +325,7 @@ final class HotUpdaterSandboxCoordinator {
         var next = state
         next.selection = selection
         publish(next)
-        openApp(false, false)
+        openApp(false, reloads)
     }
 
     private var canStart: Bool {
@@ -377,46 +391,48 @@ final class HotUpdaterSandboxCoordinator {
                 await fail(operationId, target, .check, .noBundle)
                 return
             }
-            await finish(operationId, expectedBundleId: nil)
-        case .update(let bundleId):
+            await finish(operationId)
+        case .update:
             // A check from the running app may have switched channels between the SDK's steps.
             if await host.selection().channel != target {
                 await fail(operationId, target, .check, .superseded)
                 return
             }
-            await finish(operationId, expectedBundleId: bundleId)
+            await finish(operationId)
         }
     }
 
-    private func finish(_ operationId: Int, expectedBundleId: String?) async {
+    private func finish(_ operationId: Int) async {
         clearLinkInFlight()
         retryTarget = nil
-        let selection = await host.selection()
+        let selection = await readSelection()
         store.recordSelected(selection)
         var next = state
         next.selection = selection
         next.phase = .idle
         publish(next)
         log("operation \(operationId) selected \(selection.channel) \(selection.bundleId)")
-        // Before React Native starts, this reads what the switch staged. A
-        // different answer means this process already fixed its launch.
-        if let expectedBundleId {
-            let launchBundleId = await host.launchBundleId()
-            switchToOpen = launchBundleId != expectedBundleId
-        } else {
-            switchToOpen = false
-        }
+        switchAwaitsOpen = true
         pump()
         openSwitchIfAnswered()
     }
 
     private func openSwitchIfAnswered() {
-        guard let fixed = switchToOpen, state.phase == .idle else { return }
-        switchToOpen = nil
+        guard switchAwaitsOpen, state.phase == .idle else { return }
+        switchAwaitsOpen = false
         if let selection = state.selection {
             store.recordOpened(selection)
         }
-        openApp(true, fixed)
+        openApp(true, launchFixed)
+    }
+
+    /// What the next launch selects, and with it whether this process's launch runs that.
+    private func readSelection() async -> HotUpdaterSandboxSelection {
+        let selection = await host.selection()
+        let launchBundleId = await host.launchBundleId()
+        // A dev process runs no selection, and only Exit replaces it.
+        launchFixed = !host.isRunningDevServer && launchBundleId != selection.bundleId
+        return selection
     }
 
     private func reportProgress(_ operationId: Int, _ target: String, _ progress: Double) {
@@ -446,7 +462,7 @@ final class HotUpdaterSandboxCoordinator {
         _ failure: HotUpdaterSandboxFailure
     ) async {
         clearLinkInFlight()
-        let selection = await host.selection()
+        let selection = await readSelection()
         store.recordSelected(selection)
         var next = state
         next.selection = selection

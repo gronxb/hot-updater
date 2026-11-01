@@ -122,6 +122,11 @@ root before then starts your app at once, without the screen. On a host with no
 and starts as usual. A background launch that's neither a notification, a
 background fetch nor a registered task starts your app after 2 seconds.
 
+On iOS, return `HotUpdater.bundleURL()` from your delegate's `bundleURL` each time
+it's called. React Native loads what the delegate returns, so a URL stored before
+the screen can name a bundle the switch deleted: the app crashes once, and the next
+launch opens what's selected.
+
 An Expo config plugin that returns its own root from a React delegate handler is
 one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
 
