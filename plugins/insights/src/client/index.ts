@@ -62,6 +62,14 @@ type Movement = Pick<
   | "metadata"
 >;
 
+/**
+ * How long a staged forced bundle stops reports while the reload that normally
+ * follows at once gets going. Far above that reload's time, so a slow one doesn't
+ * race a report, and short enough that an app that doesn't reload loses nothing:
+ * its reports are only this much later.
+ */
+const RELOAD_WAIT_MS = 10_000;
+
 type PendingEvent = QueuedEvent & {
   /** For UPDATE_FAILED: a later success for its target made it moot. */
   superseded?: boolean;
@@ -108,13 +116,16 @@ const setUpInsights = (
   /** A download in this runtime: a later no-change report would hide it. */
   let didDownload = false;
   let lastDownloadedSelection: string | null = null;
-  /**
-   * The bundle a check forces. The app reloads into it right after staging it,
-   * and React Native can abort when a request starts while a reload tears its
-   * modules down, so this runtime starts no more requests: its events wait in
-   * storage for the next launch.
-   */
+  /** The bundle the latest check of this runtime forces. */
   let forcedBundleId: string | null = null;
+  /**
+   * Set while a reload is expected. The app reloads right after staging a forced
+   * bundle, and React Native can abort when a request starts while a reload
+   * tears its modules down, so this runtime starts no requests meanwhile: its
+   * events wait in storage for the next launch. An app may not reload (it can
+   * turn that off), so this runs out and sends them.
+   */
+  let reloadWait: ReturnType<typeof setTimeout> | null = null;
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
 
@@ -189,7 +200,7 @@ const setUpInsights = (
         }
       }
     }
-    if (forcedBundleId !== null) {
+    if (reloadWait !== null) {
       state?.handOffEvent(event);
       return;
     }
@@ -208,6 +219,20 @@ const setUpInsights = (
     for (const event of state?.readHandedOffEvents() ?? []) {
       if (!queued.has(event.body.eventId)) enqueue(event);
     }
+  };
+
+  const stopWaitingForReload = () => {
+    if (reloadWait !== null) clearTimeout(reloadWait);
+    reloadWait = null;
+    sendHandedOffEvents();
+  };
+
+  const waitForReload = () => {
+    if (reloadWait !== null) clearTimeout(reloadWait);
+    reloadWait = setTimeout(stopWaitingForReload, RELOAD_WAIT_MS);
+    // What is queued or in flight may not outlive the reload. The server
+    // stores an event once, so one delivered meanwhile can be sent again.
+    for (const event of pending.values()) state?.handOffEvent(event);
   };
 
   const reportLaunch = (
@@ -256,17 +281,15 @@ const setUpInsights = (
   };
 
   const onUpdateCheck = (result: UpdateCheckResult) => {
-    if (result.status !== "UNCHANGED") {
-      // `occurredAt` marks a check native made before this runtime started,
-      // which this runtime does not reload for.
-      if (result.shouldForceUpdate && result.occurredAt === undefined) {
-        forcedBundleId = result.toBundleId;
-        // What is queued or in flight may not outlive the reload. The server
-        // stores an event once, so one delivered meanwhile can be sent again.
-        for (const event of pending.values()) state?.handOffEvent(event);
-      }
-      return;
+    // `occurredAt` marks a check native made before this runtime started, which
+    // this runtime does not reload for.
+    if (result.occurredAt === undefined) {
+      forcedBundleId =
+        result.status === "UPDATE_AVAILABLE" && result.shouldForceUpdate
+          ? result.toBundleId
+          : null;
     }
+    if (result.status !== "UNCHANGED") return;
     reportLaunch(
       result.channel,
       result.bundleId,
@@ -279,6 +302,9 @@ const setUpInsights = (
   };
 
   const onBundleDownloaded = (info: BundleDownloadedInfo) => {
+    if (info.occurredAt === undefined && info.toBundleId === forcedBundleId) {
+      waitForReload();
+    }
     const selection = JSON.stringify([
       info.channel,
       info.toReleaseId,
@@ -313,10 +339,13 @@ const setUpInsights = (
     // and its report would not arrive either.
     if (error.stage === "check" && error.reason === "network") return;
     const targetBundleId = error.targetBundleId ?? error.bundleId;
-    if (error.stage !== "check" && targetBundleId === forcedBundleId) {
+    if (
+      reloadWait !== null &&
+      error.stage !== "check" &&
+      targetBundleId === forcedBundleId
+    ) {
       // The forced update failed, so no reload follows.
-      forcedBundleId = null;
-      sendHandedOffEvents();
+      stopWaitingForReload();
     }
     const details = readErrorDetails(error.cause);
     const failureKey = JSON.stringify([
@@ -390,7 +419,7 @@ const setUpInsights = (
     if (event === undefined || state === null || context === null) {
       return false;
     }
-    if (forcedBundleId !== null) {
+    if (reloadWait !== null) {
       state.handOffEvent(event);
       pending.delete(body);
       return false;

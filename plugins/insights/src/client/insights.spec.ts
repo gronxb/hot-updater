@@ -977,6 +977,9 @@ describe("insights() client plugin", () => {
   });
 
   describe("a forced update", () => {
+    /** What the plugin waits for a reload after staging a forced bundle. */
+    const RELOAD_WAIT_MS = 10_000;
+
     const forcedCheck: UpdateCheckResult = {
       status: "UPDATE_AVAILABLE",
       channel: "production",
@@ -990,15 +993,27 @@ describe("insights() client plugin", () => {
       updateStrategy: "appVersion",
     };
 
-    it("sends nothing beside the reload and hands the download to the next launch", async () => {
-      const app = await launch();
+    /** Stages the forced bundle, as `updateBundle` does before the app reloads. */
+    const stageForcedBundle = (app: Awaited<ReturnType<typeof launch>>) => {
       app.updateCheck(forcedCheck);
       app.downloaded(download);
-      await flush();
+    };
+
+    /** A reload ends the runtime: nothing it scheduled runs. */
+    const reload = () => vi.clearAllTimers();
+
+    /** Runs what is due now, without a request's timeout or a later retry. */
+    const settle = () => vi.advanceTimersByTimeAsync(0);
+
+    it("sends nothing beside the reload and hands the download to the next launch", async () => {
+      const app = await launch();
+      stageForcedBundle(app);
+      await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS - 1);
 
       expect(sent).toEqual([]);
 
-      vi.setSystemTime(MORNING + 1_000);
+      reload();
+      vi.setSystemTime(MORNING + 20_000);
       (await launch()).appReady(appliedLaunch);
       await flush();
 
@@ -1012,8 +1027,7 @@ describe("insights() client plugin", () => {
 
     it("keeps the download through a reload right after the hook returns", async () => {
       const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
+      stageForcedBundle(app);
 
       // No microtask ran: the reload can take this runtime at any point after.
       expect(storage.get("insights", "handedOffEvents") ?? "").toContain(
@@ -1023,9 +1037,8 @@ describe("insights() client plugin", () => {
 
     it("sends a handed-off event once, under its original id", async () => {
       const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
+      stageForcedBundle(app);
+      reload();
 
       await launch();
       await flush();
@@ -1041,18 +1054,20 @@ describe("insights() client plugin", () => {
       responses = [() => new Promise<Response>(() => {})];
       const app = await launch();
       app.appReady(unchangedLaunch());
-      // Flushing would run the request's timeout, and it would not be in flight.
-      await vi.advanceTimersByTimeAsync(0);
+      await settle();
       const [inFlight] = sentEvents();
 
-      app.updateCheck(forcedCheck);
+      stageForcedBundle(app);
+      reload();
       await launch();
-      await vi.advanceTimersByTimeAsync(0);
+      await flush();
 
-      expect(sentEvents().map(({ eventId }) => eventId)).toEqual([
-        inFlight?.eventId,
-        inFlight?.eventId,
+      expect(sentTypes()).toEqual([
+        "UNCHANGED",
+        "UNCHANGED",
+        "UPDATE_DOWNLOADED",
       ]);
+      expect(sentEvents()[1]?.eventId).toBe(inFlight?.eventId);
     });
 
     it("does not resend an event the server answered during the update", async () => {
@@ -1065,31 +1080,32 @@ describe("insights() client plugin", () => {
       ];
       const app = await launch();
       app.appReady(unchangedLaunch());
-      await vi.advanceTimersByTimeAsync(0);
+      await settle();
       expect(sentTypes()).toEqual(["UNCHANGED"]);
 
-      app.updateCheck(forcedCheck);
+      stageForcedBundle(app);
       answer(new Response(null, { status: 204 }));
-      await vi.advanceTimersByTimeAsync(0);
+      await settle();
+      reload();
       await launch();
       await flush();
 
-      expect(sentTypes()).toEqual(["UNCHANGED"]);
+      expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_DOWNLOADED"]);
     });
 
     it("moves a retry out of the way instead of retrying beside the reload", async () => {
       responses = [500];
       const app = await launch();
       app.appReady(unchangedLaunch());
-      await vi.advanceTimersByTimeAsync(0);
+      await settle();
       expect(sentTypes()).toEqual(["UNCHANGED"]);
 
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
+      stageForcedBundle(app);
+      await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS - 1);
 
       expect(sentTypes()).toEqual(["UNCHANGED"]);
 
+      reload();
       await launch();
       await flush();
 
@@ -1101,62 +1117,165 @@ describe("insights() client plugin", () => {
       expect(sentEvents()[1]?.eventId).toBe(sentEvents()[0]?.eventId);
     });
 
-    it("sends what it held at once when the forced update fails, since no reload follows", async () => {
+    it("keeps reporting after a forced check with no install", async () => {
       const app = await launch();
       app.updateCheck(forcedCheck);
       app.appReady(unchangedLaunch());
+      await settle();
+
+      expect(sentTypes()).toEqual(["UNCHANGED"]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("keeps reporting while the forced bundle downloads", async () => {
+      const app = await launch();
+      app.updateCheck(forcedCheck);
+      await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS * 6);
+      app.appReady(unchangedLaunch());
+      await settle();
+
+      expect(sentTypes()).toEqual(["UNCHANGED"]);
+    });
+
+    it("reports again by itself when an install is not followed by a reload", async () => {
+      const app = await launch();
+      stageForcedBundle(app);
+      app.updateError(downloadFailure({ targetBundleId: "bundle-c" }));
+      await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS - 1);
+
+      expect(sent).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await settle();
+
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED", "UPDATE_FAILED"]);
+
+      // The session goes on: later reports go out at once.
+      app.updateError(downloadFailure({ targetBundleId: "bundle-d" }));
+      await settle();
+
+      expect(sentTypes()).toEqual([
+        "UPDATE_DOWNLOADED",
+        "UPDATE_FAILED",
+        "UPDATE_FAILED",
+      ]);
+
+      // And nothing is left for the next launch to send again.
+      await launch();
       await flush();
+
+      expect(sent).toHaveLength(3);
+      expect(storage.get("insights", "handedOffEvents")).toBeNull();
+    });
+
+    it("sends what it held at once when the forced update fails after staging", async () => {
+      const app = await launch();
+      stageForcedBundle(app);
+      await settle();
       expect(sent).toEqual([]);
 
       app.updateError(downloadFailure());
-      await flush();
+      await settle();
 
-      expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_FAILED"]);
-
-      await launch();
-      await flush();
-
-      expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_FAILED"]);
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED", "UPDATE_FAILED"]);
+      expect(vi.getTimerCount()).toBe(0);
     });
 
-    it("keeps holding when another bundle's update fails", async () => {
+    it("waits again from a repeated install of the forced bundle", async () => {
       const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.updateError(downloadFailure({ targetBundleId: "bundle-c" }));
-      await flush();
+      stageForcedBundle(app);
+      await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS - 1);
+      app.downloaded(download);
+      await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS - 1);
 
       expect(sent).toEqual([]);
 
-      await launch();
-      await flush();
+      await vi.advanceTimersByTimeAsync(1);
+      await settle();
 
-      expect(sentTypes()).toEqual(["UPDATE_FAILED"]);
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
     });
 
     it("sends right away after an update that is not forced", async () => {
       const app = await launch();
       app.updateCheck({ ...forcedCheck, shouldForceUpdate: false });
       app.downloaded(download);
-      await flush();
+      await settle();
 
       expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
     });
 
-    it("sends right away for a forced check native made before this runtime", async () => {
+    it("sends right away when a later check no longer forces the bundle", async () => {
+      const app = await launch();
+      app.updateCheck(forcedCheck);
+      app.updateCheck({ ...forcedCheck, shouldForceUpdate: false });
+      app.downloaded(download);
+      await settle();
+
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+    });
+
+    it("sends right away for another bundle's download", async () => {
+      const app = await launch();
+      app.updateCheck(forcedCheck);
+      app.downloaded({ ...download, toBundleId: "bundle-c" });
+      await settle();
+
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+    });
+
+    it("sends right away for a forced update native made before this runtime", async () => {
+      const app = await launch();
+      const occurredAt = MORNING - 1_000;
+      app.updateCheck({ ...forcedCheck, occurredAt });
+      app.downloaded({ ...download, occurredAt });
+      await settle();
+
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+    });
+
+    it("sends right away when only a check native made earlier forced the bundle", async () => {
       const app = await launch();
       app.updateCheck({ ...forcedCheck, occurredAt: MORNING - 1_000 });
       app.downloaded(download);
-      await flush();
+      await settle();
 
       expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+    });
+
+    it("keeps this runtime's forced check past a check native made earlier", async () => {
+      const app = await launch();
+      app.updateCheck(forcedCheck);
+      app.updateCheck({
+        status: "UNCHANGED",
+        channel: "production",
+        bundleId: "bundle-a",
+        releaseId: "release-a",
+        previousReleaseId: "release-a",
+        occurredAt: MORNING - 1_000,
+      });
+      app.downloaded(download);
+      await settle();
+
+      expect(sent).toEqual([]);
+      expect(vi.getTimerCount()).toBe(1);
+    });
+
+    it("does not wait for a download of the forced bundle native made earlier", async () => {
+      const app = await launch();
+      app.updateCheck(forcedCheck);
+      app.downloaded({ ...download, occurredAt: MORNING - 1_000 });
+      await settle();
+
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+      expect(vi.getTimerCount()).toBe(0);
     });
 
     it("drops a handed-off report while the server has Insights off", async () => {
       storage.set("insights", "pausedAt", String(MORNING - 1_000));
       const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
+      stageForcedBundle(app);
+      reload();
       await launch();
       await flush();
 
@@ -1170,11 +1289,11 @@ describe("insights() client plugin", () => {
       await flush();
       expect(sent).toEqual([]);
 
-      app.updateCheck(forcedCheck);
+      stageForcedBundle(app);
       for (let index = 0; index < 10; index++) {
         app.downloaded({ ...download, toBundleId: `bundle-${index}` });
       }
-      await flush();
+      reload();
       await launch();
       await flush();
 
