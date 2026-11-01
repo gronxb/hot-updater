@@ -578,20 +578,13 @@ describe("the sandbox layer", () => {
     "reads an alias as a launcher of its own, from .%s",
     async (format) => {
       const manifest = fixture(`launcher.${format}`);
-      const files =
+      const { entry } =
         format === "axml"
-          ? {
-              "AndroidManifest.xml": manifest,
-              "classes.dex": fixture("classes.dex"),
-            }
-          : {
-              "base/manifest/AndroidManifest.xml": manifest,
-              "base/dex/classes.dex": fixture("classes.dex"),
-            };
-      const { entry } = await read(
-        files,
-        format === "axml" ? "app.apk" : "app.aab",
-      );
+          ? await read(apk({ "AndroidManifest.xml": manifest }), "app.apk")
+          : await read(
+              aab({ "base/manifest/AndroidManifest.xml": manifest }),
+              "app.aab",
+            );
       expect(entry.launchers).toEqual([
         "com.example.app.MainActivity",
         "com.example.app.Launcher",
