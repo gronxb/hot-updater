@@ -1,5 +1,14 @@
 # @hot-updater/plugin-insights
 
+## 1.1.6
+
+### Patch Changes
+
+- 8de5850: Keep Insights reporting in a session that doesn't reload for a forced update, such as with `reloadOnForceUpdate: false` or a forced check that isn't installed. Only the reports present when a forced bundle is staged wait for the next launch; later reports send as usual.
+- 8de5850: When a forced bundle is staged, Insights no longer starts a request beside the reload. `UPDATE_DOWNLOADED` and any report still waiting stay in plugin storage and arrive first at the next launch, under their original event IDs.
+- 8de5850: Keep a report held for the next launch when all its attempts fail, such as on an offline launch, so a later launch can still deliver it. It leaves storage when the server accepts or refuses it, or when its attempts fail after 30 days.
+- @hot-updater/protocol@1.1.6
+
 ## 1.1.5
 
 ### Patch Changes
