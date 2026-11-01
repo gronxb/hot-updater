@@ -180,7 +180,9 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     /// Closes a declined link, a refusal, or a failure, and asks about the next link.
-    func dismiss() {
+    /// `onAnswered` runs only if nothing is left to answer, so a screen closing itself
+    /// can't take the next question with it.
+    func dismiss(onAnswered: (() -> Void)? = nil) {
         switch state.phase {
         case .confirming(let link), .waitingForServer(let link):
             remove(link.url)
@@ -194,6 +196,9 @@ final class HotUpdaterSandboxCoordinator {
         setPhase(.idle)
         pump()
         openSwitchIfAnswered()
+        if state.phase == .idle {
+            onAnswered?()
+        }
     }
 
     /// A row or a typed channel: no confirmation, since a person chose it here.

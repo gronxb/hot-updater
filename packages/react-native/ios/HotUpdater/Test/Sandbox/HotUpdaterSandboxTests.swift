@@ -500,6 +500,36 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
+    func aScreenClosesOnlyOnceNothingIsLeftToAnswer() async {
+        let fixture = Fixture()
+        var closes = 0
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2", fingerprintHash: "other"))
+        fixture.coordinator.receiveLink(link("pr-3"))
+
+        // Declined: the refusal behind it is on screen now.
+        fixture.coordinator.dismiss { closes += 1 }
+        guard case .refused = fixture.coordinator.state.phase else {
+            Issue.record("expected the refusal")
+            return
+        }
+        #expect(closes == 0)
+
+        // Acknowledged: the third link asks next.
+        fixture.coordinator.dismiss { closes += 1 }
+        guard case .confirming(let next) = fixture.coordinator.state.phase else {
+            Issue.record("expected the third link")
+            return
+        }
+        #expect(next.channel == "pr-3")
+        #expect(closes == 0)
+
+        fixture.coordinator.dismiss { closes += 1 }
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(closes == 1)
+    }
+
+    @Test
     func aDeclinedLinkIsForgotten() async {
         let fixture = Fixture()
         fixture.coordinator.receiveLink(link("pr-1"))

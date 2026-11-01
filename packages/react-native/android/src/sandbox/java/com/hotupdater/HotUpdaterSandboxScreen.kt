@@ -84,16 +84,14 @@ internal class HotUpdaterSandboxScreen(
                     .setTitle("Open ${phase.link.channel}?")
                     .setMessage("This replaces the running bundle and deletes downloaded bundles.")
                     .setNegativeButton("Cancel") { _, _ ->
-                        coordinator.dismiss()
-                        activity.closeOverApp()
+                        coordinator.dismiss(activity::closeOverApp)
                     }.setPositiveButton("Open") { _, _ -> coordinator.confirmLink() }
             is HotUpdaterSandboxPhase.Refused ->
                 builder
                     .setTitle(titleOf(phase.refusal))
                     .setMessage(messageOf(phase.refusal))
                     .setPositiveButton("OK") { _, _ ->
-                        coordinator.dismiss()
-                        activity.closeOverApp()
+                        coordinator.dismiss(activity::closeOverApp)
                     }
             is HotUpdaterSandboxPhase.Failed ->
                 builder
@@ -141,8 +139,7 @@ internal class HotUpdaterSandboxScreen(
             setTextColor(if (isNight()) 0xFFF2F3F5.toInt() else 0xFF1A1C1F.toInt())
         }
 
-    private fun isNight() =
-        activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    private fun isNight() = activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 
     private companion object {
         const val OPEN = "Open"

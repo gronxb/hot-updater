@@ -302,7 +302,11 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
         assertEquals(1, fixture.opens.size)
         assertTrue(fixture.host.calls.contains("reset"))
-        assertEquals(true, fixture.coordinator.state.selection?.isBuiltIn)
+        assertEquals(
+            true,
+            fixture.coordinator.state.selection
+                ?.isBuiltIn,
+        )
     }
 
     @Test
@@ -390,6 +394,29 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a screen closes only once nothing is left to answer`() {
+        val fixture = Fixture()
+        var closes = 0
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2", "other"))
+        fixture.coordinator.receiveLink(link("pr-3"))
+
+        // Declined: the refusal behind it is on screen now.
+        fixture.coordinator.dismiss { closes += 1 }
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Refused)
+        assertEquals(0, closes)
+
+        // Acknowledged: the third link asks next.
+        fixture.coordinator.dismiss { closes += 1 }
+        assertEquals("pr-3", (fixture.phase as HotUpdaterSandboxPhase.Confirming).link.channel)
+        assertEquals(0, closes)
+
+        fixture.coordinator.dismiss { closes += 1 }
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(1, closes)
+    }
+
+    @Test
     fun `a declined link is forgotten`() {
         val fixture = Fixture()
         fixture.coordinator.receiveLink(link("pr-1"))
@@ -415,7 +442,11 @@ class HotUpdaterSandboxCoordinatorTest {
         fixture.host.bundleId = "ota-1"
         assertTrue(fixture.coordinator.resetToBuiltIn())
         assertEquals(listOf("reset"), fixture.host.calls)
-        assertEquals(true, fixture.coordinator.state.selection?.isBuiltIn)
+        assertEquals(
+            true,
+            fixture.coordinator.state.selection
+                ?.isBuiltIn,
+        )
         assertNotNull(fixture.coordinator.state.selection)
     }
 

@@ -213,8 +213,12 @@ internal class HotUpdaterSandboxCoordinator(
         begin(phase.link.channel)
     }
 
-    /** Closes a declined link, a refusal, or a failure, and asks about the next link. */
-    fun dismiss() {
+    /**
+     * Closes a declined link, a refusal, or a failure, and asks about the next link.
+     * [onAnswered] runs only if nothing is left to answer, so a screen closing itself
+     * can't take the next question with it.
+     */
+    fun dismiss(onAnswered: (() -> Unit)? = null) {
         when (val phase = state.phase) {
             is HotUpdaterSandboxPhase.Confirming -> remove(phase.link.url)
             is HotUpdaterSandboxPhase.WaitingForServer -> remove(phase.link.url)
@@ -225,6 +229,7 @@ internal class HotUpdaterSandboxCoordinator(
         publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
         pump()
         openSwitchIfAnswered()
+        if (state.phase is HotUpdaterSandboxPhase.Idle) onAnswered?.invoke()
     }
 
     /**
