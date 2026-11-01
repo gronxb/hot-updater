@@ -199,19 +199,38 @@ const decodeEntities = (text: string) =>
         entity[1] === "x" || entity[1] === "X"
           ? Number.parseInt(entity.slice(2), 16)
           : Number.parseInt(entity.slice(1), 10);
+      if (code > 0x10ffff) throw corrupt();
       return String.fromCodePoint(code);
     }
     return ENTITIES[entity] ?? whole;
   });
 
-/** An XML property list, as some tools leave an app's Info.plist. */
+/**
+ * `text` without each `open`, what follows it, and its `close`. A scan, because
+ * a regular expression retries from every `open` that never closes, which on a
+ * crafted file takes minutes.
+ */
+const withoutSpans = (text: string, open: string, close: string) => {
+  let kept = "";
+  let position = 0;
+  for (;;) {
+    const start = text.indexOf(open, position);
+    const end = start === -1 ? -1 : text.indexOf(close, start + open.length);
+    if (end === -1) return kept + text.slice(position);
+    kept += text.slice(position, start);
+    position = end + close.length;
+  }
+};
+
+/** An XML property list, as a provisioning profile holds one. */
 const parseXmlPlist = (text: string): PlistValue => {
-  // Tags and the text between them, without comments or declarations.
-  const tokens = text
-    .replace(/<!--[\s\S]*?-->/gu, "")
-    .replace(/<\?[\s\S]*?\?>/gu, "")
-    .replace(/<!DOCTYPE[^>]*>/giu, "")
-    .split(/(<[^>]+>)/u);
+  // Tags and the text between them, without comments or declarations. A tag
+  // holds no `<`, so a crafted run of them can't make a split quadratic, and
+  // a DOCTYPE with an internal subset, which could declare entities, is left
+  // behind for the parser to refuse.
+  const tokens = withoutSpans(withoutSpans(text, "<!--", "-->"), "<?", "?>")
+    .replace(/<!DOCTYPE[^<>]*>/giu, "")
+    .split(/(<[^<>]+>)/u);
   let i = 0;
   const nextTag = (): string => {
     while (i < tokens.length) {

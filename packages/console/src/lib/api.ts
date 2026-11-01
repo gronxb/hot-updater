@@ -16,6 +16,7 @@ import {
   getNativeBuildDetail,
   createNativeBuildDownloadLink,
   getNativeBuildDownloadUrl,
+  getNativeBuildInstallEligibility,
   getNativeBuildPatches,
   getNativeBuilds,
   getRelease,
@@ -57,6 +58,8 @@ export const queryKeys = {
     ["native-build-download-url", id] as const,
   nativeBuildDownloadLink: (id: string) =>
     ["native-build-download-link", id] as const,
+  nativeBuildInstallEligibility: (id: string, udid: string | null) =>
+    ["native-build-install-eligibility", id, udid] as const,
   releaseNativeBuild: (release: ReleaseNativeBuildInput) =>
     ["release-native-build", release] as const,
 };
@@ -93,6 +96,12 @@ const DOWNLOAD_URL_STALE_MS = 60_000;
  * a day.
  */
 const DOWNLOAD_LINK_STALE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long an iPhone keeps a build's install details and Install link, which
+ * lasts an hour: past this, an open page reads and signs again.
+ */
+const INSTALL_ELIGIBILITY_STALE_MS = 30 * 60 * 1000;
 
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */
@@ -248,6 +257,28 @@ export function useNativeBuildDownloadLinkQuery(id: string) {
     queryKey: queryKeys.nativeBuildDownloadLink(id),
     queryFn: () => createNativeBuildDownloadLink({ data: { id } }),
     staleTime: DOWNLOAD_LINK_STALE_MS,
+  });
+}
+
+/**
+ * What this iPhone can do with a build, and the link Install opens: requested
+ * only by an iPhone on the page of an IPA, and again before that link, which
+ * lasts about an hour, runs out.
+ */
+export function useNativeBuildInstallEligibilityQuery(
+  id: string,
+  udid: string | null,
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildInstallEligibility(id, udid),
+    queryFn: () =>
+      getNativeBuildInstallEligibility({
+        data: { id, ...(udid === null ? {} : { udid }) },
+      }),
+    staleTime: INSTALL_ELIGIBILITY_STALE_MS,
+    // A page left open never holds an expired link. It reads nothing while the
+    // tab is hidden, and coming back reads again once this has passed.
+    refetchInterval: INSTALL_ELIGIBILITY_STALE_MS,
   });
 }
 

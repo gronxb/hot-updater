@@ -48,6 +48,22 @@ describe("native build QR route", () => {
     expect(prepareConfigMock).not.toHaveBeenCalled();
   });
 
+  it("serves an IPA's page QR code with no session, no read, and no token", async () => {
+    const response = await handler({
+      request: new Request(
+        `https://console.example.com/_hot-updater/native-builds/qr?build=${BUILD}&target=page`,
+      ),
+    });
+
+    expect(response.status).toBe(200);
+    const url = response.headers.get("x-hot-updater-download-url")!;
+    expect(url).toBe(`https://console.example.com/native-builds/${BUILD}`);
+    expect(url).not.toContain("t=");
+    expect(url).not.toContain("itms-services");
+    expect(loadConsoleMock).not.toHaveBeenCalled();
+    expect(prepareConfigMock).not.toHaveBeenCalled();
+  });
+
   it("refuses anything but a native build ID, and methods other than GET and HEAD", async () => {
     for (const query of ["", "?build=", "?build=build-1", "?build=../x"]) {
       const response = await handler({

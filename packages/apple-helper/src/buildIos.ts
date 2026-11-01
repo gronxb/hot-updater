@@ -24,6 +24,7 @@ import {
 } from "./utils/sandboxInfoPlist";
 import {
   exportsForAppStoreConnect,
+  exportsForRegisteredDevices,
   resolveSandboxExportOptions,
   resolveXcodeSigning,
   writeAppStoreConnectExportOptions,
@@ -154,19 +155,22 @@ const buildInto = async ({
         logHeader,
       });
     }
-    // In CI, an App Store Connect export signs in a keychain of its own,
-    // whose certificates are revoked and deleted with it: its .ipa is signed
-    // with the cloud-managed distribution certificate. Another export, such
-    // as a development one, may be signed with the certificate Xcode
+    // In CI, an App Store Connect or ad hoc export signs in a keychain of its
+    // own, whose certificates are revoked and deleted with it: its .ipa is
+    // signed with the cloud-managed distribution certificate. Another export,
+    // such as a development one, may be signed with the certificate Xcode
     // creates, so it keeps the runner's keychains and its certificates.
-    const appStoreConnect = await exportsForAppStoreConnect(schemeConfig);
-    if (isCI() && !appStoreConnect) {
+    const registeredDevices = await exportsForRegisteredDevices(schemeConfig);
+    const ownKeychain =
+      registeredDevices || (await exportsForAppStoreConnect(schemeConfig));
+    if (isCI() && !ownKeychain) {
       p.log.info(
-        "Signing in the runner's own keychains (not an App Store Connect export).",
+        "Signing in the runner's own keychains (not an App Store Connect or ad hoc export).",
       );
     }
     return withSigningKeychain({
-      enabled: isCI() && appStoreConnect,
+      enabled: isCI() && ownKeychain,
+      keepDistribution: registeredDevices,
       apiKey: signing.apiKey,
       run: () =>
         archiveAndExport({
@@ -299,6 +303,7 @@ const archiveAndExport = async ({
     }
   }
 
+  await keepOnlyIpas(exportDir);
   const ipaFile = fs
     .readdirSync(exportDir)
     .find((file) => file.endsWith(".ipa"));
@@ -312,6 +317,22 @@ const archiveAndExport = async ({
     logFilePath,
     builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
   };
+};
+
+/**
+ * Leaves only the `.ipa` in an export's folder. Xcode writes `Packaging.log`
+ * beside it, which holds the API key's bearer token for its 20 minutes, and the
+ * build's output and its cache copy the whole build directory into the project.
+ */
+const keepOnlyIpas = async (exportDir: string) => {
+  for (const entry of await fs.promises.readdir(exportDir)) {
+    if (!entry.endsWith(".ipa")) {
+      await fs.promises.rm(path.join(exportDir, entry), {
+        recursive: true,
+        force: true,
+      });
+    }
+  }
 };
 
 const extractAppFromXcarchive = (archivePath: string) => {

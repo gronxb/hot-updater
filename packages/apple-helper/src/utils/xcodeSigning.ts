@@ -197,6 +197,20 @@ export const readExportMethod = async (exportOptionsPlist: string) => {
 };
 
 /**
+ * Whether a device build exports for the devices its profile lists: with
+ * `release-testing`, or `ad-hoc`, Xcode's older name for it. On an empty
+ * keychain with the API key, Apple's cloud-managed distribution certificate
+ * signs it, as it does an App Store Connect export.
+ */
+export const exportsForRegisteredDevices = async ({
+  exportOptionsPlist,
+}: EnrichedNativeBuildIosScheme): Promise<boolean> =>
+  exportOptionsPlist !== undefined &&
+  ["release-testing", "ad-hoc"].includes(
+    await readExportMethod(exportOptionsPlist),
+  );
+
+/**
  * Whether a device build exports for App Store Connect: with its
  * `exportOptionsPlist`'s method, or, without one, as a scheme signing with
  * an App Store Connect API key does. Such an `.ipa` is signed with Apple's
