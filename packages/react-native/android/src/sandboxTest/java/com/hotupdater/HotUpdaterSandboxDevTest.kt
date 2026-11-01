@@ -281,14 +281,18 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
-    fun `an Expo manifest names the entry, without its query or host`() {
+    fun `an Expo manifest names the entry and the transform, never its dev settings`() {
+        val manifest =
+            """{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=android&dev=true&hot=false""" +
+                """&transform.engine=hermes&transform.bytecode=1&unstable_transformProfile=hermes-stable"}}"""
         assertEquals(
-            "examples/expo-52/index.ts",
-            HotUpdaterSandboxDevFetcher.entryOfManifest(
-                """{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=android&dev=true"}}""",
+            HotUpdaterSandboxDevEntry(
+                path = "examples/expo-52/index.ts",
+                query = "&transform.engine=hermes&unstable_transformProfile=hermes-stable",
             ),
+            HotUpdaterSandboxDevFetcher.entryOfManifest(manifest),
         )
-        assertNull(HotUpdaterSandboxDevFetcher.entryOfManifest("<html>"))
+        assertNull(HotUpdaterSandboxDevFetcher.entryOfManifest("React Native packager is running."))
         assertNull(HotUpdaterSandboxDevFetcher.entryOfManifest("""{"launchAsset":{}}"""))
     }
 

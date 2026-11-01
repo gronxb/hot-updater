@@ -30,22 +30,35 @@ enum HotUpdaterSandboxDevHost {
         url.hasPrefix("http://") ? String(url.dropFirst("http://".count)) : url
     }
 
-    /// The entry a server takes by default.
-    static let defaultEntry = "index"
-
     /// `dev=false` JavaScript at an entry.
-    static func bundleURL(host: String, entry: String = defaultEntry) -> URL? {
-        URL(string: "\(host)/\(entry).bundle?platform=ios&dev=false&minify=false")
+    static func bundleURL(host: String, entry: HotUpdaterSandboxDevEntry = HotUpdaterSandboxDevEntry()) -> URL? {
+        URL(string: "\(host)/\(entry.path).bundle?platform=ios&dev=false&minify=false\(entry.query)")
     }
 
-    /// The entry an Expo manifest's `launchAsset` names, or nil: its server
-    /// resolves `index` from a workspace's root.
-    static func entry(ofManifest data: Data) -> String? {
+    private static let notFromManifest: Set<String> = ["platform", "dev", "hot", "minify", "lazy", "transform.bytecode"]
+
+    /// The entry an Expo manifest's `launchAsset` names, with what it asks of the
+    /// transform: without Hermes's profile, its JavaScript has syntax Hermes
+    /// refuses. Nil without a `launchAsset`.
+    static func entry(ofManifest data: Data) -> HotUpdaterSandboxDevEntry? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let launchAsset = json["launchAsset"] as? [String: Any],
-              let url = (launchAsset["url"] as? String).flatMap(URL.init(string:)),
+              let text = launchAsset["url"] as? String,
+              let url = URL(string: text),
               url.path.hasSuffix(".bundle") else { return nil }
-        let entry = url.path.dropFirst().dropLast(".bundle".count)
-        return entry.isEmpty ? nil : String(entry)
+        let path = url.path.dropFirst().dropLast(".bundle".count)
+        guard !path.isEmpty else { return nil }
+        let query = (url.query ?? "")
+            .components(separatedBy: "&")
+            .filter { !$0.isEmpty && !notFromManifest.contains($0.components(separatedBy: "=")[0]) }
+            .map { "&\($0)" }
+            .joined()
+        return HotUpdaterSandboxDevEntry(path: String(path), query: query)
     }
+}
+
+/// Where a server has the app's JavaScript, and what its URL also asks for.
+struct HotUpdaterSandboxDevEntry: Equatable {
+    var path = "index"
+    var query = ""
 }

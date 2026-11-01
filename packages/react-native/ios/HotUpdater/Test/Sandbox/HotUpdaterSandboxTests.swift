@@ -780,10 +780,13 @@ struct HotUpdaterSandboxDevHostTests {
     }
 
     @Test
-    func anExpoManifestNamesTheEntry() {
-        let manifest = #"{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=ios&dev=true"}}"#
-        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(manifest.utf8)) == "examples/expo-52/index.ts")
-        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data("<html>".utf8)) == nil)
+    func anExpoManifestNamesTheEntryAndTheTransformNeverItsDevSettings() {
+        let manifest = #"{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=ios&dev=true&hot=false&transform.engine=hermes&transform.bytecode=1&unstable_transformProfile=hermes-stable"}}"#
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(manifest.utf8)) == HotUpdaterSandboxDevEntry(
+            path: "examples/expo-52/index.ts",
+            query: "&transform.engine=hermes&unstable_transformProfile=hermes-stable"
+        ))
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data("React Native packager is running.".utf8)) == nil)
         #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(#"{"launchAsset":{}}"#.utf8)) == nil)
     }
 

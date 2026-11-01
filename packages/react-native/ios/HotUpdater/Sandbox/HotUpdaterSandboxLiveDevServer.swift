@@ -215,8 +215,8 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
         }
     }
 
-    /// The entry an Expo server's manifest names.
-    private nonisolated static func manifestEntry(host: String) async -> String? {
+    /// What an Expo server's manifest names; any other server answers with no manifest.
+    private nonisolated static func manifestEntry(host: String) async -> HotUpdaterSandboxDevEntry? {
         guard let url = URL(string: host) else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = fetchSeconds
@@ -232,22 +232,18 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
     /// The JavaScript's URL at this host, or what's wrong.
     private nonisolated static func resolveBundle(host: String) async -> Result<URL, DevServerFailure> {
         let name = HotUpdaterSandboxDevHost.display(host)
-        var entry = HotUpdaterSandboxDevHost.defaultEntry
-        for attempt in 0 ..< 2 {
-            guard let bundle = HotUpdaterSandboxDevHost.bundleURL(host: host, entry: entry) else { break }
-            switch await fetch(bundle, host: host) {
-            case .found:
-                return .success(bundle)
-            case .failed(let message):
-                return .failure(DevServerFailure(message: message))
-            case .notFound:
-                guard attempt == 0, let named = await manifestEntry(host: host) else {
-                    return .failure(DevServerFailure(message: "\(name) has no /\(entry).bundle. Check the dev server's output."))
-                }
-                entry = named
-            }
+        let entry = await manifestEntry(host: host) ?? HotUpdaterSandboxDevEntry()
+        guard let bundle = HotUpdaterSandboxDevHost.bundleURL(host: host, entry: entry) else {
+            return .failure(DevServerFailure(message: "\(name) has no JavaScript to load. Check the dev server's output."))
         }
-        return .failure(DevServerFailure(message: "\(name) has no JavaScript to load. Check the dev server's output."))
+        switch await fetch(bundle, host: host) {
+        case .found:
+            return .success(bundle)
+        case .failed(let message):
+            return .failure(DevServerFailure(message: message))
+        case .notFound:
+            return .failure(DevServerFailure(message: "\(name) has no /\(entry.path).bundle. Check the dev server's output."))
+        }
     }
 
     func connect(host: String, completion: @escaping (String?) -> Void) {

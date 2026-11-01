@@ -66,6 +66,12 @@ internal object HotUpdaterSandboxDevHost {
     fun display(url: String): String = url.removePrefix("http://")
 }
 
+/** Where a server has the app's JavaScript, and what its URL also asks for. */
+internal data class HotUpdaterSandboxDevEntry(
+    val path: String = "index",
+    val query: String = "",
+)
+
 /**
  * Fetches one `dev=false` bundle and its assets from a dev server into a new
  * session directory, in the layout React Native reads beside a bundle file:
@@ -82,8 +88,6 @@ internal class HotUpdaterSandboxDevFetcher(
             ).readTimeout(120, TimeUnit.SECONDS)
             .build(),
 ) {
-    private val query = "platform=android&dev=false&minify=false"
-
     fun fetch(
         host: String,
         session: File,
@@ -91,10 +95,12 @@ internal class HotUpdaterSandboxDevFetcher(
     ) {
         session.mkdirs()
         try {
-            val entry = downloadBundle(host, File(session, bundleName))
+            val entry = manifestEntry(host) ?: HotUpdaterSandboxDevEntry()
+            val query = "platform=android&dev=false&minify=false${entry.query}"
+            download("$host/${entry.path}.bundle?$query", File(session, bundleName))
             val assets =
                 try {
-                    JSONArray(text("$host/$entry.assets?$query", notFound = NO_ASSET_LIST))
+                    JSONArray(text("$host/${entry.path}.assets?$query", notFound = NO_ASSET_LIST))
                 } catch (error: org.json.JSONException) {
                     throw IOException(NO_ASSET_LIST)
                 }
@@ -107,16 +113,9 @@ internal class HotUpdaterSandboxDevFetcher(
         }
     }
 
-    /**
-     * Downloads the JavaScript, and returns the entry that served it: `index`, or
-     * what Expo's manifest names, since its server resolves from a workspace's root.
-     */
-    private fun downloadBundle(
-        host: String,
-        target: File,
-    ): String {
-        if (tryDownload("$host/$DEFAULT_ENTRY.bundle?$query", target)) return DEFAULT_ENTRY
-        val manifest =
+    /** What an Expo server's manifest names; any other server answers with no manifest. */
+    private fun manifestEntry(host: String): HotUpdaterSandboxDevEntry? =
+        runCatching {
             client
                 .newCall(
                     Request
@@ -127,12 +126,7 @@ internal class HotUpdaterSandboxDevFetcher(
                         .build(),
                 ).execute()
                 .use { response -> if (response.isSuccessful) response.body?.string() else null }
-        val entry =
-            manifest?.let(::entryOfManifest)
-                ?: throw IOException("$host has no /$DEFAULT_ENTRY.bundle.")
-        download("$host/$entry.bundle?$query", target)
-        return entry
-    }
+        }.getOrNull()?.let(::entryOfManifest)
 
     private fun downloadAsset(
         host: String,
@@ -170,38 +164,40 @@ internal class HotUpdaterSandboxDevFetcher(
         url: String,
         target: File,
     ) {
-        if (!tryDownload(url, target)) throw IOException("$url answered 404.")
-    }
-
-    /** False on a 404, which says the entry isn't there; any other failure throws. */
-    private fun tryDownload(
-        url: String,
-        target: File,
-    ): Boolean =
         request(url).use { response ->
-            if (response.code == 404) return@use false
             if (!response.isSuccessful) throw IOException("$url answered ${response.code}.")
             target.parentFile?.mkdirs()
             val body = response.body ?: throw IOException("$url answered with nothing.")
             body.byteStream().use { input -> target.outputStream().use { input.copyTo(it) } }
-            true
         }
+    }
 
     companion object {
         private val DRAWABLE_TYPES = setOf("gif", "jpeg", "jpg", "ktx", "png", "webp", "xml")
 
-        const val DEFAULT_ENTRY = "index"
+        private val NOT_FROM_MANIFEST = setOf("platform", "dev", "hot", "minify", "lazy", "transform.bytecode")
 
-        /** The entry an Expo manifest's `launchAsset` names, or null. */
-        fun entryOfManifest(manifest: String): String? =
+        /**
+         * The entry an Expo manifest's `launchAsset` names, with what it asks of
+         * the transform: without Hermes's profile, its JavaScript has syntax Hermes
+         * refuses. Null without a `launchAsset`.
+         */
+        fun entryOfManifest(manifest: String): HotUpdaterSandboxDevEntry? =
             runCatching {
                 val url = JSONObject(manifest).getJSONObject("launchAsset").getString("url")
-                url
-                    .substringBefore('?')
-                    .substringAfter("://")
-                    .substringAfter('/')
-                    .removeSuffix(".bundle")
-                    .takeIf { it.isNotEmpty() }
+                val path =
+                    url
+                        .substringBefore('?')
+                        .substringAfter("://")
+                        .substringAfter('/')
+                        .removeSuffix(".bundle")
+                val query =
+                    url
+                        .substringAfter('?', "")
+                        .split('&')
+                        .filter { it.isNotEmpty() && it.substringBefore('=') !in NOT_FROM_MANIFEST }
+                        .joinToString("") { "&$it" }
+                HotUpdaterSandboxDevEntry(path, query).takeIf { path.isNotEmpty() }
             }.getOrNull()
 
         /** Re.Pack's dev server, for one. */
@@ -344,7 +340,9 @@ internal class HotUpdaterSandboxLiveDevServer(
             HotUpdaterSandboxDevFetcher().fetch(url, files.session(id), HotUpdaterSandboxDevFiles.BUNDLE)
         } catch (error: Exception) {
             Log.w(TAG, "connect to $url failed", error)
-            return "Couldn't load JavaScript from ${HotUpdaterSandboxDevHost.display(url)}. ${(error.message ?: error.toString()).trimEnd('.')}. " +
+            return "Couldn't load JavaScript from ${HotUpdaterSandboxDevHost.display(
+                url,
+            )}. ${(error.message ?: error.toString()).trimEnd('.')}. " +
                 "Check that the dev server runs and this device can reach it."
         }
         remember(url)
