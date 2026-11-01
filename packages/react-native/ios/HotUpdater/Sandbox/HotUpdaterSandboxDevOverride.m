@@ -36,26 +36,25 @@ static BOOL IsDev(id impl) {
 
 /// Each original, with the selector it answers. Filled before any is replaced, so
 /// nothing is replaced unless all exist.
-#define HU_IMP(name, ...) static __VA_ARGS__ g##name
-HU_IMP(BundleURL, id (*)(id, SEL, id));
-HU_IMP(Channel, id (*)(id, SEL));
-HU_IMP(ActiveState, id (*)(id, SEL));
-HU_IMP(BundleId, id (*)(id, SEL));
-HU_IMP(BaseURL, id (*)(id, SEL));
-HU_IMP(Manifest, id (*)(id, SEL));
-HU_IMP(NotifyAppReady, id (*)(id, SEL));
-HU_IMP(CrashHistory, id (*)(id, SEL));
-HU_IMP(ClearCrashHistory, BOOL (*)(id, SEL));
-HU_IMP(AcceptCatalog, BOOL (*)(id, SEL, id));
-HU_IMP(SelectionCurrent, BOOL (*)(id, SEL, id));
-HU_IMP(Commit, void (*)(id, SEL, id, id, id));
-HU_IMP(Update, void (*)(id, SEL, id, id, id));
-HU_IMP(Install, void (*)(id, SEL, id, id, id));
-HU_IMP(GetItem, id (*)(id, SEL, id));
-HU_IMP(SetItem, void (*)(id, SEL, id, id));
-HU_IMP(Reset, void (*)(id, SEL, id, id, id));
-HU_IMP(ResetIf, void (*)(id, SEL, id, id, id, id));
-HU_IMP(TakeEvents, id (*)(id, SEL, id));
+static id (*gBundleURL)(id, SEL, id);
+static id (*gChannel)(id, SEL);
+static id (*gActiveState)(id, SEL);
+static id (*gBundleId)(id, SEL);
+static id (*gBaseURL)(id, SEL);
+static id (*gManifest)(id, SEL);
+static id (*gNotifyAppReady)(id, SEL);
+static id (*gCrashHistory)(id, SEL);
+static BOOL (*gClearCrashHistory)(id, SEL);
+static BOOL (*gAcceptCatalog)(id, SEL, id);
+static BOOL (*gSelectionCurrent)(id, SEL, id);
+static void (*gCommit)(id, SEL, id, id, id);
+static void (*gUpdate)(id, SEL, id, id, id);
+static void (*gInstall)(id, SEL, id, id, id);
+static id (*gGetItem)(id, SEL, id);
+static void (*gSetItem)(id, SEL, id, id);
+static void (*gReset)(id, SEL, id, id, id);
+static void (*gResetIf)(id, SEL, id, id, id, id);
+static id (*gTakeEvents)(id, SEL, id);
 
 @interface HotUpdaterSandboxDevOverride : NSObject
 @end
