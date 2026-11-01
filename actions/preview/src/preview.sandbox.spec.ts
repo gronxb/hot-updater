@@ -483,6 +483,39 @@ describe("a sandbox build that has the fingerprint", () => {
   });
 });
 
+describe("a sandbox .ipa with no store input", () => {
+  const ipa = { ...sandboxBuild(), platform: "ios", kind: "ipa" };
+  const inputs = { INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "sandbox" };
+
+  it("shows the deep link's QR code, and keeps its page behind Details", async () => {
+    const { body, fetched } = await run(fakeCli({ builds: [ipa] }), inputs);
+
+    expect(body).toContain(`<img src="${QR}"`);
+    expect(body).toContain(`[Details](${CONSOLE}/native-builds/${BUILD_ID})`);
+    expect(body).not.toContain("target=page");
+    expect(fetched.some((url) => url.includes("target=page"))).toBe(false);
+  });
+
+  it("leaves a normal .ipa's page QR code as it was", async () => {
+    const normal = { ...ipa, channel: "pr-12" };
+    const page = async (input: string | URL | Request) =>
+      new Response(null, {
+        headers: {
+          "x-hot-updater-download-url": `${CONSOLE}/native-builds/${new URL(String(input)).searchParams.get("build")}`,
+        },
+      });
+
+    const { body } = await run(
+      fakeCli({ builds: [normal] }),
+      { ...inputs, INPUT_IOS_SCHEME: "device" },
+      page,
+    );
+
+    expect(body).toContain("target=page");
+    expect(body).not.toContain("hu-sandbox-");
+  });
+});
+
 describe("no sandbox build at all", () => {
   it("builds one and comments its QR code", async () => {
     const fake = fakeCli();
