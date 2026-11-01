@@ -154,6 +154,17 @@ export const checkSandboxSchemes = async (
       );
     }
   }
+  if (adapter === "expo") {
+    const sdk = expoSdkOf(cwd);
+    if (sdk !== QUALIFIED_EXPO_SDK) {
+      issues.push(
+        unqualified(
+          "project",
+          sdk === null ? "this Expo SDK" : `Expo SDK ${sdk}`,
+        ),
+      );
+    }
+  }
 
   const iosDir = path.join(cwd, "ios");
   if (ios.length > 0) {

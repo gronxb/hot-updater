@@ -30,7 +30,7 @@ import type { AppOptions } from "firebase-admin/app";
 type FirebaseDatabaseConfig = AppOptions & {
   databaseId?: string; // A named Firestore database; defaults to "(default)"
   collection?: string; // The one collection it uses; defaults to "hot_updater_v1"
-  aggregateBatching?: { mode?: "log" | "memory"; windowMs?: number } | false; // default: {}, see Batched Insights totals
+  aggregateBatching?: { windowMs?: number } | false; // default: {}, see Batched Insights totals
 };
 ```
 
@@ -137,11 +137,8 @@ event's transaction:
   it cannot write, it shows the stored totals, which can leave out pending
   events until a later compaction succeeds.
 
-Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
-totals in the process and write them every 15 seconds, without log documents.
-A crash then loses up to one window; call `hotUpdater.flush()` before the
-process exits. `aggregateBatching: false` writes the totals in each event's
-transaction.
+`aggregateBatching: { windowMs }` changes that minute.
+`aggregateBatching: false` writes the totals in each event's transaction.
 
 ## Environment variables
 

@@ -26,9 +26,8 @@ export interface DynamoDBConfig extends Omit<
   readonly tableName: string;
   /**
    * DynamoDB bills each item a write touches, so Insights' aggregates are
-   * batched: through log rows a compaction merges (the default), or
-   * `{ mode: "memory" }` on a long-lived server. `false` commits them with
-   * each event.
+   * batched: through log rows a compaction merges (the default). `false` commits
+   * them with each event.
    */
   readonly aggregateBatching?: EngineDatabase["aggregateBatching"] | false;
 }

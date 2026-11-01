@@ -210,14 +210,13 @@ const traffic = async (db: Db) => {
 };
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("aggregate batching", () => {
   it("writes one log row with each transaction instead of its batched aggregate rows", async () => {
     const { db, writes, memory, clock } = await setup({
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     await open(db, "i1", "A");
     writes.length = 0;
@@ -234,24 +233,22 @@ describe("aggregate batching", () => {
     expect(await logRows(memory)).toHaveLength(1);
   });
 
-  it("reads what log, memory, and transactional writes all read, whichever writes it", async () => {
+  it("reads what log and transactional writes both read, whichever writes it", async () => {
     const reference = await setup();
-    const log = await setup({ batching: { mode: "log", windowMs: 60_000 } });
-    const memory = await setup({ batching: { mode: "memory" } });
-    for (const { db } of [reference, log, memory]) await traffic(db);
+    const log = await setup({ batching: { windowMs: 60_000 } });
+    for (const { db } of [reference, log]) await traffic(db);
 
     const expected = await snapshot(reference.db);
     expect(expected.distribution.map((row) => row.installations)).toEqual([
       4, 4, 4,
     ]);
     expect(await snapshot(log.db)).toEqual(expected);
-    expect(await snapshot(memory.db)).toEqual(expected);
     expect(await logRows(log.memory)).toEqual([]);
   });
 
   it("writes each batched row once per compaction, however many transactions changed it", async () => {
     const reference = await setup();
-    const log = await setup({ batching: { mode: "log", windowMs: 60_000 } });
+    const log = await setup({ batching: { windowMs: 60_000 } });
     await traffic(reference.db);
     await traffic(log.db);
     await log.engine.flush();
@@ -283,7 +280,7 @@ describe("aggregate batching", () => {
       for (const applied of [true, false]) {
         let lose = false;
         const log = await setup({
-          batching: { mode: "log", windowMs: 60_000 },
+          batching: { windowMs: 60_000 },
           fault: async (ops, write) => {
             if (!lose || !matches(ops)) return undefined;
             lose = false;
@@ -314,7 +311,7 @@ describe("aggregate batching", () => {
       await memory.migrations?.apply(batched.tables);
       let consumed = 0;
       const log = await setup({
-        batching: { mode: "log", windowMs: 60_000 },
+        batching: { windowMs: 60_000 },
         adapter: {
           ...memory,
           async deleteConsumed(physical, rows) {
@@ -370,11 +367,11 @@ describe("aggregate batching", () => {
     const reference = await setup();
     const first = await setup({
       adapter: shared,
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     const second = await setup({
       adapter: shared,
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     for (let step = 0; step < 60; step += 1) {
       const { id, release, day } = stepOf(step);
@@ -388,34 +385,37 @@ describe("aggregate batching", () => {
     expect(await logRows(shared)).toEqual([]);
   });
 
-  it("keeps a shard row below zero when another process holds its gains, and reads the sum", async () => {
-    const shared = createMemoryAdapter();
-    await shared.migrations?.apply(batched.tables);
-    const gain = await setup({ adapter: shared, batching: { mode: "memory" } });
-    const loss = await setup({ adapter: shared, batching: { mode: "memory" } });
-    // Each process picks its shard on its first flush.
-    const flushOnShard = async (engine: typeof gain.engine, random: number) => {
-      vi.spyOn(Math, "random").mockReturnValue(random);
-      await engine.flush();
-      vi.restoreAllMocks();
-    };
+  it("writes a gauge below zero on its shard and reads the sum of every shard", async () => {
+    const { db, engine, memory } = await setup({
+      batching: { windowMs: 60_000 },
+    });
+    await memory.write([
+      {
+        type: "insert",
+        table: table("installs"),
+        row: { id: "i1", release: "A", _v: 0 },
+      },
+      {
+        type: "insert",
+        table: table("distribution"),
+        row: { release: "A", _shard: 3, installations: 1, _v: 0 },
+      },
+    ]);
 
-    await open(gain.db, "i1", "A");
-    await flushOnShard(gain.engine, 0);
-    await open(loss.db, "i1", "B");
-    await flushOnShard(loss.engine, 0.99);
+    await open(db, "i1", "B");
+    await engine.flush();
 
-    const shards = await shared.query(table("distribution"), {
+    const shards = await memory.query(table("distribution"), {
       index: "byRelease",
       eq: ["A"],
       order: "asc",
       limit: 10,
     });
     expect(shards.map((row) => [row._shard, row.installations])).toEqual([
-      [0, 1],
-      [7, -1],
+      [0, -1],
+      [3, 1],
     ]);
-    const read = await gain.db.findAggregates("distribution", {
+    const read = await db.findAggregates("distribution", {
       index: "byRelease",
       where: { release: "A" },
       limit: 10,
@@ -426,7 +426,7 @@ describe("aggregate batching", () => {
   it("records only the attempt that committed when a transaction reruns", async () => {
     let conflicts = 1;
     const { db, engine } = await setup({
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
       fault: (ops) =>
         ops.some(({ table: { name } }) => name === "installs") &&
         conflicts-- > 0
@@ -448,7 +448,7 @@ describe("aggregate batching", () => {
   });
 
   it("fails the transaction on an invalid batched change, even one fn caught", async () => {
-    const { db, writes } = await setup({ batching: { mode: "log" } });
+    const { db, writes } = await setup({ batching: {} });
     await expect(
       db.transaction(async (tx) => {
         tx.create("installs", { id: "i1", release: "A" });
@@ -464,7 +464,7 @@ describe("aggregate batching", () => {
     const reference = await setup();
     // Three ops a write: one change and its log row's patch, or two and its delete.
     const log = await setup({
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
       maxOps: 3,
     });
     const five = (db: Db) =>
@@ -483,14 +483,14 @@ describe("aggregate batching", () => {
   it("serves stored aggregates when a read cannot compact", async () => {
     const reference = await setup();
     const log = await setup({
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     await open(reference.db, "i1", "A");
     await open(log.db, "i1", "A");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const readOnly = await setup({
       adapter: log.memory,
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
       fault: () => {
         throw new Error("AccessDeniedException");
       },
@@ -512,7 +512,7 @@ describe("aggregate batching", () => {
     await shared.migrations?.apply(batched.tables);
     const full = await setup({
       adapter: shared,
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
     });
     const partial = createDatabaseEngine({
       adapter: shared,
@@ -520,7 +520,7 @@ describe("aggregate batching", () => {
         { id: "stats", schema: { installs, opens } },
         aggregateBatchingModule,
       ]),
-      batching: { mode: "log" },
+      batching: {},
     });
     await open(full.db, "i1", "A");
     await open(full.db, "i1", "B");
@@ -528,76 +528,5 @@ describe("aggregate batching", () => {
     expect(await logRows(shared)).toHaveLength(1);
     await full.engine.flush();
     expect(await logRows(shared)).toEqual([]);
-  });
-
-  it("keeps memory-mode changes in the process until the window passes or a read", async () => {
-    vi.useFakeTimers();
-    const { db, writes, memory } = await setup({
-      batching: { mode: "memory", windowMs: 5_000 },
-    });
-    for (const id of ["i1", "i2", "i3"]) await open(db, id, "A");
-    const rows = () =>
-      memory.query(table("opens"), {
-        index: "all",
-        eq: [],
-        order: "asc",
-        limit: 10,
-      });
-    expect(await rows()).toEqual([]);
-    expect(writes.flat().map((op) => op.table.name)).not.toContain("opens");
-
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect((await rows()).map((row) => row.opens)).toEqual([3]);
-
-    await open(db, "i4", "A");
-    await expect(
-      db.findAggregates("opens", { index: "all", where: {}, limit: 10 }),
-    ).resolves.toEqual({ rows: [{ day: 1, opens: 4, failures: 0 }] });
-  });
-
-  it("never keeps a process alive for a pending memory flush", async () => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const start = globalThis.setTimeout;
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-      ...args: Parameters<typeof setTimeout>
-    ) => {
-      const timer = start(...args);
-      timers.push(timer);
-      return timer;
-    }) as typeof setTimeout);
-    const { db, engine } = await setup({
-      batching: { mode: "memory", windowMs: 60_000 },
-    });
-
-    await open(db, "i1", "A");
-    vi.mocked(globalThis.setTimeout).mockRestore();
-
-    expect(timers).not.toEqual([]);
-    expect(timers.every((timer) => !timer.hasRef())).toBe(true);
-    await engine.dispose();
-  });
-
-  it("keeps changes a memory flush could not write for the next flush", async () => {
-    let failing = true;
-    const { db, engine, memory } = await setup({
-      batching: { mode: "memory" },
-      fault: (ops) =>
-        failing && ops.some(({ table: { name } }) => name === "opens")
-          ? { ok: false, retry: true }
-          : undefined,
-    });
-    await open(db, "i1", "A");
-    await engine.flush();
-    const opens = () =>
-      memory.query(table("opens"), {
-        index: "all",
-        eq: [],
-        order: "asc",
-        limit: 10,
-      });
-    expect(await opens()).toEqual([]);
-    failing = false;
-    await engine.flush();
-    expect((await opens()).map((row) => row.opens)).toEqual([1]);
   });
 });

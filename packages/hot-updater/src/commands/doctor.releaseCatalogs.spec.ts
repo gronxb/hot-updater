@@ -69,33 +69,25 @@ const deploy = async (
 /** Deletes a scope's catalog row, leaving its releases. */
 const loseCatalogRow = async (scopeKey: string) => {
   const engine = createEngine(harness.database);
-  try {
-    await engine.core.transaction(async (tx) => {
-      const row = await tx.findOne("release_catalogs", {
-        scope_key: scopeKey,
-      });
-      await tx.delete("release_catalogs", row!);
+  await engine.core.transaction(async (tx) => {
+    const row = await tx.findOne("release_catalogs", {
+      scope_key: scopeKey,
     });
-  } finally {
-    await engine.dispose();
-  }
+    await tx.delete("release_catalogs", row!);
+  });
 };
 
 /** Makes a scope's stored catalog differ from what its releases compile to. */
 const makeStale = async (scopeKey: string) => {
   const engine = createEngine(harness.database);
-  try {
-    await engine.core.transaction(async (tx) => {
-      const row = await tx.findOne("release_catalogs", {
-        scope_key: scopeKey,
-      });
-      tx.update("release_catalogs", row!, {
-        catalog_hash: `sha256:${"0".repeat(64)}`,
-      });
+  await engine.core.transaction(async (tx) => {
+    const row = await tx.findOne("release_catalogs", {
+      scope_key: scopeKey,
     });
-  } finally {
-    await engine.dispose();
-  }
+    tx.update("release_catalogs", row!, {
+      catalog_hash: `sha256:${"0".repeat(64)}`,
+    });
+  });
 };
 
 describe("doctor's release catalog check", () => {

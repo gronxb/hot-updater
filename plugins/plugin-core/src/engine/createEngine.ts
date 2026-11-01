@@ -40,13 +40,8 @@ export interface Engine {
     readonly id: string;
     readonly schema: TSchema;
   }): HotUpdaterDatabase<TSchema>;
-  /**
-   * Applies aggregate changes the database batches that are still pending:
-   * this process's buffer, and the log rows no compaction has merged yet.
-   */
+  /** Applies the log rows of batched aggregates that no compaction has merged yet. */
   flush(): Promise<void>;
-  /** Stops batching's timer after a last flush. */
-  dispose(): Promise<void>;
 }
 
 /**
@@ -140,6 +135,5 @@ export const createEngine = (
       ) as never;
     },
     flush: () => engine.flush(),
-    dispose: () => engine.dispose(),
   };
 };
