@@ -52,8 +52,8 @@ const register = (
 ) =>
   databaseHarness.core.registerNativeBuild({
     ...scope,
-    id: `01900000-0000-7000-8000-00000000b00${suffix}`,
-    minBundleId: `01900000-0000-7000-8000-00000000a00${suffix}`,
+    id: `01900000-0000-7000-8000-00000000b${suffix.padStart(3, "0")}`,
+    minBundleId: `01900000-0000-7000-8000-00000000a${suffix.padStart(3, "0")}`,
     gitCommitHash: null,
     buildKey: null,
     artifact: {
@@ -89,6 +89,28 @@ const nativeBuild = {
   },
 };
 
+const sandboxSchemes = {
+  android: {
+    ...nativeBuild.android,
+    sandbox: {
+      packageName: "com.example",
+      variant: "Release",
+      aab: false,
+      sandbox: true,
+    },
+  },
+  ios: {
+    ...nativeBuild.ios,
+    sandbox: {
+      scheme: "Example",
+      bundleIdentifier: "com.example.sandbox",
+      configuration: "Release",
+      simulator: true,
+      sandbox: true,
+    },
+  },
+};
+
 const prebuild = vi.fn();
 const getNativeProjectValues = vi.fn();
 const build = vi.fn(async () => ({
@@ -100,6 +122,141 @@ const output = () =>
   JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
 
 describe("handleNativeBuildFind", () => {
+  describe("with a sandbox scheme", () => {
+    const find = async (platform: "android" | "ios", scheme = "sandbox") => {
+      const { handleNativeBuildFind } = await import("./nativeBuild");
+      await handleNativeBuildFind({ platform, scheme, json: true });
+      return output();
+    };
+    const sandboxScope = (platform: "android" | "ios") => ({
+      platform,
+      channel: "sandbox-sandbox",
+      appVersion: null,
+    });
+
+    beforeEach(() => {
+      loadConfig.mockResolvedValue({
+        updateStrategy: "fingerprint",
+        nativeBuild: sandboxSchemes,
+        build,
+      });
+    });
+
+    it("names the scheme's app ID, and no other builds on an empty channel", async () => {
+      expect(await find("android")).toMatchObject({
+        channel: "sandbox-sandbox",
+        nativeBuild: null,
+        sandbox: { appId: "com.example", otherBuilds: false },
+      });
+    });
+
+    it("names the iOS scheme's own bundle identifier", async () => {
+      expect((await find("ios")).sandbox.appId).toBe("com.example.sandbox");
+    });
+
+    it("says when the platform's builds have other native code", async () => {
+      await register("1", {
+        ...sandboxScope("android"),
+        fingerprintHash: "fingerprint-old",
+      });
+
+      expect(await find("android")).toMatchObject({
+        nativeBuild: null,
+        sandbox: { otherBuilds: true },
+      });
+    });
+
+    it("doesn't count another platform's build on a shared channel", async () => {
+      await register("1", {
+        ...sandboxScope("ios"),
+        fingerprintHash: "fingerprint-old",
+      });
+
+      expect(await find("android")).toMatchObject({
+        nativeBuild: null,
+        sandbox: { otherBuilds: false },
+      });
+    });
+
+    describe("past a page of the other platform's builds", () => {
+      const PAGE = 100;
+      const registerAndroidPage = async () => {
+        for (let build = 1; build <= PAGE; build += 1) {
+          await register(String(build), {
+            ...sandboxScope("android"),
+            fingerprintHash: "fingerprint-old",
+          });
+        }
+      };
+      const countListReads = () => {
+        const server = testServer({ database: databaseHarness.database });
+        const list = vi.spyOn(server.core, "listNativeBuilds");
+        loadServer.mockResolvedValue(server);
+        return list;
+      };
+
+      it("finds the platform's older build", async () => {
+        await register("0", {
+          ...sandboxScope("ios"),
+          fingerprintHash: "fingerprint-old",
+        });
+        await registerAndroidPage();
+        const list = countListReads();
+
+        expect(await find("ios")).toMatchObject({
+          nativeBuild: null,
+          sandbox: { otherBuilds: true },
+        });
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+
+      it("says none once the channel runs out", async () => {
+        await registerAndroidPage();
+        const list = countListReads();
+
+        expect(await find("ios")).toMatchObject({
+          nativeBuild: null,
+          sandbox: { otherBuilds: false },
+        });
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+
+      it("stops at the first page that has one", async () => {
+        await register("0", {
+          ...sandboxScope("ios"),
+          fingerprintHash: "fingerprint-old",
+        });
+        await registerAndroidPage();
+        const list = countListReads();
+
+        expect(await find("android")).toMatchObject({
+          sandbox: { otherBuilds: true },
+        });
+        expect(list).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("reads no other builds once one matches", async () => {
+      await register("1", {
+        ...sandboxScope("android"),
+        fingerprintHash: "fingerprint-old",
+      });
+      await register("2", {
+        ...sandboxScope("android"),
+        fingerprintHash: "fingerprint-a",
+      });
+
+      const found = await find("android");
+
+      expect(found.nativeBuild?.fingerprint_hash).toBe("fingerprint-a");
+      expect(found.sandbox.otherBuilds).toBe(false);
+    });
+
+    it("adds nothing for a scheme that isn't a sandbox's", async () => {
+      expect(await find("android", "releaseApk")).not.toHaveProperty("sandbox");
+    });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();

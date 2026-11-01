@@ -228,13 +228,18 @@ so a build it makes embeds the pull request's channel. An Expo project with
 no `ios` or `android` directory in git sets it in its config plugin instead;
 see [Expo](#expo). Then, for each platform:
 
-1. `hot-updater native-build find -p <platform> -c <channel> -s <scheme> --json`
+1. `hot-updater native-build find -p <platform> -s <scheme> --json`
    prints the newest tracked build that a build of the project would
-   match: the same fingerprint, from the config's fingerprint inputs, or with
-   the `appVersion` strategy, the version of the app the scheme builds, and
-   the kind of artifact the scheme builds, so a Simulator scheme never reuses
-   an `.ipa`, nor an APK scheme an `.aab`. It writes nothing to the native
-   projects; see [Find a build](/docs/guides/native-build#find-a-build).
+   match: the channel it would embed, the same fingerprint, from the config's
+   fingerprint inputs, or with the `appVersion` strategy, the version of the app
+   the scheme builds, and the kind of artifact the scheme builds, so a Simulator
+   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`. It writes nothing
+   to the native projects; see
+   [Find a build](/docs/guides/native-build#find-a-build). When the project
+   embeds another channel than the pull request's, as a config plugin can, it
+   asks again with `-c <channel>`. A
+   [sandbox scheme](#open-a-pull-request-in-a-sandbox-build) answers with its own
+   channel instead.
 2. With no build, `hot-updater native-build <platform> --scheme <scheme> --json`
    builds and tracks one, and prints what its artifact embeds: the
    channel, and the fingerprint or app version. The action fails when the
@@ -313,6 +318,7 @@ it out.
 | `platforms`            | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
 | `android-scheme`       |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                              |
 | `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
+| `android-fallback-scheme`, `ios-fallback-scheme` |      | With a sandbox scheme, the normal scheme built on the pull request's channel when its native code differs from every sandbox build |
 | `android-submit`       |                                | `play-internal` releases a sandbox scheme's `.aab` to Google Play's internal testing track                      |
 | `ios-submit`           |                                | `testflight` uploads a sandbox scheme's `.ipa` to TestFlight for internal testing                               |
 | `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
@@ -329,9 +335,10 @@ it out.
 | Output                                     | Description                                                                                                                                                                                                                                                     |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `comment-body`                             | The comment's Markdown                                                                                                                                                                                                                                          |
-| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, and with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`) |
+| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`), on a sandbox build, `sandbox` (`appId`, `link`, `minBundleId`), and after a fallback, `fallbackScheme` |
 | `android-install-url`, `ios-install-url`   | What a person opens: the comment's **Download** link, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link                                                                                |
 | `android-download-url`, `ios-download-url` | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                                                                                                                             |
+| `android-sandbox-link`, `ios-sandbox-link` | On a sandbox build, the link the comment's QR code holds. Empty under the `appVersion` strategy |
 | `android-store-url`, `ios-store-url`       | With a store input, the store's link. Empty when the store couldn't be read                                                                                                                                                                                     |
 | `android-store-state`, `ios-store-state`   | With a store input, the store's word on the build: `processing`, `ready`, `missing-compliance`, or `draft`. Empty when the store couldn't be read                                                                                                               |
 | `android-build-log`, `ios-build-log`       | When the platform's native build fails, the path of its build log                                                                                                                                                                                               |
@@ -381,6 +388,56 @@ Or fetch `android-download-url` or `ios-download-url` with no credentials, when
   reads through `env` or an expression. In a public repository, use
   `native-build download`.
 </Callout>
+
+## Open a pull request in a sandbox build
+
+Instead of a native build for each pull request, testers can install one
+[sandbox build](/docs/native-builds/sandbox) and scan a QR code for each pull
+request. Point the action at a sandbox scheme:
+
+```yaml
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: sandbox
+          android-fallback-scheme: previewApk
+```
+
+Each pull request still gets its own channel, and its bundle deploys there. The
+sandbox build lives on the scheme's own `sandbox-<scheme>` channel, so pull
+requests with the same native code share it, and closing one leaves it in place.
+
+- **A sandbox build has the fingerprint.** Nothing is built. The action deploys
+  the bundle.
+- **There's no sandbox build yet.** The action builds one, then deploys the bundle.
+- **The fingerprint differs from every sandbox build.** With
+  `android-fallback-scheme` or `ios-fallback-scheme`, a normal scheme, the action
+  runs the usual preview with it: the pull request gets its own native build on its
+  channel, and a **Download** link with no sandbox QR code. Without one, the action
+  builds a new sandbox build, which testers install before they scan.
+
+The comment's row has the sandbox build's **Download** and **Details** links, and
+each platform has its own QR code, since each has its own fingerprint:
+
+```text
+hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
+```
+
+A sandbox build with other native code refuses the link. The comment shows the link
+under its QR code. Under the `appVersion` strategy it has neither, since a link
+names a fingerprint.
+
+The Console serves the image at
+`/_hot-updater/native-builds/preview-qr?app=<app ID>&channel=<channel>&fingerprint=<hash>`
+without a session or a database read. It only ever holds a sandbox link, so a
+channel with characters other than letters, digits, `.`, `_` and `-` gets the link
+and no image, as does a private Console.
+
+A new sandbox build's `MIN_BUNDLE_ID` passes other open pull requests' bundles. The
+comment says whether its bundle runs on the sandbox build, and nothing redeploys the
+others, so push them again.
 
 ## Install through TestFlight or Google Play
 
@@ -445,7 +502,8 @@ same native code share it:
   track, gets a new build.
 
 The comment's row shows the store's link and state, such as **processing**, in
-place of **Download**. TestFlight's link opens the app in App Store Connect:
+place of **Download**, and the comment has the
+[sandbox link and its QR code](#open-a-pull-request-in-a-sandbox-build). TestFlight's link opens the app in App Store Connect:
 internal testers install from the TestFlight app. Google Play's link is where a
 tester on the internal track opts in. A closed pull request deletes its channel,
 and the store build stays for the others.

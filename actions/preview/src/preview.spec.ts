@@ -117,7 +117,8 @@ const fakeCli = ({
       }
       const scope = {
         platform: flag("-p"),
-        channel: flag("-c"),
+        // With no channel, what the native project says.
+        channel: args.includes("-c") ? flag("-c") : channel,
         ...target,
       };
       const found =
@@ -268,7 +269,7 @@ describe("runAction preview", () => {
 
     expect(fake.calls).toEqual([
       "channel set pr-12",
-      "native-build find -p android -c pr-12 -s releaseApk --json",
+      "native-build find -p android -s releaseApk --json",
       "native-build android --scheme releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
@@ -315,7 +316,7 @@ describe("runAction preview", () => {
 
     expect(fake.calls).toEqual([
       "channel set pr-12",
-      "native-build find -p android -c pr-12 -s releaseApk --json",
+      "native-build find -p android -s releaseApk --json",
       // fingerprint.json may be older than the project.
       "fingerprint create",
       "deploy -p android -c pr-12 -m #12 Fix the header",
@@ -379,7 +380,7 @@ describe("runAction preview", () => {
 
     expect(fake.calls).toEqual([
       "channel set pr-12",
-      "native-build find -p android -c pr-12 -s releaseApk --json",
+      "native-build find -p android -s releaseApk --json",
       "deploy -p android -c pr-12 -m #12 Fix the header -t 1.4.0",
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -c pr-12 -s releaseApk --json",
@@ -708,8 +709,8 @@ describe("runAction preview", () => {
       expect(
         fake.calls.filter((call) => call.startsWith("native-build find")),
       ).toEqual([
-        "native-build find -p android -c pr-12 -s releaseApk --json",
-        "native-build find -p ios -c pr-12 -s simulator --json",
+        "native-build find -p android -s releaseApk --json",
+        "native-build find -p ios -s simulator --json",
         "native-build find -p android -c pr-12 -s releaseApk --json",
         "native-build find -p ios -c pr-12 -s simulator --json",
       ]);
@@ -1011,6 +1012,7 @@ describe("parseInputs", () => {
       schemes: { android: "releaseApk", ios: "simulator" },
       channel: "pr-12",
       submits: {},
+      fallbackSchemes: {},
       testFlightGroup: null,
       credit: true,
       comment: false,

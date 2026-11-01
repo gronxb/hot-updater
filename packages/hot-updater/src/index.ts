@@ -329,7 +329,7 @@ nativeBuildCommand
   )
   .option(
     "--json",
-    "output the scope, the build or null, and the storage's download URL or null, as JSON",
+    "output the scope, the build or null, the storage's download URL or null, and for a sandbox scheme its app ID, as JSON",
   )
   .action(handleNativeBuildFind);
 
