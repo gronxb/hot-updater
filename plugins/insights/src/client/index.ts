@@ -65,8 +65,6 @@ type Movement = Pick<
 type PendingEvent = QueuedEvent & {
   /** For UPDATE_FAILED: a later success for its target made it moot. */
   superseded?: boolean;
-  /** Stored for the next launch. An answer to a request in flight still counts. */
-  handedOff?: boolean;
 };
 
 const normalizeUserId = (user: InsightsUser | null): string | null => {
@@ -110,7 +108,12 @@ const setUpInsights = (
   /** A download in this runtime: a later no-change report would hide it. */
   let didDownload = false;
   let lastDownloadedSelection: string | null = null;
-  /** The bundle the latest check of this runtime forces. */
+  /**
+   * The bundle a check forces. The app reloads into it right after staging it,
+   * and React Native can abort when a request starts while a reload tears its
+   * modules down, so this runtime starts no more requests: its events wait in
+   * storage for the next launch.
+   */
   let forcedBundleId: string | null = null;
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
@@ -186,6 +189,10 @@ const setUpInsights = (
         }
       }
     }
+    if (forcedBundleId !== null) {
+      state?.handOffEvent(event);
+      return;
+    }
     pending.set(event.body, event);
     void send(event.body).catch((error: unknown) => {
       console.warn(
@@ -193,6 +200,14 @@ const setUpInsights = (
         error,
       );
     });
+  };
+
+  /** Queues what an earlier runtime left, ahead of what this one reports. */
+  const sendHandedOffEvents = () => {
+    const queued = new Set([...pending.keys()].map((body) => body.eventId));
+    for (const event of state?.readHandedOffEvents() ?? []) {
+      if (!queued.has(event.body.eventId)) enqueue(event);
+    }
   };
 
   const reportLaunch = (
@@ -241,15 +256,17 @@ const setUpInsights = (
   };
 
   const onUpdateCheck = (result: UpdateCheckResult) => {
-    // `occurredAt` marks a check native made before this runtime started, which
-    // this runtime does not reload for.
-    if (result.occurredAt === undefined) {
-      forcedBundleId =
-        result.status === "UPDATE_AVAILABLE" && result.shouldForceUpdate
-          ? result.toBundleId
-          : null;
+    if (result.status !== "UNCHANGED") {
+      // `occurredAt` marks a check native made before this runtime started,
+      // which this runtime does not reload for.
+      if (result.shouldForceUpdate && result.occurredAt === undefined) {
+        forcedBundleId = result.toBundleId;
+        // What is queued or in flight may not outlive the reload. The server
+        // stores an event once, so one delivered meanwhile can be sent again.
+        for (const event of pending.values()) state?.handOffEvent(event);
+      }
+      return;
     }
-    if (result.status !== "UNCHANGED") return;
     reportLaunch(
       result.channel,
       result.bundleId,
@@ -262,19 +279,6 @@ const setUpInsights = (
   };
 
   const onBundleDownloaded = (info: BundleDownloadedInfo) => {
-    // The app normally reloads right after staging a forced bundle, and React
-    // Native can abort when a request starts while a reload tears its modules
-    // down. So what exists now waits for the next launch, and starts no request
-    // here. Later reports send as usual, whether or not a reload comes.
-    const forced =
-      info.occurredAt === undefined && info.toBundleId === forcedBundleId;
-    if (forced) {
-      // The server stores an event once, so one in flight can be sent again.
-      for (const event of pending.values()) {
-        state?.handOffEvent(event);
-        event.handedOff = true;
-      }
-    }
     const selection = JSON.stringify([
       info.channel,
       info.toReleaseId,
@@ -282,31 +286,26 @@ const setUpInsights = (
     ]);
     if (lastDownloadedSelection === selection) return;
     lastDownloadedSelection = selection;
-    const event = createEvent(
-      {
-        type: "UPDATE_DOWNLOADED",
-        channel: info.channel,
-        fromBundleId: info.fromBundleId,
-        fromReleaseId: info.fromReleaseId,
-        toBundleId: info.toBundleId,
-        toReleaseId: info.toReleaseId,
-        updateStrategy: info.updateStrategy,
-        metadata: {
-          delivery: info.delivery,
-          ...(info.patchFallback ? { patchFallback: true } : {}),
-        },
-      },
-      undefined,
-      info.occurredAt,
-    );
-    if (forced) {
-      // The server has not heard of this download yet, so a later no-change
-      // report hides nothing.
-      if (event !== null) state?.handOffEvent(event);
-      return;
-    }
     didDownload = true;
-    enqueue(event);
+    enqueue(
+      createEvent(
+        {
+          type: "UPDATE_DOWNLOADED",
+          channel: info.channel,
+          fromBundleId: info.fromBundleId,
+          fromReleaseId: info.fromReleaseId,
+          toBundleId: info.toBundleId,
+          toReleaseId: info.toReleaseId,
+          updateStrategy: info.updateStrategy,
+          metadata: {
+            delivery: info.delivery,
+            ...(info.patchFallback ? { patchFallback: true } : {}),
+          },
+        },
+        undefined,
+        info.occurredAt,
+      ),
+    );
   };
 
   const onUpdateError = (error: UpdateError) => {
@@ -314,6 +313,11 @@ const setUpInsights = (
     // and its report would not arrive either.
     if (error.stage === "check" && error.reason === "network") return;
     const targetBundleId = error.targetBundleId ?? error.bundleId;
+    if (error.stage !== "check" && targetBundleId === forcedBundleId) {
+      // The forced update failed, so no reload follows.
+      forcedBundleId = null;
+      sendHandedOffEvents();
+    }
     const details = readErrorDetails(error.cause);
     const failureKey = JSON.stringify([
       error.stage,
@@ -386,7 +390,8 @@ const setUpInsights = (
     if (event === undefined || state === null || context === null) {
       return false;
     }
-    if (event.handedOff === true) {
+    if (forcedBundleId !== null) {
+      state.handOffEvent(event);
       pending.delete(body);
       return false;
     }
@@ -439,8 +444,7 @@ const setUpInsights = (
   if (pluginContext.isDebugBuild && options.debug !== true) return { api };
 
   send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-  // What an earlier runtime left goes first, ahead of what this one reports.
-  for (const event of pluginState.readHandedOffEvents()) enqueue(event);
+  sendHandedOffEvents();
   return {
     api,
     hooks: {
