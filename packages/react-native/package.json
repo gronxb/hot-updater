@@ -33,6 +33,7 @@
     "!ios/HotUpdater/Test",
     "!ios/HotUpdater/Package.swift",
     "!android/src/test",
+    "!android/src/sandboxTest",
     "!android/build",
     "!android/gradle",
     "!android/gradlew",

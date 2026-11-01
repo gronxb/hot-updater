@@ -94,7 +94,50 @@ let package = Package(
         .testTarget(
             name: "HotUpdaterTest",
             dependencies: ["HotUpdaterCore", "HotUpdaterRecovery"],
-            path: "Test"
+            path: "Test",
+            exclude: ["Sandbox"]
+        ),
+        // The sandbox layer's logic, which needs neither React Native nor UIKit.
+        .target(
+            name: "HotUpdaterSandboxCore",
+            path: "Sandbox",
+            exclude: [
+                "README.md",
+                "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxEntryPoints.h",
+                "HotUpdaterSandboxEntryPoints.m",
+                "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxLiveHost.swift",
+                "HotUpdaterSandboxMarker.m",
+                "HotUpdaterSandboxScreen.swift",
+            ],
+            sources: [
+                "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxLaunchPolicy.swift",
+                "HotUpdaterSandboxLink.swift",
+            ]
+        ),
+        .target(
+            name: "HotUpdaterSandboxEntryPoints",
+            path: "Sandbox",
+            exclude: [
+                "README.md",
+                "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxLaunchPolicy.swift",
+                "HotUpdaterSandboxLink.swift",
+                "HotUpdaterSandboxLiveHost.swift",
+                "HotUpdaterSandboxMarker.m",
+                "HotUpdaterSandboxScreen.swift",
+            ],
+            sources: ["HotUpdaterSandboxEntryPoints.m"],
+            publicHeadersPath: "."
+        ),
+        .testTarget(
+            name: "HotUpdaterSandboxTest",
+            dependencies: ["HotUpdaterSandboxCore", "HotUpdaterSandboxEntryPoints"],
+            path: "Test/Sandbox"
         ),
     ]
 ) 

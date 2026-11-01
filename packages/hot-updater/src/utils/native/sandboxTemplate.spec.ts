@@ -23,6 +23,55 @@ const sourcesOf = (directory: string, excluded: string[]): string[] =>
         !excluded.some((prefix) => file.startsWith(prefix)),
     );
 
+const GATE_SELECTORS = {
+  five: "viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:",
+  three: "viewWithModuleName:initialProperties:launchOptions:",
+};
+
+/** The selector's parts, as an Objective-C declaration spreads them over lines. */
+const declares = (source: string, selector: string) =>
+  new RegExp(
+    `- ?\\(UIView \\*[^)]*\\)${selector
+      .split(":")
+      .filter(Boolean)
+      .map((part) => `${part}:\\([^)]*\\)\\s*\\w+`)
+      .join("\\s+")}`,
+    "u",
+  ).test(source);
+
+describe("the gate's hold on React Native", () => {
+  const gate = read("ios/HotUpdater/Sandbox/HotUpdaterSandboxGate.m");
+
+  it("swaps the selectors the supported hosts declare", () => {
+    expect(gate).toContain(GATE_SELECTORS.five);
+    expect(gate).toContain(GATE_SELECTORS.three);
+    for (const [example, selector] of [
+      ["v0.74.1", GATE_SELECTORS.three],
+      ["v0.85.0", GATE_SELECTORS.five],
+      ["v0.88.0", GATE_SELECTORS.five],
+      ["expo-52", GATE_SELECTORS.three],
+    ] as const) {
+      const factory = path.resolve(
+        SDK,
+        `../../examples/${example}/node_modules/react-native/Libraries/AppDelegate/RCTRootViewFactory.mm`,
+      );
+      expect(
+        declares(fs.readFileSync(factory, "utf-8"), selector),
+        example,
+      ).toBe(true);
+    }
+  });
+
+  it("relaunches through the SDK's restart, which sets the flag the activity reads", () => {
+    expect(
+      read("android/src/main/java/com/hotupdater/HotUpdaterRestartActivity.kt"),
+    ).toContain("Intent.makeRestartActivityTask(component)");
+    expect(
+      read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxStart.kt"),
+    ).toContain("Intent.FLAG_ACTIVITY_CLEAR_TASK != 0");
+  });
+});
+
 describe("the sandbox template", () => {
   it("holds the literal the artifact check reads, on both platforms", () => {
     expect(SANDBOX_CODE_MARKER).toHaveLength(32);
@@ -69,7 +118,13 @@ describe("the sandbox template", () => {
 
   it("isn't named by any normal source, so nothing needs it to compile", () => {
     const normal = [
-      ...sourcesOf("ios", ["ios/HotUpdater/Sandbox"]),
+      ...sourcesOf("ios", [
+        "ios/HotUpdater/Sandbox",
+        "ios/HotUpdater/Test/Sandbox",
+        // Runs the tests above; the podspec and the published package leave it out.
+        "ios/HotUpdater/Package.swift",
+      ]),
+      // Its prefix also covers src/sandboxTest, attached only by an init script.
       ...sourcesOf("android/src", ["android/src/sandbox"]),
     ];
     expect(normal.length).toBeGreaterThan(20);
@@ -78,6 +133,17 @@ describe("the sandbox template", () => {
       expect(source, file).not.toContain("HotUpdaterSandbox");
       expect(source, file).not.toContain(SANDBOX_CODE_MARKER);
     }
+  });
+
+  it("keeps its tests out of any app's build and out of the published package", () => {
+    expect(read("HotUpdater.podspec")).toContain(
+      '"ios/HotUpdater/Test/**/*.{swift,h,m,mm}"',
+    );
+    const { files } = JSON.parse(read("package.json")) as { files: string[] };
+    expect(files).toContain("!ios/HotUpdater/Test");
+    expect(files).toContain("!android/src/sandboxTest");
+    // build.gradle names no test sources: only the tests' own init script does.
+    expect(read("android/build.gradle")).not.toContain("sandboxTest");
   });
 
   it("is out of the Swift package's compile lists", () => {

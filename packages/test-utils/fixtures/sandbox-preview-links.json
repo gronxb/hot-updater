@@ -1,0 +1,40 @@
+{
+  "valid": [
+    {
+      "link": "hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=abc123",
+      "urlScheme": "hu-sandbox-com-example-app",
+      "channel": "pr-12",
+      "fingerprintHash": "abc123"
+    },
+    {
+      "link": "HU-Sandbox-Com-Example://hot-updater/preview?fingerprint=abc&channel=pr%2F12%20b",
+      "urlScheme": "hu-sandbox-com-example",
+      "channel": "pr/12 b",
+      "fingerprintHash": "abc"
+    },
+    {
+      "link": "hu-sandbox-a://hot-updater/preview?channel=%EC%B1%84%EB%84%90&fingerprint=abc&future=1",
+      "urlScheme": "hu-sandbox-a",
+      "channel": "채널",
+      "fingerprintHash": "abc"
+    }
+  ],
+  "invalid": [
+    "",
+    "pr-12",
+    "exampleapp://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "hu-sandbox-://hot-updater/preview?channel=pr-12&fingerprint=abc",
+    "hu-sandbox-a://other/preview?channel=pr-12&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/other?channel=pr-12&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview",
+    "hu-sandbox-a://hot-updater/preview?channel=pr-12",
+    "hu-sandbox-a://hot-updater/preview?fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview?channel=&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview?channel=pr-12&fingerprint=",
+    "hu-sandbox-a://hot-updater/preview?channel=a&channel=b&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview?channel=%20a&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview?channel=%E0%A4%A&fingerprint=abc",
+    "hu-sandbox-a://hot-updater/preview?channel=pr-12&fingerprint=abc#fragment",
+    "hu-sandbox-a://hot-updater/preview?channel"
+  ]
+}

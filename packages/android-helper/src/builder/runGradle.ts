@@ -65,7 +65,25 @@ const gradleCommand = (
 /**
  * Run gradle build with specified tasks and arguments
  */
-export async function runGradle({
+export async function runGradle(args: RunGradleArgs): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+  /** The build log, or null without one. */
+  logFilePath: string | null;
+}> {
+  const logFilePath = await runGradleTasks(args);
+  return {
+    ...(await findBuildDirectory({
+      androidProjectPath: args.androidProjectPath,
+      moduleName: args.appModuleName,
+      tasks: args.tasks,
+    })),
+    logFilePath,
+  };
+}
+
+/** Runs tasks that leave no artifact to find, and returns the build log, or null. */
+export async function runGradleTasks({
   tasks,
   logPrefix,
   args,
@@ -73,12 +91,7 @@ export async function runGradle({
   androidProjectPath,
   appModuleName,
   logHeader = [],
-}: RunGradleArgs): Promise<{
-  buildDirectory: string;
-  buildArtifactPath: string;
-  /** The build log, or null without one. */
-  logFilePath: string | null;
-}> {
+}: RunGradleArgs): Promise<string | null> {
   const gradleArgs = getTaskNames(appModuleName, tasks);
 
   gradleArgs.push("-x", "lint");
@@ -142,14 +155,7 @@ export async function runGradle({
     await logger.close();
   }
 
-  return {
-    ...(await findBuildDirectory({
-      androidProjectPath,
-      moduleName: appModuleName,
-      tasks,
-    })),
-    logFilePath,
-  };
+  return logFilePath;
 }
 
 /**

@@ -39,7 +39,12 @@ export {
   type ZipEntry,
 } from "./nativeArtifact/zip";
 export {
+  createPreviewLink,
   isSandboxChannel,
+  isSandboxUrlScheme,
+  parsePreviewLink,
+  type PreviewLink,
+  SANDBOX_ACTIVITY,
   SANDBOX_APPLICATION_ID_SUFFIX,
   SANDBOX_CODE_MARKER,
   SANDBOX_INFO_PLIST_KEY,

@@ -32,6 +32,7 @@
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
+    "fast-xml-parser": "5.7.2",
     "jszip": "^3.10.1"
   },
   "devDependencies": {

@@ -1,0 +1,9 @@
+// Runs the sandbox layer's unit tests, whose sources only compile with the layer:
+//   ./gradlew :hot-updater_react-native:testDebugUnitTest -PhotUpdaterSandbox=test --init-script <this file>
+def tests = new File(buildscript.sourceFile.parentFile, "java")
+allprojects { project ->
+  if (project.path != ":hot-updater_react-native") return
+  project.plugins.withId("com.android.library") {
+    project.extensions.getByName("android").sourceSets.getByName("test").java.srcDir(tests)
+  }
+}

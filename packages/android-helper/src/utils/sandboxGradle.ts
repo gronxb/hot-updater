@@ -6,9 +6,13 @@ import path from "path";
 import { getCwd } from "@hot-updater/cli-tools";
 import {
   SANDBOX_APPLICATION_ID_SUFFIX,
-  SANDBOX_META_DATA,
   sandboxChannelOf,
 } from "@hot-updater/protocol/native-artifact";
+
+import {
+  resolveSandboxLauncher,
+  sandboxManifestOverlay,
+} from "./sandboxManifest";
 
 const UNSUPPORTED_DSL = `Sandbox builds don't support AGP 9's default DSL yet.
 Set android.newDsl=false in android/gradle.properties.`;
@@ -79,25 +83,12 @@ allprojects { project ->
 `;
 
 /**
- * The manifest a sandbox build overlays on the app's: `tools:replace` wins over
- * a channel the app's manifest sets, as an Expo project's does.
- */
-export const sandboxManifestOverlay = (
-  channel: string,
-) => `<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-  <application>
-    <meta-data android:name="com.hotupdater.CHANNEL" android:value="${channel}" tools:replace="android:value" />
-    <meta-data android:name="${SANDBOX_META_DATA}" android:value="true" />
-  </application>
-</manifest>
-`;
-
-/**
  * Runs `build` with the Gradle arguments of a scheme: none for a normal one. A
  * sandbox scheme's attach the SDK's sandbox layer and name the init script,
  * written outside the project with its manifest overlay, and removed after.
  * Kotlin compiles from scratch, since the sandbox layer's sources come and go.
+ * `readEffectiveManifest` is the variant's merged manifest before the overlay,
+ * which the overlay takes the launcher from.
  */
 export const withSandboxGradleArgs = async <T>(
   scheme: {
@@ -105,7 +96,9 @@ export const withSandboxGradleArgs = async <T>(
     readonly hotUpdaterSchemeName: string;
     readonly appModuleName: string;
     readonly variant: string;
+    readonly packageName?: string;
   },
+  readEffectiveManifest: () => Promise<string>,
   build: (args: string[]) => Promise<T>,
   {
     minVersionCode,
@@ -115,6 +108,12 @@ export const withSandboxGradleArgs = async <T>(
   } = {},
 ): Promise<T> => {
   if (!scheme.sandbox) return build([]);
+  if (!scheme.packageName) {
+    throw new Error(
+      `The sandbox scheme ${scheme.hotUpdaterSchemeName} sets no packageName, which its URL scheme comes from.\nSet packageName on the scheme.`,
+    );
+  }
+  const launcher = resolveSandboxLauncher(await readEffectiveManifest());
   const directory = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-sandbox-"),
   );
@@ -123,7 +122,11 @@ export const withSandboxGradleArgs = async <T>(
     const initScript = path.join(directory, "sandbox.init.gradle");
     await fs.promises.writeFile(
       overlay,
-      sandboxManifestOverlay(sandboxChannelOf(scheme.hotUpdaterSchemeName)),
+      sandboxManifestOverlay({
+        channel: sandboxChannelOf(scheme.hotUpdaterSchemeName),
+        appId: scheme.packageName,
+        launcher,
+      }),
     );
     await fs.promises.writeFile(
       initScript,

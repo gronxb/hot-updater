@@ -9,7 +9,28 @@ import { resolveSandboxApplicationId } from "../../utils/version/getAndroidVersi
 import type { NativeCheckIssue } from "./issues";
 
 /** Build adapters no sandbox build has run on yet. */
-const UNQUALIFIED_ADAPTERS = new Set(["expo", "rock"]);
+const UNQUALIFIED_ADAPTERS = new Set(["rock"]);
+
+/** The Expo SDK a sandbox build has run on. */
+const QUALIFIED_EXPO_SDK = 52;
+
+/** The major version of the Expo SDK a project declares, or null without one. */
+const expoSdkOf = (cwd: string): number | null => {
+  const manifest = readText(path.join(cwd, "package.json"));
+  if (manifest === null) return null;
+  try {
+    const { dependencies, devDependencies } = JSON.parse(manifest) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const declared = /(\d+)/u.exec(
+      dependencies?.["expo"] ?? devDependencies?.["expo"] ?? "",
+    );
+    return declared ? Number(declared[1]) : null;
+  } catch {
+    return null;
+  }
+};
 
 const readText = (file: string) =>
   fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : null;
@@ -106,6 +127,17 @@ export const checkSandboxSchemes = async (
     .catch(() => undefined);
   if (adapter && UNQUALIFIED_ADAPTERS.has(adapter)) {
     issues.push(unqualified("project", `the ${adapter} build adapter`));
+  }
+  if (adapter === "expo") {
+    const sdk = expoSdkOf(cwd);
+    if (sdk !== QUALIFIED_EXPO_SDK) {
+      issues.push(
+        unqualified(
+          "project",
+          sdk === null ? "this Expo SDK" : `Expo SDK ${sdk}`,
+        ),
+      );
+    }
   }
 
   const iosDir = path.join(cwd, "ios");

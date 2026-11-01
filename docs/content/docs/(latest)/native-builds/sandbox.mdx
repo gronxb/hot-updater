@@ -54,7 +54,8 @@ refuses one that holds the wrong thing.
 | --------------- | ----------------------------------- | -------------------------------------- |
 | App ID          | Same bundle ID by default           | `.sandbox` added to the application ID |
 | Default channel | `sandbox-<scheme>`                  | `sandbox-<scheme>`                     |
-| URL scheme      | `hu-sandbox-<app ID>`               | None yet                               |
+| URL scheme      | `hu-sandbox-<app ID>`               | `hu-sandbox-<package name>`            |
+| First screen    | Before the app's JavaScript         | Before the app's JavaScript            |
 | Install         | TestFlight internal, or a simulator | Direct `.apk`, or internal testing     |
 
 On Android, the two install side by side. The suffix goes after
@@ -67,6 +68,67 @@ device. [A separate app](#a-separate-app-on-ios) installs beside it.
 The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
 `sandbox-*` channel, and a sandbox build can't register on any other.
 `native-build find --scheme <scheme>` looks on that channel by itself.
+
+## What runs first
+
+A sandbox build shows a native screen with the current channel and bundle before
+your app's JavaScript starts. **Open** starts your app.
+
+| How the app starts                                     | What happens                       |
+| ------------------------------------------------------ | ---------------------------------- |
+| Launcher icon, cold                                    | The screen                         |
+| Launcher icon, app running                             | The running app                    |
+| A sandbox link                                         | The screen, which asks to open it  |
+| Your app's own link, a notification, or a shortcut     | Your app, no screen                |
+| A silent push or a background task                     | Your app in the background. With the screen up, your app keeps waiting |
+| `reload()`                                             | Your app, no screen                |
+
+A sandbox link looks like this:
+
+```text
+hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
+```
+
+It never reaches your app's `Linking`. The app ID in it is the scheme's
+`bundleIdentifier` or `packageName`, without the `.sandbox` suffix.
+
+### Opening a link
+
+A link from another native build is refused with no request. Otherwise the screen
+asks, naming the channel, because opening one deletes downloaded bundles. Then
+the build asks the server whether the channel has a bundle for it, and stops there
+if it doesn't, with your downloads untouched. If the download fails after that,
+the screen shows what's selected now, the built-in bundle, and offers **Retry**.
+
+A sandbox build learns your update server from your app, when a server answers one
+of its update checks. Until then a link waits, across restarts, and asks once a
+check is answered. An app that holds its first check back, such as behind a consent
+prompt, holds the link back too.
+
+### Supported hosts
+
+| Platform | Tested with                                                  |
+| -------- | ------------------------------------------------------------ |
+| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 52 |
+| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 52               |
+
+No other Expo SDK has been tested. On Xcode 27, Expo SDK 52's `fmt` 11.0.2 doesn't
+compile: compile that pod as C++17 in the `Podfile` after `expo prebuild`.
+
+On iOS, the screen holds your root view inside a stable container until **Open**,
+so overlays and constraints you add to it stay. Code that uses it as a React Native
+root before then starts your app at once, without the screen. On a host with no
+`RCTRootViewFactory`, or one that creates its root another way, the app logs that
+and starts as usual. A background launch that's neither a notification, a
+background fetch nor a registered task starts your app after 2 seconds.
+
+On iOS, return `HotUpdater.bundleURL()` from your delegate's `bundleURL` each time
+it's called. React Native loads what the delegate returns, so a URL stored before
+the screen can name a bundle the switch deleted: the app crashes once, and the next
+launch opens what's selected.
+
+An Expo config plugin that returns its own root from a React delegate handler is
+one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
 
 ## Stores
 
@@ -155,4 +217,13 @@ The build number becomes the one after the app's highest.
 | AGP 9's default DSL                                        | Refused: set `android.newDsl=false`              |
 | Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
 | A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
-| The Expo or Rock adapter, `use_frameworks`, app extensions | Builds, but untested: check it on a device first |
+| The Rock adapter, `use_frameworks`, app extensions         | Builds, but untested: check it on a device first |
+| An Expo SDK other than 52                                  | Builds, but untested: check it on a device first |
+
+The build itself refuses, with the fix, a launcher its activity can't take over:
+
+- None, or more than one, in the variant's merged manifest. An `activity-alias` is
+  fine, as long as it's the only one: the sandbox's activity takes its label, icon
+  and shortcuts, and opens it.
+- `singleInstance`, `singleInstancePerTask`, `taskAffinity` or a `documentLaunchMode`
+  on the launcher's activity. `singleTask` is fine.

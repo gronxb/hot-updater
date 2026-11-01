@@ -55,6 +55,9 @@ jobs:
       - name: Android Unit Tests
         run: cd examples/v0.85.0/android && ./gradlew :hot-updater_react-native:testDebugUnitTest --build-cache
 
+      - name: Android Sandbox Unit Tests
+        run: cd examples/v0.85.0/android && ./gradlew :hot-updater_react-native:testDebugUnitTest -PhotUpdaterSandbox=test --init-script ../../../packages/react-native/android/src/sandboxTest/attach.init.gradle --build-cache
+
       - name: Build Android
         run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
         env:

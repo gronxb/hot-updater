@@ -8,6 +8,8 @@ import {
 import { type ByteSource, NativeArtifactError } from "./byteSource";
 import { parsePlist } from "./plist";
 import {
+  isSandboxUrlScheme,
+  SANDBOX_ACTIVITY,
   SANDBOX_CODE_MARKER,
   SANDBOX_INFO_PLIST_KEY,
   SANDBOX_META_DATA,
@@ -79,6 +81,14 @@ export interface NativeArtifactInfo {
    * sandbox build has both, and a normal build neither.
    */
   readonly sandbox: { readonly code: boolean; readonly declared: boolean };
+  /**
+   * How the app is entered, which a sandbox build changes: its launcher
+   * components (empty on iOS), and the sandbox URL scheme it registers.
+   */
+  readonly entry: {
+    readonly launchers: readonly string[];
+    readonly sandboxUrlScheme: string | null;
+  };
   /** The JavaScript bundle the build packed, the built-in bundle. */
   readonly builtInBundle: {
     readonly path: string;
@@ -214,11 +224,34 @@ const readAndroid = async (
       code: strings.includes(SANDBOX_CODE_MARKER),
       declared: manifest.metaData.has(SANDBOX_META_DATA),
     },
+    entry: {
+      launchers: manifest.launchers,
+      sandboxUrlScheme:
+        manifest.urlSchemes.get(SANDBOX_ACTIVITY)?.find(isSandboxUrlScheme) ??
+        null,
+    },
     builtInBundle:
       bundle === undefined
         ? null
         : { path: bundle.name, byteSize: bundle.uncompressedSize },
   };
+};
+
+/** The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null. */
+const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
+  const types = info["CFBundleURLTypes"];
+  if (!Array.isArray(types)) return null;
+  for (const type of types) {
+    const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
+      ?.CFBundleURLSchemes;
+    if (!Array.isArray(schemes)) continue;
+    for (const scheme of schemes) {
+      if (typeof scheme === "string" && isSandboxUrlScheme(scheme)) {
+        return scheme;
+      }
+    }
+  }
+  return null;
 };
 
 const stringValue = (value: unknown): string | null =>
@@ -307,6 +340,7 @@ const readIos = async (
       code: strings.includes(SANDBOX_CODE_MARKER),
       declared: info[SANDBOX_INFO_PLIST_KEY] !== undefined,
     },
+    entry: { launchers: [], sandboxUrlScheme: sandboxUrlSchemeIn(info) },
     builtInBundle:
       bundle === undefined
         ? null
