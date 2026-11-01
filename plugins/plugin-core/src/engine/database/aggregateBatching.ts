@@ -4,7 +4,6 @@ import {
   DATABASE_VERSION_COLUMN,
   type StoredRow,
   type WriteOp,
-  type WriteResult,
 } from "../../database/adapter";
 import { compareUtf8 } from "../../database/values";
 import type { AggregateBatching } from "../../types/databaseConfig";
@@ -26,12 +25,8 @@ const LEASE_TABLE = "aggregate_lease";
 const LEASE = { id: "compaction" } as const;
 /** How long a compaction holds the lease before another process may take it. */
 const LEASE_MS = 30_000;
-/**
- * Default windows: log mode compacts every 60 seconds, since reads compact
- * first; memory mode flushes every 15, since its window is what a crash
- * loses.
- */
-const WINDOW_MS = { log: 60_000, memory: 15_000 } as const;
+/** A commit compacts once this has passed since the last compaction. */
+const WINDOW_MS = 60_000;
 /** Log rows a compaction reads from each log table for one group. */
 const LOG_PAGE = 200;
 /**
@@ -41,8 +36,6 @@ const LOG_PAGE = 200;
 const GROUPS = { commit: 1, read: 8, flush: 256 } as const;
 /** Tries per write after a conflict or a transient error. */
 const ATTEMPTS = 5;
-/** Aggregate rows a memory buffer holds before a commit waits for a flush. */
-const MAX_BUFFERED = 10_000;
 
 const log = defineTable(
   {
@@ -80,7 +73,6 @@ export const aggregateBatchingModule: SchemaModule = {
 
 type Changes = Map<string, AggregateChange>;
 type Values = Readonly<Record<string, unknown>>;
-type Shard = (model: ResolvedModel) => number;
 
 const shapeOf = (model: ResolvedModel) =>
   model.definition as AggregateShape & { readonly batched?: true };
@@ -96,7 +88,7 @@ const valuesOf = ({ deltas, sketches }: AggregateChange): Values => ({
 /**
  * Merges `values` into the change for `key`'s identity as `tx.aggregate`
  * does: deltas add up and sketches merge. One constant `shardBy` keys each
- * identity to one entry; the write picks the shard.
+ * identity to one entry; `compile` writes it to shard 0.
  */
 const merge = (
   into: Changes,
@@ -163,7 +155,7 @@ const increment = (
 /**
  * The guarded write that merges `change` into `current`: insert, patch, or
  * delete at zero. Unlike a transaction's, a gauge may go below zero here: a
- * shard row holds one writer's net changes, and reads sum every shard.
+ * group can hold a loss without the gain before it, and reads sum every shard.
  */
 const rewrite = (
   change: AggregateChange,
@@ -192,19 +184,15 @@ const rewrite = (
 };
 
 /**
- * The write for each change on its shard: a blind increment that creates
- * the row for counters, and a guarded rewrite for gauges and sketches, whose
- * rows are read in one batch per table.
+ * The write for each change on shard 0, since one compaction runs at a time:
+ * a blind increment that creates the row for counters, and a guarded rewrite
+ * for gauges and sketches, whose rows are read in one batch per table.
  */
 const compile = async (
   adapter: DatabaseAdapter,
   changes: readonly AggregateChange[],
-  shard: Shard,
 ): Promise<(WriteOp | undefined)[]> => {
-  const keys = changes.map(({ model, key }) => [
-    ...key.slice(0, -1),
-    shard(model),
-  ]);
+  const keys = changes.map(({ key }) => [...key.slice(0, -1), 0]);
   const reads = new Map<ResolvedModel, number[]>();
   changes.forEach((change, at) => {
     if (rewrites(change)) {
@@ -302,31 +290,28 @@ interface LogRow {
   readonly changes: Changes;
 }
 
-/** A process's view of changes to aggregates declared `batched`. */
+/** Changes to aggregates declared `batched`, as an engine runs them. */
 export interface AggregateBatches {
-  /** `engine.transaction`, with batched aggregate changes held back until commit. */
+  /** `engine.transaction`, with batched aggregate changes written as one log row. */
   transaction<R>(fn: (tx: TransactionEngine) => Promise<R>): Promise<R>;
   /** Applies what a read of `table` would miss; never throws. */
   beforeRead(table: string): Promise<void>;
-  /** Applies this process's buffer and the pending log rows now. */
+  /** Applies the pending log rows now. */
   flush(): Promise<void>;
-  /** Flushes, and stops the flush timer. */
-  dispose(): Promise<void>;
 }
 
 /**
- * Batches changes to aggregates declared `batched`. A transaction records
- * them without writing their rows; once it commits, "memory" mode keeps
- * them in this process until its timer flushes them, and "log" mode has
- * written them as one log row in the same atomic write, which a compaction
- * later merges into the aggregates and deletes, atomically again, so each
- * applies exactly once. One lease row keeps compactions one at a time.
+ * Batches changes to aggregates declared `batched`. A transaction writes
+ * them as one log row in its own atomic write, in place of their rows; a
+ * compaction later merges log rows into the aggregates and deletes them,
+ * atomically again, so each applies exactly once. One lease row keeps
+ * compactions one at a time.
  */
 export const createAggregateBatches = ({
   engine,
   adapter,
   schema,
-  batching: { mode = "log", windowMs = WINDOW_MS[mode] },
+  batching: { windowMs = WINDOW_MS },
   now,
 }: {
   readonly engine: StorageEngine;
@@ -373,85 +358,6 @@ export const createAggregateBatches = ({
     return changes;
   };
 
-  /**
-   * Writes changes in atomic chunks within `fits`, and returns the ones it
-   * could not apply. A write whose outcome is unknown is dropped, never
-   * resent, so no change applies twice.
-   */
-  const apply = async (
-    changes: readonly AggregateChange[],
-    shard: Shard,
-  ): Promise<readonly AggregateChange[]> => {
-    let rest = changes;
-    let ops: (WriteOp | undefined)[] = [];
-    let read = true;
-    for (let failures = 0; rest.length > 0 && failures < ATTEMPTS; ) {
-      try {
-        if (read) ops = await compile(adapter, rest, shard);
-        let size = rest.length;
-        const chunk = () => ops.slice(0, size).filter(isOp);
-        while (size > 1 && !adapter.fits(chunk())) size = Math.ceil(size / 2);
-        let result: WriteResult = { ok: true };
-        if (chunk().length > 0) {
-          result = await adapter.write(chunk()).catch((error: unknown) => {
-            warn("flush")(error);
-            return { ok: true } as const;
-          });
-        }
-        read = !result.ok && !("retry" in result);
-        if (result.ok) {
-          rest = rest.slice(size);
-          ops = ops.slice(size);
-          failures = 0;
-        } else {
-          failures += 1;
-          if (!read) await sleep(failures);
-        }
-      } catch (error) {
-        warn("flush")(error);
-        return rest;
-      }
-    }
-    return rest;
-  };
-
-  // "memory": this process's changes, flushed on a timer.
-  let buffer: Changes = new Map();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let flushing: Promise<void> | undefined;
-  const shards = new Map<ResolvedModel, number>();
-  /** Each process writes its own shard, so flushes of two processes rarely meet. */
-  const processShard: Shard = (model) => {
-    if (!shards.has(model)) {
-      shards.set(model, Math.floor(Math.random() * shapeOf(model).shards));
-    }
-    return shards.get(model)!;
-  };
-  const schedule = () => {
-    if (timer !== undefined || buffer.size === 0) return;
-    timer = setTimeout(() => {
-      timer = undefined;
-      void flushBuffer();
-    }, windowMs);
-    // A pending flush never keeps the process alive.
-    (timer as { unref?: () => void }).unref?.();
-  };
-  /** Never rejects: what it cannot apply goes back into the buffer. */
-  const flushBuffer = (): Promise<void> =>
-    (flushing ??= (async () => {
-      clearTimeout(timer);
-      timer = undefined;
-      const pending = [...buffer.values()];
-      buffer = new Map();
-      mergeAll(buffer, await apply(pending, processShard));
-    })()
-      .catch(warn("flush"))
-      .finally(() => {
-        flushing = undefined;
-        schedule();
-      }));
-
-  // "log": log rows, compacted under the lease.
   let nextDue = 0;
   let compacting: Promise<void> | undefined;
   /** Log rows this process read, by `[log table's index, id]`, for the deletes after a group. */
@@ -607,7 +513,7 @@ export const createAggregateBatches = ({
   };
 
   const rowsFor = async (changes: readonly AggregateChange[]) =>
-    (await compile(adapter, changes, () => 0)).filter(isOp);
+    (await compile(adapter, changes)).filter(isOp);
 
   /**
    * Applies the oldest pending log rows whose merged changes fit in one
@@ -710,24 +616,6 @@ export const createAggregateBatches = ({
         checking = undefined;
       }));
 
-  /** Takes a committed transaction's changes; never rejects, since the transaction already committed. */
-  const committed = async (changes: Changes) => {
-    if (mode === "log") {
-      if (now() >= nextDue) await compact(false, GROUPS.commit);
-      return;
-    }
-    mergeAll(buffer, changes.values());
-    schedule();
-    if (buffer.size >= MAX_BUFFERED) await flushBuffer();
-  };
-
-  const flush = async () => {
-    await flushBuffer();
-    if (mode === "log" && (await hasPending())) {
-      await compact(true, GROUPS.flush);
-    }
-  };
-
   return {
     async transaction(fn) {
       let changes: Changes = new Map();
@@ -759,7 +647,7 @@ export const createAggregateBatches = ({
         try {
           const value = await fn({ ...tx, aggregate });
           if (failure) throw failure.error;
-          if (mode === "log" && attempt.size > 0) {
+          if (attempt.size > 0) {
             const stamp = now().toString(36).padStart(9, "0");
             const id = `${stamp}${holder.slice(0, 8)}${crypto.randomUUID().slice(0, 8)}`;
             const shard = Math.floor(Math.random() * LOG_TABLES.length);
@@ -774,29 +662,23 @@ export const createAggregateBatches = ({
           open = false;
         }
       });
-      if (changes.size > 0) await committed(changes);
+      if (changes.size > 0 && now() >= nextDue) {
+        await compact(false, GROUPS.commit);
+      }
       return result;
     },
 
     async beforeRead(name) {
       if (!isBatched(schema.models.get(name))) return;
-      // A flush already running took the buffer: the read waits for it too.
-      if (buffer.size > 0 || flushing !== undefined) await flushBuffer();
-      if (mode === "log") {
-        const pending = await hasPending().catch((error: unknown) => {
-          warn("read")(error);
-          return false;
-        });
-        if (pending) await compact(true, GROUPS.read);
-      }
+      const pending = await hasPending().catch((error: unknown) => {
+        warn("read")(error);
+        return false;
+      });
+      if (pending) await compact(true, GROUPS.read);
     },
 
-    flush,
-
-    async dispose() {
-      clearTimeout(timer);
-      timer = undefined;
-      await flush();
+    async flush() {
+      if (await hasPending()) await compact(true, GROUPS.flush);
     },
   };
 };

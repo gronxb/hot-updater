@@ -286,9 +286,7 @@ batching (`aggregateBatching: false`), an installation costs about:
 
 So 10,000 devices that open the app every day cost about 360,000 WRU a day.
 DynamoDB and Firestore **batch** totals by default, which cuts a report to
-about 8 WRU at 10 or more reports per second; a long-lived server can keep
-totals in memory with `aggregateBatching: { mode: "memory" }` (about 5 WRU, and
-call `hotUpdater.flush()` before the process exits). See
+about 8 WRU at 10 or more reports per second. See
 [DynamoDB](/docs/database-adapters/aws#batched-insights-totals) and
 [Firestore](/docs/database-adapters/firestore#batched-insights-totals). The
 managed AWS table caps writes at 100 WRU per second, about 12 reports per
