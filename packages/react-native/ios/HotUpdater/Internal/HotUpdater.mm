@@ -542,6 +542,17 @@ static NSString *const HotUpdaterRuntimeModuleKey = @"HotUpdater.runtimeModule";
 // JavaScript fatal errors.
 static NSString *const HotUpdaterRuntimeThreadName = @"com.facebook.react.runtime.JavaScript";
 
+// RCTExceptionsManager is defined in React-CoreModules, which this pod cannot
+// declare: on React Native 0.74 the pod defines no module, so CocoaPods
+// refuses it as a dependency of a Swift pod. With use_frameworks! :linkage =>
+// :dynamic each pod links on its own, so a direct class reference leaves
+// HotUpdater with an undefined symbol. The class is looked up at runtime
+// instead; the app links React-CoreModules, so it is always loaded by then.
+static Class HotUpdaterExceptionsManagerClass(void)
+{
+    return NSClassFromString(@"RCTExceptionsManager");
+}
+
 #ifndef RCT_NEW_ARCH_ENABLED
 // Old architecture: the context of the ExceptionsManager's method queue, where
 // RCTFatal reports that bridge's JavaScript fatals.
@@ -669,7 +680,8 @@ static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
         return;
     }
 
-    id exceptionsManager = [bridge moduleForClass:[RCTExceptionsManager class]];
+    Class exceptionsManagerClass = HotUpdaterExceptionsManagerClass();
+    id exceptionsManager = exceptionsManagerClass ? [bridge moduleForClass:exceptionsManagerClass] : nil;
     [self applyExceptionsManagerReloadLimit:exceptionsManager];
 #ifndef RCT_NEW_ARCH_ENABLED
     [self noteRuntimeQueuesOfBridge:bridge];
@@ -743,7 +755,7 @@ static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
 
 - (void)applyExceptionsManagerReloadLimit:(id)exceptionsManager
 {
-    if ([exceptionsManager isKindOfClass:[RCTExceptionsManager class]]) {
+    if ([exceptionsManager isKindOfClass:HotUpdaterExceptionsManagerClass()]) {
         ((RCTExceptionsManager *)exceptionsManager).maxReloadAttempts = 0;
     }
 }
