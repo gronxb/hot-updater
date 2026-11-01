@@ -167,7 +167,9 @@ describe("sandboxManifestOverlay", () => {
       .find((line) => line.includes("HotUpdaterSandboxRelaunchActivity"));
     expect(relaunch).toContain('android:process=":hotupdater_restart"');
     expect(relaunch).toContain('android:exported="false"');
-    expect(relaunch).toContain('android:theme="@android:style/Theme.NoDisplay"');
+    expect(relaunch).toContain(
+      'android:theme="@android:style/Theme.NoDisplay"',
+    );
   });
 
   it("moves the launcher to the sandbox's activity, which also takes its links", () => {

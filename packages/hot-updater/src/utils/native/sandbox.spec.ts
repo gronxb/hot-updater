@@ -233,7 +233,11 @@ describe("assertSandboxBuildAllowed", () => {
       assertSandboxBuildAllowed({
         platform: "ios",
         scheme: "sandbox",
-        iosScheme: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: true },
+        iosScheme: {
+          bundleIdentifier: "com.example.app",
+          scheme: "App",
+          sandbox: true,
+        },
         buildAdapter: "rock",
       }),
     ).resolves.toBeUndefined();

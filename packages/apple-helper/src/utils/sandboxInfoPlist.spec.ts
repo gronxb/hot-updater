@@ -119,14 +119,42 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
 
   it("allows a local dev server, keeping the app's own ATS settings and prompt", async () => {
     const plist = path.join(app, "Info.plist");
-    await patchSandboxArchive({ archivePath: archive, appPath: app, schemeConfig: scheme });
-    expect(read(plist).NSAppTransportSecurity.NSAllowsLocalNetworking).toBe(true);
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: scheme,
+    });
+    expect(read(plist).NSAppTransportSecurity.NSAllowsLocalNetworking).toBe(
+      true,
+    );
     expect(read(plist).NSLocalNetworkUsageDescription).toContain("dev server");
 
-    execFileSync("plutil", ["-replace", "NSLocalNetworkUsageDescription", "-string", "Ours", plist]);
-    execFileSync("plutil", ["-insert", "NSAppTransportSecurity.NSExceptionDomains", "-json", '{"a.example":{}}', plist]);
-    execFileSync("plutil", ["-replace", "NSAppTransportSecurity.NSAllowsLocalNetworking", "-bool", "false", plist]);
-    await patchSandboxArchive({ archivePath: archive, appPath: app, schemeConfig: scheme });
+    execFileSync("plutil", [
+      "-replace",
+      "NSLocalNetworkUsageDescription",
+      "-string",
+      "Ours",
+      plist,
+    ]);
+    execFileSync("plutil", [
+      "-insert",
+      "NSAppTransportSecurity.NSExceptionDomains",
+      "-json",
+      '{"a.example":{}}',
+      plist,
+    ]);
+    execFileSync("plutil", [
+      "-replace",
+      "NSAppTransportSecurity.NSAllowsLocalNetworking",
+      "-bool",
+      "false",
+      plist,
+    ]);
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: scheme,
+    });
     expect(read(plist).NSLocalNetworkUsageDescription).toBe("Ours");
     expect(read(plist).NSAppTransportSecurity).toEqual({
       NSAllowsLocalNetworking: true,

@@ -124,9 +124,7 @@ describe("the sandbox template", () => {
     const generator = read(
       "android/src/sandbox/HotUpdaterSandboxImplGenerator.groovy",
     );
-    const impl = read(
-      "android/src/main/java/com/hotupdater/HotUpdaterImpl.kt",
-    );
+    const impl = read("android/src/main/java/com/hotupdater/HotUpdaterImpl.kt");
     // The compile tasks drop the packaged file, and only that name.
     expect(script).toContain('"**/com/hotupdater/HotUpdaterImpl.kt"');
     expect(script).toContain('"com/hotupdater/HotUpdaterImplSandbox.kt"');
@@ -141,7 +139,10 @@ describe("the sandbox template", () => {
       "        this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))",
     ]) {
       expect(generator, line).toContain(line.trim());
-      expect(impl.split("\n").filter((text) => text === line), line).toHaveLength(1);
+      expect(
+        impl.split("\n").filter((text) => text === line),
+        line,
+      ).toHaveLength(1);
     }
     // Its insertions hold for main only.
     expect(generator).toContain(
@@ -164,7 +165,9 @@ describe("the sandbox template", () => {
     const impl = read("ios/HotUpdater/Internal/HotUpdaterImpl.swift");
     // The Swift name of `HotUpdaterImpl` in the `HotUpdater` module.
     expect(override).toContain('"_TtC10HotUpdater14HotUpdaterImpl"');
-    expect(impl).toContain("@objcMembers public class HotUpdaterImpl: NSObject");
+    expect(impl).toContain(
+      "@objcMembers public class HotUpdaterImpl: NSObject",
+    );
     for (const declaration of [
       "public func bundleURL(bundle: Bundle = Bundle.main) -> URL?",
       "public func getChannel() -> String",
@@ -186,7 +189,9 @@ describe("the sandbox template", () => {
     const bridge = read("ios/HotUpdater/Internal/HotUpdater.mm");
     expect(bridge).toContain("[impl bundleURLWithBundle:");
     expect(bridge).toContain("[HotUpdaterNativeUpdates() takeEventsWithImpl:");
-    expect(bridge).toContain("[HotUpdaterNativeUpdates() resetChannelWithImpl:");
+    expect(bridge).toContain(
+      "[HotUpdaterNativeUpdates() resetChannelWithImpl:",
+    );
     expect(bridge).toContain(
       "[HotUpdaterNativeUpdates() resetChannelIfSelectionCurrentWithImpl:",
     );
