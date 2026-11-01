@@ -94,9 +94,9 @@ internal class HotUpdaterSandboxDevFetcher(
             download("$host/index.bundle?$query", File(session, bundleName))
             val assets =
                 try {
-                    JSONArray(text("$host/index.assets?$query"))
+                    JSONArray(text("$host/index.assets?$query", notFound = HotUpdaterSandboxDevFetcher.NO_ASSET_LIST))
                 } catch (error: org.json.JSONException) {
-                    throw IOException("$host doesn't list its assets at /index.assets.")
+                    throw IOException(NO_ASSET_LIST)
                 }
             for (index in 0 until assets.length()) {
                 downloadAsset(host, assets.getJSONObject(index), session)
@@ -129,8 +129,12 @@ internal class HotUpdaterSandboxDevFetcher(
 
     private fun request(url: String) = client.newCall(Request.Builder().url(url).build()).execute()
 
-    private fun text(url: String): String =
+    private fun text(
+        url: String,
+        notFound: String,
+    ): String =
         request(url).use { response ->
+            if (response.code == 404) throw IOException(notFound)
             if (!response.isSuccessful) throw IOException("$url answered ${response.code}.")
             response.body?.string().orEmpty()
         }
@@ -149,6 +153,9 @@ internal class HotUpdaterSandboxDevFetcher(
 
     companion object {
         private val DRAWABLE_TYPES = setOf("gif", "jpeg", "jpg", "ktx", "png", "webp", "xml")
+
+        /** Re.Pack's dev server, for one. */
+        const val NO_ASSET_LIST = "This dev server has no /index.assets, which Android needs for its assets, and Metro has."
 
         fun resourceName(
             location: String,
@@ -287,7 +294,7 @@ internal class HotUpdaterSandboxLiveDevServer(
             HotUpdaterSandboxDevFetcher().fetch(url, files.session(id), HotUpdaterSandboxDevFiles.BUNDLE)
         } catch (error: Exception) {
             Log.w(TAG, "connect to $url failed", error)
-            return "Couldn't load JavaScript from ${HotUpdaterSandboxDevHost.display(url)}: ${error.message ?: error}. " +
+            return "Couldn't load JavaScript from ${HotUpdaterSandboxDevHost.display(url)}. ${error.message ?: error} " +
                 "Check that the dev server runs and this device can reach it."
         }
         remember(url)
