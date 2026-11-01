@@ -486,15 +486,15 @@ const previewPlatform = async (deps, inputs, event, platform) => {
 };
 
 /**
- * Whether the comment can show the Console's QR code of an APK's download:
- * GitHub fetches a comment's images from the internet, so the runner checks
- * that the Console answers with the download URL under its own address. A
+ * Whether the comment can show the Console's QR code of an APK's download or
+ * an IPA's page: GitHub fetches a comment's images from the internet, so the
+ * runner checks that the Console answers with that URL under its own address. A
  * private Console, such as one on a VPN, is out of reach, and the comment
  * keeps only the links.
  *
  * @param {Deps} deps
  * @param {Inputs} inputs
- * @param {string} id
+ * @param {PlatformPreview["nativeBuild"]} nativeBuild
  */
 const servesDownloadQr = async (deps, inputs, { id, artifactKind }) => {
   const page = artifactKind === "ipa";
