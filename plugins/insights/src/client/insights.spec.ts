@@ -1200,6 +1200,29 @@ describe("insights() client plugin", () => {
         expect(Object.hasOwn(sentEvents()[0]!, "ageMs")).toBe(false);
       });
 
+      it("measures again at a later launch when a stored report's attempts failed", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + DAY_MS);
+        responses = [503, 503, 503];
+        await launch();
+        await settle();
+        const firstAttempt = sentEvents()[0];
+        expect(ageOf(firstAttempt)).toBe(86_400_000);
+        await flush();
+        expect(storage.get("insights", "handedOffEvents")).not.toBeNull();
+
+        vi.setSystemTime(MORNING + 2 * DAY_MS);
+        await launch();
+        await flush();
+        const resent = sentEvents().at(-1);
+        expect(resent?.eventId).toBe(firstAttempt?.eventId);
+        expect(ageOf(resent)).toBe(172_800_000);
+        expect(storage.get("insights", "handedOffEvents")).toBeNull();
+      });
+
       it("drops the age from an attempt after the clock moved back past when it was made", async () => {
         const app = await launch();
         stageForcedBundle(app);
