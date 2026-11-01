@@ -264,9 +264,7 @@ internal class HotUpdaterSandboxLiveDevServer(
         }
         scope.launch {
             connections.withLock {
-                val failure = withContext(Dispatchers.IO) { fetchAndRelaunch(url) }
-                completion(failure)
-                onDevServerChange?.invoke()
+                completion(withContext(Dispatchers.IO) { fetchAndRelaunch(url) })
             }
         }
     }
