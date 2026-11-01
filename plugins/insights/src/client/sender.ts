@@ -13,6 +13,11 @@ export type InsightsEventType =
 /** A `POST /events` body. */
 export interface InsightsEventBody {
   readonly eventId: string;
+  /**
+   * How long ago, on this device's clock, a report that waited was made, as of
+   * this attempt. Other reports leave it out, and it is never stored.
+   */
+  readonly ageMs?: number;
   readonly type: InsightsEventType;
   readonly installId: string;
   readonly userId?: string;
@@ -75,6 +80,8 @@ export interface InsightsEventGate {
   admit(event: InsightsEventBody): boolean;
   /** Records how an admitted event ended, once per event. */
   settle(event: InsightsEventBody, delivery: InsightsDelivery): void;
+  /** The age an attempt reports, for an event that waited to be sent. */
+  ageOf?(event: InsightsEventBody): number | undefined;
 }
 
 /** Attempts per Insights event, the first one included. */
@@ -190,7 +197,11 @@ export const createInsightsEventSender = (
               release();
               break;
             }
-            const outcome = await postInsightsEvent(fetch, event);
+            const ageMs = gate.ageOf?.(event);
+            const outcome = await postInsightsEvent(
+              fetch,
+              ageMs === undefined ? event : { ...event, ageMs },
+            );
             if (typeof outcome === "string") {
               gate.settle(event, outcome);
               release();
