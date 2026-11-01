@@ -73,7 +73,14 @@ internal object HotUpdaterSandboxDevHost {
  * `getAndroidResourceFolderName`. Throws with what a person can act on.
  */
 internal class HotUpdaterSandboxDevFetcher(
-    private val client: OkHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build(),
+    private val client: OkHttpClient =
+        OkHttpClient
+            .Builder()
+            .connectTimeout(
+                5,
+                TimeUnit.SECONDS,
+            ).readTimeout(120, TimeUnit.SECONDS)
+            .build(),
 ) {
     private val query = "platform=android&dev=false&minify=false"
 
@@ -238,7 +245,11 @@ internal class HotUpdaterSandboxLiveDevServer(
     private fun answers(host: String): Boolean =
         runCatching {
             probeClient.newCall(Request.Builder().url("$host/status").build()).execute().use { response ->
-                response.isSuccessful && response.body?.string().orEmpty().contains("packager-status:running")
+                response.isSuccessful &&
+                    response.body
+                        ?.string()
+                        .orEmpty()
+                        .contains("packager-status:running")
             }
         }.getOrDefault(false)
 

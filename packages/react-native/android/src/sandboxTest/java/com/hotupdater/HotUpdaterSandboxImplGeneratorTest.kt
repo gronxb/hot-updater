@@ -58,7 +58,13 @@ class HotUpdaterSandboxImplGeneratorTest {
         assertEquals(source.size + 2, generated.size)
         val added = generated.filter { it.contains("HotUpdaterSandboxDev") }
         assertEquals(5, added.size)
-        assertEquals(source.filterNot { it.startsWith("        this.bundleStorage =") || it.startsWith("        this.preferences =") || it.startsWith("        this.keyValueStorage =") }, generated.filterNot { it.contains("HotUpdaterSandboxDev") })
+        assertEquals(
+            source.filterNot {
+                it.startsWith("        this.bundleStorage =") || it.startsWith("        this.preferences =") ||
+                    it.startsWith("        this.keyValueStorage =")
+            },
+            generated.filterNot { it.contains("HotUpdaterSandboxDev") },
+        )
     }
 
     @Test

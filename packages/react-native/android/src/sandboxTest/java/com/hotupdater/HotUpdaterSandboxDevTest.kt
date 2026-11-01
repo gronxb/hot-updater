@@ -128,7 +128,10 @@ class HotUpdaterSandboxDevTest {
             selectionContextHash: String,
         ) = false.also { record("acceptReleaseCatalog") }
 
-        override fun getActiveUpdateState() = mapOf<String, Any?>("activeSelection" to mapOf("channel" to "pr-1")).also { record("getActiveUpdateState") }
+        override fun getActiveUpdateState() =
+            mapOf<String, Any?>("activeSelection" to mapOf("channel" to "pr-1")).also {
+                record("getActiveUpdateState")
+            }
 
         override fun isReleaseSelectionCurrent(
             catalogId: String,
@@ -217,7 +220,10 @@ class HotUpdaterSandboxDevTest {
 
     @Test
     fun `the dev storage declares every method itself, so none falls through to a default`() {
-        val declared = HotUpdaterSandboxDevStorage::class.java.declaredMethods.map { it.name }.toSet()
+        val declared =
+            HotUpdaterSandboxDevStorage::class.java.declaredMethods
+                .map { it.name }
+                .toSet()
         val missing =
             BundleStorageService::class.java.methods
                 .filter { Modifier.isAbstract(it.modifiers) || it.isDefault }
