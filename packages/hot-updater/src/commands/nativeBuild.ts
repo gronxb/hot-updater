@@ -235,14 +235,16 @@ const schemeSandboxAppId = (
   return ios?.sandbox ? ios.bundleIdentifier : null;
 };
 
-/** The most builds a lookup reads of a channel, newest first. */
+/** One page of a channel's builds, newest first. */
 const SANDBOX_BUILDS_PAGE = 100;
 
 /**
  * Whether the scope's sandbox channel has a build of the platform with other
  * native code, which tells a pull request that changed its native code from a
  * project with no sandbox build yet. Android and iOS can share the channel of
- * a scheme name. It costs two reads, only when no build matched.
+ * a scheme name, and no index holds a channel's builds by platform, so it reads
+ * pages until one has such a build or the channel runs out. It reads nothing
+ * when a build matched.
  */
 const hasOtherSandboxBuilds = async (
   server: LoadedServer,
@@ -250,17 +252,23 @@ const hasOtherSandboxBuilds = async (
 ): Promise<boolean> => {
   const channel = await server.core.findChannelByName(scope.channel);
   if (channel === null) return false;
-  const builds = await server.core.listNativeBuilds({
-    channelId: channel.id,
-    order: "desc",
-    limit: SANDBOX_BUILDS_PAGE,
-  });
-  return builds.some(
-    (build) =>
-      build.platform === scope.platform &&
-      (build.fingerprint_hash !== scope.fingerprintHash ||
-        build.app_version !== scope.appVersion),
-  );
+  for (let after: string | undefined; ; ) {
+    const page = await server.core.listNativeBuilds({
+      channelId: channel.id,
+      order: "desc",
+      limit: SANDBOX_BUILDS_PAGE,
+      ...(after === undefined ? {} : { after }),
+    });
+    const found = page.some(
+      (build) =>
+        build.platform === scope.platform &&
+        (build.fingerprint_hash !== scope.fingerprintHash ||
+          build.app_version !== scope.appVersion),
+    );
+    if (found) return true;
+    if (page.length < SANDBOX_BUILDS_PAGE) return false;
+    after = page.at(-1)!.id;
+  }
 };
 
 /** Prints why a command failed, on stderr under `--json`, and exits. */
