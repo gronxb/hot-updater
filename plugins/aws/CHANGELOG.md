@@ -1,5 +1,14 @@
 # @hot-updater/aws
 
+## 1.1.6
+
+### Patch Changes
+
+- @hot-updater/server@1.1.6
+  - @hot-updater/cli-tools@1.1.6
+  - @hot-updater/plugin-core@1.1.6
+  - @hot-updater/storage-s3@1.1.6
+
 ## 1.1.5
 
 ### Patch Changes
