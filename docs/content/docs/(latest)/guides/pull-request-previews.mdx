@@ -288,8 +288,11 @@ checks before it comments that the Console serves it under the
 `console-url` address. A Simulator app installs with the
 [`native-build install`](/docs/guides/native-build#install-a-build) command
 under the table, run in your project, and an APK on an emulator with
-`adb install`. An `.ipa` installs on registered devices: for testers, upload it
-to TestFlight with `npx hot-updater testflight`.
+`adb install`. An `.ipa`'s QR code holds the build's page, at
+`/_hot-updater/native-builds/qr?build=<build id>&target=page`, where an iPhone
+[checks whether the `.ipa` includes it and installs it](/docs/native-builds/iphone-install).
+For testers without a registered device, upload it to TestFlight with
+`npx hot-updater testflight`.
 
 <Callout type="info">
   GitHub shows a comment's images through its image proxy, which fetches

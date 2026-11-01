@@ -44,16 +44,64 @@ export const nativeBuildSignedDownloadUrl = (
   id: string,
   token: string,
 ) => {
+  return `${location.origin}${consolePathOf(location, id)}${nativeBuildDownloadPath(id)}?${NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM}=${encodeURIComponent(token)}`;
+};
+
+/**
+ * The console's own path, from a page of build `id` under it: empty at the
+ * root of its host.
+ */
+export const consolePathOf = (
+  location: { readonly pathname: string },
+  id: string,
+) => {
   const page = nativeBuildDetailPath(id);
-  const base = location.pathname.endsWith(page)
+  return location.pathname.endsWith(page)
     ? location.pathname.slice(0, -page.length)
     : "";
-  return `${location.origin}${base}${nativeBuildDownloadPath(id)}?${NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM}=${encodeURIComponent(token)}`;
 };
 
 /** The console page of one native build. */
 export const nativeBuildDetailPath = (id: string) =>
   `/native-builds/${encodeURIComponent(id)}`;
+
+/**
+ * How long an Install button's link works. It sits in the `itms-services` URL,
+ * Safari's history and the installer's logs, and its holder can fetch the IPA
+ * with every UDID in its profile, so it lasts only as long as an install takes.
+ */
+export const NATIVE_BUILD_INSTALL_LINK_TTL_MS = 60 * 60 * 1000;
+
+/** The phone's own copy of its UDID, which the Console's server never keeps. */
+export const IOS_UDID_STORAGE_KEY = "hot-updater-ios-udid";
+
+/** A device's UDID: 40 hex digits, or 8 and 16 joined by a hyphen. */
+export const IOS_UDID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{8}-[0-9a-f]{16})$/iu;
+
+/** The route that hands an iPhone the profile that reads its UDID. */
+export const nativeBuildDeviceProfilePath = (id: string) =>
+  `/_hot-updater/native-builds/${encodeURIComponent(id)}/device.mobileconfig`;
+
+/** The route of a build's install manifest, as `itms-services` opens it. */
+export const nativeBuildManifestPath = (id: string) =>
+  `/_hot-updater/native-builds/${encodeURIComponent(id)}/manifest.plist`;
+
+/** The command a maintainer runs to register an iPhone. */
+export const nativeBuildDeviceAddCommand = (udid: string) =>
+  `npx hot-updater native-build devices add --udid ${udid} --name "Teammate's iPhone"`;
+
+/**
+ * What an iPhone opens to install a build: the manifest's URL, signed with a
+ * token that also lets the installer download the IPA.
+ */
+export const nativeBuildItmsUrl = (
+  location: { readonly origin: string; readonly pathname: string },
+  id: string,
+  token: string,
+) => {
+  const manifest = `${location.origin}${consolePathOf(location, id)}${nativeBuildManifestPath(id)}?${NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM}=${encodeURIComponent(token)}`;
+  return `itms-services://?action=download-manifest&url=${encodeURIComponent(manifest)}`;
+};
 
 const CHANNEL_ID_PREFIX = "channel:";
 

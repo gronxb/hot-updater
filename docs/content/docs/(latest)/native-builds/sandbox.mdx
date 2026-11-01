@@ -177,8 +177,10 @@ in the `.ipa` before it uploads, and reads `buildAudienceType` afterwards. A bui
 that isn't `INTERNAL_ONLY` fails. Internal groups with access to all builds
 receive it, as they do any other build.
 
-A scheme's own `exportOptionsPlist` that sets
-`testFlightInternalTestingOnly` to `false` is refused.
+A scheme's own App Store Connect `exportOptionsPlist` that sets
+`testFlightInternalTestingOnly` to `false` is refused. A
+[`release-testing` export](/docs/native-builds/iphone-install) never reaches App
+Store Connect, so it takes no such flag.
 
 `--testflight-group <name>` adds the build to an internal group, and
 `--what-to-test <text>` sets its What to Test, once App Store Connect has processed

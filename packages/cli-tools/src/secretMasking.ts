@@ -87,7 +87,17 @@ export const registerSecretValue = (value: string) => {
       : undefined;
 };
 
-/** Replaces every registered credential value in `text` with a mask. */
+/**
+ * A JSON Web Token, whether or not it was registered: Xcode mints its own from
+ * the App Store Connect API key and may print it, and a build's log is uploaded
+ * when the build fails.
+ */
+const JSON_WEB_TOKEN = /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g;
+
+/**
+ * Replaces every registered credential value in `text`, and any JSON Web Token,
+ * with a mask.
+ */
 export const maskSecretValues = (text: string): string => {
   let masked = text;
   for (const value of registry.secretValuesLongestFirst) {
@@ -95,6 +105,7 @@ export const maskSecretValues = (text: string): string => {
       masked = masked.split(value).join(SECRET_MASK);
     }
   }
+  masked = masked.replace(JSON_WEB_TOKEN, SECRET_MASK);
   const { shortSecretPattern } = registry;
   return shortSecretPattern
     ? masked.replace(shortSecretPattern, SECRET_MASK)

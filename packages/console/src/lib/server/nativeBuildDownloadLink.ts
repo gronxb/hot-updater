@@ -175,6 +175,7 @@ export const issueNativeBuildDownloadLink = async (
   buildId: string,
   request: Request = getRequest(),
   now: number = Date.now(),
+  ttlMs: number = NATIVE_BUILD_DOWNLOAD_LINK_TTL_MS,
 ): Promise<NativeBuildDownloadLinkResult> => {
   const { default: localConsoleGuard } =
     await import("virtual:hot-updater-console/request-guard");
@@ -183,7 +184,7 @@ export const issueNativeBuildDownloadLink = async (
   if (secret === undefined) {
     return { status: "no-secret", secretName: CONSOLE_SECRET_ENV };
   }
-  const expiresAt = now + NATIVE_BUILD_DOWNLOAD_LINK_TTL_MS;
+  const expiresAt = now + ttlMs;
   return {
     status: "issued",
     token: await createNativeBuildDownloadToken(secret, buildId, expiresAt),

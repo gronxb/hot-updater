@@ -99,6 +99,33 @@ describe("a sandbox scheme's export options", () => {
   );
 });
 
+describe("a sandbox scheme's ad hoc export", () => {
+  it.each(["release-testing", "ad-hoc"])(
+    "exports with method %s as it is: no App Store flag to refuse or add",
+    async (method) => {
+      const bare = await plist(`<key>method</key><string>${method}</string>`);
+      const before = await fs.readFile(bare, "utf-8");
+
+      await expect(
+        assertSandboxExportOptions("beta", bare),
+      ).resolves.toBeUndefined();
+      expect(await resolveSandboxExportOptions("beta", bare, root)).toBe(bare);
+      expect(await fs.readFile(bare, "utf-8")).toBe(before);
+    },
+  );
+
+  it("isn't refused even if its plist sets the flag off: the .ipa never reaches App Store Connect", async () => {
+    const off = await plist(
+      "<key>method</key><string>release-testing</string><key>testFlightInternalTestingOnly</key><false/>",
+    );
+
+    await expect(
+      assertSandboxExportOptions("beta", off),
+    ).resolves.toBeUndefined();
+    expect(await resolveSandboxExportOptions("beta", off, root)).toBe(off);
+  });
+});
+
 describe("buildSettingsOverScheme", () => {
   it("brings the sandbox sources back for a sandbox scheme", () => {
     expect(

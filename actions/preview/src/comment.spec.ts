@@ -241,6 +241,30 @@ adb install -r app-release.apk
     expect(body).not.toContain("<img");
   });
 
+  it("shows an IPA's page QR code for an iPhone, never a file or a token", () => {
+    const ipa = {
+      ...ios,
+      nativeBuild: {
+        ...ios.nativeBuild,
+        artifactKind: "ipa",
+        fileName: "App.ipa",
+      },
+    } as const;
+    const body = renderPreviewComment({
+      ...base,
+      previews: [ipa],
+      qrCodes: [ipa.nativeBuild.id],
+    });
+
+    expect(body).toContain(
+      `<img src="https://console.example.com/_hot-updater/native-builds/qr?build=${ipa.nativeBuild.id}&amp;target=page" alt="QR code of the page of App.ipa" width="180" height="180">`,
+    );
+    expect(body).toContain("Scan with an iPhone");
+    expect(body).not.toContain("Scan with an Android");
+    expect(body).not.toContain("itms-services");
+    expect(body).not.toContain("?t=");
+  });
+
   it("drops the credit line when credit is off", () => {
     const body = renderPreviewComment({
       ...base,

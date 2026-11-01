@@ -26,6 +26,25 @@ import {
  * The public certificate Xcode creates for a CI build, as `security
  * find-certificate -p` prints it: serial 0A1B2C3D4E5F.
  */
+/** What Xcode would create to sign an ad hoc `.ipa` with, serial C1B61101312B3E29. */
+const DISTRIBUTION_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIICwTCCAmgCCQDBthEBMSs+KTAKBggqhkjOPQQDAjBvMTkwNwYDVQQDDDBBcHBs
+ZSBEaXN0cmlidXRpb246IENyZWF0ZWQgdmlhIEFQSSAoQUJDREUxMjM0NSkxEzAR
+BgNVBAsMClEzUVQ0WkYzNDMxEDAOBgNVBAoMB0V4YW1wbGUxCzAJBgNVBAYTAlVT
+MB4XDTI2MTEwMTA1MTMzMFoXDTM2MTAyOTA1MTMzMFowbzE5MDcGA1UEAwwwQXBw
+bGUgRGlzdHJpYnV0aW9uOiBDcmVhdGVkIHZpYSBBUEkgKEFCQ0RFMTIzNDUpMRMw
+EQYDVQQLDApRM1FUNFpGMzQzMRAwDgYDVQQKDAdFeGFtcGxlMQswCQYDVQQGEwJV
+UzCCAUswggEDBgcqhkjOPQIBMIH3AgEBMCwGByqGSM49AQECIQD/////AAAAAQAA
+AAAAAAAAAAAAAP///////////////zBbBCD/////AAAAAQAAAAAAAAAAAAAAAP//
+/////////////AQgWsY12Ko6k+ez671VdpiGvGUdBrDMU7D2O848PifSYEsDFQDE
+nTYIhucEk2pmeOETnSa3gZ9+kARBBGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPSh
+OUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfUCIQD/////AAAA
+AP//////////vOb6racXnoTzucrC/GMlUQIBAQNCAARm1hJDMkw44oBhjMZMjQxq
+mocN9A+p32hjHbncq8kTCkLYd9V43Q3nhuaXwh4DzU6fB4Zutgj43d6Q9spEkKMH
+MAoGCCqGSM49BAMCA0cAMEQCIAbSxnsQlzaPWH/k2QcswD9AkObcP3Xxdnwcw6yp
+j/7xAiBNA8C5TaWhGjp9gU5pPeO1/cRd11dYsz1RqxB/e0vHeA==
+-----END CERTIFICATE-----`;
+
 const XCODE_CERTIFICATE = `-----BEGIN CERTIFICATE-----
 MIICvTCCAmMCBgobLD1OXzAKBggqhkjOPQQDAjBuMTgwNgYDVQQDDC9BcHBsZSBE
 ZXZlbG9wbWVudDogQ3JlYXRlZCB2aWEgQVBJIChBQkNERTEyMzQ1KTETMBEGA1UE
@@ -570,6 +589,50 @@ describe("withSigningKeychain", () => {
     ]);
     expect(requests.at(-1)!.method).toBe("DELETE");
   });
+
+  it.each([
+    [true, ["CERT1"]],
+    [false, ["CERT1", "DIST1"]],
+  ])(
+    "with keepDistribution %s, revokes %j of what Xcode created",
+    async (keepDistribution, revoked) => {
+      const { security } = fakeSecurity({
+        certificates: `${XCODE_CERTIFICATE}\n${DISTRIBUTION_CERTIFICATE}\n`,
+        identities: [XCODE_CERTIFICATE, DISTRIBUTION_CERTIFICATE],
+      });
+      const { fetch, requests } = mockAppStoreConnect((request) =>
+        request.method === "GET"
+          ? Response.json({
+              data: [
+                { id: "CERT1", attributes: { serialNumber: "0A1B2C3D4E5F" } },
+                {
+                  id: "DIST1",
+                  attributes: { serialNumber: "C1B61101312B3E29" },
+                },
+              ],
+            })
+          : undefined,
+      );
+
+      await withSigningKeychain({
+        enabled: true,
+        keepDistribution,
+        apiKey,
+        run: async () => "ipa",
+        security,
+        lockPath: lock(),
+        acquireLock: fakeLock().acquireLock,
+        fetch,
+      });
+
+      expect(
+        requests
+          .filter(({ method }) => method === "DELETE")
+          .map(({ url }) => url.split("/").at(-1))
+          .sort(),
+      ).toEqual(revoked);
+    },
+  );
 
   it("asks App Store Connect nothing and warns of nothing when the keychain holds only intermediate CAs", async () => {
     const { security } = fakeSecurity({

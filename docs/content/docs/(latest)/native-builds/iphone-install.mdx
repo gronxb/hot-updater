@@ -1,0 +1,159 @@
+---
+title: "Install on an iPhone"
+description: "Install an ad hoc build from the Console on an iPhone App Store Connect has registered."
+icon: Smartphone
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+
+An iPhone installs an `.ipa` only when its signing profile lists that iPhone's
+UDID. The Console finds the UDID and installs the build. Registering the iPhone
+and signing a new build stay with the CLI, and the Console never holds an Apple
+key.
+
+## What it takes
+
+- A [hosted Console](/docs/guides/console-deployment) with `BETTER_AUTH_SECRET`,
+  on HTTPS with a certificate the iPhone trusts.
+- A storage whose download URL is HTTPS and answers HTTP Range requests. Without
+  one, the build's page says "Installation details unavailable", and the IPA
+  still downloads for Xcode or Apple Configurator.
+- A scheme with `signing.ascApiKey` that exports for registered devices:
+
+```xml title="ExportOptions.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>release-testing</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+</dict>
+</plist>
+```
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  nativeBuild: {
+    ios: {
+      testers: {
+        scheme: "MyApp",
+        bundleIdentifier: "com.example.app",
+        exportOptionsPlist: "./ios/ExportOptions.plist",
+        signing: { ascApiKey: secret("asc-api-key") },
+      },
+    },
+  },
+});
+```
+
+A [sandbox](/docs/native-builds/sandbox) scheme can export this way too. Its
+`.ipa` never reaches App Store Connect, and the sandbox marker checks still run.
+
+## Add an iPhone
+
+<Steps>
+<Step>
+
+### Check the iPhone
+
+On the iPhone, open the build's page in Safari: scan the QR code on the page or
+in a [pull request's comment](/docs/guides/pull-request-previews), and sign in.
+Tap **Check this iPhone**, allow the download, and install the profile in
+Settings. It asks for the UDID and nothing else, and iOS calls it not signed.
+
+The iPhone lands on a page with its UDID and one command, kept on that iPhone.
+The Console stores no UDID. Send the command to a maintainer, only if this is
+your iPhone. If Safari doesn't come back, Finder shows the UDID of a connected
+iPhone, which a maintainer can register the same way.
+
+</Step>
+<Step>
+
+### Register it
+
+The maintainer decides whether the iPhone gets a slot, then runs the command with
+the project's credentials:
+
+```package-install
+npx hot-updater native-build devices add --scheme testers --udid <UDID> --name "Kim's iPhone"
+```
+
+`--scheme` picks whose API key to use, and may be left out with one device
+scheme. Repeat `--udid` to add several, with one `--name` for all of them or one
+for each. A device already registered succeeds and changes nothing. The key needs
+the Admin role.
+
+`native-build devices list --scheme testers` shows what App Store Connect has.
+
+An Apple account registers 100 iPhones per membership year, and disabling one
+doesn't free its slot. A larger group of testers installs through
+[TestFlight](/docs/native-builds/testflight).
+
+</Step>
+<Step>
+
+### Rebuild
+
+An `.ipa` signed earlier never gains a device, so the phone needs a new one:
+
+```package-install
+npx hot-updater native-build ios --scheme testers --udid <UDID>
+```
+
+The build prints how many devices the `.ipa` lists, and whether each `--udid` is
+included. A missing one fails the command, after the build is tracked.
+
+A [CI job](/docs/guides/ci-native-build) on a fresh runner has no saved profile,
+so its export gets a new one that lists every enabled device. A Mac or self-hosted
+runner reuses its saved profile without asking Apple, so a new iPhone can't reach
+that export until the profile is gone. `native-build devices add` prints this
+command for your app, and a missing `--udid` prints it with your extensions too.
+It removes those exact ad hoc profiles from Xcode's folder, and Xcode makes new
+ones at the next export:
+
+```bash
+grep -laF -e 'Ad Hoc Provisioning Profile: com.example.app</string>' -e 'XC Ad Hoc: com.example.app</string>' ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/* | xargs -I{} rm {}
+```
+
+Each rebuild becomes its scope's newest build, so bundles deployed before it no
+longer reach an install of it until they are deployed again. Register iPhones
+together, then rebuild once.
+
+</Step>
+<Step>
+
+### Install
+
+Open the newest build's page on the iPhone. **Install** opens the system's
+install prompt, and the app appears on the Home Screen. On iOS 16 or later, the
+app opens only with Developer Mode on: Settings, Privacy & Security, Developer
+Mode.
+
+</Step>
+</Steps>
+
+## What the page says
+
+The page reads the `.ipa`'s `Info.plist` and provisioning profiles from storage,
+a few requests whatever its size, only when an iPhone opens it. App Store Connect
+isn't asked, because what the `.ipa` holds is what iOS enforces.
+
+| The page shows                     | Because                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| Check this iPhone                  | This iPhone hasn't checked itself yet. Install anyway skips the check.   |
+| Install                            | The `.ipa` lists this iPhone.                                            |
+| Not in this build                  | The `.ipa` was signed without it: add it above. Install anyway stays.    |
+| An App Store export                | It installs through TestFlight.                                          |
+| The build's profile has expired    | Rebuild it.                                                              |
+| Installation details unavailable   | The storage can't serve part of the file.                                |
+
+## Links and privacy
+
+- **Install** carries a signed link that lasts about an hour. It lets its holder
+  download this one build, whose profile lists its devices' UDIDs. iOS still
+  installs only on those devices.
+- The profile, the page with the UDID, and the QR code take no session and read
+  nothing. Nothing checks that a UDID came from a real iPhone, so the maintainer's
+  decision is what protects the account's slots.

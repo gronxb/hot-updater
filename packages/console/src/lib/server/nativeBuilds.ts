@@ -208,6 +208,22 @@ const isPublicUrl = (storageUri: string) =>
   ["http", "https"].includes(protocolOf(storageUri));
 
 /**
+ * The URL a build's artifact downloads from without the console's sign-in: the
+ * storage's download URL, which may expire. Null when the storage gives none.
+ */
+export async function nativeBuildArtifactUrl(
+  build: Pick<NativeBuildRow, "artifact_storage_uri">,
+  storage: StorageAdapter,
+): Promise<string | null> {
+  const storageUri = build.artifact_storage_uri;
+  const adapter = storageFor(storage, storageUri);
+  if (adapter?.getDownloadUrl !== undefined) {
+    return (await adapter.getDownloadUrl({ storageUri })).url;
+  }
+  return adapter === undefined && isPublicUrl(storageUri) ? storageUri : null;
+}
+
+/**
  * The URL a phone downloads a native build's artifact from, without the
  * console's sign-in: the storage's download URL, which may expire. Null
  * when the storage gives none, or the build is gone.
@@ -223,13 +239,7 @@ export async function resolveNativeBuildDownloadUrl(
   },
 ): Promise<string | null> {
   const build = await core.getNativeBuild(id);
-  if (build === null) return null;
-  const storageUri = build.artifact_storage_uri;
-  const adapter = storageFor(storage, storageUri);
-  if (adapter?.getDownloadUrl !== undefined) {
-    return (await adapter.getDownloadUrl({ storageUri })).url;
-  }
-  return adapter === undefined && isPublicUrl(storageUri) ? storageUri : null;
+  return build === null ? null : nativeBuildArtifactUrl(build, storage);
 }
 
 /**
