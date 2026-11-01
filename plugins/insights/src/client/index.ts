@@ -62,14 +62,6 @@ type Movement = Pick<
   | "metadata"
 >;
 
-/**
- * How long a staged forced bundle stops reports while the reload that normally
- * follows at once gets going. Far above that reload's time, so a slow one doesn't
- * race a report, and short enough that an app that doesn't reload loses nothing:
- * its reports are only this much later.
- */
-const RELOAD_WAIT_MS = 10_000;
-
 type PendingEvent = QueuedEvent & {
   /** For UPDATE_FAILED: a later success for its target made it moot. */
   superseded?: boolean;
@@ -118,14 +110,6 @@ const setUpInsights = (
   let lastDownloadedSelection: string | null = null;
   /** The bundle the latest check of this runtime forces. */
   let forcedBundleId: string | null = null;
-  /**
-   * Set while a reload is expected. The app reloads right after staging a forced
-   * bundle, and React Native can abort when a request starts while a reload
-   * tears its modules down, so this runtime starts no requests meanwhile: its
-   * events wait in storage for the next launch. An app may not reload (it can
-   * turn that off), so this runs out and sends them.
-   */
-  let reloadWait: ReturnType<typeof setTimeout> | null = null;
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
 
@@ -200,10 +184,6 @@ const setUpInsights = (
         }
       }
     }
-    if (reloadWait !== null) {
-      state?.handOffEvent(event);
-      return;
-    }
     pending.set(event.body, event);
     void send(event.body).catch((error: unknown) => {
       console.warn(
@@ -211,28 +191,6 @@ const setUpInsights = (
         error,
       );
     });
-  };
-
-  /** Queues what an earlier runtime left, ahead of what this one reports. */
-  const sendHandedOffEvents = () => {
-    const queued = new Set([...pending.keys()].map((body) => body.eventId));
-    for (const event of state?.readHandedOffEvents() ?? []) {
-      if (!queued.has(event.body.eventId)) enqueue(event);
-    }
-  };
-
-  const stopWaitingForReload = () => {
-    if (reloadWait !== null) clearTimeout(reloadWait);
-    reloadWait = null;
-    sendHandedOffEvents();
-  };
-
-  const waitForReload = () => {
-    if (reloadWait !== null) clearTimeout(reloadWait);
-    reloadWait = setTimeout(stopWaitingForReload, RELOAD_WAIT_MS);
-    // What is queued or in flight may not outlive the reload. The server
-    // stores an event once, so one delivered meanwhile can be sent again.
-    for (const event of pending.values()) state?.handOffEvent(event);
   };
 
   const reportLaunch = (
@@ -302,8 +260,18 @@ const setUpInsights = (
   };
 
   const onBundleDownloaded = (info: BundleDownloadedInfo) => {
-    if (info.occurredAt === undefined && info.toBundleId === forcedBundleId) {
-      waitForReload();
+    // The app normally reloads right after staging a forced bundle, and React
+    // Native can abort when a request starts while a reload tears its modules
+    // down. So what exists now waits for the next launch, and starts no request
+    // here. Later reports send as usual, whether or not a reload comes.
+    const forced =
+      info.occurredAt === undefined && info.toBundleId === forcedBundleId;
+    if (forced) {
+      // The server stores an event once, so one in flight can be sent again.
+      for (const [body, event] of pending) {
+        state?.handOffEvent(event);
+        pending.delete(body);
+      }
     }
     const selection = JSON.stringify([
       info.channel,
@@ -312,26 +280,31 @@ const setUpInsights = (
     ]);
     if (lastDownloadedSelection === selection) return;
     lastDownloadedSelection = selection;
-    didDownload = true;
-    enqueue(
-      createEvent(
-        {
-          type: "UPDATE_DOWNLOADED",
-          channel: info.channel,
-          fromBundleId: info.fromBundleId,
-          fromReleaseId: info.fromReleaseId,
-          toBundleId: info.toBundleId,
-          toReleaseId: info.toReleaseId,
-          updateStrategy: info.updateStrategy,
-          metadata: {
-            delivery: info.delivery,
-            ...(info.patchFallback ? { patchFallback: true } : {}),
-          },
+    const event = createEvent(
+      {
+        type: "UPDATE_DOWNLOADED",
+        channel: info.channel,
+        fromBundleId: info.fromBundleId,
+        fromReleaseId: info.fromReleaseId,
+        toBundleId: info.toBundleId,
+        toReleaseId: info.toReleaseId,
+        updateStrategy: info.updateStrategy,
+        metadata: {
+          delivery: info.delivery,
+          ...(info.patchFallback ? { patchFallback: true } : {}),
         },
-        undefined,
-        info.occurredAt,
-      ),
+      },
+      undefined,
+      info.occurredAt,
     );
+    if (forced) {
+      // The server has not heard of this download yet, so a later no-change
+      // report hides nothing.
+      if (event !== null) state?.handOffEvent(event);
+      return;
+    }
+    didDownload = true;
+    enqueue(event);
   };
 
   const onUpdateError = (error: UpdateError) => {
@@ -339,14 +312,6 @@ const setUpInsights = (
     // and its report would not arrive either.
     if (error.stage === "check" && error.reason === "network") return;
     const targetBundleId = error.targetBundleId ?? error.bundleId;
-    if (
-      reloadWait !== null &&
-      error.stage !== "check" &&
-      targetBundleId === forcedBundleId
-    ) {
-      // The forced update failed, so no reload follows.
-      stopWaitingForReload();
-    }
     const details = readErrorDetails(error.cause);
     const failureKey = JSON.stringify([
       error.stage,
@@ -419,11 +384,6 @@ const setUpInsights = (
     if (event === undefined || state === null || context === null) {
       return false;
     }
-    if (reloadWait !== null) {
-      state.handOffEvent(event);
-      pending.delete(body);
-      return false;
-    }
     if (event.superseded === true || state.isPaused(context.now())) {
       pending.delete(body);
       state.forgetHandedOffEvent(body.eventId);
@@ -444,10 +404,11 @@ const setUpInsights = (
   };
 
   const settle = (body: InsightsEventBody, delivery: InsightsDelivery) => {
+    // An event handed off while in flight has left `pending`, but is answered.
+    state?.forgetHandedOffEvent(body.eventId);
     const event = pending.get(body);
     pending.delete(body);
     if (event === undefined || state === null || context === null) return;
-    state.forgetHandedOffEvent(body.eventId);
     if (delivery === "failed") return;
     if (delivery === "disabled") {
       state.pause(context.now());
@@ -473,7 +434,8 @@ const setUpInsights = (
   if (pluginContext.isDebugBuild && options.debug !== true) return { api };
 
   send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-  sendHandedOffEvents();
+  // What an earlier runtime left goes first, ahead of what this one reports.
+  for (const event of pluginState.readHandedOffEvents()) enqueue(event);
   return {
     api,
     hooks: {

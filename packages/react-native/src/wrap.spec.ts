@@ -440,9 +440,11 @@ describe("hotUpdater.wrap", () => {
       expect(atReload!.kept).toContain("UPDATE_DOWNLOADED");
     });
 
-    it("keeps reporting in a session with reloadOnForceUpdate: false", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      const { runtime, sent } = await forcedUpdate();
+    it("defers the download and keeps reporting with reloadOnForceUpdate: false", async () => {
+      const { insights } = await import("@hot-updater/plugin-insights/client");
+      const { setupClientPlugin } =
+        await import("@hot-updater/test-utils/react-native");
+      const { runtime, sent, storage } = await forcedUpdate();
       const onUpdateProcessCompleted = vi.fn();
       const { wrap } = await import("./wrap");
       const Wrapped = wrap({
@@ -458,9 +460,6 @@ describe("hotUpdater.wrap", () => {
       expect(mocks.reload).not.toHaveBeenCalled();
       expect(sent).toEqual([]);
 
-      await vi.advanceTimersByTimeAsync(10_000);
-      await vi.waitFor(() => expect(sent).toEqual(["UPDATE_DOWNLOADED"]));
-
       runtime.hooks.onUpdateError({
         stage: "download",
         reason: "http",
@@ -471,8 +470,19 @@ describe("hotUpdater.wrap", () => {
         updateStrategy: "appVersion",
         cause: new Error("later failure"),
       });
+      await vi.waitFor(() => expect(sent).toEqual(["UPDATE_FAILED"]));
+
+      // The next launch, on the same device.
+      setupClientPlugin(insights(), {
+        baseURL: "https://updates.example.com/hot-updater",
+        respond: (request) => {
+          sent.push(request.json<{ type: string }>().type);
+          return new Response(null, { status: 204 });
+        },
+        storage,
+      });
       await vi.waitFor(() =>
-        expect(sent).toEqual(["UPDATE_DOWNLOADED", "UPDATE_FAILED"]),
+        expect(sent).toEqual(["UPDATE_FAILED", "UPDATE_DOWNLOADED"]),
       );
     });
   });
