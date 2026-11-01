@@ -38,8 +38,7 @@ enum HotUpdaterSandboxDevHost {
     private static let notFromManifest: Set<String> = ["platform", "dev", "hot", "minify", "lazy", "transform.bytecode"]
 
     /// The entry an Expo manifest's `launchAsset` names, with what it asks of the
-    /// transform: without Hermes's profile, its JavaScript has syntax Hermes
-    /// refuses. Nil without a `launchAsset`.
+    /// transform, as Expo's own client asks. Nil without a `launchAsset`.
     static func entry(ofManifest data: Data) -> HotUpdaterSandboxDevEntry? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let launchAsset = json["launchAsset"] as? [String: Any],

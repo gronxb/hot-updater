@@ -179,8 +179,7 @@ internal class HotUpdaterSandboxDevFetcher(
 
         /**
          * The entry an Expo manifest's `launchAsset` names, with what it asks of
-         * the transform: without Hermes's profile, its JavaScript has syntax Hermes
-         * refuses. Null without a `launchAsset`.
+         * the transform, as Expo's own client asks. Null without a `launchAsset`.
          */
         fun entryOfManifest(manifest: String): HotUpdaterSandboxDevEntry? =
             runCatching {
