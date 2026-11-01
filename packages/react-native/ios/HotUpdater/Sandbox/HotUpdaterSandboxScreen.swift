@@ -8,6 +8,7 @@ final class HotUpdaterSandboxScreen: UIViewController {
     private let coordinator: HotUpdaterSandboxCoordinator
     private let devServer: HotUpdaterSandboxDevServer
     private let devStatusLabel = UILabel()
+    private var devFailure: String?
     private let devHostField = UITextField()
     private let devConnectButton = UIButton(type: .system)
     private let devReloadButton = UIButton(type: .system)
@@ -97,7 +98,9 @@ final class HotUpdaterSandboxScreen: UIViewController {
         let running = devServer.isRunningDevServer
         devReloadButton.isHidden = !running
         devExitButton.isHidden = !running
-        if let host = devServer.runningDevServerHost {
+        if let devFailure {
+            devStatusLabel.text = devFailure
+        } else if let host = devServer.runningDevServerHost {
             devStatusLabel.text = "Dev server: \(host)"
         } else {
             devStatusLabel.text = devServer.devServerHosts
@@ -109,7 +112,8 @@ final class HotUpdaterSandboxScreen: UIViewController {
     @objc private func devConnectTapped() {
         devStatusLabel.text = "Connecting…"
         devServer.connect(host: devHostField.text ?? "") { [weak self] failure in
-            if let failure { self?.devStatusLabel.text = failure }
+            self?.devFailure = failure
+            self?.renderDevServer()
         }
     }
 

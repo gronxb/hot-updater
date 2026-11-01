@@ -31,6 +31,7 @@ internal class HotUpdaterSandboxScreen(
     private var dialogPhase: HotUpdaterSandboxPhase? = null
     private val devServer = HotUpdaterSandbox.devServer(activity)
     private val devStatus = label(14f)
+    private var devFailure: String? = null
     private val devHost =
         EditText(activity).apply {
             hint = "Dev server address"
@@ -41,7 +42,10 @@ internal class HotUpdaterSandboxScreen(
             text = "Connect"
             setOnClickListener {
                 devStatus.text = "Connecting…"
-                devServer.connect(devHost.text.toString()) { failure -> devStatus.text = failure.orEmpty() }
+                devServer.connect(devHost.text.toString()) { failure ->
+                    devFailure = failure
+                    renderDevServer()
+                }
             }
         }
     private val devReload =
@@ -82,7 +86,8 @@ internal class HotUpdaterSandboxScreen(
         devReload.visibility = if (running) View.VISIBLE else View.GONE
         devExit.visibility = if (running) View.VISIBLE else View.GONE
         devStatus.text =
-            devServer.lastDevServerError
+            devFailure
+                ?: devServer.lastDevServerError
                 ?: if (running) {
                     "Dev server: ${devServer.runningDevServerHost}"
                 } else {
