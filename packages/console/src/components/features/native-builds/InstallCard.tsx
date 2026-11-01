@@ -20,6 +20,7 @@ import {
 import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDownloadLink";
 
 import { CopyableText } from "./CopyableText";
+import { IosInstall, useIosDevice } from "./IosInstall";
 import { isSubmitted, type Submitted } from "./StoreSubmission";
 
 /**
@@ -42,6 +43,27 @@ const QR_CAPTIONS: Record<NativeBuildRow["artifact_kind"], string> = {
   aab: `Scan to download. ${INSTALL_LIMITS.aab}`,
   app: "Scan to download the .app.zip on a Mac.",
 };
+
+/**
+ * An IPA's QR code holds this page rather than a file: the iPhone that scans it
+ * checks whether the IPA lists it before anything downloads, and installs here.
+ */
+function ScannablePage() {
+  const { origin, pathname } = window.location;
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <QrCode
+        className="size-48"
+        label="Open this page on an iPhone"
+        value={`${origin}${pathname}`}
+      />
+      <p className="max-w-56 text-center text-xs text-muted-foreground">
+        Scan with an iPhone to install this build from here. The phone signs in
+        to the Console first.
+      </p>
+    </div>
+  );
+}
 
 /** A QR code of the build's download URL, with what scanning it gets. */
 function ScannableUrl({
@@ -262,7 +284,8 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       ) : (
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
-            Over USB, Xcode or Apple Configurator installs it. For testers:
+            Over USB, Xcode or Apple Configurator installs it. For testers
+            without a registered device:
           </p>
           <CopyableText
             label="the TestFlight command"
@@ -304,12 +327,13 @@ function SignedLink({
 }
 
 /**
- * Installs one native build: an IPA or AAB a store took, from the store; every
- * other artifact by a QR code of its signed link, which a phone without a
- * session scans, and by download here or the link itself; an APK or a simulator
- * app also with `native-build install`, and an IPA's or an AAB's testers through
- * its store. Where the Console can't sign, the QR code holds the storage's URL
- * and the download asks for the session.
+ * Installs one native build: an IPA or AAB a store took, from the store; an IPA
+ * on the iPhone that opens this page, whose QR code on any other screen holds
+ * this page; every other artifact by a QR code of its signed link, which a phone
+ * without a session scans, and by download here or the link itself; an APK or a
+ * simulator app also with `native-build install`, and an IPA's or an AAB's
+ * testers through its store. Where the Console can't sign, the QR code holds the
+ * storage's URL and the download asks for the session.
  */
 export function InstallCard({ build }: { readonly build: NativeBuildRow }) {
   return isSubmitted(build) &&
@@ -327,6 +351,9 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
     link.data?.status === "issued"
       ? nativeBuildSignedDownloadUrl(window.location, build.id, link.data.token)
       : null;
+  const device = useIosDevice();
+  const ipa = build.artifact_kind === "ipa";
+  const onPhone = ipa && device?.ios === true;
   return (
     <Card className="overflow-hidden shadow-sm">
       <CardHeader className="border-b px-4 py-3">
@@ -334,8 +361,18 @@ function FileInstallCard({ build }: { readonly build: NativeBuildRow }) {
           <h2>Install</h2>
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-6 p-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:p-6">
-        {signedUrl !== null ? (
+      <CardContent
+        className={
+          onPhone
+            ? "flex min-w-0 flex-col gap-6 p-4 sm:p-6"
+            : "grid gap-6 p-4 sm:grid-cols-[12rem_minmax(0,1fr)] sm:p-6"
+        }
+      >
+        {onPhone ? (
+          <IosInstall build={build} udid={device.udid} />
+        ) : ipa && signedUrl !== null ? (
+          <ScannablePage />
+        ) : signedUrl !== null ? (
           <ScannableUrl build={build} url={signedUrl} />
         ) : link.data !== undefined ? (
           <StorageQrCode build={build} />

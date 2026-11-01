@@ -9,6 +9,13 @@ import { sameSecret } from "./local-console";
 export const NATIVE_BUILD_DOWNLOAD_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
+ * How long an Install button's link works. It sits in the `itms-services` URL,
+ * Safari's history and the installer's logs, and its holder can fetch the IPA
+ * with every UDID in its profile, so it lasts only as long as an install takes.
+ */
+export const NATIVE_BUILD_INSTALL_LINK_TTL_MS = 60 * 60 * 1000;
+
+/**
  * The Console's secret, which a hosted Console already has for its sessions:
  * a host's guide lists it. Links sign with a key derived from it, so a link
  * is never a signature the sessions could take, and rotating it ends both.
@@ -175,6 +182,7 @@ export const issueNativeBuildDownloadLink = async (
   buildId: string,
   request: Request = getRequest(),
   now: number = Date.now(),
+  ttlMs: number = NATIVE_BUILD_DOWNLOAD_LINK_TTL_MS,
 ): Promise<NativeBuildDownloadLinkResult> => {
   const { default: localConsoleGuard } =
     await import("virtual:hot-updater-console/request-guard");
@@ -183,7 +191,7 @@ export const issueNativeBuildDownloadLink = async (
   if (secret === undefined) {
     return { status: "no-secret", secretName: CONSOLE_SECRET_ENV };
   }
-  const expiresAt = now + NATIVE_BUILD_DOWNLOAD_LINK_TTL_MS;
+  const expiresAt = now + ttlMs;
   return {
     status: "issued",
     token: await createNativeBuildDownloadToken(secret, buildId, expiresAt),

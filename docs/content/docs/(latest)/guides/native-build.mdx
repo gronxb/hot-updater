@@ -264,7 +264,9 @@ opens the build's page, `/native-builds/<build id>`:
   signing in to the Console. An `.apk` [installs from it](#install-an-apk-on-a-phone).
   An `.apk` on an emulator or over USB, and a simulator `.app`, show the
   [`native-build install`](#install-a-build) command. An `.aab` installs through
-  Google Play or bundletool, and an `.ipa` through Xcode, Apple Configurator, or
+  Google Play or bundletool. An `.ipa`'s QR code holds the page, which
+  [installs it on a registered iPhone](/docs/native-builds/iphone-install); it
+  also installs through Xcode, Apple Configurator, or
   [TestFlight](/docs/native-builds/testflight#upload-to-testflight). Without a
   token, `/api/native-builds/<build id>/download` asks for the session: a browser
   that opens it without one goes to the build's page, which signs it in and
@@ -743,6 +745,7 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 | `--submit play-internal`    | `android`: release the `.aab` to Google Play's internal testing track                              |
 | `--testflight-group <name>` | `ios`, a sandbox scheme's `--submit testflight`: the internal TestFlight group to add the build to |
 | `--what-to-test <text>`     | `ios`, a sandbox scheme's `--submit testflight`: the build's What to Test in TestFlight            |
+| `--udid <udid>`             | `ios`: say whether the `.ipa` includes this iPhone; repeat it for each                             |
 | `--dry-run`                 | Build, but record and submit nothing ([Rehearse a build](#rehearse-a-build))                       |
 | `--no-cache`                | Build even when a tracked or cached build has the same key ([Reuse a build](#reuse-a-build))       |
 | `--json`                    | Print the build, its record or why it has none, and its submission as JSON, the last line          |
@@ -754,3 +757,5 @@ and `native-build import`, are described in [Find a build](#find-a-build),
 [Delete a build](#delete-a-build),
 [Add a build to a TestFlight group](#add-a-build-to-a-testflight-group), and
 [Import a build made elsewhere](#import-a-build-made-elsewhere).
+`native-build devices add` and `native-build devices list` register iPhones:
+see [Install on an iPhone](/docs/native-builds/iphone-install).

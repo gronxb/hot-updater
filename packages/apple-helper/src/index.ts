@@ -7,6 +7,12 @@ export {
   type IssuedAscApiKey,
   issueAscApiKey,
 } from "./ascApiKey";
+export {
+  type AscDevice,
+  type AscDeviceOutcome,
+  addAscDevices,
+  listAscDevices,
+} from "./asc/devices";
 export { buildIos } from "./buildIos";
 export {
   applyTestFlightGroup,

@@ -81,6 +81,7 @@ import { getChannel } from "@/utils/setChannel";
 
 import { ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
+import { reportIpaDevices } from "../utils/native/reportIpaDevices";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
@@ -131,6 +132,8 @@ export interface NativeBuildCreateOptions {
   readonly testflightGroup?: string;
   /** A sandbox build's What to Test in TestFlight. */
   readonly whatToTest?: string;
+  /** iPhones to look for in the built `.ipa`, which says whether each is in. */
+  readonly udid?: readonly string[];
   /**
    * Builds, but records and submits nothing, as `npm publish --dry-run`
    * does: the checks run read-only, the store key is resolved but never
@@ -173,6 +176,7 @@ const buildNativeInternal = async ({
     cache: useCache = true,
     testflightGroup,
     whatToTest,
+    udid: udids = [],
     ...schemeOptions
   },
   platform,
@@ -763,6 +767,13 @@ const buildNativeInternal = async ({
               storeUrl,
             }),
           );
+        }
+        if (platform === "ios" && result.artifactPath !== undefined) {
+          await reportIpaDevices({
+            artifactPath: path.resolve(getCwd(), result.artifactPath),
+            scheme: preparedConfig.scheme,
+            udids,
+          });
         }
         if (json) {
           console.log(
