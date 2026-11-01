@@ -29,6 +29,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 
+import { secret } from "@hot-updater/cli-tools";
+
 import {
   handleNativeBuildDevicesAdd,
   handleNativeBuildDevicesList,
@@ -67,7 +69,7 @@ beforeEach(() => {
       ios: {
         sandbox: {
           bundleIdentifier: "com.example.app",
-          signing: { ascApiKey: "secret:team-key" },
+          signing: { ascApiKey: secret("team-key") },
         },
         sim: { bundleIdentifier: "com.example.app", simulator: true },
       },

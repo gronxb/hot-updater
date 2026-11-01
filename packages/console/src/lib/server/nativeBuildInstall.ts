@@ -66,8 +66,7 @@ export const httpRangeSource = ({
   let downloaded = 0;
 
   const request = async (start: number, end: number): Promise<Uint8Array> => {
-    requests += 1;
-    if (requests > MAX_REQUESTS) {
+    if (requests === MAX_REQUESTS) {
       throw new RangeSourceError(
         "Reading the artifact took too many requests.",
       );
@@ -78,6 +77,7 @@ export const httpRangeSource = ({
         "Reading the artifact would download too much.",
       );
     }
+    requests += 1;
     const response = await fetch(url, {
       headers: {
         range: `bytes=${start}-${end - 1}`,

@@ -26,10 +26,10 @@ export const reportIpaDevices = async ({
   udids: readonly string[];
 }): Promise<void> => {
   const info = artifactPath.endsWith(".ipa")
-    ? await fs
-        .openAsBlob(artifactPath)
-        .then((blob) => readIpaInstallInfo(blobSource(blob)))
-        .catch(() => null)
+    ? await (async () =>
+        readIpaInstallInfo(
+          blobSource(await fs.openAsBlob(artifactPath)),
+        ))().catch(() => null)
     : null;
   const listsDevices =
     info?.distribution === "ad-hoc" || info?.distribution === "development";

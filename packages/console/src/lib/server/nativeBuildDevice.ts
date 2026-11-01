@@ -180,16 +180,16 @@ const page = ({
 <meta name="robots" content="noindex">
 <title>This iPhone's ID</title>
 <style nonce="${nonce}">
-:root { color-scheme: dark light; --bg: #fff; --fg: #1f1d1c; --muted: #6b6661; --line: #e4e0db; --panel: #f6f4f1; --primary: #1f1d1c; --on-primary: #fff; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1f1d1c; --fg: #f6f4f1; --muted: #a8a29c; --line: #3a3633; --panel: #2a2725; --primary: #f6f4f1; --on-primary: #1f1d1c; } }
+:root { color-scheme: dark light; --bg: oklch(1 0 0); --fg: oklch(0.147 0.004 49.25); --muted: oklch(0.553 0.013 58.071); --line: oklch(0.923 0.003 48.717); --panel: oklch(0.97 0.001 106.424); --primary: oklch(0.646 0.222 41.116); --on-primary: oklch(0.98 0.016 73.684); --radius: 0.45rem; }
+@media (prefers-color-scheme: dark) { :root { --bg: oklch(0.147 0.004 49.25); --fg: oklch(0.985 0.001 106.423); --muted: oklch(0.709 0.01 56.259); --line: oklch(1 0 0 / 10%); --panel: oklch(0.268 0.007 34.298); --primary: oklch(0.705 0.213 47.604); } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, system-ui, sans-serif; }
 main { display: flex; flex-direction: column; gap: 16px; max-width: 32rem; margin: 0 auto; padding: 32px 16px calc(32px + env(safe-area-inset-bottom)); }
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 p { margin: 0; color: var(--muted); font-size: 15px; }
 .warning { color: var(--fg); font-weight: 600; }
-code { display: block; padding: 12px; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font: 14px/1.4 ui-monospace, Menlo, monospace; }
-button, a.action { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; padding: 8px 16px; border-radius: 8px; font: inherit; font-weight: 600; text-decoration: none; }
+code { display: block; padding: 12px; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); font: 14px/1.4 ui-monospace, Menlo, monospace; }
+button, a.action { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; padding: 8px 16px; border-radius: var(--radius); font: inherit; font-weight: 600; text-decoration: none; }
 button { border: 0; background: var(--primary); color: var(--on-primary); }
 a.action { border: 1px solid var(--line); color: var(--fg); }
 [hidden] { display: none; }

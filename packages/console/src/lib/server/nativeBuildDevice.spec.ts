@@ -246,7 +246,19 @@ describe("the device page's script", () => {
   const STORAGE_KEY = "hot-updater-ios-udid";
 
   const open = async (hash: string, stored?: string) => {
-    const { JSDOM } = await import("jsdom");
+    const { JSDOM } = (await import(
+      // @ts-expect-error jsdom has no types in this workspace.
+      "jsdom"
+    )) as unknown as {
+      readonly JSDOM: new (
+        html: string,
+        options: {
+          url: string;
+          runScripts: "dangerously";
+          beforeParse: (window: Window) => void;
+        },
+      ) => { readonly window: Window };
+    };
     const html = await serveDevicePage(
       new Request(`${CONSOLE}/device`),
       BUILD,

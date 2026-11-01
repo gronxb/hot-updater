@@ -602,7 +602,7 @@ describe("InstallCard", () => {
       "ios",
       "App.ipa",
       {},
-      [/TestFlight/g, /devices/g, /Apple Configurator/g],
+      [/Scan with an iPhone/g, /registered device/g, /Apple Configurator/g],
     ],
     [
       "ipa",
@@ -713,7 +713,7 @@ describe("InstallCard", () => {
       />,
     );
 
-    expect(screen.getByText(/For testers:/)).toBeTruthy();
+    expect(screen.getByText(/For testers/)).toBeTruthy();
     expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
   });

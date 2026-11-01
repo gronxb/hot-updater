@@ -75,12 +75,12 @@ const rangeServer = (bytes: Uint8Array) => {
       const range = /^bytes=(\d+)-(\d+)$/u.exec(
         new Headers(init?.headers).get("range") ?? "",
       );
-      if (range === null) return new Response(bytes);
+      if (range === null) return new Response(bytes as BufferSource);
       const start = Number(range[1]);
       const end = Math.min(Number(range[2]), bytes.length - 1);
       const body = bytes.subarray(start, end + 1);
       served.bytes += body.length;
-      return new Response(body, {
+      return new Response(body as BufferSource, {
         status: 206,
         headers: { "content-range": `bytes ${start}-${end}/${bytes.length}` },
       });
@@ -135,8 +135,9 @@ describe("httpRangeSource", () => {
     const fetch = vi.fn(async () => new Response(stream)) as never;
     const source = httpRangeSource({ url: STORAGE_URL, size: 1 << 30, fetch });
 
-    await expect(source.read(0, 16)).rejects.toThrow(RangeSourceError);
-    await expect(source.read(0, 16)).rejects.toThrow(/answered 200/u);
+    const refused = source.read(0, 16);
+    await expect(refused).rejects.toThrow(RangeSourceError);
+    await expect(refused).rejects.toThrow(/answered 200/u);
     expect(cancel).toHaveBeenCalled();
   });
 
@@ -165,21 +166,21 @@ describe("httpRangeSource", () => {
         async () =>
           new Response(new Uint8Array(length), {
             status: 206,
-            headers: { "content-range": "bytes 0-15/100" },
+            headers: { "content-range": "bytes 0-99/100" },
           }),
       ) as never;
     await expect(
       httpRangeSource({
         url: STORAGE_URL,
-        size: 16,
-        fetch: answering(17),
+        size: 100,
+        fetch: answering(101),
       }).read(0, 16),
     ).rejects.toThrow(/more than/u);
     await expect(
       httpRangeSource({
         url: STORAGE_URL,
         size: 100,
-        fetch: answering(15),
+        fetch: answering(99),
       }).read(0, 16),
     ).rejects.toThrow(/less than/u);
   });
