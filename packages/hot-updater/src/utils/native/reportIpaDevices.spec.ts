@@ -91,8 +91,9 @@ describe("reportIpaDevices", () => {
     expect(log.success).not.toHaveBeenCalled();
     expect(logged("warn")).toContain(`${LATER_PHONE} isn't in this .ipa.`);
     expect(logged("warn")).toContain(
-      "npx hot-updater native-build devices list --scheme sandbox",
+      "native-build devices list --scheme sandbox",
     );
+    expect(logged("warn")).toContain("Provisioning Profiles");
     expect(process.exitCode).toBe(1);
 
     vi.clearAllMocks();

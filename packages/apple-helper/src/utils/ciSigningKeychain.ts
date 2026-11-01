@@ -468,9 +468,15 @@ const TERMINATION_SIGNALS = ["SIGHUP", "SIGINT", "SIGTERM"] as const;
  * certificates are read from the keychain before it is deleted, and the key
  * is read into memory first, since the build's temporary key file is deleted
  * on the signal. A second signal restores the keychains at once.
+ *
+ * `keepDistribution` keeps a distribution certificate out of the revoking, for
+ * an ad hoc export: Xcode may have signed the `.ipa` with one it created here,
+ * rather than the cloud-managed one, and installs may need it valid. Only the
+ * development certificates Xcode created for the archive are then revoked.
  */
 export const withSigningKeychain = async <T>({
   enabled,
+  keepDistribution = false,
   apiKey,
   run,
   security,
@@ -479,6 +485,7 @@ export const withSigningKeychain = async <T>({
   fetch,
 }: {
   enabled: boolean;
+  keepDistribution?: boolean;
   apiKey: Credentials["asc-api-key"];
   run: () => Promise<T>;
   security?: RunSecurity;
@@ -503,7 +510,11 @@ export const withSigningKeychain = async <T>({
       const certificates = await keychain.certificates().catch(() => []);
       await keychain.dispose();
       await revokeKeychainCertificates({
-        certificates,
+        certificates: keepDistribution
+          ? certificates.filter(
+              ({ commonName }) => !commonName.includes("Distribution"),
+            )
+          : certificates,
         apiKey,
         privateKey,
         fetch,

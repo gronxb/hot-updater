@@ -208,7 +208,7 @@ a.action { border: 1px solid var(--line); color: var(--fg); }
 <p id="next" hidden>A maintainer runs this command to register the iPhone, then rebuilds. Open the build again afterwards to install it.</p>
 <code id="command" hidden translate="no"></code>
 <button id="copy" type="button" hidden>Copy command</button>
-<p id="retry" hidden>Open the build's page in Safari and check this iPhone again. On a Mac, Finder shows an iPhone's ID, and the same command takes it.</p>
+<p id="retry" hidden>Open the build's page in Safari and check this iPhone again. On a Mac, Finder shows an iPhone's ID, which a maintainer can register with native-build devices add.</p>
 <a class="action" href="../../../native-builds/${encodeURIComponent(buildId)}">Back to the build</a>
 </main>
 <script nonce="${nonce}">

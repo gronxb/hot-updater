@@ -65,8 +65,8 @@ Settings. It asks for the UDID and nothing else, and iOS calls it not signed.
 
 The iPhone lands on a page with its UDID and one command, kept on that iPhone.
 The Console stores no UDID. Send the command to a maintainer, only if this is
-your iPhone. Safari may not come back on its own: Finder also shows the UDID of
-a connected iPhone, and the same command takes it.
+your iPhone. If Safari doesn't come back, Finder shows the UDID of a connected
+iPhone, which a maintainer can register the same way.
 
 </Step>
 <Step>
@@ -105,7 +105,11 @@ npx hot-updater native-build ios --scheme testers --udid <UDID>
 The build prints how many devices the `.ipa` lists, and whether each `--udid` is
 included. A missing one fails the command, after the build is tracked.
 
-{/* REBUILD_LOCATION */}
+A [CI job](/docs/guides/ci-native-build) has no saved profile, so each export
+gets a new one that lists every enabled device. A Mac keeps its profile while it
+fits, and reuses it without asking Apple: if a registered iPhone isn't included,
+delete this app's ad hoc profile from
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles` and build again.
 
 Each rebuild becomes its scope's newest build, so bundles deployed before it no
 longer reach an install of it until they are deployed again. Register iPhones

@@ -81,7 +81,6 @@ import { getChannel } from "@/utils/setChannel";
 
 import { ARTIFACT_PATH_WIDTH, ui } from "../utils/cli-ui";
 import { ensureAscApiKey } from "../utils/native/ascApiKey";
-import { reportIpaDevices } from "../utils/native/reportIpaDevices";
 import { CredentialSetupRefusedError } from "../utils/native/issuedCredential";
 import type { NativeBuildCacheHit } from "../utils/native/nativeBuildCache";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
@@ -97,6 +96,7 @@ import {
   checkGooglePlay,
   formatGooglePlayReadiness,
 } from "../utils/native/playServiceAccount";
+import { reportIpaDevices } from "../utils/native/reportIpaDevices";
 import {
   type NativeBuildCache,
   rememberTrackedBuild,

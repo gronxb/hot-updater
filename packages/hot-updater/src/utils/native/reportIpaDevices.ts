@@ -7,14 +7,14 @@ import {
   readIpaInstallInfo,
 } from "@hot-updater/protocol/native-artifact";
 
-import { ui } from "../cli-ui";
-
 /**
  * Says which devices a built `.ipa` installs on, from the `.ipa` itself: only
  * its bytes decide, whatever the Apple account lists. With `udids` it says
  * whether each is in, and a missing one fails the run, since the person passed
  * it to get a build that has it. An App Store export lists no devices, which is
- * news only to someone who passed a UDID.
+ * news only to someone who passed a UDID. Registering a device reaches an `.ipa`
+ * only when its export gets a new profile, which a CI runner always does, and a
+ * machine that keeps a saved profile doesn't, while that profile fits.
  */
 export const reportIpaDevices = async ({
   artifactPath,
@@ -48,10 +48,10 @@ export const reportIpaDevices = async ({
       p.log.success(`${udid} included`);
     } else {
       p.log.warn(
-        ui.withCommand(
-          `${udid} isn't in this .ipa. Check that it's registered:`,
-          `npx hot-updater native-build devices list --scheme ${scheme}`,
-        ),
+        [
+          `${udid} isn't in this .ipa.`,
+          `If native-build devices list --scheme ${scheme} shows it, Xcode reused a profile saved on this machine. Delete this app's ad hoc profile from ~/Library/Developer/Xcode/UserData/Provisioning Profiles, and build again.`,
+        ].join("\n"),
       );
       process.exitCode = 1;
     }

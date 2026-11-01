@@ -274,7 +274,10 @@ nothing there.
    private key is there through the App Store Connect API, then deletes the
    keychain with their keys. The CA certificates Xcode imports beside them
    have no private key and are never revoked. The export signs with the cloud-managed distribution certificate,
-   which never leaves Apple. A scheme whose `exportOptionsPlist` exports for
+   which never leaves Apple. An
+   [ad hoc export](/docs/native-builds/iphone-install) builds the same way, and
+   a distribution certificate Xcode created for it isn't revoked, since it may
+   have signed the `.ipa`. A scheme whose `exportOptionsPlist` exports for
    another method, such as `development`, may be signed with the certificate
    Xcode creates, so it builds in the runner's own keychains and keeps it.
 5. It builds, tracks the build, submits it, and deletes the temporary files

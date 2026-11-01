@@ -352,7 +352,8 @@ describe("buildIos", () => {
   it.each([
     ["app-store-connect", true],
     ["development", false],
-    ["release-testing", false],
+    ["release-testing", true],
+    ["ad-hoc", true],
   ])(
     "in CI, signs a %s export with the API key in a keychain of its own: %s",
     async (method, enabled) => {
@@ -371,7 +372,11 @@ describe("buildIos", () => {
       });
 
       expect(withSigningKeychain).toHaveBeenCalledWith(
-        expect.objectContaining({ enabled }),
+        expect.objectContaining({
+          enabled,
+          // A certificate that may have signed an ad hoc .ipa stays valid.
+          keepDistribution: ["release-testing", "ad-hoc"].includes(method),
+        }),
       );
       expect(exportXcodeArchive).toHaveBeenCalledWith(
         expect.objectContaining({ authenticationArgs: AUTHENTICATION_ARGS }),
