@@ -63,6 +63,13 @@ type Movement = Pick<
 >;
 
 /**
+ * From this long, a report waited for a later launch or for React Native to
+ * start, and says how old it is. Retries take about as long, and the reload
+ * after a forced update far less, so those bodies stay as they were.
+ */
+const WAITED_MS = 60_000;
+
+/**
  * How old a stored report can be and still try again after its attempts fail:
  * the Console's longest period. A device offline for that long still delivers
  * it on its next attempt, and a server that always fails can't keep it forever.
@@ -74,6 +81,8 @@ type PendingEvent = QueuedEvent & {
   superseded?: boolean;
   /** Stored for the next launch. An answer to a request in flight still counts. */
   handedOff?: boolean;
+  /** It was already old when queued, so each attempt reports its age. */
+  waited?: boolean;
 };
 
 const normalizeUserId = (user: InsightsUser | null): string | null => {
@@ -161,6 +170,7 @@ const setUpInsights = (
     const day = utcDay(now);
     return {
       body,
+      madeAtMs: now,
       day,
       report:
         movement.type === "UNCHANGED" ||
@@ -180,7 +190,10 @@ const setUpInsights = (
   };
 
   const enqueue = (event: PendingEvent | null) => {
-    if (event === null || send === null) return;
+    if (event === null || send === null || context === null) return;
+    event.waited =
+      event.madeAtMs !== undefined &&
+      context.now() - event.madeAtMs >= WAITED_MS;
     const { type, toBundleId } = event.body;
     if (type === "UPDATE_DOWNLOADED" || type === "UPDATE_APPLIED") {
       // A failure for a target that then arrived no longer describes it.
@@ -416,6 +429,13 @@ const setUpInsights = (
     return admitted;
   };
 
+  const ageOf = (body: InsightsEventBody) => {
+    const event = pending.get(body);
+    if (event?.waited !== true || context === null) return undefined;
+    const age = context.now() - event.madeAtMs!;
+    return age > 0 ? age : undefined;
+  };
+
   const settle = (body: InsightsEventBody, delivery: InsightsDelivery) => {
     const event = pending.get(body);
     pending.delete(body);
@@ -452,7 +472,11 @@ const setUpInsights = (
   // A debug build keeps the user, but reports nothing.
   if (pluginContext.isDebugBuild && options.debug !== true) return { api };
 
-  send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
+  send = createInsightsEventSender(pluginContext.fetch, {
+    admit,
+    settle,
+    ageOf,
+  });
   // What an earlier runtime left goes first, ahead of what this one reports.
   for (const event of pluginState.readHandedOffEvents()) enqueue(event);
   return {

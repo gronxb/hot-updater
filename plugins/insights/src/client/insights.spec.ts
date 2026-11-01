@@ -1082,6 +1082,229 @@ describe("insights() client plugin", () => {
       expect(storage.get("insights", "handedOffEvents")).toBeNull();
     });
 
+    describe("a report's age", () => {
+      const ageOf = (event: InsightsEventBody | undefined) => event?.ageMs;
+
+      it("says how old a report stored across 3 days is, and keeps its id", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + 3 * DAY_MS);
+        await launch();
+        await flush();
+
+        const [late] = sentEvents();
+        expect(late?.type).toBe("UPDATE_DOWNLOADED");
+        expect(ageOf(late)).toBe(259_200_000);
+        expect(uuidV7Time(late!.eventId)).toBe(MORNING);
+      });
+
+      it("stores when a report was made, never its age", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        const [stored] = JSON.parse(
+          storage.get("insights", "handedOffEvents") ?? "[]",
+        ) as { madeAtMs?: number; body: object }[];
+        expect(stored?.madeAtMs).toBe(MORNING);
+        expect(Object.hasOwn(stored!.body, "ageMs")).toBe(false);
+      });
+
+      it("measures each attempt anew, under the same id", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + 3 * DAY_MS);
+        responses = [503, 204];
+        await launch();
+        await flush();
+
+        const [first, retry] = sentEvents();
+        expect(first?.eventId).toBe(retry?.eventId);
+        expect(ageOf(first)).toBe(259_200_000);
+        // Math.random is 0.5, so the first retry waits exactly 1 s.
+        expect(ageOf(retry)).toBe(259_201_000);
+      });
+
+      it("adds nothing to a reload about 100 ms later", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + 100);
+        await launch();
+        await flush();
+
+        const [late] = sentEvents();
+        expect(late?.type).toBe("UPDATE_DOWNLOADED");
+        expect(Object.hasOwn(late!, "ageMs")).toBe(false);
+      });
+
+      it("adds nothing to a handoff just under 60 seconds old, and starts at 60 seconds", async () => {
+        const under = await launch();
+        stageForcedBundle(under);
+        reload();
+        vi.setSystemTime(MORNING + 59_999);
+        await launch();
+        await flush();
+        expect(Object.hasOwn(sentEvents()[0]!, "ageMs")).toBe(false);
+
+        sent = [];
+        storage = createTestStorage();
+        vi.setSystemTime(MORNING);
+        const at = await launch();
+        stageForcedBundle(at);
+        reload();
+        vi.setSystemTime(MORNING + 60_000);
+        await launch();
+        await flush();
+        expect(ageOf(sentEvents()[0])).toBe(60_000);
+      });
+
+      it("adds nothing to a later report in the session, or to one a report stored by an older SDK", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        vi.setSystemTime(MORNING + DAY_MS);
+        app.updateError(downloadFailure({ targetBundleId: "bundle-c" }));
+        await settle();
+        expect(Object.hasOwn(sentEvents()[0]!, "ageMs")).toBe(false);
+        reload();
+
+        const stored = JSON.parse(
+          storage.get("insights", "handedOffEvents") ?? "[]",
+        ) as { madeAtMs?: number }[];
+        for (const event of stored) delete event.madeAtMs;
+        storage.set("insights", "handedOffEvents", JSON.stringify(stored));
+        sent = [];
+
+        vi.setSystemTime(MORNING + 3 * DAY_MS);
+        await launch();
+        await flush();
+        expect(sentEvents()[0]?.type).toBe("UPDATE_DOWNLOADED");
+        expect(Object.hasOwn(sentEvents()[0]!, "ageMs")).toBe(false);
+      });
+
+      it("adds nothing when the device clock moved back while it waited", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING - DAY_MS);
+        await launch();
+        await flush();
+
+        expect(sentEvents()[0]?.type).toBe("UPDATE_DOWNLOADED");
+        expect(Object.hasOwn(sentEvents()[0]!, "ageMs")).toBe(false);
+      });
+
+      it("drops the age from an attempt after the clock moved back past when it was made", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + 3 * DAY_MS);
+        responses = [
+          () => {
+            vi.setSystemTime(MORNING - DAY_MS);
+            return new Response(null, { status: 503 });
+          },
+          204,
+        ];
+        await launch();
+        await flush();
+
+        const [first, retry] = sentEvents();
+        expect(ageOf(first)).toBe(259_200_000);
+        expect(retry?.eventId).toBe(first?.eventId);
+        expect(Object.hasOwn(retry!, "ageMs")).toBe(false);
+      });
+
+      it("keeps a normal report's body as it was, retries past 60 seconds included", async () => {
+        const app = await launch();
+        responses = [
+          () => {
+            vi.setSystemTime(Date.now() + 120_000);
+            return new Response(null, { status: 503 });
+          },
+          204,
+        ];
+        app.downloaded(download);
+        await flush();
+
+        const [first, retry] = sentEvents();
+        expect(Object.keys(first!)).toEqual([
+          "type",
+          "channel",
+          "fromBundleId",
+          "fromReleaseId",
+          "toBundleId",
+          "toReleaseId",
+          "updateStrategy",
+          "metadata",
+          "eventId",
+          "installId",
+          "platform",
+          "appVersion",
+          "cohort",
+          "fingerprintHash",
+          "sdkVersion",
+          "minBundleId",
+        ]);
+        expect(retry).toEqual(first);
+      });
+
+      it("says how old a native replay is, from the time native recorded", async () => {
+        const app = await launch();
+        app.downloaded({ ...download, occurredAt: MORNING - DAY_MS });
+        await settle();
+        expect(ageOf(sentEvents()[0])).toBe(86_400_000);
+
+        app.updateCheck({
+          status: "UNCHANGED",
+          channel: "production",
+          bundleId: "bundle-a",
+          releaseId: "release-a",
+          previousReleaseId: "release-a",
+          occurredAt: MORNING - 2 * DAY_MS,
+        });
+        await settle();
+        // The download above holds back later no-change reports of this runtime.
+        expect(sentEvents()).toHaveLength(1);
+      });
+
+      it("says how old a native failure is from when it failed, never from its id", async () => {
+        const app = await launch();
+        const failedAt = Date.UTC(2026, 8, 29, 14, 20);
+        app.updateError(downloadFailure({ occurredAt: failedAt }));
+        await settle();
+
+        const [failure] = sentEvents();
+        // Its id holds the UTC day's start.
+        expect(uuidV7Time(failure!.eventId)).toBe(Date.UTC(2026, 8, 29));
+        expect(ageOf(failure)).toBe(MORNING - failedAt);
+      });
+
+      it("adds nothing to a native replay under 60 seconds old, or dated ahead", async () => {
+        const app = await launch();
+        app.downloaded({ ...download, occurredAt: MORNING - 59_999 });
+        await settle();
+        app.downloaded({
+          ...download,
+          toBundleId: "bundle-z",
+          occurredAt: MORNING + DAY_MS,
+        });
+        await settle();
+
+        expect(sentEvents()).toHaveLength(2);
+        for (const event of sentEvents()) {
+          expect(Object.hasOwn(event, "ageMs")).toBe(false);
+        }
+      });
+    });
+
     it("keeps later no-change reports going out, since the server has not heard of the download", async () => {
       const app = await launch();
       stageForcedBundle(app);

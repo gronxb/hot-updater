@@ -170,6 +170,43 @@ describe("Insights event delivery", () => {
     );
   });
 
+  it("posts exactly the event's bytes when the gate gives no age", async () => {
+    const { fetchMock } = stubEventsEndpoint(204);
+    const send = createInsightsEventSender(fetchMock, {
+      ...openGate(),
+      ageOf: () => undefined,
+    });
+    const body = downloadedEvent();
+
+    await send(body);
+
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify(body));
+  });
+
+  it("adds the gate's age to the attempt only, measured before each attempt", async () => {
+    const { fetchMock, sentEvents } = stubEventsEndpoint(503, 204);
+    const ages = [1_000, 2_000];
+    const seen: InsightsEventBody[] = [];
+    const send = createInsightsEventSender(fetchMock, {
+      admit: (body) => {
+        seen.push(body);
+        return true;
+      },
+      settle: vi.fn(),
+      ageOf: () => ages.shift(),
+    });
+    const body = downloadedEvent();
+
+    const sending = send(body);
+    await vi.runAllTimersAsync();
+    await sending;
+
+    expect(sentEvents().map(({ ageMs }) => ageMs)).toEqual([1_000, 2_000]);
+    // The gate keys its events by this object, which holds no age.
+    expect(seen.every((each) => each === body)).toBe(true);
+    expect(Object.hasOwn(body, "ageMs")).toBe(false);
+  });
+
   it("skips an event the gate does not admit", async () => {
     const { fetchMock } = stubEventsEndpoint();
     const gate = { admit: vi.fn(() => false), settle: vi.fn() };

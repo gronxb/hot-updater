@@ -29,6 +29,8 @@ export interface RunningReport {
 /** A report the plugin built, with what the gate needs to decide on it. */
 export interface QueuedEvent {
   readonly body: InsightsEventBody;
+  /** When the report was made, on this device's clock. A report stored by an older SDK has none. */
+  readonly madeAtMs?: number;
   readonly day: string;
   /** For UNCHANGED, UPDATE_APPLIED and RECOVERED: what the report says runs. */
   readonly report: RunningReport | null;
@@ -98,6 +100,9 @@ const parseHandedOffEvents = (value: string | null): QueuedEvent[] => {
       return [
         {
           body: event.body as unknown as InsightsEventBody,
+          ...(Number.isSafeInteger(event.madeAtMs)
+            ? { madeAtMs: event.madeAtMs as number }
+            : {}),
           day: event.day,
           report,
           failureKey: event.failureKey,
@@ -260,13 +265,13 @@ export const createInsightsState = (storage: HotUpdaterClientStorage) => {
       return parseHandedOffEvents(read("handedOffEvents"));
     },
     /** Keeps an event for the next launch, once; the oldest makes room. */
-    handOffEvent({ body, day, report, failureKey }: QueuedEvent) {
+    handOffEvent({ body, madeAtMs, day, report, failureKey }: QueuedEvent) {
       const events = parseHandedOffEvents(read("handedOffEvents"));
       if (events.some((event) => event.body.eventId === body.eventId)) return;
       write(
         "handedOffEvents",
         JSON.stringify(
-          [...events, { body, day, report, failureKey }].slice(
+          [...events, { body, madeAtMs, day, report, failureKey }].slice(
             -MAX_HANDED_OFF_EVENTS,
           ),
         ),
