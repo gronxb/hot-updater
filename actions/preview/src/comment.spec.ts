@@ -39,6 +39,96 @@ const base = {
   credit: true,
 };
 
+const onStore = {
+  destination: "testflight",
+  url: "https://appstoreconnect.apple.com/apps/6764/testflight/ios",
+  version: "1.7.0 (66)",
+  state: "processing",
+  expiresAtMs: null,
+  reusable: true,
+} as const;
+
+const ipaOnTestFlight = {
+  ...ios,
+  nativeBuild: {
+    id: "019a0000-0000-7000-8000-00000000b003",
+    artifactKind: "ipa",
+    fileName: "App.ipa",
+  },
+  store: onStore,
+} as const;
+
+const aabOnPlay = {
+  ...android,
+  nativeBuild: {
+    id: "019a0000-0000-7000-8000-00000000b004",
+    artifactKind: "aab",
+    fileName: "app-release.aab",
+  },
+  store: {
+    ...onStore,
+    destination: "play-internal",
+    url: "https://play.google.com/apps/testing/com.example.app.sandbox",
+    version: "1.7.0 (42)",
+    state: "draft",
+  },
+} as const;
+
+describe("renderPreviewComment with a store build", () => {
+  it("shows the store's link and state instead of a download", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [ipaOnTestFlight],
+    });
+
+    expect(body).toContain(
+      `| iOS | [TestFlight](${onStore.url}) · \`1.7.0 (66)\` · processing · [Details](https://console.example.com/native-builds/019a0000-0000-7000-8000-00000000b003) · reused |`,
+    );
+    expect(body).not.toContain("[Download]");
+    expect(body).not.toContain("api/native-builds");
+    expect(body).not.toContain("An IPA installs on registered devices");
+    expect(body).not.toContain("embed the");
+    expect(body).toContain(
+      "Testers install the sandbox build from TestFlight, which pull requests with the same native code share. This pull request's bundle is on `pr-12`.",
+    );
+  });
+
+  it("says a draft needs its rollout, and names Google Play", () => {
+    const body = renderPreviewComment({ ...base, previews: [aabOnPlay] });
+    expect(body).toContain(
+      `| Android | [Google Play internal testing](${aabOnPlay.store.url}) · \`1.7.0 (42)\` · a draft: roll it out in Play Console ·`,
+    );
+    expect(body).not.toContain("adb install");
+  });
+
+  it("keeps the other platform's download beside a store build", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [android, ipaOnTestFlight],
+      qrCodes: [android.nativeBuild.id],
+    });
+    expect(body).toContain(
+      "[Download](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-00000000b001/download)",
+    );
+    expect(body).toContain("embed the `pr-12` channel");
+    expect(body).toContain("Testers install the sandbox build from TestFlight");
+    expect(body).toContain("adb install");
+  });
+
+  it("names the store without a link when it couldn't be read", () => {
+    const body = renderPreviewComment({
+      ...base,
+      previews: [
+        {
+          ...ipaOnTestFlight,
+          store: { ...onStore, url: null, state: null },
+        },
+      ],
+    });
+    expect(body).toContain("| iOS | TestFlight · `1.7.0 (66)` · [Details]");
+  });
+});
+
 describe("renderPreviewComment", () => {
   it("lists each platform's download and page, the APK's download QR code, and the install commands", () => {
     expect(

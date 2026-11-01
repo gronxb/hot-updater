@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,30 @@ export type NativeBuildCommand = {
   args: string[];
   cwd: string;
   env: Record<string, string>;
+  /** Output of a known flaky crash that reruns this step once. */
+  retryOn?: string;
 };
+
+/**
+ * CocoaPods crashes at random with this error while it generates the Pods
+ * project of pods that pnpm symlinks (CocoaPods/CocoaPods#12798, #12866).
+ */
+export const COCOAPODS_NULL_BYTE_CRASH = "pathname contains null byte";
+
+/** Whether a failed step reruns: only its own known crash, and only once. */
+export function shouldRetryNativeBuildStep(
+  command: NativeBuildCommand,
+  exitCode: number,
+  output: string,
+  attempt: number,
+): boolean {
+  return (
+    exitCode !== 0 &&
+    attempt === 1 &&
+    command.retryOn !== undefined &&
+    output.includes(command.retryOn)
+  );
+}
 
 export function parseNativeBuildArgs(
   argv: readonly string[],
@@ -174,6 +197,7 @@ export function createNativeBuildPlan(
       args: ["exec", "pod", "install"],
       cwd: podsDir,
       env: { ...bundlerEnv, ...target.ios.podEnv },
+      retryOn: COCOAPODS_NULL_BYTE_CRASH,
     },
   ];
   if (target.brownfield) {
@@ -248,12 +272,25 @@ export function createNativeBuildPlan(
   ];
 }
 
-async function runCommand(command: NativeBuildCommand): Promise<number> {
+type CommandResult = { code: number; output: string; interrupted: boolean };
+
+async function runCommand(command: NativeBuildCommand): Promise<CommandResult> {
+  // A step with a known crash keeps its output to match it, still printing it.
+  const capture = command.retryOn !== undefined;
   const child = spawn(command.command, command.args, {
     cwd: command.cwd,
     env: { ...process.env, ...command.env },
     detached: true,
-    stdio: "inherit",
+    stdio: capture ? ["inherit", "pipe", "pipe"] : "inherit",
+  });
+  const chunks: Buffer[] = [];
+  child.stdout?.on("data", (chunk: Buffer) => {
+    chunks.push(chunk);
+    process.stdout.write(chunk);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    chunks.push(chunk);
+    process.stderr.write(chunk);
   });
   let interruptedExitCode: number | undefined;
   let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -280,10 +317,18 @@ async function runCommand(command: NativeBuildCommand): Promise<number> {
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
   try {
-    return await new Promise<number>((resolve, reject) => {
+    const code = await new Promise<number>((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (code) => resolve(interruptedExitCode ?? code ?? 1));
+      // With pipes, "close" follows the last output chunk.
+      child.once(capture ? "close" : "exit", (exitCode) =>
+        resolve(interruptedExitCode ?? exitCode ?? 1),
+      );
     });
+    return {
+      code,
+      output: Buffer.concat(chunks).toString("utf8"),
+      interrupted: interruptedExitCode !== undefined,
+    };
   } finally {
     clearTimeout(killTimer);
     // Bundler, Gradle and Xcode can leave compiler children after their wrapper exits.
@@ -302,19 +347,44 @@ async function main(): Promise<number> {
     return 0;
   }
   const options = parseNativeBuildArgs(argv);
-  const plan = createNativeBuildPlan(
-    options,
-    fileURLToPath(new URL("../../", import.meta.url)),
-  );
+  const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+  const plan = createNativeBuildPlan(options, repositoryRoot);
   if (options.dryRun) {
     console.log(JSON.stringify(plan, null, 2));
     return 0;
   }
   for (const command of plan) {
-    const code = await runCommand(command);
+    const code = await runStep(
+      command,
+      path.join(repositoryRoot, "e2e/results/native-build"),
+    );
     if (code !== 0) return code;
   }
   return 0;
+}
+
+async function runStep(
+  command: NativeBuildCommand,
+  logDir: string,
+): Promise<number> {
+  const first = await runCommand(command);
+  if (
+    first.interrupted ||
+    !shouldRetryNativeBuildStep(command, first.code, first.output, 1)
+  ) {
+    return first.code;
+  }
+  // The job log has the first attempt too; this file keeps it on its own.
+  mkdirSync(logDir, { recursive: true });
+  const log = path.join(
+    logDir,
+    `${path.basename(command.command)}-${command.args.join("-")}-attempt1.log`,
+  );
+  writeFileSync(log, first.output);
+  console.error(
+    `${command.command} ${command.args.join(" ")} hit "${command.retryOn}"; retrying once. First attempt: ${log}`,
+  );
+  return (await runCommand(command)).code;
 }
 
 if (

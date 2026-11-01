@@ -8,7 +8,9 @@ import {
   PlayVersionCodeUsedError,
   readBuiltApp,
   readBuiltPackageName,
+  playTestingUrl,
   readBuiltVersionCode,
+  readPlayHighestVersionCode,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "@hot-updater/android-helper";
@@ -17,7 +19,9 @@ import {
   assertIpaIsInternalOnly,
   assertTestFlightExportOptions,
   buildIos,
+  distributeTestFlightBuild,
   type EnrichedNativeBuildIosScheme,
+  findInternalBetaGroup,
   findTestFlightBuild,
   installPodsIfNeeded,
   isVersionTrainClosed,
@@ -106,7 +110,11 @@ import {
   resolvesAscApiKey,
   signsWithKeystore,
 } from "../utils/native/signingCredentials";
-import { resolveSandboxApplicationId } from "../utils/version/getAndroidVersion";
+import {
+  isStoreBuildReusable,
+  playPackageName,
+  type StoreStatus,
+} from "../utils/native/storeStatus";
 
 /**
  * `native-build ios` and `native-build android`: every build but a Debug
@@ -119,6 +127,10 @@ export interface NativeBuildCreateOptions {
   readonly scheme?: string;
   readonly outputPath?: string;
   readonly submit?: "testflight" | "play-internal";
+  /** A sandbox build's internal TestFlight group, checked before it is built. */
+  readonly testflightGroup?: string;
+  /** A sandbox build's What to Test in TestFlight. */
+  readonly whatToTest?: string;
   /**
    * Builds, but records and submits nothing, as `npm publish --dry-run`
    * does: the checks run read-only, the store key is resolved but never
@@ -137,8 +149,9 @@ export interface NativeBuildCreateOptions {
    * as one line of JSON, the last of the output: the build, its record or
    * null, why it has none (`registration.skipped`: "debug", "dry-run", or
    * null), the store it went to (`submission.destination`, skipped on a
-   * dry run, or when the store already has a reused build), and the build
-   * it reused (`cache.hit`: "storage", "local", or null, with the key, why
+   * dry run, or when the store already has a reused build, and `store`, what
+   * the store says of a sandbox build this run submitted), and the build it
+   * reused (`cache.hit`: "storage", "local", or null, with the key, why
    * none could be, and what changed). The record holds what the build's
    * artifact embeds, such as an app version an xcconfig sets, which the
    * project doesn't declare.
@@ -158,6 +171,8 @@ const buildNativeInternal = async ({
     dryRun = false,
     json = false,
     cache: useCache = true,
+    testflightGroup,
+    whatToTest,
     ...schemeOptions
   },
   platform,
@@ -192,6 +207,8 @@ const buildNativeInternal = async ({
         let missingSubmitKey: string | undefined;
         // The store's page of the build this run submitted.
         let storeUrl: string | undefined;
+        // What the store says of the build this run submitted.
+        let storeStatus: StoreStatus | null = null;
         const preparedConfig = await prepareNativeBuild({
           ...options,
           platform,
@@ -218,6 +235,14 @@ const buildNativeInternal = async ({
                 submit: upload,
               }),
             );
+            if (
+              (testflightGroup !== undefined || whatToTest !== undefined) &&
+              !(upload === "testflight" && iosScheme?.sandbox)
+            ) {
+              throw new NativeBuildFailure(
+                "--testflight-group and --what-to-test go with a sandbox scheme's --submit testflight.\nSet sandbox: true on the scheme, or remove them.",
+              );
+            }
             const uploadKey =
               upload === "testflight"
                 ? await reportUploadFailure(async () =>
@@ -243,10 +268,7 @@ const buildNativeInternal = async ({
               const keystore = androidSigningKeystore(androidScheme);
               const readiness = await checkGooglePlay({
                 credentials,
-                packageName: androidScheme!.sandbox
-                  ? await resolveSandboxApplicationId(androidScheme!)
-                  : (androidScheme!.applicationId ??
-                    androidScheme!.packageName),
+                packageName: await playPackageName(androidScheme!),
                 serviceAccount: uploadServiceAccount,
                 ...(keystore ? { keystore } : {}),
               });
@@ -386,6 +408,27 @@ const buildNativeInternal = async ({
                 }),
               )
             : undefined;
+        // A group that doesn't exist or isn't internal stops before the build.
+        const betaGroup =
+          testflightGroup !== undefined && ascApiKey
+            ? await reportUploadFailure(() =>
+                findInternalBetaGroup({
+                  bundleId: iosSchemeConfig!.bundleIdentifier,
+                  name: testflightGroup,
+                  apiKey: ascApiKey!,
+                }),
+              )
+            : undefined;
+        // A sandbox .aab's version code follows the store, as an .ipa's number.
+        const highestVersionCode =
+          sandbox && androidSchemeConfig && serviceAccount && !dryRun
+            ? await reportUploadFailure(async () =>
+                readPlayHighestVersionCode({
+                  packageName: await playPackageName(androidSchemeConfig),
+                  serviceAccount: serviceAccount!,
+                }),
+              )
+            : null;
         // Debug builds are neither tracked nor cached.
         const cache: NativeBuildCache | null =
           trackingSkipped === "debug"
@@ -410,7 +453,23 @@ const buildNativeInternal = async ({
         if (closedVersion !== null) {
           p.log.info(`Cache skipped · version ${closedVersion} is closed`);
         }
-        const reused = closedVersion === null ? (cache?.hit ?? null) : null;
+        // A store takes a number once, so a sandbox build it may hold already
+        // gets a new one; only the record says the store's build is this one.
+        const takenNumber =
+          sandbox && upload && closedVersion === null
+            ? takenNumberOfCachedBuild(
+                cache?.hit ?? null,
+                sandboxArchive?.train?.highestBuildNumber ?? highestVersionCode,
+                upload,
+              )
+            : null;
+        if (takenNumber !== null) {
+          p.log.info(`Cache skipped · the store has build ${takenNumber}`);
+        }
+        const reused =
+          closedVersion === null && takenNumber === null
+            ? (cache?.hit ?? null)
+            : null;
         // The build's log, which the summary names.
         const buildLog: { path: string | null } = { path: null };
         const result = reused
@@ -428,6 +487,10 @@ const buildNativeInternal = async ({
                 : iosSchemeConfig,
               credentials,
               sandboxArchive,
+              minVersionCode:
+                highestVersionCode === null
+                  ? undefined
+                  : highestVersionCode + 1,
               tracked: trackingSkipped === null,
               logHeader: [...(cache?.logHeader ?? []), ""],
               onLog: (file) => {
@@ -533,12 +596,39 @@ const buildNativeInternal = async ({
           if ("refused" in uploaded) {
             existingSubmission = uploaded.refused;
           } else if (sandbox) {
-            await reportUploadFailure(() =>
-              assertBuildIsInternalOnly({
+            storeStatus = await reportUploadFailure(async () => {
+              const listed = await assertBuildIsInternalOnly({
                 ipaPath: result.artifactPath,
                 apiKey,
-              }),
-            );
+              });
+              const status =
+                betaGroup || whatToTest !== undefined
+                  ? await distributeTestFlightBuild({
+                      build: {
+                        appId: listed.appId,
+                        shortVersion: uploaded.shortVersion,
+                        bundleVersion: uploaded.bundleVersion,
+                        testFlightUrl: listed.testFlightUrl,
+                      },
+                      ...(betaGroup ? { group: betaGroup } : {}),
+                      ...(whatToTest === undefined ? {} : { whatToTest }),
+                      apiKey,
+                    })
+                  : listed;
+              const state = status?.state ?? "processing";
+              const expiresAtMs = status?.expiresAtMs ?? null;
+              return {
+                destination: "testflight",
+                url: uploaded.testFlightUrl,
+                version: storeVersionLabel(
+                  uploaded.shortVersion,
+                  uploaded.bundleVersion,
+                ),
+                state,
+                expiresAtMs,
+                reusable: isStoreBuildReusable(state, expiresAtMs),
+              };
+            });
           }
           if (!("refused" in uploaded) && uploaded.state === "COMPLETE") {
             storeUrl = uploaded.testFlightUrl;
@@ -633,7 +723,18 @@ const buildNativeInternal = async ({
             if ("refused" in uploaded) {
               existingSubmission = uploaded.refused;
             } else {
-              const { versionCode } = uploaded;
+              const { versionCode, status } = uploaded;
+              if (sandbox) {
+                const state = status === "draft" ? "draft" : "ready";
+                storeStatus = {
+                  destination: "play-internal",
+                  url: playTestingUrl(packageName),
+                  version: await playVersionLabel(versionCode),
+                  state,
+                  expiresAtMs: null,
+                  reusable: isStoreBuildReusable(state, null),
+                };
+              }
               // Google Play took the bundle on the internal track, as a draft
               // release when the app is not published yet.
               registered = await recordSubmission(
@@ -680,13 +781,18 @@ const buildNativeInternal = async ({
                       : null,
                 // The store's build that kept this one from uploading.
                 existing: existingSubmission,
+                // What the store says of the build this run submitted.
+                store: storeStatus,
               },
               cache:
-                cache && closedVersion !== null
+                cache && (closedVersion !== null || takenNumber !== null)
                   ? {
                       ...cache.report,
                       hit: null,
-                      uncacheable: `App Store Connect closed version ${closedVersion}`,
+                      uncacheable:
+                        closedVersion !== null
+                          ? `App Store Connect closed version ${closedVersion}`
+                          : `the store has build ${takenNumber}`,
                     }
                   : (cache?.report ?? {
                       hit: null,
@@ -729,6 +835,7 @@ const buildNow = async ({
   iosSchemeConfig,
   credentials,
   sandboxArchive,
+  minVersionCode,
   tracked,
   logHeader,
   onLog,
@@ -744,6 +851,8 @@ const buildNow = async ({
   credentials: CredentialResolver;
   /** What a sandbox device build takes from App Store Connect. */
   sandboxArchive?: SandboxArchivePlan;
+  /** The lowest version code a sandbox `.aab` may have, past the store's. */
+  minVersionCode?: number;
   tracked: boolean;
   /** Lines the build log starts with: the cache's key and what changed. */
   logHeader: string[];
@@ -797,6 +906,7 @@ const buildNow = async ({
               minBundleId,
               credentials,
               logHeader: header,
+              ...(minVersionCode === undefined ? {} : { minVersionCode }),
             })
           : await buildIos({
               schemeConfig: iosSchemeConfig!,
@@ -850,6 +960,24 @@ const closedVersionOfCachedBuild = async (
     isVersionTrainClosed(appVersion, plan.train)
     ? appVersion
     : null;
+};
+
+/**
+ * The build number of a cached sandbox build the store can't take: it holds that
+ * number or a higher one, from this build or another, and only this build's
+ * record says it is this one. Null to reuse the build.
+ */
+const takenNumberOfCachedBuild = (
+  hit: NativeBuildCacheHit | null,
+  highest: number | null,
+  upload: NativeBuildSubmissionDestination,
+): string | null => {
+  const number = hit?.result.buildNumber ?? null;
+  if (hit === null || highest === null || number === null) return null;
+  if (!/^\d+$/u.test(number) || Number(number) > highest) return null;
+  return hit.source === "storage" && hit.nativeBuild.submitted_to === upload
+    ? null
+    : number;
 };
 
 /**

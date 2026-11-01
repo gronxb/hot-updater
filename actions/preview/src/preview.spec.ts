@@ -946,6 +946,8 @@ describe("parseInputs", () => {
       platforms: ["android"],
       schemes: { android: "releaseApk", ios: "simulator" },
       channel: "pr-12",
+      submits: {},
+      testFlightGroup: null,
       credit: true,
       comment: false,
       mode: "preview",

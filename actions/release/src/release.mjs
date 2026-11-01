@@ -11,6 +11,7 @@ import {
   parsePlatforms,
   parseSchemes,
   refreshFingerprint,
+  STORES,
 } from "../../shared/nativeBuild.mjs";
 
 /**
@@ -52,12 +53,6 @@ import {
  * @property {"testflight" | "play-internal" | null} submittedTo
  * @property {string | null} error
  */
-
-/** The store track each platform's native builds go to. */
-const STORES = /** @type {const} */ ({
-  ios: { id: "testflight", name: "TestFlight" },
-  android: { id: "play-internal", name: "Google Play internal testing" },
-});
 
 /**
  * Whether a channel is the reserved `sandbox-<scheme>` channel of a scheme's

@@ -169,7 +169,13 @@ describe("CLI commands", () => {
     }
 
     const nativeBuild = help("native-build");
-    for (const command of ["find", "delete", "ios", "android"]) {
+    for (const command of [
+      "find",
+      "testflight-group",
+      "delete",
+      "ios",
+      "android",
+    ]) {
       expect(nativeBuild).toMatch(new RegExp(`^\\s+${command} \\[`, "m"));
     }
     expect(nativeBuild).not.toMatch(/^\s+create\b/m);

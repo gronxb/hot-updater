@@ -21,6 +21,7 @@ it("gathers every parallel attempt's records into the evidence result.ts reads",
       cleanupCompleted: true,
       consoleInsights: { verified: true },
       expectedLaunchFailures: 1,
+      expectedLinkTimeouts: 2,
     });
     // A failed body still proves its cleanup, without Console Insights.
     recordAttempt(resultsDir, "failed-scenario", {
@@ -43,6 +44,7 @@ it("gathers every parallel attempt's records into the evidence result.ts reads",
             name: "passed-scenario",
             consoleInsights: { verified: true },
             expectedLaunchFailures: 1,
+            expectedLinkTimeouts: 2,
             bodyCompleted: true,
             cleanupCompleted: true,
           },

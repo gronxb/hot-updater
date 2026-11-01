@@ -18,6 +18,7 @@ export const buildAndroid = async ({
   minBundleId = createMinBundleId(),
   credentials,
   logHeader,
+  minVersionCode,
 }: {
   schemeConfig: EnrichedNativeBuildAndroidScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
@@ -26,6 +27,8 @@ export const buildAndroid = async ({
   credentials?: Pick<CredentialResolver, "resolve">;
   /** Lines the build log starts with, such as the native build key. */
   logHeader?: string[];
+  /** The lowest version code a sandbox build may have. */
+  minVersionCode?: number;
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
@@ -75,6 +78,7 @@ export const buildAndroid = async ({
         androidProjectPath,
         logHeader,
       }),
+    minVersionCode === undefined ? {} : { minVersionCode },
   );
   return {
     ...result,

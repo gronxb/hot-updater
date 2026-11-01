@@ -15,13 +15,22 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string | null} [build_key] Null for a build registered from elsewhere.
  * @property {string | null} [submitted_to] The store track that took the build.
  *
+ * @typedef {object} StoreStatus What a store says of a build a run submitted.
+ * @property {"testflight" | "play-internal"} destination
+ * @property {string | null} url The store's page of the app.
+ * @property {string | null} version The store's label, such as `1.7.0 (66)`.
+ * @property {string | null} state Such as `processing`, `ready`, or `draft`.
+ * @property {number | null} expiresAtMs When the store stops offering the build.
+ * @property {boolean} reusable Whether a tester can still get the build.
+ *
  * @typedef {object} BuildTarget What a native build embeds.
  * @property {string | null} fingerprintHash
  * @property {string | null} appVersion
  *
- * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null }} NativeBuildFindResult
+ * @typedef {BuildTarget & { platform: Platform, channel: string, nativeBuild: NativeBuildRow | null, downloadUrl?: string | null, store?: StoreStatus | null }} NativeBuildFindResult
  *   What `native-build find --json` prints. `downloadUrl` is the storage's URL
- *   of the artifact, which anyone who has it can fetch until it expires.
+ *   of the artifact, which anyone who has it can fetch until it expires, and
+ *   `store`, with `storeStatus`, what the store says of a submitted build.
  *
  * @typedef {object} ShellDeps
  * @property {import("./cli.mjs").Cli} cli
@@ -108,9 +117,12 @@ export const runJson = async (deps, args, { quiet = false } = {}) => {
  * `downloadUrl` a public repository's log would hand to anyone.
  *
  * @param {ShellDeps} deps
- * @param {{ platform: Platform, scheme: string, channel?: string | null }} options
+ * @param {{ platform: Platform, scheme: string, channel?: string | null, storeStatus?: boolean }} options
  */
-export const findNativeBuild = async (deps, { platform, scheme, channel }) =>
+export const findNativeBuild = async (
+  deps,
+  { platform, scheme, channel, storeStatus = false },
+) =>
   /** @type {NativeBuildFindResult} */ (
     await runJson(
       deps,
@@ -122,11 +134,18 @@ export const findNativeBuild = async (deps, { platform, scheme, channel }) =>
         ...(channel ? ["-c", channel] : []),
         "-s",
         scheme,
+        ...(storeStatus ? ["--store-status"] : []),
         "--json",
       ],
       { quiet: true },
     )
   );
+
+/** The store track each platform's native builds go to. */
+export const STORES = /** @type {const} */ ({
+  ios: { id: "testflight", name: "TestFlight" },
+  android: { id: "play-internal", name: "Google Play internal testing" },
+});
 
 /** @param {BuildTarget} scope */
 export const describeTarget = (scope) =>

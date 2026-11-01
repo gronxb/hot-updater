@@ -9,6 +9,10 @@
 //   { "versionCode": 1, "sha256": "...", "size": 123 }
 //   { "refused": "commit" }
 //
+// A line a proof appends itself is an upload from elsewhere, as an app's first
+// .aab by hand. The internal track holds the highest release, as Google Play
+// keeps only the newest one there, and the app's bundles are every upload.
+//
 // PROOF_PLAY_VERSION_CODE is the version code the store reads from the next
 // .aab. PROOF_PLAY_FAIL=commit refuses the commit, as a store outage would.
 import { createHash } from "node:crypto";
@@ -99,12 +103,23 @@ const answer = async (url, { method = "GET", headers, body } = {}) => {
   }
   if (path.includes("/tracks/")) {
     if (method === "PUT") return json({ track: "internal" });
+    const codes = committed().map((upload) => upload.versionCode);
     return json({
       track: "internal",
-      releases: committed().map((upload) => ({
-        versionCodes: [String(upload.versionCode)],
-        status: "completed",
-      })),
+      releases:
+        codes.length === 0
+          ? []
+          : [
+              {
+                versionCodes: [String(Math.max(...codes))],
+                status: "completed",
+              },
+            ],
+    });
+  }
+  if (method === "GET" && path.endsWith("/bundles")) {
+    return json({
+      bundles: committed().map(({ versionCode }) => ({ versionCode })),
     });
   }
   if (method === "DELETE") {

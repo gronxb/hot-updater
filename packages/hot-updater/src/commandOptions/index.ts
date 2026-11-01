@@ -33,6 +33,16 @@ export const testFlightSubmitCommandOption = new Option(
   "submit the .ipa to a store: testflight uploads it to App Store Connect with the scheme's App Store Connect API key",
 ).choices(["testflight"]);
 
+export const testFlightGroupCommandOption = new Option(
+  "--testflight-group <name>",
+  "with a sandbox scheme's --submit testflight: the internal TestFlight group to add the build to",
+);
+
+export const whatToTestCommandOption = new Option(
+  "--what-to-test <text>",
+  "with a sandbox scheme's --submit testflight: the build's What to Test in TestFlight",
+);
+
 export const playSubmitCommandOption = new Option(
   "--submit <destination>",
   "submit the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",

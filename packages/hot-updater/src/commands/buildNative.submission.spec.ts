@@ -414,6 +414,7 @@ describe("native-build ios --submit testflight", () => {
         submittedAtMs: storageRow.submitted_at_ms,
         source: "recorded",
       },
+      store: null,
     });
     // The record stays the first upload's.
     expect(await stored()).toEqual(storageRow);

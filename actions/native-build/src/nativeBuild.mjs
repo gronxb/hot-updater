@@ -9,6 +9,8 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @property {Platform} platform
  * @property {string} scheme
  * @property {"testflight" | "play-internal" | null} submit
+ * @property {boolean} [noCache] Builds even when a build could be reused.
+ * @property {string[]} [extraArgs] More `native-build` arguments.
  *
  * @typedef {object} Deps
  * @property {import("../../shared/cli.mjs").Cli} cli
@@ -21,8 +23,9 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @property {{ platform: Platform, scheme: string, artifactPath: string, artifactKind: string, minBundleId: string, channel: string, fingerprintHash: string | null, appVersion: string | null }} build
  * @property {{ id: string } | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} registration Why the build has no record.
- * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { version: string | null, source: "recorded" | "store" } | null }} submission
- *   The store the build went to, and the store's build that kept it from uploading.
+ * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { version: string | null, source: "recorded" | "store" } | null, store?: import("../../shared/nativeBuild.mjs").StoreStatus | null }} submission
+ *   The store the build went to, the store's build that kept it from uploading,
+ *   and what the store says of the build this run submitted.
  */
 
 /** The store each platform submits to. */
@@ -113,6 +116,8 @@ export const buildArgs = (inputs) => [
   "--scheme",
   inputs.scheme,
   ...(inputs.submit ? ["--submit", inputs.submit] : []),
+  ...(inputs.noCache ? ["--no-cache"] : []),
+  ...(inputs.extraArgs ?? []),
   "--json",
 ];
 
