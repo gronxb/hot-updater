@@ -99,7 +99,7 @@ const DOWNLOAD_LINK_STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * How long an iPhone keeps a build's install details and Install link, which
- * lasts an hour: coming back to the page after this reads and signs again.
+ * lasts an hour: past this, an open page reads and signs again.
  */
 const INSTALL_ELIGIBILITY_STALE_MS = 30 * 60 * 1000;
 
@@ -276,6 +276,9 @@ export function useNativeBuildInstallEligibilityQuery(
         data: { id, ...(udid === null ? {} : { udid }) },
       }),
     staleTime: INSTALL_ELIGIBILITY_STALE_MS,
+    // A page left open never holds an expired link. It reads nothing while the
+    // tab is hidden, and coming back reads again once this has passed.
+    refetchInterval: INSTALL_ELIGIBILITY_STALE_MS,
   });
 }
 

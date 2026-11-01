@@ -9,6 +9,7 @@ import {
   useCreateChannelMutation,
   useDeleteChannelMutation,
   useDeleteReleaseMutation,
+  useNativeBuildInstallEligibilityQuery,
   useReleasesQuery,
   useUpdateReleaseMutation,
 } from "./api";
@@ -16,6 +17,7 @@ import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
   deleteRelease as deleteReleaseApi,
+  getNativeBuildInstallEligibility,
   getReleases as getReleasesApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
@@ -29,6 +31,7 @@ vi.mock("./api-rpc", () => ({
   getBundleChildren: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
+  getNativeBuildInstallEligibility: vi.fn(),
   getRelease: vi.fn(),
   getReleaseCatalogDiagnostics: vi.fn(),
   getReleases: vi.fn(),
@@ -267,5 +270,57 @@ describe("useDeleteReleaseMutation", () => {
     }
 
     queryClient.clear();
+  });
+});
+
+describe("useNativeBuildInstallEligibilityQuery", () => {
+  const MINUTE = 60_000;
+  const LINK_LIFETIME = 60 * MINUTE;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const open = async () => {
+    vi.useFakeTimers();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.mocked(getNativeBuildInstallEligibility).mockReset();
+    vi.mocked(getNativeBuildInstallEligibility).mockResolvedValue({
+      status: "store",
+    });
+    renderHook(() => useNativeBuildInstallEligibilityQuery("build-1", null), {
+      wrapper: ({ children }: PropsWithChildren) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+  };
+
+  it("asks for a new link before an open page's link expires, however long it stays open", async () => {
+    await open();
+    const calls = vi.mocked(getNativeBuildInstallEligibility).mock.calls;
+    expect(calls).toHaveLength(1);
+
+    await act(() => vi.advanceTimersByTimeAsync(LINK_LIFETIME - MINUTE));
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+
+    await act(() => vi.advanceTimersByTimeAsync(2 * LINK_LIFETIME));
+    expect(calls.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("reads nothing more while the tab is hidden", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await open();
+    const calls = vi.mocked(getNativeBuildInstallEligibility).mock.calls;
+    const before = calls.length;
+
+    await act(() => vi.advanceTimersByTimeAsync(3 * LINK_LIFETIME));
+
+    expect(calls).toHaveLength(before);
   });
 });
