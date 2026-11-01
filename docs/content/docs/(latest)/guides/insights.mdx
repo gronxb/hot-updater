@@ -236,7 +236,8 @@ the failure rate. App usage and Release health charts stay in the Console.
   still waiting to be sent, stay on the device and arrive first at the next
   launch, ahead of `UPDATE_APPLIED`. This holds with `reloadOnForceUpdate: false`
   too, while later reports go out as usual. Insights counts each report when it
-  arrives.
+  arrives. A report held this way stays through launches that can't reach the
+  server, until the server accepts or refuses it.
 - Failed reports are retried in the background with the same ID, so the server
   counts each once.
 - A launch report that changes what an installation runs is kept as an event:
