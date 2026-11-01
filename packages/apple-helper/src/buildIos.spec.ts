@@ -384,6 +384,47 @@ describe("buildIos", () => {
     },
   );
 
+  it("leaves only the .ipa of an export, so no log with its bearer token reaches the output or the cache", async () => {
+    vi.mocked(exportXcodeArchive).mockImplementationOnce(
+      async ({ exportPath }: { exportPath: string }) => {
+        await fs.mkdir(path.join(exportPath, "App.xcdistributionlogs"), {
+          recursive: true,
+        });
+        await Promise.all(
+          [
+            "App.ipa",
+            "Packaging.log",
+            "DistributionSummary.plist",
+            "ExportOptions.plist",
+            "App.xcdistributionlogs/IDEDistribution.verbose.log",
+          ].map((file) =>
+            fs.writeFile(
+              path.join(exportPath, file),
+              'Authorization = "Bearer eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJhIn0.c2lnbmF0dXJl"',
+            ),
+          ),
+        );
+        return { exportPath };
+      },
+    );
+
+    const { buildDirectory, buildArtifactPath, dispose } = await buildIos({
+      schemeConfig: scheme({
+        signing: { ascApiKey: secret("app-store-key") },
+      }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+
+    const files = await fs.readdir(buildDirectory, { recursive: true });
+    expect(
+      files.filter((file) => /log|Summary|ExportOptions/iu.test(file)),
+    ).toEqual([]);
+    expect(path.basename(buildArtifactPath)).toBe("App.ipa");
+    expect(files).toContain(path.join("export", "App.ipa"));
+    await dispose();
+  });
+
   it("needs no keychain of its own for a build with the project's signing", async () => {
     vi.stubEnv("CI", "true");
     const exportOptionsPlist = path.join(root, "ExportOptions.plist");

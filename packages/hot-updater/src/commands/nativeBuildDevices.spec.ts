@@ -101,6 +101,9 @@ describe("native-build devices add", () => {
     expect(allLogged("info")).toContain(
       `npx hot-updater native-build ios --scheme sandbox --udid ${PHONE}`,
     );
+    expect(allLogged("info")).toContain(
+      'grep -laE "(Ad Hoc Provisioning Profile|XC Ad Hoc): com.example.app" ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/*',
+    );
     expect(log.info).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(0);
   });

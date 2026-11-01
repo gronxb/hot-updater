@@ -303,6 +303,7 @@ const archiveAndExport = async ({
     }
   }
 
+  await keepOnlyIpas(exportDir);
   const ipaFile = fs
     .readdirSync(exportDir)
     .find((file) => file.endsWith(".ipa"));
@@ -316,6 +317,22 @@ const archiveAndExport = async ({
     logFilePath,
     builtApp: archivedAppPath ? await readBuiltApp(archivedAppPath) : undefined,
   };
+};
+
+/**
+ * Leaves only the `.ipa` in an export's folder. Xcode writes `Packaging.log`
+ * beside it, which holds the API key's bearer token for its 20 minutes, and the
+ * build's output and its cache copy the whole build directory into the project.
+ */
+const keepOnlyIpas = async (exportDir: string) => {
+  for (const entry of await fs.promises.readdir(exportDir)) {
+    if (!entry.endsWith(".ipa")) {
+      await fs.promises.rm(path.join(exportDir, entry), {
+        recursive: true,
+        force: true,
+      });
+    }
+  }
 };
 
 const extractAppFromXcarchive = (archivePath: string) => {

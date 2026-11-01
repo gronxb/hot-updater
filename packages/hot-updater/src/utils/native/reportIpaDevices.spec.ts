@@ -93,7 +93,9 @@ describe("reportIpaDevices", () => {
     expect(logged("warn")).toContain(
       "native-build devices list --scheme sandbox",
     );
-    expect(logged("warn")).toContain("Provisioning Profiles");
+    expect(logged("warn")).toContain(
+      'grep -laE "(Ad Hoc Provisioning Profile|XC Ad Hoc): com.example.app" ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/*',
+    );
     expect(process.exitCode).toBe(1);
 
     vi.clearAllMocks();
@@ -139,11 +141,10 @@ describe("reportIpaDevices", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("stays quiet about a simulator app, an archive, or a file it can't read", async () => {
+  it("stays quiet about a simulator app or an archive, with no UDID to look for", async () => {
     for (const artifactPath of [
       path.join(directory, "App.app"),
       path.join(directory, "App.xcarchive"),
-      path.join(directory, "missing.ipa"),
     ]) {
       await reportIpaDevices({ artifactPath, scheme: "sim", udids: [] });
     }
@@ -151,4 +152,38 @@ describe("reportIpaDevices", () => {
     expect(log.warn).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
   });
+
+  it("says a build that isn't an .ipa can't take a passed UDID, and fails", async () => {
+    await reportIpaDevices({
+      artifactPath: path.join(directory, "App.xcarchive"),
+      scheme: "sim",
+      udids: [PHONE],
+    });
+    expect(logged("warn")).toContain("isn't an .ipa");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it.each([
+    ["missing", null],
+    ["corrupt", "not a zip"],
+  ])(
+    "never reads a %s .ipa as having no devices: it says they're unknown, and fails only for a passed UDID",
+    async (_, content) => {
+      const artifactPath = path.join(directory, "broken.ipa");
+      if (content !== null) await fs.writeFile(artifactPath, content);
+
+      await reportIpaDevices({ artifactPath, scheme: "sandbox", udids: [] });
+      expect(logged("warn")).toContain("its devices are unknown");
+      expect(log.success).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
+
+      await reportIpaDevices({
+        artifactPath,
+        scheme: "sandbox",
+        udids: [PHONE],
+      });
+      expect(log.success).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    },
+  );
 });

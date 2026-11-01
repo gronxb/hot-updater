@@ -1,5 +1,4 @@
 import {
-  type AscDevice,
   type AscDeviceOutcome,
   addAscDevices,
   listAscDevices,
@@ -16,6 +15,7 @@ import {
 import { normalizeIosUdid } from "@hot-updater/protocol/native-artifact";
 
 import { ui } from "../utils/cli-ui";
+import { removeSavedAdHocProfileCommand } from "../utils/native/savedAdHocProfile";
 import { printBanner } from "../utils/printBanner";
 
 export interface NativeBuildDevicesOptions {
@@ -63,7 +63,10 @@ const pickScheme = async (scheme: string | undefined) => {
 /** Runs `run` with the scheme's App Store Connect API key, which it never issues. */
 const withAscApiKey = async <T>(
   schemeName: string | undefined,
-  run: (apiKey: Credentials["asc-api-key"], scheme: string) => Promise<T>,
+  run: (
+    apiKey: Credentials["asc-api-key"],
+    target: { readonly scheme: string; readonly bundleId: string },
+  ) => Promise<T>,
 ): Promise<T> => {
   const { config, scheme, iosScheme } = await pickScheme(schemeName);
   const cwd = getCwd();
@@ -79,7 +82,7 @@ const withAscApiKey = async <T>(
               )
             : "asc-api-key",
         }),
-        scheme,
+        { scheme, bundleId: iosScheme.bundleIdentifier },
       ),
     {
       env: await readLoadedHotUpdaterEnv(cwd),
@@ -155,11 +158,11 @@ export const handleNativeBuildDevicesAdd = async (
   printBanner();
   try {
     const devices = parseDevices(options);
-    const { outcomes, scheme } = await withAscApiKey(
+    const { outcomes, scheme, bundleId } = await withAscApiKey(
       options.scheme,
-      async (apiKey, scheme) => ({
+      async (apiKey, target) => ({
         outcomes: await addAscDevices({ devices, apiKey }),
-        scheme,
+        ...target,
       }),
     );
     outcomes.forEach(reportOutcome);
@@ -169,10 +172,16 @@ export const handleNativeBuildDevicesAdd = async (
     );
     if (rebuildable.length > 0) {
       p.log.info(
-        ui.withCommand(
-          "An existing .ipa never gains a device. Rebuild, with every iPhone you're adding:",
-          `npx hot-updater native-build ios --scheme ${scheme} ${rebuildable.map(({ udid }) => `--udid ${udid}`).join(" ")}`,
-        ),
+        [
+          ui.withCommand(
+            "An existing .ipa never gains a device. Rebuild, with every iPhone you're adding:",
+            `npx hot-updater native-build ios --scheme ${scheme} ${rebuildable.map(({ udid }) => `--udid ${udid}`).join(" ")}`,
+          ),
+          ui.withCommand(
+            "A Mac or self-hosted runner reuses its saved profile, which can't gain a device either. Remove it there first:",
+            removeSavedAdHocProfileCommand(bundleId),
+          ),
+        ].join("\n"),
       );
     }
     if (rebuildable.length !== outcomes.length) process.exitCode = 1;
@@ -189,10 +198,7 @@ export const handleNativeBuildDevicesList = async (
   try {
     const { devices, scheme } = await withAscApiKey(
       options.scheme,
-      async (
-        apiKey,
-        scheme,
-      ): Promise<{ devices: AscDevice[]; scheme: string }> => ({
+      async (apiKey, { scheme }) => ({
         devices: await listAscDevices({ apiKey }),
         scheme,
       }),

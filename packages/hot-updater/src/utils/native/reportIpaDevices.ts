@@ -7,6 +7,8 @@ import {
   readIpaInstallInfo,
 } from "@hot-updater/protocol/native-artifact";
 
+import { removeSavedAdHocProfileCommand } from "./savedAdHocProfile";
+
 /**
  * Says which devices a built `.ipa` installs on, from the `.ipa` itself: only
  * its bytes decide, whatever the Apple account lists. With `udids` it says
@@ -25,16 +27,27 @@ export const reportIpaDevices = async ({
   scheme: string;
   udids: readonly string[];
 }): Promise<void> => {
-  const info = artifactPath.endsWith(".ipa")
+  const isIpa = artifactPath.endsWith(".ipa");
+  if (!isIpa && udids.length === 0) return;
+  const info = isIpa
     ? await (async () =>
         readIpaInstallInfo(
           blobSource(await fs.openAsBlob(artifactPath)),
         ))().catch(() => null)
     : null;
-  const listsDevices =
-    info?.distribution === "ad-hoc" || info?.distribution === "development";
-  if (!listsDevices) {
-    if (udids.length > 0 && info?.distribution !== "enterprise") {
+  if (info === null) {
+    if (isIpa || udids.length > 0) {
+      p.log.warn(
+        isIpa
+          ? "Couldn't read this .ipa's provisioning profile, so its devices are unknown.\nCheck it with: unzip -p <file> 'Payload/*.app/embedded.mobileprovision' | security cms -D"
+          : `This build isn't an .ipa, so ${udids.join(", ")} can't install it.\nBuild a device scheme.`,
+      );
+    }
+    if (udids.length > 0) process.exitCode = 1;
+    return;
+  }
+  if (info.distribution !== "ad-hoc" && info.distribution !== "development") {
+    if (udids.length > 0 && info.distribution !== "enterprise") {
       p.log.warn(
         `This build lists no devices, so ${udids.join(", ")} can't install it.\nExport with method release-testing in the scheme's exportOptionsPlist.`,
       );
@@ -50,7 +63,8 @@ export const reportIpaDevices = async ({
       p.log.warn(
         [
           `${udid} isn't in this .ipa.`,
-          `If native-build devices list --scheme ${scheme} shows it, Xcode reused a profile saved on this machine. Delete this app's ad hoc profile from ~/Library/Developer/Xcode/UserData/Provisioning Profiles, and build again.`,
+          `If native-build devices list --scheme ${scheme} shows it, this machine reused its saved profile. Remove it, and build again:`,
+          removeSavedAdHocProfileCommand(info.bundleId),
         ].join("\n"),
       );
       process.exitCode = 1;

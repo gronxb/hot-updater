@@ -1,6 +1,7 @@
 ---
 "hot-updater": patch
 "@hot-updater/apple-helper": patch
+"@hot-updater/cli-tools": patch
 "@hot-updater/console": patch
 "@hot-updater/protocol": patch
 ---
@@ -14,3 +15,5 @@ Install an ad hoc IPA on an iPhone from the Console, and register iPhones from t
 - `native-build ios` prints how many devices the `.ipa` lists, and with `--udid` whether each is included. A sandbox scheme can export with `release-testing`.
 - A pull request preview's QR code of an IPA holds the build's page, through `/_hot-updater/native-builds/qr?target=page`, which stays anonymous and reads nothing.
 - `@hot-updater/protocol/native-artifact` adds `readIpaInstallInfo`, `readProfileServiceUdid` and `normalizeIosUdid`. Its plist parser now reads crafted XML in linear time.
+- An ad hoc export in CI signs in the build's own keychain, and only its development certificates are revoked.
+- An iOS build's output and cache hold only the `.ipa` of its export. Xcode's `Packaging.log`, which holds the API key's bearer token for 20 minutes, no longer reaches `.hot-updater/output`. Build logs mask any JSON Web Token.
