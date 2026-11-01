@@ -1395,6 +1395,237 @@ describe("insights() client plugin", () => {
       expect(storage.get("insights", "handedOffEvents")).toBeNull();
     });
 
+    describe("when attempts fail", () => {
+      const THIRTY_DAYS_MS = 30 * DAY_MS;
+      /** The waits before the second and third attempts: 1 s and 2 s. */
+      const BACKOFF_MS = 3_000;
+      const offline = () => {
+        throw new TypeError("Network request failed");
+      };
+      /** A launch whose three attempts for one stored report all fail. */
+      const failedLaunch = async (
+        fail: number | (() => Response) = offline,
+      ) => {
+        responses = [fail, fail, fail];
+        await launch();
+        await flush();
+        responses = [];
+      };
+      const stored = () => storage.get("insights", "handedOffEvents");
+
+      beforeEach(() => {
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+      });
+
+      it("keeps the download through an offline launch and reports it when online", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        await failedLaunch();
+        expect(sentTypes()).toEqual([
+          "UPDATE_DOWNLOADED",
+          "UPDATE_DOWNLOADED",
+          "UPDATE_DOWNLOADED",
+        ]);
+        expect(stored()).toContain("UPDATE_DOWNLOADED");
+        const [attempted] = sentEvents();
+
+        sent = [];
+        await launch();
+        await flush();
+
+        expect(sentEvents()).toEqual([attempted]);
+        expect(stored()).toBeNull();
+
+        await launch();
+        await flush();
+
+        expect(sent).toHaveLength(1);
+      });
+
+      it.each([429, 500, 503])(
+        "keeps it through a launch that only got %i",
+        async (status) => {
+          const app = await launch();
+          stageForcedBundle(app);
+          reload();
+
+          await failedLaunch(status);
+          expect(sent).toHaveLength(3);
+          expect(stored()).toContain("UPDATE_DOWNLOADED");
+
+          await launch();
+          await flush();
+
+          expect(sent).toHaveLength(4);
+          expect(stored()).toBeNull();
+        },
+      );
+
+      it("keeps it through several failed launches", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        for (let launches = 0; launches < 5; launches++) await failedLaunch();
+        expect(stored()).toContain("UPDATE_DOWNLOADED");
+
+        await launch();
+        await flush();
+
+        expect(stored()).toBeNull();
+      });
+
+      it("keeps a report whose last attempt was in flight at staging", async () => {
+        let answer = (_response: Response) => {};
+        responses = [
+          500,
+          500,
+          () =>
+            new Promise<Response>((resolve) => {
+              answer = resolve;
+            }),
+        ];
+        const app = await launch();
+        app.appReady(unchangedLaunch());
+        // The two backoffs, with Math.random stubbed: the third attempt is out.
+        await vi.advanceTimersByTimeAsync(BACKOFF_MS);
+        expect(sentTypes()).toEqual(["UNCHANGED", "UNCHANGED", "UNCHANGED"]);
+        const inFlight = sentEvents()[2]?.eventId;
+
+        stageForcedBundle(app);
+        answer(new Response(null, { status: 500 }));
+        await settle();
+
+        expect(stored()).toContain(inFlight);
+
+        sent = [];
+        await launch();
+        await flush();
+
+        expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_DOWNLOADED"]);
+        expect(sentEvents()[0]?.eventId).toBe(inFlight);
+        expect(stored()).toBeNull();
+      });
+
+      it.each([400, 401, 403, 413])(
+        "removes it after one refused attempt on a %i",
+        async (status) => {
+          const app = await launch();
+          stageForcedBundle(app);
+          reload();
+
+          responses = [status];
+          await launch();
+          await flush();
+
+          expect(sent).toHaveLength(1);
+          expect(stored()).toBeNull();
+
+          await launch();
+          await flush();
+
+          expect(sent).toHaveLength(1);
+        },
+      );
+
+      it("removes it and pauses on a 404", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + 1_000);
+        responses = [disabledResponse];
+        await launch();
+        await flush();
+
+        expect(sent).toHaveLength(1);
+        expect(stored()).toBeNull();
+        expect(storage.get("insights", "pausedAt")).toBe(
+          String(MORNING + 1_000),
+        );
+      });
+
+      it("keeps a report whose attempts end at exactly 30 days", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + THIRTY_DAYS_MS - BACKOFF_MS);
+        await failedLaunch();
+
+        expect(stored()).toContain("UPDATE_DOWNLOADED");
+      });
+
+      it("removes a report older than 30 days when its attempts fail", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + THIRTY_DAYS_MS - BACKOFF_MS + 1);
+        await failedLaunch(500);
+
+        expect(stored()).toBeNull();
+
+        sent = [];
+        await launch();
+        await flush();
+
+        expect(sent).toEqual([]);
+      });
+
+      it("still delivers a report older than 30 days when the server answers", async () => {
+        const app = await launch();
+        stageForcedBundle(app);
+        reload();
+
+        vi.setSystemTime(MORNING + 60 * DAY_MS);
+        await launch();
+        await flush();
+
+        expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+        expect(stored()).toBeNull();
+      });
+
+      it("stays within the cap while reports keep failing", async () => {
+        const app = await launch();
+        for (let index = 0; index < 6; index++) {
+          const toBundleId = `bundle-${index}`;
+          app.updateCheck({ ...forcedCheck, toBundleId });
+          app.downloaded({ ...download, toBundleId });
+        }
+        reload();
+
+        responses = Array.from({ length: 12 }, () => offline);
+        await launch();
+        await flush();
+        responses = [];
+        expect(sent).toHaveLength(12);
+
+        sent = [];
+        await launch();
+        await flush();
+
+        expect(sentEvents().map(({ toBundleId }) => toBundleId)).toEqual([
+          "bundle-2",
+          "bundle-3",
+          "bundle-4",
+          "bundle-5",
+        ]);
+      });
+
+      it("does not store an ordinary report whose attempts fail", async () => {
+        const app = await launch();
+        responses = [500, 500, 500];
+        app.appReady(unchangedLaunch());
+        await flush();
+
+        expect(sent).toHaveLength(3);
+        expect(stored()).toBeNull();
+      });
+    });
+
     it("moves a queued report to the next launch", async () => {
       let answer = (_response: Response) => {};
       responses = [

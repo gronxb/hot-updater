@@ -238,7 +238,8 @@ the failure rate. App usage and Release health charts stay in the Console.
   too, while later reports go out as usual. Insights counts each report when it
   arrives, except on the Adoption chart: its download line dates a report that
   waited by when the download happened, up to 3 days back, so the last 3 days of
-  that line can still grow.
+  that line can still grow. A report held this way stays through launches that
+  can't reach the server, until the server accepts or refuses it.
 - Failed reports are retried in the background with the same ID, so the server
   counts each once.
 - A launch report that changes what an installation runs is kept as an event:

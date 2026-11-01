@@ -10,7 +10,7 @@ import {
 } from "@hot-updater/protocol";
 
 import { boundedText, readErrorDetails } from "./errorDetails";
-import { createKeyedUUIDv7, createUUIDv7 } from "./eventId";
+import { createKeyedUUIDv7, createUUIDv7, timeOfUUIDv7 } from "./eventId";
 import {
   createInsightsEventSender,
   type InsightsDelivery,
@@ -68,6 +68,13 @@ type Movement = Pick<
  * after a forced update far less, so those bodies stay as they were.
  */
 const WAITED_MS = 60_000;
+
+/**
+ * How old a stored report can be and still try again after its attempts fail:
+ * the Console's longest period. A device offline for that long still delivers
+ * it on its next attempt, and a server that always fails can't keep it forever.
+ */
+const MAX_HANDED_OFF_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type PendingEvent = QueuedEvent & {
   /** For UPDATE_FAILED: a later success for its target made it moot. */
@@ -433,8 +440,15 @@ const setUpInsights = (
     const event = pending.get(body);
     pending.delete(body);
     if (event === undefined || state === null || context === null) return;
+    if (delivery === "failed") {
+      // No answer said no, so a stored report tries again at the next launch.
+      if (context.now() - timeOfUUIDv7(body.eventId) > MAX_HANDED_OFF_AGE_MS) {
+        state.forgetHandedOffEvent(body.eventId);
+      }
+      return;
+    }
     state.forgetHandedOffEvent(body.eventId);
-    if (delivery === "failed") return;
+    if (delivery === "rejected") return;
     if (delivery === "disabled") {
       state.pause(context.now());
       return;
