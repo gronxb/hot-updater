@@ -6,6 +6,12 @@ import UIKit
 @MainActor
 final class HotUpdaterSandboxScreen: UIViewController {
     private let coordinator: HotUpdaterSandboxCoordinator
+    private let devServer: HotUpdaterSandboxDevServer
+    private let devStatusLabel = UILabel()
+    private let devHostField = UITextField()
+    private let devConnectButton = UIButton(type: .system)
+    private let devReloadButton = UIButton(type: .system)
+    private let devExitButton = UIButton(type: .system)
     private let isOverApp: () -> Bool
     private let onClose: () -> Void
     private let channelLabel = UILabel()
@@ -17,10 +23,12 @@ final class HotUpdaterSandboxScreen: UIViewController {
 
     init(
         coordinator: HotUpdaterSandboxCoordinator,
+        devServer: HotUpdaterSandboxDevServer,
         isOverApp: @escaping () -> Bool,
         onClose: @escaping () -> Void
     ) {
         self.coordinator = coordinator
+        self.devServer = devServer
         self.isOverApp = isOverApp
         self.onClose = onClose
         super.init(nibName: nil, bundle: nil)
@@ -48,7 +56,25 @@ final class HotUpdaterSandboxScreen: UIViewController {
         bundleLabel.textAlignment = .center
         openButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         openButton.addTarget(self, action: #selector(openTapped), for: .touchUpInside)
-        let stack = UIStackView(arrangedSubviews: [name, sandbox, channelLabel, bundleLabel, statusLabel, openButton])
+        devStatusLabel.numberOfLines = 0
+        devStatusLabel.textAlignment = .center
+        devHostField.placeholder = "Dev server address"
+        devHostField.accessibilityIdentifier = "dev-server-host"
+        devHostField.borderStyle = .roundedRect
+        devHostField.autocapitalizationType = .none
+        devHostField.autocorrectionType = .no
+        devConnectButton.setTitle("Connect", for: .normal)
+        devConnectButton.addTarget(self, action: #selector(devConnectTapped), for: .touchUpInside)
+        devReloadButton.setTitle("Reload", for: .normal)
+        devReloadButton.addTarget(self, action: #selector(devReloadTapped), for: .touchUpInside)
+        devExitButton.setTitle("Exit", for: .normal)
+        devExitButton.addTarget(self, action: #selector(devExitTapped), for: .touchUpInside)
+        devServer.onDevServerChange = { [weak self] in self?.renderDevServer() }
+        renderDevServer()
+        let stack = UIStackView(arrangedSubviews: [
+            name, sandbox, channelLabel, bundleLabel, statusLabel, openButton,
+            devStatusLabel, devHostField, devConnectButton, devReloadButton, devExitButton,
+        ])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 12
@@ -65,6 +91,35 @@ final class HotUpdaterSandboxScreen: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         ask(coordinator.state.phase)
+    }
+
+    private func renderDevServer() {
+        let running = devServer.isRunningDevServer
+        devReloadButton.isHidden = !running
+        devExitButton.isHidden = !running
+        if let host = devServer.runningDevServerHost {
+            devStatusLabel.text = "Dev server: \(host)"
+        } else {
+            devStatusLabel.text = devServer.devServerHosts
+                .map { "\($0.address) \($0.isRunning == true ? "running" : "not running")" }
+                .joined(separator: ", ")
+        }
+    }
+
+    @objc private func devConnectTapped() {
+        devStatusLabel.text = "Connecting…"
+        devServer.connect(host: devHostField.text ?? "") { [weak self] failure in
+            if let failure { self?.devStatusLabel.text = failure }
+        }
+    }
+
+    @objc private func devReloadTapped() {
+        devServer.reloadDevServer()
+    }
+
+    @objc private func devExitTapped() {
+        devServer.exitDevServer()
+        onClose()
     }
 
     @objc private func openTapped() {

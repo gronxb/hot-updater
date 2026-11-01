@@ -13,6 +13,7 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 // when React Native is a prebuilt framework.
 @interface HotUpdaterSandboxBridge : NSObject
 + (void)configureWithRelease:(void (^)(void))release reload:(BOOL (^)(void))reload isReleased:(BOOL (^)(void))isReleased;
++ (void)dropCrashOfLastDevProcess;
 + (void)presentScreenIn:(nullable UIWindowScene *)scene;
 + (void)receiveLink:(NSURL *)url scene:(nullable UIWindowScene *)scene;
 + (void)hideScreen;
@@ -422,6 +423,7 @@ static BOOL RegisterTask(id self, SEL cmd, NSString *identifier, dispatch_queue_
 @implementation HotUpdaterSandboxGate
 
 + (void)load {
+  [HotUpdaterSandboxBridge dropCrashOfLastDevProcess];
   Class factory = objc_getClass("RCTRootViewFactory");
   SEL five = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:");
   SEL three = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:");

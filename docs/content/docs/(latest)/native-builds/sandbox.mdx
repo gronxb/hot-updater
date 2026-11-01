@@ -125,6 +125,48 @@ background fetch nor a registered task starts your app after 2 seconds.
 An Expo config plugin that returns its own root from a React delegate handler is
 one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
 
+## Dev server
+
+A sandbox build can run JavaScript from a dev server instead of a bundle. Start
+Metro, and enter its address on the first screen, such as `192.168.0.2:8081`. The
+screen lists addresses you used before and asks each once whether it's running.
+Addresses are entered on the device: a link can't set one.
+
+The build loads a `dev=false` bundle and reloads when you tap **Reload**, which
+fetches it again. There's no Fast Refresh, dev menu or debugger, and changes don't
+appear until you reload.
+
+While a dev server runs:
+
+- `reload()` stays on the dev server. Only **Exit** on the first screen returns to
+  your app's bundle.
+- A crash ends the session: the next launch is a normal one, and a crash of dev
+  JavaScript is never held against a bundle.
+- An update check finds nothing, so `wrap`'s forced update can't end the session.
+  The check does reach your server, on a channel with no releases,
+  `hot-updater-sandbox-dev-server`.
+- `updateBundle`, `resetChannel` and the launch report change nothing. What's
+  staged stays staged, and the report of your last normal launch waits for your
+  next one.
+- `getBundleId()` reports the built-in bundle, whatever runs, and `getChannel()`
+  reports that channel. Plugin values live in the session, apart from your app's.
+  `setCohort` still applies, since it belongs to the device.
+- A preview link asks first, then exits the dev server and asks again on your
+  app's bundle. Switching channels waits for **Exit** the same way.
+
+On Android, the JavaScript and its assets download into the app's files, apart from
+updates, and go when a normal launch starts. Each of these replaces the process. On
+iOS, the JavaScript and its assets load from the server, and each of these reloads
+in place. A launch of the selected bundle in progress stops counting.
+
+The build allows plain http on the device. On Android, a `networkSecurityConfig` of
+your own still wins: the screen says when it blocks the address, and you allow it
+there. On iOS, that's local addresses, with the system's local network prompt.
+
+Metro must serve `/index.bundle` and `/index.assets`. Re.Pack doesn't, and the screen
+says so. A host's own native update check, from iOS native code during a session,
+isn't kept from your selection: run it before the first screen, as a launch does.
+
 ## Stores
 
 A sandbox build can't reach store review.
@@ -210,7 +252,9 @@ The build number becomes the one after the app's highest.
 | AGP 9's default DSL                                        | Refused: set `android.newDsl=false`              |
 | Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
 | A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
-| The Rock adapter, `use_frameworks`, app extensions         | Builds, but untested: check it on a device first |
+| The Rock adapter, on Android                               | Refused: build it with the bare adapter          |
+| The SDK as a prebuilt AAR, on Android                      | Refused: compile it from source                  |
+| The Rock adapter on iOS, `use_frameworks`, app extensions  | Builds, but untested: check it on a device first |
 | An Expo SDK other than 52                                  | Builds, but untested: check it on a device first |
 
 The build itself refuses, with the fix, a launcher its activity can't take over:

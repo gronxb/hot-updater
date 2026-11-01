@@ -201,6 +201,8 @@ const optional = (name: string, value: string | undefined) =>
  * also takes the links of `appId`'s URL scheme; the rest of the app's activity
  * stays, so its own links still reach it. `appId` is the scheme's `packageName`,
  * before the `.sandbox` suffix, so a preview link needs no build to derive it.
+ * The dev server is plain http, which a project's network security config can
+ * still refuse: the screen then says so.
  */
 export const sandboxManifestOverlay = ({
   channel,
@@ -212,7 +214,7 @@ export const sandboxManifestOverlay = ({
   launcher: SandboxLauncher;
 }) => `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-  <application>
+  <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic">
     <meta-data android:name="com.hotupdater.CHANNEL" android:value="${xml(channel)}" tools:replace="android:value" />
     <meta-data android:name="${SANDBOX_META_DATA}" android:value="true" />
     <activity android:name="${SANDBOX_ACTIVITY}" android:exported="true" android:launchMode="singleTop" android:theme="@style/HotUpdaterSandboxTheme" android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"${optional("label", launcher.label)}${optional("icon", launcher.icon)}${optional("roundIcon", launcher.roundIcon)}>
@@ -236,6 +238,7 @@ ${filterXml(launcher.filter, ' tools:node="remove"')}${
     : `\n      <meta-data android:name="${SHORTCUTS}" tools:node="remove" />`
 }
     </${launcher.kind}>
+    <activity android:name="com.hotupdater.HotUpdaterSandboxRelaunchActivity" android:excludeFromRecents="true" android:exported="false" android:launchMode="singleTask" android:noHistory="true" android:process=":hotupdater_restart" android:theme="@android:style/Theme.NoDisplay" />
     <provider android:name="com.hotupdater.HotUpdaterSandboxProcess" android:authorities="\${applicationId}.hotupdater.sandbox" android:exported="false" />
   </application>
 </manifest>

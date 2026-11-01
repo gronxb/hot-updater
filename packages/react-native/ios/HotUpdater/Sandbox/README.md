@@ -13,3 +13,10 @@ CLI looks for in a built app, and stays.
 
 `HotUpdaterSandboxCoordinator` owns a channel switch and knows nothing of the
 screen: the screen observes `HotUpdaterSandboxState` and calls its actions.
+
+`HotUpdaterSandboxDevOverride.m` holds a dev session's view of main's
+`HotUpdaterImpl`, on what the bridge and a host call: the bundle, and everything
+that reads or writes the normal selection. `HotUpdaterSandboxDevState` says what
+it serves, for this process only. Connecting stops watching a launch of the normal
+selection already prepared, and a crash marker a dev process left is dropped at the
+next start.

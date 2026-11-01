@@ -155,6 +155,21 @@ describe("sandboxManifestOverlay", () => {
     );
   });
 
+  it("allows plain http for a dev server, which a project's network security config can still refuse", () => {
+    expect(overlayOf(activity())).toContain(
+      '<application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic">',
+    );
+  });
+
+  it("runs the dev server's relaunch in the SDK's restart process, whose getters prepare no launch", () => {
+    const relaunch = overlayOf(activity())
+      .split("\n")
+      .find((line) => line.includes("HotUpdaterSandboxRelaunchActivity"));
+    expect(relaunch).toContain('android:process=":hotupdater_restart"');
+    expect(relaunch).toContain('android:exported="false"');
+    expect(relaunch).toContain('android:theme="@android:style/Theme.NoDisplay"');
+  });
+
   it("moves the launcher to the sandbox's activity, which also takes its links", () => {
     const overlay = overlayOf(activity());
     const sandbox = overlay.slice(

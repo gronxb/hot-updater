@@ -220,6 +220,25 @@ describe("assertSandboxBuildAllowed", () => {
     ).rejects.toThrow("The sandbox scheme beta refused.");
   });
 
+  it("refuses an Android build on the rock adapter, and leaves iOS's to doctor", async () => {
+    await expect(
+      assertSandboxBuildAllowed({
+        platform: "android",
+        scheme: "sandbox",
+        androidScheme: { packageName: "com.example.app", sandbox: true },
+        buildAdapter: "rock",
+      }),
+    ).rejects.toThrow("rock build adapter");
+    await expect(
+      assertSandboxBuildAllowed({
+        platform: "ios",
+        scheme: "sandbox",
+        iosScheme: { bundleIdentifier: "com.example.app", scheme: "App", sandbox: true },
+        buildAdapter: "rock",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("refuses what Gradle couldn't build", async () => {
     vi.mocked(findSandboxGradleBlocker).mockReturnValueOnce(
       "Blocked.\nFix it.",

@@ -50,6 +50,13 @@ private final class FakeHost: HotUpdaterSandboxHost {
     /// Whether a staging moves what a launch selects: not once a launch is fixed.
     var launchFixed = false
     var channelAfterStaging: String?
+    var isRunningDevServer = false
+    var devExits = 0
+
+    func exitDevServerForLink() {
+        devExits += 1
+        isRunningDevServer = false
+    }
 
     nonisolated func fingerprintHash() -> String? {
         MainActor.assumeIsolated { fingerprint }
@@ -145,6 +152,41 @@ private struct Fixture {
 
 @MainActor
 struct HotUpdaterSandboxCoordinatorTests {
+    @Test
+    func inADevSessionAConfirmedLinkExitsItAndIsAskedAgain() async {
+        let fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.confirmLink()
+        await settle()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to ask again")
+            return
+        }
+    }
+
+    @Test
+    func inADevSessionARowOrAResetAsksToExitFirstAndChangesNothing() async {
+        let fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "The dev server is running. Exit it, then try again.")
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.host.devExits == 0)
+    }
+
     @Test
     func aLinkConfirmsThenRunsEveryStepInOrderAndOpens() async {
         let fixture = Fixture()
@@ -614,6 +656,30 @@ struct HotUpdaterSandboxLaunchPolicyTests {
             optionKeys: ["UIApplicationLaunchOptionsURLKey", "UIApplicationLaunchOptionsRemoteNotificationKey"],
             urlScheme: "hu-sandbox-app"
         ))
+    }
+}
+
+struct HotUpdaterSandboxDevHostTests {
+    @Test
+    func hostsNormalizeAsAPersonTypesThem() {
+        #expect(HotUpdaterSandboxDevHost.normalize(" 192.168.0.2 ") == "http://192.168.0.2:8081")
+        #expect(HotUpdaterSandboxDevHost.normalize("192.168.0.2:9000/") == "http://192.168.0.2:9000")
+        #expect(HotUpdaterSandboxDevHost.normalize("https://dev.example.com") == "https://dev.example.com:8081")
+        #expect(HotUpdaterSandboxDevHost.normalize("[::1]") == "http://[::1]:8081")
+        for bad in ["", "ftp://host", "host/path", "two words"] {
+            #expect(HotUpdaterSandboxDevHost.normalize(bad) == nil)
+        }
+    }
+
+    @Test
+    func recentHostsComeFirstEachOnce() {
+        #expect(HotUpdaterSandboxDevHost.listed(isSimulator: true, recent: ["http://a:1", "http://localhost:8081"]) == ["http://a:1", "http://localhost:8081"])
+        #expect(HotUpdaterSandboxDevHost.listed(isSimulator: false, recent: []) == [])
+    }
+
+    @Test
+    func theBundleIsDevFalse() {
+        #expect(HotUpdaterSandboxDevHost.bundleURL(host: "http://a:1")?.absoluteString == "http://a:1/index.bundle?platform=ios&dev=false&minify=false")
     }
 }
 #endif

@@ -113,7 +113,93 @@ describe("the sandbox template", () => {
     );
     expect(attached).not.toBeNull();
     // Each mention of the directory is inside a guard.
-    expect(gradle.match(/src\/sandbox\//gu)).toHaveLength(3);
+    expect(gradle.match(/src\/sandbox\//gu)).toHaveLength(4);
+    expect(gradle).toMatch(
+      /if \(isSandboxBuild\(\)\) \{\s*apply from: "\$projectDir\/src\/sandbox\/hot-updater-sandbox\.gradle"\s*\}/u,
+    );
+  });
+
+  it("replaces HotUpdaterImpl only through what the generator reads", () => {
+    const script = read("android/src/sandbox/hot-updater-sandbox.gradle");
+    const generator = read(
+      "android/src/sandbox/HotUpdaterSandboxImplGenerator.groovy",
+    );
+    const impl = read(
+      "android/src/main/java/com/hotupdater/HotUpdaterImpl.kt",
+    );
+    // The compile tasks drop the packaged file, and only that name.
+    expect(script).toContain('"**/com/hotupdater/HotUpdaterImpl.kt"');
+    expect(script).toContain('"com/hotupdater/HotUpdaterImplSandbox.kt"');
+    // The structure the generator refuses without, in the source this build packages.
+    for (const line of [
+      "class HotUpdaterImpl {",
+      "    fun getJSBundleFile(): String {",
+      "        val bundleUrl = prepareLaunchIfNeeded().bundleUrl",
+      "    private fun restartApplication(reactContext: Context): Boolean {",
+      "        this.bundleStorage = bundleStorage",
+      "        this.preferences = preferences",
+      "        this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))",
+    ]) {
+      expect(generator, line).toContain(line.trim());
+      expect(impl.split("\n").filter((text) => text === line), line).toHaveLength(1);
+    }
+    // Its insertions hold for main only.
+    expect(generator).toContain(
+      "if (environment.isMain) HotUpdaterSandboxDev.bundleOfThisProcess(context)",
+    );
+    expect(generator).toContain(
+      "if (environment.isMain && HotUpdaterSandboxDev.relaunch(reactContext))",
+    );
+    // The key the dev preferences answer for is the one the impl reads.
+    expect(impl).toContain('CHANNEL_STORAGE_KEY = "HotUpdaterChannel"');
+    expect(
+      read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxDev.kt"),
+    ).toContain('CHANNEL_STORAGE_KEY = "HotUpdaterChannel"');
+  });
+
+  it("overrides what the bridge calls on the iOS impl", () => {
+    const override = read(
+      "ios/HotUpdater/Sandbox/HotUpdaterSandboxDevOverride.m",
+    );
+    const impl = read("ios/HotUpdater/Internal/HotUpdaterImpl.swift");
+    // The Swift name of `HotUpdaterImpl` in the `HotUpdater` module.
+    expect(override).toContain('"_TtC10HotUpdater14HotUpdaterImpl"');
+    expect(impl).toContain("@objcMembers public class HotUpdaterImpl: NSObject");
+    for (const declaration of [
+      "public func bundleURL(bundle: Bundle = Bundle.main) -> URL?",
+      "public func getChannel() -> String",
+      "public func getActiveUpdateState() -> [String: Any]",
+      "public func getBundleId() -> String?",
+      "public func getBaseURL() -> String?",
+      "public func getManifest() -> ManifestAssets",
+      "public func notifyAppReady() -> [String: Any]",
+      "public func getCrashHistory() -> [String]",
+      "public func clearCrashHistory() -> Bool",
+      "public func acceptReleaseCatalog(_ params: [AnyHashable: Any]?) -> Bool",
+      "public func isReleaseSelectionCurrent(_ params: [AnyHashable: Any]?) -> Bool",
+      "public func getStorageItem(_ key: String) -> String?",
+      "public func setStorageItem(_ key: String, value: String?)",
+    ]) {
+      expect(impl, declaration).toContain(declaration);
+    }
+    // Nothing from the bridge reaches these without going through the override.
+    const bridge = read("ios/HotUpdater/Internal/HotUpdater.mm");
+    expect(bridge).toContain("[impl bundleURLWithBundle:");
+    expect(bridge).toContain("[HotUpdaterNativeUpdates() takeEventsWithImpl:");
+    expect(bridge).toContain("[HotUpdaterNativeUpdates() resetChannelWithImpl:");
+    expect(bridge).toContain(
+      "[HotUpdaterNativeUpdates() resetChannelIfSelectionCurrentWithImpl:",
+    );
+  });
+
+  it("gives dev JavaScript a channel without releases, the same on both platforms", () => {
+    const channel = "hot-updater-sandbox-dev-server";
+    expect(
+      read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxDev.kt"),
+    ).toContain(`DEV_CHANNEL = "${channel}"`);
+    expect(
+      read("ios/HotUpdater/Sandbox/HotUpdaterSandboxDevOverride.m"),
+    ).toContain(`kDevChannel = @"${channel}"`);
   });
 
   it("isn't named by any normal source, so nothing needs it to compile", () => {

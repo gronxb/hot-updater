@@ -104,7 +104,9 @@ let package = Package(
             exclude: [
                 "README.md",
                 "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxDevOverride.m",
                 "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxLiveDevServer.swift",
                 "HotUpdaterSandboxLiveHost.swift",
                 "HotUpdaterSandboxMarker.m",
                 "HotUpdaterSandboxScreen.swift",

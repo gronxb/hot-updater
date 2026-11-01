@@ -35,14 +35,27 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun fingerprintHash(): String? = impl.getFingerprintHash()
 
-    override fun hasServerConfig(): Boolean = config() != null
+    override val isRunningDevServer: Boolean
+        get() = HotUpdaterSandboxDev.session(context) != null
+
+    override fun exitDevServer() = HotUpdaterSandbox.devServer(context).exitDevServer()
+
+    override fun hasServerConfig(): Boolean =
+        if (isRunningDevServer) {
+            // Only the app's own launches leave the normal selection's server.
+            RecoveryCheckConfig.parse(KeyValueStorageService.create(context).getItem(RecoveryCheckConfig.KEY)) != null
+        } else {
+            config() != null
+        }
 
     override suspend fun selection(): HotUpdaterSandboxSelection =
         withContext(Dispatchers.IO) {
             val builtIn = HotUpdaterImpl.getMinBundleId()
-            val bundleId = impl.getBundleIdForUpdateCheck() ?: builtIn
+            // In a dev session, what the next normal launch selects, with nothing settled.
+            val normal = if (isRunningDevServer) HotUpdaterSandboxDev.normalSelection() else null
+            val bundleId = (if (isRunningDevServer) normal?.first else impl.getBundleIdForUpdateCheck()) ?: builtIn
             HotUpdaterSandboxSelection(
-                channel = impl.getChannel(),
+                channel = if (isRunningDevServer) normal?.second ?: impl.getDefaultChannel() else impl.getChannel(),
                 defaultChannel = impl.getDefaultChannel(),
                 bundleId = bundleId,
                 isBuiltIn = bundleId == builtIn,

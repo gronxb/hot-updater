@@ -150,6 +150,9 @@ android {
 
 apply from: "$projectDir/hot-updater-min-bundle-id.gradle"
 apply from: "$projectDir/hot-updater-fingerprint.gradle"
+if (isSandboxBuild()) {
+  apply from: "$projectDir/src/sandbox/hot-updater-sandbox.gradle"
+}
 
 repositories {
   mavenCentral()

@@ -4,7 +4,10 @@ import path from "node:path";
 import { findSandboxGradleBlocker } from "@hot-updater/android-helper";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
 
-import { usesSwiftPackageManager } from "../../utils/native/sandbox";
+import {
+  sandboxRockRefusal,
+  usesSwiftPackageManager,
+} from "../../utils/native/sandbox";
 import { resolveSandboxApplicationId } from "../../utils/version/getAndroidVersion";
 import type { NativeCheckIssue } from "./issues";
 
@@ -125,8 +128,20 @@ export const checkSandboxSchemes = async (
   const adapter = await Promise.resolve(config.build({ cwd }))
     .then(({ name }) => name)
     .catch(() => undefined);
-  if (adapter && UNQUALIFIED_ADAPTERS.has(adapter)) {
-    issues.push(unqualified("project", `the ${adapter} build adapter`));
+  if (adapter && UNQUALIFIED_ADAPTERS.has(adapter) && ios.length > 0) {
+    issues.push(unqualified("ios", `the ${adapter} build adapter`));
+  }
+  if (adapter === "rock") {
+    for (const [name] of android) {
+      const [message, resolution = ""] = sandboxRockRefusal(name).split("\n");
+      issues.push({
+        type: "error",
+        platform: "android",
+        code: "SANDBOX_BUILD_BLOCKED",
+        message: message!,
+        resolution,
+      });
+    }
   }
   if (adapter === "expo") {
     const sdk = expoSdkOf(cwd);

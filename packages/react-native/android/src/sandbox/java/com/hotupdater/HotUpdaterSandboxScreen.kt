@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -28,6 +29,31 @@ internal class HotUpdaterSandboxScreen(
         }
     private var dialog: AlertDialog? = null
     private var dialogPhase: HotUpdaterSandboxPhase? = null
+    private val devServer = HotUpdaterSandbox.devServer(activity)
+    private val devStatus = label(14f)
+    private val devHost =
+        EditText(activity).apply {
+            hint = "Dev server address"
+            tag = "dev-server-host"
+        }
+    private val devConnect =
+        Button(activity).apply {
+            text = "Connect"
+            setOnClickListener {
+                devStatus.text = "Connecting…"
+                devServer.connect(devHost.text.toString()) { failure -> devStatus.text = failure.orEmpty() }
+            }
+        }
+    private val devReload =
+        Button(activity).apply {
+            text = "Reload"
+            setOnClickListener { devServer.reloadDevServer() }
+        }
+    private val devExit =
+        Button(activity).apply {
+            text = "Exit"
+            setOnClickListener { devServer.exitDevServer() }
+        }
 
     val view: View =
         LinearLayout(activity).apply {
@@ -42,7 +68,27 @@ internal class HotUpdaterSandboxScreen(
             addView(bundle)
             addView(status, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = padding })
             addView(open, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = padding })
+            addView(devStatus, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = padding })
+            addView(devHost, LinearLayout.LayoutParams(600, WRAP_CONTENT))
+            addView(devConnect)
+            addView(devReload)
+            addView(devExit)
+            devServer.onDevServerChange = { renderDevServer() }
+            renderDevServer()
         }
+
+    private fun renderDevServer() {
+        val running = devServer.isRunningDevServer
+        devReload.visibility = if (running) View.VISIBLE else View.GONE
+        devExit.visibility = if (running) View.VISIBLE else View.GONE
+        devStatus.text =
+            devServer.lastDevServerError
+                ?: if (running) {
+                    "Dev server: ${devServer.runningDevServerHost}"
+                } else {
+                    devServer.devServerHosts.joinToString { "${it.address} ${if (it.isRunning == true) "running" else "not running"}" }
+                }
+    }
 
     fun render(state: HotUpdaterSandboxState) {
         channel.text = state.selection?.let { "Channel: ${it.channel}" } ?: "Channel:"

@@ -27,10 +27,12 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
             private set
 
         private fun isHost(activity: Activity) =
-            activity !is HotUpdaterSandboxActivity && activity !is HotUpdaterRestartActivity
+            activity !is HotUpdaterSandboxActivity && activity !is HotUpdaterRestartActivity && activity !is HotUpdaterSandboxRelaunchActivity
     }
 
     override fun onCreate(): Boolean {
+        // Before `Application.onCreate`, where a host may already read its bundle.
+        context?.let(HotUpdaterSandboxDev::session)
         (context?.applicationContext as? Application)?.registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {
                 override fun onActivityCreated(

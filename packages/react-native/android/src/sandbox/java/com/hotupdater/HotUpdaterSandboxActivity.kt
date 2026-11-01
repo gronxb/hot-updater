@@ -28,6 +28,20 @@ internal object HotUpdaterSandbox {
     private var coordinator: HotUpdaterSandboxCoordinator? = null
     private var screen: WeakReference<HotUpdaterSandboxActivity>? = null
 
+    @Volatile
+    private var devServer: HotUpdaterSandboxLiveDevServer? = null
+
+    fun devServer(context: Context): HotUpdaterSandboxDevServer =
+        devServer ?: synchronized(this) {
+            devServer ?: HotUpdaterSandboxLiveDevServer(
+                context = context,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+                onLeavingNormalLaunch = {
+                    HotUpdaterSandboxDev.clearNormalLaunchStarted(HotUpdater.getInstance(context.applicationContext).getRunningBundleId())
+                },
+            ).also { devServer = it }
+        }
+
     fun coordinator(context: Context): HotUpdaterSandboxCoordinator =
         coordinator ?: synchronized(this) {
             coordinator ?: HotUpdaterSandboxCoordinator(

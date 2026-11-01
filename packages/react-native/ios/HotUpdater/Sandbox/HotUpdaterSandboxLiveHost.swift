@@ -29,6 +29,17 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         impl.getFingerprintHash()
     }
 
+    var isRunningDevServer: Bool {
+        HotUpdaterSandboxDevState.running != nil
+    }
+
+    /// Set by the bridge, which owns the dev server and the screen.
+    var exitDevServerAction: () -> Void = {}
+
+    func exitDevServerForLink() {
+        exitDevServerAction()
+    }
+
     func hasServerConfig() -> Bool {
         config() != nil
     }

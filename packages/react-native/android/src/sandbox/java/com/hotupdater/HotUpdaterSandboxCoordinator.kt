@@ -32,6 +32,13 @@ internal interface HotUpdaterSandboxHost {
     /** The fingerprint this build embeds, or null without one. */
     fun fingerprintHash(): String?
 
+    /** Whether this process runs a dev server's JavaScript, where nothing can change the normal selection. */
+    val isRunningDevServer: Boolean
+        get() = false
+
+    /** Ends the dev session: a new process, on the first screen. */
+    fun exitDevServer() = Unit
+
     /** Whether the app's JavaScript left a server config: a server answered one of its checks. */
     fun hasServerConfig(): Boolean
 
@@ -209,6 +216,11 @@ internal class HotUpdaterSandboxCoordinator(
     /** Accepts the link in [HotUpdaterSandboxPhase.Confirming]. */
     fun confirmLink() {
         val phase = state.phase as? HotUpdaterSandboxPhase.Confirming ?: return
+        // The link stays stored, and the first screen asks about it in the new process.
+        if (host.isRunningDevServer) {
+            host.exitDevServer()
+            return
+        }
         linkInFlight = phase.link.url
         begin(phase.link.channel)
     }
@@ -255,6 +267,7 @@ internal class HotUpdaterSandboxCoordinator(
         publish(state.copy(phase = HotUpdaterSandboxPhase.Working(operationId, "", HotUpdaterSandboxStep.RESET)))
         scope.launch {
             val target = host.selection().defaultChannel
+            if (refuseInDevSession(operationId, target)) return@launch
             publish(state.copy(phase = HotUpdaterSandboxPhase.Working(operationId, target, HotUpdaterSandboxStep.RESET)))
             val reset = attempt(operationId, target, HotUpdaterSandboxStep.RESET) { host.reset() } ?: return@launch
             if (!reset) {
@@ -291,10 +304,26 @@ internal class HotUpdaterSandboxCoordinator(
         scope.launch { run(operationId, target) }
     }
 
+    /** A dev process's native state is the dev session's, so a switch waits for its Exit. */
+    private suspend fun refuseInDevSession(
+        operationId: Long,
+        target: String,
+    ): Boolean {
+        if (!host.isRunningDevServer) return false
+        fail(
+            operationId,
+            target,
+            HotUpdaterSandboxStep.PREFLIGHT,
+            HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again."),
+        )
+        return true
+    }
+
     private suspend fun run(
         operationId: Long,
         target: String,
     ) {
+        if (refuseInDevSession(operationId, target)) return
         val before = host.selection()
         val toDefault = target == before.defaultChannel
         val hasBundle = attempt(operationId, target, HotUpdaterSandboxStep.PREFLIGHT) { host.preflight(target) } ?: return

@@ -21,6 +21,10 @@ Set android.newDsl=false in android/gradle.properties.`;
 const ownManifest = (manifest: string) =>
   `A sandbox build can't merge with ${manifest}.\nMove what it declares to src/main/AndroidManifest.xml.`;
 
+/** The message when no project compiled the SDK from source, which a dev server needs. */
+const PREBUILT_SDK = `This app takes @hot-updater/react-native as a prebuilt AAR, and a sandbox build compiles the SDK from source.
+Add the SDK's autolinked project to this build instead of the AAR.`;
+
 /** Text as a single-quoted Groovy string. */
 const groovyString = (text: string) =>
   `'${text
@@ -50,6 +54,12 @@ def appModule = ${groovyString(`:${appModuleName}`)}
 def variant = ${groovyString(variant.toLowerCase())}
 def overlay = new File(${groovyString(overlay)})
 def minVersionCode = ${minVersionCode ?? "null"}
+// The SDK's sandbox script sets this on the project it replaces sources in.
+gradle.taskGraph.whenReady {
+  if (!gradle.rootProject.ext.has('hotUpdaterSandboxSdkProject')) {
+    throw new GradleException(${groovyString(PREBUILT_SDK)})
+  }
+}
 allprojects { project ->
   if (project.path != appModule) return
   project.plugins.withId('com.android.application') {

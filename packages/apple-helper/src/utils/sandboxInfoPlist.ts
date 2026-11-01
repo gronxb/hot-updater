@@ -69,6 +69,32 @@ const addUrlScheme = async (plist: string, urlScheme: string) => {
   ]);
 };
 
+/** What a dev server on this network needs: plain http to a local address, and iOS's prompt. */
+const allowLocalDevServer = async (plist: string) => {
+  const { exitCode } = await execa(
+    "plutil",
+    ["-extract", "NSAppTransportSecurity", "json", "-o", "-", plist],
+    { reject: false },
+  );
+  if (exitCode !== 0) {
+    await plutil(["-insert", "NSAppTransportSecurity", "-json", "{}", plist]);
+  }
+  await plutil([
+    "-replace",
+    "NSAppTransportSecurity.NSAllowsLocalNetworking",
+    "-bool",
+    "true",
+    plist,
+  ]);
+  if ((await readValue(plist, "NSLocalNetworkUsageDescription")) === null) {
+    await setString(
+      plist,
+      "NSLocalNetworkUsageDescription",
+      "This sandbox build loads JavaScript from a dev server on your network.",
+    );
+  }
+};
+
 /**
  * The app's dedicated URL scheme, default channel, and the sandbox's key. The
  * URL scheme and App Store Connect's app come from the scheme's
@@ -92,6 +118,7 @@ const patchAppInfoPlist = async (
   );
   await plutil(["-replace", SANDBOX_INFO_PLIST_KEY, "-bool", "true", plist]);
   await addUrlScheme(plist, sandboxUrlSchemeOf(scheme.bundleIdentifier));
+  await allowLocalDevServer(plist);
 };
 
 /** The Info.plist of each app extension inside an `.app`. */

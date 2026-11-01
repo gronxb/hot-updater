@@ -23,6 +23,10 @@ struct HotUpdaterSandboxSelection: Equatable {
 protocol HotUpdaterSandboxHost: AnyObject {
     /// The fingerprint this build embeds, or nil without one.
     func fingerprintHash() -> String?
+    /// Whether this process runs a dev server's JavaScript, where nothing can change the normal selection.
+    var isRunningDevServer: Bool { get }
+    /// Ends the dev session, with the screen still up to answer a link.
+    func exitDevServerForLink()
     /// Whether the app's JavaScript left a server config: a server answered one of its checks.
     func hasServerConfig() -> Bool
     /// Settles the previous launch first, so a crash can't be read as a selection.
@@ -35,6 +39,11 @@ protocol HotUpdaterSandboxHost: AnyObject {
         channel: String,
         onProgress: @escaping (Double) -> Void
     ) async throws -> HotUpdaterSandboxStaged
+}
+
+extension HotUpdaterSandboxHost {
+    var isRunningDevServer: Bool { false }
+    func exitDevServerForLink() {}
 }
 
 /// What outlives the process.
@@ -175,6 +184,13 @@ final class HotUpdaterSandboxCoordinator {
     /// Accepts the link in `.confirming`.
     func confirmLink() {
         guard case .confirming(let link) = state.phase else { return }
+        // The link stays stored, and the screen asks about it on the normal selection.
+        if host.isRunningDevServer {
+            host.exitDevServerForLink()
+            setPhase(.idle)
+            pump()
+            return
+        }
         linkInFlight = link.url
         begin(target: link.channel)
     }
@@ -225,6 +241,7 @@ final class HotUpdaterSandboxCoordinator {
         setPhase(.working(operationId: operationId, target: "", step: .reset, progress: nil))
         Task { @MainActor in
             let target = await host.selection().defaultChannel
+            if await refuseInDevSession(operationId, target) { return }
             setPhase(.working(operationId: operationId, target: target, step: .reset, progress: nil))
             guard let reset = await attempt(operationId, target, .reset, { try await self.host.reset() }) else { return }
             guard reset else {
@@ -273,7 +290,15 @@ final class HotUpdaterSandboxCoordinator {
         Task { @MainActor in await run(operationId, target) }
     }
 
+    /// A dev process's native state is the dev session's, so a switch waits for its Exit.
+    private func refuseInDevSession(_ operationId: Int, _ target: String) async -> Bool {
+        guard host.isRunningDevServer else { return false }
+        await fail(operationId, target, .preflight, .error("The dev server is running. Exit it, then try again."))
+        return true
+    }
+
     private func run(_ operationId: Int, _ target: String) async {
+        if await refuseInDevSession(operationId, target) { return }
         let before = await host.selection()
         let toDefault = target == before.defaultChannel
         guard let hasBundle = await attempt(operationId, target, .preflight, {

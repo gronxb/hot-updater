@@ -366,6 +366,12 @@ const buildNativeInternal = async ({
             iosScheme: iosSchemeConfig,
             androidScheme: androidSchemeConfig,
             submit: upload,
+            buildAdapter: await Promise.resolve(
+              config.build({ cwd: getCwd() }),
+            ).then(
+              ({ name }) => name,
+              () => undefined,
+            ),
           }),
         );
         if (ascApiKey) {

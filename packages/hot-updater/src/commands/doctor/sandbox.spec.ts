@@ -130,17 +130,17 @@ describe("checkSandboxSchemes", () => {
     );
   });
 
-  it("warns about the rock adapter", async () => {
+  it("refuses an Android scheme on the rock adapter", async () => {
     const issues = await checkSandboxSchemes(
       config(androidSandbox, "rock"),
       root,
     );
     expect(issues).toEqual([
       expect.objectContaining({
-        type: "warning",
-        code: "SANDBOX_UNQUALIFIED",
-        message:
-          "Sandbox builds aren't tested with the rock build adapter yet.",
+        type: "error",
+        code: "SANDBOX_BUILD_BLOCKED",
+        platform: "android",
+        message: expect.stringContaining("rock build adapter"),
       }),
     ]);
   });

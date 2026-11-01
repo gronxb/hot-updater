@@ -32,6 +32,12 @@ private class FakeHost : HotUpdaterSandboxHost {
     var progress: ((Double) -> Unit)? = null
     var launchFixed = false
     var channelAfterStaging: String? = null
+    override var isRunningDevServer = false
+    var exits = 0
+
+    override fun exitDevServer() {
+        exits += 1
+    }
 
     override fun fingerprintHash() = fingerprint
 
@@ -104,6 +110,32 @@ private class Fixture(
 }
 
 class HotUpdaterSandboxCoordinatorTest {
+    @Test
+    fun `in a dev session a confirmed link exits it, and stays stored for the new process`() {
+        val fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.confirmLink()
+        assertEquals(1, fixture.host.exits)
+        assertTrue(fixture.host.calls.isEmpty())
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+    }
+
+    @Test
+    fun `in a dev session a row or a reset asks to exit first and changes nothing`() {
+        val fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        assertTrue(fixture.coordinator.switchTo("pr-1"))
+        val failed = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again."), failed.failure)
+        assertTrue(fixture.host.calls.isEmpty())
+        fixture.coordinator.dismiss()
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Failed)
+        assertTrue(fixture.host.calls.isEmpty())
+        assertEquals(0, fixture.host.exits)
+    }
+
     @Test
     fun `a link confirms, then runs every step in order and opens`() {
         val fixture = Fixture()
