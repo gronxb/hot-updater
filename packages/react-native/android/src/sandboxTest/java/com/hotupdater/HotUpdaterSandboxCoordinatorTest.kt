@@ -30,8 +30,12 @@ private class FakeHost : HotUpdaterSandboxHost {
     var stageGate: CompletableDeferred<HotUpdaterSandboxStaged>? = null
     var stageResult: Result<HotUpdaterSandboxStaged> = Result.success(HotUpdaterSandboxStaged.Update("ota"))
     var progress: ((Double) -> Unit)? = null
-    var launchFixed = false
     var channelAfterStaging: String? = null
+
+    /** The OTA this process launched, which stays what it runs after a reset deletes it. */
+    var runningBundleId: String? = null
+
+    override suspend fun launchBundleId() = runningBundleId ?: bundleId
 
     override fun fingerprintHash() = fingerprint
 
@@ -64,7 +68,7 @@ private class FakeHost : HotUpdaterSandboxHost {
         val staged = stageGate?.await() ?: stageResult.getOrThrow()
         if (staged is HotUpdaterSandboxStaged.Update) {
             this.channel = channelAfterStaging ?: channel
-            if (!launchFixed) bundleId = staged.bundleId ?: "built-in"
+            bundleId = staged.bundleId ?: "built-in"
         }
         return staged
     }
@@ -283,6 +287,54 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `going offline over a running OTA shows the built-in selection, not the deleted bundle`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = Result.failure(IOException("offline"))
+        fixture.coordinator.switchTo("pr-1")
+        val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals("built-in", phase.selection.bundleId)
+        assertTrue(phase.selection.isBuiltIn)
+        assertEquals(listOf("sandbox-release"), fixture.store.selected)
+    }
+
+    @Test
+    fun `the next launch is what storage holds once a launch is fixed`() {
+        val builtIn = "built-in"
+        // Before any launch, the SDK's read is what a launch would pick.
+        assertEquals("ota", hotUpdaterSandboxNextLaunchBundleId(null, "ota", "ota", builtIn))
+        assertEquals(builtIn, hotUpdaterSandboxNextLaunchBundleId(null, null, null, builtIn))
+        // A running OTA a reset deleted: its read still names it, and storage holds nothing.
+        assertEquals(builtIn, hotUpdaterSandboxNextLaunchBundleId("ota", "ota", null, builtIn))
+        // A running OTA with another staged.
+        assertEquals("next", hotUpdaterSandboxNextLaunchBundleId("ota", "ota", "next", builtIn))
+        // A launch of the built-in bundle with an OTA staged since.
+        assertEquals("next", hotUpdaterSandboxNextLaunchBundleId(null, null, "next", builtIn))
+    }
+
+    @Test
+    fun `open records what this launch runs`() {
+        val fixture = Fixture()
+        fixture.host.bundleId = "built-in"
+        fixture.host.runningBundleId = "ota-0"
+        var opened: String? = null
+        val store =
+            object : HotUpdaterSandboxStore {
+                override var pendingLinks: List<String> = emptyList()
+
+                override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
+
+                override fun recordOpened(selection: HotUpdaterSandboxSelection) {
+                    opened = selection.bundleId
+                }
+            }
+        HotUpdaterSandboxCoordinator(fixture.host, store, CoroutineScope(Dispatchers.Unconfined), { _, _ -> }).open()
+        assertEquals("ota-0", opened)
+    }
+
+    @Test
     fun `nothing for the target after the reset is a failure that says so`() {
         val fixture = Fixture()
         fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
@@ -342,9 +394,16 @@ class HotUpdaterSandboxCoordinatorTest {
     @Test
     fun `a fixed launch needs a restart`() {
         val fixture = Fixture()
-        fixture.host.launchFixed = true
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
         fixture.coordinator.switchTo("pr-1")
         assertEquals(listOf(true to true), fixture.opens)
+        // The screen says what the next launch runs, not what this one does.
+        assertEquals(
+            "ota",
+            fixture.coordinator.state.selection
+                ?.bundleId,
+        )
     }
 
     @Test

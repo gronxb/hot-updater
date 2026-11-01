@@ -19,14 +19,40 @@ struct HotUpdaterSandboxSelection: Equatable {
     let isBuiltIn: Bool
 }
 
+/// The bundle the next launch selects. The SDK's own read answers what this process
+/// runs once it has fixed a launch, a bundle a reset may have deleted by then, so after
+/// a launch the answer is what storage holds as active.
+///
+/// - Parameters:
+///   - runningBundleId: the OTA this process launched; nil before a launch, or after
+///     one of the built-in bundle.
+///   - launchBundleId: the SDK's read: the launched bundle, or before a launch the
+///     bundle one would pick; nil is the built-in bundle.
+///   - activeBundleId: the stored active selection's bundle, or nil.
+func hotUpdaterSandboxNextLaunchBundleId(
+    runningBundleId: String?,
+    launchBundleId: String?,
+    activeBundleId: String?,
+    builtInBundleId: String
+) -> String {
+    if runningBundleId == nil, let launchBundleId {
+        return launchBundleId
+    }
+    return activeBundleId ?? builtInBundleId
+}
+
 /// Everything the coordinator asks of the SDK and the device.
 protocol HotUpdaterSandboxHost: AnyObject {
     /// The fingerprint this build embeds, or nil without one.
     func fingerprintHash() -> String?
     /// Whether the app's JavaScript left a server config: a server answered one of its checks.
     func hasServerConfig() -> Bool
-    /// Settles the previous launch first, so a crash can't be read as a selection.
+    /// What the next launch selects, as storage holds it. Settles the previous launch
+    /// first, so a crash can't be read as a selection.
     func selection() async -> HotUpdaterSandboxSelection
+    /// What this process's launch runs, or before one, what it would pick. It differs
+    /// from a staged bundle once the launch is fixed, so only a reload applies a switch.
+    func launchBundleId() async -> String
     /// Whether the target channel has a bundle this build would run. Throws when the server can't say.
     func preflight(channel: String) async throws -> Bool
     /// Deletes downloaded bundles and returns to the default channel.
@@ -35,6 +61,12 @@ protocol HotUpdaterSandboxHost: AnyObject {
         channel: String,
         onProgress: @escaping (Double) -> Void
     ) async throws -> HotUpdaterSandboxStaged
+}
+
+extension HotUpdaterSandboxHost {
+    func launchBundleId() async -> String {
+        await selection().bundleId
+    }
 }
 
 /// What outlives the process.
@@ -250,7 +282,14 @@ final class HotUpdaterSandboxCoordinator {
     /// Opens the app on what's selected, when no switch or question stands in the way.
     func open() async {
         let selection = await host.selection()
-        store.recordOpened(selection)
+        // What opens is what this launch runs, which may not be the next one's.
+        let launchBundleId = await host.launchBundleId()
+        store.recordOpened(HotUpdaterSandboxSelection(
+            channel: selection.channel,
+            defaultChannel: selection.defaultChannel,
+            bundleId: launchBundleId,
+            isBuiltIn: selection.isBuiltIn && launchBundleId == selection.bundleId
+        ))
         var next = state
         next.selection = selection
         publish(next)
@@ -333,9 +372,14 @@ final class HotUpdaterSandboxCoordinator {
         next.phase = .idle
         publish(next)
         log("operation \(operationId) selected \(selection.channel) \(selection.bundleId)")
-        // Before React Native starts, a selection reads what the switch staged.
-        // A different answer means this process already fixed its launch.
-        switchToOpen = expectedBundleId != nil && selection.bundleId != expectedBundleId
+        // Before React Native starts, this reads what the switch staged. A
+        // different answer means this process already fixed its launch.
+        if let expectedBundleId {
+            let launchBundleId = await host.launchBundleId()
+            switchToOpen = launchBundleId != expectedBundleId
+        } else {
+            switchToOpen = false
+        }
         pump()
         openSwitchIfAnswered()
     }

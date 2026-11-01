@@ -47,8 +47,8 @@ private final class FakeHost: HotUpdaterSandboxHost {
     var stageGate: Gate<HotUpdaterSandboxStaged>?
     var stageResult: Result<HotUpdaterSandboxStaged, Error> = .success(.update(bundleId: "ota"))
     var progressReporter: ((Double) -> Void)?
-    /// Whether a staging moves what a launch selects: not once a launch is fixed.
-    var launchFixed = false
+    /// The OTA this process launched, which stays what it runs after a reset deletes it.
+    var runningBundleId: String?
     var channelAfterStaging: String?
 
     nonisolated func fingerprintHash() -> String? {
@@ -66,6 +66,10 @@ private final class FakeHost: HotUpdaterSandboxHost {
             bundleId: bundleId,
             isBuiltIn: bundleId == "built-in"
         )
+    }
+
+    func launchBundleId() async -> String {
+        runningBundleId ?? bundleId
     }
 
     func preflight(channel: String) async throws -> Bool {
@@ -95,7 +99,7 @@ private final class FakeHost: HotUpdaterSandboxHost {
         }
         if case .update(let bundleId) = staged {
             self.channel = channelAfterStaging ?? channel
-            if !launchFixed { self.bundleId = bundleId }
+            self.bundleId = bundleId
         }
         return staged
     }
@@ -105,6 +109,7 @@ private final class FakeStore: HotUpdaterSandboxStore {
     var pendingLinks: [String] = []
     var selected: [String] = []
     var opened: [String] = []
+    var openedBundles: [String] = []
 
     func recordSelected(_ selection: HotUpdaterSandboxSelection) {
         selected.append(selection.channel)
@@ -112,6 +117,7 @@ private final class FakeStore: HotUpdaterSandboxStore {
 
     func recordOpened(_ selection: HotUpdaterSandboxSelection) {
         opened.append(selection.channel)
+        openedBundles.append(selection.bundleId)
     }
 }
 
@@ -364,6 +370,54 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
+    func goingOfflineOverARunningOtaShowsTheBuiltInSelectionNotTheDeletedBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, _, _, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected the check's failure")
+            return
+        }
+        #expect(selection.bundleId == "built-in")
+        #expect(selection.isBuiltIn)
+        #expect(fixture.store.selected == ["sandbox-release"])
+    }
+
+    @Test
+    func theNextLaunchIsWhatStorageHoldsOnceALaunchIsFixed() {
+        func next(_ running: String?, _ launch: String?, _ active: String?) -> String {
+            hotUpdaterSandboxNextLaunchBundleId(
+                runningBundleId: running,
+                launchBundleId: launch,
+                activeBundleId: active,
+                builtInBundleId: "built-in"
+            )
+        }
+        // Before any launch, the SDK's read is what a launch would pick.
+        #expect(next(nil, "ota", "ota") == "ota")
+        #expect(next(nil, nil, nil) == "built-in")
+        // A running OTA a reset deleted: its read still names it, and storage holds nothing.
+        #expect(next("ota", "ota", nil) == "built-in")
+        // A running OTA with another staged.
+        #expect(next("ota", "ota", "next") == "next")
+        // A launch of the built-in bundle with an OTA staged since.
+        #expect(next(nil, nil, "next") == "next")
+    }
+
+    @Test
+    func openRecordsWhatThisLaunchRuns() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "built-in"
+        fixture.host.runningBundleId = "ota-0"
+        await fixture.coordinator.open()
+        #expect(fixture.store.openedBundles == ["ota-0"])
+    }
+
+    @Test
     func nothingForTheTargetAfterTheResetIsAFailureThatSaysSo() async {
         let fixture = Fixture()
         fixture.host.stageResult = .success(.noUpdate)
@@ -433,11 +487,14 @@ struct HotUpdaterSandboxCoordinatorTests {
     @Test
     func aFixedLaunchNeedsAReload() async {
         let fixture = Fixture()
-        fixture.host.launchFixed = true
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
         fixture.coordinator.switchTo("pr-1")
         await settle()
         #expect(fixture.opens.count == 1)
         #expect(fixture.opens[0] == (true, true))
+        // The screen says what the next launch runs, not what this one does.
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota")
     }
 
     @Test
