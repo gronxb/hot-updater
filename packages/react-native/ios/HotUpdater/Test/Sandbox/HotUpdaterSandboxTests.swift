@@ -50,12 +50,18 @@ private final class FakeHost: HotUpdaterSandboxHost {
     /// Whether a staging moves what a launch selects: not once a launch is fixed.
     var launchFixed = false
     var channelAfterStaging: String?
-    var isRunningDevServer = false
+    var runsDevServer = false
     var devExits = 0
 
-    func exitDevServerForLink() {
-        devExits += 1
-        isRunningDevServer = false
+    nonisolated var isRunningDevServer: Bool {
+        MainActor.assumeIsolated { runsDevServer }
+    }
+
+    nonisolated func exitDevServerForLink() {
+        MainActor.assumeIsolated {
+            devExits += 1
+            runsDevServer = false
+        }
     }
 
     nonisolated func fingerprintHash() -> String? {
@@ -155,7 +161,7 @@ struct HotUpdaterSandboxCoordinatorTests {
     @Test
     func inADevSessionAConfirmedLinkExitsItAndIsAskedAgain() async {
         let fixture = Fixture()
-        fixture.host.isRunningDevServer = true
+        fixture.host.runsDevServer = true
         fixture.coordinator.receiveLink(link("pr-1"))
         fixture.coordinator.confirmLink()
         await settle()
@@ -171,7 +177,7 @@ struct HotUpdaterSandboxCoordinatorTests {
     @Test
     func inADevSessionARowOrAResetAsksToExitFirstAndChangesNothing() async {
         let fixture = Fixture()
-        fixture.host.isRunningDevServer = true
+        fixture.host.runsDevServer = true
         #expect(fixture.coordinator.switchTo("pr-1"))
         await settle()
         guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {

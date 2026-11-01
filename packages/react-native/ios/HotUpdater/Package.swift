@@ -105,6 +105,7 @@ let package = Package(
                 "README.md",
                 "HotUpdaterSandboxBridge.swift",
                 "HotUpdaterSandboxDevOverride.m",
+                "HotUpdaterSandboxDevServer.swift",
                 "HotUpdaterSandboxGate.m",
                 "HotUpdaterSandboxLiveDevServer.swift",
                 "HotUpdaterSandboxLiveHost.swift",
@@ -113,6 +114,7 @@ let package = Package(
             ],
             sources: [
                 "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxDevHost.swift",
                 "HotUpdaterSandboxLaunchPolicy.swift",
                 "HotUpdaterSandboxLink.swift",
             ]

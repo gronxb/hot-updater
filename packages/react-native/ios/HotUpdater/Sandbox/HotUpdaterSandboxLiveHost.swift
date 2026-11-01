@@ -34,10 +34,11 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     }
 
     /// Set by the bridge, which owns the dev server and the screen.
-    var exitDevServerAction: () -> Void = {}
+    @MainActor var exitDevServerAction: () -> Void = {}
 
+    /// The coordinator, on the main actor, is the only caller.
     func exitDevServerForLink() {
-        exitDevServerAction()
+        MainActor.assumeIsolated { exitDevServerAction() }
     }
 
     func hasServerConfig() -> Bool {
