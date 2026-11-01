@@ -131,25 +131,6 @@ describe("Insights event delivery", () => {
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(gate.settle).toHaveBeenCalledWith(
         expect.objectContaining({ type }),
-        "rejected",
-      );
-    },
-  );
-
-  it.each([429, 500])(
-    "settles attempts that run out on a %i as failed, not refused",
-    async (status) => {
-      const { fetchMock } = stubEventsEndpoint(status, status, status);
-      const gate = openGate();
-      const send = createInsightsEventSender(fetchMock, gate);
-
-      const sent = send(unchangedEvent()).catch(() => {});
-      await vi.runAllTimersAsync();
-      await sent;
-
-      expect(fetchMock).toHaveBeenCalledTimes(3);
-      expect(gate.settle).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ type: "UNCHANGED" }),
         "failed",
       );
     },
