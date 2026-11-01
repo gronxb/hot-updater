@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
 /// What a check of the target channel did.
@@ -515,3 +516,4 @@ final class HotUpdaterSandboxCoordinator {
         }
     }
 }
+#endif

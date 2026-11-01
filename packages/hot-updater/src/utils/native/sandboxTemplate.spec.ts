@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { SANDBOX_CODE_MARKER } from "@hot-updater/protocol/native-artifact";
+import {
+  SANDBOX_CODE_MARKER,
+  SANDBOX_INFO_PLIST_KEY,
+} from "@hot-updater/protocol/native-artifact";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -22,6 +25,38 @@ const sourcesOf = (directory: string, excluded: string[]): string[] =>
         /\.(swift|m|mm|h|kt|java|xml|cpp)$/u.test(file) &&
         !excluded.some((prefix) => file.startsWith(prefix)),
     );
+
+const IOS_SANDBOX = "ios/HotUpdater/Sandbox";
+const SANDBOX_CONDITION = "HOT_UPDATER_SANDBOX_LAYER";
+
+/** Every file in the iOS sandbox folder but its README, however deep. */
+const iosSandboxFiles = (): string[] =>
+  fs
+    .readdirSync(path.join(SDK, IOS_SANDBOX), { recursive: true })
+    .map(String)
+    .map((file) => path.join(IOS_SANDBOX, file))
+    .filter(
+      (file) =>
+        fs.statSync(path.join(SDK, file)).isFile() && !file.endsWith(".md"),
+    );
+
+/** Whether only comments sit outside the condition's `#if` and its `#endif`. */
+const isWrappedWhole = (source: string): boolean => {
+  const lines = source
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("//"));
+  if (lines[0] !== `#if ${SANDBOX_CONDITION}` || lines.at(-1) !== "#endif") {
+    return false;
+  }
+  let depth = 0;
+  return lines.every((line, index) => {
+    if (/^#(if|ifdef|ifndef)\b/u.test(line)) depth += 1;
+    if (/^#endif\b/u.test(line)) depth -= 1;
+    return depth > 0 || index === lines.length - 1;
+  });
+};
 
 const GATE_SELECTORS = {
   five: "viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:",
@@ -94,6 +129,61 @@ describe("the sandbox template", () => {
     }
   });
 
+  it("tells a whole wrap from anything less", () => {
+    const wrap = (body: string) =>
+      `#if ${SANDBOX_CONDITION}\n${body}\n#endif\n`;
+    expect(isWrappedWhole(wrap("import UIKit"))).toBe(true);
+    expect(isWrappedWhole(`// About it.\n/* And more. */\n${wrap("a")}`)).toBe(
+      true,
+    );
+    expect(isWrappedWhole(wrap("#if DEBUG\na\n#else\nb\n#endif"))).toBe(true);
+    expect(isWrappedWhole("import UIKit\n")).toBe(false);
+    expect(isWrappedWhole("")).toBe(false);
+    expect(isWrappedWhole(`import UIKit\n${wrap("a")}`)).toBe(false);
+    expect(isWrappedWhole(`${wrap("a")}b\n`)).toBe(false);
+    expect(isWrappedWhole(`${wrap("a")}${wrap("b")}`)).toBe(false);
+    expect(isWrappedWhole("#if OTHER\na\n#endif\n")).toBe(false);
+  });
+
+  it("wraps every iOS source whole in the condition only the CLI sets", () => {
+    const files = iosSandboxFiles();
+    expect(files.length).toBeGreaterThan(9);
+    for (const file of files) {
+      expect(isWrappedWhole(read(file)), file).toBe(true);
+    }
+    const xcconfig = fs.readFileSync(
+      path.resolve(SDK, "../apple-helper/src/utils/writeBuildXcconfig.ts"),
+      "utf-8",
+    );
+    expect(xcconfig).toContain(`SANDBOX_CONDITION = "${SANDBOX_CONDITION}"`);
+    expect(xcconfig).toContain(
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS: `$(inherited) ${SANDBOX_CONDITION}`",
+    );
+    expect(xcconfig).toContain(
+      "GCC_PREPROCESSOR_DEFINITIONS: `$(inherited) ${SANDBOX_CONDITION}=1`",
+    );
+  });
+
+  it("starts only from a +load that checks the plist key first", () => {
+    const guarded = new RegExp(
+      `\\+ ?\\(void\\) ?load \\{\\n(?:\\s*//[^\\n]*\\n)*\\s*if \\(!\\[\\[NSBundle\\.mainBundle objectForInfoDictionaryKey:@"${SANDBOX_INFO_PLIST_KEY}"\\] isEqual:@YES\\]\\) return;`,
+      "gu",
+    );
+    const loads = (source: string) =>
+      (source.match(/\+ ?\(void\) ?load\b/gu) ?? []).length;
+    expect(loads(read(`${IOS_SANDBOX}/HotUpdaterSandboxGate.m`))).toBe(1);
+    for (const file of iosSandboxFiles()) {
+      const source = read(file);
+      expect((source.match(guarded) ?? []).length, file).toBe(loads(source));
+      expect(source, file).not.toMatch(/\+ ?\(void\) ?initialize\b/u);
+      expect(source, file).not.toMatch(/__attribute__\(\(constructor/u);
+      // The entry points' wrappers run only from behind the gate's guard.
+      if (!/HotUpdaterSandbox(Gate|EntryPoints)\.(m|h)$/u.test(file)) {
+        expect(source, file).not.toContain("HotUpdaterSandboxWrap");
+      }
+    }
+  });
+
   it("excludes the iOS sources in every podspec branch", () => {
     const podspec = read("HotUpdater.podspec");
     expect(podspec).toContain('sandbox_excluded_files = "HotUpdaterSandbox*"');
@@ -112,6 +202,10 @@ describe("the sandbox template", () => {
       /if \(isSandboxBuild\(\)\) \{[^}]*src\/sandbox\/java[^}]*src\/sandbox\/res[^}]*\}/u,
     );
     expect(attached).not.toBeNull();
+    // AGP's source set for a build type or flavor named `sandbox` stays empty.
+    expect(gradle).toMatch(
+      /sourceSets\.matching \{ it\.name == "sandbox" \}\.all \{\s+java\.srcDirs = \[\]\s+res\.srcDirs = \[\]/u,
+    );
     // Each mention of the directory is inside a guard.
     expect(gradle.match(/src\/sandbox\//gu)).toHaveLength(3);
   });
@@ -132,6 +226,7 @@ describe("the sandbox template", () => {
       const source = read(file);
       expect(source, file).not.toContain("HotUpdaterSandbox");
       expect(source, file).not.toContain(SANDBOX_CODE_MARKER);
+      expect(source, file).not.toContain(SANDBOX_CONDITION);
     }
   });
 

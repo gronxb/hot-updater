@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import UIKit
 
 /// A plain placeholder until the sandbox's real screen: the current channel and
@@ -192,3 +193,4 @@ final class HotUpdaterSandboxScreen: UIViewController {
         }
     }
 }
+#endif

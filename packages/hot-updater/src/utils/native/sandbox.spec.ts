@@ -346,7 +346,7 @@ describe("assertBuiltArtifact", () => {
         artifactPath: await ipa("Info.plist", "App-sandbox"),
       }),
     ).rejects.toThrow(
-      "Remove INCLUDED_SOURCE_FILE_NAMES from the project's build settings.",
+      "Remove HOT_UPDATER_SANDBOX_LAYER from the project's build settings.",
     );
   });
 

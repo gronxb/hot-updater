@@ -122,6 +122,14 @@ android {
     targetCompatibility JavaVersion.VERSION_1_8
   }
 
+  // A build type or flavor gets the source set of its name, and that one's default
+  // directories. A project that gives every library one called `sandbox` must not
+  // compile the sandbox layer, which only the property below attaches.
+  sourceSets.matching { it.name == "sandbox" }.all {
+    java.srcDirs = []
+    res.srcDirs = []
+  }
+
   sourceSets {
     main {
       if (isSandboxBuild()) {
