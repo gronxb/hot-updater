@@ -163,7 +163,8 @@ The build allows plain http on the device. On Android, a `networkSecurityConfig`
 your own still wins: the screen says when it blocks the address, and you allow it
 there. On iOS, that's local addresses, with the system's local network prompt.
 
-Metro must serve `/index.bundle` and `/index.assets`. Re.Pack doesn't, and the screen
+The server must answer `/status` and `/index.bundle`. On Android it must answer
+`/index.assets` too, which Metro does and Re.Pack's dev server doesn't, and the screen
 says so. A host's own native update check, from iOS native code during a session,
 isn't kept from your selection: run it before the first screen, as a launch does.
 
