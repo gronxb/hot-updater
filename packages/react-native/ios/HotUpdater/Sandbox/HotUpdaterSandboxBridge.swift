@@ -15,7 +15,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
     private static var window: UIWindow?
     private static var isWatchingForServerAnswer = false
 
-    private static let host = HotUpdaterSandboxLiveHost()
+    private static let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
     private static let coordinator = HotUpdaterSandboxCoordinator(
         host: host,
         store: HotUpdaterSandboxDefaults(),

@@ -61,6 +61,8 @@ internal class HotUpdaterSandboxLiveHost(
     override suspend fun launchBundleId(): String =
         withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
 
+    override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
+
     override suspend fun preflight(channel: String): Boolean =
         withContext(Dispatchers.IO) {
             val config = requireConfig()

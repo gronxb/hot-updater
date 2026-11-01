@@ -37,6 +37,10 @@ private class FakeHost : HotUpdaterSandboxHost {
 
     override suspend fun launchBundleId() = runningBundleId ?: bundleId
 
+    var appRunning = false
+
+    override fun isAppRunning() = appRunning
+
     override fun fingerprintHash() = fingerprint
 
     override fun hasServerConfig() = serverConfig
@@ -314,24 +318,129 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals("next", hotUpdaterSandboxNextLaunchBundleId(null, null, "next", builtIn))
     }
 
-    @Test
-    fun `open records what this launch runs`() {
-        val fixture = Fixture()
-        fixture.host.bundleId = "built-in"
-        fixture.host.runningBundleId = "ota-0"
+    /** A store that keeps which bundle opened. */
+    private class OpenedStore : HotUpdaterSandboxStore {
+        override var pendingLinks: List<String> = emptyList()
         var opened: String? = null
-        val store =
-            object : HotUpdaterSandboxStore {
-                override var pendingLinks: List<String> = emptyList()
 
-                override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
+        override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
 
-                override fun recordOpened(selection: HotUpdaterSandboxSelection) {
-                    opened = selection.bundleId
-                }
+        override fun recordOpened(selection: HotUpdaterSandboxSelection) {
+            opened = selection.bundleId
+        }
+    }
+
+    @Test
+    fun `open over a running app records what it runs, and leaves what's staged for its launch`() {
+        val host =
+            FakeHost().apply {
+                bundleId = "next"
+                runningBundleId = "ota-0"
+                appRunning = true
             }
-        HotUpdaterSandboxCoordinator(fixture.host, store, CoroutineScope(Dispatchers.Unconfined), { _, _ -> }).open()
-        assertEquals("ota-0", opened)
+        val store = OpenedStore()
+        val opens = ArrayList<Pair<Boolean, Boolean>>()
+        HotUpdaterSandboxCoordinator(host, store, CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        assertEquals("ota-0", store.opened)
+        assertEquals(listOf(false to false), opens)
+    }
+
+    @Test
+    fun `open before the app starts restarts a fixed launch into what's selected`() {
+        val host =
+            FakeHost().apply {
+                bundleId = "built-in"
+                runningBundleId = "ota-0"
+            }
+        val store = OpenedStore()
+        val opens = ArrayList<Pair<Boolean, Boolean>>()
+        HotUpdaterSandboxCoordinator(host, store, CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        assertEquals("built-in", store.opened)
+        assertEquals(listOf(false to true), opens)
+    }
+
+    @Test
+    fun `the default channel with nothing published needs a restart over a fixed launch`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = Result.success(false)
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
+        fixture.coordinator.switchTo("sandbox-release")
+        assertEquals(listOf(true to true), fixture.opens)
+        assertEquals(
+            "built-in",
+            fixture.coordinator.state.selection
+                ?.bundleId,
+        )
+    }
+
+    @Test
+    fun `reset needs a restart over a fixed launch`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.coordinator.resetToBuiltIn()
+        assertEquals(listOf(true to true), fixture.opens)
+    }
+
+    @Test
+    fun `a launch that already runs the selection needs no restart`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
+        fixture.coordinator.switchTo("pr-1")
+        assertEquals(listOf(true to false), fixture.opens)
+    }
+
+    @Test
+    fun `no fixed launch needs no restart, whatever the switch did`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = Result.success(false)
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.NoUpdate)
+        fixture.coordinator.switchTo("sandbox-release")
+        assertEquals(listOf(true to false), fixture.opens)
+    }
+
+    @Test
+    fun `open after a failed switch restarts a fixed launch out of the deleted bundle`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = Result.failure(IOException("offline"))
+        fixture.coordinator.switchTo("pr-1")
+        fixture.coordinator.dismiss()
+        assertTrue(fixture.opens.isEmpty())
+        fixture.coordinator.open()
+        assertEquals(listOf(false to true), fixture.opens)
+    }
+
+    @Test
+    fun `a queued link that fails decides the restart, not the switch before it`() {
+        val fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = Result.success(HotUpdaterSandboxStaged.Update("ota-1"))
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2"))
+        fixture.coordinator.confirmLink()
+        // The first switch selects what this launch already runs.
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        fixture.host.stageResult = Result.failure(IOException("offline"))
+        fixture.coordinator.confirmLink()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Failed)
+        assertTrue(fixture.opens.isEmpty())
+        // The second reset deleted it, so the first switch's open can't keep its answer.
+        fixture.coordinator.dismiss()
+        assertEquals(listOf(true to true), fixture.opens)
     }
 
     @Test

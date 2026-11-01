@@ -5,6 +5,15 @@ import Foundation
 /// and the update are `HotUpdaterInstance`'s.
 final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     private var impl: HotUpdaterImpl { HotUpdaterNativeUpdateBridge.sharedImpl }
+    private let appIsRunning: () -> Bool
+
+    init(isAppRunning: @escaping () -> Bool) {
+        appIsRunning = isAppRunning
+    }
+
+    func isAppRunning() -> Bool {
+        appIsRunning()
+    }
 
     private func config() -> HotUpdaterRecoveryCheckConfig? {
         HotUpdaterRecoveryCheckConfig(json: impl.getStorageItem(HotUpdaterRecoveryCheckConfig.storageKey))

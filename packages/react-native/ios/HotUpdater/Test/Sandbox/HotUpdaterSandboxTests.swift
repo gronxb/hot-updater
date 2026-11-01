@@ -72,6 +72,12 @@ private final class FakeHost: HotUpdaterSandboxHost {
         runningBundleId ?? bundleId
     }
 
+    var appRunning = false
+
+    nonisolated func isAppRunning() -> Bool {
+        MainActor.assumeIsolated { appRunning }
+    }
+
     func preflight(channel: String) async throws -> Bool {
         calls.append("preflight \(channel)")
         if let preflightGate { return try await preflightGate.wait() }
@@ -409,12 +415,123 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
-    func openRecordsWhatThisLaunchRuns() async {
+    func openOverARunningAppRecordsWhatItRunsAndLeavesWhatsStagedForItsLaunch() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "next"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.appRunning = true
+        await fixture.coordinator.open()
+        #expect(fixture.store.openedBundles == ["ota-0"])
+        #expect(fixture.opens[0] == (false, false))
+    }
+
+    @Test
+    func openBeforeTheAppStartsReloadsAFixedLaunchIntoWhatsSelected() async {
         let fixture = Fixture()
         fixture.host.bundleId = "built-in"
         fixture.host.runningBundleId = "ota-0"
         await fixture.coordinator.open()
-        #expect(fixture.store.openedBundles == ["ota-0"])
+        #expect(fixture.store.openedBundles == ["built-in"])
+        #expect(fixture.opens[0] == (false, true))
+    }
+
+    @Test
+    func theDefaultChannelWithNothingPublishedNeedsAReloadOverAFixedLaunch() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = .success(false)
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+        #expect(fixture.coordinator.state.selection?.bundleId == "built-in")
+    }
+
+    @Test
+    func resetNeedsAReloadOverAFixedLaunch() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.coordinator.resetToBuiltIn()
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+    }
+
+    @Test
+    func aLaunchThatAlreadyRunsTheSelectionNeedsNoReload() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, false))
+    }
+
+    @Test
+    func noFixedLaunchNeedsNoReloadWhateverTheSwitchDid() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.preflights["sandbox-release"] = .success(false)
+        fixture.host.stageResult = .success(.noUpdate)
+        fixture.coordinator.switchTo("sandbox-release")
+        await settle()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, false))
+    }
+
+    @Test
+    func openAfterAFailedSwitchReloadsAFixedLaunchOutOfTheDeletedBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.coordinator.dismiss()
+        #expect(fixture.opens.isEmpty)
+        await fixture.coordinator.open()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (false, true))
+    }
+
+    @Test
+    func aQueuedLinkThatFailsDecidesTheReloadNotTheSwitchBeforeIt() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-1"
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.stageResult = .success(.update(bundleId: "ota-1"))
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2"))
+        fixture.coordinator.confirmLink()
+        await settle()
+        // The first switch selects what this launch already runs.
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the second link's confirmation")
+            return
+        }
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.confirmLink()
+        await settle()
+        guard case .failed = fixture.coordinator.state.phase else {
+            Issue.record("expected the second link's failure")
+            return
+        }
+        #expect(fixture.opens.isEmpty)
+        // The second reset deleted it, so the first switch's open can't keep its answer.
+        fixture.coordinator.dismiss()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
     }
 
     @Test
