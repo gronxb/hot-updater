@@ -307,6 +307,21 @@ const SCENARIO = [
         bundle: "b",
       }),
   },
+  {
+    // It happened earlier than it arrived, so its download row at arrival
+    // adds two: its correction out of that hour and into the hour it happened.
+    name: "UPDATE_DOWNLOADED that happened in an earlier hour",
+    event: () =>
+      eventOf(D0 + 3 * DAY + 11 * HOUR + 5 * 60_000, {
+        type: "UPDATE_DOWNLOADED",
+        from: "b",
+        to: "a",
+        metadata: {
+          delivery: "archive",
+          occurred_at_ms: D0 + 3 * DAY + 8 * HOUR,
+        },
+      }),
+  },
 ] as const;
 
 /**
@@ -329,6 +344,7 @@ const BUDGETS: Readonly<
   "Next-day launch": { items: 16, wru: 40 },
   "Launch the day after": { items: 14, wru: 36 },
   "Launch on another bundle without an apply report": { items: 25, wru: 58 },
+  "UPDATE_DOWNLOADED that happened in an earlier hour": { items: 20, wru: 44 },
 };
 
 let local: DynamoDBLocal;

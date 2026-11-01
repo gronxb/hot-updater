@@ -11,10 +11,15 @@ import {
   InsightsPayloadTooLargeError,
 } from "./errors";
 import type { BundleEventRow } from "./eventRow";
+import { HOUR_MS } from "./schema";
 
 const MAX_EVENT_STRING_LENGTH = 1_024;
 const MAX_IDENTITY_LENGTH = 255;
 export const EVENT_BODY_MAX_BYTES = 16 * 1_024;
+/** The longest a download can be charted before its arrival. */
+const MAX_AGE_MS = 72 * HOUR_MS;
+
+const hourOf = (ms: number) => ms - (ms % HOUR_MS);
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -80,6 +85,14 @@ const readMinBundleId = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 && value.length <= 36
     ? value
     : null;
+
+/** A report's age: any other value is left out, so the report still records. */
+const readAgeMs = (value: unknown): number | undefined =>
+  Number.isSafeInteger(value) &&
+  (value as number) > 0 &&
+  (value as number) <= MAX_AGE_MS
+    ? (value as number)
+    : undefined;
 
 /** One value of an open set: any other value reads as `unknown`. */
 const oneOf = <const T extends string>(
@@ -249,7 +262,9 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
     metadata.httpResponse === undefined
       ? {}
       : { httpResponse: readHttpResponse(metadata.httpResponse) };
+  const ageMs = readAgeMs(payload.ageMs);
   const base: CreateBundleEventRequestBase = {
+    ...(ageMs === undefined ? {} : { ageMs }),
     ...(metadata.httpResponse === undefined ? {} : { metadata: httpMetadata }),
     ...(eventId === undefined ? {} : { eventId }),
     installId: requireIdentityField(payload, "installId"),
@@ -333,6 +348,7 @@ export function createBundleEventRow(
   input: CreateBundleEventRequest,
 ): BundleEventRow {
   input = requireEvent(input);
+  const receivedAt = Date.now();
   const base = {
     app_version: input.appVersion,
     channel: input.channel,
@@ -341,7 +357,7 @@ export function createBundleEventRow(
     id: input.eventId ?? createUUIDv7(),
     install_id: input.installId,
     platform: input.platform,
-    received_at_ms: Date.now(),
+    received_at_ms: receivedAt,
     to_bundle_id: input.toBundleId,
     to_release_id: input.toReleaseId,
     user_id: input.userId ?? null,
@@ -369,6 +385,7 @@ export function createBundleEventRow(
   switch (input.type) {
     case "UPDATE_DOWNLOADED": {
       const { delivery, patchFallback } = input.metadata ?? {};
+      const occurredAt = receivedAt - (input.ageMs ?? 0);
       return {
         ...base,
         from_bundle_id: input.fromBundleId,
@@ -377,6 +394,9 @@ export function createBundleEventRow(
           ...metadata,
           ...(delivery === undefined ? {} : { delivery }),
           ...(patchFallback ? { patch_fallback: true } : {}),
+          ...(hourOf(occurredAt) === hourOf(receivedAt)
+            ? {}
+            : { occurred_at_ms: occurredAt }),
         },
       };
     }

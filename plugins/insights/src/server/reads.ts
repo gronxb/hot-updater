@@ -36,6 +36,8 @@ import {
   bundleRefOfFilter,
   DAILY_EVENTS,
   DAY_MS,
+  DOWNLOAD_MOVED_IN,
+  DOWNLOAD_MOVED_OUT,
   HOUR_MS,
   type InsightsRetention,
   type InsightsSchema,
@@ -287,7 +289,10 @@ export const countEvents = async (
 /**
  * A bundle filter's stored events in each interval of whole hours, and for a
  * download filter the downloads a launch or crash implied: one read of its
- * hourly counts, every interval present.
+ * hourly counts, every interval present. A download filter charts a download
+ * at the hour it happened, with two more reads, of the rows that moved one
+ * there (`DOWNLOAD_MOVED_OUT`). Batching can apply one of a report's rows
+ * before another, so a point stays at 0 at least.
  */
 export const countEventSeries = async (
   db: Db,
@@ -296,22 +301,34 @@ export const countEventSeries = async (
   const { filter, intervalMs } = input;
   const { start, end } = input.timeRange;
   const events = Array.from({ length: (end - start) / intervalMs }, () => 0);
-  const hours = await drain((page) =>
-    db.findAggregates("insights_outcomes", {
-      index: "byRef",
-      where: scopeOf(filter),
-      range: { gte: start, lt: end },
-      limit: PAGE,
-      ...page,
+  const series: readonly (readonly [string, 1 | -1])[] =
+    filter.type === "UPDATE_DOWNLOADED"
+      ? [
+          [filter.type, 1],
+          [DOWNLOAD_MOVED_OUT, -1],
+          [DOWNLOAD_MOVED_IN, 1],
+        ]
+      : [[filter.type, 1]];
+  await Promise.all(
+    series.map(async ([type, sign]) => {
+      const hours = await drain((page) =>
+        db.findAggregates("insights_outcomes", {
+          index: "byRef",
+          where: { ...scopeOf(filter), type },
+          range: { gte: start, lt: end },
+          limit: PAGE,
+          ...page,
+        }),
+      );
+      for (const row of hours) {
+        events[Math.floor((row.bucket_start_ms - start) / intervalMs)]! +=
+          sign * row.events;
+      }
     }),
   );
-  for (const row of hours) {
-    events[Math.floor((row.bucket_start_ms - start) / intervalMs)]! +=
-      row.events;
-  }
   return events.map((count, index) => ({
     startMs: start + index * intervalMs,
-    events: count,
+    events: Math.max(0, count),
   }));
 };
 

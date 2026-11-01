@@ -466,6 +466,15 @@ const insightsOutcomes = (retention: BucketRetention) =>
   );
 
 /**
+ * A download that arrived hours after it happened keeps its row at the arrival
+ * hour, which event lists and counts read, and adds one of each of these under
+ * its `bundle_ref`: `OUT` at the arrival hour and `IN` at the hour it happened.
+ * Only the download series reads them, as `UPDATE_DOWNLOADED - OUT + IN` an hour.
+ */
+export const DOWNLOAD_MOVED_OUT = "UPDATE_DOWNLOADED_MOVED_OUT";
+export const DOWNLOAD_MOVED_IN = "UPDATE_DOWNLOADED_MOVED_IN";
+
+/**
  * The `insights_outcomes` identity that counts every stored event, for the
  * global event list. Its bucket is a UTC day, not an hour. Every event's
  * platform is ios or android, so no outcome row of a bundle filter shares it.

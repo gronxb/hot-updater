@@ -26,6 +26,8 @@ import {
   bundleRefsOf,
   DAILY_EVENTS,
   DAY_MS,
+  DOWNLOAD_MOVED_IN,
+  DOWNLOAD_MOVED_OUT,
   HOUR_MS,
   type InsightsSchema,
   isLaunch,
@@ -263,18 +265,39 @@ const countEvent = (
 };
 
 /**
+ * When the download series should chart a download, if not at its arrival: an
+ * earlier hour that hourly rows still keep. Pruning would lose an older one
+ * while the arrival hour's `OUT` still took the download away.
+ */
+const movedTo = (event: BundleEventRow, rawDays: number) => {
+  const occurredAt = event.metadata.occurred_at_ms;
+  return occurredAt !== undefined &&
+    hourOf(occurredAt) < hourOf(event.received_at_ms) &&
+    hourOf(occurredAt) + rawDays * DAY_MS > event.received_at_ms
+    ? occurredAt
+    : undefined;
+};
+
+/**
  * A stored event's outcome rows: its bundle filter's hour, when it has one
  * (`bundleRefsOf`), and every stored event's UTC day. A download that a
  * launch or crash implied counts in its bundle's download hour too, in the
  * hour of that launch or crash, so the download series covers what the
- * release's downloads count; the launch or crash is its row.
+ * release's downloads count; the launch or crash is its row. A download that
+ * happened in an earlier hour adds the two rows that move it on that series;
+ * a late one has no bundle filter, so it moves nothing.
  */
 const countOutcome = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   event: BundleEventRow,
+  rawDays: number,
 ) => {
   const shardBy = event.install_id;
-  const hour = (type: string, bundleRef: string) =>
+  const hour = (
+    type: string,
+    bundleRef: string,
+    at: number = event.received_at_ms,
+  ) =>
     tx.aggregate(
       "insights_outcomes",
       {
@@ -282,12 +305,19 @@ const countOutcome = (
         channel: event.channel,
         type,
         bundle_ref: bundleRef,
-        bucket_start_ms: hourOf(event.received_at_ms),
+        bucket_start_ms: hourOf(at),
       },
       { events: 1 },
       { shardBy },
     );
-  for (const bundleRef of bundleRefsOf(event)) hour(event.type, bundleRef);
+  const moved = movedTo(event, rawDays);
+  for (const bundleRef of bundleRefsOf(event)) {
+    hour(event.type, bundleRef);
+    if (moved !== undefined) {
+      hour(DOWNLOAD_MOVED_OUT, bundleRef);
+      hour(DOWNLOAD_MOVED_IN, bundleRef, moved);
+    }
+  }
   if (event.metadata.implied_download === true) {
     hour(
       "UPDATE_DOWNLOADED",
@@ -605,6 +635,7 @@ const repeatsHead = (event: BundleEventRow, head: Head) =>
 export const recordEvent = (
   db: HotUpdaterDatabase<InsightsSchema>,
   event: BundleEventRow,
+  rawDays: number,
 ): Promise<void> => {
   assertBundleEventRow(event);
   return db.transaction(async (tx) => {
@@ -627,7 +658,7 @@ export const recordEvent = (
       (recorded.metadata.change !== undefined && !late)
     ) {
       tx.create("bundle_events", recorded);
-      countOutcome(tx, recorded);
+      countOutcome(tx, recorded, rawDays);
     }
     if (recorded.type === "UPDATE_FAILED") {
       countFailure(tx, recorded);

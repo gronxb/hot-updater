@@ -118,6 +118,12 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
    * server counted that download with it.
    */
   readonly implied_download?: true;
+  /**
+   * `UPDATE_DOWNLOADED`, set by the server only when it differs from arrival
+   * by an hour bucket: when the download happened, which the Adoption chart
+   * uses. Everything else dates the report by `received_at_ms`.
+   */
+  readonly occurred_at_ms?: number;
 };
 
 export type BundleEventRowBase = {
@@ -216,7 +222,8 @@ export const isDatabaseBundleEventMetadata = (
   isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean") &&
   isOptional(value, "change", isBundleEventChange) &&
   isOptional(value, "late", (flag) => flag === true) &&
-  isOptional(value, "implied_download", (flag) => flag === true);
+  isOptional(value, "implied_download", (flag) => flag === true) &&
+  isOptional(value, "occurred_at_ms", (time) => Number.isSafeInteger(time));
 
 export const isRecord = (
   value: unknown,
@@ -294,16 +301,20 @@ const hasEventInvariants = (row: Readonly<Record<string, unknown>>) =>
     (row.type !== "UPDATE_FAILED" ||
       (isRecord(row.metadata) && isRecord(row.metadata.failure))) &&
     // Only a kept UNCHANGED row says what changed; only a download or an
-    // apply arrives late; only a launch or a crash implies a download.
+    // apply arrives late; only a launch or a crash implies a download; only
+    // a download keeps when it happened.
     !hasMetadata(row, "change") &&
     (!hasMetadata(row, "late") ||
       row.type === "UPDATE_DOWNLOADED" ||
       row.type === "UPDATE_APPLIED") &&
     (!hasMetadata(row, "implied_download") ||
       row.type === "UPDATE_APPLIED" ||
-      row.type === "RECOVERED")) ||
+      row.type === "RECOVERED") &&
+    (!hasMetadata(row, "occurred_at_ms") ||
+      row.type === "UPDATE_DOWNLOADED")) ||
   (row.type === "UNCHANGED" &&
     !hasMetadata(row, "late") &&
+    !hasMetadata(row, "occurred_at_ms") &&
     row.from_bundle_id === null &&
     updateStrategyOf(row) === null);
 

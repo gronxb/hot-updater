@@ -239,6 +239,23 @@ const failureOf = (n: number, install: number, check = false) =>
   } as Partial<BundleEventRow>);
 
 /**
+ * A download that arrived on day 10 and happened on day 9, in a channel no
+ * other event uses, so it adds to no other read of this suite.
+ */
+const movedDownload = eventOf(300, {
+  type: "UPDATE_DOWNLOADED",
+  install_id: "install-moved",
+  channel: "canary",
+  to_release_id: "release-moved",
+  to_bundle_id: "bundle-moved",
+  metadata: {
+    ...eventOf(0).metadata,
+    occurred_at_ms: T0 + 9 * DAY,
+  },
+  received_at_ms: T0 + 10 * DAY,
+} as Partial<BundleEventRow>);
+
+/**
  * History event `n` of the day before T0, three an hour, on its own release
  * and bundles: every windowed read, which starts at T0 or later, skips it.
  */
@@ -382,6 +399,7 @@ const seed = async (database: MeasuredDatabase) => {
   await api.insights.recordEvent(failureOf(1, 3));
   await api.insights.recordEvent(failureOf(2, 5));
   await api.insights.recordEvent(failureOf(3, 7, true));
+  await api.insights.recordEvent(movedDownload);
   // Three Remote Config versions; the last is active.
   for (const [baseVersion, greeting] of ["Hi", "Hello", "Hey"].entries()) {
     await api.remoteConfig.publish({
@@ -747,6 +765,26 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 1, rows: 6 },
     check: (points) =>
       expect(points.map(({ events }) => events)).toEqual([24, 0, 1]),
+  }),
+  budget({
+    api: "countEventSeries of downloads: three reads, for the rows that move one",
+    // The download row at its arrival, its correction out of that hour, and
+    // its correction into the hour it happened: one shard row each.
+    read: ({ insights }) =>
+      insights.countEventSeries({
+        filter: {
+          platform: "ios",
+          channel: "canary",
+          type: "UPDATE_DOWNLOADED",
+          toBundleId: "bundle-moved",
+        },
+        timeRange: { start: T0 + 9 * DAY, end: T0 + 11 * DAY },
+        intervalMs: DAY,
+      }),
+    adapter: reads(0, 0, 3, 3),
+    engine: { calls: 3, rows: 3 },
+    check: (points) =>
+      expect(points.map(({ events }) => events)).toEqual([1, 0]),
   }),
   budget({
     api: "countLatestEvents: buckets in the window × shards, all used",

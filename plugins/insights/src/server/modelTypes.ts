@@ -201,7 +201,9 @@ export interface InsightsModel {
   countEvents(input: InsightsCountEventsInput): Promise<number>;
   /**
    * A bundle filter's stored events in each interval, every interval
-   * present in order, from the hourly counts that `countEvents` reads.
+   * present in order, from the hourly counts that `countEvents` reads. A
+   * download filter charts a report that waited by when the download happened
+   * (`metadata.occurred_at_ms`), where `countEvents` counts it on arrival.
    */
   countEventSeries(
     input: InsightsCountEventSeriesInput,

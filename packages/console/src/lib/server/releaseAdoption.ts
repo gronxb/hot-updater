@@ -145,7 +145,8 @@ export async function getAdoptionRelease(
  * One bundle's counts of one type in each interval of the period, from
  * their hourly counts, never the events or the release table. Downloads are
  * the bundle's download hours, which count the downloads a launch or crash
- * implied too. Launches add two series: apply reports, and the kept
+ * implied too, and date a report that waited by when it happened. Launches add
+ * two series: apply reports, and the kept
  * UNCHANGED reports that moved an installation to the bundle with no apply
  * report.
  */

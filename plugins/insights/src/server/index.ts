@@ -83,7 +83,8 @@ const createInsightsApi = (
   /** How long this plugin keeps its rows. */
   retention,
   /** Records one validated event row; a repeated id changes nothing. */
-  recordEvent: (event: BundleEventRow) => recordEvent(db, event),
+  recordEvent: (event: BundleEventRow) =>
+    recordEvent(db, event, retention.rawDays),
   listEvents: (input: InsightsListEventsInput) => listEvents(db, input),
   findLatestEvents: (input: InsightsFindLatestEventsInput) =>
     findLatestEvents(db, input),

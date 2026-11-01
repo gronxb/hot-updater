@@ -40,6 +40,13 @@ export type CreateBundleEventRequestBase = {
    * server creates the ID, and a retry counts as another report.
    */
   readonly eventId?: string;
+  /**
+   * How long ago a report that waited on the device was made, measured on the
+   * device's clock, so its clock offset cancels. A download is charted that
+   * long before it arrived, when this is over 0 and at most 72 hours. Anything
+   * else, or none, dates it by its arrival.
+   */
+  readonly ageMs?: number;
   readonly metadata?: { readonly httpResponse?: InsightsHttpResponse };
   readonly installId: string;
   readonly toBundleId: string;
