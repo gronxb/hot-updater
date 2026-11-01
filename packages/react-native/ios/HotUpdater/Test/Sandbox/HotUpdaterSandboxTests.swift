@@ -47,8 +47,8 @@ private final class FakeHost: HotUpdaterSandboxHost {
     var stageGate: Gate<HotUpdaterSandboxStaged>?
     var stageResult: Result<HotUpdaterSandboxStaged, Error> = .success(.update(bundleId: "ota"))
     var progressReporter: ((Double) -> Void)?
-    /// Whether a staging moves what a launch selects: not once a launch is fixed.
-    var launchFixed = false
+    /// The OTA this process launched, which stays what it runs after a reset deletes it.
+    var runningBundleId: String?
     var channelAfterStaging: String?
     var runsDevServer = false
     var devExits = 0
@@ -81,6 +81,10 @@ private final class FakeHost: HotUpdaterSandboxHost {
         )
     }
 
+    func launchBundleId() async -> String {
+        runningBundleId ?? bundleId
+    }
+
     func preflight(channel: String) async throws -> Bool {
         calls.append("preflight \(channel)")
         if let preflightGate { return try await preflightGate.wait() }
@@ -108,7 +112,7 @@ private final class FakeHost: HotUpdaterSandboxHost {
         }
         if case .update(let bundleId) = staged {
             self.channel = channelAfterStaging ?? channel
-            if !launchFixed { self.bundleId = bundleId }
+            self.bundleId = bundleId
         }
         return staged
     }
@@ -118,6 +122,7 @@ private final class FakeStore: HotUpdaterSandboxStore {
     var pendingLinks: [String] = []
     var selected: [String] = []
     var opened: [String] = []
+    var openedBundles: [String] = []
 
     func recordSelected(_ selection: HotUpdaterSandboxSelection) {
         selected.append(selection.channel)
@@ -125,6 +130,7 @@ private final class FakeStore: HotUpdaterSandboxStore {
 
     func recordOpened(_ selection: HotUpdaterSandboxSelection) {
         opened.append(selection.channel)
+        openedBundles.append(selection.bundleId)
     }
 }
 
@@ -172,6 +178,15 @@ struct HotUpdaterSandboxCoordinatorTests {
             Issue.record("expected the link to ask again")
             return
         }
+    }
+
+    @Test
+    func openingInADevSessionRecordsNoBundleAsOpened() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        await fixture.coordinator.open()
+        #expect(fixture.store.opened.isEmpty)
+        #expect(fixture.opens.count == 1)
     }
 
     @Test
@@ -412,6 +427,54 @@ struct HotUpdaterSandboxCoordinatorTests {
     }
 
     @Test
+    func goingOfflineOverARunningOtaShowsTheBuiltInSelectionNotTheDeletedBundle() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-0"
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
+        fixture.host.stageResult = .failure(FakeError.offline)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        guard case .failed(_, _, _, _, let selection) = fixture.coordinator.state.phase else {
+            Issue.record("expected the check's failure")
+            return
+        }
+        #expect(selection.bundleId == "built-in")
+        #expect(selection.isBuiltIn)
+        #expect(fixture.store.selected == ["sandbox-release"])
+    }
+
+    @Test
+    func theNextLaunchIsWhatStorageHoldsOnceALaunchIsFixed() {
+        func next(_ running: String?, _ launch: String?, _ active: String?) -> String {
+            hotUpdaterSandboxNextLaunchBundleId(
+                runningBundleId: running,
+                launchBundleId: launch,
+                activeBundleId: active,
+                builtInBundleId: "built-in"
+            )
+        }
+        // Before any launch, the SDK's read is what a launch would pick.
+        #expect(next(nil, "ota", "ota") == "ota")
+        #expect(next(nil, nil, nil) == "built-in")
+        // A running OTA a reset deleted: its read still names it, and storage holds nothing.
+        #expect(next("ota", "ota", nil) == "built-in")
+        // A running OTA with another staged.
+        #expect(next("ota", "ota", "next") == "next")
+        // A launch of the built-in bundle with an OTA staged since.
+        #expect(next(nil, nil, "next") == "next")
+    }
+
+    @Test
+    func openRecordsWhatThisLaunchRuns() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "built-in"
+        fixture.host.runningBundleId = "ota-0"
+        await fixture.coordinator.open()
+        #expect(fixture.store.openedBundles == ["ota-0"])
+    }
+
+    @Test
     func nothingForTheTargetAfterTheResetIsAFailureThatSaysSo() async {
         let fixture = Fixture()
         fixture.host.stageResult = .success(.noUpdate)
@@ -481,11 +544,14 @@ struct HotUpdaterSandboxCoordinatorTests {
     @Test
     func aFixedLaunchNeedsAReload() async {
         let fixture = Fixture()
-        fixture.host.launchFixed = true
+        fixture.host.bundleId = "ota-0"
+        fixture.host.runningBundleId = "ota-0"
         fixture.coordinator.switchTo("pr-1")
         await settle()
         #expect(fixture.opens.count == 1)
         #expect(fixture.opens[0] == (true, true))
+        // The screen says what the next launch runs, not what this one does.
+        #expect(fixture.coordinator.state.selection?.bundleId == "ota")
     }
 
     @Test
@@ -545,6 +611,36 @@ struct HotUpdaterSandboxCoordinatorTests {
             return
         }
         #expect(fixture.store.pendingLinks.isEmpty)
+    }
+
+    @Test
+    func aScreenClosesOnlyOnceNothingIsLeftToAnswer() async {
+        let fixture = Fixture()
+        var closes = 0
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.receiveLink(link("pr-2", fingerprintHash: "other"))
+        fixture.coordinator.receiveLink(link("pr-3"))
+
+        // Declined: the refusal behind it is on screen now.
+        fixture.coordinator.dismiss { closes += 1 }
+        guard case .refused = fixture.coordinator.state.phase else {
+            Issue.record("expected the refusal")
+            return
+        }
+        #expect(closes == 0)
+
+        // Acknowledged: the third link asks next.
+        fixture.coordinator.dismiss { closes += 1 }
+        guard case .confirming(let next) = fixture.coordinator.state.phase else {
+            Issue.record("expected the third link")
+            return
+        }
+        #expect(next.channel == "pr-3")
+        #expect(closes == 0)
+
+        fixture.coordinator.dismiss { closes += 1 }
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(closes == 1)
     }
 
     @Test

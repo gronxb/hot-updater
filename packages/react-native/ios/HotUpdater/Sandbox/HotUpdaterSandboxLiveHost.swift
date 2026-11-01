@@ -49,13 +49,28 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         let impl = impl
         return await Task.detached {
             let builtIn = HotUpdaterImpl.minBundleId()
-            let bundleId = impl.bundleIdForUpdateCheck() ?? builtIn
+            // Read first: before a launch, it settles what the previous process left.
+            let launchBundleId = impl.bundleIdForUpdateCheck()
+            let active = impl.getActiveUpdateState()["activeSelection"] as? [String: Any]
+            let bundleId = hotUpdaterSandboxNextLaunchBundleId(
+                runningBundleId: impl.runningBundleId(),
+                launchBundleId: launchBundleId,
+                activeBundleId: active?["bundleId"] as? String,
+                builtInBundleId: builtIn
+            )
             return HotUpdaterSandboxSelection(
                 channel: impl.getChannel(),
                 defaultChannel: impl.getDefaultChannel(),
                 bundleId: bundleId,
                 isBuiltIn: bundleId == builtIn
             )
+        }.value
+    }
+
+    func launchBundleId() async -> String {
+        let impl = impl
+        return await Task.detached {
+            impl.bundleIdForUpdateCheck() ?? HotUpdaterImpl.minBundleId()
         }.value
     }
 

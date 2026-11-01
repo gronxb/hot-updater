@@ -56,7 +56,7 @@ internal data class HotUpdaterSandboxLink(
                 Normalizer.isNormalized(channel, Normalizer.Form.NFC) &&
                 channel.codePointCount(0, channel.length) <= MAX_CHANNEL_CODE_POINTS
 
-        private fun Char.isJsWhitespace() = isWhitespace() || this == '﻿'
+        private fun Char.isJsWhitespace() = isWhitespace() || this == '\uFEFF'
 
         /** `decodeURIComponent`: null for a malformed escape or malformed UTF-8. */
         private fun percentDecode(value: String): String? {

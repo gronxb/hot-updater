@@ -53,7 +53,20 @@ internal class HotUpdaterSandboxLiveHost(
             val builtIn = HotUpdaterImpl.getMinBundleId()
             // In a dev session, what the next normal launch selects, with nothing settled.
             val normal = if (isRunningDevServer) HotUpdaterSandboxDev.normalSelection() else null
-            val bundleId = (if (isRunningDevServer) normal?.first else impl.getBundleIdForUpdateCheck()) ?: builtIn
+            // Read first: before a launch, it settles what the previous process left.
+            val launchBundleId = if (isRunningDevServer) null else impl.getBundleIdForUpdateCheck()
+            val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
+            val bundleId =
+                if (isRunningDevServer) {
+                    normal?.first ?: builtIn
+                } else {
+                    hotUpdaterSandboxNextLaunchBundleId(
+                        runningBundleId = impl.getRunningBundleId(),
+                        launchBundleId = launchBundleId,
+                        activeBundleId = active?.get("bundleId") as? String,
+                        builtInBundleId = builtIn,
+                    )
+                }
             HotUpdaterSandboxSelection(
                 channel = if (isRunningDevServer) normal?.second ?: impl.getDefaultChannel() else impl.getChannel(),
                 defaultChannel = impl.getDefaultChannel(),
@@ -61,6 +74,9 @@ internal class HotUpdaterSandboxLiveHost(
                 isBuiltIn = bundleId == builtIn,
             )
         }
+
+    override suspend fun launchBundleId(): String =
+        withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
 
     override suspend fun preflight(channel: String): Boolean =
         withContext(Dispatchers.IO) {

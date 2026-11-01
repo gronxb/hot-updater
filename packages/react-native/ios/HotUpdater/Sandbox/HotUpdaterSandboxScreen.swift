@@ -179,8 +179,7 @@ final class HotUpdaterSandboxScreen: UIViewController {
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-                self?.coordinator.dismiss()
-                self?.closeOverApp()
+                self?.dismissQuestion()
             })
             alert.addAction(UIAlertAction(title: "Open", style: .default) { [weak self] _ in
                 self?.coordinator.confirmLink()
@@ -188,8 +187,7 @@ final class HotUpdaterSandboxScreen: UIViewController {
         case .refused(let refusal):
             alert = UIAlertController(title: titleOf(refusal), message: messageOf(refusal), preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-                self?.coordinator.dismiss()
-                self?.closeOverApp()
+                self?.dismissQuestion()
             })
         case .failed(_, let target, _, let failure, let selection):
             let bundle = selection.isBuiltIn ? "built-in bundle" : "bundle \(selection.bundleId)"
@@ -211,9 +209,10 @@ final class HotUpdaterSandboxScreen: UIViewController {
     }
 
     /// The screen closes itself over the app once nothing is left to answer.
-    private func closeOverApp() {
-        if isOverApp(), coordinator.state.phase == .idle {
-            onClose()
+    private func dismissQuestion() {
+        coordinator.dismiss { [weak self] in
+            guard let self, self.isOverApp() else { return }
+            self.onClose()
         }
     }
 

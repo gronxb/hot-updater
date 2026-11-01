@@ -6,6 +6,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+#import "HotUpdaterSandboxEntryPoints.h"
+
 extern BOOL HotUpdaterPerformRecoveryReload(void);
 
 // What this file calls in the sandbox's Swift. Declared here, since the generated
@@ -225,6 +227,16 @@ static UIView *GatedView3(id self, SEL cmd, NSString *name, NSDictionary *props,
 
 // MARK: - Entry points
 
+/// Background work starts React Native before the host's handler runs. In the
+/// foreground the first screen is what a person is looking at, so a silent push
+/// that arrives then leaves it up: the host's handler runs, and the app waits.
+static void EnterForBackgroundWork(NSString *reason) {
+  HULog(@"entry point: %@, state=%ld", reason, (long)UIApplication.sharedApplication.applicationState);
+  if (UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) {
+    ReleaseReactNative(reason);
+  }
+}
+
 static void ReceiveOwnLinkWhileHeld(NSURL *url) {
   if (gReleased) return;
   gOwnLinkWhileHeld = url;
@@ -285,50 +297,9 @@ static void WrapApplicationDelegate(Class cls) {
   }),
       "v@:@@@?");
 
-  // Background entry points: React Native starts before the host's handler runs.
-  // A host without a handler gets one, since a silent push's launch is otherwise
-  // suspended before anything else could start React Native. It answers after most of
-  // the time the system allows, so the app's JavaScript gets it.
-  SEL remote = @selector(application:didReceiveRemoteNotification:fetchCompletionHandler:);
-  void (*originalRemote)(id, SEL, UIApplication *, NSDictionary *, id) = (void *)OriginalOf(cls, remote);
-  class_replaceMethod(
-      cls, remote,
-      imp_implementationWithBlock(^(id self, UIApplication *app, NSDictionary *payload, void (^done)(UIBackgroundFetchResult)) {
-        ReleaseReactNative(@"remote notification");
-        if (originalRemote) {
-          originalRemote(self, remote, app, payload, done);
-          return;
-        }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kUnhandledPushSeconds * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-                         done(UIBackgroundFetchResultNoData);
-                       });
-      }),
-      "v@:@@@?");
-
-  SEL fetch = @selector(application:performFetchWithCompletionHandler:);
-  void (*originalFetch)(id, SEL, UIApplication *, id) = (void *)OriginalOf(cls, fetch);
-  if (originalFetch) {
-    class_replaceMethod(
-        cls, fetch,
-        imp_implementationWithBlock(^(id self, UIApplication *app, id done) {
-          ReleaseReactNative(@"background fetch");
-          originalFetch(self, fetch, app, done);
-        }),
-        "v@:@@?");
-  }
-
-  SEL urlSession = @selector(application:handleEventsForBackgroundURLSession:completionHandler:);
-  void (*originalUrlSession)(id, SEL, UIApplication *, NSString *, id) = (void *)OriginalOf(cls, urlSession);
-  if (originalUrlSession) {
-    class_replaceMethod(
-        cls, urlSession,
-        imp_implementationWithBlock(^(id self, UIApplication *app, NSString *identifier, id done) {
-          ReleaseReactNative(@"background URL session");
-          originalUrlSession(self, urlSession, app, identifier, done);
-        }),
-        "v@:@@@?");
-  }
+  HotUpdaterSandboxWrapBackgroundEntryPoints(cls, ^(NSString *reason) {
+    EnterForBackgroundWork(reason);
+  }, kUnhandledPushSeconds);
 }
 
 /// A scene's cold connection, and its warm links, activities and shortcuts.
@@ -405,18 +376,6 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
   gSetDelegate(self, cmd, delegate);
 }
 
-/// A task the app registered with BGTaskScheduler, on its way to the host's handler.
-static IMP gRegisterTask;
-static BOOL RegisterTask(id self, SEL cmd, NSString *identifier, dispatch_queue_t queue, void (^handler)(id)) {
-  void (^wrapped)(id) = ^(id task) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      ReleaseReactNative(@"background task");
-    });
-    handler(task);
-  };
-  return ((BOOL(*)(id, SEL, NSString *, dispatch_queue_t, id))gRegisterTask)(self, cmd, identifier, queue, wrapped);
-}
-
 @interface HotUpdaterSandboxGate : NSObject
 @end
 
@@ -476,8 +435,11 @@ static BOOL RegisterTask(id self, SEL cmd, NSString *identifier, dispatch_queue_
               }];
 
   Class scheduler = objc_getClass("BGTaskScheduler");
-  Method registerTask = scheduler ? class_getInstanceMethod(scheduler, NSSelectorFromString(@"registerForTaskWithIdentifier:usingQueue:launchHandler:")) : NULL;
-  if (registerTask) gRegisterTask = method_setImplementation(registerTask, (IMP)RegisterTask);
+  if (scheduler) {
+    HotUpdaterSandboxWrapTaskRegistration(scheduler, ^(NSString *reason) {
+      EnterForBackgroundWork(reason);
+    });
+  }
 }
 
 @end

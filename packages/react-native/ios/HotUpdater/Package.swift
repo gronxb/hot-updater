@@ -106,6 +106,8 @@ let package = Package(
                 "HotUpdaterSandboxBridge.swift",
                 "HotUpdaterSandboxDevOverride.m",
                 "HotUpdaterSandboxDevServer.swift",
+                "HotUpdaterSandboxEntryPoints.h",
+                "HotUpdaterSandboxEntryPoints.m",
                 "HotUpdaterSandboxGate.m",
                 "HotUpdaterSandboxLiveDevServer.swift",
                 "HotUpdaterSandboxLiveHost.swift",
@@ -119,9 +121,26 @@ let package = Package(
                 "HotUpdaterSandboxLink.swift",
             ]
         ),
+        .target(
+            name: "HotUpdaterSandboxEntryPoints",
+            path: "Sandbox",
+            exclude: [
+                "README.md",
+                "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxLaunchPolicy.swift",
+                "HotUpdaterSandboxLink.swift",
+                "HotUpdaterSandboxLiveHost.swift",
+                "HotUpdaterSandboxMarker.m",
+                "HotUpdaterSandboxScreen.swift",
+            ],
+            sources: ["HotUpdaterSandboxEntryPoints.m"],
+            publicHeadersPath: "."
+        ),
         .testTarget(
             name: "HotUpdaterSandboxTest",
-            dependencies: ["HotUpdaterSandboxCore"],
+            dependencies: ["HotUpdaterSandboxCore", "HotUpdaterSandboxEntryPoints"],
             path: "Test/Sandbox"
         ),
     ]

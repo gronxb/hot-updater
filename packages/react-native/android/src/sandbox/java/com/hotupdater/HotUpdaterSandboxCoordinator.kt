@@ -27,6 +27,29 @@ internal data class HotUpdaterSandboxSelection(
     val isBuiltIn: Boolean,
 )
 
+/**
+ * The bundle the next launch selects. The SDK's own read answers what this
+ * process runs once it has fixed a launch, a bundle a reset may have deleted by
+ * then, so after a launch the answer is what storage holds as active.
+ *
+ * @param runningBundleId the OTA this process launched; null before a launch, or
+ *   after one of the built-in bundle
+ * @param launchBundleId the SDK's read: the launched bundle, or before a launch the
+ *   bundle one would pick; null is the built-in bundle
+ * @param activeBundleId the stored active selection's bundle, or null
+ */
+internal fun hotUpdaterSandboxNextLaunchBundleId(
+    runningBundleId: String?,
+    launchBundleId: String?,
+    activeBundleId: String?,
+    builtInBundleId: String,
+): String =
+    if (runningBundleId == null && launchBundleId != null) {
+        launchBundleId
+    } else {
+        activeBundleId ?: builtInBundleId
+    }
+
 /** Everything the coordinator asks of the SDK and the device. */
 internal interface HotUpdaterSandboxHost {
     /** The fingerprint this build embeds, or null without one. */
@@ -42,8 +65,14 @@ internal interface HotUpdaterSandboxHost {
     /** Whether the app's JavaScript left a server config: a server answered one of its checks. */
     fun hasServerConfig(): Boolean
 
-    /** Settles the previous launch first, so a crash can't be read as a selection. */
+    /** What the next launch selects, as storage holds it. Settles the previous launch first, so a crash can't be read as a selection. */
     suspend fun selection(): HotUpdaterSandboxSelection
+
+    /**
+     * What this process's launch runs, or before one, what it would pick. It differs
+     * from a staged bundle once the launch is fixed, so only a restart applies a switch.
+     */
+    suspend fun launchBundleId(): String? = selection().bundleId
 
     /** Whether the target channel has a bundle this build would run. Throws when the server can't say. */
     suspend fun preflight(channel: String): Boolean
@@ -225,8 +254,12 @@ internal class HotUpdaterSandboxCoordinator(
         begin(phase.link.channel)
     }
 
-    /** Closes a declined link, a refusal, or a failure, and asks about the next link. */
-    fun dismiss() {
+    /**
+     * Closes a declined link, a refusal, or a failure, and asks about the next link.
+     * [onAnswered] runs only if nothing is left to answer, so a screen closing itself
+     * can't take the next question with it.
+     */
+    fun dismiss(onAnswered: (() -> Unit)? = null) {
         when (val phase = state.phase) {
             is HotUpdaterSandboxPhase.Confirming -> remove(phase.link.url)
             is HotUpdaterSandboxPhase.WaitingForServer -> remove(phase.link.url)
@@ -237,6 +270,7 @@ internal class HotUpdaterSandboxCoordinator(
         publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
         pump()
         openSwitchIfAnswered()
+        if (state.phase is HotUpdaterSandboxPhase.Idle) onAnswered?.invoke()
     }
 
     /**
@@ -289,7 +323,9 @@ internal class HotUpdaterSandboxCoordinator(
     fun open() {
         scope.launch {
             val selection = host.selection()
-            store.recordOpened(selection)
+            // What opens is what this launch runs, which may not be the next one's.
+            // A dev session runs no bundle, so it says nothing about one.
+            if (!host.isRunningDevServer) store.recordOpened(selection.copy(bundleId = host.launchBundleId()))
             publish(state.copy(selection = selection))
             openApp(false, false)
         }
@@ -385,9 +421,9 @@ internal class HotUpdaterSandboxCoordinator(
         store.recordSelected(selection)
         publish(state.copy(selection = selection, phase = HotUpdaterSandboxPhase.Idle))
         log("operation $operationId selected ${selection.channel} ${selection.bundleId}")
-        // Before React Native starts, a selection reads what the switch staged.
-        // A different answer means this process already fixed its launch.
-        switchToOpen = expectedBundleId != null && selection.bundleId != expectedBundleId
+        // Before React Native starts, this reads what the switch staged. A
+        // different answer means this process already fixed its launch.
+        switchToOpen = expectedBundleId != null && host.launchBundleId() != expectedBundleId
         pump()
         openSwitchIfAnswered()
     }
