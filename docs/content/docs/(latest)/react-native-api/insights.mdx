@@ -166,12 +166,6 @@ lands after a later report. The plugin logs a warning when a report cannot be
 delivered. Retries live in memory: a report still pending when the app closes
 or reloads is lost.
 
-The exception is a report held for the next launch when a forced update is
-staged, which stays on the device. Each launch tries it again until the server
-accepts it, answers `404`, or refuses it with another status that isn't retried.
-If its attempts fail when it is more than 30 days old, it is removed. The device
-holds at most four such reports, and the oldest makes room.
-
 ### When the server has Insights off
 
 A server without the `insights()` server plugin has no `POST /events` route

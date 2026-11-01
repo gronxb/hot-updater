@@ -10,7 +10,7 @@ import {
 } from "@hot-updater/protocol";
 
 import { boundedText, readErrorDetails } from "./errorDetails";
-import { createKeyedUUIDv7, createUUIDv7, timeOfUUIDv7 } from "./eventId";
+import { createKeyedUUIDv7, createUUIDv7 } from "./eventId";
 import {
   createInsightsEventSender,
   type InsightsDelivery,
@@ -20,7 +20,7 @@ import {
 import {
   createInsightsState,
   type InsightsState,
-  type QueuedEvent,
+  type RunningReport,
   utcDay,
   utcDayStart,
 } from "./state";
@@ -62,18 +62,16 @@ type Movement = Pick<
   | "metadata"
 >;
 
-/**
- * How old a stored report can be and still try again after its attempts fail:
- * the Console's longest period. A device offline for that long still delivers
- * it on its next attempt, and a server that always fails can't keep it forever.
- */
-const MAX_HANDED_OFF_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-type PendingEvent = QueuedEvent & {
+/** A report the plugin built, with what the gate needs to decide on it. */
+type PendingEvent = {
+  readonly body: InsightsEventBody;
+  readonly day: string;
+  /** For UNCHANGED, UPDATE_APPLIED and RECOVERED: what the report says runs. */
+  readonly report: RunningReport | null;
+  /** For UPDATE_FAILED: the day's key the failure is reported under. */
+  readonly failureKey: string | null;
   /** For UPDATE_FAILED: a later success for its target made it moot. */
   superseded?: boolean;
-  /** Stored for the next launch. An answer to a request in flight still counts. */
-  handedOff?: boolean;
 };
 
 const normalizeUserId = (user: InsightsUser | null): string | null => {
@@ -117,8 +115,6 @@ const setUpInsights = (
   /** A download in this runtime: a later no-change report would hide it. */
   let didDownload = false;
   let lastDownloadedSelection: string | null = null;
-  /** The bundle the latest check of this runtime forces. */
-  let forcedBundleId: string | null = null;
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
 
@@ -248,14 +244,6 @@ const setUpInsights = (
   };
 
   const onUpdateCheck = (result: UpdateCheckResult) => {
-    // `occurredAt` marks a check native made before this runtime started, which
-    // this runtime does not reload for.
-    if (result.occurredAt === undefined) {
-      forcedBundleId =
-        result.status === "UPDATE_AVAILABLE" && result.shouldForceUpdate
-          ? result.toBundleId
-          : null;
-    }
     if (result.status !== "UNCHANGED") return;
     reportLaunch(
       result.channel,
@@ -269,19 +257,6 @@ const setUpInsights = (
   };
 
   const onBundleDownloaded = (info: BundleDownloadedInfo) => {
-    // The app normally reloads right after staging a forced bundle, and React
-    // Native can abort when a request starts while a reload tears its modules
-    // down. So what exists now waits for the next launch, and starts no request
-    // here. Later reports send as usual, whether or not a reload comes.
-    const forced =
-      info.occurredAt === undefined && info.toBundleId === forcedBundleId;
-    if (forced) {
-      // The server stores an event once, so one in flight can be sent again.
-      for (const event of pending.values()) {
-        state?.handOffEvent(event);
-        event.handedOff = true;
-      }
-    }
     const selection = JSON.stringify([
       info.channel,
       info.toReleaseId,
@@ -289,31 +264,26 @@ const setUpInsights = (
     ]);
     if (lastDownloadedSelection === selection) return;
     lastDownloadedSelection = selection;
-    const event = createEvent(
-      {
-        type: "UPDATE_DOWNLOADED",
-        channel: info.channel,
-        fromBundleId: info.fromBundleId,
-        fromReleaseId: info.fromReleaseId,
-        toBundleId: info.toBundleId,
-        toReleaseId: info.toReleaseId,
-        updateStrategy: info.updateStrategy,
-        metadata: {
-          delivery: info.delivery,
-          ...(info.patchFallback ? { patchFallback: true } : {}),
-        },
-      },
-      undefined,
-      info.occurredAt,
-    );
-    if (forced) {
-      // The server has not heard of this download yet, so a later no-change
-      // report hides nothing.
-      if (event !== null) state?.handOffEvent(event);
-      return;
-    }
     didDownload = true;
-    enqueue(event);
+    enqueue(
+      createEvent(
+        {
+          type: "UPDATE_DOWNLOADED",
+          channel: info.channel,
+          fromBundleId: info.fromBundleId,
+          fromReleaseId: info.fromReleaseId,
+          toBundleId: info.toBundleId,
+          toReleaseId: info.toReleaseId,
+          updateStrategy: info.updateStrategy,
+          metadata: {
+            delivery: info.delivery,
+            ...(info.patchFallback ? { patchFallback: true } : {}),
+          },
+        },
+        undefined,
+        info.occurredAt,
+      ),
+    );
   };
 
   const onUpdateError = (error: UpdateError) => {
@@ -393,13 +363,8 @@ const setUpInsights = (
     if (event === undefined || state === null || context === null) {
       return false;
     }
-    if (event.handedOff === true) {
-      pending.delete(body);
-      return false;
-    }
     if (event.superseded === true || state.isPaused(context.now())) {
       pending.delete(body);
-      state.forgetHandedOffEvent(body.eventId);
       return false;
     }
     const admitted =
@@ -409,10 +374,7 @@ const setUpInsights = (
           ? event.failureKey === null ||
             !state.hasFailure(event.day, event.failureKey)
           : true;
-    if (!admitted) {
-      pending.delete(body);
-      state.forgetHandedOffEvent(body.eventId);
-    }
+    if (!admitted) pending.delete(body);
     return admitted;
   };
 
@@ -420,15 +382,7 @@ const setUpInsights = (
     const event = pending.get(body);
     pending.delete(body);
     if (event === undefined || state === null || context === null) return;
-    if (delivery === "failed") {
-      // No answer said no, so a stored report tries again at the next launch.
-      if (context.now() - timeOfUUIDv7(body.eventId) > MAX_HANDED_OFF_AGE_MS) {
-        state.forgetHandedOffEvent(body.eventId);
-      }
-      return;
-    }
-    state.forgetHandedOffEvent(body.eventId);
-    if (delivery === "rejected") return;
+    if (delivery === "failed") return;
     if (delivery === "disabled") {
       state.pause(context.now());
       return;
@@ -453,8 +407,6 @@ const setUpInsights = (
   if (pluginContext.isDebugBuild && options.debug !== true) return { api };
 
   send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-  // What an earlier runtime left goes first, ahead of what this one reports.
-  for (const event of pluginState.readHandedOffEvents()) enqueue(event);
   return {
     api,
     hooks: {
