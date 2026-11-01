@@ -91,8 +91,6 @@ export const serveDeviceProfile = (request: Request, id: string): Response => {
   return new Response(request.method === "HEAD" ? null : profile, {
     headers: {
       "cache-control": "no-store",
-      "content-disposition":
-        'attachment; filename="check-this-iphone.mobileconfig"',
       "content-type": "application/x-apple-aspen-config",
       "x-content-type-options": "nosniff",
     },
