@@ -65,6 +65,13 @@ export const consolePathOf = (
 export const nativeBuildDetailPath = (id: string) =>
   `/native-builds/${encodeURIComponent(id)}`;
 
+/**
+ * How long an Install button's link works. It sits in the `itms-services` URL,
+ * Safari's history and the installer's logs, and its holder can fetch the IPA
+ * with every UDID in its profile, so it lasts only as long as an install takes.
+ */
+export const NATIVE_BUILD_INSTALL_LINK_TTL_MS = 60 * 60 * 1000;
+
 /** The phone's own copy of its UDID, which the Console's server never keeps. */
 export const IOS_UDID_STORAGE_KEY = "hot-updater-ios-udid";
 

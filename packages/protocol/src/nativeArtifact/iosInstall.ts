@@ -51,6 +51,11 @@ export interface IpaInstallInfo {
   readonly devices: readonly string[];
   /** When the first of the app's profiles expires, or null with none. */
   readonly expiresAtMs: number | null;
+  /**
+   * The bundle ID of the app and of each extension with a profile of its own,
+   * the app's first: what signing a new `.ipa` needs a profile for.
+   */
+  readonly profileBundleIds: readonly string[];
 }
 
 /** A device's UDID: 40 hex digits, or 8 and 16 joined by a hyphen. */
@@ -115,6 +120,8 @@ interface Profile {
   readonly devices: ReadonlySet<string> | null;
   readonly getTaskAllow: boolean;
   readonly expiresAtMs: number | null;
+  /** What it is for, without its team prefix: null for a wildcard. */
+  readonly bundleId: string | null;
 }
 
 const readProfile = (bytes: Uint8Array, name: string): Profile => {
@@ -144,12 +151,20 @@ const readProfile = (bytes: Uint8Array, name: string): Profile => {
   }
 
   const entitlements = plist["Entitlements"];
+  const applicationId = isDict(entitlements)
+    ? entitlements["application-identifier"]
+    : undefined;
+  const bundleId =
+    typeof applicationId === "string"
+      ? applicationId.slice(applicationId.indexOf(".") + 1)
+      : null;
   return {
     allDevices: plist["ProvisionsAllDevices"] === true,
     devices: devices === undefined ? null : new Set(devices),
     getTaskAllow:
       isDict(entitlements) && entitlements["get-task-allow"] === true,
     expiresAtMs,
+    bundleId: bundleId === null || bundleId.includes("*") ? null : bundleId,
   };
 };
 
@@ -248,5 +263,11 @@ export const readIpaInstallInfo = async (
           .sort()
       : [],
     expiresAtMs: expiries.length === 0 ? null : Math.min(...expiries),
+    profileBundleIds: [
+      ...new Set([
+        bundleId,
+        ...profiles.flatMap((item) => item.bundleId ?? []),
+      ]),
+    ],
   };
 };

@@ -1,16 +1,17 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { AlertTriangle, Smartphone } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNativeBuildInstallEligibilityQuery } from "@/lib/api";
 import {
   consolePathOf,
   IOS_UDID_PATTERN,
   IOS_UDID_STORAGE_KEY,
+  NATIVE_BUILD_INSTALL_LINK_TTL_MS,
   nativeBuildDeviceAddCommand,
   nativeBuildDeviceProfilePath,
   nativeBuildItmsUrl,
@@ -59,6 +60,58 @@ export const useIosDevice = () => {
   }, []);
   return device;
 };
+
+/**
+ * How long before its link expires the page stops offering it: the installer
+ * fetches the manifest, then the IPA, only after the tester confirms the prompt.
+ */
+const INSTALL_LINK_MARGIN_MS = 5 * 60 * 1000;
+
+/**
+ * Whether a link read at `readAtMs` is past offering, measured on this phone's
+ * clock from when it arrived, since the phone's clock may disagree with the
+ * server's. A failed refresh leaves `readAtMs` where it was. Timers stop while
+ * the phone sleeps, so coming back to the page checks again.
+ */
+const useInstallLinkExpired = (readAtMs: number, holdsLink: boolean) => {
+  const [, check] = useReducer((count: number) => count + 1, 0);
+  const expiresAtMs =
+    readAtMs + NATIVE_BUILD_INSTALL_LINK_TTL_MS - INSTALL_LINK_MARGIN_MS;
+  useEffect(() => {
+    if (!holdsLink) return;
+    const timer = setTimeout(check, Math.max(0, expiresAtMs - Date.now()));
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("pageshow", check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("pageshow", check);
+    };
+  }, [expiresAtMs, holdsLink]);
+  return holdsLink && Date.now() >= expiresAtMs;
+};
+
+/** In place of Install once its link has expired: it never offers a dead link. */
+function RenewInstallLink({
+  fetching,
+  onRenew,
+}: {
+  readonly fetching: boolean;
+  readonly onRenew: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="text-xs text-muted-foreground" role="status">
+        This install link has expired.{fetching ? " Getting a new one." : ""}
+      </p>
+      {fetching ? null : (
+        <Button className={ACTION_CLASS} onClick={onRenew} variant="outline">
+          Get a new link
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function InstallButton({
   build,
@@ -134,6 +187,14 @@ export function IosInstall({
   readonly udid: string | null;
 }) {
   const eligibility = useNativeBuildInstallEligibilityQuery(build.id, udid);
+  const { refetch } = eligibility;
+  const expired = useInstallLinkExpired(
+    eligibility.dataUpdatedAt,
+    eligibility.data?.status === "installable",
+  );
+  useEffect(() => {
+    if (expired) void refetch();
+  }, [expired, refetch]);
   if (eligibility.isPending) {
     return <Skeleton aria-label="Reading this IPA" className="h-11 w-full" />;
   }
@@ -180,11 +241,20 @@ export function IosInstall({
     );
   }
   if (token === null) return null;
+  const install = ({ secondary = false } = {}) =>
+    expired ? (
+      <RenewInstallLink
+        fetching={eligibility.isFetching}
+        onRenew={() => void refetch()}
+      />
+    ) : (
+      <InstallButton build={build} secondary={secondary} token={token} />
+    );
   if (result.device === "included") {
     return (
       <div className="flex min-w-0 flex-col gap-3">
         <p className="text-sm font-medium">This iPhone is in this build.</p>
-        <InstallButton build={build} token={token} />
+        {install()}
         <InstallNotes />
       </div>
     );
@@ -205,7 +275,7 @@ export function IosInstall({
           value={nativeBuildDeviceAddCommand(udid ?? "")}
           wrap
         />
-        <InstallButton build={build} secondary token={token} />
+        {install({ secondary: true })}
         <InstallNotes />
       </div>
     );
@@ -222,7 +292,7 @@ export function IosInstall({
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <CheckThisIphone build={build} />
-        <InstallButton build={build} secondary token={token} />
+        {install({ secondary: true })}
       </div>
       <InstallNotes />
     </div>

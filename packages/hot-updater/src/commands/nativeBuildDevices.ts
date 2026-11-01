@@ -179,7 +179,7 @@ export const handleNativeBuildDevicesAdd = async (
           ),
           ui.withCommand(
             "A Mac or self-hosted runner reuses its saved profile, which can't gain a device either. Remove it there first:",
-            removeSavedAdHocProfileCommand(bundleId),
+            removeSavedAdHocProfileCommand([bundleId]),
           ),
         ].join("\n"),
       );

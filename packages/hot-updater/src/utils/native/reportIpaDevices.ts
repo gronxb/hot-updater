@@ -64,7 +64,7 @@ export const reportIpaDevices = async ({
         [
           `${udid} isn't in this .ipa.`,
           `If native-build devices list --scheme ${scheme} shows it, this machine reused its saved profile. Remove it, and build again:`,
-          removeSavedAdHocProfileCommand(info.bundleId),
+          removeSavedAdHocProfileCommand(info.profileBundleIds),
         ].join("\n"),
       );
       process.exitCode = 1;

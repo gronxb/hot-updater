@@ -16,10 +16,10 @@ vi.mock("virtual:hot-updater-console/request-guard", () => ({
   default: undefined,
 }));
 
+import { NATIVE_BUILD_INSTALL_LINK_TTL_MS } from "../native-builds";
 import {
   CONSOLE_SECRET_ENV,
   createNativeBuildDownloadToken,
-  NATIVE_BUILD_INSTALL_LINK_TTL_MS,
   verifyNativeBuildDownloadToken,
 } from "./nativeBuildDownloadLink";
 import {

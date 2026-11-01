@@ -92,6 +92,7 @@ describe("readIpaInstallInfo", () => {
       distribution: "ad-hoc",
       devices: [PHONE.toLowerCase(), OLD_PHONE].sort(),
       expiresAtMs: Date.parse("2030-01-02T03:04:05Z"),
+      profileBundleIds: ["com.example.app"],
     });
   });
 
@@ -167,6 +168,30 @@ describe("readIpaInstallInfo", () => {
     );
     expect(info.devices).toEqual([PHONE.toLowerCase()]);
     expect(info.expiresAtMs).toBe(Date.parse("2029-06-01T00:00:00Z"));
+  });
+
+  it("names each extension a profile is for, without its team prefix or a wildcard", async () => {
+    const forApp = (applicationId: string) => {
+      const body = `<?xml?><plist><dict><key>Entitlements</key><dict><key>application-identifier</key><string>${applicationId}</string></dict><key>ProvisionedDevices</key><array><string>${PHONE}</string></array></dict></plist>`;
+      return inCms(body);
+    };
+    const info = await readIpaInstallInfo(
+      await ipa({
+        [`${APP}/Info.plist`]: INFO_PLIST,
+        [`${APP}/embedded.mobileprovision`]: forApp(
+          "Q3QT4ZF343.com.example.app",
+        ),
+        [`${APP}/PlugIns/Share.appex/embedded.mobileprovision`]: forApp(
+          "Q3QT4ZF343.com.example.app.share",
+        ),
+        [`${APP}/PlugIns/Any.appex/embedded.mobileprovision`]:
+          forApp("Q3QT4ZF343.*"),
+      }),
+    );
+    expect(info.profileBundleIds).toEqual([
+      "com.example.app",
+      "com.example.app.share",
+    ]);
   });
 
   it("refuses an IPA with too many extensions to read", async () => {

@@ -9,13 +9,6 @@ import { sameSecret } from "./local-console";
 export const NATIVE_BUILD_DOWNLOAD_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * How long an Install button's link works. It sits in the `itms-services` URL,
- * Safari's history and the installer's logs, and its holder can fetch the IPA
- * with every UDID in its profile, so it lasts only as long as an install takes.
- */
-export const NATIVE_BUILD_INSTALL_LINK_TTL_MS = 60 * 60 * 1000;
-
-/**
  * The Console's secret, which a hosted Console already has for its sessions:
  * a host's guide lists it. Links sign with a key derived from it, so a link
  * is never a signature the sessions could take, and rotating it ends both.

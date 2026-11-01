@@ -109,11 +109,12 @@ A [CI job](/docs/guides/ci-native-build) on a fresh runner has no saved profile,
 so its export gets a new one that lists every enabled device. A Mac or self-hosted
 runner reuses its saved profile without asking Apple, so a new iPhone can't reach
 that export until the profile is gone. `native-build devices add` prints this
-command for your app. It removes the app's ad hoc profiles from Xcode's folder, and
-Xcode makes a new one at the next export:
+command for your app, and a missing `--udid` prints it with your extensions too.
+It removes those exact ad hoc profiles from Xcode's folder, and Xcode makes new
+ones at the next export:
 
 ```bash
-grep -laE "(Ad Hoc Provisioning Profile|XC Ad Hoc): com.example.app" ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/* | xargs -I{} rm {}
+grep -laF -e 'Ad Hoc Provisioning Profile: com.example.app</string>' -e 'XC Ad Hoc: com.example.app</string>' ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/* | xargs -I{} rm {}
 ```
 
 Each rebuild becomes its scope's newest build, so bundles deployed before it no

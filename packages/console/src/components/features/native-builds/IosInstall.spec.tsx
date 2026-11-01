@@ -1,8 +1,17 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { IOS_UDID_STORAGE_KEY } from "@/lib/native-builds";
+import {
+  IOS_UDID_STORAGE_KEY,
+  NATIVE_BUILD_INSTALL_LINK_TTL_MS,
+} from "@/lib/native-builds";
 import type { NativeBuildInstallEligibility } from "@/lib/server/nativeBuildInstall";
 
 import { InstallCard } from "./InstallCard";
@@ -35,8 +44,20 @@ const row = {
   submitted_to: null,
 } as unknown as NativeBuildRow;
 
-const answer = (data: NativeBuildInstallEligibility) =>
-  installEligibilityQuery.mockReturnValue({ data, isPending: false });
+const refetch = vi.fn(async () => undefined);
+
+const answer = (
+  data: NativeBuildInstallEligibility,
+  query: { dataUpdatedAt?: number; isFetching?: boolean } = {},
+) =>
+  installEligibilityQuery.mockReturnValue({
+    data,
+    isPending: false,
+    isFetching: false,
+    dataUpdatedAt: Date.now(),
+    refetch,
+    ...query,
+  });
 
 const installable = (
   device: "unknown" | "included" | "not-included",
@@ -87,7 +108,11 @@ describe("isIosBrowser", () => {
 
 describe("IosInstall", () => {
   it("shows nothing to tap while it reads the IPA", () => {
-    installEligibilityQuery.mockReturnValue({ isPending: true });
+    installEligibilityQuery.mockReturnValue({
+      isPending: true,
+      dataUpdatedAt: 0,
+      refetch,
+    });
     render(<IosInstall build={row} udid={null} />);
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByLabelText("Reading this IPA")).toBeTruthy();
@@ -158,7 +183,12 @@ describe("IosInstall", () => {
   ])(
     "says the details are unavailable for %s, and offers no install",
     (_, data) => {
-      installEligibilityQuery.mockReturnValue({ data, isPending: false });
+      installEligibilityQuery.mockReturnValue({
+        data,
+        isPending: false,
+        dataUpdatedAt: 0,
+        refetch,
+      });
       render(<IosInstall build={row} udid={PHONE} />);
 
       expect(screen.getByText("Installation details unavailable")).toBeTruthy();
@@ -195,6 +225,108 @@ describe("IosInstall", () => {
       "BETTER_AUTH_SECRET",
     );
     expect(screen.queryByRole("link")).toBeNull();
+  });
+});
+
+describe("an Install link near its expiry", () => {
+  const MINUTE = 60_000;
+  const OFFERED_FOR = NATIVE_BUILD_INSTALL_LINK_TTL_MS - 5 * MINUTE;
+  const itmsLinks = () =>
+    screen
+      .queryAllByRole("link")
+      .filter((a) => a.getAttribute("href")?.startsWith("itms-services:"));
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("offers Install until the link is near its expiry, then takes it away and asks for a new one", () => {
+    answer(installable("included"));
+    render(<IosInstall build={row} udid={PHONE} />);
+    act(() => vi.advanceTimersByTime(OFFERED_FOR - MINUTE));
+    expect(itmsLinks()).toHaveLength(1);
+    expect(refetch).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(MINUTE));
+
+    expect(itmsLinks()).toHaveLength(0);
+    expect(screen.getByRole("status").textContent).toContain("expired");
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["visibilitychange", "pageshow"])(
+    "takes the link away on %s after the phone slept, when no timer ran",
+    (event) => {
+      answer(installable("included"));
+      render(<IosInstall build={row} udid={PHONE} />);
+
+      vi.setSystemTime(Date.now() + 2 * NATIVE_BUILD_INSTALL_LINK_TTL_MS);
+      expect(itmsLinks()).toHaveLength(1);
+      act(() => {
+        (event === "pageshow" ? window : document).dispatchEvent(
+          new Event(event),
+        );
+      });
+
+      expect(itmsLinks()).toHaveLength(0);
+      expect(refetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("never shows a dead link while the new one loads, or after it fails", () => {
+    const readAt = Date.now();
+    answer(installable("included"), {
+      dataUpdatedAt: readAt,
+      isFetching: true,
+    });
+    const view = render(<IosInstall build={row} udid={PHONE} />);
+    act(() => vi.advanceTimersByTime(OFFERED_FOR));
+    expect(itmsLinks()).toHaveLength(0);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Getting a new one",
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+
+    // A failed refresh keeps the old data and when it was read.
+    answer(installable("included"), { dataUpdatedAt: readAt });
+    view.rerender(<IosInstall build={row} udid={PHONE} />);
+    expect(itmsLinks()).toHaveLength(0);
+    refetch.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Get a new link" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("offers Install again once a new link arrives", () => {
+    const readAt = Date.now();
+    answer(installable("included"), { dataUpdatedAt: readAt });
+    const view = render(<IosInstall build={row} udid={PHONE} />);
+    act(() => vi.advanceTimersByTime(OFFERED_FOR));
+    expect(itmsLinks()).toHaveLength(0);
+
+    answer(installable("included"));
+    view.rerender(<IosInstall build={row} udid={PHONE} />);
+
+    expect(itmsLinks()).toHaveLength(1);
+  });
+
+  it.each(["unknown", "not-included"] as const)(
+    "takes Install anyway away for %s too, keeping the rest of the page",
+    (device) => {
+      answer(installable(device));
+      render(
+        <IosInstall build={row} udid={device === "unknown" ? null : PHONE} />,
+      );
+      act(() => vi.advanceTimersByTime(OFFERED_FOR));
+
+      expect(itmsLinks()).toHaveLength(0);
+      expect(screen.getByRole("status").textContent).toContain("expired");
+    },
+  );
+
+  it("asks for nothing for an IPA with no link to expire", () => {
+    answer({ status: "store" });
+    render(<IosInstall build={row} udid={PHONE} />);
+    act(() => vi.advanceTimersByTime(2 * NATIVE_BUILD_INSTALL_LINK_TTL_MS));
+    expect(refetch).not.toHaveBeenCalled();
   });
 });
 

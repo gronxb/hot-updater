@@ -12,12 +12,12 @@ import {
 
 import {
   NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM,
+  NATIVE_BUILD_INSTALL_LINK_TTL_MS,
   nativeBuildDownloadPath,
   nativeBuildManifestPath,
 } from "../native-builds";
 import {
   issueNativeBuildDownloadLink,
-  NATIVE_BUILD_INSTALL_LINK_TTL_MS,
   type NativeBuildDownloadLinkResult,
   refuseNativeBuildDownloadToken,
 } from "./nativeBuildDownloadLink";
