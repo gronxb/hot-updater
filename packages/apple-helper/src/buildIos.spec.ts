@@ -352,7 +352,8 @@ describe("buildIos", () => {
   it.each([
     ["app-store-connect", true],
     ["development", false],
-    ["release-testing", false],
+    ["release-testing", true],
+    ["ad-hoc", true],
   ])(
     "in CI, signs a %s export with the API key in a keychain of its own: %s",
     async (method, enabled) => {
@@ -371,13 +372,58 @@ describe("buildIos", () => {
       });
 
       expect(withSigningKeychain).toHaveBeenCalledWith(
-        expect.objectContaining({ enabled }),
+        expect.objectContaining({
+          enabled,
+          // A certificate that may have signed an ad hoc .ipa stays valid.
+          keepDistribution: ["release-testing", "ad-hoc"].includes(method),
+        }),
       );
       expect(exportXcodeArchive).toHaveBeenCalledWith(
         expect.objectContaining({ authenticationArgs: AUTHENTICATION_ARGS }),
       );
     },
   );
+
+  it("leaves only the .ipa of an export, so no log with its bearer token reaches the output or the cache", async () => {
+    vi.mocked(exportXcodeArchive).mockImplementationOnce(
+      async ({ exportPath }: { exportPath: string }) => {
+        await fs.mkdir(path.join(exportPath, "App.xcdistributionlogs"), {
+          recursive: true,
+        });
+        await Promise.all(
+          [
+            "App.ipa",
+            "Packaging.log",
+            "DistributionSummary.plist",
+            "ExportOptions.plist",
+            "App.xcdistributionlogs/IDEDistribution.verbose.log",
+          ].map((file) =>
+            fs.writeFile(
+              path.join(exportPath, file),
+              'Authorization = "Bearer eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJhIn0.c2lnbmF0dXJl"',
+            ),
+          ),
+        );
+        return { exportPath };
+      },
+    );
+
+    const { buildDirectory, buildArtifactPath, dispose } = await buildIos({
+      schemeConfig: scheme({
+        signing: { ascApiKey: secret("app-store-key") },
+      }),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials: ascKeyResolver(),
+    });
+
+    const files = await fs.readdir(buildDirectory, { recursive: true });
+    expect(
+      files.filter((file) => /log|Summary|ExportOptions/iu.test(file)),
+    ).toEqual([]);
+    expect(path.basename(buildArtifactPath)).toBe("App.ipa");
+    expect(files).toContain(path.join("export", "App.ipa"));
+    await dispose();
+  });
 
   it("needs no keychain of its own for a build with the project's signing", async () => {
     vi.stubEnv("CI", "true");

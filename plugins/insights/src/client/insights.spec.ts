@@ -2,7 +2,6 @@ import {
   isUUIDv7,
   type AppReadyResult,
   type BundleDownloadedInfo,
-  type UpdateCheckResult,
   type UpdateError,
 } from "@hot-updater/protocol";
 import {
@@ -22,7 +21,7 @@ const MORNING = Date.UTC(2026, 8, 30, 9);
 /** The device a test's launches share, and what the server received. */
 let storage: ClientPluginTestStorage;
 let sent: ClientPluginTestRequest[] = [];
-let responses: (number | (() => Response | Promise<Response>))[] = [];
+let responses: (number | (() => Response))[] = [];
 let appVersion: string | null = "1.0.0";
 let installId: () => string = () => "install-id";
 let isDebugBuild = false;
@@ -117,9 +116,6 @@ const downloadFailure = (
 });
 
 const flush = () => vi.runAllTimersAsync();
-
-const uuidV7Time = (id: string) =>
-  Number.parseInt(id.replaceAll("-", "").slice(0, 12), 16);
 
 describe("insights() client plugin", () => {
   beforeEach(() => {
@@ -974,216 +970,5 @@ describe("insights() client plugin", () => {
     expect(warn).toHaveBeenCalledWith(
       "[HotUpdater] Insights needs the native app version; the UNCHANGED event was not sent.",
     );
-  });
-
-  describe("a forced update", () => {
-    const forcedCheck: UpdateCheckResult = {
-      status: "UPDATE_AVAILABLE",
-      channel: "production",
-      fromBundleId: "bundle-a",
-      fromReleaseId: "release-a",
-      toBundleId: "bundle-b",
-      toReleaseId: "release-b",
-      transitionKind: "INSTALL",
-      updateStatus: "UPDATE",
-      shouldForceUpdate: true,
-      updateStrategy: "appVersion",
-    };
-
-    it("sends nothing beside the reload and hands the download to the next launch", async () => {
-      const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
-
-      expect(sent).toEqual([]);
-
-      vi.setSystemTime(MORNING + 1_000);
-      (await launch()).appReady(appliedLaunch);
-      await flush();
-
-      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED", "UPDATE_APPLIED"]);
-      expect(sentEvents()[0]).toMatchObject({
-        fromBundleId: "bundle-a",
-        toBundleId: "bundle-b",
-        metadata: { delivery: "manifest" },
-      });
-    });
-
-    it("keeps the download through a reload right after the hook returns", async () => {
-      const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-
-      // No microtask ran: the reload can take this runtime at any point after.
-      expect(storage.get("insights", "handedOffEvents") ?? "").toContain(
-        "UPDATE_DOWNLOADED",
-      );
-    });
-
-    it("sends a handed-off event once, under its original id", async () => {
-      const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
-
-      await launch();
-      await flush();
-      const [delivered] = sentEvents();
-      await launch();
-      await flush();
-
-      expect(sentEvents()).toEqual([delivered]);
-      expect(uuidV7Time(delivered?.eventId ?? "")).toBe(MORNING);
-    });
-
-    it("resends an event the reload took before the server answered", async () => {
-      responses = [() => new Promise<Response>(() => {})];
-      const app = await launch();
-      app.appReady(unchangedLaunch());
-      // Flushing would run the request's timeout, and it would not be in flight.
-      await vi.advanceTimersByTimeAsync(0);
-      const [inFlight] = sentEvents();
-
-      app.updateCheck(forcedCheck);
-      await launch();
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(sentEvents().map(({ eventId }) => eventId)).toEqual([
-        inFlight?.eventId,
-        inFlight?.eventId,
-      ]);
-    });
-
-    it("does not resend an event the server answered during the update", async () => {
-      let answer = (_response: Response) => {};
-      responses = [
-        () =>
-          new Promise<Response>((resolve) => {
-            answer = resolve;
-          }),
-      ];
-      const app = await launch();
-      app.appReady(unchangedLaunch());
-      await vi.advanceTimersByTimeAsync(0);
-      expect(sentTypes()).toEqual(["UNCHANGED"]);
-
-      app.updateCheck(forcedCheck);
-      answer(new Response(null, { status: 204 }));
-      await vi.advanceTimersByTimeAsync(0);
-      await launch();
-      await flush();
-
-      expect(sentTypes()).toEqual(["UNCHANGED"]);
-    });
-
-    it("moves a retry out of the way instead of retrying beside the reload", async () => {
-      responses = [500];
-      const app = await launch();
-      app.appReady(unchangedLaunch());
-      await vi.advanceTimersByTimeAsync(0);
-      expect(sentTypes()).toEqual(["UNCHANGED"]);
-
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
-
-      expect(sentTypes()).toEqual(["UNCHANGED"]);
-
-      await launch();
-      await flush();
-
-      expect(sentTypes()).toEqual([
-        "UNCHANGED",
-        "UNCHANGED",
-        "UPDATE_DOWNLOADED",
-      ]);
-      expect(sentEvents()[1]?.eventId).toBe(sentEvents()[0]?.eventId);
-    });
-
-    it("sends what it held at once when the forced update fails, since no reload follows", async () => {
-      const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.appReady(unchangedLaunch());
-      await flush();
-      expect(sent).toEqual([]);
-
-      app.updateError(downloadFailure());
-      await flush();
-
-      expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_FAILED"]);
-
-      await launch();
-      await flush();
-
-      expect(sentTypes()).toEqual(["UNCHANGED", "UPDATE_FAILED"]);
-    });
-
-    it("keeps holding when another bundle's update fails", async () => {
-      const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.updateError(downloadFailure({ targetBundleId: "bundle-c" }));
-      await flush();
-
-      expect(sent).toEqual([]);
-
-      await launch();
-      await flush();
-
-      expect(sentTypes()).toEqual(["UPDATE_FAILED"]);
-    });
-
-    it("sends right away after an update that is not forced", async () => {
-      const app = await launch();
-      app.updateCheck({ ...forcedCheck, shouldForceUpdate: false });
-      app.downloaded(download);
-      await flush();
-
-      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
-    });
-
-    it("sends right away for a forced check native made before this runtime", async () => {
-      const app = await launch();
-      app.updateCheck({ ...forcedCheck, occurredAt: MORNING - 1_000 });
-      app.downloaded(download);
-      await flush();
-
-      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
-    });
-
-    it("drops a handed-off report while the server has Insights off", async () => {
-      storage.set("insights", "pausedAt", String(MORNING - 1_000));
-      const app = await launch();
-      app.updateCheck(forcedCheck);
-      app.downloaded(download);
-      await flush();
-      await launch();
-      await flush();
-
-      expect(sent).toEqual([]);
-      expect(storage.get("insights", "handedOffEvents")).toBeNull();
-    });
-
-    it("ignores an unreadable handoff and keeps the storage value bounded", async () => {
-      storage.set("insights", "handedOffEvents", "{not json");
-      const app = await launch();
-      await flush();
-      expect(sent).toEqual([]);
-
-      app.updateCheck(forcedCheck);
-      for (let index = 0; index < 10; index++) {
-        app.downloaded({ ...download, toBundleId: `bundle-${index}` });
-      }
-      await flush();
-      await launch();
-      await flush();
-
-      expect(sentEvents().map(({ toBundleId }) => toBundleId)).toEqual([
-        "bundle-6",
-        "bundle-7",
-        "bundle-8",
-        "bundle-9",
-      ]);
-    });
   });
 });

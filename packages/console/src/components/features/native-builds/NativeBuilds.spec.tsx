@@ -16,18 +16,25 @@ import { NativeBuildsTable } from "./NativeBuildsTable";
 import { PatchesCard } from "./PatchesCard";
 import { firstDownloadOf, ServedNowCard } from "./ServedNowCard";
 
-const { downloadLinkQuery, downloadUrlQuery, patchesQuery, navigate } =
-  vi.hoisted(() => ({
-    downloadLinkQuery: vi.fn(),
-    downloadUrlQuery: vi.fn(),
-    patchesQuery: vi.fn(),
-    navigate: vi.fn(),
-  }));
+const {
+  downloadLinkQuery,
+  downloadUrlQuery,
+  installEligibilityQuery,
+  patchesQuery,
+  navigate,
+} = vi.hoisted(() => ({
+  downloadLinkQuery: vi.fn(),
+  downloadUrlQuery: vi.fn(),
+  installEligibilityQuery: vi.fn(),
+  patchesQuery: vi.fn(),
+  navigate: vi.fn(),
+}));
 
 vi.mock("@/lib/api", () => ({
   useConfigQuery: () => ({ data: { console: {} } }),
   useNativeBuildDownloadLinkQuery: downloadLinkQuery,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
+  useNativeBuildInstallEligibilityQuery: installEligibilityQuery,
   useNativeBuildPatchesQuery: patchesQuery,
 }));
 
@@ -518,12 +525,6 @@ describe("InstallCard", () => {
       /Scan with an Android phone's camera, then open the APK/,
     ],
     [
-      "ipa",
-      "ios",
-      "App.ipa",
-      /Scan to download\. The \.ipa installs only on devices its signing profile allows/,
-    ],
-    [
       "aab",
       "android",
       "app-release.aab",
@@ -553,6 +554,33 @@ describe("InstallCard", () => {
     },
   );
 
+  describe("an IPA, away from an iPhone", () => {
+    const ipa = () =>
+      build({
+        platform: "ios",
+        artifact_kind: "ipa",
+        artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+      });
+
+    it("holds this page in its QR code rather than the file, reads nothing about the IPA, and keeps the file's download", () => {
+      const row = ipa();
+      const { container } = render(<InstallCard build={row} />);
+
+      expect(
+        screen.getByRole("img", { name: "Open this page on an iPhone" }),
+      ).toBeTruthy();
+      expectQrCodeOf(
+        container,
+        `${window.location.origin}${window.location.pathname}`,
+      );
+      expect(screen.getByText(/Scan with an iPhone to install/)).toBeTruthy();
+      expect(installEligibilityQuery).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("link", { name: /Download App\.ipa/ }),
+      ).toBeTruthy();
+    });
+  });
+
   // Each fact once per card, counted over the card's text: the QR code's
   // caption says it, and the steps beside it don't say it again.
   it.each([
@@ -574,7 +602,7 @@ describe("InstallCard", () => {
       "ios",
       "App.ipa",
       {},
-      [/TestFlight/g, /devices/g, /Apple Configurator/g],
+      [/Scan with an iPhone/g, /registered device/g, /Apple Configurator/g],
     ],
     [
       "ipa",
@@ -685,7 +713,7 @@ describe("InstallCard", () => {
       />,
     );
 
-    expect(screen.getByText(/For testers:/)).toBeTruthy();
+    expect(screen.getByText(/For testers/)).toBeTruthy();
     expect(screen.getByText("npx hot-updater testflight")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Download App.ipa/ })).toBeTruthy();
   });

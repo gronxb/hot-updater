@@ -353,3 +353,21 @@ export const createNativeBuildDownloadLink = createServerFn({ method: "POST" })
       await import("./server/nativeBuildDownloadLink");
     return issueNativeBuildDownloadLink(data.id);
   });
+
+/**
+ * What an iPhone can do with one build: read from the IPA on demand, one row
+ * and a few storage requests, with the Install button's link when it can
+ * install. A POST, since it signs that link, and only for a signed-in caller.
+ */
+export const getNativeBuildInstallEligibility = createServerFn({
+  method: "POST",
+})
+  .middleware([consoleAccess])
+  .validator((input: { id: string; udid?: string }) => input)
+  .handler(async ({ data }) => {
+    const [deps, { checkNativeBuildInstall }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuildInstall"),
+    ]);
+    return checkNativeBuildInstall(data.id, data.udid, deps);
+  });

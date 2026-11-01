@@ -20,7 +20,7 @@ import {
 import {
   createInsightsState,
   type InsightsState,
-  type QueuedEvent,
+  type RunningReport,
   utcDay,
   utcDayStart,
 } from "./state";
@@ -62,7 +62,14 @@ type Movement = Pick<
   | "metadata"
 >;
 
-type PendingEvent = QueuedEvent & {
+/** A report the plugin built, with what the gate needs to decide on it. */
+type PendingEvent = {
+  readonly body: InsightsEventBody;
+  readonly day: string;
+  /** For UNCHANGED, UPDATE_APPLIED and RECOVERED: what the report says runs. */
+  readonly report: RunningReport | null;
+  /** For UPDATE_FAILED: the day's key the failure is reported under. */
+  readonly failureKey: string | null;
   /** For UPDATE_FAILED: a later success for its target made it moot. */
   superseded?: boolean;
 };
@@ -108,13 +115,6 @@ const setUpInsights = (
   /** A download in this runtime: a later no-change report would hide it. */
   let didDownload = false;
   let lastDownloadedSelection: string | null = null;
-  /**
-   * The bundle a check forces. The app reloads into it right after staging it,
-   * and React Native can abort when a request starts while a reload tears its
-   * modules down, so this runtime starts no more requests: its events wait in
-   * storage for the next launch.
-   */
-  let forcedBundleId: string | null = null;
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
 
@@ -189,10 +189,6 @@ const setUpInsights = (
         }
       }
     }
-    if (forcedBundleId !== null) {
-      state?.handOffEvent(event);
-      return;
-    }
     pending.set(event.body, event);
     void send(event.body).catch((error: unknown) => {
       console.warn(
@@ -200,14 +196,6 @@ const setUpInsights = (
         error,
       );
     });
-  };
-
-  /** Queues what an earlier runtime left, ahead of what this one reports. */
-  const sendHandedOffEvents = () => {
-    const queued = new Set([...pending.keys()].map((body) => body.eventId));
-    for (const event of state?.readHandedOffEvents() ?? []) {
-      if (!queued.has(event.body.eventId)) enqueue(event);
-    }
   };
 
   const reportLaunch = (
@@ -256,17 +244,7 @@ const setUpInsights = (
   };
 
   const onUpdateCheck = (result: UpdateCheckResult) => {
-    if (result.status !== "UNCHANGED") {
-      // `occurredAt` marks a check native made before this runtime started,
-      // which this runtime does not reload for.
-      if (result.shouldForceUpdate && result.occurredAt === undefined) {
-        forcedBundleId = result.toBundleId;
-        // What is queued or in flight may not outlive the reload. The server
-        // stores an event once, so one delivered meanwhile can be sent again.
-        for (const event of pending.values()) state?.handOffEvent(event);
-      }
-      return;
-    }
+    if (result.status !== "UNCHANGED") return;
     reportLaunch(
       result.channel,
       result.bundleId,
@@ -313,11 +291,6 @@ const setUpInsights = (
     // and its report would not arrive either.
     if (error.stage === "check" && error.reason === "network") return;
     const targetBundleId = error.targetBundleId ?? error.bundleId;
-    if (error.stage !== "check" && targetBundleId === forcedBundleId) {
-      // The forced update failed, so no reload follows.
-      forcedBundleId = null;
-      sendHandedOffEvents();
-    }
     const details = readErrorDetails(error.cause);
     const failureKey = JSON.stringify([
       error.stage,
@@ -390,14 +363,8 @@ const setUpInsights = (
     if (event === undefined || state === null || context === null) {
       return false;
     }
-    if (forcedBundleId !== null) {
-      state.handOffEvent(event);
-      pending.delete(body);
-      return false;
-    }
     if (event.superseded === true || state.isPaused(context.now())) {
       pending.delete(body);
-      state.forgetHandedOffEvent(body.eventId);
       return false;
     }
     const admitted =
@@ -407,10 +374,7 @@ const setUpInsights = (
           ? event.failureKey === null ||
             !state.hasFailure(event.day, event.failureKey)
           : true;
-    if (!admitted) {
-      pending.delete(body);
-      state.forgetHandedOffEvent(body.eventId);
-    }
+    if (!admitted) pending.delete(body);
     return admitted;
   };
 
@@ -418,7 +382,6 @@ const setUpInsights = (
     const event = pending.get(body);
     pending.delete(body);
     if (event === undefined || state === null || context === null) return;
-    state.forgetHandedOffEvent(body.eventId);
     if (delivery === "failed") return;
     if (delivery === "disabled") {
       state.pause(context.now());
@@ -444,7 +407,6 @@ const setUpInsights = (
   if (pluginContext.isDebugBuild && options.debug !== true) return { api };
 
   send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-  sendHandedOffEvents();
   return {
     api,
     hooks: {

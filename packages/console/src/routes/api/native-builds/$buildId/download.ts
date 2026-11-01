@@ -19,7 +19,8 @@ export const Route = createFileRoute("/api/native-builds/$buildId/download")({
         const { downloadNativeBuild } =
           await import("@/lib/server/nativeBuilds");
         // A request with a signed link answers to its token alone, signed
-        // in or not, and reaches this one route for this one build.
+        // in or not, and reaches this route and the install manifest's, for
+        // this one build.
         const token = new URL(request.url).searchParams.get(
           NATIVE_BUILD_DOWNLOAD_TOKEN_PARAM,
         );
