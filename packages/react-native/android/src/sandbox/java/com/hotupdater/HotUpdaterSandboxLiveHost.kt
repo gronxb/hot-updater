@@ -40,7 +40,16 @@ internal class HotUpdaterSandboxLiveHost(
     override suspend fun selection(): HotUpdaterSandboxSelection =
         withContext(Dispatchers.IO) {
             val builtIn = HotUpdaterImpl.getMinBundleId()
-            val bundleId = impl.getBundleIdForUpdateCheck() ?: builtIn
+            // Read first: before a launch, it settles what the previous process left.
+            val launchBundleId = impl.getBundleIdForUpdateCheck()
+            val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
+            val bundleId =
+                hotUpdaterSandboxNextLaunchBundleId(
+                    runningBundleId = impl.getRunningBundleId(),
+                    launchBundleId = launchBundleId,
+                    activeBundleId = active?.get("bundleId") as? String,
+                    builtInBundleId = builtIn,
+                )
             HotUpdaterSandboxSelection(
                 channel = impl.getChannel(),
                 defaultChannel = impl.getDefaultChannel(),
@@ -48,6 +57,11 @@ internal class HotUpdaterSandboxLiveHost(
                 isBuiltIn = bundleId == builtIn,
             )
         }
+
+    override suspend fun launchBundleId(): String =
+        withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
+
+    override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
 
     override suspend fun preflight(channel: String): Boolean =
         withContext(Dispatchers.IO) {

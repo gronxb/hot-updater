@@ -13,6 +13,7 @@ import {
   interactiveCommandOption,
   nativeBuildDryRunCommandOption,
   nativeBuildNoCacheCommandOption,
+  nativeBuildUdidCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildJsonCommandOption,
   nativeBuildSchemeCommandOption,
@@ -88,6 +89,10 @@ import {
   handleNativeBuildTestFlightGroup,
   handleNativeBuildInstall,
 } from "./commands/nativeBuild";
+import {
+  handleNativeBuildDevicesAdd,
+  handleNativeBuildDevicesList,
+} from "./commands/nativeBuildDevices";
 import { handleNativeBuildImport } from "./commands/nativeBuildImport";
 import { handlePromote } from "./commands/promote";
 import {
@@ -372,6 +377,51 @@ nativeBuildCommand
   .option("--json", "output what App Store Connect says of the build as JSON")
   .action(handleNativeBuildTestFlightGroup);
 
+const nativeBuildDevicesCommand = nativeBuildCommand
+  .command("devices")
+  .description(
+    "Register the iPhones an ad hoc build installs on, in App Store Connect",
+  );
+
+nativeBuildDevicesCommand
+  .command("add")
+  .description(
+    "Register iPhones with the Apple account, each at most once. The next .ipa built includes them",
+  )
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.ios scheme whose App Store Connect API key to use (default: the only one that builds for a device)",
+  )
+  .addOption(
+    new Option("--udid <udid>", "the iPhone's UDID; repeat it for each")
+      .argParser((value: string, previous: readonly string[] = []) => [
+        ...previous,
+        value,
+      ])
+      .makeOptionMandatory(),
+  )
+  .addOption(
+    new Option(
+      "--name <name>",
+      "the name App Store Connect shows: one for all of them, or one for each",
+    )
+      .argParser((value: string, previous: readonly string[] = []) => [
+        ...previous,
+        value,
+      ])
+      .makeOptionMandatory(),
+  )
+  .action(handleNativeBuildDevicesAdd);
+
+nativeBuildDevicesCommand
+  .command("list")
+  .description("List the iPhones the Apple account has registered")
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild.ios scheme whose App Store Connect API key to use (default: the only one that builds for a device)",
+  )
+  .action(handleNativeBuildDevicesList);
+
 nativeBuildCommand
   .command("delete")
   .description(
@@ -412,6 +462,7 @@ nativeBuildCommand
   .addOption(testFlightSubmitCommandOption)
   .addOption(testFlightGroupCommandOption)
   .addOption(whatToTestCommandOption)
+  .addOption(nativeBuildUdidCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)

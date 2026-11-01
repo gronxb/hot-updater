@@ -53,6 +53,11 @@ export const nativeBuildDryRunCommandOption = new Option(
   "Build, but record and submit nothing: no Hot Updater tracking, no store submission (like npm publish --dry-run)",
 );
 
+export const nativeBuildUdidCommandOption = new Option(
+  "--udid <udid>",
+  "after an iOS build, say whether its .ipa includes this iPhone; repeat it for each",
+).argParser((value, previous: readonly string[] = []) => [...previous, value]);
+
 export const nativeBuildNoCacheCommandOption = new Option(
   "--no-cache",
   "Build even when a build with the same inputs can be reused, such as after a change no key covers, like a provisioning profile",

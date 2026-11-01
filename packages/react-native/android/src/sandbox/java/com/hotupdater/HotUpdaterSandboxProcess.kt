@@ -26,8 +26,7 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         var hostStarted = false
             private set
 
-        private fun isHost(activity: Activity) =
-            activity !is HotUpdaterSandboxActivity && activity !is HotUpdaterRestartActivity
+        private fun isHost(activity: Activity) = activity !is HotUpdaterSandboxActivity && activity !is HotUpdaterRestartActivity
     }
 
     override fun onCreate(): Boolean {

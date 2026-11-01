@@ -113,7 +113,6 @@ describe("doctor's server", () => {
         catalog_hash: `sha256:${"0".repeat(64)}`,
       });
     });
-    await engine.dispose();
 
     await expect(doctor()).resolves.toMatchObject({
       success: false,

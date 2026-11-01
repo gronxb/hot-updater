@@ -43,7 +43,10 @@ const consoleFetch = async (input: string | URL | Request) => {
   return new Response(null, {
     status: 200,
     headers: {
-      "x-hot-updater-download-url": `${url.origin}/api/native-builds/${build}/download`,
+      "x-hot-updater-download-url":
+        url.searchParams.get("target") === "page"
+          ? `${url.origin}/native-builds/${build}`
+          : `${url.origin}/api/native-builds/${build}/download`,
     },
   });
 };
@@ -536,6 +539,67 @@ describe("runAction preview", () => {
     expect(body).toContain("npx hot-updater native-build install build-3");
     expect(body).not.toContain("xcrun simctl");
     expect(d.log.notice).not.toHaveBeenCalled();
+  });
+
+  it("shows the Console's QR code of an IPA's page, which the runner checked holds no file", async () => {
+    const fake = fakeCli({
+      builds: [
+        {
+          id: "build-ipa",
+          platform: "ios",
+          channel: "pr-12",
+          fingerprintHash: "fp-a",
+          appVersion: null,
+          kind: "ipa",
+        },
+      ],
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await runAction(d, env({ INPUT_PLATFORMS: "ios" }), event);
+
+    expect(d.fetch).toHaveBeenCalledTimes(1);
+    expect(d.fetch).toHaveBeenCalledWith(
+      "https://console.example.com/_hot-updater/native-builds/qr?build=build-ipa&target=page",
+      { method: "HEAD" },
+    );
+    const body = outputs["comment-body"]!;
+    expect(body).toContain("Scan with an iPhone");
+    expect(body).toContain(
+      '<img src="https://console.example.com/_hot-updater/native-builds/qr?build=build-ipa&amp;target=page"',
+    );
+    expect(d.log.notice).not.toHaveBeenCalled();
+  });
+
+  it("shows no IPA QR code when the Console's holds its download, as one without target=page does", async () => {
+    const fake = fakeCli({
+      builds: [
+        {
+          id: "build-ipa",
+          platform: "ios",
+          channel: "pr-12",
+          fingerprintHash: "fp-a",
+          appVersion: null,
+          kind: "ipa",
+        },
+      ],
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+    vi.mocked(d.fetch).mockResolvedValueOnce(
+      new Response(null, {
+        headers: {
+          "x-hot-updater-download-url":
+            "https://console.example.com/api/native-builds/build-ipa/download",
+        },
+      }),
+    );
+
+    await runAction(d, env({ INPUT_PLATFORMS: "ios" }), event);
+
+    expect(outputs["comment-body"]).not.toContain("<img");
+    expect(d.log.notice).toHaveBeenCalledWith(
+      "No QR code in the comment: the QR code at https://console.example.com/_hot-updater/native-builds/qr?build=build-ipa&target=page holds https://console.example.com/api/native-builds/build-ipa/download, not https://console.example.com/native-builds/build-ipa.",
+    );
   });
 
   it.each([

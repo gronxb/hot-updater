@@ -82,7 +82,7 @@ your app's JavaScript starts. **Open** starts your app.
 | Launcher icon, app running                             | The running app                    |
 | A sandbox link                                         | The screen, which asks to open it  |
 | Your app's own link, a notification, or a shortcut     | Your app, no screen                |
-| A silent push or a background task                     | Your app in the background         |
+| A silent push or a background task                     | Your app in the background. With the screen up, your app keeps waiting |
 | `reload()`                                             | Your app, no screen                |
 
 A sandbox link looks like this:
@@ -126,6 +126,11 @@ root before then starts your app at once, without the screen. On a host with no
 and starts as usual. A background launch that's neither a notification, a
 background fetch nor a registered task starts your app after 2 seconds.
 
+On iOS, return `HotUpdater.bundleURL()` from your delegate's `bundleURL` each time
+it's called. React Native loads what the delegate returns, so a URL stored before
+the screen can name a bundle the switch deleted: the app crashes once, and the next
+launch opens what's selected.
+
 An Expo config plugin that returns its own root from a React delegate handler is
 one of those: Hot Updater's CLI already refuses `expo-updates`, which does this.
 
@@ -138,8 +143,10 @@ in the `.ipa` before it uploads, and reads `buildAudienceType` afterwards. A bui
 that isn't `INTERNAL_ONLY` fails. Internal groups with access to all builds
 receive it, as they do any other build.
 
-A scheme's own `exportOptionsPlist` that sets
-`testFlightInternalTestingOnly` to `false` is refused.
+A scheme's own App Store Connect `exportOptionsPlist` that sets
+`testFlightInternalTestingOnly` to `false` is refused. A
+[`release-testing` export](/docs/native-builds/iphone-install) never reaches App
+Store Connect, so it takes no such flag.
 
 `--testflight-group <name>` adds the build to an internal group, and
 `--what-to-test <text>` sets its What to Test, once App Store Connect has processed

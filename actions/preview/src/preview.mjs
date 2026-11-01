@@ -17,6 +17,7 @@ import {
   consoleLink,
   nativeBuildDownloadLink,
   nativeBuildInstallUrl,
+  nativeBuildPageLink,
   previewLink,
   previewQrLink,
   renderClosedComment,
@@ -649,7 +650,7 @@ export const runPreview = async (deps, inputs, event) => {
   const qrCodes = [];
   /** @type {Platform[]} */
   const previewQrCodes = [];
-  for (const { platform, nativeBuild, target, sandbox } of previews) {
+  for (const { platform, nativeBuild, target, sandbox, store } of previews) {
     if (sandbox) {
       if (
         sandbox.link !== null &&
@@ -668,15 +669,20 @@ export const runPreview = async (deps, inputs, event) => {
       }
       continue;
     }
+    // An IPA's holds its page, where an iPhone checks whether it can install.
+    const page = nativeBuild.artifactKind === "ipa";
     if (
-      nativeBuild.artifactKind === "apk" &&
+      (nativeBuild.artifactKind === "apk" || (page && !store)) &&
       (await servesQr(
         deps,
         consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
           build: nativeBuild.id,
+          ...(page ? { target: "page" } : {}),
         }),
         "x-hot-updater-download-url",
-        nativeBuildDownloadLink(inputs.consoleUrl, nativeBuild.id),
+        page
+          ? nativeBuildPageLink(inputs.consoleUrl, nativeBuild.id)
+          : nativeBuildDownloadLink(inputs.consoleUrl, nativeBuild.id),
       ))
     ) {
       qrCodes.push(nativeBuild.id);

@@ -146,3 +146,43 @@ describe("log sinks", () => {
     expect(written).toContain("-Pkey.password=********");
   });
 });
+
+describe("JSON Web Tokens nothing registered", () => {
+  const TOKEN =
+    "eyJhbGciOiJFUzI1NiIsImtpZCI6IktFWSJ9.eyJpc3MiOiJpc3N1ZXIiLCJleHAiOjF9.c2lnbmF0dXJlLWJ5dGVz";
+
+  it("masks one in xcodebuild's output, as Xcode mints its own from the API key", () => {
+    const masked = maskSecretValues(`Authorization = "Bearer ${TOKEN}";`);
+    expect(masked).not.toContain("eyJ");
+    expect(masked).toContain("Authorization");
+  });
+
+  it("leaves build output that only looks a little like one", () => {
+    for (const line of [
+      "eyJ prefix only",
+      "com.example.app.share",
+      "Signing App.app.dSYM with eyJhbG.x.y",
+    ]) {
+      expect(maskSecretValues(line)).toBe(line);
+    }
+  });
+
+  it("masks one in what a build log's writer keeps", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "mask-log-"));
+    const file = path.join(directory, "build.log");
+    const writer = await createLogWriter({
+      prefix: "mask",
+      logFilePath: file,
+    });
+    // Split as xcodebuild's output may be, which is how a build's log arrives.
+    await writer.writeStream(
+      Readable.from([
+        `Authorization = "Bearer ${TOKEN.slice(0, 20)}`,
+        `${TOKEN.slice(20)}";\n`,
+      ]),
+    );
+    await writer.close();
+    expect(await fs.readFile(file, "utf-8")).not.toContain("eyJ");
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+});

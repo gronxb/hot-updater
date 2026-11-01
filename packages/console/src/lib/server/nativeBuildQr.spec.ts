@@ -20,6 +20,19 @@ describe("serveNativeBuildQr", () => {
     );
   });
 
+  it("holds the build's page with target=page, under the console's own path", () => {
+    const response = serveNativeBuildQr(
+      new Request(
+        `https://example.com/console/_hot-updater/native-builds/qr?build=${BUILD}&target=page`,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-hot-updater-download-url")).toBe(
+      `https://example.com/console/native-builds/${BUILD}`,
+    );
+  });
+
   it("answers HEAD with the URL and no image, for a probe", async () => {
     const response = serveNativeBuildQr(
       new Request(

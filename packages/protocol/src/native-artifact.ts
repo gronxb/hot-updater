@@ -20,6 +20,13 @@ export {
   type NativeArtifactProblem,
 } from "./nativeArtifact/checkNativeArtifact";
 export {
+  normalizeIosUdid,
+  readIpaInstallInfo,
+  readProfileServiceUdid,
+  type IpaDistribution,
+  type IpaInstallInfo,
+} from "./nativeArtifact/iosInstall";
+export {
   readNativeArtifact,
   type NativeArtifactInfo,
   type NativeArtifactKind,

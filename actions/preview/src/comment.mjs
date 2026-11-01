@@ -84,12 +84,20 @@ export const nativeBuildDownloadLink = (consoleUrl, id) =>
   );
 
 /**
+ * A native build's Console page, where an iPhone checks and installs an IPA.
+ * @param {string} consoleUrl
+ * @param {string} id
+ */
+export const nativeBuildPageLink = (consoleUrl, id) =>
+  consolePath(consoleUrl, `native-builds/${encodeURIComponent(id)}`);
+
+/**
  * The Console's links of a native build: its download and its page.
  * @param {string} consoleUrl
  * @param {string} id
  */
 const nativeBuildLinks = (consoleUrl, id) =>
-  `[Download](${nativeBuildDownloadLink(consoleUrl, id)}) · [Details](${consolePath(consoleUrl, `native-builds/${encodeURIComponent(id)}`)})`;
+  `[Download](${nativeBuildDownloadLink(consoleUrl, id)}) · [Details](${nativeBuildPageLink(consoleUrl, id)})`;
 
 /**
  * The command that downloads a simulator build, installs it on the booted
@@ -300,15 +308,15 @@ const sandboxSections = (consoleUrl, channel, previews, previewQrCodes) => {
 /**
  * The comment of a pull request whose bundles were deployed: each
  * platform's native build, which embeds the pull request's channel, with
- * its Console download and page, and the QR code of an APK's download.
+ * its Console download and page, and the QR code of an APK's download or an
+ * IPA's page.
  *
  * @param {object} input
  * @param {string} input.consoleUrl
  * @param {string} input.channel The pull request's channel.
  * @param {PlatformPreview[]} input.previews
- * @param {string[]} input.qrCodes The APK builds whose download QR code the
- *   Console serves to the internet, which GitHub fetches a comment's images
- *   from.
+ * @param {string[]} input.qrCodes The builds whose QR code the Console serves
+ *   to the internet, which GitHub fetches a comment's images from.
  * @param {Platform[]} [input.previewQrCodes] The platforms whose sandbox link's
  *   QR code the Console serves the same way.
  * @param {string} input.headSha
@@ -347,13 +355,21 @@ export const renderPreviewComment = ({
       code(bundleId),
     ].join(" | "),
   );
-  const qr = previews.flatMap(({ nativeBuild }) =>
-    qrCodes.includes(nativeBuild.id)
-      ? [
-          `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/native-builds/qr", { build: nativeBuild.id }))}" alt="${escapeHtml(`QR code of the download of ${nativeBuild.fileName}`)}" width="180" height="180">`,
-        ]
-      : [],
+  const qrBuilds = previews.flatMap(({ nativeBuild }) =>
+    qrCodes.includes(nativeBuild.id) ? [nativeBuild] : [],
   );
+  const qr = qrBuilds
+    .filter(({ artifactKind }) => artifactKind !== "ipa")
+    .map(
+      ({ id, fileName }) =>
+        `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/native-builds/qr", { build: id }))}" alt="${escapeHtml(`QR code of the download of ${fileName}`)}" width="180" height="180">`,
+    );
+  const iphoneQr = qrBuilds
+    .filter(({ artifactKind }) => artifactKind === "ipa")
+    .map(
+      ({ id, fileName }) =>
+        `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/native-builds/qr", { build: id, target: "page" }))}" alt="${escapeHtml(`QR code of the page of ${fileName}`)}" width="180" height="180">`,
+    );
   const ipa = previews.some(
     ({ nativeBuild, store }) => !store && nativeBuild.artifactKind === "ipa",
   );
@@ -392,9 +408,15 @@ export const renderPreviewComment = ({
           "Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.",
           qr.join(" "),
         ]),
+    ...(iphoneQr.length === 0
+      ? []
+      : [
+          "Scan with an iPhone to open the build's page, which checks whether the IPA includes it and installs it. The phone signs in to the Console first.",
+          iphoneQr.join(" "),
+        ]),
     ...(ipa
       ? [
-          `An IPA installs on registered devices; for testers, upload it to TestFlight with ${code("npx hot-updater testflight")}.`,
+          `An IPA installs on registered devices; for testers without one, upload it to TestFlight with ${code("npx hot-updater testflight")}.`,
         ]
       : []),
     ...installCommands(previews),

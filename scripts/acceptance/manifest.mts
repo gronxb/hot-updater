@@ -425,8 +425,7 @@ export const rows: readonly AcceptanceRow[] = [
   {
     name: "Aggregate batching",
     // What batches aggregates declared `batched`: the log rows and their
-    // compaction, the memory buffer, and the flush they share (decisions 62
-    // and 64). It wraps the engine, a row of its own, through
+    // compaction (decisions 62 and 64). It wraps the engine, a row of its own, through
     // `createDatabaseEngine`.
     entries: ["plugins/plugin-core/src/engine/database/aggregateBatching.ts"],
     shared: [

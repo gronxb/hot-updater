@@ -1,7 +1,10 @@
 import { isUUIDv7 } from "@hot-updater/protocol";
 import { createPreviewLink } from "@hot-updater/protocol/native-artifact";
 
-import { nativeBuildDownloadPath } from "../native-builds";
+import {
+  nativeBuildDetailPath,
+  nativeBuildDownloadPath,
+} from "../native-builds";
 import { qrCodePath } from "../qr-code";
 
 /** The header that carries the download URL the QR code holds. */
@@ -58,12 +61,16 @@ const refuseMethod = (request: Request) => {
  * QR request came to: the console answers it with a fresh storage URL on
  * each request, so it never expires.
  */
-export const nativeBuildDownloadUrl = (request: Request, id: string) => {
+export const nativeBuildDownloadUrl = (
+  request: Request,
+  id: string,
+  path: (id: string) => string = nativeBuildDownloadPath,
+) => {
   const url = new URL(request.url);
   const base = url.pathname.endsWith(NATIVE_BUILD_QR_PATH)
     ? url.pathname.slice(0, -NATIVE_BUILD_QR_PATH.length)
     : "";
-  return `${url.origin}${base}${nativeBuildDownloadPath(id)}`;
+  return `${url.origin}${base}${path(id)}`;
 };
 
 /**
@@ -77,20 +84,31 @@ export const nativeBuildDownloadUrl = (request: Request, id: string) => {
  * those come only to a caller the console let in. The response's
  * `x-hot-updater-download-url` header is the URL.
  *
+ * With `target=page` the code holds the build's console page instead, where an
+ * iPhone checks whether the IPA includes it before anything downloads. The
+ * caller chooses, since telling an IPA from anything else would take a read.
+ *
  * - 400: `build` is missing or not a UUIDv7;
  * - 405: a method other than GET or HEAD.
  */
 export const serveNativeBuildQr = (request: Request): Response => {
   const refused = refuseMethod(request);
   if (refused) return refused;
-  const id = new URL(request.url).searchParams.get("build");
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("build");
   if (id === null || !isUUIDv7(id)) {
     return refusal(400, "Pass ?build=<native build ID>.");
   }
   // The URL depends only on the build ID and the console's own address.
   return qrImage(
     request,
-    nativeBuildDownloadUrl(request, id),
+    nativeBuildDownloadUrl(
+      request,
+      id,
+      searchParams.get("target") === "page"
+        ? nativeBuildDetailPath
+        : nativeBuildDownloadPath,
+    ),
     DOWNLOAD_URL_HEADER,
     "public, max-age=86400",
   );

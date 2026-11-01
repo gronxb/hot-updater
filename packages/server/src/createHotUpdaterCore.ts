@@ -65,10 +65,8 @@ export type RuntimeHotUpdaterAPI<
   /** The database's name, which `hot-updater db` commands read. */
   readonly adapterName: string;
   /**
-   * Applies aggregate changes the database batches that are still pending:
-   * this process's buffer, and the log rows no compaction has merged yet.
-   * A long-lived server with `aggregateBatching: { mode: "memory" }` calls
-   * it before it exits.
+   * Applies the log rows of batched aggregates that no compaction has merged
+   * yet. Nothing waits on it: they are durable, and a read compacts first.
    */
   readonly flush: () => Promise<void>;
   /**
