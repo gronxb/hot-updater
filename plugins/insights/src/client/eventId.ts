@@ -164,6 +164,10 @@ export const sha256 = (value: string): Uint8Array => {
   return digest;
 };
 
+/** The time field of a UUIDv7, in milliseconds since the epoch. */
+export const timeOfUUIDv7 = (id: string): number =>
+  Number.parseInt(id.slice(0, 8) + id.slice(9, 13), 16);
+
 /**
  * A UUIDv7 derived from a key: its time field is `timestamp` and its random
  * bits are the key's SHA-256, so the same key and time always give the same
