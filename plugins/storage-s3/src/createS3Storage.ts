@@ -19,7 +19,10 @@ import {
   type StorageObject,
 } from "@hot-updater/plugin-core";
 
+import { type S3CredentialsOption, toSdkCredentials } from "./lazyCredentials";
+
 export type { S3ClientConfig };
+export type { LazyS3Credentials, S3CredentialsOption } from "./lazyCredentials";
 
 /** Who the adapter is: its name and the scheme of the URIs it writes. */
 export interface S3StorageIdentity {
@@ -29,7 +32,12 @@ export interface S3StorageIdentity {
   protocol: string;
 }
 
-export interface S3StorageConfig extends S3ClientConfig {
+export interface S3StorageConfig extends Omit<S3ClientConfig, "credentials"> {
+  /**
+   * The SDK's credentials, or access keys whose fields are lazy, such as
+   * `secret("<name>")`, read once, on the first request.
+   */
+  credentials?: S3CredentialsOption;
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
@@ -93,6 +101,7 @@ export const createS3Storage = (
     basePath,
     getDownloadUrl,
     signedUrlExpiresIn = DEFAULT_SIGNED_LIFETIME_SECONDS,
+    credentials,
     ...clientConfig
   } = config;
   if (
@@ -104,7 +113,10 @@ export const createS3Storage = (
       `${name} signedUrlExpiresIn must be between 1 and ${MAX_SIGNED_LIFETIME_SECONDS} seconds (seven days).`,
     );
   }
-  const client = new S3Client(clientConfig);
+  const client = new S3Client({
+    ...clientConfig,
+    credentials: toSdkCredentials(credentials),
+  });
   const normalizedBasePath = trimSlashes(basePath ?? "");
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
 

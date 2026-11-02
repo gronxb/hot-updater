@@ -453,9 +453,17 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+    secretsEnv,
+  );
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,

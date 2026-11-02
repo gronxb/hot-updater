@@ -14,6 +14,7 @@ import {
   type ManagedHelperStatement,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
+  addSigningSecretToConfigText,
 } from "./hotUpdaterConfig";
 import { p } from "./prompts";
 
@@ -324,7 +325,10 @@ export default defineConfig({
       'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
     expect(updatedConfig).toContain(
-      "  plugins: [apiKeys(), insights(), remoteConfig()],\n}",
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n}",
+    );
+    expect(updatedConfig).toContain(
+      'import { defineConfig, localSecrets } from "hot-updater";',
     );
     expect(updatedConfig).not.toContain('updateStrategy: "appVersion"');
   });
@@ -435,7 +439,7 @@ export default defineConfig({
     await writeHotUpdaterConfig(scaffold, configPath);
     const replaced = await fs.readFile(configPath, "utf-8");
     expect(replaced).toContain(
-      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
+      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
     );
     expect(replaced).not.toContain("notes()");
   });
@@ -467,7 +471,7 @@ export default defineConfig({
     await expect(fs.readFile(configPath, "utf-8")).resolves
       .toBe(`import { bare } from "@hot-updater/bare";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
+import { defineConfig, localSecrets } from "hot-updater";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 export default defineConfig({
@@ -482,6 +486,7 @@ export default defineConfig({
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
+  secrets: localSecrets(),
 });
 `);
   });
@@ -1208,5 +1213,95 @@ const commonOptions = {
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],`);
+  });
+});
+
+describe("addSigningSecretToConfigText", () => {
+  it("adds the shorthand and secret to the existing hot-updater import", () => {
+    const text = [
+      'import { bare } from "@hot-updater/bare";',
+      'import { defineConfig } from "hot-updater";',
+      "",
+      "export default defineConfig({",
+      "  build: bare(),",
+      '  updateStrategy: "appVersion", // or fingerprint',
+      "});",
+      "",
+    ].join("\n");
+
+    expect(addSigningSecretToConfigText(text, "bundle-signing-key")).toEqual({
+      status: "added",
+      text: [
+        'import { bare } from "@hot-updater/bare";',
+        'import { defineConfig, secret } from "hot-updater";',
+        "",
+        "export default defineConfig({",
+        "  build: bare(),",
+        '  updateStrategy: "appVersion", // or fingerprint',
+        '  signing: secret("bundle-signing-key"),',
+        "});",
+        "",
+      ].join("\n"),
+    });
+  });
+
+  it("adds a comma after a last property without one, and imports secret once", () => {
+    const text = [
+      'import { defineConfig, secret } from "hot-updater";',
+      "export default defineConfig({",
+      '    storage: s3({ key: secret("KEY") })',
+      "});",
+    ].join("\n");
+
+    expect(addSigningSecretToConfigText(text, "release-key")).toEqual({
+      status: "added",
+      text: [
+        'import { defineConfig, secret } from "hot-updater";',
+        "export default defineConfig({",
+        '    storage: s3({ key: secret("KEY") }),',
+        '    signing: secret("release-key"),',
+        "});",
+      ].join("\n"),
+    });
+  });
+
+  it("imports secret from hot-updater when nothing does", () => {
+    const result = addSigningSecretToConfigText(
+      'import { defineConfig } from "./config";\nexport default defineConfig({});\n',
+      "bundle-signing-key",
+    );
+
+    expect(result).toEqual({
+      status: "added",
+      text: 'import { secret } from "hot-updater";\nimport { defineConfig } from "./config";\nexport default defineConfig({\n  signing: secret("bundle-signing-key"),\n});\n',
+    });
+  });
+
+  it.each([
+    '{ enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+    "{ enabled: false }",
+    'secret("bundle-signing-key")',
+  ])("keeps a config that sets signing: %s", (signing) => {
+    expect(
+      addSigningSecretToConfigText(
+        `import { defineConfig } from "hot-updater";\nexport default defineConfig({\n  signing: ${signing},\n});\n`,
+        "bundle-signing-key",
+      ),
+    ).toEqual({ status: "kept" });
+  });
+
+  it("edits no config it can't read", () => {
+    expect(
+      addSigningSecretToConfigText(
+        "export default (options) => ({});",
+        "bundle-signing-key",
+      ),
+    ).toEqual({ status: "unsupported" });
+    expect(
+      addSigningSecretToConfigText(
+        "export default defineConfig({ ...shared });",
+        "bundle-signing-key",
+      ),
+    ).toEqual({ status: "kept" });
   });
 });

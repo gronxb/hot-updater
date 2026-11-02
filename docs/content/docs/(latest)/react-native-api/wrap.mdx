@@ -25,7 +25,8 @@ function App() {
 }
 
 export default App; // [!code --]
-export default hotUpdater.wrap({ // [!code ++:3]
+export default hotUpdater.wrap({
+  // [!code ++:3]
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);
 ```
@@ -48,13 +49,13 @@ shows. Use one of the two for a launch, so the app does not check twice.
 
 ## Configuration reference
 
-| Option                     | Type                                         | Required | Description                                                |
-| -------------------------- | -------------------------------------------- | -------- | ---------------------------------------------------------- |
-| `updateStrategy`           | `"appVersion" \| "fingerprint"`              | Yes      | Update detection strategy                                  |
+| Option                     | Type                                         | Required | Description                                                     |
+| -------------------------- | -------------------------------------------- | -------- | --------------------------------------------------------------- |
+| `updateStrategy`           | `"appVersion" \| "fingerprint"`              | Yes      | Update detection strategy                                       |
 | `fallbackComponent`        | `React.FC<HotUpdaterFallbackComponentProps>` | No       | UI shown instead of the root during a check and a forced update |
-| `onProgress`               | `(progress: number) => void`                 | No       | Callback fired during bundle download (0-1)                |
-| `reloadOnForceUpdate`      | `boolean`                                    | No       | Reload after a forced update is prepared (default: true)   |
-| `onUpdateProcessCompleted` | `(response) => void`                         | No       | Callback when the update process completes                 |
+| `onProgress`               | `(progress: number) => void`                 | No       | Callback fired during bundle download (0-1)                     |
+| `reloadOnForceUpdate`      | `boolean`                                    | No       | Reload after a forced update is prepared (default: true)        |
+| `onUpdateProcessCompleted` | `(response) => void`                         | No       | Callback when the update process completes                      |
 
 Errors during the flow go to the `onError` handler of `HotUpdater.init`.
 
@@ -95,7 +96,9 @@ function App() {
 
 export default hotUpdater.wrap({
   updateStrategy: "appVersion",
-  fallbackComponent: ({ progress, status, message }) => ( // [!code ++:28]
+  fallbackComponent: (
+    { progress, status, message }, // [!code ++:28]
+  ) => (
     <View
       style={{
         flex: 1,
@@ -170,10 +173,18 @@ Callback arguments:
 ```tsx title="App.tsx"
 export default hotUpdater.wrap({
   updateStrategy: "appVersion",
-  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => { // [!code ++:3]
-    console.log("Update process completed:", status, shouldForceUpdate, id, message);
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
+    // [!code ++:3]
+    console.log(
+      "Update process completed:",
+      status,
+      shouldForceUpdate,
+      id,
+      message,
+    );
   },
-  onProgress: (progress) => { // [!code ++:3]
+  onProgress: (progress) => {
+    // [!code ++:3]
     console.log("Bundle download progress:", progress);
   },
 })(App);
@@ -187,10 +198,10 @@ and resolves the artifact when staging is needed. See
 
 ## Flag behavior
 
-| Update Response            | Runtime Behavior                                                                                                      | How to Enable                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `shouldForceUpdate: false` | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.        | Default setting                                                                |
-| `shouldForceUpdate: true`  | `wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start.      | Use `--force-update` or the console; bundle-changing rollbacks also return it. |
+| Update Response            | Runtime Behavior                                                                                                 | How to Enable                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `shouldForceUpdate: false` | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.   | Default setting                                                                |
+| `shouldForceUpdate: true`  | `wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start. | Use `--force-update` or the console; bundle-changing rollbacks also return it. |
 
 ## Related
 

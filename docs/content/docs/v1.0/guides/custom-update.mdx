@@ -1,0 +1,143 @@
+---
+title: "Control update timing"
+description: "Initialize once, then choose when your app checks, downloads and restarts."
+icon: Settings2
+---
+
+## Overview
+
+Configure Hot Updater at module scope, then let your app decide when to check,
+download and restart. You can check after login, when the app returns to the
+foreground, or from a button.
+
+The [app setup example](/docs/v1.0/get-started/app-setup) checks and applies an update
+with one button. Use this guide to download in the background, show progress or
+wait for the user to accept a restart. To check when the app's root mounts,
+with an optional loading screen, use [`hotUpdater.wrap`](/docs/v1.0/react-native-api/wrap)
+instead; use one of the two for a launch.
+
+## Initialize and prepare updates
+
+Call `HotUpdater.init` once, at the top level of this module, outside React
+components and effects, and export the instance it returns. Import the module
+from your app entry point. The SDK handles native startup verification
+internally.
+
+```ts title="updates.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+function reportUpdateError(error: unknown) {
+  console.error("Hot Updater:", error);
+}
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "https://your-update-server-url",
+  requestHeaders: {
+    "x-api-key": "<your-client-api-key>",
+  },
+  onError: reportUpdateError,
+});
+
+export async function runUpdateFlow() {
+  try {
+    const update = await hotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    if (!update) {
+      return;
+    }
+
+    const downloaded = await update.updateBundle();
+
+    if (!downloaded) {
+      throw new Error("Could not prepare the update");
+    }
+
+    if (update.shouldForceUpdate) {
+      await hotUpdater.reload();
+    }
+  } catch (error) {
+    reportUpdateError(error);
+  }
+}
+```
+
+Use the URL and client key from [App setup](/docs/v1.0/get-started/app-setup). Calling
+`init` configures the client; call `runUpdateFlow()` when your app should check.
+It downloads a selected update and restarts immediately for required updates.
+Other downloaded updates take effect on the next app restart.
+
+The returned `update.updateBundle()` helper resolves the artifact and preserves
+the selected transition, including rollback. Use this helper for update checks.
+
+## Restart on user confirmation
+
+To let users finish their work first, replace the automatic reload with your
+app's restart prompt. Show the prompt only after `update.updateBundle()` returns
+`true`. Its confirmation button can call this handler in the same module:
+
+```ts title="updates.ts"
+async function restartToApply() {
+  try {
+    await hotUpdater.reload();
+  } catch (error) {
+    reportUpdateError(error);
+  }
+}
+```
+
+`shouldForceUpdate` tells your app that the selected update is required. A
+custom flow owns the restart decision, so make sure its UI enforces your
+required-update policy. See [`reload`](/docs/v1.0/react-native-api/reload) for how
+each platform restarts.
+
+## Show update progress
+
+Use the SDK store to show download progress without maintaining a second copy
+of it in component state. Render this component while a download is running:
+
+```tsx title="UpdateProgress.tsx"
+import { useHotUpdaterStore } from "@hot-updater/react-native";
+import { Text } from "react-native";
+
+export function UpdateProgress() {
+  const progress = useHotUpdaterStore((state) => state.progress);
+
+  return <Text>Downloading: {Math.round(progress * 100)}%</Text>;
+}
+```
+
+See [`useHotUpdaterStore`](/docs/v1.0/react-native-api/useHotUpdaterStore) for other
+state fields, or [`addListener`](/docs/v1.0/react-native-api/addListener) for event
+listeners outside React.
+
+## Handle errors
+
+Use `init.onError` as the shared error reporter for lifecycle, plugin, and
+update-check errors. Use `try/catch` for rejected operations, including downloads and restarts.
+A download that returns `false` has not prepared the update; keep the current
+app running and report the failure.
+
+Accept `unknown` in a shared reporter because caught values are not guaranteed
+to be `Error` objects. The reporter should log the failure or update your UI
+without throwing it again.
+
+A check can return `null` when there is no update, or after reporting a failure
+to `onError`. Stop the flow in either case; `null` alone is not proof that the
+app is up to date. A per-check `onError` is an optional
+[override](/docs/v1.0/react-native-api/checkForUpdate#parameters) when a particular
+check needs different reporting.
+
+## Choose a different channel
+
+For a beta opt-in or channel picker, follow
+[Runtime channel switching](/docs/v1.0/guides/runtime-channel-switch). A switch is
+persisted after the selected update is applied. Use `resetChannel()` to return
+to the channel embedded in the native build.
+
+## Related
+
+- [Test an OTA update](/docs/v1.0/get-started/test-ota)
+- [`HotUpdater.init()`](/docs/v1.0/react-native-api/init)
+- [`hotUpdater.checkForUpdate()`](/docs/v1.0/react-native-api/checkForUpdate)

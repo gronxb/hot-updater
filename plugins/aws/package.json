@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/aws",
   "type": "module",
-  "version": "1.1.5",
+  "version": "1.2.0-rc.12",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -57,6 +57,7 @@
     "@aws-sdk/client-iam": "3.1066.0",
     "@aws-sdk/client-lambda": "3.1066.0",
     "@aws-sdk/client-s3": "catalog:aws",
+    "@aws-sdk/client-secrets-manager": "3.1066.0",
     "@aws-sdk/cloudfront-signer": "3.1064.0",
     "@aws-sdk/client-ssm": "3.1066.0",
     "@aws-sdk/client-sts": "3.1066.0",

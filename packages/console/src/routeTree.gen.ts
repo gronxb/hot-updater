@@ -13,10 +13,19 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as InstallationsRouteImport } from './routes/installations'
+import { Route as NativeBuildsRouteImport } from './routes/native-builds'
 import { Route as RemoteConfigRouteImport } from './routes/remote-config'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
+import { Route as NativeBuildsBuildIdRouteImport } from './routes/native-builds_.$buildId'
+import { Route as HotUpdaterNativeBuildsPreviewQrRouteImport } from './routes/[_]hot-updater/native-builds/preview-qr'
+import { Route as HotUpdaterNativeBuildsQrRouteImport } from './routes/[_]hot-updater/native-builds/qr'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as HotUpdaterNativeBuildsBuildIdDeviceRouteImport } from './routes/[_]hot-updater/native-builds/$buildId/device'
+import { Route as HotUpdaterNativeBuildsBuildIdDeviceResponseRouteImport } from './routes/[_]hot-updater/native-builds/$buildId/device-response'
+import { Route as HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRouteImport } from './routes/[_]hot-updater/native-builds/$buildId/device[.]mobileconfig'
+import { Route as HotUpdaterNativeBuildsBuildIdManifestDotplistRouteImport } from './routes/[_]hot-updater/native-builds/$buildId/manifest[.]plist'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
+import { Route as ApiNativeBuildsBuildIdDownloadRouteImport } from './routes/api/native-builds/$buildId/download'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -38,6 +47,11 @@ const InstallationsRoute = InstallationsRouteImport.update({
   path: '/installations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NativeBuildsRoute = NativeBuildsRouteImport.update({
+  id: '/native-builds',
+  path: '/native-builds',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RemoteConfigRoute = RemoteConfigRouteImport.update({
   id: '/remote-config',
   path: '/remote-config',
@@ -48,15 +62,62 @@ const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
   path: '/insights/distribution',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NativeBuildsBuildIdRoute = NativeBuildsBuildIdRouteImport.update({
+  id: '/native-builds_/$buildId',
+  path: '/native-builds/$buildId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HotUpdaterNativeBuildsPreviewQrRoute =
+  HotUpdaterNativeBuildsPreviewQrRouteImport.update({
+    id: '/_hot-updater/native-builds/preview-qr',
+    path: '/_hot-updater/native-builds/preview-qr',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const HotUpdaterNativeBuildsQrRoute =
+  HotUpdaterNativeBuildsQrRouteImport.update({
+    id: '/_hot-updater/native-builds/qr',
+    path: '/_hot-updater/native-builds/qr',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HotUpdaterNativeBuildsBuildIdDeviceRoute =
+  HotUpdaterNativeBuildsBuildIdDeviceRouteImport.update({
+    id: '/_hot-updater/native-builds/$buildId/device',
+    path: '/_hot-updater/native-builds/$buildId/device',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const HotUpdaterNativeBuildsBuildIdDeviceResponseRoute =
+  HotUpdaterNativeBuildsBuildIdDeviceResponseRouteImport.update({
+    id: '/_hot-updater/native-builds/$buildId/device-response',
+    path: '/_hot-updater/native-builds/$buildId/device-response',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute =
+  HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRouteImport.update({
+    id: '/_hot-updater/native-builds/$buildId/device.mobileconfig',
+    path: '/_hot-updater/native-builds/$buildId/device.mobileconfig',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const HotUpdaterNativeBuildsBuildIdManifestDotplistRoute =
+  HotUpdaterNativeBuildsBuildIdManifestDotplistRouteImport.update({
+    id: '/_hot-updater/native-builds/$buildId/manifest.plist',
+    path: '/_hot-updater/native-builds/$buildId/manifest.plist',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiBundlesBundleIdDownloadRoute =
   ApiBundlesBundleIdDownloadRouteImport.update({
     id: '/api/bundles/$bundleId/download',
     path: '/api/bundles/$bundleId/download',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiNativeBuildsBuildIdDownloadRoute =
+  ApiNativeBuildsBuildIdDownloadRouteImport.update({
+    id: '/api/native-builds/$buildId/download',
+    path: '/api/native-builds/$buildId/download',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -65,20 +126,38 @@ export interface FileRoutesByFullPath {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/native-builds': typeof NativeBuildsRoute
   '/remote-config': typeof RemoteConfigRoute
   '/insights/distribution': typeof InsightsDistributionRoute
+  '/native-builds/$buildId': typeof NativeBuildsBuildIdRoute
+  '/_hot-updater/native-builds/preview-qr': typeof HotUpdaterNativeBuildsPreviewQrRoute
+  '/_hot-updater/native-builds/qr': typeof HotUpdaterNativeBuildsQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/_hot-updater/native-builds/$buildId/device': typeof HotUpdaterNativeBuildsBuildIdDeviceRoute
+  '/_hot-updater/native-builds/$buildId/device-response': typeof HotUpdaterNativeBuildsBuildIdDeviceResponseRoute
+  '/_hot-updater/native-builds/$buildId/device.mobileconfig': typeof HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute
+  '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/native-builds': typeof NativeBuildsRoute
   '/remote-config': typeof RemoteConfigRoute
   '/insights/distribution': typeof InsightsDistributionRoute
+  '/native-builds/$buildId': typeof NativeBuildsBuildIdRoute
+  '/_hot-updater/native-builds/preview-qr': typeof HotUpdaterNativeBuildsPreviewQrRoute
+  '/_hot-updater/native-builds/qr': typeof HotUpdaterNativeBuildsQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/_hot-updater/native-builds/$buildId/device': typeof HotUpdaterNativeBuildsBuildIdDeviceRoute
+  '/_hot-updater/native-builds/$buildId/device-response': typeof HotUpdaterNativeBuildsBuildIdDeviceResponseRoute
+  '/_hot-updater/native-builds/$buildId/device.mobileconfig': typeof HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute
+  '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,10 +165,19 @@ export interface FileRoutesById {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/native-builds': typeof NativeBuildsRoute
   '/remote-config': typeof RemoteConfigRoute
   '/insights_/distribution': typeof InsightsDistributionRoute
+  '/native-builds_/$buildId': typeof NativeBuildsBuildIdRoute
+  '/_hot-updater/native-builds/preview-qr': typeof HotUpdaterNativeBuildsPreviewQrRoute
+  '/_hot-updater/native-builds/qr': typeof HotUpdaterNativeBuildsQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/_hot-updater/native-builds/$buildId/device': typeof HotUpdaterNativeBuildsBuildIdDeviceRoute
+  '/_hot-updater/native-builds/$buildId/device-response': typeof HotUpdaterNativeBuildsBuildIdDeviceResponseRoute
+  '/_hot-updater/native-builds/$buildId/device.mobileconfig': typeof HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute
+  '/_hot-updater/native-builds/$buildId/manifest.plist': typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -98,30 +186,57 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/native-builds'
     | '/remote-config'
     | '/insights/distribution'
+    | '/native-builds/$buildId'
+    | '/_hot-updater/native-builds/preview-qr'
+    | '/_hot-updater/native-builds/qr'
     | '/api/auth/$'
+    | '/_hot-updater/native-builds/$buildId/device'
+    | '/_hot-updater/native-builds/$buildId/device-response'
+    | '/_hot-updater/native-builds/$buildId/device.mobileconfig'
+    | '/_hot-updater/native-builds/$buildId/manifest.plist'
     | '/api/bundles/$bundleId/download'
+    | '/api/native-builds/$buildId/download'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/native-builds'
     | '/remote-config'
     | '/insights/distribution'
+    | '/native-builds/$buildId'
+    | '/_hot-updater/native-builds/preview-qr'
+    | '/_hot-updater/native-builds/qr'
     | '/api/auth/$'
+    | '/_hot-updater/native-builds/$buildId/device'
+    | '/_hot-updater/native-builds/$buildId/device-response'
+    | '/_hot-updater/native-builds/$buildId/device.mobileconfig'
+    | '/_hot-updater/native-builds/$buildId/manifest.plist'
     | '/api/bundles/$bundleId/download'
+    | '/api/native-builds/$buildId/download'
   id:
     | '__root__'
     | '/'
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/native-builds'
     | '/remote-config'
     | '/insights_/distribution'
+    | '/native-builds_/$buildId'
+    | '/_hot-updater/native-builds/preview-qr'
+    | '/_hot-updater/native-builds/qr'
     | '/api/auth/$'
+    | '/_hot-updater/native-builds/$buildId/device'
+    | '/_hot-updater/native-builds/$buildId/device-response'
+    | '/_hot-updater/native-builds/$buildId/device.mobileconfig'
+    | '/_hot-updater/native-builds/$buildId/manifest.plist'
     | '/api/bundles/$bundleId/download'
+    | '/api/native-builds/$buildId/download'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -129,10 +244,19 @@ export interface RootRouteChildren {
   ApiKeysRoute: typeof ApiKeysRoute
   InsightsRoute: typeof InsightsRoute
   InstallationsRoute: typeof InstallationsRoute
+  NativeBuildsRoute: typeof NativeBuildsRoute
   RemoteConfigRoute: typeof RemoteConfigRoute
   InsightsDistributionRoute: typeof InsightsDistributionRoute
+  NativeBuildsBuildIdRoute: typeof NativeBuildsBuildIdRoute
+  HotUpdaterNativeBuildsPreviewQrRoute: typeof HotUpdaterNativeBuildsPreviewQrRoute
+  HotUpdaterNativeBuildsQrRoute: typeof HotUpdaterNativeBuildsQrRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  HotUpdaterNativeBuildsBuildIdDeviceRoute: typeof HotUpdaterNativeBuildsBuildIdDeviceRoute
+  HotUpdaterNativeBuildsBuildIdDeviceResponseRoute: typeof HotUpdaterNativeBuildsBuildIdDeviceResponseRoute
+  HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute: typeof HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute
+  HotUpdaterNativeBuildsBuildIdManifestDotplistRoute: typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
+  ApiNativeBuildsBuildIdDownloadRoute: typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -165,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstallationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/native-builds': {
+      id: '/native-builds'
+      path: '/native-builds'
+      fullPath: '/native-builds'
+      preLoaderRoute: typeof NativeBuildsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/remote-config': {
       id: '/remote-config'
       path: '/remote-config'
@@ -179,6 +310,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InsightsDistributionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/native-builds_/$buildId': {
+      id: '/native-builds_/$buildId'
+      path: '/native-builds/$buildId'
+      fullPath: '/native-builds/$buildId'
+      preLoaderRoute: typeof NativeBuildsBuildIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/native-builds/preview-qr': {
+      id: '/_hot-updater/native-builds/preview-qr'
+      path: '/_hot-updater/native-builds/preview-qr'
+      fullPath: '/_hot-updater/native-builds/preview-qr'
+      preLoaderRoute: typeof HotUpdaterNativeBuildsPreviewQrRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/native-builds/qr': {
+      id: '/_hot-updater/native-builds/qr'
+      path: '/_hot-updater/native-builds/qr'
+      fullPath: '/_hot-updater/native-builds/qr'
+      preLoaderRoute: typeof HotUpdaterNativeBuildsQrRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -186,11 +338,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_hot-updater/native-builds/$buildId/device': {
+      id: '/_hot-updater/native-builds/$buildId/device'
+      path: '/_hot-updater/native-builds/$buildId/device'
+      fullPath: '/_hot-updater/native-builds/$buildId/device'
+      preLoaderRoute: typeof HotUpdaterNativeBuildsBuildIdDeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/native-builds/$buildId/device-response': {
+      id: '/_hot-updater/native-builds/$buildId/device-response'
+      path: '/_hot-updater/native-builds/$buildId/device-response'
+      fullPath: '/_hot-updater/native-builds/$buildId/device-response'
+      preLoaderRoute: typeof HotUpdaterNativeBuildsBuildIdDeviceResponseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/native-builds/$buildId/device.mobileconfig': {
+      id: '/_hot-updater/native-builds/$buildId/device.mobileconfig'
+      path: '/_hot-updater/native-builds/$buildId/device.mobileconfig'
+      fullPath: '/_hot-updater/native-builds/$buildId/device.mobileconfig'
+      preLoaderRoute: typeof HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/native-builds/$buildId/manifest.plist': {
+      id: '/_hot-updater/native-builds/$buildId/manifest.plist'
+      path: '/_hot-updater/native-builds/$buildId/manifest.plist'
+      fullPath: '/_hot-updater/native-builds/$buildId/manifest.plist'
+      preLoaderRoute: typeof HotUpdaterNativeBuildsBuildIdManifestDotplistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/bundles/$bundleId/download': {
       id: '/api/bundles/$bundleId/download'
       path: '/api/bundles/$bundleId/download'
       fullPath: '/api/bundles/$bundleId/download'
       preLoaderRoute: typeof ApiBundlesBundleIdDownloadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/native-builds/$buildId/download': {
+      id: '/api/native-builds/$buildId/download'
+      path: '/api/native-builds/$buildId/download'
+      fullPath: '/api/native-builds/$buildId/download'
+      preLoaderRoute: typeof ApiNativeBuildsBuildIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -201,20 +388,34 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKeysRoute: ApiKeysRoute,
   InsightsRoute: InsightsRoute,
   InstallationsRoute: InstallationsRoute,
+  NativeBuildsRoute: NativeBuildsRoute,
   RemoteConfigRoute: RemoteConfigRoute,
   InsightsDistributionRoute: InsightsDistributionRoute,
+  NativeBuildsBuildIdRoute: NativeBuildsBuildIdRoute,
+  HotUpdaterNativeBuildsPreviewQrRoute: HotUpdaterNativeBuildsPreviewQrRoute,
+  HotUpdaterNativeBuildsQrRoute: HotUpdaterNativeBuildsQrRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  HotUpdaterNativeBuildsBuildIdDeviceRoute:
+    HotUpdaterNativeBuildsBuildIdDeviceRoute,
+  HotUpdaterNativeBuildsBuildIdDeviceResponseRoute:
+    HotUpdaterNativeBuildsBuildIdDeviceResponseRoute,
+  HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute:
+    HotUpdaterNativeBuildsBuildIdDeviceDotmobileconfigRoute,
+  HotUpdaterNativeBuildsBuildIdManifestDotplistRoute:
+    HotUpdaterNativeBuildsBuildIdManifestDotplistRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
+  ApiNativeBuildsBuildIdDownloadRoute: ApiNativeBuildsBuildIdDownloadRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

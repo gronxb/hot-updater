@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 35 OTA, Remote Config, and Console Insights scenarios locally and in the E2E bot
+Run the same 38 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -62,6 +62,42 @@ Repeat `--scenario` to select several. With no selection, `--suite default`
 runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
+
+## Store installs patched from the built-in bundle
+
+`store-install-patches-from-built-in`, `store-install-built-in-mismatch-downloads`
+and `bspatch-builtin-to-diff-ota` register the binary the run installed as a
+native build with the real CLI: `/e2e/jobs/register-native-build` runs
+`hot-updater native-build import <the installed .app or .apk> --channel
+e2e-native-build-<build time> --json` in the example. The channel is the
+binary's own, which the scenario switches the app to at runtime, so
+`--channel` names it, and the binary keeps its default channel for the other
+scenarios. The bot reuses a cached binary across jobs: importing it again
+reports `alreadyImported: true` and succeeds. The job reads the MIN_BUNDLE_ID
+from the binary's bytes itself and fails unless the CLI registered that one.
+
+## Bundle signing
+
+Every deploy signs its bundle with the example's `keys/private-key.pem`,
+which the config reads with `{ enabled: true, privateKeyPath }`, and the app
+verifies each signature with the public key it embeds. Local preparation
+creates the key pair with node:crypto.
+`foreign-signing-key-refused` checks that verification on the device. Its
+first deploy signs with an RSA key generated for that deploy: the config
+points `signing` at the new key and lists no Info.plist or
+AndroidManifest.xml, so the CLI has no native public key to compare it with.
+The app must refuse that update with a signature verification error and keep
+running its built-in bundle. The same bundle deployed again with the
+example's own key then installs, so only the key differs between the refused
+update and the installed one. That second deploy sets the shorthand
+`signing: secret("bundle-signing-key")` and reads the key from
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, with `keys/private-key.pem` moved away and
+`HOT_UPDATER_HOME` at an empty key store: the control server first runs it
+without the variable and fails unless the CLI refuses it for the missing
+secret, and the installed update proves the key read from the secret is the
+one the app embeds. The control server fails either deploy unless its bundle
+carries a signature, and restores the config and the key file when the
+deploy ends.
 
 ## Targets
 

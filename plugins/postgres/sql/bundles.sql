@@ -34,8 +34,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
 
 CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" varchar(16) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "bundles" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
+CREATE TABLE IF NOT EXISTS "native_builds" ("id" varchar(36) COLLATE "C" NOT NULL, "scope_key" varchar(2048) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "channel_id" varchar(1408) COLLATE "C" NOT NULL, "fingerprint_hash" varchar(255) COLLATE "C", "app_version" text COLLATE "C", "min_bundle_id" varchar(36) COLLATE "C" NOT NULL, "artifact_kind" varchar(16) COLLATE "C" NOT NULL, "artifact_storage_uri" text COLLATE "C" NOT NULL, "byte_size" bigint NOT NULL, "git_commit_hash" varchar(255) COLLATE "C", "created_at_ms" bigint NOT NULL, "build_key" varchar(69) COLLATE "C", "build_number" varchar(64) COLLATE "C", "submitted_to" varchar(16) COLLATE "C", "submitted_at_ms" bigint, "submitted_version" varchar(255) COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");
+
+CREATE INDEX IF NOT EXISTS "native_builds_byBuildKey" ON "native_builds" ("scope_key", "build_key", "id");
+
+CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channel_id", "id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_min_bundle_id" ON "native_builds" ("min_bundle_id");
+
 CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" varchar(255) COLLATE "C" NOT NULL, "value" varchar(255) COLLATE "C" NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

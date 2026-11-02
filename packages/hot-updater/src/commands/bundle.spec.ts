@@ -116,7 +116,7 @@ describe("Bundle commands", () => {
     const summary = stripVTControlCharacters(
       String(output.mock.calls.at(-1)?.[0]),
     );
-    expect(summary).toContain(`ID:`);
+    expect(summary).toMatch(/^ID {2,}/mu);
     expect(summary).toContain(promoted.id);
     expect(summary).toContain("staging");
     expect(summary).not.toContain(bundle.id);

@@ -62,8 +62,8 @@ export async function runDeployDemo(
 
   const id =
     terminal.cols >= 43
-      ? `   ${gray("ID:")} ${yellow(DEMO_UPDATE_ID)}`
-      : `   ${gray("ID:")}\n${yellow(DEMO_UPDATE_ID)}`;
+      ? `${gray("ID  ")}${yellow(DEMO_UPDATE_ID)}`
+      : `${gray("ID")}\n${yellow(DEMO_UPDATE_ID)}`;
   clack.outro(`${green("Deployment successful")}\n${id}`);
   await clack.finish();
 }

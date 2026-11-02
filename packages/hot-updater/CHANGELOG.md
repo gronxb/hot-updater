@@ -1,5 +1,465 @@
 # hot-updater
 
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- 67a4892: Say what a missing secret means and how to store it, and count a missing upload keystore once.
+  - A missing `secret()` that nothing reads yet, and one that an adapter reads on the next deploy, now print as `▲` warnings with a reason and a next step, as doctor's other warnings do. A build credential names the command that stores it, which imports a signing key and never issues a new one. An adapter credential names its `.env.hotupdater` variable and `npx hot-updater secrets import`, or, without a team store, the variable to set. The Secrets block itself is `◇`, and `--json` keeps the same codes and fields, with the new `message` and `resolution`.
+  - A release's missing upload keystore is counted once, as the Secrets error. The Google Play row still marks the package `✗ upload keystore missing`, but is no longer a warning of its own when that is its only problem: `Doctor found 1 error.` rather than `1 error, 1 warning`.
+
+- @hot-updater/android-helper@1.2.0-rc.12
+  - @hot-updater/apple-helper@1.2.0-rc.12
+  - @hot-updater/bsdiff@1.2.0-rc.12
+  - @hot-updater/cli-tools@1.2.0-rc.12
+  - @hot-updater/console@1.2.0-rc.12
+  - @hot-updater/protocol@1.2.0-rc.12
+  - @hot-updater/server@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- 4c10736: Warn on a missing secret nothing reads, close every doctor run with its counts, and keep Infisical errors within 76 columns.
+  - A `secret()` that is missing and that no build reads, such as a debug variant's keystore or a simulator scheme's App Store Connect API key, is now a warning: the Secrets block is marked `▲`, the run still passes with exit code 0, and `--json` lists it as a `SECRETS_MISSING_UNUSED` warning in `details.secrets.issues`. A missing name an adapter's `secret()` reads is a `DEPLOY_SECRETS_MISSING` warning in `details.deploySecrets.issues`.
+  - Doctor's last line counts what it found. A run with warnings ends `All checks passed with 2 warnings.`, and a failing run, the `--scope` checks included, now ends `Doctor found 1 error, 2 warnings.` before it exits with code 1.
+  - Messages the CLI breaks into lines, such as a secrets adapter's errors, now fit 76 display columns with clack's `│  ` in front, measured as a terminal shows them rather than by length. `infisical()` cuts Infisical's own message to fit, and names the project on one line and the environment and folder on the next. A URL that can't fit stays alone on its line.
+
+- Updated dependencies [4c10736]
+  - @hot-updater/cli-tools@1.2.0-rc.11
+  - @hot-updater/android-helper@1.2.0-rc.11
+  - @hot-updater/apple-helper@1.2.0-rc.11
+  - @hot-updater/bsdiff@1.2.0-rc.11
+  - @hot-updater/console@1.2.0-rc.11
+  - @hot-updater/protocol@1.2.0-rc.11
+  - @hot-updater/server@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- fd2aa7e: Fail `hot-updater doctor` on a signing secret a build needs, and keep secrets errors within 76 columns.
+  - A `secret()` that a build or a deploy reads and that resolves nowhere now fails doctor: an error under the Secrets block with the command that imports the existing key, no "All checks passed", and exit code 1, for `--json` too. "Needed" is what the build resolves: an iOS device scheme's `signing.ascApiKey`, a release variant's `signing.keystore`, and `signing` while bundle signing is on. A simulator scheme, a debug variant, or `enabled: false` reads nothing, so its missing secret stays a `missing, unused` row. An adapter doctor can't read stays a warning. `--json` gives each reference `required`, and a `message` when a required one is missing.
+  - The Google Play row marks a package ✗, `upload keystore missing`, when the keystore its release signs with is missing, and `--json` adds `missingKeystore` to that package.
+  - Deploy prints a missing signing key's next step on a line of its own, as the error lays it out, instead of folding it into the sentence before it. Text the CLI prints that is already laid out in lines keeps them.
+  - `keys export-public` prints `Public key not exported.` with its cause on the lines after it, doctor and `init` put a secrets adapter's error under `Couldn't read the <adapter> secrets adapter.`, and `infisical()`, `localSecrets()`, and `secret()` break a line that a long name, folder, path, or URL would widen past 76 columns. A URL longer than a line gets a line of its own.
+
+- Updated dependencies [41444fa]
+- Updated dependencies [fd2aa7e]
+  - @hot-updater/apple-helper@1.2.0-rc.10
+  - @hot-updater/cli-tools@1.2.0-rc.10
+  - @hot-updater/android-helper@1.2.0-rc.10
+  - @hot-updater/bsdiff@1.2.0-rc.10
+  - @hot-updater/console@1.2.0-rc.10
+  - @hot-updater/protocol@1.2.0-rc.10
+  - @hot-updater/server@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- 12ff126: Catch a wrong upload-key password before it is stored, and keep secrets errors short.
+  - `secrets put android-keystore` checks that the key password unlocks the key by signing an empty file with the JDK's `jarsigner`, as Gradle signs, before anything is stored. keytool's certificate request reads a PKCS12 key with the store password whatever the key password is, so a PKCS12 keystore stored with another key password, as EAS records it, used to fail the build only at its final signing step ("Given final block not properly padded"). The refusal reads `The key password doesn't unlock "<alias>".`, then `For PKCS12 keystores, the key password is the store password.` when the store password unlocks the key. At a terminal the CLI then offers to store the store password as the key password; in CI it stops, storing nothing.
+  - `--key-alias`, which stored a keystore without checking it, now runs the same check, so it needs a JDK on the machine, as Android builds do.
+  - `secrets issue android-keystore` names a stored keystore whose passwords don't open its key, and `--pem` still exports its certificate, and `hot-updater doctor` marks such a keystore in its Secrets block (`in the adapter, doesn't open`), with the reason and the command that stores it again. Without a JDK, doctor leaves it unchecked.
+  - A `signing` secret the store doesn't hold points at importing the existing key, `npx hot-updater secrets put bundle-signing-key <key.pem>`, and at checking the name and access, never at `secrets issue`, whose new key every shipped app rejects. `secrets put android-keystore` without a file offers `secrets issue android-keystore` only for an app with no `.aab` on Play yet.
+  - `infisical()`, `localSecrets()`, `secret()`, `secretsManager()`, `keyVault()`, and `secretManager()` errors print a line per idea, the reason first and the fix last, at most 76 columns: a provider's own message is wrapped or shortened on its own lines, a secret's full name gets a `Secret:` line, and long commands break with `\`.
+  - `infisical()` names its instance's URL, as an `Instance:` line, only when `siteUrl`, `INFISICAL_DOMAIN`, or `INFISICAL_API_URL` sets it; with none set, messages say `Infisical`. A `siteUrl` that holds credentials is not quoted.
+
+- Updated dependencies [12ff126]
+  - @hot-updater/cli-tools@1.2.0-rc.9
+  - @hot-updater/android-helper@1.2.0-rc.9
+  - @hot-updater/apple-helper@1.2.0-rc.9
+  - @hot-updater/bsdiff@1.2.0-rc.9
+  - @hot-updater/console@1.2.0-rc.9
+  - @hot-updater/protocol@1.2.0-rc.9
+  - @hot-updater/server@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Minor Changes
+
+- 297f916: `infisical()` needs only `projectId`: `secrets: infisical({ projectId: "…" })`. `environment` defaults to `"prod"` and `path` to `"/"`. Without `siteUrl`, it reads the instance from `INFISICAL_DOMAIN`, then `INFISICAL_API_URL`, as the Infisical CLI does, before Infisical Cloud's US region. The `auth` option is removed: it signs in only from the environment or `.env.hotupdater`, with `INFISICAL_TOKEN`, Universal Auth, or GitHub Actions OIDC with `INFISICAL_MACHINE_IDENTITY_ID`, requesting the ID token with GitHub's default audience. Without any of them, it says in two lines which variables to set and links the guide.
+- 2e3f250: Add `infisical()`, a built-in secrets adapter exported from `hot-updater` beside `localSecrets()`: the CLI reads and stores its secrets in an Infisical project, on Infisical Cloud (`https://us.infisical.com` by default, `https://eu.infisical.com` for EU) or a self-hosted instance, whatever provider you deploy to. It calls Infisical's REST API with `fetch` and installs nothing.
+
+  ```ts
+  secrets: infisical({ projectId: "…" }),
+  ```
+
+  - It signs in with `INFISICAL_TOKEN` (such as `infisical user get token --plain`), a machine identity's Universal Auth (`INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`), or GitHub Actions OIDC (`INFISICAL_MACHINE_IDENTITY_ID` with `id-token: write`), from the environment or `.env.hotupdater`. `secret()` refuses `INFISICAL_*` names.
+  - `get` lists the folder, its imports included, and reads each name it holds as stored; a missing name reads as `undefined`, and a wrong project, environment, or folder fails with Infisical's reason. `set` updates the secret, or creates it.
+  - `set` refuses a value Infisical would trim, which would not read back as stored, and a request over Infisical's 1 MiB limit. Values, tokens, and client secrets are masked in the CLI's output.
+  - The Infisical docs snippet is gone: the guide now covers the built-in adapter, with project and machine identity setup, local sign-in, CI with GitHub OIDC or Universal Auth, and self-hosted instances.
+
+- c463534: `secret("<name>")` from `hot-updater` names every credential in `hot-updater.config.ts`. It replaces the `"secret:<name>"` strings and `secretEnv([...])` of earlier 1.2 RCs, so configs written for those RCs break: rerun `init` for a managed config, or edit it as below.
+
+  ```ts
+  import { defineConfig, secret } from "hot-updater";
+
+  export default defineConfig({
+    storage: r2Storage({
+      bucketName: "bundles",
+      accountId: "…",
+      credentials: {
+        accessKeyId: secret("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID"),
+        secretAccessKey: secret("HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
+      },
+    }),
+    database: d1Database({
+      databaseId: "…",
+      accountId: "…",
+      cloudflareApiToken: secret("HOT_UPDATER_CLOUDFLARE_API_TOKEN"),
+    }),
+    signing: { enabled: true, privateKey: secret("bundle-signing-key") },
+    nativeBuild: {
+      android: {
+        release: { signing: { keystore: secret("release-keystore") } },
+      },
+      ios: { release: { signing: { ascApiKey: secret("asc-api-key") } } },
+    },
+  });
+  ```
+
+  - `secret()` returns a function an adapter calls on first use, so loading the config reads no secret. Called, it reads the environment or `.env.hotupdater` first, then the config's `secrets` adapter: one call reads every name of the config the environment doesn't set. With `localSecrets()`, an adapter credential must be set in the environment. Values are masked, and reserved names, such as `NODE_OPTIONS`, are refused.
+  - `signing.privateKey`, `signing.keystore`, and `signing.ascApiKey` take only `secret()`: a string is a type error, and the CLI refuses it in one line.
+  - Storage and database adapters take each credential as a string or a function (plugin-core's `Lazy<T>`), so servers keep passing their own environment's values. `s3Storage`, `dynamoDB`, and `r2Storage` also take access keys whose fields are lazy, and the header values of `standaloneRepository` and `standaloneStorage` may be lazy.
+  - `init` writes `secret()` inline and moves an earlier RC config's `secretEnv` helpers to it. `doctor` and `secrets import` find the names in the adapters' `secret()`s.
+  - `secrets put bundle-signing-key <key.pem>` moves an existing RSA key (PKCS#1 or PKCS#8, 2048 bits or more) into the secrets store as PKCS#8, reads it back, and prints its public key's SHA-256 fingerprint. A `privateKeyPath` key moves this way without a new trust anchor.
+
+- 5358377: Bundle signing reads one secret, and the signing adapters are removed.
+
+  ```ts
+  import { defineConfig, secret } from "hot-updater";
+
+  export default defineConfig({
+    signing: secret("bundle-signing-key"),
+  });
+  ```
+
+  - `signing: secret("bundle-signing-key")` is the shorthand of `{ enabled: true, privateKey: secret("bundle-signing-key") }`: the secret holds the RSA private key in PEM. 1.1's `{ enabled: true, privateKeyPath }` keeps working as it is, and `{ enabled: false }` turns signing off.
+  - `npx hot-updater secrets issue bundle-signing-key` creates an RSA 4096 key, stores it as PKCS#8 through the config's `secrets` adapter, reads it back, prints its public key's SHA-256 fingerprint, and adds the shorthand to a config without `signing`. It keeps a stored key unless `--replace`, since apps already shipped reject bundles signed with a new key, and without a terminal it creates one only in a team store. `keys generate` is removed; `keys export-public` and `keys remove` read the key through `signing`.
+  - Without `signing`, `deploy` warns once a run, and `doctor` shows the same warning row: `Bundles are unsigned.`, then `To sign them, run: npx hot-updater secrets issue bundle-signing-key`.
+  - `awsKmsSigning`, `googleCloudKmsSigning`, and `remoteSigning`, the `hot-updater/signing` entry, plugin-core's `BundleSigningAdapter` and its remote signing protocol, and the reserved `HOT_UPDATER_SIGNING_TOKEN` are removed, with the optional `@aws-sdk/client-kms` and `@google-cloud/kms` peers. A signing adapter, or any other `signing` value, is a type error, and `deploy` refuses it, before it connects or builds, rather than deploy unsigned bundles: `signing takes secret("bundle-signing-key").`, then `Store your key: npx hot-updater secrets put bundle-signing-key <key.pem>`. `doctor` shows it as an error row.
+  - `@hot-updater/cli-tools`: `prepareBundleSigning(signing, { cwd, secrets })` and `getBundleSigningPublicKey(signing, { cwd, secrets })` take the config's `signing` as it is; `readBundleSigningState(signing)` tells signing on, off, unsigned, and refused apart. `DEFAULT_SIGNING_KEY_SECRET` is `BUNDLE_SIGNING_KEY_SECRET`. `addSigningSecretToConfig(cwd, name)` adds the shorthand to `hot-updater.config.ts`.
+
+### Patch Changes
+
+- 8a440e3: Google Play is set up with `secrets put`, and checked before a build. `hot-updater google-play login` and its gcloud flow are removed, along with `secrets issue play-service-account`. Store the service account's JSON key with `secrets put play-service-account <key.json>`, which checks that the file is a service account key and names `google-services.json` when you pick that one by mistake. Store the app's upload keystore with `secrets put android-keystore <file>`, which asks for its passwords at a terminal and checks them with keytool. `secrets put` takes the file as its second argument and defaults the kind to the name, and every value it stores is read back exactly. `native-build android --submit play-internal` and `google-play upload` check the key, the keystore, and Play access (an edit opened and deleted) before the prebuild. They list every unmet item at once, with the command, the Play Console invite, or the first `.aab` upload that fixes it. `hot-updater doctor` adds a Google Play row with the same access check for each Android package. `secrets issue android-keystore` now says its new key fits only an app with no `.aab` on Google Play yet. The native build guide has a new "Set up Google Play" section.
+- 21cfeec: `native-build ios` and `native-build android` print a few lines with live progress. One `Preparing` line covers the prebuild, the app version or fingerprint, codegen, Ruby gems, and pods, showing the current sub-step, and ends as `Prepared iOS 1.7.0 · prebuild · codegen · pods` with its duration. The cache result is one line with its reason, such as `Cache miss · engine changed`. Archive, export, and Gradle each show one live line with the phase read from the tool's output (`Compiling React-Core · 412 files`, `Linking`, `Signing`, `Bundling JavaScript`, or Gradle's current task) and the elapsed time, and each ends as one line with its duration. Registering the build and uploading it to TestFlight or Google Play are also one line each. The run ends with a summary: the artifact's path and size, the version and build number, the MIN_BUNDLE_ID, the channel, the total time, and the build log. The xcodebuild or Gradle command line, the full native build key, and what changed since the cached build go to the build log, so credential file paths stay off the terminal. iOS writes the archive and its export to one log. In CI and without a terminal, no spinner runs: each finished step prints one line. A failure ends its step's line as failed, then prints up to 20 of the tool's error lines (an export's errors with the lines that explain them), or else its last 15 lines, and the log's path on stderr. A failed `pod install`, `bundle install`, or codegen names the command and the last lines of its output. `xcbeautify` is no longer used. `expo prebuild` now reports done after it finishes, not before it starts. `@hot-updater/cli-tools` exports `startStep`, `createStep`, `withStep`, `failActiveStep`, `formatDuration`, and `withDuration`; while a step runs, `p` spinners and info lines become its detail, and other logs print after its line. `BuildLogger` takes a `createPhaseReader` instead of `importantLogPatterns` and `progressStages`.
+- Updated dependencies [8a440e3]
+- Updated dependencies [2e3f250]
+- Updated dependencies [21cfeec]
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/android-helper@1.2.0-rc.8
+  - @hot-updater/cli-tools@1.2.0-rc.8
+  - @hot-updater/apple-helper@1.2.0-rc.8
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/console@1.2.0-rc.8
+  - @hot-updater/server@1.2.0-rc.8
+  - @hot-updater/bsdiff@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- 5b13b16: `google-play login` asks which Google Account to use when gcloud already holds one: the accounts gcloud holds, the active one first, or "Sign in with another Google Account", which runs `gcloud auth login` and uses the account it adds. It reads the access token of the chosen account and leaves gcloud's active account as it was. The Play Console invite, and the refusal when the key never reaches the app, name the exact permission to grant: the app permission "Release apps to testing tracks", under App permissions rather than account-wide.
+- f3989de: rc.6 QA fixes. A CI iOS build revokes only the signing certificates Xcode created in its keychain, never the Apple CA intermediates imported beside them, and a certificate it can't revoke is named on one line with its serial on the next, then the page to revoke it. When Apple's Program License Agreement isn't accepted, the build failure, TestFlight uploads, the certificate revocation, and key issuing say the Account Holder must accept it at developer.apple.com/account. `secrets import` takes the env file to read, `.env.hotupdater` by default, reads only that file, and lists the names it stored one per line. A secrets adapter that can't be read names the secret and the adapter above its own error. `secrets issue asc-api-key` and `apple login` name the team the key was issued in.
+- Updated dependencies [5b13b16]
+- Updated dependencies [f3989de]
+  - @hot-updater/android-helper@1.2.0-rc.7
+  - @hot-updater/apple-helper@1.2.0-rc.7
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/bsdiff@1.2.0-rc.7
+  - @hot-updater/console@1.2.0-rc.7
+  - @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/server@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- 755bde5: rc.5 QA fixes. Doctor's advice for managed credentials the config reads with `process.env` names init's command only for a deployment init manages; for one an agent infrastructure scaffold keeps, or a config of your own, it is one line and the `secretEnv` docs link. `google-play login` checks for gcloud before any question, uses the account's only Google Cloud project with the Google Play Android Developer API, and otherwise asks which project to use or whether to create one, instead of creating a new project. `apple login` and `secrets issue` help no longer name asc, and a shortcut's refusal of an option is two short lines with the full command.
+- Updated dependencies [755bde5]
+  - @hot-updater/android-helper@1.2.0-rc.6
+  - @hot-updater/apple-helper@1.2.0-rc.6
+  - @hot-updater/bsdiff@1.2.0-rc.6
+  - @hot-updater/cli-tools@1.2.0-rc.6
+  - @hot-updater/console@1.2.0-rc.6
+  - @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/server@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- dd7db4b: `secrets issue android-keystore` creates the Android upload key with the JDK's keytool and stores it through the secrets adapter, and `google-play login` sets it up after the Play service account: a new key, or the keystore you have.
+- 1489a30: Doctor's outdated-server advice for a deployment an agent infrastructure scaffold keeps is one line and the `agent infra upgrade` command, named once, as for a deployment init manages. The preview, migration and deploy order stay in the scaffold's `upgrades/README.md`. `--json` keeps its fields.
+- 709997a: `google-play login` signs in to Google with the gcloud CLI, running `gcloud auth login` when no account is active, and needs no Google OAuth client of your own (`HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID`/`_SECRET` are gone) and no Play Console developer account ID. The package name is filled in from the config's `nativeBuild.android` schemes (a choice when they declare several), as `native-build android --submit play-internal` does. The service account goes in the Google Cloud project "Hot Updater Play" an earlier run created, or a new one, without asking; only when Google refuses to create a project does it ask for one of the account's projects. After creating the key, it opens Play Console's invite page for the service account and waits, up to 10 minutes, until the key can reach the app; when it never does, it deletes the key and says to invite the service account and run `npx hot-updater google-play login` again.
+- 5d4d977: The config managed `init` writes names the provider's resources and reads its credentials with `secretEnv`, so a team store in `secrets` shares them: `init` stores them there with `HOT_UPDATER_API_KEY` and reads a missing one back, and `secrets import` moves an existing project's from `.env.hotupdater`. Doctor lists where each `secretEnv` name comes from. The storage and database adapters take a credential as a string or a function.
+- 2fd1c83: A configured `secrets` adapter is the only store: the CLI no longer reads `~/.hot-updater/secrets/` under it or writes there for it, so a teammate with the config and store access sees what you see. An issued key must read back exactly through the adapter, or it is revoked; the run uses it from memory. When the environment overrides a key the adapter lacks, `apple login` and `google-play login` add an `Adapter` row. `hot-updater doctor` lists each `secret:` reference and whether the adapter, the environment, or nothing holds it, with matching `--json` fields.
+- Updated dependencies [dd7db4b]
+- Updated dependencies [709997a]
+- Updated dependencies [5d4d977]
+- Updated dependencies [2fd1c83]
+  - @hot-updater/android-helper@1.2.0-rc.5
+  - @hot-updater/cli-tools@1.2.0-rc.5
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/apple-helper@1.2.0-rc.5
+  - @hot-updater/console@1.2.0-rc.5
+  - @hot-updater/server@1.2.0-rc.5
+  - @hot-updater/bsdiff@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- ebb223a: `apple login` and `google-play login` report a key already stored, or set by the environment, and exit 0 without a terminal too, as in CI; only a sign-in needs one. Doctor's outdated-server advice is one line and init's command, named once: when the database also has migrations to run, the schema check names it instead. `agent infra upgrade` names `upgrades/README.md` once, and each file relative to the templates' directory. `native-build --dry-run` ends with one line, such as `Dry run: not recorded or submitted to TestFlight`, after the build's block, without repeating its rows; the app version and fingerprint steps read `iOS app version 1.7.0`, and the `.app file created` line is gone. `keys generate` prints its keys under a `Keys generated` heading. `--json` output is unchanged.
+- Updated dependencies [ebb223a]
+  - @hot-updater/apple-helper@1.2.0-rc.4
+  - @hot-updater/android-helper@1.2.0-rc.4
+  - @hot-updater/bsdiff@1.2.0-rc.4
+  - @hot-updater/cli-tools@1.2.0-rc.4
+  - @hot-updater/console@1.2.0-rc.4
+  - @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/server@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- 3c00e7a: The commands new in 1.2 print short output that fits an 80-column terminal: one idea per line, `Label  value` rows padded to a common width, paths with `~` or relative to the project and shortened in the middle, and bare highlighted commands without backticks. A result with nothing to do, such as `apple login` with a key already stored, states the result and stops; a next step is printed only when you have to act. `apple login` and `google-play login` name the one place they found the key. Doctor prints each issue and its resolution as one entry, a sentence per line. `--json` output is unchanged.
+- Updated dependencies [3c00e7a]
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/apple-helper@1.2.0-rc.3
+  - @hot-updater/android-helper@1.2.0-rc.3
+  - @hot-updater/bsdiff@1.2.0-rc.3
+  - @hot-updater/console@1.2.0-rc.3
+  - @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/server@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- 76090c3: `hot-updater channel set <channel>` in an Expo CNG project points at the `@hot-updater/expo` plugin's `channel` option as where the build takes its channel from. For a dynamic `app.config.*` it shows that option read from an environment variable, as the pull request preview guide does (`channel: process.env.PREVIEW_CHANNEL ?? "production"`), and the variable to build with (`PREVIEW_CHANNEL=<channel>`), instead of a channel to hardcode. For a static `app.json` it shows the option set to the channel, as JSON.
+- Updated dependencies [76090c3]
+  - @hot-updater/console@1.2.0-rc.2
+  - @hot-updater/android-helper@1.2.0-rc.2
+  - @hot-updater/apple-helper@1.2.0-rc.2
+  - @hot-updater/bsdiff@1.2.0-rc.2
+  - @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/server@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- 939651e: Fixes from the 1.2.0-rc.0 QA of `hot-updater doctor` and the CLI.
+  - Without `--server-base-url`, doctor checks the server an agent infrastructure scaffold records in `hot-updater-infra/<provider>/*/deployment.json`, naming the file in `details.infrastructure.recordedIn`. When none records one, or several record different servers, it reports `details.infrastructureUnchecked`: the server's version was not checked, and `npx hot-updater doctor --server-base-url <url>` checks it. It no longer reports success with nothing about the skip.
+  - Init's command names `--from-env-file .env.hotupdater` only when that file holds the init record and every input doctor compared, as doctor read them. When they came from the environment, such as CI's variables or a file the config loads, the command names `--build` and `--from-env-file <env file>` and says that init needs them too.
+  - For a deployment an agent infrastructure scaffold in `hot-updater-infra/<provider>/` keeps (its `deployment.json` records a deployed server on the configured database, and the config lists only the official plugins), doctor names `npx hot-updater agent infra upgrade --provider <provider> --build <build>` and its upload, preview, migrate and deploy order instead of init, which would deploy without a preview and leave the scaffold behind.
+  - When the console's port is taken, `hot-updater console` says that `console.port` in hot-updater.config.ts changes it.
+  - The upgrade files the agent infrastructure scaffold copies, such as `upgrades/1.2.0.md`, are oxfmt-formatted as shipped, so a project's formatter keeps them as generated and their manifest hashes hold.
+
+- cd5fa07: `hot-updater native-build ios` removes the temporary directories it builds in, which it used to leave in the system's temporary directory, 10 GB or more each.
+  - The Xcode DerivedData of a simulator build, which can take 10 GB or more, is removed once the `.app` is copied out of it, whether the build succeeds or fails.
+  - The `.xcarchive` and the export are written straight to the build directory, instead of temporary directories copied into it.
+  - The build directory is removed once its artifact is copied to the output path, and a failed build removes it, and every other directory it used, right away.
+  - A build interrupted with Ctrl+C, or ended by a signal, removes them too.
+  - The build log in `.hot-updater/log` stays where it is, after a failed build too.
+
+- bcc239a: The Console's Install card says each thing about installing a native build once: the QR code's caption says what scanning gets, and the steps beside it add only another way, such as `adb`, `xcrun simctl`, Xcode or Apple Configurator, or the `testflight` and `google-play upload` commands. An AAB's card no longer says twice that it installs through Google Play or bundletool.
+
+  A native build's Console download link, as a pull request preview's comment shows it, opened in a browser without a Console session, goes to the build's page to sign in, and sign-in returns to the download. The build's page names the download in `returnTo`, relative to the page, and sign-in takes it only on the Console's own origin; anything else returns to the page. A request that isn't a browser navigation still gets the 401.
+
+  `hot-updater channel set <channel>` says per platform when it found no `AndroidManifest.xml` or `Info.plist` and wrote nothing, instead of a success line, and asks for a rebuild only when it wrote a file. In an Expo CNG project it says that builds take the channel from the `@hot-updater/expo` plugin's `channel` option in the project's `app.json` or `app.config.*`, which `expo prebuild` writes into the native files, and shows that option set to the channel given, not `production`.
+
+- Updated dependencies [cd5fa07]
+- Updated dependencies [bcc239a]
+  - @hot-updater/apple-helper@1.2.0-rc.1
+  - @hot-updater/console@1.2.0-rc.1
+  - @hot-updater/android-helper@1.2.0-rc.1
+  - @hot-updater/bsdiff@1.2.0-rc.1
+  - @hot-updater/cli-tools@1.2.0-rc.1
+  - @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/server@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- 6276804: Sign in with your Apple Account to issue the App Store Connect API key. An iOS build that needs a key for `signing.ascApiKey` or `--submit testflight` and finds none asks for the Apple Account, its password (masked), and the two-factor code in Hot Updater's own prompts in a terminal, issues a team key named `hot-updater <date>` with the Admin role through asc, the open-source App Store Connect CLI, stores it through the config's `secrets` adapter, `localSecrets()` by default, which keeps it in `~/.hot-updater/secrets/<project-key>/` on this machine, and continues; `hot-updater secrets issue asc-api-key [name]`, or its shortcut `hot-updater apple login`, which takes no options or arguments, does the same ahead of time, the only command that signs in before a build. It keeps a key the adapter or the environment already provides, printing where it is and its key ID. Keys are per machine: on one without a key, it says before signing in that it will issue a new key, and how to share one key across machines instead; after issuing, it names the App Store Connect page where you revoke the keys no machine uses anymore. `--replace` issues a new key, stores it, and names the old key ID with where to revoke it in App Store Connect, never revoking it itself, since CI may still use it. `hot-updater secrets put` only imports a key you have (`--p8`, `--key-id`, `--issuer-id`) and points to `apple login` without them. Builds and `apple login` without a terminal or in CI never sign in: builds use the stored key and refuse with `npx hot-updater apple login` when there is none, or `npx hot-updater secrets issue asc-api-key <name>` for a key named otherwise. Hot Updater keeps no Apple session, so there is no logout: each sign-in ends naming the key it stored and where. Only the issued key is kept: asc's session, config, and the `.p8` live in a temporary directory that is deleted, and a key that surely was not stored is revoked again.
+- 3462a9a: A store install's first OTA downloads a Hermes patch from the built-in bundle of its registered native build.
+  - `hot-updater deploy` adds the built-in bundle of the newest native build `native-build ios|android` tracked for the deploy's channel, platform, and fingerprint or exact app version to its patch bases, beside the `patch.maxBaseBundles` released ones, in one indexed read. A built-in bundle newer than the deployed bundle, or a self-hosted server without the native build routes, adds none.
+  - With no OTA installed, the iOS and Android runtimes apply a patch whose base is the app's MIN_BUNDLE_ID to a copy of the packaged Hermes file, after checking it against the patch's base file hash. When store processing changed the file, they download the complete file instead, and report `patchFallback`.
+  - The runtimes choose between per-file downloads and `bundle.tar.br` counting only the patches they can apply: a built-in patch counts once the packaged file has been checked against its base.
+
+- d7f02a6: Native builds run in CI without signing in. The CLI treats a run as CI when `CI` is set or it has no terminal: it asks nothing there, even on a terminal a runner allocates, and never starts an Apple or Google sign-in. `native-build ios` and `native-build android` resolve every credential they sign and upload with before the build adapter's prebuild, so a missing one fails in seconds; the error names the `secrets` adapter and where it keeps the credential, the command that stores it once (`apple login` or `google-play login` for a key Hot Updater issues, `secrets put` for a keystore), and the environment variables that provide it instead. In CI, an iOS build that signs with an App Store Connect API key archives and exports in a keychain of its own, restores the runner's keychains afterwards, and revokes the development certificates Xcode created in it, so runners that start empty don't pile up certificates. The new `actions/native-build` GitHub Action runs `native-build <platform> --submit` with the job's environment, its `submit` input naming the store, and the "Build and upload from CI" guide has a complete workflow that maps GitHub Actions secrets to the job's environment. When the build fails, the action uploads the CLI's build log as the `hot-updater-build-log-<platform>-<scheme>` artifact and sets it as the `build-log` output.
+- 28dfe97: The Console's **Native builds** tab lists the native builds Hot Updater tracks, installs them, and shows each one's built-in bundle, the diff baseline its OTAs patch from.
+  - **Native builds** (`/native-builds`) lists the tracked builds, newest first, one read per page, with each build's channel, fingerprint or app version, built-in bundle, and commit. `?channel=<name>` lists only the builds that embed a channel, also one read per page. A row opens the build's page.
+  - A build's page, `/native-builds/<id>`, reads five times whatever the build. **Install** shows an APK's QR code and `adb install` command, a simulator app's `xcrun simctl install` command, TestFlight for an IPA's testers, and a download for every build. **Built-in bundle** shows the min bundle ID its OTAs patch from, how many bundles patch from it, and whether it is its scope's newest build, which new deploys patch from, or the build that superseded it. **Served now** lists what the update check offers an install of the build, newer than its built-in bundle, and whether each first OTA downloads as a patch or as the full bundle. **Patches from this build** pages the patches from its built-in bundle.
+  - `/api/native-builds/<id>/download` redirects to the storage's download URL on each request, so the link never expires; a browser without a Console session goes to the build's page, which signs it in and returns to the build. The APK QR code holds the storage URL itself, read again every 30 seconds while it shows, so a phone needs no Console sign-in. `/_hot-updater/native-builds/qr?build=<id>` serves the QR code of a build's download link without a session and without a read.
+  - **Import a build**, beside the refresh button and in an empty list's next steps, shows the `npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>` command that tracks a build made elsewhere, with its `-c/--channel` option and a link to the import guide; the Console uploads nothing.
+  - Sign-in returns to the Console page that asked for it.
+  - A bundle's detail sheet links to the newest native build of its release's scope, and says whether the bundle has a patch from it.
+  - `hot-updater channel delete <channel>` disables and deletes a channel's bundles, then the channel, as when a pull request closes. A missing channel succeeds without a change; a channel a native build embeds is kept, and the command exits with status 1.
+  - Core's API adds `getNativeBuild(id)`, one read by key, served at `GET /native-builds/:id`, and `listNativeBuilds({ channelId })`, one read of the channel's builds, served at `GET /native-builds?channelId=`; `standaloneRepository` maps both.
+
+- 0050ff3: `hot-updater doctor --fix` is removed. Doctor only reports and writes nothing, and each issue names the command or edit that resolves it in `resolution` and `commands`. The flag is gone like any unknown option, and `--json` output has no `fixes` and no `fixability`. Run instead:
+
+  | Issue                                                                                 | Run                                                                                                                                                                                 |
+  | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `SCHEMA_MIGRATION_PENDING` on a deployment `hot-updater init` created                 | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`, which migrates the database and redeploys the server back to back                                     |
+  | `SCHEMA_MIGRATION_PENDING` on a server of your own                                    | `npx hot-updater db migrate <server file>` in the server's project, or `npx hot-updater db generate <server file>` and the database's tooling for Drizzle, Prisma, D1, and Supabase |
+  | `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | `npx hot-updater fingerprint create`                                                                                                                                                |
+  | `FINGERPRINT_JSON_UNUSED`                                                             | Delete `fingerprint.json`, then rebuild the apps                                                                                                                                    |
+  | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH`                                           | `npx hot-updater keys export-public`, then rebuild and release the app; installed apps keep the previous key                                                                        |
+  | `RELEASE_CATALOG_STALE`                                                               | Any release change in the scope, such as `npx hot-updater deploy` or `npx hot-updater bundle update <id>`, which recompiles its catalog                                             |
+  - Doctor detects a deployment `hot-updater init` created from the provider `.env.hotupdater` records, when the config's database is the one init saved: each provider's database factory now marks the resource it reaches, without credentials, and doctor compares it with the saved inputs. A database that reaches another resource gets your own server's commands; when doctor cannot tell, it names both, each with its condition. For it, a pending schema and an outdated server (`--server-base-url`) both name init with its saved inputs: it applies the release's migrations and then redeploys the Worker, Edge Function, Lambda@Edge function with its IAM role policy, Cloud Function, Vercel Function, or Function App, so the 503 window is the deploy. An outdated server of your own names `db migrate` and `db generate`, and doctor prints the reason beside the commands.
+  - While the config lists a plugin of your own, doctor does not name init: init deploys only the official plugins and writes that list back into `hot-updater.config.ts`, so it would drop the plugin. Doctor says to remove it, or to migrate as a server of your own. While the schema is `SCHEMA_NEWER_THAN_CLI`, `SCHEMA_NOT_MIGRATABLE` or `PLUGIN_SCHEMA_CHANGED`, an outdated server's remediation names no command, since an upgrade would migrate over those settings.
+  - `UNREFERENCED_ARTIFACTS` and `ARTIFACTS_UNCHECKED` are no longer reported: core deletes an artifact record with the last release that uses it, so it never leaves one behind.
+  - A stale release catalog only follows an edit made outside Hot Updater or a partial restore, since every release change writes its scope's catalog; doctor still reports it, as devices read the catalog.
+  - `@hot-updater/cloudflare/init` and `@hot-updater/supabase/init` no longer export `migrateDatabase`, and `@hot-updater/cli-tools` no longer exports `MigrateManagedDatabase`. `d1Database` and `supabaseDatabase` mark their target under the shared `Symbol.for("@hot-updater/database-target")` instead of their own symbols.
+  - The schema fence's errors, the standalone repository's 503 error, and the Console's migration notice send you to `npx hot-updater doctor`, which names the command for the database.
+
+- 43b0a61: Sign in with Google to issue the Play service account key. `native-build android --submit play-internal` that finds no `play-service-account` in the config's `secrets` adapter opens Google's sign-in page in a terminal, checks that the account administers the Play Console developer account and that Google Play has the app, then creates the service account `hot-updater-play` in a Google Cloud project you pick or a new one, gives it release access to the app in Play Console, creates its JSON key, stores it through the adapter, `localSecrets()` by default, which keeps it in `~/.hot-updater/secrets/<project-key>/` on this machine, and continues; `hot-updater secrets issue play-service-account [name]`, or its shortcut `hot-updater google-play login`, which takes no options or arguments, does the same ahead of time, and ends naming the service account whose key it stored and where: Hot Updater keeps no Google session. It keeps a service account the adapter or the environment already provides, printing where it is and its email. Keys are per machine: on one without a key, it says before signing in that it will create a new key, and how to share one key across machines instead; after creating it, it names the service account's keys page in Google Cloud, where you delete the keys no machine uses anymore. `--replace` issues a new key, stores it, and names the old key with where to delete it under the service account's keys in Google Cloud, never deleting it itself. `hot-updater secrets put` only imports a key file you have (`--service-account`). Builds without a terminal use the stored key, and refuse with `npx hot-updater google-play login` when there is none. Only the key is kept: the sign-in's access token is revoked, and a key that surely was not stored is deleted again. Until Hot Updater ships its own OAuth client, the sign-in needs a "Desktop app" OAuth client of yours in `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_ID` and `HOT_UPDATER_GOOGLE_OAUTH_CLIENT_SECRET`, and stops before opening the browser without one.
+- 1ad0ebe: Local PEM signing reads its private key from the config's `secrets` adapter with `signing: { enabled: true, privateKey: "secret:<name>" }`, beside `privateKeyPath`. The CLI reads the secret once per run, when it first derives the public key or signs, masks it in its output, and keeps it in memory only; a missing secret fails the deploy with where it was looked for. Without an adapter, `secret:bundle-signing-key` is `HOT_UPDATER_BUNDLE_SIGNING_KEY` in the environment, where a one-line PEM with `\n` for its line breaks reads as the PEM, and otherwise `localSecrets()`'s directory on this machine.
+
+  `hot-updater keys generate --secret [name]` stores the private key as that secret, `bundle-signing-key` by default, through the config's adapter, or in `localSecrets()`'s directory on this machine (`~/.hot-updater/secrets/<project-key>/<name>.json`, readable by you alone) without one, and writes only `public-key.pem`. It never replaces a secret it reads a value from.
+
+- 89cd5ce: `hot-updater doctor` reports a database whose schema is behind, and names the command that migrates it.
+  - `hot-updater doctor` reads the database `hot-updater.config.ts` names through the schema fence, as the server does, and reports `SCHEMA_MIGRATION_PENDING` with each settings row a migration writes: after upgrading to a release whose schema changed, or after adding a plugin to `plugins`. It checks the release catalogs once the schema passes. A row newer than the CLI expects is `SCHEMA_NEWER_THAN_CLI`; a v0 database is `SCHEMA_NOT_MIGRATABLE`; and a plugin of your own whose stored version differs is `PLUGIN_SCHEMA_CHANGED`, left to its own migration. Doctor names no migration while any of these stands.
+  - The managed D1 and Supabase schemas ship as one migration per release that changes them, starting with `0002_hot-updater_1.2.0.sql`, after the unchanged `0001_hot-updater_1.0.0.sql`. Each holds what the earlier ones do not create, with Supabase's apply RPC, its grants, and row-level security for new tables, then every settings row. `hot-updater init`, run again with its saved inputs, applies them.
+  - The schema fence's errors send you to `npx hot-updater doctor`, which names the command for the database.
+  - The Console shows a migration notice, with the settings and the command, instead of failing on every page while its database needs a migration.
+
+- 79c81f6: `hot-updater native-build ios` and `native-build android` reuse a build instead of building again when nothing that can change the artifact changed. After the build adapter's prebuild, each build computes a native build key (`nbk1:` and a SHA-256) of every file of the git repository, the ignored native project files, `.env*` files, the install state and installed native packages it reads, what Expo and React Native CLI autolinking link (the config it prints, without this machine's directories, and each linked package file by file, wherever it is, with the ignored files of the repository's packages), the scheme's settings and files, the channel and fingerprint or app version, the signing identity (never a password or key), the toolchain, and the environment variables the build reads. A build the registry tracks with that key, whose artifact storage holds, is copied or downloaded to the output path, and nothing is built, tracked, or uploaded; else this machine's cached build with the key, such as a `--dry-run`'s, is tracked with its own min bundle ID; else the CLI builds and says what changed since the cached build. The CLI keeps one build per platform and scheme under `cacheDir`. A build no key can cover (Debug, outside git, autolinking that can't run, no `Podfile.lock` or `Package.resolved`, a dynamic Gradle version without a lockfile, environment reads by a computed name, device-list export methods, uninstalled provisioning profiles) always builds, and says why. `--no-cache` builds anyway and still records the key; `--submit` skips a reused build the store already has (`findTestFlightBuild` in `@hot-updater/apple-helper`, `findPlayInternalRelease` and `readBuiltVersionCode` in `@hot-updater/android-helper`); `--json` adds `cache: { hit, key, uncacheable, changed }`. The key is separate from the fingerprint, which keeps deciding which OTA updates a build takes, and `native-build find` keeps finding builds by scope.
+
+  Core's `native_builds` table has the nullable `build_key` column and the `byBuildKey` index, in the managed `0002_hot-updater_1.2.0.sql` migrations and the PostgreSQL schema. `NativeBuildRegistration` takes `buildKey`, `NativeBuildRow` has `build_key`, and `findNativeBuild(scope, { buildKey })` finds the newest build of a scope with a key in one read, also through `GET /native-builds/latest?buildKey=` and `standaloneRepository`, which reads a server's answer without the key as no build.
+
+- 4d8e0d2: Every native build `hot-updater native-build ios|android` makes is tracked in Hot Updater's native build registry, with no flag to opt out.
+  - Core's schema moves to 1.2.0 with the `native_builds` table, in the managed D1 and Supabase `0002_hot-updater_1.2.0.sql` migrations; `hot-updater init`, run again with its saved inputs, applies it. The table changes no existing one: its references to `channels` and `bundles` keep no counters.
+  - Before it builds, and before any Apple or Google sign-in, the CLI checks read-only that it can track the build: it asks the registry for the build's scope (for its newest build when the build adapter's prebuild has yet to generate the native project), and reads back (`exists`) the artifact of a build the registry already tracks there; when the database or the storage can't be reached, it stops in seconds naming which, and builds nothing. A Debug build, which loads its JavaScript from Metro and has no built-in bundle, is not tracked: the CLI says so before it builds, and `--json` reports `registration: { skipped: "debug" }`. When tracking fails after the build, the CLI exits with the artifact's path and submits it to no store.
+  - `--dry-run` builds but records and submits nothing, as `npm publish --dry-run` does: it runs the checks read-only, reads the store key `--submit` would use without signing in or issuing one, keeps the artifact on this machine, and prints what it would have recorded and where it would have submitted. A missing store key is reported, the build still runs, and the command exits 1 at the end. With `--json`, the last line has `dryRun: true`, `registration: { skipped: "dry-run" }`, and `submission: { skipped: "dry-run", destination }`.
+  - Tracking takes the JavaScript bundle a release build compiled in out of the artifact (`assets/index.android.bundle` in an `.apk`, `base/assets/index.android.bundle` in an `.aab`, `main.jsbundle` in an `.ipa` or `.app`), uploads the artifact to `native-builds/<platform>/<id>/` in the config's storage (a simulator `.app` as one `.app.zip`), uploads that bundle as the build's built-in bundle, a bundle whose ID is the MIN_BUNDLE_ID and whose manifest lists only that file at an OTA bundle's asset path, then registers both. It uses the config's `database` and `storage`, as deploy does.
+  - A tracked build records the build number its artifact reports, `build_number` (`CFBundleVersion` from the app's Info.plist, `versionCode` read with `aapt2`), which the Console shows; registrations without it, as from an earlier CLI, store null.
+  - A tracked build records the store track it was submitted to: `native_builds` has nullable `submitted_to` (`testflight` or `play-internal`), `submitted_at_ms`, and `submitted_version`, the store's version and build number. Core's `recordNativeBuildSubmission(id, { destination, version })` writes them in one read and one write, refusing another platform's store, and answers null for an unknown build; the admin API serves it at `POST /native-builds/:id/submission`, and `standaloneRepository` maps it.
+  - Core's API adds `registerNativeBuild`, which writes the build and its built-in bundle's row in one transaction, `findNativeBuild`, the newest build of a platform, channel, and fingerprint or exact app version in one indexed read, and `listNativeBuilds`. The admin API serves them at `POST /native-builds`, `GET /native-builds/latest`, and `GET /native-builds`, and `standaloneRepository` maps them; a server without these routes answers 404, which the CLI reports as a server to upgrade.
+  - A built-in bundle is no OTA bundle: no release publishes it, the bundle totals leave it out, core refuses to delete it or to release it, and `storage prune` keeps its files and the artifact. Update checks and artifact responses do not change.
+  - `azureBlobStorage` and `firebaseStorage` stream uploads instead of reading them into memory.
+  - `@hot-updater/android-helper` and `@hot-updater/apple-helper` export `extractBuiltInBundle`, and `@hot-updater/apple-helper` exports `archiveAppBundle`.
+
+- ed37acf: `hot-updater native-build ios` and `hot-updater native-build android` build native apps, without `EXPERIMENTAL`: `native-build <platform> [-s <scheme>] [-o <path>] [--submit testflight|play-internal] [--dry-run] [--json]`, beside `native-build find`, `native-build delete`, and `native-build import`. They replace the experimental `build:ios` and `build:android`; `run:ios` and `run:android` are removed, with no alias: install the artifact (`xcrun simctl install`, `adb install`) or use your framework's run command. Without `--scheme`, the build asks for the scheme at a terminal, and in CI or without a terminal stops with the schemes to pass. A build returns and prints the artifact (`.apk`, `.aab`, `.ipa`, or simulator `.app`) with the values compiled into it: the MIN_BUNDLE_ID, the fingerprint hash or app version, and the default channel (the app version and channel are read from the built artifact: the app's Info.plist on iOS, and with the SDK's `aapt2` the merged manifest of the `.apk` or `.aab` on Android). The build adapter's `prebuild`, such as `expo prebuild`, now runs before the commands read the native projects. The CLI issues each MIN_BUNDLE_ID as the SDK's podspec script phase and Gradle task do, the UUIDv7 of the build's millisecond with zero random bits, stepped 1 ms forward past a bundle the registry already holds at it; a build whose MIN_BUNDLE_ID another build registered first, as one started in the same millisecond can, is refused when it is tracked, with an error that says so.
+
+  `hot-updater native-build import <file> [-c <channel>] [--dry-run] [--json]` tracks an `.ipa`, `.aab`, `.apk`, or simulator `.app` (the directory or its `.app.zip`) built elsewhere, such as by another build service or an earlier release, as `native-build ios|android` tracks its own builds, with the build number it reports as the row's `build_number`, so OTAs deployed after it patch from its built-in bundle. It reads everything from the artifact: the platform, app version, build number, and app ID from the manifest or Info.plist, the channel the app reports (`production` without one), the MIN_BUNDLE_ID and the fingerprint from the string literals of the app's code (the dex files' string pool, or the Mach-O `__cstring` section of the executable or of HotUpdater's dynamic framework), and the built-in bundle. It prints what it read, then refuses an artifact without a built-in bundle (a Debug build), one built without `@hot-updater/react-native`'s build step (no MIN_BUNDLE_ID) or with several candidates, one without a fingerprint under the fingerprint strategy or without a comparable app version under the appVersion strategy, a channel given as a resource reference (unless `--channel` names the channel the app reports, as when its code sets one or it switches at runtime), and an artifact whose MIN_BUNDLE_ID is registered with another built-in bundle or scope, naming that native build. Importing the same build again succeeds and changes nothing, reporting `alreadyImported: true` under `--json`, so CI jobs can rerun. An app ID no `nativeBuild` scheme's `bundleIdentifier` or `applicationId` (by default its `packageName`) names is a warning. It then uploads the artifact and the built-in bundle and registers them with no build key and no commit; `--dry-run` reads and checks, and records nothing. The reader treats every artifact as untrusted input: it reads only the entries it needs through the zip's central directory, caps the directory, each entry it reads, and all it inflates, stops an entry that inflates past its declared size (a zip bomb), matches no absolute or `..` entry name and refuses a symbolic link or a doubled name among those it reads, writes nothing to disk by entry name, gives up after two minutes, and refuses a truncated or malformed archive, plist, or manifest as unreadable instead of crashing. `@hot-updater/protocol/native-artifact`, a subpath no app imports, exports the reader (`readNativeArtifact` over a `blobSource`, with no dependencies) and `checkNativeArtifact`.
+
+  A `nativeBuild` scheme signs with a credential the CLI resolves while it builds: `signing: { keystore }` on Android passes an `android-keystore` to Gradle as the injected signing properties of release variants, and `signing: { ascApiKey }` on iOS signs device builds with automatic signing through an `asc-api-key`. Debug variants and simulator builds resolve nothing. With `signing.ascApiKey` and no `exportOptionsPlist`, an iOS device build exports for App Store Connect, and `native-build ios` refuses a device scheme with neither before it builds. The helpers' `minBundleId` and `credentials` are optional: without them, `buildAndroid` and `buildIos` issue a MIN_BUNDLE_ID of the build's millisecond (`createMinBundleId` from `@hot-updater/cli-tools`) and resolve signing credentials from the environment. `@hot-updater/android-helper` and `@hot-updater/apple-helper` no longer export `runAndroid`, `runIos`, or their device types. The build log in `.hot-updater/log` keeps the whole output of `xcodebuild` (also with `xcbeautify` installed, which now only formats the progress) or Gradle, through its last line. A failed build prints why on stderr, in `--json` mode too: `xcodebuild`'s `error:` lines and failed commands, or Gradle's `What went wrong` block, else the output's last 40 lines, then `Build log: <path>`, instead of the raw start of the tool's output; the helpers throw a `BuildFailedError` (`@hot-updater/cli-tools`) with the log's path and those lines.
+
+- 6f9313b: Upload an Android build to Google Play's internal testing track with `hot-updater native-build android --submit play-internal`, or its shortcut `hot-updater google-play upload`.
+  - `google-play upload` runs `native-build android`'s build, which tracks it, and takes only `--scheme`: any other option or argument exits 1 naming the full command. Without `--scheme`, it builds the one `nativeBuild.android` scheme Google Play takes (an `.aab`, not a `Debug` variant) and says which; with several, it asks at a terminal, and in CI or without a terminal it exits listing them with the full command. With none, it says why each scheme is refused and how to add one.
+  - The upload authenticates with the `secrets` adapter's `play-service-account`, which `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON` overrides. It is resolved before the build adapter's prebuild and the build, and stays in memory: the CLI writes the service account to no file, signs its token assertion in memory, and masks the private key and access token in its output.
+  - It uses the Google Play Developer API: it opens an edit, uploads the `.aab` in a resumable upload one chunk at a time, releases its version code to the `internal` track, and commits the edit, deleting it when any step fails. The package name is the `.aab`'s, read with `aapt2`, or else the scheme's `applicationId`.
+  - On an app Play Console has not published, the release is a draft; when the app's state requires it, the edit is committed without sending the changes for review. A taken version code, a missing app, and a service account without access are reported with what to change.
+  - Before the prebuild, the CLI refuses a scheme Google Play would not take as a release: an `.apk` or a debug variant. Before it uploads, it refuses an `.aab` signed with the Android debug keystore, which Google Play refuses, read with the JDK's `keytool`.
+  - Once Google Play takes the bundle, as a completed or draft internal release, the CLI records the submission on the tracked build, `submitted_to: "play-internal"` with the version name and code as `submitted_version` (`1.7.0 (66)`, or the code alone when `aapt2` can't read the name), and the Console's Native builds tab shows it. Only an upload the run made is recorded; a failed upload and `--dry-run` record nothing.
+  - A reused build already submitted to Google Play is not uploaded again, since Google Play takes each version code once: the CLI prints `Already on Google Play internal testing since <time> as 1.7.0 (66). Bump the build number to upload a new build.` and exits 0, and `--json` reports `submission.skipped: "already-submitted"` with the existing submission. A reused build Google Play's internal track has without a record, and Google Play's own refusal of a version code it already has, are skipped with the same line and record nothing; `@hot-updater/android-helper` throws it as `PlayVersionCodeUsedError`.
+  - `@hot-updater/android-helper` exports `uploadToPlay`, `readBuiltApp`, `resolvePlayUploadServiceAccount`, `assertPlaySigned`, and `readBuiltPackageName`.
+
+- bcc6f20: Pull requests get previews from a GitHub Action, `gronxb/hot-updater/actions/preview`, which reads its credentials through the config's `secrets` adapter, the job's environment by default. Each pull request gets its own channel (`pr-<number>`), and native builds that embed it, so an installed build opens the pull request's bundle on its first launch. For each platform the action builds a native build, which Hot Updater tracks, only when the registry has none on the pull request's channel for the project's fingerprint, or app version, then deploys the pull request's bundle there. It keeps one comment on the pull request, edited on every push: each platform's download and page links in the Console's Native builds tab, whether the run built or reused the native build, the bundle, the QR code of an APK's download when the Console serves it under `console-url`, and the install commands for an emulator or simulator, with a "Preview by hot-updater" line that `credit: false` turns off. When the pull request closes, it deletes the channel with its bundles and its native builds. iOS previews a Simulator app on a macOS runner. When a native build fails, the action uploads the CLI's build log as the `hot-updater-preview-build-log-<platform>` artifact. An Expo project sets the pull request's channel in its own `app.config.ts`, such as `channel: process.env.PREVIEW_CHANNEL ?? "production"` in the `@hot-updater/expo` plugin's options, with the job setting `PREVIEW_CHANNEL`.
+  - `hot-updater native-build find -p <platform> [-c <channel>] [-s <scheme>] [--json]` prints the newest tracked native build that a build of the project would match: the fingerprint from the config's fingerprint inputs, or with the `appVersion` strategy, the version of the app the scheme builds, on the native project's default channel or `--channel`. With `--scheme`, the build must be the kind of artifact the scheme builds. No build prints `nativeBuild: null` and succeeds.
+  - `hot-updater native-build ios|android --json` prints `{ dryRun, build, nativeBuild, registration, submission }` as the last line of its output: the build, with the channel and the fingerprint or app version its artifact embeds, its record (null for a Debug build or a dry run, with `registration.skipped` saying why), and the store it went to.
+  - `hot-updater channel delete <channel> --native-builds` also deletes every native build that embeds the channel, each with its built-in bundle and its artifact in storage, then the channel. `--json` adds `deletedNativeBuildIds`.
+
+- b78660b: Fixes from integrated QA.
+  - The CLI masks a stored value shorter than six characters, such as `1`, only where it is a whole word, as in `PASSWORD=1`, so URLs and versions stay readable.
+  - `hot-updater channel delete --json` keeps stdout one JSON document when a native build keeps the channel.
+  - `native-build android` prints "App Module" in its Gradle settings.
+
+- 4e4ddfb: `deploy` and `keys export-public` say why remote signing failed instead of only "Failed to resolve the bundle signing provider public key.", and `deploy` prints it as a signing configuration error rather than exiting with a stack trace.
+  - `remoteSigning` names the signing endpoint's status, and the `{ error }` or `{ error: { code, message } }` it answered with, with the signing token masked. It also says when `HOT_UPDATER_SIGNING_TOKEN` is not set, and which endpoint it could not reach.
+  - Every other signing adapter error stays redacted, as it may quote key material.
+  - `doctor` reports the warning `SIGNING_PUBLIC_KEY_UNAVAILABLE` with the reason when it cannot read the configured signer's public key, such as `remoteSigning` without `HOT_UPDATER_SIGNING_TOKEN`, instead of `PUBLIC_KEY_MISMATCH`, whose resolution was a new native release.
+
+- f017e61: The CLI reads secrets through the `secrets` adapter in `hot-updater.config.ts`, `localSecrets()` by default, which `init` writes: `secrets: localSecrets()`. `localSecrets()` reads a name from the environment, then from a JSON file on this machine, `~/.hot-updater/secrets/<project-key>/<name>.json`: a directory only your user can open (0700) holding files only your user can read (0600), in your home directory, so `rm -rf node_modules` keeps it and it is never committed. The project key is the project directory's name and a hash of its path, so each checkout has its own; `HOT_UPDATER_HOME` moves `~/.hot-updater`. `localSecrets({ path })` names the directory instead: `~` is the home directory, a relative path is the project's, and a directory in a git work tree must be one git ignores, or its first use fails. Keys Hot Updater issues after a sign-in, and credentials `secrets put` imports, go there, and the next build on this machine reads them with no step in between. With another adapter, builds read a credential it does not hold from the same default directory, where a key goes when the adapter stores nothing. `.env.hotupdater` stays the deploy-settings file managed `init` writes: Hot Updater never writes a key there.
+
+  `localSecrets()` is the one built-in adapter, an export of `hot-updater` beside `defineConfig` and `secretEnv`, which also re-exports the `SecretsAdapter` and `SecretsContext` types from `@hot-updater/plugin-core`. The provider packages ship their cloud's store. `secretsManager({ region, prefix?, credentials?, endpoint? })` from `@hot-updater/aws` keeps each name as the AWS Secrets Manager secret `<prefix><name>` (`hot-updater/` by default) on the AWS SDK's default credential chain: GitHub Actions OIDC through `aws-actions/configure-aws-credentials` in CI, a profile or AWS SSO on your machine. `set` puts a new version, or creates the secret without tags; a missing secret reads as `undefined`, and a refused permission, expired credentials, or a secret scheduled for deletion fail with what to do. `secretManager({ projectId, prefix?, credentials? })` from `@hot-updater/firebase` keeps each name as the Google Cloud Secret Manager secret `<prefix><name>` (`hot-updater-` by default), read at `latest`, through the REST API and the `google-auth-library` firebase-admin already installs: Application Default Credentials on your machine, Workload Identity Federation through `google-github-actions/auth` in CI, or an access token. `set` adds a version, waits until `latest` resolves to it, and destroys only the versions it added before; a project without the Secret Manager API says to enable `secretmanager.googleapis.com`. Both load their SDK on the first read or write, so a config or server that only imports `s3Storage` or `firebaseStorage` never loads it, and mask every value and credential in the CLI's output. For another store, write an adapter: the docs have a short one for dotenvx (encrypted values committed to the repository), Bitwarden Secrets Manager, 1Password, and Infisical, each on the vendor's own SDK. `SecretsAdapter` is the contract: `get(names, { cwd })` reads names in one call, `undefined` for a name the store does not hold and a thrown error for any other failure, and the optional `set(name, value, { cwd })` and `describe(name)` store a value and say where it is.
+  - Native build `signing.keystore` and `signing.ascApiKey` name a secret as `secret:<name>`, such as `"secret:release-keystore"`. A credential is one JSON value per name: `{"keyId","issuerId","p8"}` for an App Store Connect key, `{"keystore","storePassword","keyAlias","keyPassword"}` with the keystore in base64, and a Play service account's own JSON. `localSecrets()` reads a name from its environment variable first: a variable name as it is, such as `CLOUDFLARE_API_TOKEN`, and another name upper-cased after `HOT_UPDATER_`, such as `HOT_UPDATER_ASC_API_KEY` for `asc-api-key`, as a workflow maps a GitHub Actions secret. The `HOT_UPDATER_ASC_KEY*`, `HOT_UPDATER_ANDROID_KEYSTORE_*`, and `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables still override each kind. Items a build asks for together are read in one `get`, file values are 0600 temporary files, and each value is masked in the CLI's output with every secret field of it; IDs, the key alias, and a service account's email stay readable.
+  - `secretEnv([...names])` from `hot-updater` returns a function a config's adapters call for their deploy credentials: names set in the environment or `.env.hotupdater` win, the others come from the config's `secrets` adapter, and the values go only to the caller, never into `process.env`. With `localSecrets()`, every name must be set in the environment: its files hold only keys Hot Updater stores. It refuses variables that change how a process loads code, such as `NODE_OPTIONS`, `PATH`, `LD_*`, `DYLD_*`, `GIT_*`, `npm_config_*`, and the JVM's, Gradle's, Ruby's, Python's, and Perl's options, and those Hot Updater reads its credentials from, `HOT_UPDATER_HOME` included (`isReservedVariableName` in `@hot-updater/cli-tools`).
+  - `hot-updater secrets put <name> --kind <asc-api-key|android-keystore|play-service-account>` stores a credential you have, from its files, as that JSON value through the adapter's `set`, or in `localSecrets()`'s directory. `hot-updater secrets issue <asc-api-key|play-service-account> [name]`, or its shortcuts `hot-updater apple login` and `hot-updater google-play login`, instead signs in with your Apple Account or Google and stores the key Hot Updater issues the same way. A sign-in never starts in CI or without a terminal, and a key that surely was not stored is revoked again.
+  - Keys stay per machine: on a machine without one, the CLI says before signing in that it will issue a new key, and how to share one key instead (a store every machine reads, or `secrets put`); after issuing, it names where to revoke the keys no machine uses anymore. With `localSecrets()`, and with a GitHub remote and your GitHub token, it offers once to store the issued key as a GitHub Actions secret too, which a workflow maps into the job's environment, where `localSecrets()` reads it first: CI needs no adapter.
+
+- 5e7a045: The adapters a config creates check their credentials and create their clients on first use, so a config loads without them: `supabaseStorage`, `supabaseDatabase`, `azureBlobStorage`, `cosmosDatabase`, `vercelBlobStorage`, `firebaseStorage`, `standaloneRepository`, `awsKmsSigning`, `googleCloudKmsSigning`, and `remoteSigning`. A server runtime missing a credential now reports it at its first request instead of at startup. `makeEnv` takes `expectedContent` and rewrites only a file that still holds it. In `@hot-updater/cli-tools`, `parseLoadedEnv` and `readLoadedHotUpdaterEnv(cwd)` read an env file as `process.loadEnvFile` does, and `readHotUpdaterEnv` is removed: read `.env.hotupdater` with `readLoadedHotUpdaterEnv(cwd)`, as the config loads it, or `readHotUpdaterInitEnv(cwd).managedEnv`, as init reads it.
+- 32de3ce: Upload an iOS build to TestFlight with `hot-updater native-build ios --submit testflight`, or its shortcut `hot-updater testflight`.
+  - `testflight` runs `native-build ios`'s build, which tracks it, and takes only `--scheme`: any other option or argument exits 1 naming the full command. Without `--scheme`, it builds the one `nativeBuild.ios` scheme TestFlight takes and says which; with several, it asks at a terminal, and in CI or without a terminal it exits listing them with the full command. With none, it says why each scheme is refused and how to add one.
+  - The upload authenticates with an App Store Connect API key, the scheme's `signing.ascApiKey` or else the `secrets` adapter's `asc-api-key`, which the `HOT_UPDATER_ASC_KEY*` environment variables override. The key is resolved before the build adapter's prebuild and the build, and its temporary file is deleted when the upload ends.
+  - It uses the App Store Connect API's build uploads: it finds the app by the `.ipa`'s bundle ID, reserves its version and build number, uploads the file in the parts App Store Connect asks for, with only the headers each part lists, commits it, and waits up to 30 minutes for App Store Connect to accept the build, printing the warnings and errors it reports. A build number App Store Connect already has is reported as one to raise.
+  - Before the prebuild, the CLI refuses, saying why, a scheme App Store Connect would not take: a simulator build, a Debug configuration, code signing turned off (`CODE_SIGNING_ALLOWED` or `CODE_SIGNING_REQUIRED` left `NO` after the overrides the build applies: `extraParams` settings, then the scheme's `xcconfig` and each `-xcconfig` in `extraParams`, resolved from `ios/` with their `#include`s, the last unconditional assignment winning; a setting a condition such as `[sdk=iphoneos*]` also sets is left to the build), a scheme that only archives, or an `exportOptionsPlist` of another method than App Store Connect; one the prebuild writes is checked before the build. `testflight` skips such schemes when it picks one.
+  - Once App Store Connect accepts the build, the CLI records the submission on the tracked build, `submitted_to: "testflight"` with the version and build number as `submitted_version` (`1.7.0 (66)`), and the Console's Native builds tab shows it. Only an upload the run made is recorded; a build still processing, a failed upload, and `--dry-run` record nothing. `uploadToTestFlight`'s result has `shortVersion` and `bundleVersion`.
+  - A reused build already submitted to TestFlight is not uploaded again, since App Store Connect takes each build number once: the CLI prints `Already on TestFlight since <time> as 1.7.0 (66). Bump the build number to upload a new build.` and exits 0, so a rerun CI job succeeds, and `--json` reports `submission.skipped: "already-submitted"` with the existing submission. A reused build the store has without a record, found by its version and build number, and App Store Connect's own refusal of a build number it already has, from another upload or tool, are skipped with the same line and record nothing, since the store's build may be another artifact; `@hot-updater/apple-helper` throws it as `TestFlightBuildExistsError`.
+  - `@hot-updater/apple-helper` exports `uploadToTestFlight`, `resolveTestFlightUploadKey`, and `assertTestFlightExportOptions`.
+  - Tracking also takes the built-in bundle out of an `.ipa` whose app name contains `[`, `*`, or `?`, which `unzip` read as wildcards.
+
+### Patch Changes
+
+- 8c675a2: CLI prompts refuse to ask without a terminal instead of waiting: `keys export-public` names `-y` and `-p`, `keys remove`, `db migrate`, `db generate`, and `native-build ios|android` without `--scheme` name the option that skips the prompt, and every other prompt fails with an error. `native-build find` no longer runs the build adapter's prebuild, so a lookup leaves `ios/` and `android/` as they are: the Expo adapter reports the app version and channel `expo prebuild` would write from the Expo config (`nativeBuild.getNativeProjectValues`), and other adapters' native projects are read as they are. `hot-updater native-build delete <id>` deletes a registered native build, its built-in bundle, and its stored artifact, through core's new `deleteNativeBuild` and the admin API's `DELETE /native-builds/:id`.
+- 84b21f0: `hot-updater doctor` lists every pending schema setting in one run. When core's schema and a plugin's were both behind, such as `schema.core` 1.0.0 and a plugin's missing setting, `SCHEMA_MIGRATION_PENDING` named only `schema.core`, and the plugin's appeared after core was migrated. The schema fence over a server's plugins now checks core's settings with theirs in the same single read, so its refusal, the 503 message, doctor, and the Console list every setting missing or different. The fence passes and fails as before, with no extra read.
+- fbe5798: `hot-updater console` prints a link with a session made for that run, and the local Console answers only the browser that opened it, only at `localhost`, `127.0.0.1`, or `[::1]` on its port, and only changes sent from its own pages. Every Console, hosted or local, now lists TanStack Start's same-origin check for server functions explicitly, and every server function that changes something validates its input.
+- f5cffc0: `hot-updater native-build ios|android`, and `buildAndroid` and `buildIos` without a `minBundleId`, issue the MIN_BUNDLE_ID the SDK's podspec script phase and Gradle task generate: the UUIDv7 of the build's millisecond with all-zero random bits (`<ts>-<ts>-7000-8000-000000000000`), instead of a platform byte and random bits. `createMinBundleId(nowMs?)` from `@hot-updater/cli-tools` takes no platform. Before a tracked build, the CLI reads the registry once and steps the ID 1 ms forward while a bundle holds it. Two builds that start in the same millisecond, such as an iOS and an Android job of one CI run, still get the same ID: the registry refuses the second registration, and `native-build` now says another build registered that built-in bundle first and to build again, instead of `native_builds: exists`. The build cache doesn't reuse this machine's cached build when another build registered its MIN_BUNDLE_ID, so building again issues a new one. `native-build import` and every reader keep accepting any UUIDv7, so artifacts an earlier CLI built, whose MIN_BUNDLE_ID has a platform byte, still import.
+- 288f6a9: An iOS scheme with `installPods: true` installs its pods before `native-build ios` computes the native build key, and the build uses them as installed. The key then holds the `Podfile.lock` the pods resolved to, and `Pods/Manifest.lock`, so a project whose `ios/` the build adapter's prebuild generates, such as an Expo app, can reuse a build instead of always building; pods that resolve differently still rebuild. A generated (git-ignored) `project.pbxproj` counts by its structure, with its objects labelled in the order they are reached from the root object, since `pod install` integrates a freshly generated project with new random object IDs each time; its files, groups, targets, build phases, settings, and their order still count. `@hot-updater/apple-helper` exports `installPodsIfNeeded`.
+- Updated dependencies [6276804]
+- Updated dependencies [d7f02a6]
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [e97d063]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [43b0a61]
+- Updated dependencies [af33b56]
+- Updated dependencies [98daf8d]
+- Updated dependencies [fbe5798]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [f5cffc0]
+- Updated dependencies [288f6a9]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [6f9313b]
+- Updated dependencies [bcc6f20]
+- Updated dependencies [b78660b]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+- Updated dependencies [32de3ce]
+  - @hot-updater/apple-helper@1.2.0-rc.0
+  - @hot-updater/cli-tools@1.2.0-rc.0
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/server@1.2.0-rc.0
+  - @hot-updater/console@1.2.0-rc.0
+  - @hot-updater/cloudflare@1.2.0-rc.0
+  - @hot-updater/supabase@1.2.0-rc.0
+  - @hot-updater/aws@1.2.0-rc.0
+  - @hot-updater/firebase@1.2.0-rc.0
+  - @hot-updater/azure@1.2.0-rc.0
+  - @hot-updater/vercel@1.2.0-rc.0
+  - @hot-updater/android-helper@1.2.0-rc.0
+  - @hot-updater/protocol@1.2.0-rc.0
+  - @hot-updater/bsdiff@1.2.0-rc.0
+
 ## 1.1.5
 
 ### Patch Changes

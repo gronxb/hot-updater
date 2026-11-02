@@ -1,0 +1,162 @@
+---
+title: "Azure Key Vault"
+description: "keyVault() from @hot-updater/azure: read and store the CLI's secrets in Azure Key Vault, with GitHub Actions OIDC in CI."
+icon: LockKeyhole
+---
+
+## Add the adapter
+
+`keyVault()` from `@hot-updater/azure`, the package of `azureBlobStorage` and
+`cosmosDatabase`, keeps each name as a secret of an Azure Key Vault:
+
+```package-install
+npm install @hot-updater/azure --save-dev
+```
+
+```ts title="hot-updater.config.ts (partial)"
+import { keyVault } from "@hot-updater/azure";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  secrets: keyVault({ vaultName: "my-vault" }),
+  // build, storage, database and plugins stay as they are
+});
+```
+
+| Option       | Default                    | What it does                                                                                       |
+| ------------ | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `vaultName`  | Required, or `vaultUrl`    | The vault at `https://<vaultName>.vault.azure.net`                                                 |
+| `vaultUrl`   | Required, or `vaultName`   | The vault's URL, for a vault outside Azure's public cloud                                          |
+| `prefix`     | `"hot-updater-"`           | Put before each name: `secret("asc-api-key")` reads the secret `hot-updater-asc-api-key`             |
+| `credential` | `DefaultAzureCredential`   | A `TokenCredential` from `@azure/identity`, such as a `ClientSecretCredential`                     |
+
+Each secret holds one value: a credential is one
+[JSON value](/docs/concepts/secrets#sign-native-builds-with-secrets). Key
+Vault takes up to 25,600 characters per value, and a base64 Android upload
+keystore with its passwords is about 3,500; a larger value fails before
+anything is sent. `@azure/keyvault-secrets` and `@azure/identity` load on
+the first read or write, so a config that only uses `azureBlobStorage` never
+loads them, and the Function App init deploys doesn't include them.
+
+- A secret that does not exist, or was deleted, reads as missing.
+- A vault that doesn't resolve fails the command, saying to check `vaultName`
+  or `vaultUrl`.
+- A missing role fails the command, naming the role the identity needs; a
+  refused sign-in fails it with how to sign in again; a disabled secret
+  fails it rather than reading as missing.
+- `set` adds a new version of the secret, which creates it when it does not
+  exist, and tags it `hot-updater-name` with the name it holds. Key Vault
+  keeps the older versions.
+- `set` on a deleted secret that is still recoverable fails with the
+  `az keyvault secret recover` and `az keyvault secret purge` commands for
+  it: Key Vault holds a deleted name until it is recovered or purged.
+- Values never go on a command line, and every value it reads or stores,
+  and every access token, is masked in the CLI's output.
+
+Without `credential`, `DefaultAzureCredential` finds an identity itself:
+`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` or the
+federated token, then the Azure CLI that `azure/login` signs in in GitHub
+Actions, then `az login` on your machine, or a managed identity:
+
+```bash
+az login
+npx hot-updater apple login
+```
+
+## Create a vault
+
+Skip this if you already have a vault. A subscription that has never used Key
+Vault registers its provider first, and a vault's name is unique across Azure:
+
+```bash
+az provider register --namespace Microsoft.KeyVault --wait
+az group create --name my-group --location eastus
+az keyvault create --name my-vault --resource-group my-group --location eastus
+```
+
+## Name a secret
+
+Key Vault takes only letters, digits, and `-` in a secret's name, and
+matches names without regard to case. A name of lower-case letters and
+digits joined by single hyphens, such as `asc-api-key` or
+`release-keystore`, is kept as it is. Any other name, such as
+`CLOUDFLARE_API_TOKEN`, becomes its lower-cased words joined by `-`, then
+`--` and 10 hex digits of the name's SHA-256, so no two names share a
+secret:
+
+| Name                   | Secret                                         |
+| ---------------------- | ---------------------------------------------- |
+| `asc-api-key`          | `hot-updater-asc-api-key`                      |
+| `CLOUDFLARE_API_TOKEN` | `hot-updater-cloudflare-api-token--53538d159b` |
+
+Errors print the secret a name maps to, and the `hot-updater-name` tag
+shows the name a secret holds in the Azure portal.
+
+## Grant least privilege
+
+Use a vault with Azure role-based access control, the default for a new
+vault:
+
+| Who                                              | Role on the vault           |
+| ------------------------------------------------ | --------------------------- |
+| A CI job that builds or deploys                  | `Key Vault Secrets User`    |
+| The developer who runs `secrets put` or signs in | `Key Vault Secrets Officer` |
+
+```bash
+az role assignment create --role "Key Vault Secrets Officer" \
+  --assignee-object-id "$(az ad signed-in-user show --query id -o tsv)" \
+  --assignee-principal-type User \
+  --scope "$(az keyvault show --name my-vault --query id --output tsv)"
+```
+
+`Key Vault Secrets User` reads values. `set` needs `Key Vault Secrets
+Officer`, which also reads: a sign-in reads the key back after storing it.
+On a vault with access policies instead, grant the secret permission `get`
+to read, and `get` and `set` to store. A new role assignment can take a few
+minutes to apply.
+
+## Read secrets in GitHub Actions
+
+[GitHub Actions OIDC](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect)
+exchanges the workflow's identity for a short-lived token of an app
+registration, so the repository stores no Azure secret. Trust it only from
+the expected repository and environment, and let it read the vault:
+
+```bash
+APP_ID=$(az ad app create --display-name hot-updater-ci --query appId --output tsv)
+az ad sp create --id "$APP_ID"
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "github-production",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:my-org/my-app:environment:production",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+az role assignment create --role "Key Vault Secrets User" --assignee "$APP_ID" \
+  --scope "$(az keyvault show --name my-vault --query id --output tsv)"
+```
+
+The job asks GitHub for an OIDC token (`id-token: write`), and `azure/login`
+signs the Azure CLI in, which the adapter reads:
+
+```yaml title=".github/workflows/native-release.yml (partial)"
+permissions:
+  contents: read
+  id-token: write
+
+# ...in the job, after npm ci:
+- uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+  with:
+    client-id: ${{ vars.AZURE_CLIENT_ID }}
+    tenant-id: ${{ vars.AZURE_TENANT_ID }}
+    subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  with:
+    platform: ios
+    scheme: release
+    submit: testflight
+```
+
+Keep the app registration away from pull request workflows that run
+untrusted code.
+[Build and upload from CI](/docs/guides/ci-native-build#read-secrets-from-a-secrets-store)
+has the complete workflow.

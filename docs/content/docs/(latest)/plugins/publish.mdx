@@ -17,7 +17,6 @@ with the official ones.
 | [Storage adapter](/docs/storage-adapters/custom-storage)    | `storage` in `hot-updater.config.ts` and in the server's `createHotUpdater`                     |
 | [Database adapter](/docs/database-adapters/custom-database) | `database` in `hot-updater.config.ts`, `createHotUpdater`, and a deployed Console               |
 | Build adapter                                               | `build` in `hot-updater.config.ts`                                                              |
-| Signing adapter                                             | `signing` in `hot-updater.config.ts`                                                            |
 | [Server plugin](/docs/custom/server-plugins)                | `plugins` in `createHotUpdater`, where the CLI finds its tables, and in `hot-updater.config.ts` |
 | [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init`, in the app                                                      |
 
@@ -144,7 +143,7 @@ in `devDependencies` for your own tests:
 
 | Package                                 | `peerDependencies`                                                    |
 | --------------------------------------- | --------------------------------------------------------------------- |
-| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                            |
+| Storage or build adapter                | `@hot-updater/plugin-core`                                            |
 | Database adapter                        | `@hot-updater/plugin-core`                                            |
 | Server plugin                           | `@hot-updater/plugin-core`                                            |
 | Client plugin                           | `@hot-updater/protocol`                                               |

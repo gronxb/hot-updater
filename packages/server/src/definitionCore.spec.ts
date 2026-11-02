@@ -55,7 +55,7 @@ const definitionOn = (database: EngineDatabase) =>
 
 /** The fence's message for a database that lacks both plugins' migrations. */
 const migrationRequired = (database: string) =>
-  `The tables of plugins "insights" and "apiKeys" are not migrated on ${database}: schema settings "schema.insights" is missing; expected "${insights().schemaVersion}", and "schema.apiKeys" is missing; expected "${apiKeys().schemaVersion}". Run \`hot-updater db migrate\`. A managed server runs only its provider's plugins, and rerunning \`hot-updater init --provider <provider>\` applies the provider's migrations. Run \`hot-updater db\` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.`;
+  `The tables of plugins "insights" and "apiKeys" are not migrated on ${database}: schema settings "schema.insights" is missing; expected "${insights().schemaVersion}", and "schema.apiKeys" is missing; expected "${apiKeys().schemaVersion}". Run \`npx hot-updater doctor\` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, run \`hot-updater db migrate\`. Run \`hot-updater db\` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.`;
 
 /** The same database without `prune`, so writing through it takes no retention lease. */
 const withoutPruning = (database: EngineDatabase): EngineDatabase => ({

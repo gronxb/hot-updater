@@ -1,0 +1,560 @@
+---
+title: "Pull Request Previews"
+description: "Deploy each pull request's bundle with a GitHub Action, build a native build on the pull request's channel only when the native code changes, and comment its download and QR code."
+icon: GitPullRequest
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+The preview action gives every pull request its own channel, such as
+`pr-12`, and native builds that embed it, so an installed build opens the
+pull request's bundle on its first launch, with no code in the app:
+
+1. It looks for a tracked native build of the project's fingerprint, or app
+   version, on the pull request's channel.
+2. When there is one, it deploys only the pull request's bundle to that
+   channel. When there is none, as on the pull request's first run or after
+   a native change, it builds one first, which Hot Updater tracks.
+3. It comments on the pull request: each platform's download and its page in
+   the Console's [Native builds](/docs/guides/native-build#native-builds-in-the-console)
+   tab, the bundle, and the QR code of an APK's download. It edits the same
+   comment on every push, and never another author's.
+4. When the pull request closes, it deletes the channel with its bundles and
+   its native builds, each with its artifact.
+
+The CLI reads the deploy credentials and the release keystore through the
+config's [`secrets` adapter](/docs/concepts/secrets): with `localSecrets()`,
+what `init` writes, the job's environment, where the workflow maps repository
+secrets, or a secrets store the job signs in to, as
+[Build and upload from CI](/docs/guides/ci-native-build#add-the-workflow)
+shows. It signs bundles with the config's
+[`signing` adapter](/docs/guides/bundle-signing). The workflow passes the
+Console's URL for the comment's links.
+
+## Prepare the project
+
+- [Deploy the Console](/docs/guides/console-deployment): the comment's
+  links and QR code open it. See [The comment](#the-comment).
+- Read the deploy credentials with
+  [`secret()`](/docs/concepts/secrets#adapter-credentials), as
+  the config managed `init` writes does, and add their values to the
+  repository's secrets, or keep them in a
+  [team store](/docs/concepts/secrets#this-machine-or-the-team), which the job
+  only signs in to.
+- Add a [native build scheme](/docs/guides/native-build#configure-schemes)
+  for each previewed platform: a Release APK for Android, signed with a
+  `secret()` keystore, and a scheme with `simulator: true` for iOS, which builds
+  a Simulator `.app` that needs no signing.
+- The registry tells native builds apart by platform, channel, and
+  fingerprint or app version, not by scheme. A project that previews several
+  apps, such as flavors with their own application IDs, gives each app its
+  own `channel`, such as `pr-${{ github.event.number }}-tv`, and runs the
+  action once per app.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig, secret } from "hot-updater";
+
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      previewApk: {
+        packageName: "com.example.app",
+        aab: false,
+        signing: { keystore: secret("release-keystore") },
+      },
+    },
+    ios: {
+      previewSimulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        configuration: "Release",
+        simulator: true,
+      },
+    },
+  },
+  signing: secret("bundle-signing-key"),
+  // ...build, storage, database, plugins
+});
+```
+
+In the job's environment, `secret("release-keystore")` reads `HOT_UPDATER_RELEASE_KEYSTORE`,
+the keystore's JSON value, and `secret("bundle-signing-key")` reads
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, the
+[bundle signing](/docs/guides/bundle-signing) key's PEM, as
+[Sign native builds with secrets](/docs/concepts/secrets#sign-native-builds-with-secrets)
+describes.
+
+### The bundle signing key in CI
+
+Read the bundle signing key as a secret, `signing: secret("bundle-signing-key")`,
+as above: the job maps the repository secret to
+`HOT_UPDATER_BUNDLE_SIGNING_KEY`, which `localSecrets()` reads before its
+files, as the workflow below does, and needs no key file.
+
+A config that reads the key from a file with `privateKeyPath` needs that file
+in the job. Write it from a repository secret before the action, readable
+only by the job's user:
+
+```yaml
+      - name: Write the bundle signing key
+        env:
+          BUNDLE_SIGNING_KEY: ${{ secrets.BUNDLE_SIGNING_KEY }}
+        run: |
+          umask 077
+          mkdir -p keys
+          printf '%s' "$BUNDLE_SIGNING_KEY" > keys/private-key.pem
+```
+
+Write it under the action's `working-directory`, at the path the config sets,
+and keep the path in `.gitignore`.
+
+## Add the workflow
+
+```yaml title=".github/workflows/preview.yml"
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      # The tag of the hot-updater release your project installs.
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_BUNDLE_SIGNING_KEY: ${{ secrets.HOT_UPDATER_BUNDLE_SIGNING_KEY }}
+          # ...and the deploy variables your config reads with secret()
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: previewApk
+```
+
+The same job cleans up when the pull request closes.
+
+### pnpm, Yarn, and Bun
+
+The action runs the CLI with `cli`, `npx --no-install hot-updater` by default.
+With another package manager, install with it and pass its command. With
+pnpm:
+
+```yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # ...setup-java
+      - run: pnpm install --frozen-lockfile
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: previewApk
+          cli: pnpm exec hot-updater
+```
+
+With Yarn, run `yarn install --immutable` (`--frozen-lockfile` on Yarn 1)
+and pass `cli: yarn hot-updater`.
+With Bun, set it up with `oven-sh/setup-bun`, run `bun install --frozen-lockfile`,
+and pass `cli: bun run hot-updater`. In a monorepo, set `working-directory` to the
+app's directory.
+
+### iOS
+
+The action runs on Linux and macOS runners. To preview iOS too, run the job
+on `macos-latest` with both platforms. One job previews them in order and
+writes one comment.
+
+When the app has a `Gemfile`, as React Native and Expo projects do, the CLI
+runs CocoaPods through Bundler, so set up Ruby with `ruby/setup-ruby` in the
+directory of the `Gemfile`:
+
+```yaml
+    runs-on: macos-latest
+    steps:
+      # ...the steps above
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: apps/mobile # the Gemfile's directory
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android,ios
+          android-scheme: previewApk
+          ios-scheme: previewSimulator
+```
+
+A pull request's first run builds each platform's native build, since the
+build embeds the pull request's channel: an Android APK on an Ubuntu runner,
+and the Simulator app, which takes about 35–40 minutes on a GitHub-hosted
+macOS runner. Later pushes reuse the pull request's build while the native
+code doesn't change, so they only deploy the bundle. Give the job a
+`timeout-minutes` above the first build's time.
+
+## What each run does
+
+Before anything else, the action runs `hot-updater channel set <channel>`,
+so a build it makes embeds the pull request's channel. An Expo project with
+no `ios` or `android` directory in git sets it in its config plugin instead;
+see [Expo](#expo). Then, for each platform:
+
+1. `hot-updater native-build find -p <platform> -s <scheme> --json`
+   prints the newest tracked build that a build of the project would
+   match: the channel it would embed, the same fingerprint, from the config's
+   fingerprint inputs, or with the `appVersion` strategy, the version of the app
+   the scheme builds, and the kind of artifact the scheme builds, so a Simulator
+   scheme never reuses an `.ipa`, nor an APK scheme an `.aab`. It writes nothing
+   to the native projects; see
+   [Find a build](/docs/guides/native-build#find-a-build). When the project
+   embeds another channel than the pull request's, as a config plugin can, it
+   asks again with `-c <channel>`. A
+   [sandbox scheme](#open-a-pull-request-in-a-sandbox-build) answers with its own
+   channel instead.
+2. With no build, `hot-updater native-build <platform> --scheme <scheme> --json`
+   builds and tracks one, and prints what its artifact embeds: the
+   channel, and the fingerprint or app version. The action fails when the
+   build embeds another channel than the pull request's. With one, the action skips
+   the native build and runs `hot-updater fingerprint create`, since a
+   committed `fingerprint.json` can be older than the project.
+3. `hot-updater deploy -p <platform> -c <channel>` deploys the bundle, with
+   the build's app version as its target with the `appVersion` strategy.
+   The action checks that the bundle targets the build's fingerprint or app
+   version.
+
+Once every platform is done, `native-build find` runs once more for each, for
+the build's [download URL](#outputs). A failed lookup or another match leaves
+that output empty and fails nothing.
+
+When a native build fails, the job's log shows the build's errors and the
+path of the CLI's build log, which keeps the whole output of `xcodebuild` or
+Gradle, and the action uploads that log as the
+`hot-updater-preview-build-log-<platform>` artifact. Download it from the
+run's **Summary** page.
+
+A scheme that sets the app version at build time, such as in an `xcconfig`,
+builds a version the project doesn't declare, so its preview builds again on
+every run.
+
+When the pull request closes,
+`hot-updater channel delete <channel> --native-builds --yes` deletes the
+channel, its bundles, and every native build that embeds it, with its built-in
+bundle and its artifact in storage, including the builds of a fingerprint that
+changed during the pull request. The comment says so. See
+[Delete a Channel](/docs/guides/channel-management#delete-a-channel).
+
+## The comment
+
+The comment has a row per platform: the build's **Download** and
+**Details** links in the Console, whether this run built it or reused it, the
+fingerprint or app version, and the bundle's ID. **Details** opens the build's
+page on the Console's
+[Native builds](/docs/guides/native-build#native-builds-in-the-console) tab,
+where an Android APK installs by its QR code and a Simulator app with its
+[`native-build install`](/docs/guides/native-build#install-a-build) command.
+**Download** fetches a fresh storage URL on
+each request, so it never expires; a phone without a Console session signs in
+first and comes back to the build.
+
+Below it, an APK's QR code holds its **Download** link: a tester scans it
+with an Android phone, signs in to the Console, and installs the APK. The
+Console serves the image at `/_hot-updater/native-builds/qr?build=<build id>`
+without a session or a database read, so GitHub can show it, and the runner
+checks before it comments that the Console serves it under the
+`console-url` address. A Simulator app installs with the
+[`native-build install`](/docs/guides/native-build#install-a-build) command
+under the table, run in your project, and an APK on an emulator with
+`adb install`. An `.ipa`'s QR code holds the build's page, at
+`/_hot-updater/native-builds/qr?build=<build id>&target=page`, where an iPhone
+[checks whether the `.ipa` includes it and installs it](/docs/native-builds/iphone-install).
+For testers without a registered device, upload it to TestFlight with
+`npx hot-updater testflight`.
+
+<Callout type="info">
+  GitHub shows a comment's images through its image proxy, which fetches
+  them from the internet. A private Console, such as one on a VPN or
+  Tailscale, shows no QR code in the comment, and the job's log says so. The
+  **Download** link still works on a phone on the Console's network, and the
+  build's **Details** page shows the APK's QR code there.
+</Callout>
+
+The comment ends with "Preview by hot-updater". Set `credit: false` to leave
+it out.
+
+## Inputs
+
+| Input                  | Default                        | Description                                                                                                     |
+| ---------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `console-url`          |                                | The Console's URL, which the comment's download links and QR code point at                                      |
+| `platforms`            | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
+| `android-scheme`       |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                              |
+| `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
+| `android-fallback-scheme`, `ios-fallback-scheme` |      | With a sandbox scheme, the normal scheme built on the pull request's channel when its native code differs from every sandbox build |
+| `android-submit`       |                                | `play-internal` releases a sandbox scheme's `.aab` to Google Play's internal testing track                      |
+| `ios-submit`           |                                | `testflight` uploads a sandbox scheme's `.ipa` to TestFlight for internal testing                               |
+| `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
+| `channel`              | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to                             |
+| `credit`               | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                          |
+| `comment`              | `true`                         | Whether to write the comment                                                                                    |
+| `mode`                 | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
+| `working-directory`    | `.`                            | The app's directory, with `hot-updater.config.ts`                                                               |
+| `cli`                  | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                         |
+| `github-token`         | `github.token`                 | The token that writes the comment                                                                               |
+
+## Outputs
+
+| Output                                     | Description                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment-body`                             | The comment's Markdown                                                                                                                                                                                                                                          |
+| `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`), on a sandbox build, `sandbox` (`appId`, `link`, `minBundleId`), and after a fallback, `fallbackScheme` |
+| `android-install-url`, `ios-install-url`   | What a person opens: the comment's **Download** link, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link                                                                                |
+| `android-download-url`, `ios-download-url` | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                                                                                                                             |
+| `android-sandbox-link`, `ios-sandbox-link` | On a sandbox build, the link the comment's QR code holds. Empty under the `appVersion` strategy |
+| `android-store-url`, `ios-store-url`       | With a store input, the store's link. Empty when the store couldn't be read                                                                                                                                                                                     |
+| `android-store-state`, `ios-store-state`   | With a store input, the store's word on the build: `processing`, `ready`, `missing-compliance`, or `draft`. Empty when the store couldn't be read                                                                                                               |
+| `android-build-log`, `ios-build-log`       | When the platform's native build fails, the path of its build log                                                                                                                                                                                               |
+
+A platform's outputs are set when the action previews it, so a cleanup run and a
+pull request from a fork have none.
+
+The action reads the download URLs last, once every platform is done. From then,
+a URL lasts as long as
+[your storage adapter gives it](/docs/guides/native-build#which-storage-gives-a-download-url),
+so a step that runs after that lifetime gets an expired URL.
+
+### Fetch the build in a later step
+
+**Download** asks for a Console session, which a later step doesn't have, so
+fetch the build by its ID, which works on every storage, with the same deploy
+variables as the action:
+
+```yaml
+      - id: preview
+        uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: previewApk
+      - if: steps.preview.outputs.previews != ''
+        env:
+          # ...the variables above
+          BUILD_ID: ${{ fromJSON(steps.preview.outputs.previews)[0].nativeBuild.id }}
+        run: npx hot-updater native-build download "$BUILD_ID" -o app.apk
+```
+
+Or fetch `android-download-url` or `ios-download-url` with no credentials, when
+[your storage gives one](/docs/guides/native-build#which-storage-gives-a-download-url):
+
+```yaml
+      - if: steps.preview.outputs.android-download-url != ''
+        env:
+          DOWNLOAD_URL: ${{ steps.preview.outputs.android-download-url }}
+        run: curl -fL -o app.apk "$DOWNLOAD_URL"
+```
+
+<Callout type="warn">
+  Anyone who has the URL can download the build until it expires. The action
+  keeps it out of the job's log and the comment, but the log shows what a step
+  reads through `env` or an expression. In a public repository, use
+  `native-build download`.
+</Callout>
+
+## Open a pull request in a sandbox build
+
+Instead of a native build for each pull request, testers can install one
+[sandbox build](/docs/native-builds/sandbox) and scan a QR code for each pull
+request. Point the action at a sandbox scheme:
+
+```yaml
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          android-scheme: sandbox
+          android-fallback-scheme: previewApk
+```
+
+Each pull request still gets its own channel, and its bundle deploys there. The
+sandbox build lives on the scheme's own `sandbox-<scheme>` channel, so pull
+requests with the same native code share it, and closing one leaves it in place.
+
+- **A sandbox build has the fingerprint.** Nothing is built. The action deploys
+  the bundle.
+- **There's no sandbox build yet.** The action builds one, then deploys the bundle.
+- **The fingerprint differs from every sandbox build.** With
+  `android-fallback-scheme` or `ios-fallback-scheme`, a normal scheme, the action
+  runs the usual preview with it: the pull request gets its own native build on its
+  channel, and a **Download** link with no sandbox QR code. Without one, the action
+  builds a new sandbox build, which testers install before they scan.
+
+The comment's row has the sandbox build's **Download** and **Details** links, and
+each platform has its own QR code, since each has its own fingerprint:
+
+```text
+hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
+```
+
+A sandbox build with other native code refuses the link. The comment shows the link
+under its QR code. Under the `appVersion` strategy it has neither, since a link
+names a fingerprint.
+
+The Console serves the image at
+`/_hot-updater/native-builds/preview-qr?app=<app ID>&channel=<channel>&fingerprint=<hash>`
+without a session or a database read. It only ever holds a sandbox link, so a
+channel with characters other than letters, digits, `.`, `_` and `-` gets the link
+and no image, as does a private Console.
+
+A new sandbox build's `MIN_BUNDLE_ID` passes other open pull requests' bundles. The
+comment says whether its bundle runs on the sandbox build, and nothing redeploys the
+others, so push them again.
+
+## Install through TestFlight or Google Play
+
+An iPhone that isn't registered installs through TestFlight, and a team that
+can't sideload an APK installs through Google Play. Point the action at a
+[sandbox](/docs/native-builds/sandbox) scheme and name the store:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      sandbox: {
+        packageName: "com.example.app",
+        signing: { keystore: secret("release-keystore") },
+        sandbox: true,
+      },
+    },
+    ios: {
+      sandbox: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        signing: { ascApiKey: secret("asc-api-key") },
+        sandbox: true,
+      },
+    },
+  },
+  // ...build, storage, database, signing, plugins
+});
+```
+
+```yaml
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}
+          # ...the variables above
+        with:
+          console-url: ${{ vars.CONSOLE_URL }}
+          platforms: android,ios
+          android-scheme: sandbox
+          android-submit: play-internal
+          ios-scheme: sandbox
+          ios-submit: testflight
+          ios-testflight-group: QA
+```
+
+Each pull request still gets its own channel, and its bundle deploys there. The
+store build lives on the sandbox scheme's own channel, so pull requests with the
+same native code share it:
+
+- **The fingerprint has a build the store still offers.** Nothing is built or
+  uploaded. The action asks the store for the build's state, adds the build to
+  `ios-testflight-group`, and deploys the bundle.
+- **It has none.** The action builds and uploads one. On iOS, the build number
+  follows App Store Connect, What to Test names the pull request, and the build
+  joins `ios-testflight-group`, an internal group. On Android, the version code
+  follows Google Play. A new build's `MIN_BUNDLE_ID` passes other open pull
+  requests' bundles, so they push again.
+- **The store no longer offers it.** A TestFlight build within a week of its
+  90-day expiry, or a Google Play build a newer release replaced on the internal
+  track, gets a new build.
+
+The comment's row shows the store's link and state, such as **processing**, in
+place of **Download**, and the comment has the
+[sandbox link and its QR code](#open-a-pull-request-in-a-sandbox-build). TestFlight's link opens the app in App Store Connect:
+internal testers install from the TestFlight app. Google Play's link is where a
+tester on the internal track opts in. A closed pull request deletes its channel,
+and the store build stays for the others.
+
+`ios-submit` and `android-submit` go no further than internal testing, and refuse
+a scheme without `sandbox: true`. A group that isn't internal stops the run before
+it builds or deploys. A build still processing joins its group once App Store
+Connect has processed it, or on a later run. Set up each store first, as
+[TestFlight](/docs/native-builds/testflight) and
+[Google Play](/docs/native-builds/google-play) describe. The `.sandbox` app needs
+its own record in Play Console, with its first `.aab` uploaded and rolled out by
+hand. Until then a release stays a draft, and the comment says so.
+
+## Pull requests from forks
+
+GitHub gives a pull request from a fork no secrets, no OIDC ID token, and a
+read-only token, so the action does nothing for it, and the closed pull
+request needs no cleanup. Don't run the action on `pull_request_target`: it would build the
+fork's code with your secrets.
+
+## Expo
+
+An Expo project that generates its native projects at build time, with no
+`ios` or `android` directory in git, embeds the channel the
+`@hot-updater/expo` config plugin sets: the native build's prebuild writes
+the native projects, so `channel set` changes nothing. Without the pull
+request's channel there, the build embeds `production`, and the action fails,
+since it checks the channel the build embeds. Read the channel from an
+environment variable in your own `app.config.ts`:
+
+```ts title="app.config.ts"
+export default {
+  expo: {
+    plugins: [
+      [
+        "@hot-updater/expo",
+        { channel: process.env.PREVIEW_CHANNEL ?? "production" },
+      ],
+    ],
+  },
+};
+```
+
+Then set the variable in the preview job, to the action's `channel`:
+
+```yaml
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_CHANNEL: pr-${{ github.event.number }}
+```
+
+Production builds, which don't set it, keep `production`.

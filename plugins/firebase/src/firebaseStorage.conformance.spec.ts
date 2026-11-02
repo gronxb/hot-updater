@@ -1,3 +1,5 @@
+import { Writable } from "node:stream";
+
 import { setupStorageAdapterTestSuite } from "@hot-updater/test-utils";
 import { vi } from "vitest";
 
@@ -15,14 +17,22 @@ const { getStorage, objects } = vi.hoisted(() => {
   const notFound = () =>
     Object.assign(new Error("No such object"), { code: 404 });
   const file = (key: string) => ({
-    async save(
-      bytes: Uint8Array<ArrayBuffer>,
-      options: { metadata: { contentType?: string } },
-    ) {
-      objects.set(key, {
-        bytes: bytes.slice(),
-        contentType: options.metadata.contentType,
-        updated: new Date().toISOString(),
+    // The object exists once the upload ends, as a Cloud Storage upload does.
+    createWriteStream(options: { metadata: { contentType?: string } }) {
+      const chunks: Uint8Array[] = [];
+      return new Writable({
+        write(chunk: Uint8Array, _encoding, callback) {
+          chunks.push(chunk);
+          callback();
+        },
+        final(callback) {
+          objects.set(key, {
+            bytes: new Uint8Array(Buffer.concat(chunks)),
+            contentType: options.metadata.contentType,
+            updated: new Date().toISOString(),
+          });
+          callback();
+        },
       });
     },
     async download() {

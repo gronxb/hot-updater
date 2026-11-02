@@ -1,16 +1,15 @@
+import fs from "fs";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
-import {
-  type ApplePlatform,
-  generateMinBundleId,
-  type IosBuildDestination,
+import type {
+  ApplePlatform,
+  IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
 import type { AppleDeviceType } from "../types";
 import { installPodsIfNeeded } from "../utils/cocoapods";
-import { createRandomTmpDir } from "../utils/createRandomTmpDir";
+import { createRandomTmpDir, removeTmpDir } from "../utils/createRandomTmpDir";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -22,9 +21,19 @@ import {
 import { platformConfigs } from "../utils/platform";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
+import {
+  buildSettingsOverScheme,
+  writeBuildXcconfig,
+} from "../utils/writeBuildXcconfig";
 
+/**
+ * Builds the scheme in a temporary DerivedData directory, copies the built
+ * `.app` to `outputDirectory`, and removes DerivedData, which takes 10 GB or
+ * more, whether the build succeeds or not.
+ */
 export const buildXcodeProject = async ({
   sourceDir,
+  outputDirectory,
   platform,
   xcodeScheme,
   configuration,
@@ -34,8 +43,18 @@ export const buildXcodeProject = async ({
   useGenericDestination = false,
   installPods,
   extraParams,
+  minBundleId,
+  authenticationArgs,
+  sandbox,
+  header = [],
 }: {
+  /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
+  authenticationArgs?: string[];
+  /** Compiles the sandbox layer in. */
+  sandbox?: boolean;
   sourceDir: string;
+  /** Where the built `.app` is copied to. */
+  outputDirectory: string;
   platform: ApplePlatform;
   xcodeScheme: string;
   logPrefix: string;
@@ -45,75 +64,105 @@ export const buildXcodeProject = async ({
   useGenericDestination?: boolean;
   installPods?: boolean;
   extraParams?: string[];
-}): Promise<{ appPath: string; infoPlistPath: string }> => {
-  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
-
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId: string;
+  /** Lines the build log starts with, such as the native build key. */
+  header?: string[];
+}): Promise<{ appPath: string; logFilePath: string | null }> => {
   if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
 
-  const derivedDataPath = await createRandomTmpDir();
+  // After pod install, which writes the workspace of a freshly prebuilt
+  // project.
+  const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
-  const resolvedDestinations = resolveDestinations({
-    destinations: destination,
-    useGeneric: useGenericDestination,
-  });
-  if (resolvedDestinations.length === 0) {
-    resolvedDestinations.push(
-      getDefaultDestination({
-        deviceType,
-        platform,
-        useGeneric: useGenericDestination,
-      }),
-    );
-  }
-
-  const minBundleId = generateMinBundleId();
-  const buildArgs = prepareBuildArgs({
-    minBundleId,
-    configuration,
-    derivedDataPath,
-    deviceType,
-    resolvedDestinations,
-    extraParams,
-    platform,
-    xcodeScheme,
-    sourceDir,
-    xcodeProject,
-  });
-
-  p.log.info(`Xcode Build Settings:
-Project        ${xcodeProject.name}
-Scheme         ${xcodeScheme}
-Configuration  ${configuration}
-Platform       ${platform}
-Device Type    ${deviceType}
-Command        xcodebuild ${buildArgs.join(" ")}
-`);
-
+  // DerivedData and the build's xcconfig.
+  const tmpDir = await createRandomTmpDir();
   try {
-    await runXcodebuildWithLogging({
-      args: buildArgs,
-      // The build setting reaches the podspec's script phase, and the
-      // environment reaches Package.swift's build tool plugin, which
-      // can't read build settings.
-      env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
+    const derivedDataPath = path.join(tmpDir, "DerivedData");
+
+    const resolvedDestinations = resolveDestinations({
+      destinations: destination,
+      useGeneric: useGenericDestination,
+    });
+    if (resolvedDestinations.length === 0) {
+      resolvedDestinations.push(
+        getDefaultDestination({
+          deviceType,
+          platform,
+          useGeneric: useGenericDestination,
+        }),
+      );
+    }
+
+    const build = await writeBuildXcconfig({
+      directory: tmpDir,
       sourceDir,
-      logPrefix,
-      successMessage: "Build completed successfully",
-      failureMessage: "Build failed",
+      extraParams,
+      settings: buildSettingsOverScheme({
+        minBundleId,
+        authenticationArgs,
+        sandbox,
+      }),
     });
 
-    return await getBuildSettings({
+    const buildArgs = prepareBuildArgs({
+      authenticationArgs,
+      xcconfig: build.xcconfig,
+      minBundleId,
       configuration,
       derivedDataPath,
+      deviceType,
       resolvedDestinations,
+      extraParams: build.extraParams,
+      platform,
       xcodeScheme,
       sourceDir,
       xcodeProject,
     });
-  } catch (error) {
-    throw prettifyXcodebuildError(error);
+
+    let builtAppPath: string;
+    let logFilePath: string | null;
+    try {
+      ({ logFilePath } = await runXcodebuildWithLogging({
+        args: buildArgs,
+        // The build setting reaches the podspec's script phase, and the
+        // environment reaches Package.swift's build tool plugin, which
+        // can't read build settings.
+        env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
+        sourceDir,
+        logPrefix,
+        header: [
+          ...header,
+          `Project        ${xcodeProject.name}`,
+          `Scheme         ${xcodeScheme}`,
+          `Configuration  ${configuration}`,
+          `Platform       ${platform}`,
+          `Device type    ${deviceType}`,
+        ],
+        title: `Building ${xcodeScheme}`,
+        successMessage: `Built ${xcodeScheme}`,
+        failureMessage: "Build failed",
+      }));
+
+      ({ appPath: builtAppPath } = await getBuildSettings({
+        configuration,
+        derivedDataPath,
+        resolvedDestinations,
+        xcodeScheme,
+        sourceDir,
+        xcodeProject,
+      }));
+    } catch (error) {
+      throw prettifyXcodebuildError(error);
+    }
+
+    const appPath = path.join(outputDirectory, path.basename(builtAppPath));
+    await fs.promises.cp(builtAppPath, appPath, { recursive: true });
+    return { appPath, logFilePath };
+  } finally {
+    await removeTmpDir(tmpDir);
   }
 };
 
@@ -128,7 +177,12 @@ const prepareBuildArgs = ({
   derivedDataPath,
   extraParams,
   minBundleId,
+  authenticationArgs,
+  xcconfig,
 }: {
+  authenticationArgs?: string[];
+  /** From `writeBuildXcconfig`. */
+  xcconfig: string;
   configuration: string;
   derivedDataPath: string;
   deviceType: AppleDeviceType;
@@ -159,6 +213,12 @@ const prepareBuildArgs = ({
     `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
     "build",
   ];
+
+  if (authenticationArgs) {
+    args.push(...authenticationArgs);
+  }
+
+  args.push("-xcconfig", xcconfig);
 
   if (extraParams) {
     args.push(...extraParams);

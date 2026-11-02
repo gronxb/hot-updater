@@ -40,12 +40,12 @@ function App() {
 
 ## State
 
-| Field                | Type                  | Description                                      |
-|----------------------|-----------------------|--------------------------------------------------|
-| `progress`           | `number`              | Overall update progress from `0` to `1`.          |
-| `isUpdateDownloaded` | `boolean`             | `true` when `progress` reaches `1`.               |
+| Field                | Type             | Description                                              |
+| -------------------- | ---------------- | -------------------------------------------------------- |
+| `progress`           | `number`         | Overall update progress from `0` to `1`.                 |
+| `isUpdateDownloaded` | `boolean`        | `true` when `progress` reaches `1`.                      |
 | `artifactType`       | `"diff" \| null` | Current download type, or `null` before progress starts. |
-| `details`            | `object \| null`      | Progress for individual download entries.         |
+| `details`            | `object \| null` | Progress for individual download entries.                |
 
 When `artifactType` is `"diff"`, Hot Updater is using the manifest-based update
 path. It can reuse local files, download individual files or patches, or choose

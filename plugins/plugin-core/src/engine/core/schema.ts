@@ -3,8 +3,19 @@ import { defineAggregate, defineTable } from "../database/schema";
 /** A channel's id is `channel:` and its name's channel key, so ids share channel_key's bound. */
 const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
 
-/** Core's schema version: the `schema.core` settings row. */
-export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
+/**
+ * Core's schema version: the `schema.core` settings row. Bump it when core
+ * adds a table, then regenerate the managed migrations with
+ * HOT_UPDATER_UPDATE_SQL=1 (the D1 and Supabase schema specs), so the next
+ * release's numbered migration carries the change and `hot-updater init`
+ * applies it to managed databases an earlier release created. The official
+ * plugins' `schemaVersion`s follow the same rule. A bump only adds tables:
+ * every database's migrator creates missing tables and then records the
+ * version, and none of them changes an existing table, so changing one
+ * needs a migration step of its own first. The schema fence answers 503 on
+ * a database whose row differs, until it runs.
+ */
+export const HOT_UPDATER_SCHEMA_VERSION = "1.2.0";
 
 const bundles = defineTable(
   {
@@ -148,6 +159,65 @@ const channels = defineTable(
   { key: ["id"], indexes: { all: { eq: [], sort: ["name"] } } },
 );
 
+/**
+ * The native builds `native-build android` and `native-build ios` track, newest first
+ * in each scope: a platform, a channel, and the fingerprint or app version
+ * the build compiled in. `min_bundle_id` names the build's built-in bundle,
+ * a `bundles` row no release publishes. Its references keep no counters, so
+ * adding this table changes no existing one; a channel with builds is
+ * refused deletion through `byChannel`. `build_key` is the native build key
+ * of every input the artifact was built from (`nbk1:` and a SHA-256), which
+ * a build with the same inputs reuses it by; a build registered without
+ * one is never reused. `build_number` is the artifact's `CFBundleVersion`
+ * or `versionCode`. `submitted_to`, `submitted_at_ms` and
+ * `submitted_version` record the store track a build went to, when, and
+ * the store's label of the build; they stay null for a build no store took.
+ */
+const nativeBuilds = defineTable(
+  {
+    id: { type: "string", maxLength: 36 },
+    scope_key: { type: "string", maxLength: 2048, ascii: true },
+    platform: { type: "string", maxLength: 16 },
+    channel_id: {
+      ...CHANNEL_ID,
+      references: { model: "channels", onDelete: "none" },
+    },
+    fingerprint_hash: { type: "string", maxLength: 255, required: false },
+    app_version: { type: "string", required: false },
+    min_bundle_id: {
+      type: "string",
+      maxLength: 36,
+      unique: true,
+      references: { model: "bundles", onDelete: "none" },
+    },
+    artifact_kind: { type: "string", maxLength: 16 },
+    artifact_storage_uri: { type: "string" },
+    byte_size: { type: "integer" },
+    git_commit_hash: { type: "string", maxLength: 255, required: false },
+    created_at_ms: { type: "integer" },
+    build_key: { type: "string", maxLength: 69, ascii: true, required: false },
+    build_number: { type: "string", maxLength: 64, required: false },
+    submitted_to: { type: "string", maxLength: 16, required: false },
+    submitted_at_ms: { type: "integer", required: false },
+    submitted_version: { type: "string", maxLength: 255, required: false },
+  },
+  {
+    key: ["id"],
+    indexes: {
+      byScope: { eq: ["scope_key"], sort: ["id"] },
+      byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
+      // Rooted at the channel, so deleting a channel reads its builds under
+      // the channel row a registration bumps.
+      byChannel: {
+        eq: ["channel_id"],
+        sort: ["id"],
+        root: { model: "channels" },
+      },
+      all: { eq: [], sort: ["id"] },
+    },
+  },
+);
+
 /** Bundles per platform and in total (`platform_key` is a platform or `*`). */
 const bundleTotals = defineAggregate(
   { platform_key: { type: "string", maxLength: 16 } },
@@ -165,6 +235,7 @@ export const coreSchema = {
   release_catalogs: releaseCatalogs,
   channels,
   bundle_totals: bundleTotals,
+  native_builds: nativeBuilds,
 } as const;
 
 /**

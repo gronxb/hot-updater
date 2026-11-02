@@ -1,0 +1,362 @@
+---
+title: "CI"
+description: "Build, track, and submit native apps to TestFlight and Google Play from CI, with credentials from the job's environment or a secrets store, without signing in."
+icon: Workflow
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+A CI job builds the native apps with the same commands you run on your
+machine, `native-build ios` and `native-build android`, with `--submit`.
+Every build is tracked in Hot Updater, so the job needs the deploy
+credentials your config reads. It never signs in to an Apple or Google account. The CLI reads
+each credential through the config's [`secrets` adapter](/docs/concepts/secrets),
+so the same `hot-updater.config.ts` builds on your machine and in CI:
+
+| What the job needs        | Where the CLI reads it                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Android release keystore  | The secret `signing.keystore` names, such as `secret("release-keystore")`, or the `HOT_UPDATER_ANDROID_KEYSTORE_*` variables        |
+| App Store Connect API key | The secret `signing.ascApiKey` names, else `asc-api-key`, or the `HOT_UPDATER_ASC_KEY*` variables, for signing and TestFlight    |
+| Play service account      | `play-service-account`, or the `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_*` variables, for Google Play                                   |
+| Deploy credentials        | The names your config reads with [`secret()`](/docs/concepts/secrets#adapter-credentials), for tracking the build |
+
+With [`localSecrets()`](/docs/guides/secrets-adapters/local-secrets), the
+default, the job's environment holds them, from your CI provider's secrets.
+With a secrets store, the job only signs in to the store, and the store holds
+every value. [Add the workflow](#add-the-workflow) has a complete workflow
+for both. To deploy a bundle instead when the store already has the project's
+fingerprint, use the [release action](/docs/guides/release-from-ci).
+
+The CLI treats a run as CI when the `CI` environment variable is set, as
+GitHub Actions, GitLab CI, CircleCI, Buildkite, Bitrise, and Codemagic set it,
+or when it has no terminal. There it asks nothing and never starts a sign-in,
+even on a terminal a runner allocates. It resolves every credential the build
+signs and uploads with before the build adapter's prebuild, so a job without
+one fails in seconds, with an error that names the missing credential, where
+the adapter looks for it, and how to provide it.
+
+## Get the keys once
+
+Bring the keys you already have:
+
+- An App Store Connect team API key with the Admin role, from **Users and
+  Access → Integrations** in App Store Connect: its `.p8` file, key ID, and
+  issuer ID.
+- A Google Cloud service account's JSON key, invited to the app in Play Console
+  with the app permission **Release apps to testing tracks**.
+- The Android release keystore and its passwords.
+
+Store the keys you have with
+[`secrets put`](/docs/concepts/secrets#store-a-secret), on your machine: in
+CI the CLI never signs in or creates a key. For Google Play, store the
+service account's JSON key and the upload keystore, then check Play access,
+as [Set up Google Play](/docs/native-builds/google-play#set-up-google-play)
+describes:
+
+```package-install
+npx hot-updater secrets put play-service-account ~/Downloads/key.json
+npx hot-updater secrets put android-keystore ./upload.jks
+npx hot-updater doctor
+```
+
+For the App Store Connect API key, `apple login` signs you in with your
+Apple Account once, as
+[Sign in with your Apple Account](/docs/native-builds/credentials#sign-in-with-your-apple-account)
+describes, and Hot Updater issues the key:
+
+```package-install
+npx hot-updater apple login
+```
+
+It keeps a key the adapter already holds;
+`secrets issue asc-api-key --replace` issues a new one and names the old key
+to revoke once CI no longer uses it. With
+`localSecrets()`, the key stays in a file on your machine, and the CLI offers
+to store it as the GitHub Actions secret CI reads; another adapter stores it
+where CI reads it
+([where an issued key goes](/docs/native-builds/credentials#where-an-issued-key-goes)).
+With a [team store](/docs/concepts/secrets#this-machine-or-the-team), one
+person stores them once, and every teammate and CI read the same keys.
+
+The App Store Connect API key is a team key with the Admin role: CI signs
+with Xcode's cloud-managed distribution certificate, which only an Admin key
+may use, and uploads with the same key.
+
+## Add the workflow
+
+The `native-build` action runs `native-build <platform> --scheme <scheme>
+--submit <store> --json` with the job's environment, sets the build as its
+outputs, and writes a summary of the job. Use the tag of the hot-updater
+release your project installs. Each workflow below builds when you push a
+version tag or run it by hand.
+
+The stores take each build number once: raise `CFBundleVersion` and
+`versionCode` for every build you upload, such as from the tag or
+`github.run_number` in a step before the build.
+
+### Environment variables
+
+With `localSecrets()`, which reads the environment before its files, add each
+value in the repository's
+**Settings → Secrets and variables → Actions** under its variable name. To
+require a reviewer before a job reads them, add them to a protected
+[environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+instead. Each credential is one
+[JSON value](/docs/concepts/secrets#sign-native-builds-with-secrets), stored
+as a multi-line secret as it is:
+
+| Secret                             | Holds                                                     |
+| ---------------------------------- | --------------------------------------------------------- |
+| `HOT_UPDATER_ASC_API_KEY`          | `secret("asc-api-key")`, the App Store Connect API key       |
+| `HOT_UPDATER_RELEASE_KEYSTORE`     | `secret("release-keystore")`, the Android keystore           |
+| `HOT_UPDATER_PLAY_SERVICE_ACCOUNT` | `play-service-account`, the Play service account JSON key |
+
+```yaml title=".github/workflows/native-release.yml"
+name: Native release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+      - run: npm ci
+      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+        env:
+          HOT_UPDATER_ASC_API_KEY: ${{ secrets.HOT_UPDATER_ASC_API_KEY }}
+          # ...and the deploy variables your config reads, which tracking needs
+        with:
+          platform: ios
+          scheme: release
+          submit: testflight
+
+  android:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: npm ci
+      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+        env:
+          HOT_UPDATER_RELEASE_KEYSTORE: ${{ secrets.HOT_UPDATER_RELEASE_KEYSTORE }}
+          HOT_UPDATER_PLAY_SERVICE_ACCOUNT: ${{ secrets.HOT_UPDATER_PLAY_SERVICE_ACCOUNT }}
+          # ...and the deploy variables your config reads, which tracking needs
+        with:
+          platform: android
+          scheme: release
+          submit: play-internal
+```
+
+A credential's own variables work too, such as `HOT_UPDATER_ASC_KEY`,
+`HOT_UPDATER_ASC_KEY_ID`, and `HOT_UPDATER_ASC_ISSUER_ID`, or
+`HOT_UPDATER_ANDROID_KEYSTORE_BASE64` and its passwords:
+[Provide signing credentials](/docs/native-builds/credentials#provide-signing-credentials)
+lists them. `HOT_UPDATER_ASC_KEY` also takes a key whose line breaks are
+written as `\n`.
+
+### Read secrets from a secrets store
+
+With a [secrets adapter](/docs/concepts/secrets#choose-an-adapter),
+the job gives the CLI only what signs in to the store, and the store holds
+every credential, the adapter credentials `secret()` names included. With
+[dotenvx](/docs/guides/secrets-adapters/dotenvx), that is one secret, the
+private key of the encrypted file committed with the project:
+
+```yaml title=".github/workflows/native-release.yml"
+name: Native release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: gronxb/hot-updater/actions/native-build@v1.2.0
+        env:
+          DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
+        with:
+          platform: ios
+          scheme: release
+          submit: testflight
+```
+
+The other adapters sign in the same way, on the build step:
+
+| Adapter                                                                      | The job sets                                                                                                       |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [Infisical](/docs/guides/secrets-adapters/infisical)                         | `INFISICAL_MACHINE_IDENTITY_ID` through OIDC (`id-token: write`), or a **Viewer** identity's Universal Auth client ID and secret |
+| [Bitwarden](/docs/guides/secrets-adapters/bitwarden)                         | `BWS_ACCESS_TOKEN`, a read-only machine account's                                                                  |
+| [AWS Secrets Manager](/docs/guides/secrets-adapters/aws-secrets-manager)     | Nothing stored: `aws-actions/configure-aws-credentials` assumes a role through OIDC (`id-token: write`)            |
+| [Google Secret Manager](/docs/guides/secrets-adapters/google-secret-manager) | Nothing stored: `google-github-actions/auth` signs in through Workload Identity Federation (`id-token: write`)     |
+| [Azure Key Vault](/docs/guides/secrets-adapters/azure-key-vault)             | Nothing stored: `azure/login` signs the Azure CLI in through OIDC (`id-token: write`)                              |
+| [1Password](/docs/guides/secrets-adapters/1password)                         | `OP_SERVICE_ACCOUNT_TOKEN`, a read-only service account's                                                         |
+
+Each adapter's page has its step and the least privilege its CI identity
+needs.
+
+### Without the action
+
+Any CI runs the command the action runs, with the credentials or the store's
+sign-in in its environment. `testflight` and `google-play upload` are the
+shortcuts for the store uploads:
+
+```bash
+npx --no-install hot-updater testflight --scheme release
+# the same as
+npx --no-install hot-updater native-build ios --scheme release --submit testflight
+
+npx --no-install hot-updater google-play upload --scheme release
+# the same as
+npx --no-install hot-updater native-build android --scheme release --submit play-internal
+```
+
+In CI, pass `--scheme` when several schemes upload to TestFlight: it asks
+nothing there.
+
+## What a CI build does
+
+1. It loads the config, with the adapter credentials `secret()` names for
+   tracking the build, and checks that the database and storage answer before
+   it builds.
+2. Before the prebuild, it resolves every credential the build signs and
+   uploads with through the `secrets` adapter, and checks that the stores
+   would take the scheme's build. A missing or unreadable credential stops it
+   here.
+3. It writes the keystore and the `.p8` key as temporary files only the
+   runner's user can read, keeps the service account in memory, and masks
+   every value and the token in the log.
+4. An iOS build that signs with the App Store Connect API key archives and
+   exports in a keychain of its own: the CLI creates and unlocks it, makes it
+   the default keychain ahead of the runner's, and restores the runner's
+   keychains when the build ends. On a runner that starts empty, Xcode creates
+   an Apple Development certificate for each build and keeps its private key
+   in that keychain, so the CLI revokes the signing certificates whose
+   private key is there through the App Store Connect API, then deletes the
+   keychain with their keys. The CA certificates Xcode imports beside them
+   have no private key and are never revoked. The export signs with the cloud-managed distribution certificate,
+   which never leaves Apple. An
+   [ad hoc export](/docs/native-builds/iphone-install) builds the same way, and
+   a distribution certificate Xcode created for it isn't revoked, since it may
+   have signed the `.ipa`. A scheme whose `exportOptionsPlist` exports for
+   another method, such as `development`, may be signed with the certificate
+   Xcode creates, so it builds in the runner's own keychains and keeps it.
+5. It builds, tracks the build, submits it, and deletes the temporary files
+   and the keychain.
+
+A certificate the CLI can't revoke is named with its serial number and the
+page to revoke it by hand. When App Store Connect answers 403 because the
+team's Apple Developer Program License Agreement changed, the build and the
+revocation say so: the Account Holder must accept it at
+https://developer.apple.com/account.
+
+A self-hosted macOS runner that keeps a signing identity in its login keychain
+still uses it: the build's keychain comes first in the search list, and Xcode
+creates a certificate only when it finds no identity. The default keychain
+and the search list belong to the macOS user, so iOS builds under one user,
+such as two runner instances, take turns signing: a build waits while another
+holds the kernel lock on `~/Library/Caches/hot-updater/signing-keychain.lock`,
+which a build that ends in any way releases. A cancelled build still revokes
+its certificates and restores the keychains before it stops.
+
+## When a credential is missing
+
+A `--submit play-internal` job that Google Play isn't ready for stops
+before the build and lists every item at once: the service account key and
+the upload keystore, each with the `secrets put` command that stores it, and
+Play access, with the invite or the app's first upload it needs
+([Set up Google Play](/docs/native-builds/google-play#set-up-google-play)). A
+missing App Store Connect API key stops the same way, saying that Hot
+Updater signs in only at a terminal and never in CI. A missing keystore
+never suggests a second one: under a team's adapter it says to ask whoever
+set it up, or to import it with `secrets put`, since Google Play rejects
+builds signed with a key it doesn't have. A store the job can't sign in to, or a role without
+read access, fails with the store's reason.
+
+<Callout type="info">
+  Every build is tracked in the server's database and storage, so the job
+  needs the deploy credentials your config reads. A Debug scheme's build is
+  the exception: it has no built-in bundle to track.
+</Callout>
+
+## Inputs
+
+| Input               | Default                        | Description                                                               |
+| ------------------- | ------------------------------ | ------------------------------------------------------------------------- |
+| `platform`          |                                | `ios`, on a macOS runner, or `android`. Required                          |
+| `scheme`            |                                | The `nativeBuild.<platform>` scheme. Required                             |
+| `submit`            |                                | `testflight` for iOS, `play-internal` for Android, or empty to only build |
+| `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                         |
+| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                   |
+
+The action takes no credential input: the CLI reads every credential through
+the config's `secrets` adapter. It masks the job's `HOT_UPDATER_*` credential
+variables in the log, field by field for a JSON value, and the CLI masks every
+value it reads from a store. The action refuses `ios` on a runner that is not
+macOS and a `submit` to the other platform's store. It sets `CI` for the
+CLI, so a self-hosted runner that sets no `CI` never starts a sign-in either.
+
+| Output          | Description                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `artifact-path` | The built `.ipa`, `.aab`, `.apk`, simulator `.app`, or `.xcarchive`                                                 |
+| `build`         | JSON of the build: platform, scheme, artifact path and kind, min bundle ID, channel, and fingerprint or app version |
+| `native-build`  | JSON of the native build Hot Updater tracks, or `null` for a Debug build                                            |
+| `build-log`     | When the build fails, the path of the CLI's build log                                                               |
+
+When the build fails, the job's log shows the build's errors and the path of
+the CLI's build log, which keeps the whole output of `xcodebuild` or Gradle,
+and the action uploads that log as the
+`hot-updater-build-log-<platform>-<scheme>` artifact. Download it from the
+run's **Summary** page.
+
+Upload the artifact with `actions/upload-artifact` to keep it with the run:
+
+```yaml
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  id: build
+  with:
+    # ...
+- uses: actions/upload-artifact@v4
+  with:
+    name: android-release
+    path: ${{ steps.build.outputs.artifact-path }}
+```

@@ -40,8 +40,12 @@ export const firebaseStorage = (
   | "listObjects"
   | "deleteObjects"
 > => {
+  // The app is bound now, as the first adapter binds the default one; the
+  // bucket opens on first use, so a config loads without its settings.
   const app = getApps().length ? getApp() : initializeApp(config);
-  const bucket = getStorage(app).bucket(config.storageBucket);
+  let opened: ReturnType<ReturnType<typeof getStorage>["bucket"]> | undefined;
+  const bucket = () =>
+    (opened ??= getStorage(app).bucket(config.storageBucket));
   const getStorageKey = createStorageKeyBuilder(config.basePath);
   const basePrefix = getStorageKey() ? `${getStorageKey()}/` : "";
   /**
@@ -56,7 +60,7 @@ export const firebaseStorage = (
   >();
   const signUrl = async (key: string) => {
     const expiresAt = Date.now() + (config.signedUrlExpiresIn ?? 3600) * 1000;
-    const [url] = await bucket.file(key).getSignedUrl({
+    const [url] = await bucket().file(key).getSignedUrl({
       action: "read",
       expires: expiresAt,
     });
@@ -98,13 +102,24 @@ export const firebaseStorage = (
     protocol: "gs",
     async put({ key, body, contentType }) {
       const storageKey = getStorageKey(key);
-      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
-      await bucket.file(storageKey).save(bytes, {
-        metadata: {
-          contentType,
-          cacheControl: "public, max-age=31536000, immutable",
-        },
-      });
+      // Streamed, so a native build artifact never sits in memory.
+      const [{ Readable }, { pipeline }] = await Promise.all([
+        import("node:stream"),
+        import("node:stream/promises"),
+      ]);
+      await pipeline(
+        Readable.fromWeb(
+          body as import("node:stream/web").ReadableStream<Uint8Array>,
+        ),
+        bucket()
+          .file(storageKey)
+          .createWriteStream({
+            metadata: {
+              contentType,
+              cacheControl: "public, max-age=31536000, immutable",
+            },
+          }),
+      );
       return {
         storageUri: createStorageUri({
           bucket: config.storageBucket,
@@ -116,7 +131,7 @@ export const firebaseStorage = (
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
-        const file = bucket.file(key);
+        const file = bucket().file(key);
         const [[body], [metadata]] = await Promise.all([
           file.download(),
           file.getMetadata(),
@@ -155,17 +170,17 @@ export const firebaseStorage = (
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const [exists] = await bucket.file(key).exists();
+      const [exists] = await bucket().file(key).exists();
       return { exists };
     },
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      await bucket.file(key).delete({ ignoreNotFound: true });
+      await bucket().file(key).delete({ ignoreNotFound: true });
       return { deleted: true };
     },
     async listObjects(prefix) {
       const folder = getStorageKey(prefix ?? "");
-      const [files] = await bucket.getFiles({
+      const [files] = await bucket().getFiles({
         autoPaginate: true,
         prefix: folder ? `${folder}/` : "",
       });
@@ -199,7 +214,7 @@ export const firebaseStorage = (
         await Promise.all(
           keys
             .slice(offset, offset + DELETE_CONCURRENCY)
-            .map((key) => bucket.file(key).delete({ ignoreNotFound: true })),
+            .map((key) => bucket().file(key).delete({ ignoreNotFound: true })),
         );
       }
     },

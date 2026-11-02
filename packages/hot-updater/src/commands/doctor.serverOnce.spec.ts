@@ -72,15 +72,14 @@ describe("doctor's server", () => {
       success: true,
       details: {
         releaseCatalogs: { scopes: [], issues: [] },
-        artifacts: { unreferenced: [], issues: [] },
       },
     });
     expect(state.callsAfterClose).toBe(0);
     expect(state.closes).toBe(1);
   });
 
-  it("stays open through --fix and the checks after it", async () => {
-    // Seed a stale catalog in the configured database.
+  it("stays open through the catalog checks of a stale catalog", async () => {
+    // An edit outside Hot Updater leaves the scope's catalog stale.
     const [deployed] = await assembleServer({
       database: closing.database,
     }).core.deploy([
@@ -114,15 +113,23 @@ describe("doctor's server", () => {
         catalog_hash: `sha256:${"0".repeat(64)}`,
       });
     });
-    await engine.dispose();
 
-    const result = await doctor({ fix: true });
-
-    expect(result).toMatchObject({
-      success: true,
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
       details: {
-        fixes: [{ repair: "release-catalogs", status: "applied" }],
-        releaseCatalogs: { scopes: [{ scopeKey, state: "verified" }] },
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "stale" }],
+          issues: [
+            {
+              code: "RELEASE_CATALOG_STALE",
+              scopeKey,
+              commands: [
+                "npx hot-updater deploy",
+                "npx hot-updater bundle update <id>",
+              ],
+            },
+          ],
+        },
       },
     });
     expect(state.callsAfterClose).toBe(0);

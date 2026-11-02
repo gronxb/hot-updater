@@ -82,4 +82,9 @@ export const initProvider = {
       validate: (value) => value === "true" || value === "false",
     },
   },
+  secrets: [
+    "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+    "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+    "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+  ],
 } as const satisfies InitProviderDefinition;

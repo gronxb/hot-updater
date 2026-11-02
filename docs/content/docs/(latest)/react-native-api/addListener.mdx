@@ -5,9 +5,10 @@ icon: Headphones
 ---
 
 <Callout type="warn">
-For progress UI, prefer [useHotUpdaterStore](/docs/react-native-api/useHotUpdaterStore). Use
-`addListener` when you need the raw event, such as analytics, logs, or custom
-side effects.
+  For progress UI, prefer
+  [useHotUpdaterStore](/docs/react-native-api/useHotUpdaterStore). Use
+  `addListener` when you need the raw event, such as analytics, logs, or custom
+  side effects.
 </Callout>
 
 ## Usage
@@ -69,9 +70,9 @@ hotUpdater.addListener("onProgress", (event) => {
 
 ## Parameters
 
-| Parameter   | Type                                  | Required | Description                              |
-|-------------|---------------------------------------|----------|------------------------------------------|
-| `eventName` | `keyof HotUpdaterEvent`               | Yes      | The event name. Currently `onProgress`.  |
+| Parameter   | Type                                  | Required | Description                                |
+| ----------- | ------------------------------------- | -------- | ------------------------------------------ |
+| `eventName` | `keyof HotUpdaterEvent`               | Yes      | The event name. Currently `onProgress`.    |
 | `listener`  | `(event: HotUpdaterEvent[T]) => void` | Yes      | Callback called when the event is emitted. |
 
 ## Cleanup

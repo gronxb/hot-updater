@@ -1062,6 +1062,37 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
     }
 
+    /// Resets the channel while the Release selection `params` names is
+    /// current, as `resetChannel` does; resolves false for a stale one.
+    @objc
+    public func resetChannelIfSelectionCurrent(
+        _ params: [AnyHashable: Any]?,
+        resolver: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        guard let guardParams = ReleaseSelectionGuardParams(params) else {
+            resolver(false)
+            return
+        }
+        let result = launchPreparationLock.resetChannelIfSelectionCurrent(guardParams, in: bundleStorage) {
+            do {
+                try preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
+            } catch {
+                NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
+            }
+            self.currentLaunchSelection = nil
+        }
+
+        switch result {
+        case .success(let success):
+            resolver(success)
+        case .failure(let error):
+            let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
+            let nsError = error as NSError
+            reject(normalizedCode, nsError.localizedDescription, nsError)
+        }
+    }
+
     private func prepareLaunchIfNeeded(bundle: Bundle) -> LaunchSelection {
         launchPreparationLock.withLock { prepareLaunchLocked(bundle: bundle) }
     }

@@ -36,14 +36,14 @@ Choose a custom directory or get paths as JSON:
 npx hot-updater infra scaffold --provider cloudflare --output ./server --json
 ```
 
-| Provider | Server files |
-| --- | --- |
-| [Cloudflare](/docs/managed/cloudflare) | Bundled Worker, Wrangler configuration and D1 migrations |
-| [Supabase](/docs/managed/supabase) | Edge Function, complete Deno imports/vendor files, SQL migrations and project configuration |
-| [AWS](/docs/managed/aws) | Lambda bundle and pinned dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM reference source |
-| [Firebase](/docs/managed/firebase) | Built Functions project, pinned dependencies, Firebase configuration and Firestore indexes |
-| [Vercel](/docs/managed/vercel) | Function bundled with its dependencies and `vercel.json` |
-| [Azure](/docs/managed/azure) | Bundled Function package with its `host.json` and `package.json`, which need no install |
+| Provider                               | Server files                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [Cloudflare](/docs/managed/cloudflare) | Bundled Worker, Wrangler configuration and D1 migrations                                                            |
+| [Supabase](/docs/managed/supabase)     | Edge Function, complete Deno imports/vendor files, SQL migrations and project configuration                         |
+| [AWS](/docs/managed/aws)               | Lambda bundle and pinned dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM reference source |
+| [Firebase](/docs/managed/firebase)     | Built Functions project, pinned dependencies, Firebase configuration and Firestore indexes                          |
+| [Vercel](/docs/managed/vercel)         | Function bundled with its dependencies and `vercel.json`                                                            |
+| [Azure](/docs/managed/azure)           | Bundled Function package with its `host.json` and `package.json`, which need no install                             |
 
 `manifest.json` records the provider, target CLI/provider/server versions,
 infrastructure generation, resource inputs and original file hashes.

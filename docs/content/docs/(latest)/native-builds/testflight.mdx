@@ -1,0 +1,92 @@
+---
+title: "TestFlight"
+description: "Sign in once with your Apple Account, then build the .ipa and upload it to App Store Connect for TestFlight."
+icon: Apple
+---
+
+## Sign in once
+
+`apple login` signs in with your Apple Account and stores an App Store
+Connect API key, which signs the build and uploads it:
+
+```package-install
+npx hot-updater apple login
+```
+
+A build that finds no key asks you to sign in too.
+[Sign in with your Apple Account](/docs/native-builds/credentials#sign-in-with-your-apple-account)
+covers what the sign-in creates and where the key goes.
+
+## Upload to TestFlight
+
+`testflight` builds the `.ipa`, tracks it, and uploads it to App Store
+Connect, which lists it in TestFlight:
+
+```package-install
+npx hot-updater testflight
+```
+
+It is the shortcut for `native-build ios --scheme <scheme> --submit
+testflight`, which runs the same build. It builds the one `nativeBuild.ios`
+scheme whose build TestFlight takes, skipping simulator, `Debug`, unsigned,
+and archive-only schemes, [sandbox](/docs/native-builds/sandbox) schemes, and
+ones that export for another method, and says which; with several, it asks which one at a
+terminal, and in CI or without a terminal it stops and lists them. It takes
+only `--scheme`: for `--json`, `--output-path`, or `--dry-run`, run the full
+command:
+
+```package-install
+npx hot-updater native-build ios --scheme release --submit testflight
+```
+
+The upload authenticates with an App Store Connect team API key, which has a
+key ID and an issuer ID (App Store Connect → Users and Access → Integrations →
+Team Keys), with the Admin, App Manager, or Developer role: the scheme's
+`signing.ascApiKey`, or else the `secrets` adapter's `asc-api-key`. The
+`HOT_UPDATER_ASC_KEY*` environment variables in
+[Provide signing credentials](/docs/native-builds/credentials#provide-signing-credentials) override it.
+Without one, [sign in with your Apple Account](/docs/native-builds/credentials#sign-in-with-your-apple-account)
+when asked, and the CLI issues and stores it before it builds
+([where an issued key goes](/docs/native-builds/credentials#where-an-issued-key-goes)). The
+CLI resolves the key before the build adapter's prebuild (such as
+`expo prebuild`) and the build, so a missing key fails before either runs, and
+deletes the key's temporary file when the upload ends.
+Certificates and provisioning profiles stay with the build's signing.
+[Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
+with the stored key.
+
+Before the prebuild, the CLI also refuses, saying why, a scheme whose build
+App Store Connect would not take: a simulator scheme, a configuration whose
+name ends in `Debug`, a scheme that turns code signing off
+(`CODE_SIGNING_ALLOWED` or `CODE_SIGNING_REQUIRED` left `NO` after the
+overrides the build applies: `extraParams` settings, then its `xcconfig` and
+each `-xcconfig` in `extraParams`, in order), a scheme with neither `signing.ascApiKey` nor an
+`exportOptionsPlist`, which only archives, and an `exportOptionsPlist` whose
+`method` is not `app-store-connect` (or `app-store`). An `exportOptionsPlist`
+the prebuild writes is checked after the prebuild, before the build.
+
+After the build is tracked, the CLI:
+
+1. Reads the bundle ID, version (`CFBundleShortVersionString`) and build
+   number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
+2. Finds the App Store Connect app with that bundle ID. Create the app in
+   App Store Connect first; the key must belong to its team.
+3. Uploads the `.ipa` with the App Store Connect API's build uploads.
+4. Waits up to 30 minutes for App Store Connect to accept the build, and
+   prints the warnings and errors it reports.
+
+App Store Connect takes each build number once per version: raise
+`CFBundleVersion` for every build you upload. When an upload fails, the build
+stays at its output path. A build that App Store Connect is still processing
+after 30 minutes appears in TestFlight once processing finishes, at the URL
+the CLI prints.
+
+Once App Store Connect accepts the build, the CLI records it on the tracked
+build, and the Console's [Native builds](/docs/guides/native-build#native-builds-in-the-console) tab
+shows it as on TestFlight with its version and build number, such as
+`1.7.0 (66)`. Only an upload the run made is recorded: a build App Store
+Connect is still processing after 30 minutes, a failed upload, and
+`--dry-run` record nothing. A build number App Store Connect
+already has, from this or another upload, is skipped with `Already on
+TestFlight` and its version, such as `1.7.0 (66)`; see
+[Reuse a build](/docs/guides/native-build#reuse-a-build).

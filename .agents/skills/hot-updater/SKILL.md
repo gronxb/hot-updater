@@ -160,13 +160,13 @@ the CLI cannot bind, or exclusivity/preview is untrustworthy, do not prune.
 
 ### Doctor
 
-Diagnose by default. Repair only when requested and exact help identifies it.
-`doctor --fix` writes every repair doctor can make itself: fingerprint.json and
-native files, rebuilt release catalogs, and deleted artifact records. Treat it
-as a mutation, and report each write it names in `details.fixes`. It never
-removes a public key and leaves an issue with more than one remedy, such as
-`ORPHAN_PUBLIC_KEY`, to the user: removing a key turns off signature
-verification in the app. Do not remove one without the user's choice.
+Doctor only reports; it writes nothing. Each issue's `resolution` and
+`commands` name the existing command or edit that resolves it, such as
+`fingerprint create`, `keys export-public`, `db migrate`, or init with its
+saved inputs for a managed deployment. Running that command is a separate
+mutation: run it only when requested, then verify with doctor again. Leave an
+issue with more than one remedy, such as `ORPHAN_PUBLIC_KEY`, to the user:
+removing a key turns off signature verification in the app.
 Obtain any server URL from trusted local config or the user. Do not infer approval
 to edit setup, credentials, dependencies, infrastructure, or deployments.
 
@@ -176,10 +176,10 @@ provider access or prove the server was upgraded.
 
 ### Database and Catalog
 
-Treat migration, schema application, record changes, and catalog rebuilds by
-`doctor --fix` as external mutations. Read `details.releaseCatalogs` from
-`doctor --json` first, authorize the reported repair, run it once, and verify
-with doctor again. A check is not a repair.
+Treat migration, schema application, and record changes as external
+mutations. Read `details.schema` and `details.releaseCatalogs` from
+`doctor --json` first, authorize the command an issue names, run it once, and
+verify with doctor again. A check is not a repair.
 
 ### Generated Files
 
@@ -191,7 +191,7 @@ path. Verify permissions and ignore rules without exposing secret material.
 
 - Do not run interactive initialization on the user's behalf.
 - Treat deploy, patch, policy/channel changes, rollback, promotion, database or
-  catalog work, `doctor --fix`, deletion, and pruning as mutations; generated
+  catalog work, `init` replays, deletion, and pruning as mutations; generated
   files are writes.
 - Never request secrets in chat or arguments, print environments, dump sensitive
   files, or enable credential-leaking logs. Redact tokens, DSNs, passwords,

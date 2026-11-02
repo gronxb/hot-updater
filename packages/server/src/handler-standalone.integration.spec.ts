@@ -275,6 +275,85 @@ describe("Standalone core API over admin API protocol 2", () => {
     );
     expect(response.status).toBe(400);
   });
+
+  it("registers native builds, finds the newest of a scope, and keeps their built-in bundles", async () => {
+    const remote = core();
+    const register = (minBundleId: string, buildKey: string | null = null) =>
+      remote.registerNativeBuild({
+        id: uuidv7(),
+        platform: "android",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+        minBundleId,
+        gitCommitHash: null,
+        buildKey,
+        artifact: {
+          kind: "apk",
+          storageUri: "test://storage/native-builds/android/app.apk",
+          byteSize: 42,
+        },
+        embeddedBundle: {
+          manifestStorageUri: `test://storage/bundles/${minBundleId}/manifest.json`,
+          manifestFileHash: "built-in-manifest-hash",
+          assetBaseStorageUri: "test://assets",
+        },
+      });
+    const [olderId, newerId] = [uuidv7(), uuidv7()];
+    const key = `nbk1:${"c".repeat(64)}`;
+    const older = await register(olderId, key);
+    const newer = await register(newerId);
+
+    await expect(
+      remote.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      }),
+    ).resolves.toEqual(newer);
+    await expect(
+      remote.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      remote.findNativeBuild(
+        {
+          platform: "android",
+          channel: "production",
+          fingerprintHash: "fingerprint-a",
+          appVersion: null,
+        },
+        { buildKey: key },
+      ),
+    ).resolves.toEqual(older);
+    await expect(
+      remote.listNativeBuilds({ limit: 1, order: "desc" }),
+    ).resolves.toEqual([newer]);
+    await expect(register(newerId)).rejects.toThrow("already registered");
+    await expect(remote.countBundles()).resolves.toBe(0);
+    await expect(remote.deleteBundles([newerId])).rejects.toThrow(
+      "still referenced",
+    );
+    await expect(remote.getBundle(newerId)).resolves.toMatchObject({
+      bundle: { id: newerId, platform: "android" },
+    });
+
+    await expect(remote.deleteNativeBuild(newer.id)).resolves.toEqual({
+      deleted: true,
+      nativeBuild: newer,
+    });
+    await expect(remote.getNativeBuild(newer.id)).resolves.toBeNull();
+    await expect(remote.getBundle(newerId)).resolves.toBeNull();
+    await expect(remote.deleteNativeBuild(newer.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+  });
 });
 
 describe("Insights through a self-hosted server's admin API", () => {

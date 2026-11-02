@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getHotUpdaterEnvValue,
   getHotUpdaterInitInputEnv,
-  readHotUpdaterEnv,
   readHotUpdaterInitEnv,
 } from "./hotUpdaterEnv";
 
@@ -17,7 +16,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("readHotUpdaterEnv", () => {
+describe("readHotUpdaterInitEnv", () => {
   afterEach(async () => {
     await Promise.all(
       temporaryDirectories.map((directory) =>
@@ -44,7 +43,7 @@ describe("readHotUpdaterEnv", () => {
     );
 
     // When
-    const env = await readHotUpdaterEnv(directory);
+    const { managedEnv: env } = await readHotUpdaterInitEnv(directory);
 
     // Then
     expect(env).toEqual({
@@ -62,7 +61,7 @@ describe("readHotUpdaterEnv", () => {
     temporaryDirectories.push(directory);
 
     // When
-    const env = await readHotUpdaterEnv(directory);
+    const { managedEnv: env } = await readHotUpdaterInitEnv(directory);
 
     // Then
     expect(env).toEqual({});

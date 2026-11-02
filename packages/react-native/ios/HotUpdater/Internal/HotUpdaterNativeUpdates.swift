@@ -80,6 +80,13 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
         return (value as? Bool) ?? false
     }
 
+    func resetChannelIfSelectionCurrent(_ guardParams: [String: Any]) async -> Bool {
+        let value = try? await promise { resolve, reject in
+            self.impl.resetChannelIfSelectionCurrent(guardParams, resolver: resolve, rejecter: reject)
+        }
+        return (value as? Bool) ?? false
+    }
+
     func releaseCatalogCache(_ partition: String) -> String? {
         impl.releaseCatalogCacheValue(partition)
     }
@@ -201,6 +208,36 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
             await checker.whenIdle {
                 await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
                     impl.resetChannel({ value in
+                        // The reset deleted staged bundles; their queued downloads go too.
+                        if (value as? Bool) == true {
+                            NativeUpdateEvents.remove(name: "onBundleDownloaded", from: HotUpdaterImplUpdateHost(impl: impl))
+                        }
+                        resolve(value)
+                        done.resume()
+                    }, rejecter: { code, message, error in
+                        reject(code, message, error)
+                        done.resume()
+                    })
+                }
+            }
+        }
+    }
+
+    /// `resetChannelIfSelectionCurrent` for JavaScript: waits for a native
+    /// check or staging as `resetChannel` does, then resets only while the
+    /// Release selection `params` names is current.
+    @objc(resetChannelIfSelectionCurrentWithImpl:params:resolver:rejecter:)
+    public static func resetChannelIfSelectionCurrent(
+        impl: HotUpdaterImpl,
+        params: [AnyHashable: Any]?,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let checker = checker(impl: impl)
+        Task {
+            await checker.whenIdle {
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    impl.resetChannelIfSelectionCurrent(params, resolver: { value in
                         // The reset deleted staged bundles; their queued downloads go too.
                         if (value as? Bool) == true {
                             NativeUpdateEvents.remove(name: "onBundleDownloaded", from: HotUpdaterImplUpdateHost(impl: impl))

@@ -1,5 +1,216 @@
 # @hot-updater/console
 
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.2.0-rc.12
+  - @hot-updater/cli-tools@1.2.0-rc.12
+  - @hot-updater/protocol@1.2.0-rc.12
+  - @hot-updater/server@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- Updated dependencies [4c10736]
+  - @hot-updater/cli-tools@1.2.0-rc.11
+  - @hot-updater/bsdiff@1.2.0-rc.11
+  - @hot-updater/protocol@1.2.0-rc.11
+  - @hot-updater/server@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- Updated dependencies [41444fa]
+- Updated dependencies [fd2aa7e]
+  - @hot-updater/cli-tools@1.2.0-rc.10
+  - @hot-updater/bsdiff@1.2.0-rc.10
+  - @hot-updater/protocol@1.2.0-rc.10
+  - @hot-updater/server@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- Updated dependencies [12ff126]
+  - @hot-updater/cli-tools@1.2.0-rc.9
+  - @hot-updater/bsdiff@1.2.0-rc.9
+  - @hot-updater/protocol@1.2.0-rc.9
+  - @hot-updater/server@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [8a440e3]
+- Updated dependencies [2e3f250]
+- Updated dependencies [21cfeec]
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/cli-tools@1.2.0-rc.8
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/server@1.2.0-rc.8
+  - @hot-updater/bsdiff@1.2.0-rc.8
+  - @hot-updater/protocol@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies [f3989de]
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/bsdiff@1.2.0-rc.7
+  - @hot-updater/protocol@1.2.0-rc.7
+  - @hot-updater/server@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.2.0-rc.6
+  - @hot-updater/cli-tools@1.2.0-rc.6
+  - @hot-updater/protocol@1.2.0-rc.6
+  - @hot-updater/server@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [dd7db4b]
+- Updated dependencies [709997a]
+- Updated dependencies [5d4d977]
+- Updated dependencies [2fd1c83]
+  - @hot-updater/cli-tools@1.2.0-rc.5
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/server@1.2.0-rc.5
+  - @hot-updater/bsdiff@1.2.0-rc.5
+  - @hot-updater/protocol@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.2.0-rc.4
+  - @hot-updater/cli-tools@1.2.0-rc.4
+  - @hot-updater/protocol@1.2.0-rc.4
+  - @hot-updater/server@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies [3c00e7a]
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/bsdiff@1.2.0-rc.3
+  - @hot-updater/protocol@1.2.0-rc.3
+  - @hot-updater/server@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- 76090c3: The Native builds tab's "Import a build" dialog is a title, one line ("Track an .ipa, .aab, .apk or .app built elsewhere as a patch base."), the command `npx hot-updater native-build import <file>` with its copy button, and the Import guide link. The empty state shows the same shorter command. The rest, such as `--channel`, is in the guide.
+- @hot-updater/bsdiff@1.2.0-rc.2
+  - @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/protocol@1.2.0-rc.2
+  - @hot-updater/server@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- bcc239a: The Console's Install card says each thing about installing a native build once: the QR code's caption says what scanning gets, and the steps beside it add only another way, such as `adb`, `xcrun simctl`, Xcode or Apple Configurator, or the `testflight` and `google-play upload` commands. An AAB's card no longer says twice that it installs through Google Play or bundletool.
+
+  A native build's Console download link, as a pull request preview's comment shows it, opened in a browser without a Console session, goes to the build's page to sign in, and sign-in returns to the download. The build's page names the download in `returnTo`, relative to the page, and sign-in takes it only on the Console's own origin; anything else returns to the page. A request that isn't a browser navigation still gets the 401.
+
+  `hot-updater channel set <channel>` says per platform when it found no `AndroidManifest.xml` or `Info.plist` and wrote nothing, instead of a success line, and asks for a rebuild only when it wrote a file. In an Expo CNG project it says that builds take the channel from the `@hot-updater/expo` plugin's `channel` option in the project's `app.json` or `app.config.*`, which `expo prebuild` writes into the native files, and shows that option set to the channel given, not `production`.
+
+- @hot-updater/bsdiff@1.2.0-rc.1
+  - @hot-updater/cli-tools@1.2.0-rc.1
+  - @hot-updater/protocol@1.2.0-rc.1
+  - @hot-updater/server@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- 28dfe97: The Console's **Native builds** tab lists the native builds Hot Updater tracks, installs them, and shows each one's built-in bundle, the diff baseline its OTAs patch from.
+  - **Native builds** (`/native-builds`) lists the tracked builds, newest first, one read per page, with each build's channel, fingerprint or app version, built-in bundle, and commit. `?channel=<name>` lists only the builds that embed a channel, also one read per page. A row opens the build's page.
+  - A build's page, `/native-builds/<id>`, reads five times whatever the build. **Install** shows an APK's QR code and `adb install` command, a simulator app's `xcrun simctl install` command, TestFlight for an IPA's testers, and a download for every build. **Built-in bundle** shows the min bundle ID its OTAs patch from, how many bundles patch from it, and whether it is its scope's newest build, which new deploys patch from, or the build that superseded it. **Served now** lists what the update check offers an install of the build, newer than its built-in bundle, and whether each first OTA downloads as a patch or as the full bundle. **Patches from this build** pages the patches from its built-in bundle.
+  - `/api/native-builds/<id>/download` redirects to the storage's download URL on each request, so the link never expires; a browser without a Console session goes to the build's page, which signs it in and returns to the build. The APK QR code holds the storage URL itself, read again every 30 seconds while it shows, so a phone needs no Console sign-in. `/_hot-updater/native-builds/qr?build=<id>` serves the QR code of a build's download link without a session and without a read.
+  - **Import a build**, beside the refresh button and in an empty list's next steps, shows the `npx hot-updater native-build import <path-to-.ipa|.aab|.apk|.app|.app.zip>` command that tracks a build made elsewhere, with its `-c/--channel` option and a link to the import guide; the Console uploads nothing.
+  - Sign-in returns to the Console page that asked for it.
+  - A bundle's detail sheet links to the newest native build of its release's scope, and says whether the bundle has a patch from it.
+  - `hot-updater channel delete <channel>` disables and deletes a channel's bundles, then the channel, as when a pull request closes. A missing channel succeeds without a change; a channel a native build embeds is kept, and the command exits with status 1.
+  - Core's API adds `getNativeBuild(id)`, one read by key, served at `GET /native-builds/:id`, and `listNativeBuilds({ channelId })`, one read of the channel's builds, served at `GET /native-builds?channelId=`; `standaloneRepository` maps both.
+
+- 89cd5ce: `hot-updater doctor` reports a database whose schema is behind, and names the command that migrates it.
+  - `hot-updater doctor` reads the database `hot-updater.config.ts` names through the schema fence, as the server does, and reports `SCHEMA_MIGRATION_PENDING` with each settings row a migration writes: after upgrading to a release whose schema changed, or after adding a plugin to `plugins`. It checks the release catalogs once the schema passes. A row newer than the CLI expects is `SCHEMA_NEWER_THAN_CLI`; a v0 database is `SCHEMA_NOT_MIGRATABLE`; and a plugin of your own whose stored version differs is `PLUGIN_SCHEMA_CHANGED`, left to its own migration. Doctor names no migration while any of these stands.
+  - The managed D1 and Supabase schemas ship as one migration per release that changes them, starting with `0002_hot-updater_1.2.0.sql`, after the unchanged `0001_hot-updater_1.0.0.sql`. Each holds what the earlier ones do not create, with Supabase's apply RPC, its grants, and row-level security for new tables, then every settings row. `hot-updater init`, run again with its saved inputs, applies them.
+  - The schema fence's errors send you to `npx hot-updater doctor`, which names the command for the database.
+  - The Console shows a migration notice, with the settings and the command, instead of failing on every page while its database needs a migration.
+
+- bcc6f20: Pull requests get previews from a GitHub Action, `gronxb/hot-updater/actions/preview`, which reads its credentials through the config's `secrets` adapter, the job's environment by default. Each pull request gets its own channel (`pr-<number>`), and native builds that embed it, so an installed build opens the pull request's bundle on its first launch. For each platform the action builds a native build, which Hot Updater tracks, only when the registry has none on the pull request's channel for the project's fingerprint, or app version, then deploys the pull request's bundle there. It keeps one comment on the pull request, edited on every push: each platform's download and page links in the Console's Native builds tab, whether the run built or reused the native build, the bundle, the QR code of an APK's download when the Console serves it under `console-url`, and the install commands for an emulator or simulator, with a "Preview by hot-updater" line that `credit: false` turns off. When the pull request closes, it deletes the channel with its bundles and its native builds. iOS previews a Simulator app on a macOS runner. When a native build fails, the action uploads the CLI's build log as the `hot-updater-preview-build-log-<platform>` artifact. An Expo project sets the pull request's channel in its own `app.config.ts`, such as `channel: process.env.PREVIEW_CHANNEL ?? "production"` in the `@hot-updater/expo` plugin's options, with the job setting `PREVIEW_CHANNEL`.
+  - `hot-updater native-build find -p <platform> [-c <channel>] [-s <scheme>] [--json]` prints the newest tracked native build that a build of the project would match: the fingerprint from the config's fingerprint inputs, or with the `appVersion` strategy, the version of the app the scheme builds, on the native project's default channel or `--channel`. With `--scheme`, the build must be the kind of artifact the scheme builds. No build prints `nativeBuild: null` and succeeds.
+  - `hot-updater native-build ios|android --json` prints `{ dryRun, build, nativeBuild, registration, submission }` as the last line of its output: the build, with the channel and the fingerprint or app version its artifact embeds, its record (null for a Debug build or a dry run, with `registration.skipped` saying why), and the store it went to.
+  - `hot-updater channel delete <channel> --native-builds` also deletes every native build that embeds the channel, each with its built-in bundle and its artifact in storage, then the channel. `--json` adds `deletedNativeBuildIds`.
+
+### Patch Changes
+
+- 0050ff3: `hot-updater doctor --fix` is removed. Doctor only reports and writes nothing, and each issue names the command or edit that resolves it in `resolution` and `commands`. The flag is gone like any unknown option, and `--json` output has no `fixes` and no `fixability`. Run instead:
+
+  | Issue                                                                                 | Run                                                                                                                                                                                 |
+  | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `SCHEMA_MIGRATION_PENDING` on a deployment `hot-updater init` created                 | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`, which migrates the database and redeploys the server back to back                                     |
+  | `SCHEMA_MIGRATION_PENDING` on a server of your own                                    | `npx hot-updater db migrate <server file>` in the server's project, or `npx hot-updater db generate <server file>` and the database's tooling for Drizzle, Prisma, D1, and Supabase |
+  | `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | `npx hot-updater fingerprint create`                                                                                                                                                |
+  | `FINGERPRINT_JSON_UNUSED`                                                             | Delete `fingerprint.json`, then rebuild the apps                                                                                                                                    |
+  | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH`                                           | `npx hot-updater keys export-public`, then rebuild and release the app; installed apps keep the previous key                                                                        |
+  | `RELEASE_CATALOG_STALE`                                                               | Any release change in the scope, such as `npx hot-updater deploy` or `npx hot-updater bundle update <id>`, which recompiles its catalog                                             |
+  - Doctor detects a deployment `hot-updater init` created from the provider `.env.hotupdater` records, when the config's database is the one init saved: each provider's database factory now marks the resource it reaches, without credentials, and doctor compares it with the saved inputs. A database that reaches another resource gets your own server's commands; when doctor cannot tell, it names both, each with its condition. For it, a pending schema and an outdated server (`--server-base-url`) both name init with its saved inputs: it applies the release's migrations and then redeploys the Worker, Edge Function, Lambda@Edge function with its IAM role policy, Cloud Function, Vercel Function, or Function App, so the 503 window is the deploy. An outdated server of your own names `db migrate` and `db generate`, and doctor prints the reason beside the commands.
+  - While the config lists a plugin of your own, doctor does not name init: init deploys only the official plugins and writes that list back into `hot-updater.config.ts`, so it would drop the plugin. Doctor says to remove it, or to migrate as a server of your own. While the schema is `SCHEMA_NEWER_THAN_CLI`, `SCHEMA_NOT_MIGRATABLE` or `PLUGIN_SCHEMA_CHANGED`, an outdated server's remediation names no command, since an upgrade would migrate over those settings.
+  - `UNREFERENCED_ARTIFACTS` and `ARTIFACTS_UNCHECKED` are no longer reported: core deletes an artifact record with the last release that uses it, so it never leaves one behind.
+  - A stale release catalog only follows an edit made outside Hot Updater or a partial restore, since every release change writes its scope's catalog; doctor still reports it, as devices read the catalog.
+  - `@hot-updater/cloudflare/init` and `@hot-updater/supabase/init` no longer export `migrateDatabase`, and `@hot-updater/cli-tools` no longer exports `MigrateManagedDatabase`. `d1Database` and `supabaseDatabase` mark their target under the shared `Symbol.for("@hot-updater/database-target")` instead of their own symbols.
+  - The schema fence's errors, the standalone repository's 503 error, and the Console's migration notice send you to `npx hot-updater doctor`, which names the command for the database.
+
+- af33b56: Insights filters now sit in one bar above every report and apply as you change them: Channel (production by default), one Platform filter for every report (all platforms by default), App version, and Release. A filter narrower than its default is highlighted and can be cleared on its own, Reset filters clears them all, and each report names the channel and platform it reads. Release health opens on the bundles devices get now (the newest live bundle of each platform, or the two newest of one platform) instead of the newest deployments, which could be rolled back. Add a bundle is a searchable combobox with Live and Not live groups, and each bundle shows its platform, target app version, and whether it is disabled or unreachable. Update failures cover both platforms when no platform is chosen.
+- fbe5798: `hot-updater console` prints a link with a session made for that run, and the local Console answers only the browser that opened it, only at `localhost`, `127.0.0.1`, or `[::1]` on its port, and only changes sent from its own pages. Every Console, hosted or local, now lists TanStack Start's same-origin check for server functions explicitly, and every server function that changes something validates its input.
+- Updated dependencies [6276804]
+- Updated dependencies [d7f02a6]
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [e97d063]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [f5cffc0]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [b78660b]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/cli-tools@1.2.0-rc.0
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/server@1.2.0-rc.0
+  - @hot-updater/protocol@1.2.0-rc.0
+  - @hot-updater/bsdiff@1.2.0-rc.0
+
 ## 1.1.5
 
 ### Patch Changes

@@ -639,6 +639,32 @@ class HotUpdaterImpl {
             }
         }
 
+    /**
+     * Resets the channel while the Release selection [guard] names is
+     * current, as [resetChannel] does; false for a stale one.
+     */
+    internal suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean =
+        withContext(Dispatchers.IO) {
+            synchronized(launchPreparationLock) {
+                val success =
+                    runBlocking {
+                        bundleStorage.resetChannelIfSelectionCurrent(
+                            catalogId = guard.catalogId,
+                            scopeKey = guard.scopeKey,
+                            generation = guard.generation,
+                            catalogHash = guard.catalogHash,
+                            channel = guard.channel,
+                            selectionContextHash = guard.selectionContextHash,
+                        )
+                    }
+                if (success) {
+                    preferences.setItem(CHANNEL_STORAGE_KEY, null)
+                    currentLaunchSelection = null
+                }
+                success
+            }
+        }
+
     private fun prepareLaunchIfNeeded(): LaunchSelection =
         synchronized(launchPreparationLock) {
             prepareLaunchLocked()

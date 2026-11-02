@@ -1257,6 +1257,45 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aGuardedChannelResetKeepsTheChannelForAStaleSelection() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let accept = { (generation: Int64, context: String) in
+            service.acceptReleaseCatalog(
+                catalogId: "project-a",
+                scopeKey: "scope-pr-2",
+                generation: generation,
+                catalogHash: "hash-\(generation)",
+                channel: "pr-2",
+                selectionContextHash: context
+            )
+        }
+        let reset = { (generation: Int64, context: String) in
+            service.resetChannelIfSelectionCurrent(
+                catalogId: "project-a",
+                scopeKey: "scope-pr-2",
+                generation: generation,
+                catalogHash: "hash-\(generation)",
+                channel: "pr-2",
+                selectionContextHash: context
+            )
+        }
+        #expect(accept(3, "context-3"))
+        // A newer catalog of the channel arrives before the leave.
+        #expect(accept(4, "context-4"))
+
+        #expect(try reset(3, "context-3").get() == false)
+        // Nothing was reset: the newer catalog's selection still stages.
+        let kept = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(kept.currentSelectionContexts["project-a|scope-pr-2"] != nil)
+
+        #expect(try reset(4, "context-4").get())
+        let cleared = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(cleared.currentSelectionContexts.isEmpty)
+    }
+
+    @Test
     func catalogHighWaterRejectsReplayAndSurvivesChannelReset() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }
@@ -2666,7 +2705,10 @@ struct BundleFileStorageServiceTests {
             bundleURL: files["index.ios.bundle"]!,
             imageURL: files["assets/image.png"]!,
         ])
-        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        // The packaged file is the patch's base.
+        let packagedBase = Data("packaged base".utf8)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": packagedBase]))
         let result = updateBundle(
             service,
             bundleId: "target",
@@ -2677,10 +2719,11 @@ struct BundleFileStorageServiceTests {
                 "index.ios.bundle": ChangedAssetDescriptor(
                     fileUrl: bundleURL,
                     fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root)),
+                    // For the built-in bundle, which runs: the patch counts.
                     patch: BsdiffPatchDescriptor(
                         algorithm: "bsdiff",
-                        baseBundleId: "unavailable-base",
-                        baseFileHash: String(repeating: "0", count: 64),
+                        baseBundleId: "builtin-bundle",
+                        baseFileHash: try #require(sha256(packagedBase, in: root)),
                         patchFileHash: String(repeating: "1", count: 64),
                         patchUrl: URL(string: "https://example.com/index.ios.bundle.patch")!,
                         byteSize: patchByteSize
@@ -2694,7 +2737,12 @@ struct BundleFileStorageServiceTests {
         )
         if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
         #expect(downloads.requestedURLs.contains(archiveURL) == false)
-        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([bundleURL, imageURL]))
+        // The patch is tried, and its file comes when the patch cannot.
+        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([
+            bundleURL,
+            imageURL,
+            URL(string: "https://example.com/index.ios.bundle.patch")!,
+        ]))
     }
 
     @Test
@@ -3070,14 +3118,15 @@ struct BundleFileStorageServiceTests {
         let downloads = MappingDownloadService(contents: [manifestURL: manifest, archiveURL: archive])
         let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
             builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
-        // The archive is smaller than either patch, so no patch is tried.
+        // The archive is smaller than either patch for the running built-in
+        // bundle, so no patch is tried.
         let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
             manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
             assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
                 (path, ChangedAssetDescriptor(
                     fileUrl: URL(string: "https://example.com/files/\(path)")!,
                     fileHash: try #require(sha256(data, in: root)),
-                    patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base",
+                    patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "builtin-bundle",
                         baseFileHash: String(repeating: "0", count: 64),
                         patchFileHash: String(repeating: "1", count: 64),
                         patchUrl: URL(string: "https://example.com/patches/\(path)")!,
@@ -3087,6 +3136,181 @@ struct BundleFileStorageServiceTests {
 
         #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
         #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test
+    func withNoOtaBundleAPatchForTheBuiltInBundleAppliesToItsPackagedFile() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let fixture = try makeBuiltInPatchFixture(in: root)
+        let downloads = MappingDownloadService(contents: fixture.responses)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": fixture.base]),
+            builtInBundleId: builtInPatchBaseBundleId)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: fixture.manifestURL,
+            manifestHash: fixture.manifestHash, assets: fixture.assets)
+
+        #expect((try? result.get()) == UpdateDelivery(method: .patch, patchFallback: false))
+        #expect(downloads.requestedURLs == [fixture.manifestURL, fixture.patchURL])
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle"))
+            == fixture.target)
+    }
+
+    @Test
+    func aBuiltInBundleWhosePackagedBytesDifferDownloadsTheFileInstead() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let fixture = try makeBuiltInPatchFixture(in: root)
+        let downloads = MappingDownloadService(contents: fixture.responses)
+        // Store processing rewrote the packaged file the patch was made from.
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(
+                contents: ["index.ios.bundle": Data("console.log(\"store-processed\");\n".utf8)]),
+            builtInBundleId: builtInPatchBaseBundleId)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: fixture.manifestURL,
+            manifestHash: fixture.manifestHash, assets: fixture.assets)
+
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: true))
+        #expect(downloads.requestedURLs == [fixture.manifestURL, fixture.fileURL])
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle"))
+            == fixture.target)
+    }
+
+    @Test
+    func aPatchForTheBuiltInBundleIsNotAttemptedWhileAnOtaBundleRunsOrInADebugBuild() throws {
+        let otaRoot = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(otaRoot) }
+        // "base" runs, and the patch is for the built-in bundle.
+        let otaFixture = try makePatchFixture(in: otaRoot)
+        let builtInFixture = try makeBuiltInPatchFixture(in: otaRoot)
+        let otaDownloads = MappingDownloadService(contents: builtInFixture.responses)
+        let otaService = makeStorageService(documentsDirectory: otaRoot, preferences: otaFixture.preferences,
+            downloadService: otaDownloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": builtInFixture.base]),
+            builtInBundleId: builtInPatchBaseBundleId)
+        let otaResult = updateBundle(otaService, bundleId: "target", manifestURL: builtInFixture.manifestURL,
+            manifestHash: builtInFixture.manifestHash, assets: builtInFixture.assets)
+        #expect((try? otaResult.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(otaDownloads.requestedURLs == [builtInFixture.manifestURL, builtInFixture.fileURL])
+
+        // A Debug build reports the nil UUID, and has no built-in bundle.
+        let debugRoot = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(debugRoot) }
+        let nilUUID = "00000000-0000-0000-0000-000000000000"
+        let debugFixture = try makeBuiltInPatchFixture(in: debugRoot, baseBundleId: nilUUID)
+        let debugDownloads = MappingDownloadService(contents: debugFixture.responses)
+        let debugService = makeStorageService(documentsDirectory: debugRoot, downloadService: debugDownloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": debugFixture.base]),
+            builtInBundleId: nilUUID)
+        let debugResult = updateBundle(debugService, bundleId: "target", manifestURL: debugFixture.manifestURL,
+            manifestHash: debugFixture.manifestHash, assets: debugFixture.assets)
+        #expect((try? debugResult.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(debugDownloads.requestedURLs == [debugFixture.manifestURL, debugFixture.fileURL])
+    }
+
+    @Test
+    func theArchiveChoiceLeavesOutAPatchThisDeviceCannotApply() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("original one".utf8),
+            "assets/image.png": Data("original two".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, archiveURL: archive])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        // A tiny patch, but for a bundle this device does not run.
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/files/\(path)")!,
+                    fileHash: try #require(sha256(data, in: root)),
+                    patch: path == "index.ios.bundle"
+                        ? BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "other-base",
+                            baseFileHash: String(repeating: "0", count: 64),
+                            patchFileHash: String(repeating: "1", count: 64),
+                            patchUrl: URL(string: "https://example.com/index.ios.bundle.bsdiff")!,
+                            byteSize: 1)
+                        : nil
+                ))
+            }))
+
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test(arguments: [false, true])
+    func theArchiveChoicePricesABuiltInPatchOnlyWhenThePackagedFileIsItsBase(packagedIsBase: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("original one".utf8),
+            "assets/image.png": Data("original two".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let fileURLs = Dictionary(uniqueKeysWithValues: files.keys.map {
+            ($0, URL(string: "https://example.com/files/\($0)")!)
+        })
+        var responses = [manifestURL: manifest, archiveURL: archive]
+        for (path, data) in files { responses[fileURLs[path]!] = data }
+        let downloads = MappingDownloadService(contents: responses)
+        let baseBytes = Data("console.log(\"base bundle\");\n".utf8)
+        // Store processing may have rewritten the packaged file.
+        let packaged = packagedIsBase ? baseBytes : Data("console.log(\"store-processed\");\n".utf8)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": packaged]),
+            builtInBundleId: builtInPatchBaseBundleId)
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: fileURLs[path]!,
+                    fileHash: try #require(sha256(data, in: root)),
+                    patch: path == "index.ios.bundle"
+                        ? BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: builtInPatchBaseBundleId,
+                            baseFileHash: try #require(sha256(baseBytes, in: root)),
+                            patchFileHash: String(repeating: "1", count: 64),
+                            patchUrl: URL(string: "https://example.com/index.ios.bundle.bsdiff")!,
+                            byteSize: 1)
+                        : nil
+                ))
+            }))
+
+        #expect(result.failureError == nil)
+        if packagedIsBase {
+            // The tiny patch wins over the archive.
+            #expect(downloads.requestedURLs.contains(archiveURL) == false)
+        } else {
+            // The patch would fall back to the whole file: the archive is cheaper.
+            #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+            #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+        }
     }
 
     @Test
@@ -3407,6 +3631,198 @@ struct BundleFileStorageServiceTests {
         }
     }
 
+    // MARK: - Metadata after an isolation key change
+
+    @Test(arguments: [false, true])
+    func anIsolationKeyChangeForgetsTheBundlesItDeletes(verificationPending: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root, verificationPending: verificationPending)
+
+        // A build of another key that writes nothing, such as one with no network.
+        let otherBuild = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "other-key")
+        _ = otherBuild.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+
+        // The original build finds its key again, and nothing it names.
+        let back = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        #expect(back.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(back.getActiveUpdateState()["activeSelection"] is NSNull)
+        #expect(back.getActiveUpdateState()["stableSelection"] is NSNull)
+        // It never launched here, so nothing refuses it when it is offered again.
+        #expect(back.getCrashHistory().contains("ota-bundle") == false)
+    }
+
+    @Test
+    func anIsolationKeyChangeClearsTheMetadataBeforeItDeletesTheBundles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root)
+        var bundleExistedAtWrite: Bool?
+        var written: BundleMetadata?
+
+        _ = makeInstanceStorageService(
+            documentsDirectory: root,
+            instance: .main,
+            isolationKey: "other-key",
+            metadataWriter: { metadata, file in
+                bundleExistedAtWrite = FileManager.default.fileExists(atPath: bundle.path)
+                written = metadata
+                return metadata.save(to: file)
+            }
+        )
+
+        // A crash after this write leaves only files that nothing names.
+        #expect(bundleExistedAtWrite == true)
+        #expect(written?.isolationKey == "other-key")
+        #expect(written?.stagingBundleId == nil)
+        #expect(written?.stagingSelection == nil)
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+    }
+
+    @Test
+    func aFailedMetadataWriteKeepsTheBundlesAndTheNextStartCleansThem() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root)
+
+        _ = makeInstanceStorageService(
+            documentsDirectory: root,
+            instance: .main,
+            isolationKey: "other-key",
+            metadataWriter: { _, _ in false }
+        )
+
+        // What is stored and what is on disk still agree.
+        #expect(FileManager.default.fileExists(atPath: bundle.path))
+        #expect(makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+            .peekLaunchBundleId() == "ota-bundle")
+
+        _ = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "other-key")
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+    }
+
+    @Test
+    func aKeyChangeReadsMetadataAReleasedVersionWrote() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root)
+        try writeReleasedMetadata(root, stagingBundleId: "ota-bundle")
+
+        _ = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "other-key")
+
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+        let back = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        #expect(back.getActiveUpdateState()["activeSelection"] is NSNull)
+    }
+
+    /// The state a released version's cleanup left behind, under the same key:
+    /// an appVersion build of the same version, or the deprecated verbatim key.
+    @Test(arguments: [false, true])
+    func settlingForgetsAVerifiedBundleWithoutFiles(releasedFormat: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        if releasedFormat {
+            try writeReleasedMetadata(root, stagingBundleId: "ota-bundle")
+        } else {
+            try writeMetadata(documentsDirectory: root, BundleMetadata(
+                isolationKey: originalKey,
+                stagingBundleId: "ota-bundle",
+                stagingSelection: otaSelection
+            ))
+        }
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+
+        service.settlePreviousLaunch { nil }
+
+        #expect(service.getActiveUpdateState()["activeSelection"] is NSNull)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(service.getCrashHistory().bundles.isEmpty)
+        #expect(service.notifyAppReady()["status"] as? String == LaunchReportStatus.unchanged.rawValue)
+    }
+
+    @Test
+    func settlingKeepsTheStableBundleWhenOnlyTheStagedOneLostItsFiles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "ota-bundle",
+            stagingSelection: otaSelection
+        ))
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+
+        let active = try #require(service.getActiveUpdateState()["activeSelection"] as? [String: Any])
+        #expect(active["bundleId"] as? String == "stable-bundle")
+    }
+
+    /// A rollback to a stable bundle whose files were gone left its selection active.
+    @Test
+    func settlingForgetsASelectionARollbackLeftWithoutABundle() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stagingSelection: otaSelection
+        ))
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+
+        service.settlePreviousLaunch { nil }
+
+        #expect(service.getActiveUpdateState()["activeSelection"] is NSNull)
+    }
+
+    @Test
+    func settlingKeepsWhatHasNoFilesByDesign() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let builtInSelection = PersistedSelection(
+            kind: "BUILTIN",
+            releaseId: "rollback-release",
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash",
+            channel: "production",
+            selectionContextHash: "context"
+        )
+        let pending = try createBundleDirectory(documentsDirectory: root, bundleId: "pending-bundle")
+        try writeBundle(in: pending, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: pending, bundleId: "pending-bundle")
+        // iOS records the built-in bundle as the stable one under a staged first OTA.
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stableBundleId: "builtin-bundle",
+            stagingBundleId: "pending-bundle",
+            verificationPending: true
+        ))
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        service.settlePreviousLaunch { nil }
+        let metadata = try #require(BundleMetadata.load(
+            from: bundleStoreMetadataURL(root),
+            expectedIsolationKey: originalKey
+        ))
+        #expect(metadata.stableBundleId == "builtin-bundle")
+        #expect(metadata.stagingBundleId == "pending-bundle")
+        #expect(metadata.verificationPending)
+
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stagingSelection: builtInSelection
+        ))
+        let builtIn = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        builtIn.settlePreviousLaunch { nil }
+        let active = try #require(builtIn.getActiveUpdateState()["activeSelection"] as? [String: Any])
+        #expect(active["kind"] as? String == "BUILTIN")
+    }
+
     @Test(arguments: [true, false])
     func aChannelResetLeavesTheOtherInstancesBundles(resetMain: Bool) throws {
         let root = try makeWorkingDirectory()
@@ -3473,12 +3889,67 @@ struct BundleFileStorageServiceTests {
 private let testIsolationKey = "test-isolation-key"
 private let widgetIsolationKey = "widget-isolation-key"
 
+private let originalKey = "original-key"
+
+private let otaSelection = PersistedSelection(
+    kind: "BUNDLE",
+    releaseId: "ota-release",
+    bundleId: "ota-bundle",
+    catalogId: "project-a",
+    scopeKey: "scope-production",
+    generation: 1,
+    catalogHash: "hash",
+    channel: "production",
+    selectionContextHash: "context"
+)
+
+private func bundleStoreMetadataURL(_ documentsDirectory: URL) -> URL {
+    documentsDirectory
+        .appendingPathComponent("bundle-store", isDirectory: true)
+        .appendingPathComponent(BundleMetadata.metadataFilename)
+}
+
+/// A build under `originalKey` that holds one downloaded bundle.
+private func stageBundleUnderOriginalKey(
+    _ documentsDirectory: URL,
+    verificationPending: Bool = false
+) throws -> URL {
+    let bundle = try createBundleDirectory(documentsDirectory: documentsDirectory, bundleId: "ota-bundle")
+    try writeBundle(in: bundle, bundleFileName: "index.ios.bundle")
+    try writeManifest(in: bundle, bundleId: "ota-bundle")
+    try writeMetadata(documentsDirectory: documentsDirectory, BundleMetadata(
+        isolationKey: originalKey,
+        stagingBundleId: "ota-bundle",
+        stagingSelection: otaSelection,
+        verificationPending: verificationPending
+    ))
+    return bundle
+}
+
+/// metadata.json as a released version wrote it, without the selection fields.
+private func writeReleasedMetadata(_ documentsDirectory: URL, stagingBundleId: String) throws {
+    let json: [String: Any] = [
+        "schema": "metadata-v2",
+        "isolation_key": originalKey,
+        "staging_bundle_id": stagingBundleId,
+        "verification_pending": false,
+        "updated_at": 1_793_553_150_125.0,
+    ]
+    let file = bundleStoreMetadataURL(documentsDirectory)
+    try FileManager.default.createDirectory(
+        at: file.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try JSONSerialization.data(withJSONObject: json).write(to: file)
+}
+
 private func makeInstanceStorageService(
     documentsDirectory: URL,
     instance: HotUpdaterInstanceEnvironment,
     isolationKey: String,
     downloadService: DownloadService = UnusedDownloadService(),
-    builtInAssetResolver: BuiltInAssetResolver? = nil
+    builtInAssetResolver: BuiltInAssetResolver? = nil,
+    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) }
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
@@ -3488,7 +3959,8 @@ private func makeInstanceStorageService(
         instance: instance,
         builtInBundleIdProvider: { "builtin-bundle" },
         builtInAssetResolver: builtInAssetResolver,
-        downloadRetryDelay: 0
+        downloadRetryDelay: 0,
+        metadataWriter: metadataWriter
     )
 }
 
@@ -4390,6 +4862,54 @@ private func makePatchFixture(
             fileHash: targetHash,
             patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base", baseFileHash: baseHash,
                 patchFileHash: try #require(sha256(patchBytes, in: root)), patchUrl: patchURL)
+        )]
+    )
+}
+
+private let builtInPatchBaseBundleId = "0190a1b2-c3d4-7000-8000-000000000000"
+
+private struct BuiltInPatchFixture {
+    let manifest: Data
+    let manifestHash: String
+    let manifestURL = URL(string: "https://example.com/manifest.json")!
+    let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+    let patchURL = URL(string: "https://example.com/index.ios.bundle.bsdiff")!
+    /// The built-in bundle's file the patch was made from.
+    let base: Data
+    let patch: Data
+    let target: Data
+    let assets: [String: ChangedAssetDescriptor]
+
+    var responses: [URL: Data] {
+        [manifestURL: manifest, patchURL: patch, fileURL: target]
+    }
+}
+
+/// No OTA bundle, and a "target" whose bundle file has a working patch
+/// against the built-in bundle's file.
+private func makeBuiltInPatchFixture(
+    in root: URL,
+    baseBundleId: String = builtInPatchBaseBundleId
+) throws -> BuiltInPatchFixture {
+    let baseBytes = Data("console.log(\"base bundle\");\n".utf8)
+    let targetBytes = Data("console.log(\"patched bundle\");\n".utf8)
+    let patchBytes = try #require(Data(base64Encoded: bsdiffPatchFixtureBase64))
+    let targetHash = try #require(sha256(targetBytes, in: root))
+    let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": targetHash])
+    return BuiltInPatchFixture(
+        manifest: manifest,
+        manifestHash: try #require(sha256(manifest, in: root)),
+        base: baseBytes,
+        patch: patchBytes,
+        target: targetBytes,
+        assets: ["index.ios.bundle": ChangedAssetDescriptor(
+            fileUrl: URL(string: "https://example.com/index.ios.bundle")!,
+            fileHash: targetHash,
+            // The packaged file's hash, recorded when its native build was registered.
+            patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: baseBundleId,
+                baseFileHash: try #require(sha256(baseBytes, in: root)),
+                patchFileHash: try #require(sha256(patchBytes, in: root)),
+                patchUrl: URL(string: "https://example.com/index.ios.bundle.bsdiff")!)
         )]
     )
 }

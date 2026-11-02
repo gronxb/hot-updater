@@ -9,6 +9,8 @@
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
+  "store-install-patches-from-built-in",
+  "store-install-built-in-mismatch-downloads",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",
@@ -33,5 +35,6 @@
   "post-content-crash-native-rollback",
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
-  "remote-config-fetch-activate"
+  "remote-config-fetch-activate",
+  "foreign-signing-key-refused"
 ]

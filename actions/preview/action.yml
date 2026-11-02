@@ -1,0 +1,187 @@
+name: hot-updater preview
+description: >-
+  Deploys a pull request's bundle to its own channel, builds a native build
+  that embeds that channel, which Hot Updater tracks, only when the registry
+  has none for the project's fingerprint there, and comments the build's
+  download and the QR code of an APK's download. When the pull request
+  closes, it deletes the channel with its bundles and native builds.
+author: gronxb
+
+inputs:
+  console-url:
+    description: >-
+      The Console's URL, which the comment's download links and QR code
+      point at. The CLI reads its credentials through the config's
+      secrets adapter, the job's environment by default. A pull request from
+      a fork, which gets no secrets, is skipped.
+    required: true
+  platforms:
+    description: The platforms to preview, comma-separated. iOS needs a macOS runner.
+    default: android
+  android-scheme:
+    description: The nativeBuild.android scheme of the preview build, such as a release APK.
+  ios-scheme:
+    description: The nativeBuild.ios scheme of the preview build, a simulator scheme by default.
+  android-fallback-scheme:
+    description: >-
+      With a sandbox android-scheme, the normal nativeBuild.android scheme built
+      on the pull request's channel when its native code differs from every
+      sandbox build. Default: none, which builds a new sandbox build.
+  ios-fallback-scheme:
+    description: >-
+      With a sandbox ios-scheme, the normal nativeBuild.ios scheme built on the
+      pull request's channel when its native code differs from every sandbox
+      build. Default: none, which builds a new sandbox build.
+  android-submit:
+    description: >-
+      play-internal releases the Android preview to Google Play's internal
+      testing track, through a sandbox scheme's .aab, instead of a download.
+      Default: none.
+  ios-submit:
+    description: >-
+      testflight uploads the iOS preview to TestFlight for internal testing,
+      through a sandbox scheme's .ipa, instead of a download. Default: none.
+  ios-testflight-group:
+    description: >-
+      With ios-submit, the internal TestFlight group to add the build to. A
+      group that takes every build needs no name here.
+  channel:
+    description: >-
+      The pull request's channel, which its native builds embed and its
+      bundles deploy to (default pr-<number>).
+  credit:
+    description: Whether the comment ends with "Preview by hot-updater".
+    default: "true"
+  comment:
+    description: Whether to write the pull request comment. The comment-body output has it either way.
+    default: "true"
+  mode:
+    description: auto (preview, or cleanup when the pull request closed), preview, or cleanup.
+    default: auto
+  working-directory:
+    description: The app's directory, which has hot-updater.config.ts.
+    default: .
+  cli:
+    description: The command that runs the project's hot-updater CLI.
+    default: npx --no-install hot-updater
+  github-token:
+    description: The token that writes the comment.
+    default: ${{ github.token }}
+
+outputs:
+  comment-body:
+    description: The comment's Markdown.
+    value: ${{ steps.run.outputs.comment-body }}
+  previews:
+    description: >-
+      JSON of each platform's preview: platform, target, nativeBuild (id,
+      artifactKind), built, bundleId, installUrl, downloadUrl (null when
+      android-download-url or ios-download-url is empty), with android-submit
+      or ios-submit, store (destination, url, version, state, expiresAtMs,
+      reusable), on a sandbox build, sandbox (appId, link, minBundleId), and
+      after a fallback, fallbackScheme.
+    value: ${{ steps.run.outputs.previews }}
+  android-install-url:
+    description: >-
+      What a person opens to install the Android preview: the Console's
+      download link, which signs them in first, or with android-submit, the
+      Google Play testing link.
+    value: ${{ steps.run.outputs.android-install-url }}
+  ios-install-url:
+    description: >-
+      What a person opens to install the iOS preview: the Console's download
+      link for a device build, the native-build install command for a
+      simulator build, or with ios-submit, the app's TestFlight page.
+    value: ${{ steps.run.outputs.ios-install-url }}
+  android-download-url:
+    description: >-
+      The storage's URL of the Android artifact, which a later step fetches
+      without a Console session. It is read when every platform is done, and
+      lasts as long as the storage adapter gives it. It is empty when the
+      storage gives none: hot-updater native-build download <id> always works.
+    value: ${{ steps.run.outputs.android-download-url }}
+  ios-download-url:
+    description: >-
+      The storage's URL of the iOS artifact, which a later step fetches
+      without a Console session. It is read when every platform is done, and
+      lasts as long as the storage adapter gives it. It is empty when the
+      storage gives none: hot-updater native-build download <id> always works.
+    value: ${{ steps.run.outputs.ios-download-url }}
+  android-sandbox-link:
+    description: >-
+      With a sandbox android-scheme, the link that opens the pull request's
+      channel in the sandbox build, which the comment's QR code holds.
+    value: ${{ steps.run.outputs.android-sandbox-link }}
+  ios-sandbox-link:
+    description: >-
+      With a sandbox ios-scheme, the link that opens the pull request's channel
+      in the sandbox build, which the comment's QR code holds.
+    value: ${{ steps.run.outputs.ios-sandbox-link }}
+  android-store-url:
+    description: With android-submit, the Google Play testing link of the app.
+    value: ${{ steps.run.outputs.android-store-url }}
+  ios-store-url:
+    description: With ios-submit, the app's TestFlight page in App Store Connect.
+    value: ${{ steps.run.outputs.ios-store-url }}
+  android-store-state:
+    description: >-
+      With android-submit, what Google Play says of the build: ready or draft,
+      or empty when it couldn't be read.
+    value: ${{ steps.run.outputs.android-store-state }}
+  ios-store-state:
+    description: >-
+      With ios-submit, what App Store Connect says of the build: processing,
+      ready, or missing-compliance, or empty when it couldn't be read.
+    value: ${{ steps.run.outputs.ios-store-state }}
+  ios-build-log:
+    description: >-
+      When the iOS preview build fails, the CLI's build log, which the action
+      uploads as the hot-updater-preview-build-log-ios artifact.
+    value: ${{ steps.run.outputs.ios-build-log }}
+  android-build-log:
+    description: >-
+      When the Android preview build fails, the CLI's build log, which the
+      action uploads as the hot-updater-preview-build-log-android artifact.
+    value: ${{ steps.run.outputs.android-build-log }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/main.mjs"
+      env:
+        INPUT_CONSOLE_URL: ${{ inputs.console-url }}
+        INPUT_PLATFORMS: ${{ inputs.platforms }}
+        INPUT_ANDROID_SCHEME: ${{ inputs.android-scheme }}
+        INPUT_IOS_SCHEME: ${{ inputs.ios-scheme }}
+        INPUT_ANDROID_FALLBACK_SCHEME: ${{ inputs.android-fallback-scheme }}
+        INPUT_IOS_FALLBACK_SCHEME: ${{ inputs.ios-fallback-scheme }}
+        INPUT_ANDROID_SUBMIT: ${{ inputs.android-submit }}
+        INPUT_IOS_SUBMIT: ${{ inputs.ios-submit }}
+        INPUT_IOS_TESTFLIGHT_GROUP: ${{ inputs.ios-testflight-group }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_CREDIT: ${{ inputs.credit }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_CLI: ${{ inputs.cli }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+    # The log keeps the native build tool's whole output, which the job's
+    # log has only the errors of.
+    - if: failure() && steps.run.outputs.ios-build-log != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: hot-updater-preview-build-log-ios
+        path: ${{ steps.run.outputs.ios-build-log }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        overwrite: true
+    - if: failure() && steps.run.outputs.android-build-log != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: hot-updater-preview-build-log-android
+        path: ${{ steps.run.outputs.android-build-log }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        overwrite: true

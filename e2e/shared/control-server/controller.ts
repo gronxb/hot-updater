@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "child_process";
-import { createHash, randomUUID } from "crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import os from "os";
@@ -14,11 +14,13 @@ import type {
   HotUpdaterCoreApi,
   ReleaseCatalogRow,
   ReleaseRow,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
 import type { InsightsModel } from "@hot-updater/plugin-insights/server";
 import type { RemoteConfigApi } from "@hot-updater/plugin-remote-config/server";
 import type { Bundle } from "@hot-updater/protocol";
 
+import { BUILT_IN_MIN_BUNDLE_ID_SUFFIX } from "../built-in-bundle-id.ts";
 import {
   ConsoleInsightsQaError,
   readObservedInsightsEvent,
@@ -34,7 +36,8 @@ import {
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
-import { currentE2eTarget } from "../targets.ts";
+import { currentE2eTarget, nativeAppPath } from "../targets.ts";
+import { readWithRetries, waitSync } from "./android-file-read.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -74,9 +77,23 @@ import {
   type FairFileLock,
 } from "./fair-file-lock.ts";
 import {
+  deleteChannelReleases,
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
+import {
+  PROJECT_SIGNING_KEY_VARIABLE,
+  refusedForMissingSigningSecret,
+  withForeignSigning,
+  withSecretSigning,
+} from "./foreign-signing.ts";
+import {
+  assertDependenciesInCheckout,
+  NATIVE_BUILD_CHANNEL_PREFIX,
+  nativeBuildChannel,
+  parseNativeBuildImportOutput,
+  readArtifactMinBundleId,
+} from "./native-build-registration.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
@@ -209,6 +226,13 @@ type DeployBundleRequest = {
   patchMaxBaseBundles?: number;
   rollout?: number;
   safeBundleIds: string[];
+  /**
+   * `foreign`: the deploy signs its bundle with a key generated for it, not
+   * the one whose public key the app embeds. `secret`: the deploy reads the
+   * project's key as `secret("bundle-signing-key")` from its environment
+   * variable, with the key file moved away and an empty localSecrets() store.
+   */
+  signingKey?: "foreign" | "secret";
   strategy?: "appVersion" | "fingerprint";
   targetAppVersion: string;
   targetCohorts?: string[];
@@ -263,7 +287,6 @@ const HOT_UPDATER_ENV_FILE = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH
   ? path.resolve(REPO_DIR, process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH)
   : path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
-const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
@@ -542,7 +565,10 @@ const channelNamespace =
   process.env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || null;
 
 function getFixtureChannel(channel: string) {
-  return channelNamespace ? `${channelNamespace}-${channel}` : channel;
+  // A native build's channel is its binary's own across jobs.
+  return channelNamespace && !channel.startsWith(NATIVE_BUILD_CHANNEL_PREFIX)
+    ? `${channelNamespace}-${channel}`
+    : channel;
 }
 
 function getFixtureResetChannels() {
@@ -869,10 +895,15 @@ function stripAnsi(value: string) {
   );
 }
 
+/**
+ * The release ID deploy's outro prints in its `ID  <uuid>` row. The harness
+ * deploys one platform at a time with the workspace CLI, so no `iOS ID` or
+ * `Android ID` row, or a released CLI's `ID:`, is ever read here.
+ */
 function extractDeployReleaseId(output: string) {
   const plainOutput = stripAnsi(output);
   const match = plainOutput.match(
-    /^[ \t│]*ID:[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
+    /^[ \t│]*ID[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
   );
 
   return match?.[1] ?? null;
@@ -1499,11 +1530,12 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-/** The server the example's config describes: its database, core on it, and the plugins it runs. */
+/** The server the example's config describes: its database, core on it, the plugins it runs, and its storage. */
 type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
   readonly database: ConfiguredDatabase;
   readonly plugins: readonly AnyHotUpdaterPlugin[];
+  readonly storage: StorageAdapter | undefined;
 };
 
 async function withConfiguredDatabase<T>(
@@ -1514,7 +1546,7 @@ async function withConfiguredDatabase<T>(
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const { database, plugins } = await loadConfig(null);
+      const { database, plugins, storage } = await loadConfig(null);
       if (database === undefined) {
         throw new Error(
           "The example's hot-updater.config.ts sets no database.",
@@ -1528,6 +1560,7 @@ async function withConfiguredDatabase<T>(
           core: assembleServer({ database }).core,
           database,
           plugins,
+          storage,
         });
       } finally {
         await database.dispose?.();
@@ -2046,47 +2079,43 @@ function androidRunAsReadablePath(remotePath: string) {
 
 function readAndroidFileBuffer(remotePath: string) {
   const runAsPath = androidRunAsReadablePath(remotePath);
-  const readAttempts = [
+  return readWithRetries(
     [
-      "-s",
-      deviceId as string,
-      "exec-out",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
+      // A large file read over exec-out can fail fast once: read it again
+      // before falling back.
+      {
+        args: [
+          "-s",
+          deviceId as string,
+          "exec-out",
+          "run-as",
+          fixtureSession.appId,
+          "cat",
+          runAsPath,
+        ],
+        retries: 1,
+      },
+      {
+        args: [
+          "-s",
+          deviceId as string,
+          "shell",
+          "run-as",
+          fixtureSession.appId,
+          "cat",
+          runAsPath,
+        ],
+      },
+      { args: ["-s", deviceId as string, "shell", "cat", remotePath] },
     ],
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
-    ],
-    ["-s", deviceId as string, "shell", "cat", remotePath],
-  ];
-  const readErrors: string[] = [];
-
-  for (const args of readAttempts) {
-    const result = spawnSync("adb", args, {
-      // Final-file assertions also read multi-megabyte Hermes bundles.
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status === 0) {
-      return { fileBuffer: result.stdout, readError: null };
-    }
-
-    readErrors.push(
-      result.stderr.toString().trim() ||
-        result.error?.message ||
-        `adb exited ${String(result.status)}`,
-    );
-  }
-
-  return { fileBuffer: null, readError: readErrors.join(" | ") };
+    (args) =>
+      spawnSync("adb", args, {
+        // Final-file assertions also read multi-megabyte Hermes bundles.
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    waitSync,
+  );
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {
@@ -4245,6 +4274,25 @@ export function handleAssertBundleArtifactTransfers(input: {
     transferBytesPresent &&
     (finalFiles === null || finalFiles.ok);
   if (!matches) {
+    // The evidence a failure needs, such as the file whose read failed and
+    // its readError, as the success path keeps it.
+    fs.writeFileSync(
+      path.join(
+        fixtureSession.resultsDir,
+        `artifact-transfers-${input.targetBundleId}-failed.json`,
+      ),
+      JSON.stringify(
+        {
+          currentBundleId: input.currentBundleId,
+          expected: input,
+          observed,
+          platform: fixtureSession.platform,
+          targetBundleId: input.targetBundleId,
+        },
+        null,
+        2,
+      ),
+    );
     throw new ProxyAssertionError("Unexpected Bundle artifact transfers", {
       expected: input,
       observed,
@@ -6454,13 +6502,27 @@ async function deployFixtureBundle(
       // shard's builds, reads them.
       return withDeployProcessLock(signal, async () => {
         const deployStartedAt = Date.now();
-        const output = await runLoggedCommand("node", args, {
-          cwd: fixtureSession.exampleDir,
-          env: getHotUpdaterControlEnv(),
-          logPath: deployLogPath,
-          signal,
-          onInterrupted: context?.markQuiescenceUncertain,
-        });
+        const deploy = (
+          options: {
+            allowFailure?: boolean;
+            env?: NodeJS.ProcessEnv;
+            logPath?: string;
+          } = {},
+        ) =>
+          runLoggedCommand("node", args, {
+            allowFailure: options.allowFailure,
+            cwd: fixtureSession.exampleDir,
+            env: { ...getHotUpdaterControlEnv(), ...options.env },
+            logPath: options.logPath ?? deployLogPath,
+            signal,
+            onInterrupted: context?.markQuiescenceUncertain,
+          });
+        const output =
+          request.signingKey === "foreign"
+            ? await withForeignSigningKey(() => deploy())
+            : request.signingKey === "secret"
+              ? await withSecretSigningKey(deploy, deployLogPath)
+              : await deploy();
         deployDurationMs = Date.now() - deployStartedAt;
         return output;
       });
@@ -6507,6 +6569,16 @@ async function deployFixtureBundle(
     };
   }
   let bundle = await fetchProviderBundleById(bundleId);
+  // A refused foreign-key bundle proves the app checks the key only when
+  // the bundle carries a signature at all.
+  if (
+    request.signingKey !== undefined &&
+    !bundle.manifestFileHash?.startsWith("sig:")
+  ) {
+    throw new Error(
+      `The ${request.signingKey}-key deploy's bundle ${bundleId} carries no signature: its manifest hash is ${bundle.manifestFileHash}.`,
+    );
+  }
   if (shouldWaitForUpdateCheckVisibility(request)) {
     await waitForReleaseCatalogVisibility({
       bundleId,
@@ -7448,6 +7520,146 @@ async function resetRemoteBundles() {
   return {};
 }
 
+/**
+ * Registers the installed app binary as a native build with the real CLI,
+ * `hot-updater native-build import <binary> --channel <its channel> --json`:
+ * the simulator `.app` or the `.apk` the run installed. The channel is the
+ * binary's own, which the scenario switches the app to at runtime, so
+ * `--channel` names it; the binary keeps compiling in its default channel,
+ * which the other scenarios run on. A binary an earlier run imported is
+ * reported as `alreadyImported`, and the job succeeds. The MIN_BUNDLE_ID is
+ * read from the binary's bytes here, apart from the CLI, and must be the
+ * one the CLI registered. Its channel is the binary's own, so this deletes
+ * the releases a failed earlier run left there.
+ */
+async function registerNativeBuildFixture(input: { appVersion: string }) {
+  await assertDependenciesInCheckout({
+    checkoutDir: REPO_DIR,
+    projectDir: EXAMPLE_DIR,
+  });
+  const platform = fixtureSession.platform;
+  const artifactPath = nativeAppPath(
+    currentE2eTarget(),
+    platform,
+    REPO_DIR,
+    process.env,
+  );
+  const minBundleId = await readArtifactMinBundleId(artifactPath, platform);
+  const channel = nativeBuildChannel(minBundleId);
+  const logPath = path.join(
+    fixtureSession.resultsDir,
+    `native-build-import-${channel}.log`,
+  );
+  const output = await runLoggedCommand(
+    "node",
+    [
+      HOT_UPDATER_CLI_PATH,
+      "native-build",
+      "import",
+      artifactPath,
+      "--channel",
+      channel,
+      "--json",
+    ],
+    {
+      allowFailure: true,
+      cwd: fixtureSession.exampleDir,
+      env: getHotUpdaterControlEnv(),
+      logPath,
+    },
+  );
+  const result = parseNativeBuildImportOutput(output);
+  const nativeBuild = result.nativeBuild;
+  if (!result.ok || nativeBuild === null) {
+    throw new Error(
+      [
+        "hot-updater native-build import refused the installed binary:",
+        ...(result.problems ?? []).map(({ message }) => `- ${message}`),
+        `See ${path.relative(REPO_DIR, logPath)}`,
+      ].join("\n"),
+    );
+  }
+  if (nativeBuild.min_bundle_id !== minBundleId) {
+    throw new Error(
+      `hot-updater native-build import registered built-in bundle ${nativeBuild.min_bundle_id}, but ${artifactPath} compiled in ${minBundleId}.`,
+    );
+  }
+  if (nativeBuild.app_version !== input.appVersion) {
+    throw new Error(
+      `hot-updater native-build import registered app version ${nativeBuild.app_version}, but the scenario's build is ${input.appVersion}.`,
+    );
+  }
+  await withConfiguredDatabase(({ core }) =>
+    deleteChannelReleases({ core, channels: [channel], platform }),
+  );
+  logE2eFixture("native build imported", {
+    alreadyImported: result.alreadyImported === true,
+    artifactPath,
+    channel,
+    minBundleId,
+    nativeBuildId: nativeBuild.id,
+    platform,
+  });
+  return {
+    nativeBuildChannel: channel,
+    nativeBuildMinBundleId: minBundleId,
+    nativeBuildRegistered: result.alreadyImported !== true,
+  };
+}
+
+/** Deletes the releases of a native build's channel. */
+async function resetNativeBuildChannel(input: { channel: string }) {
+  if (!input.channel.startsWith(NATIVE_BUILD_CHANNEL_PREFIX)) {
+    throw new Error(`${input.channel} is no native build's channel.`);
+  }
+  const clearedReleaseIds = await withConfiguredDatabase(({ core }) =>
+    deleteChannelReleases({
+      core,
+      channels: [input.channel],
+      platform: fixtureSession.platform,
+    }),
+  );
+  logE2eFixture("native build channel reset", {
+    channel: input.channel,
+    clearedReleaseIds,
+    platform: fixtureSession.platform,
+  });
+  return {};
+}
+
+/**
+ * Gives a bundle's patch from `baseBundleId` a base file hash no file has:
+ * what a device sees when its built-in bundle is not the bytes the native
+ * build registered, such as after store processing rewrote them.
+ */
+async function mismatchPatchBaseFileHash(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  const bundle = await fetchProviderBundleById(input.bundleId);
+  const patches = getBundlePatches(bundle);
+  if (!patches.some((patch) => patch.baseBundleId === input.baseBundleId)) {
+    throw createEndpointError("The bundle has no patch from this base", {
+      ...input,
+      observedBaseBundleIds: patches.map((patch) => patch.baseBundleId),
+    });
+  }
+  await withConfiguredDatabase(({ core }) =>
+    core.updateBundle(input.bundleId, {
+      patches: patches.map((patch) =>
+        patch.baseBundleId === input.baseBundleId
+          ? { ...patch, baseFileHash: "0".repeat(64) }
+          : patch,
+      ),
+    }),
+  );
+  logE2eFixture("patch base file hash mismatched", {
+    ...input,
+    platform: fixtureSession.platform,
+  });
+  return {};
+}
+
 async function resetLocalAppState() {
   resetE2eScreenState();
   fixtureSession.observedInsightsEvents = [];
@@ -7714,6 +7926,124 @@ async function writeSummary({
   return {};
 }
 
+/**
+ * Runs a deploy whose bundle is signed with a key generated for it, which
+ * the app's embedded public key does not match: the config signs with that
+ * key and reads no native public key (see `withForeignSigning`). The
+ * checkout's own key is untouched, and the config is restored when the
+ * deploy ends.
+ */
+async function withForeignSigningKey(deploy: () => Promise<string>) {
+  const keyDir = await fsPromises.mkdtemp(
+    path.join(fixtureSession.resultsDir, "foreign-signing-key-"),
+  );
+  const privateKeyPath = path.join(keyDir, "private-key.pem");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  await fsPromises.writeFile(privateKeyPath, privateKey, { mode: 0o600 });
+  const configSource = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
+  try {
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withForeignSigning(configSource, privateKeyPath),
+    );
+    return await deploy();
+  } finally {
+    await fsPromises.writeFile(fixtureSession.configSourceFile, configSource);
+    await fsPromises.rm(keyDir, { force: true, recursive: true });
+  }
+}
+
+/**
+ * Runs a deploy that reads the project's private key as
+ * `secret("bundle-signing-key")` from its variable, with the key file moved
+ * away and HOT_UPDATER_HOME at an empty directory, so neither a path nor
+ * localSecrets()'s store can supply it. A deploy without the variable
+ * must first be refused for it,
+ * and the deploy with it must sign with the key the app embeds, which the
+ * CLI checks against the native files and the app checks on install. The
+ * config and the key file are restored when the deploy ends.
+ */
+async function withSecretSigningKey(
+  deploy: (options?: {
+    allowFailure?: boolean;
+    env?: NodeJS.ProcessEnv;
+    logPath?: string;
+  }) => Promise<string>,
+  deployLogPath: string,
+) {
+  const privateKeyPath = path.join(
+    fixtureSession.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+  const privateKey = await fsPromises.readFile(privateKeyPath, "utf8");
+  const privateKeyAside = `${privateKeyPath}.e2e-secret`;
+  const configSource = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
+  // Each input is restored only once changed, and even when another fails
+  // to restore, so no later deploy of this checkout runs without its key.
+  const restores: Array<() => Promise<void>> = [];
+  try {
+    restores.push(() =>
+      fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
+    );
+    // No key a developer stored on this machine answers for the variable.
+    const keyStoreHome = await fsPromises.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-e2e-home-"),
+    );
+    restores.push(() =>
+      fsPromises.rm(keyStoreHome, { force: true, recursive: true }),
+    );
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withSecretSigning(configSource),
+    );
+    await fsPromises.rename(privateKeyPath, privateKeyAside);
+    restores.push(() => fsPromises.rename(privateKeyAside, privateKeyPath));
+
+    const refusedLogPath = deployLogPath.replace(/\.log$/u, "-no-secret.log");
+    const refused = await deploy({
+      allowFailure: true,
+      env: {
+        [PROJECT_SIGNING_KEY_VARIABLE]: "",
+        HOT_UPDATER_HOME: keyStoreHome,
+      },
+      logPath: refusedLogPath,
+    });
+    if (
+      !refusedForMissingSigningSecret(refused) ||
+      extractDeployReleaseId(refused)
+    ) {
+      throw new Error(
+        `A deploy without ${PROJECT_SIGNING_KEY_VARIABLE} was not refused for the missing signing secret. See ${refusedLogPath}`,
+      );
+    }
+
+    return await deploy({
+      env: {
+        [PROJECT_SIGNING_KEY_VARIABLE]: privateKey,
+        HOT_UPDATER_HOME: keyStoreHome,
+      },
+    });
+  } finally {
+    const restored = await Promise.allSettled(
+      restores.map((restore) => restore()),
+    );
+    const failed = restored.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
+  }
+}
+
 async function cleanup() {
   remoteAssetProxyTargets.clear();
   if (!fixtureSession.appBackupPath) {
@@ -7807,6 +8137,14 @@ export function startSeedCrashedBundleFrontierJob(input: {
 
 export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
+}
+
+export function startRegisterNativeBuildJob(input: { appVersion: string }) {
+  return createJob(() => registerNativeBuildFixture(input));
+}
+
+export function startResetNativeBuildChannelJob(input: { channel: string }) {
+  return createJob(() => resetNativeBuildChannel(input));
 }
 
 export function startSetNativeCheckJob(input: {
@@ -7945,6 +8283,13 @@ export async function handleResetRemoteBundles() {
 
 export async function handleResetLocalAppState() {
   return resetLocalAppState();
+}
+
+export async function handleMismatchPatchBaseFileHash(args: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  return mismatchPatchBaseFileHash(args);
 }
 
 export async function handleAssertBundlePatchBases(args: {

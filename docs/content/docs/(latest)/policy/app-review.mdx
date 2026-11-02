@@ -10,14 +10,14 @@ binary, then check the applicable store policies.
 
 ## Choose a delivery path
 
-| Change | Technical delivery path |
-| --- | --- |
-| First integration of Hot Updater | Build and distribute a new native app through the store review process. |
-| Swift, Objective-C, Kotlin, or Java changes | Build and distribute a new native app. |
-| Installing or upgrading a dependency that changes native code | Build and distribute a new native app; inspect native dependency changes. |
-| JavaScript changes compatible with the installed native runtime | OTA is technically possible, subject to store policies. |
-| Assets referenced with `require`, such as images or media | OTA is technically possible, subject to store policies. |
-| A JavaScript-only library change | OTA is technically possible if it remains compatible with the installed runtime, subject to store policies. |
+| Change                                                          | Technical delivery path                                                                                     |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| First integration of Hot Updater                                | Build and distribute a new native app through the store review process.                                     |
+| Swift, Objective-C, Kotlin, or Java changes                     | Build and distribute a new native app.                                                                      |
+| Installing or upgrading a dependency that changes native code   | Build and distribute a new native app; inspect native dependency changes.                                   |
+| JavaScript changes compatible with the installed native runtime | OTA is technically possible, subject to store policies.                                                     |
+| Assets referenced with `require`, such as images or media       | OTA is technically possible, subject to store policies.                                                     |
+| A JavaScript-only library change                                | OTA is technically possible if it remains compatible with the installed runtime, subject to store policies. |
 
 A library requiring changes such as `pod install` may affect the native app.
 Inspect the actual dependency and native changes before choosing OTA.

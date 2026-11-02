@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { createHotUpdater } from "@hot-updater/server";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
+import { describe, expect, it, vi } from "vitest";
 
 import { cosmosDatabase } from "./cosmosDatabase";
 
@@ -8,6 +10,37 @@ const connection = {
 };
 
 describe("cosmosDatabase", () => {
+  it("creates its client on the first request, so a config loads without the connection", async () => {
+    const database = cosmosDatabase({ connectionString: undefined as never });
+    await database.dispose?.();
+  });
+
+  it("reads a connection string from a function on the first request, and names the account by endpoint", async () => {
+    const connectionString = vi.fn(async () => {
+      throw new Error('secret("COSMOS_CONNECTION_STRING") has no value');
+    });
+
+    const database = cosmosDatabase({
+      endpoint: connection.endpoint,
+      connectionString,
+    });
+    expect(connectionString).not.toHaveBeenCalled();
+    expect(
+      Reflect.get(database, Symbol.for("@hot-updater/database-target")),
+    ).toBe("cosmos/account.documents.azure.com");
+
+    const core = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    await expect(core.listChannels()).rejects.toThrow(
+      'secret("COSMOS_CONNECTION_STRING") has no value',
+    );
+    expect(connectionString).toHaveBeenCalled();
+    await database.dispose?.();
+  });
+
   it("refuses a client consistency weaker than the strong reads it plans writes from", () => {
     expect(() =>
       cosmosDatabase({

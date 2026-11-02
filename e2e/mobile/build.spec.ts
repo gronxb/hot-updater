@@ -8,9 +8,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { loadE2eTarget } from "../shared/targets.ts";
-import { createNativeBuildPlan, parseNativeBuildArgs } from "./build.ts";
+import {
+  COCOAPODS_NULL_BYTE_CRASH,
+  createNativeBuildPlan,
+  parseNativeBuildArgs,
+  shouldRetryNativeBuildStep,
+} from "./build.ts";
 
 const deviceId = "12345678-1234-1234-1234-1234567890AB";
+const minBundleId = "019a0b1c-2d3e-7000-8000-000000000000";
 const otherDeviceId = "ABCDEFAB-1234-1234-1234-1234567890AB";
 const app = loadE2eTarget("v0.85.0");
 const brownfield = loadE2eTarget("brownfield-host");
@@ -22,6 +28,7 @@ describe("native Release builds", () => {
         { platform: "android", target: brownfield, dryRun: false },
         "/checkout",
         { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
+        minBundleId,
       ),
     ).toEqual([
       {
@@ -37,7 +44,7 @@ describe("native Release builds", () => {
           ":brownfieldlib:publishMavenAarPublicationToBrownfieldE2eRepository",
           "-Pkotlin.compiler.execution.strategy=in-process",
           "-PreactNativeArchitectures=arm64-v8a",
-          "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+          `-PMIN_BUNDLE_ID=${minBundleId}`,
         ],
         cwd: "/checkout/examples/v0.85.0/android",
         env: { NODE_ENV: "production", BABEL_ENV: "production" },
@@ -61,6 +68,7 @@ describe("native Release builds", () => {
       { platform: "ios", target: brownfield, deviceId, dryRun: false },
       "/checkout",
       { HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: "/derived" },
+      minBundleId,
     );
     expect(install!.cwd).toBe("/checkout/examples/v0.85.0/ios");
     expect(pods!.args).toEqual(["exec", "pod", "install"]);
@@ -76,7 +84,7 @@ describe("native Release builds", () => {
         "--build-folder",
         "/derived/framework",
         "--extra-params",
-        "HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+        `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
       ],
       cwd: "/checkout/examples/v0.85.0",
       env: { NODE_ENV: "production", BABEL_ENV: "production" },
@@ -133,6 +141,7 @@ describe("native Release builds", () => {
       { platform: "android", target: app, dryRun: false },
       "/checkout with spaces",
       { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
+      minBundleId,
     );
     expect(command).toEqual({
       command: "./gradlew",
@@ -142,7 +151,7 @@ describe("native Release builds", () => {
         "-Pkotlin.compiler.execution.strategy=in-process",
         "-PreactNativeArchitectures=arm64-v8a",
         "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
-        "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+        `-PMIN_BUNDLE_ID=${minBundleId}`,
       ],
       cwd: "/checkout with spaces/examples/v0.85.0/android",
       env: { NODE_ENV: "production", BABEL_ENV: "production" },
@@ -165,6 +174,7 @@ describe("native Release builds", () => {
       { platform: "ios", target: app, deviceId, dryRun: false },
       "/checkout",
       { HOT_UPDATER_E2E_DEVICE_ID: otherDeviceId },
+      minBundleId,
     );
     expect(install).toEqual({
       command: "bundle",
@@ -185,6 +195,7 @@ describe("native Release builds", () => {
         RCT_USE_PREBUILT_RNCORE: "1",
         RCT_USE_RN_DEP: "1",
       },
+      retryOn: COCOAPODS_NULL_BYTE_CRASH,
     });
     expect(xcode.args).toEqual([
       "-workspace",
@@ -200,7 +211,7 @@ describe("native Release builds", () => {
       "-derivedDataPath",
       "build",
       "-quiet",
-      "HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+      `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
     ]);
     expect(xcode.cwd).toBe(pods.cwd);
   });
@@ -288,10 +299,12 @@ describe("native Release builds", () => {
     await fs.mkdir(bin);
     await fs.copyFile(source, script);
     await fs.mkdir(path.join(root, "e2e/shared"), { recursive: true });
-    await fs.copyFile(
-      fileURLToPath(new URL("../shared/targets.ts", import.meta.url)),
-      path.join(root, "e2e/shared/targets.ts"),
-    );
+    for (const shared of ["targets.ts", "built-in-bundle-id.ts"]) {
+      await fs.copyFile(
+        fileURLToPath(new URL(`../shared/${shared}`, import.meta.url)),
+        path.join(root, "e2e/shared", shared),
+      );
+    }
     await fs.writeFile(path.join(root, "examples/v0.85.0/e2e.json"), "{}");
     const compiler = `
       const fs = require('node:fs');
@@ -350,6 +363,136 @@ describe("native Release builds", () => {
         } catch {}
       }
       await exited;
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+  it("retries only pod install, on CocoaPods' null byte crash, once", () => {
+    for (const target of [app, loadE2eTarget("v0.74.1"), brownfield]) {
+      for (const platform of ["ios", "android"] as const) {
+        const plan = createNativeBuildPlan(
+          { platform, target, dryRun: false },
+          "/checkout",
+          {},
+        );
+        expect(
+          plan
+            .filter((command) => command.retryOn !== undefined)
+            .map((command) => [command.args.join(" "), command.retryOn]),
+        ).toEqual(
+          platform === "ios"
+            ? [["exec pod install", COCOAPODS_NULL_BYTE_CRASH]]
+            : [],
+        );
+      }
+    }
+    const [install, pods, xcode] = createNativeBuildPlan(
+      { platform: "ios", target: app, dryRun: false },
+      "/checkout",
+      {},
+    );
+    const crash = `ArgumentError - ${COCOAPODS_NULL_BYTE_CRASH}\n/gems/cocoapods-1.14.3/lib/cocoapods/project.rb:452`;
+    expect(shouldRetryNativeBuildStep(pods!, 1, crash, 1)).toBe(true);
+    expect(shouldRetryNativeBuildStep(pods!, 1, crash, 2)).toBe(false);
+    expect(shouldRetryNativeBuildStep(pods!, 0, crash, 1)).toBe(false);
+    expect(
+      shouldRetryNativeBuildStep(pods!, 1, "[!] Unable to find a specification", 1),
+    ).toBe(false);
+    expect(shouldRetryNativeBuildStep(install!, 1, crash, 1)).toBe(false);
+    expect(shouldRetryNativeBuildStep(xcode!, 65, crash, 1)).toBe(false);
+  });
+
+  it.each([
+    {
+      name: "reruns pod install after the null byte crash, keeping the first attempt's log",
+      firstFailure: `ArgumentError - ${COCOAPODS_NULL_BYTE_CRASH}`,
+      exitCode: 0,
+      podRuns: 2,
+    },
+    {
+      name: "fails on any other pod install error without a rerun",
+      firstFailure: "[!] Unable to find a specification for `Missing`",
+      exitCode: 1,
+      podRuns: 1,
+    },
+  ])("$name", async ({ firstFailure, exitCode, podRuns }) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-build-retry-"));
+    const source = fileURLToPath(new URL("./build.ts", import.meta.url));
+    const script = path.join(root, "e2e/mobile/build.ts");
+    const bin = path.join(root, "bin");
+    const runs = path.join(root, "runs");
+    try {
+      await fs.mkdir(path.dirname(script), { recursive: true });
+      await fs.mkdir(path.join(root, "examples/v0.85.0/ios"), {
+        recursive: true,
+      });
+      await fs.mkdir(bin);
+      await fs.copyFile(source, script);
+      await fs.mkdir(path.join(root, "e2e/shared"), { recursive: true });
+      for (const shared of ["targets.ts", "built-in-bundle-id.ts"]) {
+        await fs.copyFile(
+          fileURLToPath(new URL(`../shared/${shared}`, import.meta.url)),
+          path.join(root, "e2e/shared", shared),
+        );
+      }
+      await fs.writeFile(path.join(root, "examples/v0.85.0/e2e.json"), "{}");
+      // Records each step; pod install fails on its first run only.
+      const tool = (name: string) =>
+        `#!${process.execPath}
+        const fs = require('node:fs');
+        const step = ${JSON.stringify(name)} + ' ' + process.argv.slice(2, 4).join(' ');
+        fs.appendFileSync(${JSON.stringify(runs)}, step + '\\n');
+        if (step === 'bundle exec pod') {
+          const count = fs.readFileSync(${JSON.stringify(runs)}, 'utf8').split('\\n').filter((line) => line === step).length;
+          if (count === 1) {
+            console.error('Generating Pods project');
+            console.error(${JSON.stringify(firstFailure)});
+            process.exit(1);
+          }
+        }`;
+      await fs.writeFile(path.join(bin, "bundle"), tool("bundle"), {
+        mode: 0o755,
+      });
+      await fs.writeFile(path.join(bin, "xcodebuild"), tool("xcodebuild"), {
+        mode: 0o755,
+      });
+      const result = await new Promise<{ code: number | null; output: string }>(
+        (resolve, reject) => {
+          const child = spawn(process.execPath, [script, "--platform", "ios"], {
+            env: { PATH: bin },
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          let output = "";
+          child.stdout.on("data", (chunk) => (output += chunk));
+          child.stderr.on("data", (chunk) => (output += chunk));
+          child.once("error", reject);
+          child.once("close", (code) => resolve({ code, output }));
+        },
+      );
+      const steps = (await fs.readFile(runs, "utf8")).trim().split("\n");
+      expect(result.code).toBe(exitCode);
+      // The first attempt's output still reaches the job log.
+      expect(result.output).toContain(firstFailure);
+      expect(steps.filter((step) => step === "bundle exec pod")).toHaveLength(
+        podRuns,
+      );
+      expect(steps.includes("xcodebuild -workspace HotUpdaterExample.xcworkspace")).toBe(
+        exitCode === 0,
+      );
+      const logDir = path.join(root, "e2e/results/native-build");
+      if (podRuns === 2) {
+        expect(await fs.readdir(logDir)).toEqual([
+          "bundle-exec-pod-install-attempt1.log",
+        ]);
+        expect(
+          await fs.readFile(
+            path.join(logDir, "bundle-exec-pod-install-attempt1.log"),
+            "utf8",
+          ),
+        ).toBe(`Generating Pods project\n${firstFailure}\n`);
+      } else {
+        await expect(fs.stat(logDir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });

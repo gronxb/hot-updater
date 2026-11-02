@@ -170,11 +170,11 @@ is a separate recovery mechanism.
 
 Keep a short record of the platform, channel, deployment ID and what you saw:
 
-| Check | Expected result |
-| --- | --- |
-| Native build | Original text and image appear in a Release app |
-| OTA update | New text and image appear after restart, with the deployment ID |
-| Rollback | Original screen returns after disabling the test update |
+| Check        | Expected result                                                 |
+| ------------ | --------------------------------------------------------------- |
+| Native build | Original text and image appear in a Release app                 |
+| OTA update   | New text and image appear after restart, with the deployment ID |
+| Rollback     | Original screen returns after disabling the test update         |
 
 If the app runs the [Insights plugin](/docs/react-native-api/insights),
 [verify its reports](/docs/guides/insights#verify-reporting) in the Console:
@@ -187,12 +187,12 @@ You can now explore [update timing](/docs/guides/custom-update),
 
 ## If something goes wrong
 
-| What you see | What to do next |
-| --- | --- |
-| Update failed | Check the app's URL and client key with [client-access diagnostics](/docs/guides/doctor#check-client-access) |
+| What you see                                     | What to do next                                                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Update failed                                    | Check the app's URL and client key with [client-access diagnostics](/docs/guides/doctor#check-client-access)    |
 | Button becomes available again, screen unchanged | Inspect the deployment with `bundle show`; platform, channel, version/fingerprint and cohort must match the app |
-| New ID, old screen | Wait for the download and restart to finish; check app logs if the restart fails |
-| New screen disappears after restart | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory) |
+| New ID, old screen                               | Wait for the download and restart to finish; check app logs if the restart fails                                |
+| New screen disappears after restart              | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory)                                |
 
 `HotUpdater.init()` configures the client at module scope and returns the
 instance the button uses. The button starts the check, download and restart. Keep the sample's shared error reporter so request,

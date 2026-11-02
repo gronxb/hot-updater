@@ -212,7 +212,8 @@ import { bare } from "@hot-updater/bare"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: bare({ // [!code ++:3]
+  build: bare({
+    // [!code ++:3]
     enableHermes: true,
   }),
   // ... storage, database, plugins, and updateStrategy
@@ -259,14 +260,15 @@ Then add the config plugin to your `app.json`:
 {
   "expo": {
     "plugins": [
-      [ // [!code ++:6]
+      [
+        // [!code ++:6]
         "@hot-updater/expo",
         {
-          "channel": "ota-test"
-        }
-      ]
-    ]
-  }
+          "channel": "ota-test",
+        },
+      ],
+    ],
+  },
 }
 ```
 
@@ -282,8 +284,8 @@ npx expo prebuild
 </Callout>
 
 <Callout type="info">
-  Expo DOM components (`use dom`) need Expo SDK 55 or later and a Babel
-  plugin; see [Expo DOM Components (`use
+  Expo DOM components (`use dom`) need Expo SDK 55 or later and a Babel plugin;
+  see [Expo DOM Components (`use
   dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom).
 </Callout>
 
@@ -622,7 +624,7 @@ Before a store release, choose the channel that binary should use and rebuild.
 
 If this app uses [bundle signing](/docs/guides/bundle-signing), embed the matching
 public key before building. Signing is opt-in; server provisioning alone does
-not enable it. Preserve an existing signer and its public key.
+not enable it. Preserve an existing signing key and its public key.
 
 For `appVersion`, record the native app version that the OTA will target. For
 `fingerprint`, run `fingerprint create` and commit `fingerprint.json` before the

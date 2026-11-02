@@ -4,7 +4,6 @@ description: Run Hot Updater's database in one Cloud Firestore collection.
 icon: firebase
 ---
 
-
 ## Installation
 
 ```package-install
@@ -31,9 +30,7 @@ import type { AppOptions } from "firebase-admin/app";
 type FirebaseDatabaseConfig = AppOptions & {
   databaseId?: string; // A named Firestore database; defaults to "(default)"
   collection?: string; // The one collection it uses; defaults to "hot_updater_v1"
-  aggregateBatching?:
-    | { mode?: "log" | "memory"; windowMs?: number }
-    | false; // default: {}, see Batched Insights totals
+  aggregateBatching?: { windowMs?: number } | false; // default: {}, see Batched Insights totals
 };
 ```
 
@@ -70,13 +67,13 @@ their expiry. Declare it too if you set `collection` or `databaseId`.
 Then write the schema settings the database checks before its first read:
 
 ```typescript
-import { migrateFirebaseDatabase } from '@hot-updater/firebase';
+import { migrateFirebaseDatabase } from "@hot-updater/firebase";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
-import { applicationDefault } from 'firebase-admin/app';
+import { applicationDefault } from "firebase-admin/app";
 
 await migrateFirebaseDatabase(
   {
-    projectId: 'your-project-id',
+    projectId: "your-project-id",
     credential: applicationDefault(),
   },
   [apiKeys(), insights(), remoteConfig()],
@@ -140,11 +137,8 @@ event's transaction:
   it cannot write, it shows the stored totals, which can leave out pending
   events until a later compaction succeeds.
 
-Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
-totals in the process and write them every 15 seconds, without log documents.
-A crash then loses up to one window; call `hotUpdater.flush()` before the
-process exits. `aggregateBatching: false` writes the totals in each event's
-transaction.
+`aggregateBatching: { windowMs }` changes that minute.
+`aggregateBatching: false` writes the totals in each event's transaction.
 
 ## Environment variables
 
@@ -179,7 +173,8 @@ const credential = applicationDefault();
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: firebaseDatabase({ // [!code ++]
+  database: firebaseDatabase({
+    // [!code ++]
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     credential, // [!code ++]
   }), // [!code ++]
@@ -233,7 +228,8 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { applicationDefault } from "firebase-admin/app";
 
 export const hotUpdater = createHotUpdater({
-  database: firebaseDatabase({ // [!code ++]
+  database: firebaseDatabase({
+    // [!code ++]
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     credential: applicationDefault(), // [!code ++]
   }), // [!code ++]

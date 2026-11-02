@@ -292,7 +292,7 @@ describe("drizzleAdapter schema and migrations", () => {
       await expect(migrator.migrateToLatest()).resolves.toMatchObject({
         operations: [],
       });
-      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+      await expect(migrator.getVersion()).resolves.toBe("1.2.0");
       const { core, release } = await seed(database);
       await expect(core.getRelease(release.id)).resolves.toEqual(release);
       await (client instanceof PGlite ? client.close() : client.close());

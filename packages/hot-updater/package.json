@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "1.1.5",
+  "version": "1.2.0-rc.12",
   "engines": {
     "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
@@ -22,11 +22,6 @@
       "types": "./dist/plugins.d.mts",
       "import": "./dist/plugins.mjs",
       "require": "./dist/plugins.mjs"
-    },
-    "./signing": {
-      "types": "./dist/signing.d.mts",
-      "import": "./dist/signing.mjs",
-      "require": "./dist/signing.mjs"
     }
   },
   "files": [
@@ -64,17 +59,19 @@
     "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/console": "workspace:*",
-    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@iarna/toml": "2.2.5",
     "jiti": "2.6.1"
   },
   "devDependencies": {
-    "@aws-sdk/client-kms": "3.1066.0",
+    "@1password/sdk": "0.5.0",
     "@bacons/xcode": "1.0.0-alpha.33",
+    "@bitwarden/sdk-napi": "1.0.0",
     "@commander-js/extra-typings": "^14.0.0",
-    "@google-cloud/kms": "6.0.0",
+    "@dotenvx/dotenvx": "2.38.2",
+    "@electric-sql/pglite": "catalog:db",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/azure": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
@@ -84,27 +81,29 @@
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@hot-updater/vercel": "workspace:*",
+    "@noble/hashes": "2.2.0",
     "@types/connect": "^3.4.38",
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
+    "@typescript/native": "npm:typescript@7.0.2",
     "commander": "^14.0.0",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
     "fast-xml-parser": "5.7.2",
     "is-port-reachable": "^4.0.0",
+    "jszip": "^3.10.1",
     "kysely": "catalog:db",
+    "libsodium-wrappers": "0.8.4",
     "open": "^10.1.0",
     "plist": "^3.1.0",
-    "tsdown": "catalog:tools",
     "sql-formatter": "15.6.10",
-    "@typescript/native": "npm:typescript@7.0.2",
+    "tsdown": "catalog:tools",
+    "tweetnacl": "1.0.3",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "verkit": "catalog:"
   },
   "peerDependencies": {
-    "@aws-sdk/client-kms": "^3.1066.0",
-    "@google-cloud/kms": "^6.0.0",
     "@hot-updater/aws": "workspace:^",
     "@hot-updater/azure": "workspace:^",
     "@hot-updater/cloudflare": "workspace:^",
@@ -113,12 +112,6 @@
     "@hot-updater/vercel": "workspace:^"
   },
   "peerDependenciesMeta": {
-    "@aws-sdk/client-kms": {
-      "optional": true
-    },
-    "@google-cloud/kms": {
-      "optional": true
-    },
     "@hot-updater/supabase": {
       "optional": true
     },
@@ -145,6 +138,7 @@
     "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "14.0.0",
     "@expo/plist": "0.0.18",
+    "@noble/hashes": "2.2.0",
     "@nodable/entities": "2.1.1",
     "@nodelib/fs.scandir": "2.1.5",
     "@nodelib/fs.stat": "2.0.5",
@@ -215,6 +209,7 @@
     "strnum": "2.4.0",
     "supports-color": "7.2.0",
     "to-regex-range": "5.0.1",
+    "tweetnacl": "1.0.3",
     "unicorn-magic": "0.3.0",
     "verkit": "0.4.0",
     "which": "2.0.2",

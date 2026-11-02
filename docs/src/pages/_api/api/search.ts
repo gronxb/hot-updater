@@ -20,7 +20,10 @@ export const { staticGET: GET } = createFromSource(source, {
       url: page.url,
       id: page.url,
       structuredData,
-      tag: page.slugs[0] === "v0" ? "v0" : "latest",
+      tag:
+        page.slugs[0] === "v1.0" || page.slugs[0] === "v0"
+          ? page.slugs[0]
+          : "latest",
     };
   },
 });

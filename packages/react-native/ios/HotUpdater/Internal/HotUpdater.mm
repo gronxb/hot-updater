@@ -1213,6 +1213,15 @@ RCT_EXPORT_MODULE();
                                            rejecter:reject];
 }
 
+- (void)resetChannelIfSelectionCurrent:(NSDictionary *)params
+                               resolve:(RCTPromiseResolveBlock)resolve
+                                reject:(RCTPromiseRejectBlock)reject {
+    [HotUpdaterNativeUpdates() resetChannelIfSelectionCurrentWithImpl:[self instanceImpl]
+                                                               params:params
+                                                             resolver:resolve
+                                                             rejecter:reject];
+}
+
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
     return [self getConstants];
 }
@@ -1392,6 +1401,15 @@ RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
     [HotUpdaterNativeUpdates() resetChannelWithImpl:[self instanceImpl]
                                            resolver:resolve
                                            rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(resetChannelIfSelectionCurrent:(NSDictionary *)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [HotUpdaterNativeUpdates() resetChannelIfSelectionCurrentWithImpl:[self instanceImpl]
+                                                               params:params
+                                                             resolver:resolve
+                                                             rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {

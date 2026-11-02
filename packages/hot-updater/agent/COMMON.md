@@ -258,8 +258,9 @@ separate validation result.
   - Verify/record: config loads with the intended provider/build, the server check
     ran, and local bucket read access succeeded. Read access does not prove write
     permissions or an OTA deploy. A missing config or skipped check is incomplete.
-    `fixability: "blocked"` means doctor cannot perform an external repair itself;
-    continue authorized provider work when access and the required action are known.
+    Doctor only reports: each issue's resolution names the command or provider
+    work that resolves it; continue authorized provider work when access and the
+    required action are known.
   - Retry: repair the specific failed prerequisite. Pause only for missing access,
     unresolved choices or unsafe/unknown remote state.
 

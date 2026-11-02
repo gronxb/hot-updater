@@ -60,6 +60,7 @@ integrations manage those rows through the
       ```
       </Tab>
     </Tabs>
+
   </Tab>
   <Tab value="Expo">
     For Expo, add the channel to the plugin configuration in your `app.json`
@@ -89,6 +90,7 @@ integrations manage those rows through the
     ```package-install
     npx expo prebuild --clean
     ```
+
   </Tab>
 </Tabs>
 
@@ -148,6 +150,7 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx react-native run-android --mode Release
     ```
+
   </Tab>
   <Tab value="Rock">
     **iOS:**
@@ -159,6 +162,7 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx rock run:android --variant Release
     ```
+
   </Tab>
   <Tab value="Expo">
     **iOS:**
@@ -170,6 +174,7 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx expo run:android --variant release
     ```
+
   </Tab>
 </Tabs>
 
@@ -183,6 +188,28 @@ npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 
 Replace `<channel>` with your target channel name, for example `dev`, `staging`,
 or `production`.
+
+## Delete a Channel
+
+Delete a channel with its bundles, such as a closed pull request's channel:
+
+```package-install
+npx hot-updater channel delete <channel>
+```
+
+The command disables and deletes each bundle in the channel, then the
+channel. Add `--yes` to skip the confirmation in CI. A channel a native build
+embeds as its default channel is kept, unless `--native-builds` deletes those
+builds too, each with its built-in bundle and its artifact in storage, as
+[`hot-updater native-build delete`](/docs/guides/native-build#delete-a-build)
+deletes one:
+
+```package-install
+npx hot-updater channel delete <channel> --native-builds --yes
+```
+
+[Pull Request Previews](/docs/guides/pull-request-previews) cleans up a
+closed pull request this way.
 
 ## Check the Current Channel
 

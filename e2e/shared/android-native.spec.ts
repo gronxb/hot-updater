@@ -4,23 +4,25 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createNativeBuildPlan } from "../mobile/build.ts";
+import { createE2eMinBundleId } from "./built-in-bundle-id.ts";
 import { loadE2eTarget } from "./targets.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const androidAppDir = path.join(repoDir, "examples/v0.85.0/android/app");
 
 describe("Android E2E native setup", () => {
-  it("builds a debuggable release APK with the fixed minimum Bundle ID and selected ABIs", () => {
+  it("builds a debuggable release APK with its own minimum Bundle ID and selected ABIs", () => {
     const [command] = createNativeBuildPlan(
       { platform: "android", target: loadE2eTarget("v0.85.0"), dryRun: true },
       repoDir,
       {},
+      createE2eMinBundleId(Date.UTC(2026, 9, 20)),
     );
     expect(command.args).toContain(":app:assembleRelease");
     expect(command.args).not.toContain(":app:assembleReleaseAndroidTest");
     expect(command.args).toContain("-PHOT_UPDATER_E2E_DEBUGGABLE=true");
     expect(command.args).toContain(
-      "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+      "-PMIN_BUNDLE_ID=01a1569b-9800-7000-8000-000000000000",
     );
     expect(command.args).toContain(
       "-PreactNativeArchitectures=arm64-v8a,x86_64",

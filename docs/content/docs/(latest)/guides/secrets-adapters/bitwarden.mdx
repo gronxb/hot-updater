@@ -1,0 +1,130 @@
+---
+title: "Bitwarden Secrets Manager"
+description: "A secrets adapter you paste into your project: read and store the CLI's secrets in Bitwarden Secrets Manager, free for small teams."
+icon: LockKeyhole
+---
+
+## Add the adapter
+
+[Bitwarden Secrets Manager](https://bitwarden.com/products/secrets-manager/)
+is a hosted secrets store whose free plan covers 2 users, 3 projects, and 3
+machine accounts. Paste this file into your project. It implements
+[`SecretsAdapter`](/docs/concepts/secrets#write-a-secrets-adapter) with
+Bitwarden's official SDK, keeping each name as a secret of that key in one
+project.
+
+```package-install
+npm install @bitwarden/sdk-napi --save-dev
+```
+
+```ts title="secrets/bitwarden.ts"
+import { BitwardenClient } from "@bitwarden/sdk-napi";
+import type { SecretsAdapter } from "hot-updater";
+
+export const bitwarden = ({
+  organizationId,
+  projectId,
+}: {
+  organizationId: string;
+  /** The project whose secrets the machine account reads and writes. */
+  projectId: string;
+}): SecretsAdapter => {
+  let signedIn: Promise<BitwardenClient> | undefined;
+  // A machine account's access token, BWS_ACCESS_TOKEN, here and in CI.
+  const client = () =>
+    (signedIn ??= (async () => {
+      const sdk = new BitwardenClient();
+      await sdk
+        .auth()
+        .loginAccessToken(process.env.BWS_ACCESS_TOKEN ?? "");
+      return sdk;
+    })());
+
+  // The project's secrets with these keys, one request for all of them.
+  const read = async (names: readonly string[]) => {
+    const secrets = (await client()).secrets();
+    const ids = (await secrets.list(organizationId)).data
+      .filter(({ key }) => names.includes(key))
+      .map(({ id }) => id);
+    if (ids.length === 0) return [];
+    const { data } = await secrets.getByIds(ids);
+    return data.filter((secret) => secret.projectId === projectId);
+  };
+
+  return {
+    name: "bitwarden",
+    get: async (names) => {
+      const held = await read(names);
+      return Object.fromEntries(
+        names.map((name) => [
+          name,
+          held.find(({ key }) => key === name)?.value,
+        ]),
+      );
+    },
+    set: async (name, value) => {
+      const secrets = (await client()).secrets();
+      const [held] = await read([name]);
+      if (held) {
+        await secrets.update(organizationId, held.id, name, value, held.note, [
+          projectId,
+        ]);
+      } else {
+        await secrets.create(organizationId, name, value, "", [projectId]);
+      }
+    },
+    describe: (name) =>
+      `${name} in Bitwarden Secrets Manager project ${projectId}`,
+  };
+};
+```
+
+```ts title="hot-updater.config.ts (partial)"
+import { defineConfig } from "hot-updater";
+
+import { bitwarden } from "./secrets/bitwarden";
+
+export default defineConfig({
+  secrets: bitwarden({
+    organizationId: "00000000-0000-0000-0000-000000000000",
+    projectId: "00000000-0000-0000-0000-000000000000",
+  }),
+  // build, storage, database and plugins stay as they are
+});
+```
+
+`secret("asc-api-key")` reads the secret `asc-api-key` in the project. A
+credential is one [JSON value](/docs/concepts/secrets#sign-native-builds-with-secrets).
+The SDK ships prebuilt for macOS, Linux x64, and Windows x64.
+
+## Grant least privilege
+
+The SDK signs in with a
+[machine account](https://bitwarden.com/help/machine-accounts/)'s access
+token in `BWS_ACCESS_TOKEN`, the variable the `bws` CLI reads too:
+
+| Who                                              | Project access |
+| ------------------------------------------------ | -------------- |
+| CI, which builds and deploys                     | Can read       |
+| The developer who runs `secrets put` or signs in | Can read, write |
+
+Create a machine account per row, each with access to only this project, and
+keep the writable token on the machines that store keys.
+
+## Read secrets in CI
+
+Store the read-only token as the CI secret `BWS_ACCESS_TOKEN` and set it on
+the build step:
+
+```yaml title=".github/workflows/native-release.yml (partial)"
+- uses: gronxb/hot-updater/actions/native-build@v1.2.0
+  env:
+    BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+  with:
+    platform: android
+    scheme: release
+    submit: play-internal
+```
+
+[Build and upload from CI](/docs/guides/ci-native-build#read-secrets-from-a-secrets-store)
+has the complete workflow.

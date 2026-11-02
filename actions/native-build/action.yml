@@ -1,0 +1,68 @@
+name: hot-updater native build
+description: >-
+  Builds a native app with hot-updater native-build ios or native-build
+  android, signed with the credentials the config's secrets adapter reads,
+  the job's environment by default, tracks the build in Hot Updater, and
+  submits it to TestFlight or Google Play's internal track. It never signs in to an Apple or Google
+  account: it reads what hot-updater apple login or secrets put stored.
+author: gronxb
+inputs:
+  platform:
+    description: ios (on a macOS runner) or android.
+    required: true
+  scheme:
+    description: The nativeBuild.<platform> scheme in hot-updater.config.ts.
+    required: true
+  submit:
+    description: >-
+      Where to submit the build: testflight for ios, play-internal for
+      android, or empty to only build. Every build but a Debug one is tracked
+      in Hot Updater.
+  working-directory:
+    description: The app's directory, which has hot-updater.config.ts.
+    default: .
+  cli:
+    description: The command that runs the project's hot-updater CLI.
+    default: npx --no-install hot-updater
+
+outputs:
+  artifact-path:
+    description: The built .ipa, .aab, .apk, .app, or .xcarchive.
+    value: ${{ steps.run.outputs.artifact-path }}
+  build:
+    description: >-
+      JSON of the build: platform, scheme, artifactPath, artifactKind,
+      minBundleId, channel, and fingerprintHash or appVersion, as its
+      artifact embeds them.
+    value: ${{ steps.run.outputs.build }}
+  native-build:
+    description: JSON of the native build Hot Updater tracks, or null for a Debug build.
+    value: ${{ steps.run.outputs.native-build }}
+  build-log:
+    description: >-
+      When the build fails, the CLI's build log, which the action uploads as
+      the hot-updater-build-log-<platform>-<scheme> artifact.
+    value: ${{ steps.run.outputs.build-log }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/main.mjs"
+      env:
+        INPUT_PLATFORM: ${{ inputs.platform }}
+        INPUT_SCHEME: ${{ inputs.scheme }}
+        INPUT_SUBMIT: ${{ inputs.submit }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_CLI: ${{ inputs.cli }}
+    # The log keeps the native build tool's whole output, which the job's
+    # log has only the errors of.
+    - if: failure() && steps.run.outputs.build-log != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: hot-updater-build-log-${{ inputs.platform }}-${{ inputs.scheme }}
+        path: ${{ steps.run.outputs.build-log }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        overwrite: true

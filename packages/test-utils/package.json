@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/test-utils",
-  "version": "1.1.5",
+  "version": "1.2.0-rc.12",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
@@ -74,6 +74,7 @@
     }
   },
   "devDependencies": {
+    "@clack/prompts": "catalog:tools",
     "@electric-sql/pglite": "catalog:db",
     "@hot-updater/plugin-insights": "workspace:*",
     "@hot-updater/protocol": "workspace:*",

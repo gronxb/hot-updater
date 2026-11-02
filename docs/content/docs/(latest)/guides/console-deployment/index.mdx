@@ -133,24 +133,24 @@ GitHub and Google sign-in are included. Fill in the environment variables below 
 
 Choose your public HTTPS URL, then register its OAuth callback:
 
-| Provider | Callback |
-| --- | --- |
-| GitHub | `https://<console-host>/api/auth/callback/github` |
-| Google | `https://<console-host>/api/auth/callback/google` |
+| Provider | Callback                                          |
+| -------- | ------------------------------------------------- |
+| GitHub   | `https://<console-host>/api/auth/callback/github` |
+| Google   | `https://<console-host>/api/auth/callback/google` |
 
 Add these values to your host's **runtime** environment:
 
-| Variable | Value | Example |
-| --- | --- | --- |
-| `BETTER_AUTH_URL` | Your HTTPS origin, without a path | `https://console.example.com` |
-| `BETTER_AUTH_SECRET` | A random secret of at least 32 characters | Output of `openssl rand -base64 32` |
-| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Full, verified email addresses, separated by commas | `alice@example.com,bob@example.com` |
-| `GITHUB_CLIENT_ID` | Client ID from your GitHub OAuth app | `Ov23liExample12345678` |
-| `GITHUB_CLIENT_SECRET` | Client secret from the same GitHub app | `<your-github-client-secret>` |
-| `GOOGLE_CLIENT_ID` | Client ID from your Google OAuth client | `123456789012-example.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | Client secret from the same Google client | `<your-google-client-secret>` |
+| Variable                             | Value                                               | Example                                           |
+| ------------------------------------ | --------------------------------------------------- | ------------------------------------------------- |
+| `BETTER_AUTH_URL`                    | Your HTTPS origin, without a path                   | `https://console.example.com`                     |
+| `BETTER_AUTH_SECRET`                 | A random secret of at least 32 characters           | Output of `openssl rand -base64 32`               |
+| `HOT_UPDATER_CONSOLE_ALLOWED_EMAILS` | Full, verified email addresses, separated by commas | `alice@example.com,bob@example.com`               |
+| `GITHUB_CLIENT_ID`                   | Client ID from your GitHub OAuth app                | `Ov23liExample12345678`                           |
+| `GITHUB_CLIENT_SECRET`               | Client secret from the same GitHub app              | `<your-github-client-secret>`                     |
+| `GOOGLE_CLIENT_ID`                   | Client ID from your Google OAuth client             | `123456789012-example.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET`               | Client secret from the same Google client           | `<your-google-client-secret>`                     |
 
-Configure at least one complete OAuth pair and your backend's environment variables. Generate the session secret with:
+Configure at least one complete OAuth pair and your backend's environment variables. `BETTER_AUTH_SECRET` also signs native builds' [download links](/docs/guides/native-build#signed-download-links), so changing it ends those links with the sessions. Generate the secret with:
 
 ```bash
 openssl rand -base64 32
@@ -165,11 +165,11 @@ Keep secrets server-side; never prefix them with `VITE_`. Google OAuth clients i
 
 Follow one deployment guide:
 
-| Host | Runtime |
-| --- | --- |
-| [Docker](/docs/guides/console-deployment/docker) | Standalone Node container |
-| [Vercel](/docs/guides/console-deployment/vercel) | Node server functions |
-| [Netlify](/docs/guides/console-deployment/netlify) | Node server functions |
+| Host                                                     | Runtime                           |
+| -------------------------------------------------------- | --------------------------------- |
+| [Docker](/docs/guides/console-deployment/docker)         | Standalone Node container         |
+| [Vercel](/docs/guides/console-deployment/vercel)         | Node server functions             |
+| [Netlify](/docs/guides/console-deployment/netlify)       | Node server functions             |
 | [Cloudflare](/docs/guides/console-deployment/cloudflare) | Worker with native D1/R2 bindings |
 
 Your console can run on a different provider from your Hot Updater backend. For example, you can deploy the console to Vercel while keeping your database and bundles on Cloudflare.
@@ -198,11 +198,11 @@ separately with [Test an OTA update](/docs/get-started/test-ota).
 
 You can edit or replace `console.auth.ts` in your clone to use your own authentication and access rules. It implements `ConsoleAuthAdapter`:
 
-| Method | Responsibility |
-| --- | --- |
-| `handle(request)` | Handle sign-in, callbacks, and sign-out |
-| `getAccess(request)` | Validate the session and decide who can access the console |
-| `getProviders(request)` | Select the built-in sign-in buttons |
+| Method                  | Responsibility                                             |
+| ----------------------- | ---------------------------------------------------------- |
+| `handle(request)`       | Handle sign-in, callbacks, and sign-out                    |
+| `getAccess(request)`    | Validate the session and decide who can access the console |
+| `getProviders(request)` | Select the built-in sign-in buttons                        |
 
 The packaged sign-in screen supports GitHub and Google. A new provider button or login form also needs changes to the UI and provider types in `@hot-updater/console`; adding environment variables alone does not add a new login method.
 
@@ -220,11 +220,11 @@ Use adapters that run in Node. For native bindings, use the [Worker preview](/do
 </Accordion>
 <Accordion title="Sign-in troubleshooting">
 
-| Symptom | Check |
-| --- | --- |
-| Sign-in fails | Both OAuth values, session secret, and email allowlist are set at runtime |
-| Callback rejected | Browser origin, `BETTER_AUTH_URL`, and OAuth callback match |
-| Forbidden after sign-in | The provider returns a verified email in the allowlist |
+| Symptom                 | Check                                                                     |
+| ----------------------- | ------------------------------------------------------------------------- |
+| Sign-in fails           | Both OAuth values, session secret, and email allowlist are set at runtime |
+| Callback rejected       | Browser origin, `BETTER_AUTH_URL`, and OAuth callback match               |
+| Forbidden after sign-in | The provider returns a verified email in the allowlist                    |
 
 </Accordion>
 </Accordions>

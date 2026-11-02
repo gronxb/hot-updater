@@ -1,6 +1,14 @@
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { standaloneRepository } from "./standaloneRepository";
 
@@ -12,6 +20,12 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("standaloneRepository", () => {
+  it("reads baseUrl on the first request, so a config loads without it", () => {
+    expect(() =>
+      standaloneRepository({ baseUrl: undefined as never }),
+    ).not.toThrow();
+  });
+
   it("is a remote database: core over admin API protocol 2 and fetchAdmin", () => {
     const repository = standaloneRepository({ baseUrl: BASE_URL });
 
@@ -49,6 +63,26 @@ describe("standaloneRepository", () => {
     });
     expect(authorization).toBe("Bearer token");
     expect(url).toBe(`${BASE_URL}/events?limit=1`);
+  });
+
+  it("sends a header from a function, read on the first request", async () => {
+    const authorizations: (string | null)[] = [];
+    server.use(
+      http.get(`${BASE_URL}/events`, ({ request }) => {
+        authorizations.push(request.headers.get("authorization"));
+        return HttpResponse.json({ data: [], nextCursor: null });
+      }),
+    );
+    const authorization = vi.fn(async () => "Bearer lazy-token");
+    const repository = standaloneRepository({
+      baseUrl: BASE_URL,
+      commonHeaders: { Authorization: authorization },
+    });
+    expect(authorization).not.toHaveBeenCalled();
+
+    await repository.fetchAdmin("/events");
+
+    expect(authorizations).toEqual(["Bearer lazy-token"]);
   });
 
   it("sends a plugin route's method, body, and headers after the repository's", async () => {

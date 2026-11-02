@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import type { ConfigResponse } from "@hot-updater/cli-tools";
+import { type ConfigResponse, secret } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const parser = vi.hoisted(() => ({
@@ -34,23 +34,49 @@ const createPublicKey = () =>
     .publicKey.export({ format: "pem", type: "spki" })
     .toString();
 
-const createConfig = (): ConfigResponse =>
+const createConfig = (
+  signing: ConfigResponse["signing"] = {
+    enabled: true,
+    privateKeyPath: "./keys/private-key.pem",
+  },
+): ConfigResponse =>
   ({
     platform: {
       android: { androidManifestPaths: ["AndroidManifest.xml"] },
       ios: { infoPlistPaths: ["Info.plist"] },
     },
-    signing: {
-      getPublicKey: async () => ({ publicKey: "public-key" }),
-      name: "test-signing",
-      sign: async ({ message }) => ({ signature: message }),
-    },
+    signing,
   }) as ConfigResponse;
 
 describe("validateSigningConfig", () => {
   beforeEach(() => {
     parser.android.exists.mockResolvedValue(true);
     parser.ios.exists.mockResolvedValue(true);
+  });
+
+  it("checks the native keys of the shorthand, and of no signing turned off", async () => {
+    parser.android.get.mockResolvedValue({
+      paths: ["AndroidManifest.xml"],
+      value: null,
+    });
+    parser.ios.get.mockResolvedValue({
+      paths: ["Info.plist"],
+      value: createPublicKey(),
+    });
+
+    const shorthand = await validateSigningConfig(
+      createConfig(secret("bundle-signing-key")),
+    );
+    expect(shorthand.signingEnabled).toBe(true);
+    expect(shorthand.issues.map(({ code }) => code)).toEqual([
+      "MISSING_PUBLIC_KEY",
+    ]);
+
+    for (const signing of [{ enabled: false } as const, undefined]) {
+      const off = await validateSigningConfig({ ...createConfig(), signing });
+      expect(off.signingEnabled).toBe(false);
+      expect(off.issues.map(({ code }) => code)).toEqual(["ORPHAN_PUBLIC_KEY"]);
+    }
   });
 
   it("rejects native public keys that do not match the signing session", async () => {

@@ -266,6 +266,14 @@ const scopeKey = createReleaseCatalogScopeKey({
   platform: "ios",
   strategy: "APP_VERSION",
 });
+const nativeBuildScope = {
+  platform: "ios",
+  channel: "production",
+  fingerprintHash: "native-fingerprint",
+  appVersion: null,
+} as const;
+/** The native build key the older of the two native builds is registered with. */
+const nativeBuildKey = `nbk1:${"0".repeat(64)}`;
 const bundleEvents = {
   kind: "bundle",
   platform: "ios",
@@ -288,7 +296,7 @@ const storage: MeasuredDatabaseStorage = {
 };
 
 /**
- * Core's bundles, releases, channels, and a client API key, and 26 Insights
+ * Core's bundles, releases, channels, a client API key, and 26 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
  * days later, back on bundle-a and then on bundle-b; and the day of history
  * before T0, as a production database holds, so a read that scans beyond its
@@ -325,6 +333,27 @@ const seed = async (database: MeasuredDatabase) => {
   await deploy(bundleOf("202", "android"));
   await deploy(bundleOf("091"), "staging");
   await deploy(bundleOf("092"), "staging");
+  // Two native builds of one scope, whose built-in bundles sort before every
+  // deployed one and stay out of the bundle totals.
+  for (const suffix of ["011", "012"]) {
+    await core.registerNativeBuild({
+      ...nativeBuildScope,
+      id: createBundleFixture(`8${suffix}`).id,
+      minBundleId: createBundleFixture(suffix).id,
+      gitCommitHash: null,
+      buildKey: suffix === "011" ? nativeBuildKey : null,
+      artifact: {
+        kind: "ipa",
+        storageUri: `storage://read-budgets/native-builds/${suffix}/App.ipa`,
+        byteSize: 1_000,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
+        manifestFileHash: `manifest-hash-${suffix}`,
+        assetBaseStorageUri: "storage://read-budgets/assets",
+      },
+    });
+  }
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
   // Install 1 leaves bundle-b before it applies it again: an apply of the
@@ -564,6 +593,63 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     read: ({ core }) => core.latestReleaseId(scopeKey),
     adapter: reads(0, 0, 1, 1),
     engine: { calls: 1, rows: 1 },
+  }),
+  budget({
+    api: "native build by ID: 1 point read",
+    read: ({ core }) => core.getNativeBuild(createBundleFixture("8012").id),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build by scope: byScope descending, limit 1",
+    read: ({ core }) => core.findNativeBuild(nativeBuildScope),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build by key: byBuildKey descending, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { buildKey: nativeBuildKey }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
+        build_key: nativeBuildKey,
+      }),
+  }),
+  budget({
+    api: "native build list: all descending, limit rows",
+    read: ({ core }) => core.listNativeBuilds({ order: "desc", limit: 2 }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    check: (builds) =>
+      expect(builds.map(({ min_bundle_id }) => min_bundle_id)).toEqual(
+        ["012", "011"].map((suffix) => createBundleFixture(suffix).id),
+      ),
+  }),
+  budget({
+    api: "native build list of a channel: byChannel descending, limit rows",
+    read: ({ core, productionId }) =>
+      core.listNativeBuilds({
+        channelId: productionId,
+        order: "desc",
+        limit: 1,
+      }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (builds) =>
+      expect(builds).toMatchObject([
+        { min_bundle_id: createBundleFixture("012").id },
+      ]),
   }),
   budget({
     api: "channel by name: 1 read",
@@ -809,12 +895,45 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     writes: 1,
   }),
   budget({
-    api: "channel delete: 1 read and 1 write",
+    api: "channel delete: the channel, its native builds under it, and 1 write",
+    // The channel, then again as the root of its native build range, which
+    // is empty.
     read: ({ core, nightlyId }) => core.deleteChannel(nightlyId),
+    adapter: reads(2, 2, 1, 0),
+    engine: { calls: 3, rows: 2 },
+    writes: 1,
+    check: (result) => expect(result).toEqual({ deleted: true }),
+  }),
+  budget({
+    api: "native build submission: the build and 1 write",
+    read: ({ core }) =>
+      core.recordNativeBuildSubmission(createBundleFixture("8012").id, {
+        destination: "testflight",
+        version: "1.0.0 (12)",
+      }),
     adapter: reads(1, 1, 0, 0),
     engine: { calls: 1, rows: 1 },
     writes: 1,
-    check: (result) => expect(result).toEqual({ deleted: true }),
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+        submitted_to: "testflight",
+        submitted_version: "1.0.0 (12)",
+      }),
+  }),
+  budget({
+    api: "native build delete: the build, its built-in bundle, and 1 write",
+    // Two point reads; the built-in bundle's counters say no patch names it,
+    // so its delete reads no patches.
+    read: ({ core }) => core.deleteNativeBuild(createBundleFixture("8011").id),
+    adapter: reads(2, 2, 0, 0),
+    engine: { calls: 2, rows: 2 },
+    writes: 1,
+    check: (result) =>
+      expect(result).toMatchObject({
+        deleted: true,
+        nativeBuild: { min_bundle_id: createBundleFixture("011").id },
+      }),
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",

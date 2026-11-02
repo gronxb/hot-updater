@@ -14,14 +14,23 @@ const virtualConfigModuleId = "virtual:hot-updater-console/config";
 const virtualPackageRouterModuleId =
   "virtual:hot-updater-console/package-router";
 const virtualRouteTreeModuleId = "virtual:hot-updater-console/route-tree";
+const virtualPackageStartModuleId = "virtual:hot-updater-console/package-start";
+const virtualRequestGuardModuleId = "virtual:hot-updater-console/request-guard";
 
 const resolvedVirtualAuthModuleId = `\0${virtualAuthModuleId}`;
 const resolvedVirtualConfigModuleId = `\0${virtualConfigModuleId}`;
 const resolvedVirtualPackageRouterModuleId = `\0${virtualPackageRouterModuleId}`;
+const resolvedVirtualPackageStartModuleId = `\0${virtualPackageStartModuleId}`;
+const resolvedVirtualRequestGuardModuleId = `\0${virtualRequestGuardModuleId}`;
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const packagePublicDirectory = path.join(packageRoot, "public");
 const packageRouterFile = path.join(packageRoot, "src/router.tsx");
+const packageStartFile = path.join(packageRoot, "src/start.ts");
+const localConsoleGuardFile = path.join(
+  packageRoot,
+  "src/lib/server/local-console.ts",
+);
 const packageRoutesDirectory = path.join(packageRoot, "src/routes");
 const packageSourceDirectory = path.join(packageRoot, "src");
 const localRouteTreeFile = path.join(
@@ -80,6 +89,15 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "",
           ].join("\n"),
         );
+        // The package's request middleware, same-origin server functions
+        // included, which TanStack Start reads from the source directory.
+        writeFileIfChanged(
+          path.join(cacheDirectory, "start.ts"),
+          [
+            `export { startInstance } from ${JSON.stringify(virtualPackageStartModuleId)};`,
+            "",
+          ].join("\n"),
+        );
       }
 
       return {
@@ -116,6 +134,12 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
       if (id === virtualPackageRouterModuleId) {
         return resolvedVirtualPackageRouterModuleId;
       }
+      if (id === virtualPackageStartModuleId) {
+        return resolvedVirtualPackageStartModuleId;
+      }
+      if (id === virtualRequestGuardModuleId) {
+        return resolvedVirtualRequestGuardModuleId;
+      }
       if (id === virtualRouteTreeModuleId) {
         return generatedRouteTreeFile;
       }
@@ -124,6 +148,36 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
     load(id) {
       if (id === resolvedVirtualPackageRouterModuleId) {
         return `export { getRouter } from ${JSON.stringify(toImportPath(packageRouterFile))};`;
+      }
+
+      if (id === resolvedVirtualPackageStartModuleId) {
+        return `export { startInstance } from ${JSON.stringify(toImportPath(packageStartFile))};`;
+      }
+
+      if (id === resolvedVirtualRequestGuardModuleId) {
+        if (mode.type === "hosted") {
+          // Its sign-in guards a hosted console.
+          return "export default undefined;";
+        }
+        // `hot-updater console` passes the run's session. Vite's dev server
+        // checks the Host header itself, and a dev console makes its own
+        // session and prints the link.
+        return [
+          `import { guardLocalConsoleRequest, LOCAL_CONSOLE_SESSION_ENV, LOCAL_CONSOLE_SESSION_PARAM } from ${JSON.stringify(toImportPath(localConsoleGuardFile))};`,
+          "let session = process.env[LOCAL_CONSOLE_SESSION_ENV] || undefined;",
+          "if (session === undefined && import.meta.env.DEV) {",
+          "  const bytes = crypto.getRandomValues(new Uint8Array(32));",
+          '  session = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");',
+          "  console.info(`Open the console at /?${LOCAL_CONSOLE_SESSION_PARAM}=${session}`);",
+          "}",
+          "const port = process.env.NITRO_PORT || process.env.PORT || undefined;",
+          "export default (request) =>",
+          "  guardLocalConsoleRequest(request, {",
+          "    session,",
+          "    port: import.meta.env.DEV ? undefined : port,",
+          "    checkHost: !import.meta.env.DEV,",
+          "  });",
+        ].join("\n");
       }
 
       if (id === resolvedVirtualConfigModuleId) {
@@ -148,7 +202,9 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "    database: config.database,",
             "    storage: config.storage,",
             "    plugins: config.plugins,",
-            "    console: { gitUrl: config.console.gitUrl },",
+            "    console: {",
+            "      gitUrl: config.console.gitUrl,",
+            "    },",
             "  };",
             "};",
           ].join("\n");

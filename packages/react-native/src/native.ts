@@ -987,6 +987,27 @@ export const resetChannel = async (): Promise<boolean> => {
 };
 
 /**
+ * Clears the runtime channel only while the Release selection `guard` names
+ * is current. Native that checks and resets in one step does so; native from
+ * an earlier SDK is checked first, then reset. Returns false for a stale
+ * selection.
+ */
+export const resetChannelIfSelectionCurrent = async (
+  guard: ReleaseSelectionGuard,
+): Promise<boolean> => {
+  const native = HotUpdaterNative as Partial<typeof HotUpdaterNative>;
+  if (typeof native.resetChannelIfSelectionCurrent !== "function") {
+    // Earlier native: the check and the reset are two steps.
+    return isReleaseSelectionCurrent(guard) && (await resetChannel());
+  }
+  const ok = await native.resetChannelIfSelectionCurrent(guard);
+  if (ok) {
+    sessionState.resetChannelState();
+  }
+  return ok;
+};
+
+/**
  * Sets the persisted cohort used for update checks.
  *
  * HotUpdater only derives a device-based cohort when nothing has been stored

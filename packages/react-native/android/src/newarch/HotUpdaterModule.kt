@@ -543,6 +543,45 @@ class HotUpdaterModule internal constructor(
 
     override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
 
+    override fun resetChannelIfSelectionCurrent(
+        params: ReadableMap,
+        promise: Promise,
+    ) {
+        val catalogId = params.getString("catalogId")
+        val scopeKey = params.getString("scopeKey")
+        val catalogHash = params.getString("catalogHash")
+        val channel = params.getString("channel")
+        val selectionContextHash = params.getString("selectionContextHash")
+        if (catalogId == null || scopeKey == null || catalogHash == null || channel == null || selectionContextHash == null) {
+            promise.resolve(false)
+            return
+        }
+        val guard =
+            ReleaseSelectionGuard(
+                catalogId = catalogId,
+                scopeKey = scopeKey,
+                generation = params.getDouble("generation").toLong(),
+                catalogHash = catalogHash,
+                channel = channel,
+                selectionContextHash = selectionContextHash,
+            )
+        moduleScope.launch {
+            try {
+                // Waits for a native check or download, as resetChannel does.
+                val name = runtimeInstance.name
+                promise.resolve(
+                    NativeUpdateCheck.resetChannelIfSelectionCurrent(mReactApplicationContext, name, guard) {
+                        runtimeInstance.impl(name)
+                    },
+                )
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
+            } catch (e: Exception) {
+                promise.reject("UNKNOWN_ERROR", e.message ?: "Failed to reset channel")
+            }
+        }
+    }
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {

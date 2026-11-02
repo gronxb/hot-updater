@@ -92,4 +92,8 @@ export const initProvider = {
       preflight: false,
     },
   },
+  secrets: [
+    "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
+    "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
+  ],
 } as const satisfies InitProviderDefinition;

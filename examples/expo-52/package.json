@@ -9,27 +9,32 @@
     "web": "expo start --web",
     "fingerprint:create": "hot-updater fingerprint create"
   },
-  "devDependencies": {
+  "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
-    "@babel/core": "^7.25.2",
-    "@babel/runtime": "^7.25.2",
     "@hot-updater/react-native": "workspace:*",
-    "@hot-updater/expo": "workspace:*",
-    "@hot-updater/supabase": "workspace:*",
-    "@types/react": "~18.3.12",
     "expo": "~52.0.49",
+    "expo-asset": "~11.0.5",
     "expo-dev-client": "~5.0.20",
+    "expo-font": "~13.0.4",
     "expo-status-bar": "~2.0.1",
-    "expo-font": "^13.0.4",
-    "hot-updater": "workspace:*",
-    "metro": "0.81.4",
-    "metro-resolver": "0.81.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "0.76.9",
     "react-native-web": "~0.19.13",
-    "react-native-webview": "13.12.5",
+    "react-native-webview": "13.12.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/runtime": "^7.25.2",
+    "@hot-updater/expo": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "@types/react": "~18.3.12",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "babel-preset-expo": "~12.0.12",
+    "expo-modules-autolinking": "~2.0.8",
+    "hot-updater": "workspace:*",
+    "metro": "0.81.4",
+    "metro-resolver": "0.81.4",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "private": true

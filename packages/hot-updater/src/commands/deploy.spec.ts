@@ -1,5 +1,6 @@
 import { pipeline } from "stream/promises";
 
+import { secret } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
@@ -49,6 +50,7 @@ const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
         text: vi.fn(),
       },
       prepareBundleSigning: vi.fn(),
+      toolOutput: { note: vi.fn() },
     };
 
     return {
@@ -99,6 +101,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         })),
       ),
     p: mockCli.p,
+    toolOutput: mockCli.toolOutput,
     prepareBundleSigning: mockCli.prepareBundleSigning,
     putStorageFile: async (
       storage: typeof mockStorageAdapter,
@@ -216,6 +219,9 @@ vi.mock("@/utils/getFileHash", () => ({
   getFileHashFromFile: vi.fn(),
 }));
 
+// The upload helpers deploy shares import it by relative path: the same mock.
+vi.mock("../utils/getFileHash", () => import("@/utils/getFileHash"));
+
 vi.mock("@/utils/git", () => ({
   appendToProjectRootGitignore: mockCli.appendToProjectRootGitignore,
   getLatestGitCommit: vi.fn(),
@@ -244,7 +250,10 @@ vi.mock("@/utils/version/getNativeAppVersion", () => ({
   getNativeAppVersion: vi.fn(),
 }));
 
-vi.mock("./console", () => ({
+vi.mock("./console", async (importOriginal) => ({
+  // The link it opens the console with stays real.
+  withConsoleSession: (await importOriginal<typeof import("./console")>())
+    .withConsoleSession,
   getConsolePort: vi.fn(),
   openConsole: vi.fn(),
 }));
@@ -302,11 +311,11 @@ const fixtureBundleId = (sequence: number): string =>
 const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 const LOGICAL_FILE_HASH = "a".repeat(64);
 const TRANSFER_FILE_HASH = "b".repeat(64);
-const mockSigningAdapter = {
-  getPublicKey: vi.fn(async () => ({ publicKey: "public-key" })),
-  name: "mock-signing",
-  sign: vi.fn(async () => ({ signature: new Uint8Array([1]) })),
-};
+/** 1.1's file-based signing; prepareBundleSigning, mocked, reads no key. */
+const mockSigning = {
+  enabled: true,
+  privateKeyPath: "./keys/private-key.pem",
+} as const;
 
 const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
   mockBuildAdapter.build.mockResolvedValue({
@@ -571,7 +580,7 @@ describe("deploy rollout wiring", () => {
     const summary = mockCli.p.outro.mock.calls[0]?.[0];
     expect(release.id).not.toBe(release.bundle_id);
     expect(summary).toContain("Deployment successful");
-    expect(summary).toContain(`ID:`);
+    expect(summary).toMatch(/^ID {2,}/mu);
     expect(summary).toContain(release.id);
     expect(summary).not.toContain("Release ID");
     expect(summary).not.toContain("Bundle ID");
@@ -582,7 +591,7 @@ describe("deploy rollout wiring", () => {
     expect(summary.match(new RegExp(release.id, "g"))).toHaveLength(1);
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `Deployment successful\n    ID:       ${release.id}`,
+      `Deployment successful\nID  ${release.id}`,
     );
   });
 
@@ -593,7 +602,7 @@ describe("deploy rollout wiring", () => {
       vi.mocked(isPortReachable).mockResolvedValue(alreadyRunning);
       mockCli.p.confirm.mockResolvedValue(true);
       vi.mocked(openConsole).mockImplementation(async (port, onListening) => {
-        onListening?.({ port });
+        onListening?.({ port, session: "run-session" });
       });
       vi.mocked(open).mockResolvedValue({} as Awaited<ReturnType<typeof open>>);
 
@@ -612,9 +621,12 @@ describe("deploy rollout wiring", () => {
       );
       const url = new URL(vi.mocked(open).mock.calls[0]![0]);
       expect(url.origin).toBe("http://localhost:3000");
+      // A console it starts opens with that run's session; one already
+      // running opens with the session the browser holds.
       expect(Object.fromEntries(url.searchParams)).toEqual({
         platform: "ios",
         releaseId: release.id,
+        ...(alreadyRunning ? {} : { "hot-updater-session": "run-session" }),
       });
       expect(mockCli.p.note).toHaveBeenCalledWith(
         "Console: http://localhost:3000",
@@ -711,16 +723,16 @@ describe("deploy rollout wiring", () => {
       const summary = mockCli.p.outro.mock.calls[0]?.[0];
       expect(summary).toContain(release!.id);
       expect(summary).not.toContain(bundleId);
-      expect(summary).toContain(`${platformName} ID:`);
-      expect(summary).not.toContain("Authority ID:");
-      expect(summary).not.toContain("Catalog ID:");
+      expect(summary).toContain(`${platformName} ID  `);
+      expect(summary).not.toContain("Authority ID");
+      expect(summary).not.toContain("Catalog ID");
       expect(summary).not.toContain(catalog!.catalog_id);
       expect(summary).not.toContain(release!.scope_key);
       expect(summary).not.toContain("Generation");
     }
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `Deployment successful\n    iOS ID:     ${releases.find(({ platform }) => platform === "ios")!.id}\n    Android ID: ${releases.find(({ platform }) => platform === "android")!.id}`,
+      `Deployment successful\niOS ID      ${releases.find(({ platform }) => platform === "ios")!.id}\nAndroid ID  ${releases.find(({ platform }) => platform === "android")!.id}`,
     );
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
@@ -732,6 +744,98 @@ describe("deploy rollout wiring", () => {
     ]);
     expect(databaseHarness.deploy).toHaveBeenCalledTimes(1);
     expect(databaseHarness.deploy.mock.calls[0]![0]).toHaveLength(2);
+  });
+
+  it("warns once a run, for both platforms, that bundles without signing are unsigned", async () => {
+    mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    const unsigned = mockCli.p.log.warn.mock.calls.filter(([message]) =>
+      String(message).startsWith("Bundles are unsigned."),
+    );
+    expect(unsigned).toEqual([
+      [
+        "Bundles are unsigned.\nTo sign them, run: npx hot-updater secrets issue bundle-signing-key",
+      ],
+    ]);
+    expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a signing adapter before it connects or builds, never deploying unsigned", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      database: harnessDatabase,
+      fingerprint: {},
+      patch: { enabled: true, maxBaseBundles: 3 },
+      signing: { name: "awsKmsSigning", getPublicKey: vi.fn(), sign: vi.fn() },
+      storage: mockStorageAdapter,
+      updateStrategy: "appVersion",
+    });
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
+
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit");
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mockCli.p.log.error.mock.calls).toEqual([
+        [
+          'signing takes secret("bundle-signing-key").\nStore your key: npx hot-updater secrets put bundle-signing-key <key.pem>',
+        ],
+        ["Deployment blocked. Fix the signing configuration and try again."],
+      ]);
+      expect(mockLoadServer).not.toHaveBeenCalled();
+      expect(mockCli.prepareBundleSigning).not.toHaveBeenCalled();
+      expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+      expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it.each([
+    ["enabled: false", { enabled: false }],
+    ["the shorthand", secret("bundle-signing-key")],
+  ])("says nothing about unsigned bundles for %s", async (_label, signing) => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      database: harnessDatabase,
+      fingerprint: {},
+      patch: { enabled: true, maxBaseBundles: 3 },
+      signing,
+      storage: mockStorageAdapter,
+      updateStrategy: "appVersion",
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockCli.p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Bundles are unsigned."),
+    );
   });
 
   it("persists neither platform when core refuses the two-platform deployment", async () => {
@@ -1014,7 +1118,10 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.toolOutput.note).toHaveBeenCalledWith(
+      "LLVM\nHermes",
+      "Build Output",
+    );
   });
 
   it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
@@ -1390,7 +1497,7 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockBuildAdapter.build.mockResolvedValue({
@@ -1400,7 +1507,6 @@ describe("deploy rollout wiring", () => {
     });
     const signFileHash = vi.fn(async () => "signature");
     mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "local-file",
       publicKey: "public-key",
       signFileHash,
     });
@@ -1419,7 +1525,10 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
-    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.toolOutput.note).toHaveBeenCalledWith(
+      "LLVM\nHermes",
+      "Build Output",
+    );
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "✅ Bundle Signing Complete",
     );
@@ -1428,7 +1537,7 @@ describe("deploy rollout wiring", () => {
       "Deployment",
     );
 
-    const buildOutputOrder = mockCli.p.note.mock.calls.findIndex(
+    const buildOutputOrder = mockCli.toolOutput.note.mock.calls.findIndex(
       ([message, title]) =>
         message === "LLVM\nHermes" && title === "Build Output",
     );
@@ -1440,7 +1549,7 @@ describe("deploy rollout wiring", () => {
     expect(signingOrder).toBeGreaterThanOrEqual(0);
   });
 
-  it("validates an Expo CNG trust anchor against the signing provider", async () => {
+  it("validates an Expo CNG trust anchor against the signing key", async () => {
     const getBundleSigningPublicKey = vi.fn(async () => ({
       publicKey: "expo-public-key",
     }));
@@ -1449,12 +1558,12 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: { enabled: true, maxBaseBundles: 3 },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
       name: "provider",
-      publicKey: "provider-public-key",
+      publicKey: "signing-public-key",
       signFileHash: vi.fn(async () => "signature"),
     });
 
@@ -1468,13 +1577,13 @@ describe("deploy rollout wiring", () => {
 
     expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
     expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
-      expectedPublicKey: "provider-public-key",
+      expectedPublicKey: "signing-public-key",
       nativePublicKey: "expo-public-key",
       platform: "ios",
     });
   });
 
-  it("fails before build or upload when the signing provider cannot be prepared", async () => {
+  it("fails before build or upload when the signing key cannot be read", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -1482,28 +1591,39 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
-    mockCli.prepareBundleSigning.mockRejectedValue(
-      new Error("Failed to resolve the bundle signing provider public key."),
-    );
+    const reason =
+      "Failed to load the bundle signing private key from privateKeyPath.";
+    mockCli.prepareBundleSigning.mockRejectedValue(new Error(reason));
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
 
-    await expect(
-      deploy({
-        channel: "production",
-        forceUpdate: false,
-        interactive: false,
-        platform: "ios",
-        targetAppVersion: "1.0.x",
-      }),
-    ).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key.",
-    );
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit");
 
-    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
-    expect(mockStorageAdapter.put).not.toHaveBeenCalled();
-    expect(await databaseHarness.releases()).toEqual([]);
+      // The reason is printed, not thrown past the CLI as a stack trace.
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mockCli.p.log.error).toHaveBeenCalledWith(reason);
+      expect(mockCli.p.log.error).toHaveBeenLastCalledWith(
+        "Deployment blocked. Fix the signing configuration and try again.",
+      );
+      expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+      expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+      expect(await databaseHarness.releases()).toEqual([]);
+    } finally {
+      exit.mockRestore();
+    }
   });
 
   it("creates automatic partial update paths when patch generation is enabled", async () => {
@@ -1608,7 +1728,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("verifies automatic patch bases with the signer's public key", async () => {
+  it("verifies automatic patch bases with the signing key's public key", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -1616,11 +1736,10 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: mockSigningAdapter,
+      signing: mockSigning,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "local-file",
       publicKey: "public-key",
       signFileHash: vi.fn(async () => "signature"),
     });
@@ -1780,6 +1899,244 @@ describe("deploy rollout wiring", () => {
     );
   });
 
+  /** Registers an iOS native build of the production channel. */
+  const registerNativeBuild = (
+    minBundleId: string,
+    scope:
+      | { fingerprintHash: string; appVersion: null }
+      | { fingerprintHash: null; appVersion: string },
+  ) =>
+    databaseHarness.core.registerNativeBuild({
+      id: "01900000-0000-7000-8000-00000000b001",
+      platform: "ios",
+      channel: "production",
+      ...scope,
+      minBundleId,
+      gitCommitHash: null,
+      buildKey: null,
+      artifact: {
+        kind: "ipa",
+        storageUri: "storage://native-builds/ios/b001/App.ipa",
+        byteSize: 1_024,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `storage://artifacts/${minBundleId}/manifest.json`,
+        manifestFileHash: "built-in-manifest-hash",
+        assetBaseStorageUri: "storage://assets",
+      },
+    });
+
+  const deployByFingerprint = async () => {
+    const fingerprint = { hash: "fingerprint-hash", sources: [] };
+    vi.mocked(nativeFingerprint).mockResolvedValueOnce(
+      fingerprint as unknown as Awaited<ReturnType<typeof nativeFingerprint>>,
+    );
+    vi.mocked(readLocalFingerprint).mockResolvedValueOnce({
+      android: fingerprint,
+      ios: fingerprint,
+    } as unknown as Awaited<ReturnType<typeof readLocalFingerprint>>);
+    vi.mocked(isFingerprintEquals).mockReturnValueOnce(true);
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+  };
+
+  it("adds the registered native build's built-in bundle as a patch base", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { fingerprintHash: "fingerprint-hash" },
+      },
+    ]);
+    await registerNativeBuild(fixtureBundleId(100), {
+      fingerprintHash: "fingerprint-hash",
+      appVersion: null,
+    });
+
+    await deployByFingerprint();
+
+    // Beside the released bases, outside their limit.
+    expect(
+      mockServer.createBundleDiff.mock.calls.map(([ids, , options]) => [
+        ids.baseBundleId,
+        options,
+      ]),
+    ).toEqual([
+      [fixtureBundleId(121), { makePrimary: true }],
+      [fixtureBundleId(100), { makePrimary: false }],
+    ]);
+  });
+
+  it("finds a built-in bundle by the exact app version its build compiled in", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      updateStrategy: "appVersion",
+    });
+    await mockGetBundlesWithFixtures([]);
+    await registerNativeBuild(fixtureBundleId(100), {
+      fingerprintHash: null,
+      appVersion: "1.0.0",
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: fixtureBundleId(100),
+        bundleId: DEPLOY_BUNDLE_ID,
+      },
+      {
+        core: harnessDatabase.core,
+        signingPublicKey: null,
+        storageAdapter: mockStorageAdapter,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
+  it("verifies the built-in bundle base with the signing key's public key", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: mockSigning,
+      updateStrategy: "appVersion",
+    });
+    mockCli.prepareBundleSigning.mockResolvedValue({
+      publicKey: "public-key",
+      signFileHash: vi.fn(async () => "signature"),
+    });
+    await mockGetBundlesWithFixtures([]);
+    await registerNativeBuild(fixtureBundleId(100), {
+      fingerprintHash: null,
+      appVersion: "1.0.0",
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    });
+
+    // A signed deploy checks the built-in bundle's manifest as it checks a
+    // released base's: against its recorded hash, with the signer's key.
+    expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: fixtureBundleId(100),
+        bundleId: DEPLOY_BUNDLE_ID,
+      },
+      {
+        core: harnessDatabase.core,
+        signingPublicKey: "public-key",
+        storageAdapter: mockStorageAdapter,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
+  it("leaves out a built-in bundle newer than the deployed bundle", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([]);
+    await registerNativeBuild(fixtureBundleId(200), {
+      fingerprintHash: "fingerprint-hash",
+      appVersion: null,
+    });
+
+    await deployByFingerprint();
+
+    expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+  });
+
+  const deployWithFailingNativeBuildLookup = async (error: Error) => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { fingerprintHash: "fingerprint-hash" },
+      },
+    ]);
+    const findNativeBuild = vi
+      .spyOn(databaseHarness.core, "findNativeBuild")
+      .mockRejectedValueOnce(error);
+    try {
+      await deployByFingerprint();
+    } finally {
+      findNativeBuild.mockRestore();
+    }
+    expect(
+      mockServer.createBundleDiff.mock.calls.map(([ids]) => ids.baseBundleId),
+    ).toEqual([fixtureBundleId(121)]);
+  };
+
+  it("finds no built-in bundle on a server without the native build routes", async () => {
+    // A self-hosted server without them answers 404: it holds none.
+    await deployWithFailingNativeBuildLookup(
+      Object.assign(new Error("no native build route"), { status: 404 }),
+    );
+
+    expect(mockCli.p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Partial update skipped"),
+    );
+  });
+
+  it("keeps the released patch bases when the built-in bundle lookup fails", async () => {
+    await deployWithFailingNativeBuildLookup(new Error("database unavailable"));
+
+    expect(mockCli.p.log.warn).toHaveBeenCalledWith(
+      "Partial update skipped for file built-in: database unavailable",
+    );
+  });
+
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
@@ -1893,7 +2250,7 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining("Target app version not found in native files"),
+      expect.stringContaining("Target app version not found in Info.plist"),
     );
     expect(await databaseHarness.bundles()).toEqual([]);
   });
@@ -1916,7 +2273,7 @@ describe("deploy rollout wiring", () => {
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "builds several app versions (BrandA (Release): 5.5.1, BrandB (Release): 5.8.0)",
+        "builds several app versions:\nBrandA (Release): 5.5.1, BrandB (Release): 5.8.0",
       ),
     );
     expect(mockCli.p.log.error).toHaveBeenCalledWith(

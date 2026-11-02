@@ -16,6 +16,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import type { BuildType } from "@hot-updater/cli-tools";
+import { fitText, withProviderMessages } from "@hot-updater/cli-tools";
 
 import { ui } from "../../utils/cli-ui";
 import type { InitProvider } from "../initProviders";
@@ -294,8 +295,9 @@ export async function scaffoldInfra(
       `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
     );
     if (forAgent) {
-      // Every variable the app's TypeScript reads: the config, the
-      // credential helper's server definition, and Firestore's migration.
+      // Every variable the app's TypeScript reads, by `process.env` or
+      // `secret()`: the config, the credential helper's server definition,
+      // and Firestore's migration.
       const appSources = await Promise.all(
         (await readdir(appDir))
           .filter((file) => file.endsWith(".ts"))
@@ -306,9 +308,11 @@ export async function scaffoldInfra(
       const keys = new Set([
         ...inputs.map(({ envKey }) => envKey),
         ...appSources.flatMap((text) =>
-          [...text.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
-            (match) => match[1]!,
-          ),
+          [
+            ...text.matchAll(
+              /process\.env\.([A-Z_0-9]+)|\bsecret\("([A-Z_0-9]+)"\)/g,
+            ),
+          ].map((match) => (match[1] ?? match[2])!),
         ),
         ...(clientAuth === null ? [] : [clientAuth.credential.env]),
       ]);
@@ -401,36 +405,43 @@ export async function handleInfraScaffold(
       build: options.build,
     });
     if (options.json) console.log(JSON.stringify(result, null, 2));
-    else
+    else {
+      // The templates' directory relative to the project or with `~`, and
+      // each file in it relative to it, whole: each is a file to open.
+      const file = (value: string) =>
+        ui.path(
+          value === result.output
+            ? ui.fitPath(value, Number.POSITIVE_INFINITY)
+            : path.relative(result.output, value),
+        );
       console.log(
-        ui.block(
-          operation === "scaffold"
-            ? "Infrastructure scaffold"
-            : `Infrastructure ${operation} scaffold`,
-          [
-            ui.kv("Status", result.status),
-            ui.kv("Provider", result.provider),
-            ui.kv("Templates", ui.path(result.output)),
-            ui.kv("Manifest", ui.path(result.manifest)),
-            ...(result.instructions
-              ? [ui.kv("Read", ui.path(result.instructions))]
-              : []),
-            ...(result.commonInstructions
-              ? [ui.kv("Common", ui.path(result.commonInstructions))]
-              : []),
-            ...(result.deployment
-              ? [ui.kv("State", ui.path(result.deployment))]
-              : []),
-            ...(result.environment
-              ? [ui.kv("Environment", ui.path(result.environment))]
-              : []),
-            ui.kv("Upgrades", ui.path(result.upgradeGuide)),
+        fitText(
+          ui.block(
             operation === "scaffold"
-              ? "Fill the template inputs and deploy with your provider tools."
-              : "Read the instructions, apply the templates with provider tools, and verify each step.",
-          ],
+              ? "Infrastructure scaffold"
+              : `Infrastructure ${operation} scaffold`,
+            [
+              ui.kv("Status", result.status),
+              ui.kv("Provider", result.provider),
+              ui.kv("Templates", file(result.output)),
+              ui.kv("Manifest", file(result.manifest)),
+              result.instructions && ui.kv("Read", file(result.instructions)),
+              result.commonInstructions &&
+                ui.kv("Common", file(result.commonInstructions)),
+              result.deployment && ui.kv("State", file(result.deployment)),
+              result.environment &&
+                ui.kv("Environment", file(result.environment)),
+              // An upgrade's instructions are the upgrade guide: named once.
+              result.upgradeGuide !== result.instructions &&
+                ui.kv("Upgrades", file(result.upgradeGuide)),
+              operation === "scaffold"
+                ? "Fill the template inputs and deploy with your provider tools."
+                : "Apply the templates as Read says, and verify each step.",
+            ],
+          ),
         ),
       );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (options.json)
@@ -439,7 +450,11 @@ export async function handleInfraScaffold(
       );
     else
       console.error(
-        ui.block("Scaffolding failed", [ui.line([ui.danger(message)])]),
+        fitText(
+          withProviderMessages(
+            ui.block("Scaffolding failed", [ui.line([ui.danger(message)])]),
+          ),
+        ),
       );
     process.exitCode = 1;
   }

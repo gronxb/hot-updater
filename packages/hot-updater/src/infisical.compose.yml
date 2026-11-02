@@ -1,0 +1,34 @@
+# A throwaway self-hosted Infisical for infisical.integration.spec.ts:
+# Infisical's docker-compose.prod.yml with the image pinned, its .env.example
+# settings inline, and the API on a loopback port the spec picks.
+services:
+  backend:
+    image: infisical/infisical:v0.167.4
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      ENCRYPTION_KEY: f13dbc92aaaf86fa7cb0ed8ac3265f47
+      AUTH_SECRET: 5lrMXKKWCVocS/uerPsl7V+TX/aaUaI7iDkgl3tSmLE=
+      DB_CONNECTION_URI: postgres://infisical:infisical@db:5432/infisical
+      REDIS_URL: redis://redis:6379
+      SITE_URL: http://localhost:${HOT_UPDATER_INFISICAL_PORT:-18080}
+      TELEMETRY_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${HOT_UPDATER_INFISICAL_PORT:-18080}:8080"
+  redis:
+    image: redis:7-alpine
+  db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: infisical
+      POSTGRES_PASSWORD: infisical
+      POSTGRES_DB: infisical
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infisical -d infisical"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

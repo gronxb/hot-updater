@@ -12,24 +12,36 @@ import {
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
 import { createDynamoDBStore } from "./dynamoDBStore";
+import { type AwsCredentialsOption, toSdkCredentials } from "./lazyCredentials";
 
-export interface DynamoDBConfig extends DynamoDBClientConfig {
+export interface DynamoDBConfig extends Omit<
+  DynamoDBClientConfig,
+  "credentials"
+> {
+  /** The SDK's credentials, or access keys whose fields are lazy. */
+  readonly credentials?: AwsCredentialsOption;
   readonly apiBasePath?: string;
   readonly cloudfrontDistributionId?: string;
   readonly shouldWaitForInvalidation?: boolean;
   readonly tableName: string;
   /**
    * DynamoDB bills each item a write touches, so Insights' aggregates are
-   * batched: through log rows a compaction merges (the default), or
-   * `{ mode: "memory" }` on a long-lived server. `false` commits them with
-   * each event.
+   * batched: through log rows a compaction merges (the default). `false` commits
+   * them with each event.
    */
   readonly aggregateBatching?: EngineDatabase["aggregateBatching"] | false;
 }
 
 /** The DynamoDB client ignores the CloudFront and batching settings. */
-const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
-  const client = new DynamoDBClient(clientConfig);
+const adapterOf = ({
+  tableName,
+  credentials,
+  ...clientConfig
+}: DynamoDBConfig) => {
+  const client = new DynamoDBClient({
+    ...clientConfig,
+    credentials: toSdkCredentials(credentials),
+  });
   const store = createDynamoDBStore({ client, tableName });
   return { client, adapter: createKvAdapter({ store }) };
 };
@@ -51,13 +63,26 @@ export const migrateDynamoDB = (
 };
 
 /**
+ * The resource this database reaches, without credentials, under the key
+ * `hot-updater doctor` reads to tell the database `hot-updater init` saved
+ * from another (a convention CLAUDE.md documents).
+ */
+const DATABASE_TARGET = Symbol.for("@hot-updater/database-target");
+
+/** `target` under {@link DATABASE_TARGET}, to spread into the database. */
+const marked = (target: string) => ({ [DATABASE_TARGET]: target });
+
+/**
  * Hot Updater's database on one DynamoDB table, through the storage engine.
  * With a distribution, it gives core the CloudFront invalidation core runs
  * after a write that changes what the update-check routes answer.
  */
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const { client, adapter } = adapterOf(config);
-  const cloudFront = createUpdateRouteInvalidation(config);
+  const cloudFront = createUpdateRouteInvalidation({
+    ...config,
+    credentials: toSdkCredentials(config.credentials),
+  });
   return {
     ...createEngineDatabase({
       name: "dynamoDB",
@@ -65,6 +90,7 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
       onCachedRoutesChange: cloudFront?.invalidate,
       aggregateBatching: config.aggregateBatching ?? {},
     }),
+    ...marked(`dynamodb/${config.tableName}`),
     async dispose() {
       await adapter.dispose?.();
       client.destroy();

@@ -1,22 +1,28 @@
 import fs from "fs";
 import path from "path";
-import { pipeline } from "stream/promises";
-import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
   getCwd,
-  getStorageFileByteSize,
   HotUpdateDirUtil,
   type loadConfig,
   loadPlatformConfigs,
+  INVALID_SIGNING_NEXT_STEP,
+  ISSUE_SIGNING_KEY_COMMAND,
   p,
   prepareBundleSigning,
+  PUT_SIGNING_KEY_COMMAND,
   putStorageFile,
+  readBundleSigningState,
+  UNSIGNED_BUNDLES_NEXT_STEP,
+  toolOutput,
+  UNSIGNED_BUNDLES_WARNING,
 } from "@hot-updater/cli-tools";
 import type {
   ConfiguredDatabase,
   HotUpdaterCoreApi,
+  NativeBuildRow,
+  NativeBuildScope,
   Platform,
   ReleaseCatalogMutationResult,
   StorageAdapter,
@@ -26,10 +32,6 @@ import {
   assertStorageOperations,
   createBundleStorageKey,
   createStorageRootUriWithPath,
-  createStorageUriWithRelativePath,
-  getManifestAssetDownloadPath,
-  getManifestAssetStoragePath,
-  isContentAddressedAssetFileHash,
   targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
@@ -40,7 +42,6 @@ import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
 import {
   createBundleManifest,
-  type Manifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
 import { createBundleDiff } from "@/utils/createBundleDiff";
@@ -73,10 +74,22 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { PLATFORMS } from "../commandOptions";
 import { ui } from "../utils/cli-ui";
 import {
+  MANIFEST_ASSET_UPLOAD_CONCURRENCY,
+  prepareContentAddressedAssetUploadTargets,
+  type PreparedAssetUploadTarget,
+  runWithConcurrency,
+  uploadContentAddressedAsset,
+} from "../utils/contentAddressedAssets";
+import { reportUnexpectedError } from "../utils/reportUnexpectedError";
+import {
+  DEPLOYMENT_BLOCKED,
+  reportSigningRefusal,
+} from "../utils/signing/signingRefusal";
+import {
   formatAppVersionCandidates,
   isAmbiguousAppVersion,
 } from "../utils/version/appVersionCandidates";
-import { getConsolePort, openConsole } from "./console";
+import { getConsolePort, openConsole, withConsoleSession } from "./console";
 import {
   commitDeployment,
   type DeploymentWrite,
@@ -86,8 +99,6 @@ import {
 type DeployStorageAdapter = StorageAdapterWith<
   "put" | "get" | "exists" | "delete"
 >;
-
-const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
 class DeployAbortedError extends Error {
   override readonly name = "DeployAbortedError";
@@ -177,25 +188,6 @@ export const normalizePatchMaxBaseBundles = (
   return maxBaseBundles;
 };
 
-const runWithConcurrency = async <T>(
-  items: T[],
-  concurrency: number,
-  task: (item: T) => Promise<void>,
-) => {
-  let nextIndex = 0;
-  const workerCount = Math.min(concurrency, items.length);
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
-        const itemIndex = nextIndex;
-        nextIndex += 1;
-        await task(items[itemIndex]!);
-      }
-    }),
-  );
-};
-
 const formatUploadProgress = (
   completed: number,
   total: number,
@@ -240,6 +232,66 @@ const getPatchBaseBundleIds = async ({
   return core.findBaseBundleIds(candidateKey, bundleId, maxBaseBundles);
 };
 
+/**
+ * The built-in bundle of the newest native build registered for the
+ * deploy's channel and platform, with its fingerprint or exact app version,
+ * so a store install's first OTA arrives as a patch. Registration took its
+ * file from the build's artifact, so the patch is made against the bytes
+ * the build ships. One indexed read.
+ */
+const getBuiltInBaseBundleId = async ({
+  bundleId,
+  channel,
+  core,
+  platform,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  core: HotUpdaterCoreApi;
+  platform: Platform;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}): Promise<string | null> => {
+  let scope: NativeBuildScope;
+  if (target.fingerprintHash !== null) {
+    scope = {
+      platform,
+      channel,
+      fingerprintHash: target.fingerprintHash,
+      appVersion: null,
+    };
+  } else if (target.appVersion !== null) {
+    scope = {
+      platform,
+      channel,
+      fingerprintHash: null,
+      appVersion: target.appVersion,
+    };
+  } else {
+    return null;
+  }
+  let nativeBuild: NativeBuildRow | null;
+  try {
+    nativeBuild = await core.findNativeBuild(scope);
+  } catch (error) {
+    // A self-hosted server without the native build routes answers 404: it
+    // holds no native builds.
+    if ((error as { status?: unknown } | null)?.status === 404) return null;
+    throw error;
+  }
+  // A build made after this bundle runs it or a newer one.
+  if (
+    nativeBuild === null ||
+    nativeBuild.min_bundle_id.localeCompare(bundleId) >= 0
+  ) {
+    return null;
+  }
+  return nativeBuild.min_bundle_id;
+};
+
 const createAutoPatches = async ({
   bundleId,
   channel,
@@ -262,7 +314,7 @@ const createAutoPatches = async ({
     fingerprintHash: string | null;
   };
 }) => {
-  const baseBundleIds = await getPatchBaseBundleIds({
+  const releasedBaseBundleIds = await getPatchBaseBundleIds({
     bundleId,
     channel,
     core,
@@ -271,6 +323,26 @@ const createAutoPatches = async ({
     target,
   });
   const failures: { baseBundleId: string; message: string }[] = [];
+  let builtInBaseBundleId: string | null = null;
+  try {
+    builtInBaseBundleId = await getBuiltInBaseBundleId({
+      bundleId,
+      channel,
+      core,
+      platform,
+      target,
+    });
+  } catch (error) {
+    failures.push({
+      baseBundleId: "built-in",
+      message: error instanceof Error ? error.message : "Unknown patch error",
+    });
+  }
+  // No release publishes a built-in bundle, so the catalog never names it.
+  const baseBundleIds =
+    builtInBaseBundleId === null
+      ? releasedBaseBundleIds
+      : [...releasedBaseBundleIds, builtInBaseBundleId];
   let createdCount = 0;
 
   for (const baseBundleId of baseBundleIds) {
@@ -303,176 +375,6 @@ const createAutoPatches = async ({
     createdCount,
     failures,
   };
-};
-
-const getRelativeStorageDir = (relativePath: string) => {
-  const normalized = relativePath.replace(/\\/g, "/");
-  const dirname = path.posix.dirname(normalized);
-  return dirname === "." ? "" : dirname;
-};
-
-type ManifestTargetFile = { path: string; name: string };
-
-type PreparedAssetUploadTarget = {
-  storagePath: string;
-  uploadSourcePath: string;
-};
-
-const prepareManifestAssetUploadFile = async ({
-  outputPath,
-  targetFile,
-}: {
-  outputPath: string;
-  targetFile: ManifestTargetFile;
-}) => {
-  const uploadName = getManifestAssetDownloadPath(targetFile.name);
-  const expectedFilename = path.posix.basename(uploadName);
-  const actualFilename = path.basename(targetFile.path);
-
-  if (uploadName === targetFile.name && expectedFilename === actualFilename) {
-    return targetFile.path;
-  }
-
-  const aliasDir = path.join(
-    outputPath,
-    "upload-artifacts",
-    getRelativeStorageDir(uploadName),
-  );
-  await fs.promises.mkdir(aliasDir, { recursive: true });
-
-  const aliasPath = path.join(aliasDir, expectedFilename);
-  if (uploadName !== targetFile.name) {
-    await pipeline(
-      fs.createReadStream(targetFile.path),
-      createBrotliCompress({
-        params: {
-          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-        },
-      }),
-      fs.createWriteStream(aliasPath),
-    );
-  } else {
-    await fs.promises.copyFile(targetFile.path, aliasPath);
-  }
-  return aliasPath;
-};
-
-const prepareContentAddressedUploadFile = async ({
-  outputPath,
-  sourcePath,
-  storagePath,
-}: {
-  outputPath: string;
-  sourcePath: string;
-  storagePath: string;
-}) => {
-  const filename = path.posix.basename(storagePath);
-  if (path.basename(sourcePath) === filename) {
-    return sourcePath;
-  }
-
-  const uploadPath = path.join(
-    outputPath,
-    "upload-artifacts",
-    "content-addressed",
-    filename,
-  );
-  await fs.promises.mkdir(path.dirname(uploadPath), { recursive: true });
-  await fs.promises.copyFile(sourcePath, uploadPath);
-  return uploadPath;
-};
-
-const prepareContentAddressedAssetUploadTargets = async ({
-  manifest,
-  outputPath,
-  targetFiles,
-}: {
-  manifest: Manifest;
-  outputPath: string;
-  targetFiles: ManifestTargetFile[];
-}) => {
-  const candidates = new Map<
-    string,
-    {
-      targetFile: ManifestTargetFile;
-      targetNames: string[];
-    }
-  >();
-
-  for (const targetFile of targetFiles) {
-    const manifestAsset = manifest.assets[targetFile.name];
-    if (!manifestAsset?.fileHash) {
-      throw new Error(`Manifest file hash not found for ${targetFile.name}`);
-    }
-
-    const downloadPath = getManifestAssetDownloadPath(targetFile.name);
-    const logicalStoragePath = getManifestAssetStoragePath({
-      assetPath: downloadPath,
-      fileHash: manifestAsset.fileHash,
-    });
-    const candidateKey = `${downloadPath === targetFile.name ? "raw" : "br"}:${logicalStoragePath}`;
-
-    const candidate = candidates.get(candidateKey);
-    if (candidate) {
-      candidate.targetNames.push(targetFile.name);
-    } else {
-      candidates.set(candidateKey, {
-        targetFile,
-        targetNames: [targetFile.name],
-      });
-    }
-  }
-
-  const targets = new Map<string, PreparedAssetUploadTarget>();
-  await runWithConcurrency(
-    [...candidates.values()],
-    MANIFEST_ASSET_UPLOAD_CONCURRENCY,
-    async ({ targetFile, targetNames }) => {
-      const uploadName = getManifestAssetDownloadPath(targetFile.name);
-      const usesBrotli = uploadName !== targetFile.name;
-      const preparedPath = await prepareManifestAssetUploadFile({
-        outputPath,
-        targetFile,
-      });
-      const downloadByteSize = await getStorageFileByteSize(preparedPath);
-      const downloadFileHash = usesBrotli
-        ? await getFileHashFromFile(preparedPath)
-        : undefined;
-      if (
-        downloadFileHash !== undefined &&
-        !isContentAddressedAssetFileHash(downloadFileHash)
-      ) {
-        throw new Error(
-          `Prepared asset hash must be a lowercase SHA-256 hash: ${targetFile.name}`,
-        );
-      }
-
-      const manifestAsset = manifest.assets[targetFile.name]!;
-      const storagePath = getManifestAssetStoragePath({
-        assetPath: uploadName,
-        downloadFileHash,
-        fileHash: manifestAsset.fileHash,
-      });
-      const uploadSourcePath = await prepareContentAddressedUploadFile({
-        outputPath,
-        sourcePath: preparedPath,
-        storagePath,
-      });
-
-      for (const targetName of targetNames) {
-        manifest.assets[targetName] = {
-          ...manifest.assets[targetName]!,
-          downloadByteSize,
-          ...(downloadFileHash ? { downloadFileHash } : {}),
-        };
-      }
-      targets.set(storagePath, { storagePath, uploadSourcePath });
-    },
-  );
-
-  return [...targets.values()].sort((left, right) =>
-    left.storagePath.localeCompare(right.storagePath),
-  );
 };
 
 const getPlatformName = (platform: Platform) =>
@@ -549,23 +451,16 @@ const summarizeDeploymentResults = (
   results: readonly CommittedDeployPlatformResult[],
 ): string => {
   if (results.length === 1) {
-    return [
-      "Deployment successful",
+    return ui.block("Deployment successful", [
       ui.kv("ID", ui.id(results[0]!.releaseId)),
-    ].join("\n");
+    ]);
   }
-
-  const labels = results.map(
-    (result) => `${getPlatformName(result.platform)} ID:`,
-  );
-  const labelWidth = Math.max(...labels.map((label) => label.length));
-  return [
+  return ui.block(
     "Deployment successful",
-    ...results.map(
-      (result, index) =>
-        `    ${labels[index]!.padEnd(labelWidth)} ${ui.id(result.releaseId)}`,
+    results.map((result) =>
+      ui.kv(`${getPlatformName(result.platform)} ID`, ui.id(result.releaseId)),
     ),
-  ].join("\n");
+  );
 };
 
 const getDeployPlatforms = async (
@@ -685,7 +580,14 @@ const deployPlatform = async ({
 
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
-    prepareBundleSigning(config.signing, { cwd }),
+    prepareBundleSigning(config.signing, {
+      cwd,
+      secrets: config.secrets,
+    }).catch((error: unknown) => {
+      // The E2E refusal check reads both lines.
+      reportSigningRefusal(error);
+      return process.exit(1);
+    }),
   ]);
   const getNativeSigningPublicKey =
     buildAdapter.nativeBuild?.getBundleSigningPublicKey;
@@ -718,28 +620,18 @@ const deployPlatform = async ({
       (i) => i.type === "warning",
     );
 
+    // Doctor's --json prints the same issues: only their layout is ours.
+    for (const issue of errors) {
+      p.log.error(`${ui.prose(issue.message)}\n${ui.prose(issue.resolution)}`);
+    }
     if (errors.length > 0) {
-      console.log("");
-      p.log.error("Signing configuration error:");
-      for (const issue of errors) {
-        p.log.error(`  ${issue.message}`);
-        p.log.info(`  Resolution: ${issue.resolution}`);
-      }
-      console.log("");
-      p.log.error(
-        "Deployment blocked. Fix the signing configuration and try again.",
-      );
+      p.log.error(DEPLOYMENT_BLOCKED);
       process.exit(1);
     }
-
-    if (warnings.length > 0) {
-      console.log("");
-      p.log.warn("Signing configuration warning:");
-      for (const warning of warnings) {
-        p.log.warn(`  ${warning.message}`);
-        p.log.info(`  Resolution: ${warning.resolution}`);
-      }
-      console.log("");
+    for (const warning of warnings) {
+      p.log.warn(
+        `${ui.prose(warning.message)}\n${ui.prose(warning.resolution)}`,
+      );
     }
   }
 
@@ -756,7 +648,7 @@ const deployPlatform = async ({
     s.start(`Fingerprinting (${platform})`);
     if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       s.error(
-        "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        "fingerprint.json not found. Run:\nnpx hot-updater fingerprint create",
       );
       process.exit(1);
     }
@@ -772,9 +664,7 @@ const deployPlatform = async ({
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
-      s.error(
-        "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
-      );
+      s.error("Fingerprint mismatch. Run:\nnpx hot-updater fingerprint create");
 
       const engineChange = getFingerprintEngineChange(
         projectFingerprint?.[platform],
@@ -824,7 +714,11 @@ const deployPlatform = async ({
   } else {
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
       p.log.warn(
-        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, or run \`npx hot-updater doctor --fix\`, then rebuild.`,
+        [
+          `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'.`,
+          "Apps built here report the fingerprint strategy.",
+          "Delete fingerprint.json, then rebuild the apps.",
+        ].join("\n"),
       );
     }
     const defaultTargetAppVersion = options.targetAppVersion
@@ -861,8 +755,8 @@ const deployPlatform = async ({
     if (!targetAppVersion) {
       p.log.error(
         ambiguousVersions
-          ? `The native project builds several app versions (${ambiguousVersions}), so the target app version for this deploy cannot be read from it. Pass -t <targetAppVersion> for the app this deploy targets.`
-          : "Target app version not found in native files (Info.plist or project.pbxproj for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
+          ? `The native project builds several app versions:\n${ambiguousVersions}\nPass -t <targetAppVersion> for the app this deploy targets.`
+          : "Target app version not found in Info.plist, project.pbxproj, build.gradle.\nPass -t <targetAppVersion>.",
       );
       return null;
     }
@@ -872,11 +766,11 @@ const deployPlatform = async ({
   if (!target.fingerprintHash && !target.appVersion) {
     if (config.updateStrategy === "fingerprint") {
       p.log.error(
-        "Fingerprint hash not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
+        "Fingerprint hash not found. Run:\nnpx hot-updater fingerprint create",
       );
     } else {
       p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+        "Target app version not found. Pass -t <targetAppVersion>, such as 1.x.x.",
       );
     }
     process.exit(1);
@@ -1015,7 +909,7 @@ const deployPlatform = async ({
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.note(
+      toolOutput.note(
         taskRef.buildResult.stdout.trim(),
         multiPlatform ? `Build Output (${platformName})` : "Build Output",
       );
@@ -1080,26 +974,13 @@ const deployPlatform = async ({
             await runWithConcurrency(
               assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
-              async ({ storagePath, uploadSourcePath }) => {
-                const storageUri = createStorageUriWithRelativePath({
-                  baseStorageUri: taskRef.assetBaseStorageUri!,
-                  relativePath: storagePath,
-                });
-
-                const relativeDir = getRelativeStorageDir(storagePath);
-                const uploadKey = ["assets", relativeDir]
-                  .filter(Boolean)
-                  .join("/");
-
-                if ((await storageAdapter.exists({ storageUri })).exists) {
-                  skippedUploadCount += 1;
-                } else {
-                  await putStorageFile(
-                    storageAdapter,
-                    uploadKey,
-                    uploadSourcePath,
-                  );
-                }
+              async (target) => {
+                const uploaded = await uploadContentAddressedAsset(
+                  storageAdapter,
+                  taskRef.assetBaseStorageUri!,
+                  target,
+                );
+                if (!uploaded) skippedUploadCount += 1;
                 uploadedStepCount += 1;
                 updateUploadProgress();
               },
@@ -1230,7 +1111,7 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    console.error(e);
+    reportUnexpectedError(e);
     process.exit(1);
   }
 };
@@ -1250,6 +1131,32 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {
     return;
+  }
+  const signingStates = platformConfigs.map(({ config }) =>
+    readBundleSigningState(config.signing),
+  );
+  // A value signing doesn't take, such as a removed signing adapter, never
+  // deploys unsigned: refused before anything connects or builds.
+  const refused = signingStates.find((state) => state.status === "invalid");
+  if (refused?.status === "invalid") {
+    p.log.error(
+      [
+        refused.message,
+        ui.withCommand(INVALID_SIGNING_NEXT_STEP, PUT_SIGNING_KEY_COMMAND),
+      ].join("\n"),
+    );
+    p.log.error(DEPLOYMENT_BLOCKED);
+    return process.exit(1);
+  }
+  // Once a run, however many platforms deploy unsigned. `enabled: false`
+  // signs nothing on purpose, without the warning.
+  if (signingStates.some((state) => state.status === "unsigned")) {
+    p.log.warn(
+      [
+        UNSIGNED_BUNDLES_WARNING,
+        ui.withCommand(UNSIGNED_BUNDLES_NEXT_STEP, ISSUE_SIGNING_KEY_COMMAND),
+      ].join("\n"),
+    );
   }
   // Every platform deploys through one server, assembled from the first
   // platform's config, so the configs must share one database. The ones a
@@ -1361,8 +1268,8 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
             initialValue: false,
           });
           if (!p.isCancel(result) && result) {
-            await openConsole(port, () => {
-              void open(url);
+            await openConsole(port, ({ session }) => {
+              void open(withConsoleSession(url, session));
             });
           }
         } else {

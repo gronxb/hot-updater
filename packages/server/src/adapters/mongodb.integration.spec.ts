@@ -235,7 +235,7 @@ describe("mongoAdapter migrations", () => {
     await expect(migrator.migrateToLatest()).resolves.toMatchObject({
       operations: [],
     });
-    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+    await expect(migrator.getVersion()).resolves.toBe("1.2.0");
 
     const [result] = await core.deploy([
       {

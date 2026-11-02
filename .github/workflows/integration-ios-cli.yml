@@ -1,0 +1,126 @@
+on:
+  push:
+    branches:
+      - main
+      - next
+    paths:
+      - "packages/apple-helper/**"
+      - "packages/cli-tools/**"
+      - "packages/hot-updater/src/commands/buildNative*"
+      - "packages/hot-updater/src/commandOptions/**"
+      - "packages/hot-updater/src/utils/native/**"
+      - "plugins/bare/**"
+      - "plugins/expo/**"
+      - "examples/v0.88.0/**"
+      - "examples-server/preview-action/ios-cli.config.ts"
+      - "plugins/mock/**"
+      - ".github/workflows/integration-ios-cli.yml"
+  pull_request:
+    paths:
+      - "packages/apple-helper/**"
+      - "packages/cli-tools/**"
+      - "packages/hot-updater/src/commands/buildNative*"
+      - "packages/hot-updater/src/commandOptions/**"
+      - "packages/hot-updater/src/utils/native/**"
+      - "plugins/bare/**"
+      - "plugins/expo/**"
+      - "examples/v0.88.0/**"
+      - "examples-server/preview-action/ios-cli.config.ts"
+      - "plugins/mock/**"
+      - ".github/workflows/integration-ios-cli.yml"
+
+name: iOS Integration (CLI)
+
+jobs:
+  build-ios-cli:
+    runs-on: macos-15
+    timeout-minutes: 60
+    # The newest React Native, built by `hot-updater native-build ios` from
+    # the committed ios/, which has no workspace and no codegen output: the
+    # CLI's pod install and codegen must produce them. The build is tracked
+    # in an in-memory backend, as macOS runners have no Docker.
+    name: Build iOS through hot-updater native-build ios (React Native 0.88)
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      # On Ruby 3.2, CocoaPods 1.15.2 failed this project's pod install with
+      # "pathname contains null byte" (CocoaPods/CocoaPods#12798).
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
+        with:
+          ruby-version: "3.3"
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Install Ruby dependencies
+        working-directory: examples/v0.88.0
+        run: bundle install
+
+      - name: Library Build
+        run: pnpm nx run-many -t build -p hot-updater @hot-updater/bare @hot-updater/supabase @hot-updater/react-native @hot-updater/mock
+
+      # No pod install or codegen before this step: native-build ios runs them.
+      - name: Build iOS
+        working-directory: examples/v0.88.0
+        # pipefail, so a failed build fails the step through tee.
+        shell: bash
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          # A temporary directory of the build's own, which it must leave
+          # without the directories it built in (DerivedData alone is 10 GB
+          # or more).
+          export TMPDIR="$RUNNER_TEMP/build-tmp"
+          mkdir -p "$TMPDIR"
+          # The example's scheme, on an in-memory database and storage.
+          printf 'export { default } from "../../examples-server/preview-action/ios-cli.config.ts";\n' \
+            > hot-updater.config.ts
+          build_ios() {
+            # The CLI's bin is not linked: its dist did not exist at install.
+            node ../../packages/hot-updater/dist/index.mjs native-build ios \
+              --scheme releaseSimulator \
+              --output-path "$RUNNER_TEMP/ios-build" --json | tee "$RUNNER_TEMP/build.log"
+          }
+          # CocoaPods crashes at random with "pathname contains null byte"
+          # while it generates the Pods project of pods that pnpm symlinks
+          # (CocoaPods/CocoaPods#12798, #12866). Only that crash is retried,
+          # once; its log is kept.
+          if ! build_ios; then
+            log=$(ls -t .hot-updater/log/*-pod-install.log 2>/dev/null | head -n 1)
+            if [ -z "$log" ] || ! grep -q "pathname contains null byte" "$log"; then
+              exit 1
+            fi
+            mv "$log" "${log%.log}-attempt1.log"
+            echo "pod install hit CocoaPods#12798; retrying once."
+            build_ios
+          fi
+          build=$(tail -n 1 "$RUNNER_TEMP/build.log")
+          app=$(jq -r .build.artifactPath <<<"$build")
+          echo "Artifact: $app"
+          test "$(jq -r .build.artifactKind <<<"$build")" = app
+          # Tracked: recorded with its artifact, as every Release build is.
+          test "$(jq -r .registration.skipped <<<"$build")" = null
+          test "$(jq -r .nativeBuild.artifact_kind <<<"$build")" = app
+          test -d "$app"
+          test -f "$app/Info.plist"
+          test -f "$app/main.jsbundle"
+          left=$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -name 'apple-helper-*')
+          if [ -n "$left" ]; then
+            echo "The build left its temporary directories:"
+            du -sh $left
+            exit 1
+          fi
+
+      # The build's logs, pod install's and xcodebuild's, whose failure the
+      # step prints only a summary of.
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-cli-build-logs
+          path: examples/v0.88.0/.hot-updater/log/
+          include-hidden-files: true
+          if-no-files-found: ignore

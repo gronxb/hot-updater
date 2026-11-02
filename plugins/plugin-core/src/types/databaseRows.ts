@@ -79,3 +79,46 @@ export interface ChannelRow {
   readonly id: string;
   readonly name: string;
 }
+
+/** The kinds of artifact a native build registers. */
+export type NativeBuildArtifactKind = "apk" | "aab" | "ipa" | "app";
+
+/** The store track a native build was submitted to. */
+export type NativeBuildSubmissionDestination = "testflight" | "play-internal";
+
+/**
+ * A registered native build: its artifact in storage, the scope it serves,
+ * and `min_bundle_id`, the `bundles` row of the bundle built into it.
+ */
+export interface NativeBuildRow {
+  readonly id: string;
+  readonly scope_key: string;
+  readonly platform: Platform;
+  readonly channel_id: string;
+  readonly fingerprint_hash: string | null;
+  readonly app_version: string | null;
+  readonly min_bundle_id: string;
+  readonly artifact_kind: NativeBuildArtifactKind;
+  readonly artifact_storage_uri: string;
+  readonly byte_size: number;
+  readonly git_commit_hash: string | null;
+  readonly created_at_ms: number;
+  /** The native build key of the build's inputs, or null for none. */
+  readonly build_key: string | null;
+  /**
+   * The build number the artifact reports, its `CFBundleVersion` or
+   * `versionCode`, which a store takes once per version; null when it can't
+   * be read.
+   */
+  readonly build_number: string | null;
+  /** The store track the build went to, or null when it was submitted to none. */
+  readonly submitted_to: NativeBuildSubmissionDestination | null;
+  /** When Hot Updater recorded the store's build, in epoch milliseconds. */
+  readonly submitted_at_ms: number | null;
+  /**
+   * The store's label of the build, its version and build number, such as
+   * `1.7.0 (66)`: TestFlight and Google Play tell builds of one version apart
+   * by the build number, and a fingerprint build records no app version.
+   */
+  readonly submitted_version: string | null;
+}

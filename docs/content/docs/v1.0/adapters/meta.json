@@ -1,0 +1,10 @@
+{
+  "title": "Create an Adapter",
+  "description": "Write storage and database adapters.",
+  "icon": "Hammer",
+  "pages": [
+    "../storage-adapters/custom-storage",
+    "../database-adapters/custom-database",
+    "../database-adapters/adapter-contract"
+  ]
+}

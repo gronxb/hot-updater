@@ -105,6 +105,31 @@ model bundle_totals {
   hu_v BigInt @default(0) @map("_v")
   @@id([platform_key, hu_shard])
 }
+model native_builds {
+  id String @db.VarChar(36)
+  scope_key String @db.VarChar(2048)
+  platform String @db.VarChar(16)
+  channel_id String @db.VarChar(1408)
+  fingerprint_hash String? @db.VarChar(255)
+  app_version String?
+  min_bundle_id String @db.VarChar(36)
+  artifact_kind String @db.VarChar(16)
+  artifact_storage_uri String
+  byte_size BigInt
+  git_commit_hash String? @db.VarChar(255)
+  created_at_ms BigInt
+  build_key String? @db.VarChar(69)
+  build_number String? @db.VarChar(64)
+  submitted_to String? @db.VarChar(16)
+  submitted_at_ms BigInt?
+  submitted_version String? @db.VarChar(255)
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+  @@index([scope_key, id], map: "native_builds_byScope")
+  @@index([scope_key, build_key, id], map: "native_builds_byBuildKey")
+  @@index([channel_id, id], map: "native_builds_byChannel")
+  @@unique([min_bundle_id], map: "native_builds_min_bundle_id")
+}
 model bundle_events {
   id String @db.VarChar(36)
   type String @db.VarChar(32)

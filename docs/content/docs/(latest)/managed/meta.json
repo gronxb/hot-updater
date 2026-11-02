@@ -10,6 +10,7 @@
     "vercel",
     "azure",
     "../guides/agent-infrastructure",
-    "../guides/infrastructure-templates"
+    "../guides/infrastructure-templates",
+    "../guides/cloudflare-alchemy"
   ]
 }

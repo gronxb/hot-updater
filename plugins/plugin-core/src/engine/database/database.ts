@@ -48,7 +48,7 @@ export const createDatabaseEngine = ({
    * include `aggregateBatchingModule`.
    */
   readonly batching?: AggregateBatching;
-  /** The clock batching times its flushes and compactions by. */
+  /** The clock batching times its compactions by. */
   readonly now?: () => number;
   /** A metered database's meter, which counts what the engine and its batching read. */
   readonly meter?: ReadMeter;
@@ -87,12 +87,9 @@ export const createDatabaseEngine = ({
   };
   return {
     ...engine,
-    /** Applies batched aggregate changes still pending: this process's buffer and the log. */
+    /** Applies the batched aggregate changes still in the log. */
     flush: async () => {
       await batches?.flush();
-    },
-    dispose: async () => {
-      await batches?.dispose();
     },
     database<S extends ModuleSchema>(
       module: SchemaModule & { readonly schema: S },

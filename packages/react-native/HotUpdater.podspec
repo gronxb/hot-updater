@@ -2,6 +2,11 @@ require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -Wno-comma -Wno-shorten-64-to-32'
+# ios/HotUpdater/Sandbox is compiled only with the build xcconfig of a sandbox
+# scheme, which sets INCLUDED_SOURCE_FILE_NAMES: any other build leaves it out,
+# whatever the last `pod install` saw. An app's own setting can replace this one,
+# so those files also compile to nothing without the xcconfig's condition.
+sandbox_excluded_files = "HotUpdaterSandbox*"
 
 Pod::Spec.new do |s|
   s.name         = "HotUpdater"
@@ -31,6 +36,7 @@ Pod::Spec.new do |s|
 
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",
+    "EXCLUDED_SOURCE_FILE_NAMES" => sandbox_excluded_files,
     "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport",
     "HEADER_SEARCH_PATHS" => "\"$(DERIVED_FILE_DIR)\""
   }
@@ -68,6 +74,7 @@ Pod::Spec.new do |s|
     if ENV["RCT_NEW_ARCH_ENABLED"] == "1" then
       s.compiler_flags = folly_compiler_flags + " -DRCT_NEW_ARCH_ENABLED=1"
       s.pod_target_xcconfig    = {
+          "EXCLUDED_SOURCE_FILE_NAMES" => sandbox_excluded_files,
           "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(DERIVED_FILE_DIR)\"",
           "OTHER_CPLUSPLUSFLAGS" => "-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1",
           "CLANG_CXX_LANGUAGE_STANDARD" => "c++17"

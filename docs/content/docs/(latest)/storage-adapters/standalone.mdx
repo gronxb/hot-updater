@@ -41,31 +41,30 @@ import {
   standaloneRepository,
   standaloneStorage, // [!code ++]
 } from "@hot-updater/standalone";
-import { defineConfig } from "hot-updater";
+import { defineConfig, secret } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-const storageToken = process.env.HOT_UPDATER_STORAGE_TOKEN; // [!code ++]
-if (!adminToken || !storageToken) {
-  throw new Error("Admin and storage service credentials are required");
-}
+const adminToken = secret("HOT_UPDATER_ADMIN_TOKEN");
+const storageToken = secret("HOT_UPDATER_STORAGE_TOKEN"); // [!code ++]
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
   database: standaloneRepository({
     baseUrl: "https://api.example.com/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${adminToken}`,
+      Authorization: async () => `Bearer ${await adminToken()}`,
     },
   }),
-  storage: standaloneStorage({ // [!code ++]
+  storage: standaloneStorage({
+    // [!code ++]
     baseUrl: "https://storage.example.com/hot-updater", // [!code ++]
     protocol: "s3", // [!code ++]
-    commonHeaders: { // [!code ++]
-      Authorization: `Bearer ${storageToken}`, // [!code ++]
+    commonHeaders: {
+      // [!code ++]
+      Authorization: async () => `Bearer ${await storageToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
   updateStrategy: "appVersion",

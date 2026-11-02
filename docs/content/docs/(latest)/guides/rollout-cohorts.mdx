@@ -24,10 +24,10 @@ For a forward update, it selects the newest eligible enabled Bundle.
   directly on the device.
 
 <Callout type="info">
-  Below 100%, percentage rollout selects numeric cohorts; custom cohorts such
-  as `qa` require an explicit entry in `Target Cohorts`. A 100% rollout also
-  includes every valid custom cohort, even when `Target Cohorts` is empty.
-  Named cohorts do not isolate testers from later full-rollout Bundles.
+  Below 100%, percentage rollout selects numeric cohorts; custom cohorts such as
+  `qa` require an explicit entry in `Target Cohorts`. A 100% rollout also
+  includes every valid custom cohort, even when `Target Cohorts` is empty. Named
+  cohorts do not isolate testers from later full-rollout Bundles.
 </Callout>
 
 ## Deploy a Bundle with Rollout
@@ -113,12 +113,12 @@ stable when you update that Bundle's rollout policy.
 
 Interpret the preview as follows:
 
-| Check                        | Example                           | Result                                                 |
-| ---------------------------- | --------------------------------- | ------------------------------------------------------ |
-| Device cohort                | `hotUpdater.getCohort() = 411`    | This device belongs to cohort `411`.                   |
-| Rollout percentage           | `50.0%`                           | The Bundle targets `500` of `1000` numeric cohorts.         |
-| Cohort excluded from preview | `410` is not in the selected list | A device in cohort `410` does not select this Bundle.       |
-| Cohort included in preview   | `411` is in the selected list     | A device in cohort `411` selects this Bundle.               |
+| Check                        | Example                           | Result                                                |
+| ---------------------------- | --------------------------------- | ----------------------------------------------------- |
+| Device cohort                | `hotUpdater.getCohort() = 411`    | This device belongs to cohort `411`.                  |
+| Rollout percentage           | `50.0%`                           | The Bundle targets `500` of `1000` numeric cohorts.   |
+| Cohort excluded from preview | `410` is not in the selected list | A device in cohort `410` does not select this Bundle. |
+| Cohort included in preview   | `411` is in the selected list     | A device in cohort `411` selects this Bundle.         |
 
 Check cohort `411` in the preview:
 
@@ -264,12 +264,12 @@ This is useful in two common cases:
 
 Interpret the preview as follows:
 
-| Check                          | Example                                                               | Result                                                                                  |
-| ------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Numeric rollout device         | `hotUpdater.getCohort() = 411`, and `411` is in `Preview Cohorts`     | This device selects the Bundle through numeric rollout.                                |
-| QA tester device               | `hotUpdater.getCohort() = qa`                                         | This device selects the Bundle because `qa` is in `Target Cohorts`.                    |
-| Numeric cohort outside rollout | `hotUpdater.getCohort() = 410`, and `410` is not in `Preview Cohorts` | This device does not select the Bundle unless `410` is also targeted.                  |
-| Other custom cohort            | `hotUpdater.getCohort() = dogfood`                                    | This device does not select the Bundle unless `dogfood` is targeted.                   |
+| Check                          | Example                                                               | Result                                                                |
+| ------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Numeric rollout device         | `hotUpdater.getCohort() = 411`, and `411` is in `Preview Cohorts`     | This device selects the Bundle through numeric rollout.               |
+| QA tester device               | `hotUpdater.getCohort() = qa`                                         | This device selects the Bundle because `qa` is in `Target Cohorts`.   |
+| Numeric cohort outside rollout | `hotUpdater.getCohort() = 410`, and `410` is not in `Preview Cohorts` | This device does not select the Bundle unless `410` is also targeted. |
+| Other custom cohort            | `hotUpdater.getCohort() = dogfood`                                    | This device does not select the Bundle unless `dogfood` is targeted.  |
 
 Use this flow when you want stable tester coverage without giving up gradual
 numeric rollout. If needed, you can do the same thing with a numeric cohort

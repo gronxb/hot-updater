@@ -109,6 +109,13 @@ internal interface UpdateCheckState {
 
     suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean
 
+    /**
+     * Clears the runtime channel and restores the built-in bundle, as
+     * `resetChannel` does, only while the Release selection [guard] names is
+     * current: one step with the catalog checks.
+     */
+    suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean
+
     /** Stages a bundle, reporting its download progress from 0 to 1. */
     suspend fun updateBundle(
         request: StageBundleRequest,
@@ -248,6 +255,15 @@ internal class NativeUpdateChecker(
     /** The target the last staging committed, for another retained result of the same target. */
     @Volatile
     private var lastCommittedTargetKey: String? = null
+
+    /**
+     * The last switched-channel leave that reset the device, for another
+     * retained result of the same catalog. Kept apart from
+     * [lastCommittedTargetKey], which a reset clears.
+     */
+    @Volatile
+    private var lastLeftTargetKey: String? = null
+
     private val events =
         NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
             NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), requestCohort ?: state.getCohort())
@@ -423,6 +439,7 @@ internal class NativeUpdateChecker(
                 currentBundleId = currentBundleId,
                 minimumReleaseId = minimumReleaseId,
                 currentChannel = currentChannel,
+                isSwitched = isSwitched,
                 targetChannel = targetChannel,
                 explicitChannel = explicitChannel,
                 cohort = cohort,
@@ -508,6 +525,7 @@ internal class NativeUpdateChecker(
         val currentBundleId: String,
         val minimumReleaseId: String,
         val currentChannel: String,
+        val isSwitched: Boolean,
         val targetChannel: String,
         val explicitChannel: String?,
         val cohort: String,
@@ -524,7 +542,8 @@ internal class NativeUpdateChecker(
 
     private class CheckedUpdate(
         val update: HotUpdaterUpdate,
-        val selection: SelectedUpdate,
+        /** What staging the update needs; none for leaving a switched channel. */
+        val selection: SelectedUpdate?,
     )
 
     /** What staging a selected update needs. */
@@ -624,6 +643,18 @@ internal class NativeUpdateChecker(
             )
         if (!state.acceptReleaseCatalog(guard)) {
             throw InvalidUpdateResponseException("Rejected a stale or inconsistent Release catalog")
+        }
+        // The switched channel holds nothing for this build any more, as a
+        // deleted channel does: the server answers its scope with an accepted
+        // catalog without releases. A scope without a catalog proves nothing,
+        // since a cache can still answer that for a channel deployed seconds ago.
+        if (
+            input.isSwitched &&
+            input.targetChannel == input.currentChannel &&
+            catalog.releases.isEmpty() &&
+            catalog.rollbackReleases.isEmpty()
+        ) {
+            return leaveSwitchedChannel(input, guard)
         }
         val stableInTargetScope =
             activeState.stableSelection?.takeIf { it.catalogId == catalogId && it.scopeKey == scopeKey }
@@ -759,6 +790,103 @@ internal class NativeUpdateChecker(
                 install = { onProgress -> updateBundle(update, selection, onProgress) },
             )
         return CheckedUpdate(update, selection)
+    }
+
+    /**
+     * Leaves a switched channel that holds nothing for this build, such as a
+     * deleted one, as checkForUpdate.ts does: a rollback to the built-in
+     * bundle whose staging also clears the runtime channel, so the next check
+     * reads the build's default channel. The check itself resets nothing,
+     * since the reset removes the running bundle's files.
+     */
+    private fun leaveSwitchedChannel(
+        input: CheckInput,
+        guard: ReleaseSelectionGuard,
+    ): CheckedUpdate {
+        val options = input.options
+        val channel = input.currentChannel
+        val runsBuiltIn = input.currentBundleId == input.minimumReleaseId
+        val errorScope =
+            ErrorScope(
+                bundleId = input.currentBundleId,
+                channel = channel,
+                updateStrategy = options.updateStrategy,
+                targetBundleId = input.minimumReleaseId,
+            )
+        events.add(
+            "onUpdateCheck",
+            JSONObject().apply {
+                put("status", "UPDATE_AVAILABLE")
+                put("channel", channel)
+                put("fromBundleId", input.currentBundleId)
+                putNullable("fromReleaseId", runningReleaseId(input.currentBundleId, channel))
+                put("toBundleId", input.minimumReleaseId)
+                put("toReleaseId", JSONObject.NULL)
+                put("transitionKind", "USE_BUILTIN")
+                put("updateStatus", DesiredReleaseStatus.ROLLBACK.name)
+                put("shouldForceUpdate", !runsBuiltIn)
+                put("updateStrategy", options.updateStrategy.value)
+            },
+        )
+        // With the catalog's freshness guard, as ordinary selections, so a
+        // leave from an older catalog never counts as a current one.
+        val targetKey =
+            JSONArray()
+                .put("LEAVE_CHANNEL")
+                .put(channel)
+                .put(input.minimumReleaseId)
+                .put(guard.catalogId)
+                .put(guard.generation)
+                .put(guard.catalogHash)
+                .put(guard.selectionContextHash)
+                .toString()
+        val update =
+            HotUpdaterUpdate(
+                id = input.minimumReleaseId,
+                releaseId = null,
+                status = HotUpdaterUpdateStatus.ROLLBACK,
+                shouldForceUpdate = !runsBuiltIn,
+                message = null,
+                rolloutCohortCount = ReleaseSelector.DEFAULT_ROLLOUT_COHORT_COUNT,
+                targetCohorts = emptyList(),
+                transitionKind = "USE_BUILTIN",
+                runsCurrentBundle = runsBuiltIn,
+                targetKey = targetKey,
+                install = { _ ->
+                    try {
+                        // Once no check or staging runs, as a reset must; only a real
+                        // reset undoes what was staged.
+                        mutex.withLock {
+                            // This leave, from this or another result of the same catalog,
+                            // already happened: calling it again changes nothing, not even
+                            // what was staged since.
+                            if (lastLeftTargetKey == targetKey && state.getChannel() == state.getDefaultChannel()) {
+                                return@withLock true
+                            }
+                            // A device that left or changed the channel meanwhile keeps it;
+                            // native checks the catalog again in the same step as the reset,
+                            // so a newer one accepted meanwhile keeps it too.
+                            if (state.getChannel() != channel || !state.resetChannelIfSelectionCurrent(guard)) {
+                                throw StaleReleaseCatalogException()
+                            }
+                            lastCommittedTargetKey = null
+                            lastLeftTargetKey = targetKey
+                            events.remove("onBundleDownloaded")
+                            true
+                        }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        reportUpdateError(
+                            error,
+                            classifyUpdateError(error, UpdateFailureStage.DOWNLOAD, UpdateFailureResource.ARTIFACT),
+                            errorScope,
+                        )
+                        throw error
+                    }
+                },
+            )
+        return CheckedUpdate(update, selection = null)
     }
 
     /**
