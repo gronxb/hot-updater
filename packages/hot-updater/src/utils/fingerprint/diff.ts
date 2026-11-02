@@ -57,12 +57,16 @@ export async function getFingerprintDiff(
   return diff;
 }
 
-/** Contents short enough to show, such as `react-native-screens@4.25.2`. */
+/**
+ * Contents short enough to show, such as `react-native-screens@4.25.2`. JSON
+ * stays out: a config is named by its source.
+ */
 const readableContents = (source: FingerprintSource): string | null =>
   source.type === "contents" &&
   typeof source.contents === "string" &&
   source.contents.length <= 120 &&
-  !source.contents.includes("\n")
+  !source.contents.includes("\n") &&
+  !source.contents.startsWith("{")
     ? source.contents
     : null;
 
@@ -81,7 +85,9 @@ function getSourcePath(source: FingerprintSource): string {
     ? `${source.id.slice("setting:".length)}=${contents}`
     : source.id === "nativeVersion"
       ? `nativeVersion=${contents}`
-      : contents;
+      : // A fingerprint.json from before local modules were followed records
+        // a stock module as `name@`.
+        contents.replace(/@$/u, "");
 }
 
 /**
