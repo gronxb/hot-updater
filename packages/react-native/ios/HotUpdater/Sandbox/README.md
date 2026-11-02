@@ -25,3 +25,7 @@ CLI looks for in a built app, and stays.
 
 `HotUpdaterSandboxCoordinator` owns a channel switch and knows nothing of the
 screen: the screen observes `HotUpdaterSandboxState` and calls its actions.
+
+`HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
+words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
+the screen knows of dev-server mode.
