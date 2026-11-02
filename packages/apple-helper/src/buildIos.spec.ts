@@ -156,6 +156,19 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
+describe("buildIos of a simulator scheme", () => {
+  it("builds with the scheme's xcconfig", async () => {
+    await buildIos({
+      schemeConfig: scheme({ simulator: true, xcconfig: "Release.xcconfig" }),
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(buildXcodeProject).toHaveBeenCalledWith(
+      expect.objectContaining({ xcconfig: "Release.xcconfig" }),
+    );
+  });
+});
+
 describe("buildIos of a sandbox scheme", () => {
   const plan = {
     updateStrategy: "fingerprint",

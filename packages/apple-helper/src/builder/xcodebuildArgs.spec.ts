@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -224,6 +225,84 @@ describe("xcodebuild arguments", () => {
       BUILD_XCCONFIG,
       `${MIN_BUNDLE_ID_SETTINGS}${EXCLUDED_SANDBOX}`,
     );
+  });
+
+  it("includes a simulator scheme's xcconfig, under what a normal build keeps out", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-debug-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      extraParams: ["-xcconfig", "/configs/Team.xcconfig"],
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const { args } = xcodebuildCall();
+    expect(args.filter((arg) => arg === "-xcconfig")).toHaveLength(1);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
+    expect(writeFile).toHaveBeenCalledWith(
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Team.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${EXCLUDED_SANDBOX}`,
+    );
+  });
+
+  it("includes a sandbox simulator scheme's xcconfig, under the layer's settings", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-debug-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      sandbox: true,
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(writeFile).toHaveBeenCalledWith(
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Release.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${settings(
+        {
+          INCLUDED_SOURCE_FILE_NAMES: "HotUpdaterSandbox*",
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS:
+            "$(inherited) HOT_UPDATER_SANDBOX_LAYER",
+          GCC_PREPROCESSOR_DEFINITIONS:
+            "$(inherited) HOT_UPDATER_SANDBOX_LAYER=1",
+        },
+      )}`,
+    );
+  });
+
+  it("finds the built .app with the settings that built it", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-debug-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      extraParams: ["-quiet", "PRODUCT_NAME=Proof"],
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const query = vi
+      .mocked(execa)
+      .mock.calls.map(([, args]) => args as string[])
+      .findLast((args) => args?.includes("-showBuildSettings"));
+    expect(query?.[query.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
+    expect(query).toContain("PRODUCT_NAME=Proof");
+    // A flag for the build, which a settings query doesn't take.
+    expect(query).not.toContain("-quiet");
   });
 
   it("copies the built .app out of DerivedData, then removes DerivedData", async () => {

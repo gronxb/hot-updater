@@ -42,6 +42,7 @@ export const buildXcodeProject = async ({
   destination = [],
   useGenericDestination = false,
   installPods,
+  xcconfig,
   extraParams,
   minBundleId,
   authenticationArgs,
@@ -63,6 +64,8 @@ export const buildXcodeProject = async ({
   destination?: IosBuildDestination[];
   useGenericDestination?: boolean;
   installPods?: boolean;
+  /** The scheme's xcconfig, which the build's own settings go over. */
+  xcconfig?: string;
   extraParams?: string[];
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
@@ -99,6 +102,7 @@ export const buildXcodeProject = async ({
     const build = await writeBuildXcconfig({
       directory: tmpDir,
       sourceDir,
+      xcconfig,
       extraParams,
       settings: buildSettingsOverScheme({
         minBundleId,
@@ -153,6 +157,8 @@ export const buildXcodeProject = async ({
         xcodeScheme,
         sourceDir,
         xcodeProject,
+        xcconfig: build.xcconfig,
+        extraParams: build.extraParams,
       }));
     } catch (error) {
       throw prettifyXcodebuildError(error);
@@ -231,6 +237,8 @@ const prepareBuildArgs = ({
   return args;
 };
 
+const BUILD_SETTING = /^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])*=/u;
+
 const getBuildSettings = async ({
   xcodeProject,
   sourceDir,
@@ -238,6 +246,8 @@ const getBuildSettings = async ({
   configuration,
   resolvedDestinations,
   derivedDataPath,
+  xcconfig,
+  extraParams,
 }: {
   configuration: string;
   derivedDataPath: string;
@@ -245,6 +255,9 @@ const getBuildSettings = async ({
   xcodeScheme: string;
   sourceDir: string;
   xcodeProject: XcodeProjectInfo;
+  /** From `writeBuildXcconfig`: the settings that built the app name its path. */
+  xcconfig: string;
+  extraParams: string[];
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const destinationArgs = resolvedDestinations.flatMap((dest) => [
     "-destination",
@@ -263,6 +276,10 @@ const getBuildSettings = async ({
       ...destinationArgs,
       "-derivedDataPath",
       derivedDataPath,
+      "-xcconfig",
+      xcconfig,
+      // Only its build settings: the rest are flags for the build itself.
+      ...extraParams.filter((param) => BUILD_SETTING.test(param)),
       "-showBuildSettings",
       "-json",
     ],
