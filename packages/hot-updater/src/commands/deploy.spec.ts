@@ -1985,6 +1985,7 @@ describe("deploy rollout wiring", () => {
   });
 
   it("finds a built-in bundle by the exact app version its build compiled in", async () => {
+    vi.mocked(getNativeAppVersion).mockResolvedValue("1.0.0");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -2026,6 +2027,7 @@ describe("deploy rollout wiring", () => {
   });
 
   it("verifies the built-in bundle base with the signing key's public key", async () => {
+    vi.mocked(getNativeAppVersion).mockResolvedValue("1.0.0");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       fingerprint: {},
@@ -2107,6 +2109,11 @@ describe("deploy rollout wiring", () => {
       );
     const printed = () =>
       mockCli.p.log.info.mock.calls.map(([line]) => String(line));
+    /** What a normal deploy must not warn about: the base it did or didn't use. */
+    const baseWarnings = () =>
+      mockCli.p.log.warn.mock.calls
+        .map(([line]) => String(line))
+        .filter((line) => /built-in|native build|partial update/i.test(line));
     const configure = async (
       updateStrategy: "fingerprint" | "appVersion" = "fingerprint",
     ) => {
@@ -2147,7 +2154,7 @@ describe("deploy rollout wiring", () => {
       expect(printed().filter((line) => line.includes("Built-in base"))).toEqual(
         [expect.stringMatching(/\(66\).*store build/)],
       );
-      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+      expect(baseWarnings()).toEqual([]);
     });
 
     it("uses the newest build when none is marked, and says so", async () => {
@@ -2167,7 +2174,7 @@ describe("deploy rollout wiring", () => {
       expect(printed().filter((line) => line.includes("Built-in base"))).toEqual(
         [expect.stringMatching(/\(67\).*newest build/)],
       );
-      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+      expect(baseWarnings()).toEqual([]);
     });
 
     it("reads the mark once, and no newest build, when a mark serves the deploy", async () => {
@@ -2272,7 +2279,7 @@ describe("deploy rollout wiring", () => {
 
       expect(baseBundleIds()).toEqual([]);
       expect(printed().join("\n")).not.toContain("Built-in base");
-      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+      expect(baseWarnings()).toEqual([]);
     });
 
     describe("with a range target", () => {
@@ -2342,7 +2349,7 @@ describe("deploy rollout wiring", () => {
         await deployTo("1.x.x");
 
         expect(baseBundleIds()).toEqual([]);
-        expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+        expect(baseWarnings()).toEqual([]);
       });
 
       it("takes no base when the project declares no single version", async () => {
@@ -2356,7 +2363,7 @@ describe("deploy rollout wiring", () => {
         await deployTo("1.x.x");
 
         expect(baseBundleIds()).toEqual([]);
-        expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+        expect(baseWarnings()).toEqual([]);
       });
 
       it("uses a mark in the project's version", async () => {

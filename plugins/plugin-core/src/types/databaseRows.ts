@@ -121,4 +121,9 @@ export interface NativeBuildRow {
    * by the build number, and a fingerprint build records no app version.
    */
   readonly submitted_version: string | null;
+  /**
+   * True on the build marked as what the store sells, which deploys patch from
+   * over the scope's newest build; null on every other. A scope has one.
+   */
+  readonly store_build: true | null;
 }

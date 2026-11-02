@@ -7,6 +7,7 @@ export type {
   ChannelDeleteResult,
   ChannelInsertResult,
   NativeBuildDeleteResult,
+  NativeBuildMarkResult,
 } from "./models";
 export {
   isRemoteDatabase,

@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createReleaseCatalogScopeKey,
+  decodeChannelKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
@@ -57,7 +58,26 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   submitted_to: (row.submitted_to ?? null) as NativeBuildRow["submitted_to"],
   submitted_at_ms: (row.submitted_at_ms ?? null) as number | null,
   submitted_version: (row.submitted_version ?? null) as string | null,
+  store_build: row.store_build === true ? true : null,
 });
+
+/**
+ * The channels only sandbox builds register on, which no store sells: the
+ * registry's convention, as `@hot-updater/protocol/native-artifact` checks it
+ * for a build's artifact.
+ */
+const SANDBOX_CHANNEL_PREFIX = "sandbox-";
+
+const CHANNEL_ID_PREFIX = "channel:";
+
+/**
+ * How many older builds of a scope a deploy looks through for one older than
+ * its bundle, when a build made after the bundle is the newest.
+ */
+const OLDER_BUILDS_PAGE = 10;
+
+/** How many times a mark runs again after losing its scope's mark to another. */
+const MARK_ATTEMPTS = 8;
 
 /** The store track each platform's builds are submitted to. */
 const SUBMISSION_DESTINATIONS = {
@@ -180,6 +200,7 @@ export const createNativeBuildApi = (
   | "listNativeBuilds"
   | "deleteNativeBuild"
   | "recordNativeBuildSubmission"
+  | "markNativeBuild"
 > => ({
   async registerNativeBuild(registration) {
     const problem = problemOf(registration);
@@ -208,6 +229,7 @@ export const createNativeBuildApi = (
       submitted_to: null,
       submitted_at_ms: null,
       submitted_version: null,
+      store_build: null,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.
@@ -260,6 +282,13 @@ export const createNativeBuildApi = (
         "Invalid native build key: it must be nbk1: and a SHA-256.",
       );
     }
+    if (options?.storeBuild) {
+      const marked = await db.findOne("native_builds", {
+        scope_key: scopeKey,
+        store_build: true,
+      });
+      return marked === null ? null : pick(marked);
+    }
     const { rows } =
       buildKey === undefined
         ? await db.findMany("native_builds", {
@@ -274,7 +303,23 @@ export const createNativeBuildApi = (
             order: "desc",
             limit: 1,
           });
-    return rows[0] === undefined ? null : pick(rows[0]);
+    const newest = rows[0];
+    if (newest === undefined) return null;
+    const bundleId = options?.builtInOlderThan;
+    if (bundleId === undefined || newest.min_bundle_id < bundleId) {
+      return pick(newest);
+    }
+    const { rows: older } = await db.findMany("native_builds", {
+      index: "byScope",
+      where: { scope_key: scopeKey },
+      order: "desc",
+      limit: OLDER_BUILDS_PAGE,
+      range: { lt: newest.id },
+    });
+    const usable = older.find(
+      ({ min_bundle_id }) => min_bundle_id < bundleId,
+    );
+    return usable === undefined ? null : pick(usable);
   },
 
   async recordNativeBuildSubmission(id, { destination, version }) {
@@ -303,6 +348,68 @@ export const createNativeBuildApi = (
       tx.update("native_builds", row, set);
       return { ...build, ...set };
     });
+  },
+
+  // The mark is one value of a unique index, so a store holds one per scope
+  // whatever races it, and moving it frees and takes the value in one write. A
+  // holder this run read is guarded, so a mark that moved it reruns the write
+  // through the engine. A scope with no holder has nothing to guard: two first
+  // marks meet at the index, and the loser runs again, finding the winner.
+  async markNativeBuild(id, { storeBuild }) {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await db.transaction(async (tx) => {
+          const row = await tx.findOne("native_builds", { id });
+          if (row === null) return null;
+          const build = pick(row);
+          if (!storeBuild) {
+            if (build.store_build !== null) {
+              tx.update("native_builds", row, { store_build: null });
+            }
+            return {
+              nativeBuild: { ...build, store_build: null },
+              previous: null,
+            };
+          }
+          if (
+            decodeChannelKey(
+              build.channel_id.slice(CHANNEL_ID_PREFIX.length),
+            ).startsWith(SANDBOX_CHANNEL_PREFIX)
+          ) {
+            throw new NativeBuildInputError(
+              "A build on a sandbox channel can't be the store build.",
+            );
+          }
+          if (build.store_build !== null) {
+            return { nativeBuild: build, previous: null };
+          }
+          const holder = await tx.findOne("native_builds", {
+            scope_key: build.scope_key,
+            store_build: true,
+          });
+          // First, so a store that checks a unique index per statement finds
+          // the value free.
+          if (holder !== null) {
+            tx.update("native_builds", holder, { store_build: null });
+          }
+          tx.update("native_builds", row, { store_build: true });
+          return {
+            nativeBuild: { ...build, store_build: true as const },
+            previous:
+              holder === null ? null : { ...pick(holder), store_build: null },
+          };
+        });
+      } catch (error) {
+        if (
+          attempt < MARK_ATTEMPTS &&
+          error instanceof DatabaseConstraintError &&
+          error.reason === "unique"
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
   },
 
   async deleteNativeBuild(id) {

@@ -1,7 +1,9 @@
 import {
+  type Bundle,
   createStorageAdapter,
   type NativeBuildRegistration,
 } from "@hot-updater/plugin-core";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBundleDiff } from "@/utils/createBundleDiff";
@@ -41,7 +43,7 @@ const buildId = (n: number) =>
 const builtInId = (n: number) =>
   `01900000-0000-7000-8000-00000000a${String(n).padStart(3, "0")}`;
 const otaId = (n: number) =>
-  `01950000-0000-7000-8000-00000000c${String(n).padStart(3, "0")}`;
+  `0195000${n}-0000-7000-8000-00000000c${String(n).padStart(3, "0")}`;
 
 const register = (
   n: number,
@@ -78,38 +80,23 @@ const deployOta = async (
     targetAppVersion = "1.7.0",
   }: {
     readonly channel?: string;
-    readonly patches?: readonly {
-      readonly baseBundleId: string;
-      readonly baseFileHash: string;
-      readonly byteSize: number;
-      readonly patchFileHash: string;
-      readonly patchStorageUri: string;
-    }[];
+    readonly patches?: NonNullable<Bundle["patches"]>;
     readonly targetAppVersion?: string;
   } = {},
 ) => {
-  const bundle = {
-    id,
-    platform: "ios",
-    gitCommitHash: null,
-    metadata: {},
-    manifestStorageUri: `storage://bundles/${id}/manifest.json`,
-    manifestFileHash: "manifest-hash",
-    assetBaseStorageUri: "storage://assets",
-    patches,
-  };
-  await databaseHarness.core.deploy({
-    bundle,
-    release: {
-      channel,
-      enabled: true,
-      fingerprintHash: null,
-      message: null,
-      rolloutCohortCount: 1000,
-      shouldForceUpdate: false,
-      targetAppVersion,
+  await databaseHarness.core.deploy([
+    {
+      bundle: { ...createBundleFixture("1"), id, platform: "ios", patches },
+      release: {
+        channel,
+        enabled: true,
+        fingerprintHash: null,
+        message: null,
+        shouldForceUpdate: false,
+        targetAppVersion,
+      },
     },
-  } as unknown as Parameters<typeof databaseHarness.core.deploy>[0]);
+  ]);
 };
 
 const lines = (method: keyof typeof log) =>
@@ -121,8 +108,8 @@ const storage = createStorageAdapter({
   name: "test",
   protocol: "storage",
   delete: vi.fn(async () => ({ deleted: true as const })),
+  get: vi.fn(async () => null),
   put: vi.fn(async () => ({ storageUri: "storage://patch" })),
-  getDownloadUrl: vi.fn(async () => ({ fileUrl: "https://storage/file" })),
 });
 
 describe("handleNativeBuildMark", () => {
@@ -141,9 +128,11 @@ describe("handleNativeBuildMark", () => {
     loadServer.mockImplementation(async () =>
       testServer({ database: databaseHarness.database, storage }),
     );
-    vi.mocked(createBundleDiff).mockResolvedValue({
-      patches: [{ baseBundleId: builtInId(1), byteSize: 2_048 }],
-    } as never);
+    vi.mocked(createBundleDiff).mockImplementation((async ({
+      baseBundleId,
+    }: {
+      baseBundleId: string;
+    }) => ({ patches: [{ baseBundleId, byteSize: 2_048 }] })) as never);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -208,7 +197,7 @@ describe("handleNativeBuildMark", () => {
       }),
       { makePrimary: false },
     ]);
-    expect(lines("success")[0]).toContain("c002".slice(0, 4));
+    expect(lines("success")[0]).toContain(`Patched OTA ${otaId(2).slice(0, 8)}`);
   });
 
   it("skips an OTA that already patches from the build, as a re-run finds", async () => {

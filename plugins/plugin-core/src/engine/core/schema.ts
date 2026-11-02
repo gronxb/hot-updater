@@ -13,7 +13,10 @@ const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
  * every database's migrator creates missing tables and then records the
  * version, and none of them changes an existing table, so changing one
  * needs a migration step of its own first. The schema fence answers 503 on
- * a database whose row differs, until it runs.
+ * a database whose row differs, until it runs. Before a version is released,
+ * its tables change in place in its own migration, and a database one of its
+ * prereleases migrated takes the same change by hand: the fence compares this
+ * row, not columns, so nothing reports it.
  */
 export const HOT_UPDATER_SCHEMA_VERSION = "1.2.0";
 
@@ -172,6 +175,10 @@ const channels = defineTable(
  * or `versionCode`. `submitted_to`, `submitted_at_ms` and
  * `submitted_version` record the store track a build went to, when, and
  * the store's label of the build; they stay null for a build no store took.
+ * `store_build` is true on the build a person or a job says the store sells,
+ * and null on every other: deploys patch from it over the scope's newest build.
+ * It is never false, so `byStoreBuild` holds one entry per scope at most, on
+ * every store, and an unmarked row, older than the column or not, holds none.
  */
 const nativeBuilds = defineTable(
   {
@@ -200,12 +207,18 @@ const nativeBuilds = defineTable(
     submitted_to: { type: "string", maxLength: 16, required: false },
     submitted_at_ms: { type: "integer", required: false },
     submitted_version: { type: "string", maxLength: 255, required: false },
+    store_build: { type: "boolean", required: false },
   },
   {
     key: ["id"],
     indexes: {
       byScope: { eq: ["scope_key"], sort: ["id"] },
       byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
+      byStoreBuild: {
+        eq: ["scope_key", "store_build"],
+        sort: [],
+        unique: true,
+      },
       // Rooted at the channel, so deleting a channel reads its builds under
       // the channel row a registration bumps.
       byChannel: {
