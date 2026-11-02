@@ -11,6 +11,8 @@ import {
   type E2eTarget,
   iosDerivedDataDir,
   loadE2eTarget,
+  nativeAppPath,
+  otherNativeAppPath,
   resolveE2eTargetName,
 } from "../shared/targets.ts";
 
@@ -104,6 +106,8 @@ export function createNativeBuildPlan(
   repositoryRoot: string,
   env: NodeJS.ProcessEnv = process.env,
   minBundleId: string = createE2eMinBundleId(Date.now()),
+  // A second earlier: each build has its own, and bundles deploy after both.
+  otherMinBundleId: string = createE2eMinBundleId(Date.now() - 1000),
 ): NativeBuildCommand[] {
   const { target } = options;
   const appDir = path.join(repositoryRoot, target.appDir);
@@ -151,20 +155,36 @@ export function createNativeBuildPlan(
         },
       ];
     }
+    const assemble = (buildMinBundleId: string): NativeBuildCommand => ({
+      command: "./gradlew",
+      args: [
+        "--no-daemon",
+        ":app:assembleRelease",
+        "-Pkotlin.compiler.execution.strategy=in-process",
+        `-PreactNativeArchitectures=${architectures}`,
+        "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+        `-PMIN_BUNDLE_ID=${buildMinBundleId}`,
+      ],
+      cwd: projectDir,
+      env: bundleEnv,
+    });
+    const otherApk = otherNativeAppPath(target, "android", repositoryRoot, env);
+    // The other build first, so the run's build is what the output path holds.
     return [
+      assemble(otherMinBundleId),
       {
-        command: "./gradlew",
-        args: [
-          "--no-daemon",
-          ":app:assembleRelease",
-          "-Pkotlin.compiler.execution.strategy=in-process",
-          `-PreactNativeArchitectures=${architectures}`,
-          "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
-          `-PMIN_BUNDLE_ID=${minBundleId}`,
-        ],
-        cwd: projectDir,
-        env: bundleEnv,
+        command: "mkdir",
+        args: ["-p", path.dirname(otherApk)],
+        cwd: repositoryRoot,
+        env: {},
       },
+      {
+        command: "cp",
+        args: [path.join(repositoryRoot, target.android.apk), otherApk],
+        cwd: repositoryRoot,
+        env: {},
+      },
+      assemble(minBundleId),
     ];
   }
 
@@ -246,29 +266,58 @@ export function createNativeBuildPlan(
       },
     ];
   }
+  const xcodebuild = (buildMinBundleId: string): NativeBuildCommand => ({
+    command: "xcodebuild",
+    args: [
+      "-workspace",
+      target.ios.workspace,
+      "-scheme",
+      target.ios.scheme,
+      "-configuration",
+      "Release",
+      "-sdk",
+      "iphonesimulator",
+      "-destination",
+      destination,
+      "-derivedDataPath",
+      env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH || "build",
+      "-quiet",
+      `HOT_UPDATER_MIN_BUNDLE_ID=${buildMinBundleId}`,
+    ],
+    cwd: projectDir,
+    env: bundleEnv,
+  });
+  const otherApp = otherNativeAppPath(target, "ios", repositoryRoot, env);
+  // The other build first, so the run's build is what the output path holds.
   return [
     ...dependencies,
+    xcodebuild(otherMinBundleId),
     {
-      command: "xcodebuild",
+      command: "rm",
+      args: ["-rf", otherApp],
+      cwd: projectDir,
+      env: {},
+    },
+    {
+      command: "mkdir",
+      args: ["-p", path.dirname(otherApp)],
+      cwd: projectDir,
+      env: {},
+    },
+    {
+      command: "cp",
       args: [
-        "-workspace",
-        target.ios.workspace,
-        "-scheme",
-        target.ios.scheme,
-        "-configuration",
-        "Release",
-        "-sdk",
-        "iphonesimulator",
-        "-destination",
-        destination,
-        "-derivedDataPath",
-        env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH || "build",
-        "-quiet",
-        `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
+        "-R",
+        nativeAppPath(target, "ios", repositoryRoot, {
+          ...env,
+          HOT_UPDATER_E2E_IOS_BINARY_PATH: undefined,
+        }),
+        otherApp,
       ],
       cwd: projectDir,
-      env: bundleEnv,
+      env: {},
     },
+    xcodebuild(minBundleId),
   ];
 }
 

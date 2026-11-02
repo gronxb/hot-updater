@@ -23,6 +23,7 @@
   "fingerprint-initial-install",
   "catalog-only-no-update",
   "same-bundle-release-adoption",
+  "ota-after-going-back-to-a-build",
   "size-aware-artifact-selection",
   "asset-heavy-ota-uses-archive",
   "stale-catalog-after-newer-generation",

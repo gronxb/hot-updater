@@ -45,6 +45,39 @@ export function readWithRetries(
   return { fileBuffer: null, readError: readErrors.join(" | ") };
 }
 
+/**
+ * Reads a file again while it comes back shorter than the device says it is:
+ * `adb exec-out` can end early and still exit 0. A file really that short has
+ * that size, so it never counts as cut off, and its hash is what's checked. A
+ * read still short after `attempts` keeps its error for the evidence.
+ */
+export function readUntilComplete(
+  read: () => { fileBuffer: Buffer | null; readError: string | null },
+  expectedBytes: number | null,
+  wait: (milliseconds: number) => void,
+  attempts = 3,
+): { fileBuffer: Buffer | null; readError: string | null } {
+  let result = read();
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (
+      !result.fileBuffer ||
+      expectedBytes === null ||
+      result.fileBuffer.length >= expectedBytes
+    ) {
+      return result;
+    }
+    if (attempt === attempts) {
+      return {
+        fileBuffer: result.fileBuffer,
+        readError: `Read ${result.fileBuffer.length} of ${expectedBytes} bytes`,
+      };
+    }
+    wait(ADB_READ_RETRY_DELAY_MS);
+    result = read();
+  }
+  return result;
+}
+
 /** Blocks the thread for `milliseconds`: the controller's reads are synchronous. */
 export function waitSync(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);

@@ -12,12 +12,12 @@ const androidAppDir = path.join(repoDir, "examples/v0.85.0/android/app");
 
 describe("Android E2E native setup", () => {
   it("builds a debuggable release APK with its own minimum Bundle ID and selected ABIs", () => {
-    const [command] = createNativeBuildPlan(
+    const command = createNativeBuildPlan(
       { platform: "android", target: loadE2eTarget("v0.85.0"), dryRun: true },
       repoDir,
       {},
       createE2eMinBundleId(Date.UTC(2026, 9, 20)),
-    );
+    ).at(-1)!;
     expect(command.args).toContain(":app:assembleRelease");
     expect(command.args).not.toContain(":app:assembleReleaseAndroidTest");
     expect(command.args).toContain("-PHOT_UPDATER_E2E_DEBUGGABLE=true");

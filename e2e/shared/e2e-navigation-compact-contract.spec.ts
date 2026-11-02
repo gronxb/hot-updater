@@ -282,6 +282,7 @@ describe("E2E navigation compact surface contract", () => {
       "runtime-marker-screen.tsx",
       "runtime-release-state-screen.tsx",
       "runtime-remote-config-screen.tsx",
+      "runtime-reported-bundle-screen.tsx",
     ]);
 
     for (const fileName of [

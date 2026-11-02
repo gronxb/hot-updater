@@ -9,4 +9,5 @@ export const runtimeScreenPaths = {
   RuntimeMarker: "e2e/runtime-marker",
   RuntimeReleaseState: "e2e/runtime-release-state",
   RuntimeRemoteConfig: "e2e/runtime-remote-config",
+  RuntimeReportedBundle: "e2e/runtime-reported-bundle",
 } as const;

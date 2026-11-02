@@ -8,6 +8,8 @@ import {
   E2E_APP,
   listE2eTargets,
   loadE2eTarget,
+  nativeAppPath,
+  otherNativeAppPath,
   REPOSITORY_ROOT,
   resolveE2eTargetName,
 } from "./targets.ts";
@@ -191,6 +193,40 @@ describe("target selection", () => {
     expect(target.ios.projectDir).toBe("examples/brownfield-host/ios");
     expect(target.android.apk).toBe(
       "examples/brownfield-host/android/app/build/outputs/apk/release/app-release.apk",
+    );
+  });
+});
+
+describe("the other native build", () => {
+  const target = loadE2eTarget("v0.85.0");
+
+  it("sits beside the run's build in a local checkout", () => {
+    expect(otherNativeAppPath(target, "ios", "/checkout", {})).toBe(
+      "/checkout/examples/v0.85.0/ios/build/OtherBuild/HotUpdaterExample.app",
+    );
+    expect(otherNativeAppPath(target, "android", "/checkout", {})).toBe(
+      "/checkout/examples/v0.85.0/android/app/build/outputs/apk/other-build/app-release.apk",
+    );
+  });
+
+  it("follows the run's build into the setup worktree a shard installs from", () => {
+    // A bot shard's checkout has no build output, and its iOS derived data
+    // path is its own, so only the binary paths name where the builds are.
+    const example = "/setup/examples/v0.85.0";
+    const env = {
+      HOT_UPDATER_E2E_ANDROID_BINARY_PATH: `${example}/android/app/build/outputs/apk/release/app-release.apk`,
+      HOT_UPDATER_E2E_IOS_BINARY_PATH: `${example}/ios/build/Build/Products/Release-iphonesimulator/HotUpdaterExample.app`,
+      HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: "/tmp/shard-1-derived-data",
+    };
+
+    expect(nativeAppPath(target, "ios", "/shard", env)).toBe(
+      env.HOT_UPDATER_E2E_IOS_BINARY_PATH,
+    );
+    expect(otherNativeAppPath(target, "ios", "/shard", env)).toBe(
+      `${example}/ios/build/OtherBuild/HotUpdaterExample.app`,
+    );
+    expect(otherNativeAppPath(target, "android", "/shard", env)).toBe(
+      `${example}/android/app/build/outputs/apk/other-build/app-release.apk`,
     );
   });
 });

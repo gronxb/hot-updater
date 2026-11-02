@@ -60,6 +60,7 @@ const expectedScenarioModuleFiles = [
   "resumed-background-archive-download.ts",
   "runtime-channel-crash-restore.ts",
   "runtime-channel-switch-reset.ts",
+  "ota-after-going-back-to-a-build.ts",
   "same-bundle-release-adoption.ts",
   "size-aware-artifact-selection.ts",
   "skipped-force-update-propagates.ts",
