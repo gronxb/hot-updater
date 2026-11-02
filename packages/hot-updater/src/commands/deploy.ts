@@ -67,7 +67,6 @@ import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
 import { loadServer } from "@/utils/loadServer";
-import { describeNativeBuild } from "@/utils/native/describeNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
@@ -82,6 +81,7 @@ import {
   runWithConcurrency,
   uploadContentAddressedAsset,
 } from "../utils/contentAddressedAssets";
+import { describeNativeBuild } from "../utils/native/describeNativeBuild";
 import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 import {
   DEPLOYMENT_BLOCKED,

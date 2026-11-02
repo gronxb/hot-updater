@@ -33,9 +33,8 @@ import {
   readNativeArtifact,
 } from "@hot-updater/protocol/native-artifact";
 
-import { createBundleDiff } from "@/utils/createBundleDiff";
-
 import { type Row, ui } from "../utils/cli-ui";
+import { createBundleDiff } from "../utils/createBundleDiff";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
 import { describeNativeBuild } from "../utils/native/describeNativeBuild";

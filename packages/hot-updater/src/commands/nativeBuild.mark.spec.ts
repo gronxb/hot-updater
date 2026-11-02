@@ -6,8 +6,7 @@ import {
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBundleDiff } from "@/utils/createBundleDiff";
-
+import { createBundleDiff } from "../utils/createBundleDiff";
 import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
 
@@ -33,7 +32,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("../utils/loadServer", () => ({ loadServer }));
 vi.mock("@/utils/loadServer", () => ({ loadServer }));
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
-vi.mock("@/utils/createBundleDiff", () => ({ createBundleDiff: vi.fn() }));
+vi.mock("../utils/createBundleDiff", () => ({ createBundleDiff: vi.fn() }));
 
 const databaseHarness = createDatabaseHarness();
 
