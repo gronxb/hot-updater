@@ -60,7 +60,15 @@ refuses one that holds the wrong thing.
 
 On Android, the two install side by side. The suffix goes after
 `defaultConfig`'s suffix and before a flavor's, as in
-`com.example.app.base.sandbox.staging`.
+`com.example.app.base.sandbox.staging`. What your manifest fixes stays the same in
+both:
+
+- A provider with a hard-coded `android:authorities` stops the second install with
+  `INSTALL_FAILED_CONFLICTING_PROVIDER`. Use `${applicationId}` in it.
+- Both apps declare your app's own link, so Android asks which one opens it while
+  both are installed.
+- Firebase needs an Android app for the `.sandbox` ID. Add it to the project and
+  download `google-services.json` again.
 
 On iOS, with the same bundle ID, the sandbox build replaces the store app on a
 device. [A separate app](#a-separate-app-on-ios) installs beside it.
@@ -85,14 +93,20 @@ your app's JavaScript starts. **Open** starts your app.
 | A silent push or a background task                     | Your app in the background. With the screen up, your app keeps waiting |
 | `reload()`                                             | Your app, no screen                |
 
+On Android, a notification that opens a bare `getLaunchIntentForPackage` intent looks
+just like the launcher icon, so a cold start shows the screen. An extra on the
+intent, or your activity as its component, opens your app.
+
 A sandbox link looks like this:
 
 ```text
 hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
 ```
 
-It never reaches your app's `Linking`. The app ID in it is the scheme's
-`bundleIdentifier` or `packageName`, without the `.sandbox` suffix.
+It never reaches your app's `Linking`, or the connection options of a scene
+delegate. On iOS, an app delegate with no scene delegate still finds it in the launch
+options of `didFinishLaunching`. The app ID in it is the scheme's `bundleIdentifier`
+or `packageName`, without the `.sandbox` suffix.
 [Pull request previews](/docs/guides/pull-request-previews#open-a-pull-request-in-a-sandbox-build)
 comment one with its QR code for each pull request.
 
@@ -113,14 +127,15 @@ prompt, holds the link back too.
 
 | Platform | Tested with                                                  |
 | -------- | ------------------------------------------------------------ |
-| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 52 |
-| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 52               |
+| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 52, 54, 57 and 58 |
+| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 52, 54, 57 and 58               |
 
 No other Expo SDK has been tested. On Xcode 27, Expo SDK 52's `fmt` 11.0.2 doesn't
 compile: compile that pod as C++17 in the `Podfile` after `expo prebuild`.
 
 On iOS, the screen holds your root view inside a stable container until **Open**,
-so overlays and constraints you add to it stay. Code that uses it as a React Native
+so overlays and constraints you add to it stay, and a background color you set on it
+goes on your real root. Code that uses it as a React Native
 root before then starts your app at once, without the screen. On a host with no
 `RCTRootViewFactory`, or one that creates its root another way, the app logs that
 and starts as usual. A background launch that's neither a notification, a
@@ -194,6 +209,29 @@ own:
 4. For TestFlight, create an app record for that ID in App Store Connect by hand:
    its API can't create one.
 
+With Expo, when `expo prebuild` generates `ios/`, it removes a configuration you add
+in Xcode. Set the ID from the environment instead:
+
+```js title="app.config.js"
+const isSandbox = process.env.APP_VARIANT === "sandbox";
+
+module.exports = ({ config }) => ({
+  ...config,
+  ios: {
+    ...config.ios,
+    bundleIdentifier: isSandbox ? "com.example.app.sandbox" : "com.example.app",
+  },
+});
+```
+
+Name that ID in the scheme, with no `configuration`, and build with the variable set:
+
+```bash
+APP_VARIANT=sandbox npx hot-updater native-build ios --scheme sandbox
+```
+
+The next build without the variable goes back to `com.example.app`.
+
 The URL scheme and the App Store Connect app follow `bundleIdentifier`, so a build
 stops if Xcode built another ID. The update channel and fingerprint don't change.
 
@@ -222,7 +260,7 @@ The build number becomes the one after the app's highest.
 | Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
 | A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
 | The Rock adapter, `use_frameworks`, app extensions         | Builds, but untested: check it on a device first |
-| An Expo SDK other than 52                                  | Builds, but untested: check it on a device first |
+| An Expo SDK other than 52, 54, 57 or 58                    | Builds, but untested: check it on a device first |
 
 The build itself refuses, with the fix, a launcher its activity can't take over:
 
