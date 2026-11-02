@@ -84,7 +84,7 @@ describe("the gate's hold on React Native", () => {
       ["v0.74.1", GATE_SELECTORS.three],
       ["v0.85.0", GATE_SELECTORS.five],
       ["v0.88.0", GATE_SELECTORS.five],
-      ["expo-52", GATE_SELECTORS.three],
+      ["expo-55", GATE_SELECTORS.three],
     ] as const) {
       const factory = path.resolve(
         SDK,

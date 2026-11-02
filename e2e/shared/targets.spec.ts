@@ -173,7 +173,7 @@ describe("target selection", () => {
     expect(
       resolveE2eTargetName(
         {},
-        { HOT_UPDATER_E2E_ENV_TARGET_RELATIVE_DIR: "examples/expo-52" },
+        { HOT_UPDATER_E2E_ENV_TARGET_RELATIVE_DIR: "examples/expo-55" },
       ),
     ).toBe("v0.85.0");
     expect(resolveE2eTargetName({}, {})).toBe("v0.85.0");

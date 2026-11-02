@@ -133,8 +133,8 @@ describe("native Release builds", () => {
       parseNativeBuildArgs(["--platform", "ios", "--track", "expo"], {}),
     ).toThrow("Unknown E2E track: expo");
     expect(() =>
-      parseNativeBuildArgs(["--platform", "ios", "--target", "expo-52"], {}),
-    ).toThrow("Unknown E2E target expo-52");
+      parseNativeBuildArgs(["--platform", "ios", "--target", "expo-55"], {}),
+    ).toThrow("Unknown E2E target expo-55");
   });
 
   it("builds the debuggable Android Release app without an instrumentation APK", () => {

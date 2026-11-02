@@ -7,7 +7,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>expo-52</string>
+		<string>expo-55</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -27,13 +27,13 @@
 			<dict>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>com.expo-52</string>
+					<string>com.expo-55</string>
 				</array>
 			</dict>
 			<dict>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>exp+expo-52</string>
+					<string>exp+expo-55</string>
 				</array>
 			</dict>
 		</array>

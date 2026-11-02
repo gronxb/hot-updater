@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "expo52.app"
-               BlueprintName = "expo52"
-               ReferencedContainer = "container:expo52.xcodeproj">
+               BuildableName = "expo55.app"
+               BlueprintName = "expo55"
+               ReferencedContainer = "container:expo55.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "expo52Tests.xctest"
-               BlueprintName = "expo52Tests"
-               ReferencedContainer = "container:expo52.xcodeproj">
+               BuildableName = "expo55Tests.xctest"
+               BlueprintName = "expo55Tests"
+               ReferencedContainer = "container:expo55.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "expo52.app"
-            BlueprintName = "expo52"
-            ReferencedContainer = "container:expo52.xcodeproj">
+            BuildableName = "expo55.app"
+            BlueprintName = "expo55"
+            ReferencedContainer = "container:expo55.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "expo52.app"
-            BlueprintName = "expo52"
-            ReferencedContainer = "container:expo52.xcodeproj">
+            BuildableName = "expo55.app"
+            BlueprintName = "expo55"
+            ReferencedContainer = "container:expo55.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

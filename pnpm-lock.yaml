@@ -800,7 +800,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/protocol
 
-  examples/expo-52:
+  examples/expo-55:
     dependencies:
       '@expo/metro-runtime':
         specifier: ~4.0.1
