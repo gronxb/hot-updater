@@ -106,7 +106,8 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun details(): HotUpdaterSandboxDetails {
         val builtIn = HotUpdaterImpl.getMinBundleId()
-        val state = impl.getActiveUpdateState()
+        // A dev session's own view holds nothing pending, and the normal selection's may.
+        val state = (if (isRunningDevServer) HotUpdaterSandboxDev.normalActiveState() else null) ?: impl.getActiveUpdateState()
         val active = (state["activeSelection"] as? Map<*, *>)?.get("bundleId") as? String ?: builtIn
         return HotUpdaterSandboxDetails(
             builtInBundleId = builtIn,

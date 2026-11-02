@@ -234,6 +234,9 @@ internal object HotUpdaterSandboxDev {
         return storage.peekLaunchBundleId() to channel
     }
 
+    /** What the normal selection's store holds, as read in a dev session. */
+    fun normalActiveState(): Map<String, Any?>? = normalStorage?.getActiveUpdateState()
+
     /**
      * `reload()` from dev JavaScript stays in this session. False in a normal
      * process, whose restart goes on as usual.
