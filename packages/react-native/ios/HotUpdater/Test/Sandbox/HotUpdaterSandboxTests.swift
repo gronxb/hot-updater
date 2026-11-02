@@ -1407,7 +1407,6 @@ struct HotUpdaterSandboxHomeModelTests {
         #expect(info.bundle.first { $0.name == "Pending" }?.value == "019a3f…c2")
     }
 }
-#endif
 
 struct HotUpdaterSandboxDevHostTests {
     @Test
