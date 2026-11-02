@@ -42,6 +42,7 @@ export const buildXcodeProject = async ({
   destination = [],
   useGenericDestination = false,
   installPods,
+  xcconfig,
   extraParams,
   minBundleId,
   authenticationArgs,
@@ -63,6 +64,8 @@ export const buildXcodeProject = async ({
   destination?: IosBuildDestination[];
   useGenericDestination?: boolean;
   installPods?: boolean;
+  /** The scheme's xcconfig, which the build's own settings go over. */
+  xcconfig?: string;
   extraParams?: string[];
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
@@ -99,6 +102,7 @@ export const buildXcodeProject = async ({
     const build = await writeBuildXcconfig({
       directory: tmpDir,
       sourceDir,
+      xcconfig,
       extraParams,
       settings: buildSettingsOverScheme({
         minBundleId,

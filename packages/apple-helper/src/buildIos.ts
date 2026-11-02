@@ -129,6 +129,7 @@ const buildInto = async ({
       configuration: schemeConfig.configuration,
       deviceType: "simulator",
       installPods: schemeConfig.installPods,
+      xcconfig: schemeConfig.xcconfig,
       extraParams: schemeConfig.extraParams,
       useGenericDestination: true,
       minBundleId,

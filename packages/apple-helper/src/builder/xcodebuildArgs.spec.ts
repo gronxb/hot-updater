@@ -226,6 +226,59 @@ describe("xcodebuild arguments", () => {
     );
   });
 
+  it("includes a simulator scheme's xcconfig, under what a normal build keeps out", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-debug-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      extraParams: ["-xcconfig", "/configs/Team.xcconfig"],
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const { args } = xcodebuildCall();
+    expect(args.filter((arg) => arg === "-xcconfig")).toHaveLength(1);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
+    expect(writeFile).toHaveBeenCalledWith(
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Team.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${EXCLUDED_SANDBOX}`,
+    );
+  });
+
+  it("includes a sandbox simulator scheme's xcconfig, under the layer's settings", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-debug-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      sandbox: true,
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    expect(writeFile).toHaveBeenCalledWith(
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Release.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${settings(
+        {
+          INCLUDED_SOURCE_FILE_NAMES: "HotUpdaterSandbox*",
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS:
+            "$(inherited) HOT_UPDATER_SANDBOX_LAYER",
+          GCC_PREPROCESSOR_DEFINITIONS:
+            "$(inherited) HOT_UPDATER_SANDBOX_LAYER=1",
+        },
+      )}`,
+    );
+  });
+
   it("copies the built .app out of DerivedData, then removes DerivedData", async () => {
     const { appPath } = await buildXcodeProject({
       sourceDir: "/app/ios",
