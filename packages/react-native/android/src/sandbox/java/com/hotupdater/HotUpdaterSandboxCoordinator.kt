@@ -9,6 +9,7 @@ internal sealed class HotUpdaterSandboxStaged {
     /** The update is staged or committed: `bundleId` is what a launch selects, null for the built-in bundle. */
     data class Update(
         val bundleId: String?,
+        val message: String? = null,
     ) : HotUpdaterSandboxStaged()
 
     /** The channel has nothing newer for this build. */
@@ -73,6 +74,12 @@ internal interface HotUpdaterSandboxHost {
     /** Whether the target channel has a bundle this build would run. Throws when the server can't say. */
     suspend fun preflight(channel: String): Boolean
 
+    /** What the last launch left: read, never a request. Settled reads come after [selection]. */
+    fun launchEvidence(): HotUpdaterSandboxLaunchEvidence
+
+    /** What the build and the SDK's store hold: read, never a request. */
+    fun details(): HotUpdaterSandboxDetails
+
     /** Deletes downloaded bundles and returns to the default channel. */
     suspend fun reset(): Boolean
 
@@ -90,6 +97,15 @@ internal interface HotUpdaterSandboxStore {
     fun recordSelected(selection: HotUpdaterSandboxSelection)
 
     fun recordOpened(selection: HotUpdaterSandboxSelection)
+
+    /** The previews this device opened, newest first. */
+    var history: List<HotUpdaterSandboxHistoryEntry>
+
+    /** Each bundle's deploy message, newest first, by bundle ID. */
+    var messages: List<HotUpdaterSandboxBundleMessage>
+
+    /** What the last launch left, until a person moved on from it. */
+    var lastLaunch: HotUpdaterSandboxLastLaunch?
 }
 
 internal enum class HotUpdaterSandboxStep { PREFLIGHT, RESET, CHECK, DOWNLOAD }
@@ -167,6 +183,14 @@ internal data class HotUpdaterSandboxState(
     val phase: HotUpdaterSandboxPhase,
     /** Links behind the one in [phase], each asked in turn. */
     val queuedLinks: Int,
+    val details: HotUpdaterSandboxDetails? = null,
+    val lastLaunch: HotUpdaterSandboxLastLaunch? = null,
+    val history: List<HotUpdaterSandboxHistoryEntry> = emptyList(),
+    /** The deploy message of the selected bundle, when this device knows it. */
+    val selectedMessage: String? = null,
+    /** What this process's launch runs, or before one, what it would pick; `selection` is the next launch. */
+    val runningBundleId: String? = null,
+    val runningMessage: String? = null,
 )
 
 /**
@@ -189,6 +213,7 @@ internal class HotUpdaterSandboxCoordinator(
      */
     private val openApp: (switched: Boolean, fixed: Boolean) -> Unit,
     private val log: (String) -> Unit = {},
+    private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
     private val listeners = LinkedHashSet<(HotUpdaterSandboxState) -> Unit>()
     private val queue = ArrayList(store.pendingLinks)
@@ -208,6 +233,12 @@ internal class HotUpdaterSandboxCoordinator(
      */
     private var launchFixed = false
 
+    /**
+     * The bundle of the last launch a person moved on from in this process, whose
+     * evidence stays readable until the process ends.
+     */
+    private var acknowledgedBundleId: String? = null
+
     var state =
         HotUpdaterSandboxState(
             selection = null,
@@ -224,12 +255,27 @@ internal class HotUpdaterSandboxCoordinator(
         return { listeners -= listener }
     }
 
-    /** Reads what storage holds, and asks about the oldest unanswered link. */
+    /**
+     * Reads what storage holds, and asks about the oldest unanswered link.
+     * Sends no request: opening the screen costs the update server nothing.
+     */
     fun refresh() {
         scope.launch {
             val selection = readSelection()
-            publish(state.copy(selection = selection, hasServerConfig = host.hasServerConfig()))
+            publish(reading(selection, host.launchBundleId()))
             pump()
+        }
+    }
+
+    /**
+     * Keeps what the last launch left, for a launch that started without the
+     * screen: the next screen tells it, once that launch's evidence is gone.
+     */
+    fun noteLastLaunch() {
+        scope.launch {
+            // Read first: before a launch, it settles what the previous process left.
+            host.selection()
+            publish(state.copy(lastLaunch = settledLastLaunch(host.launchBundleId())))
         }
     }
 
@@ -319,13 +365,87 @@ internal class HotUpdaterSandboxCoordinator(
     fun open() {
         scope.launch {
             val selection = readSelection()
+            val launched = host.launchBundleId()
             // Over a running app, opening shows what it runs: what's selected waits
             // for its launch. Before the app starts, what's selected is what opens.
             val restarts = launchFixed && !host.isAppRunning()
-            store.recordOpened(if (restarts) selection else selection.copy(bundleId = host.launchBundleId()))
-            publish(state.copy(selection = selection))
+            recordOpened(
+                if (restarts) {
+                    selection
+                } else {
+                    selection.copy(bundleId = launched, isBuiltIn = selection.isBuiltIn && launched == selection.bundleId)
+                },
+            )
+            acknowledgeLastLaunch()
+            publish(reading(selection, launched))
             openApp(false, restarts)
         }
+    }
+
+    /** Runs the app again from the screen over it: the bundle a launch selects now. */
+    fun reloadApp() {
+        if (!canStart()) return
+        acknowledgeLastLaunch()
+        openApp(true, true)
+    }
+
+    /** A person moved on from what the last launch left, so it's not told again. */
+    fun acknowledgeLastLaunch() {
+        val shown = store.lastLaunch ?: return
+        acknowledgedBundleId = shown.bundleId
+        store.lastLaunch = null
+        publish(state.copy(lastLaunch = null))
+    }
+
+    /** Forgets the previews this device opened: what they list is local, so nothing else changes. */
+    fun clearHistory() {
+        store.history = emptyList()
+        publish(state.copy(history = emptyList()))
+    }
+
+    /** What storage says now, with no request. */
+    private fun reading(
+        selection: HotUpdaterSandboxSelection,
+        launched: String?,
+    ): HotUpdaterSandboxState =
+        state.copy(
+            selection = selection,
+            runningBundleId = launched,
+            runningMessage = store.messages.firstOrNull { it.bundleId == launched }?.message,
+            hasServerConfig = host.hasServerConfig(),
+            details = host.details(),
+            history = store.history,
+            selectedMessage = store.messages.firstOrNull { it.bundleId == selection.bundleId }?.message,
+            lastLaunch = settledLastLaunch(launched),
+        )
+
+    /** Reads evidence after the host's reads, which settled the previous launch. */
+    private fun settledLastLaunch(launched: String?): HotUpdaterSandboxLastLaunch? {
+        val derived = HotUpdaterSandboxLastLaunch.derive(host.launchEvidence(), launched)
+        if (derived != null && derived.bundleId != acknowledgedBundleId) {
+            store.lastLaunch = derived
+        }
+        return store.lastLaunch
+    }
+
+    /**
+     * One entry per preview channel: a default channel is the big row, not a
+     * preview, and the built-in bundle isn't what a channel holds.
+     */
+    private fun recordOpened(selection: HotUpdaterSandboxSelection) {
+        store.recordOpened(selection)
+        if (selection.channel == selection.defaultChannel || selection.isBuiltIn) return
+        val bundleId = selection.bundleId ?: return
+        store.history =
+            HotUpdaterSandboxHistory.adding(
+                HotUpdaterSandboxHistoryEntry(
+                    channel = selection.channel,
+                    bundleId = bundleId,
+                    message = store.messages.firstOrNull { it.bundleId == bundleId }?.message,
+                    openedAtMs = nowMs(),
+                ),
+                store.history,
+            )
     }
 
     private fun canStart() = state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed
@@ -377,6 +497,15 @@ internal class HotUpdaterSandboxCoordinator(
                 }
             }
             is HotUpdaterSandboxStaged.Update -> {
+                val bundleId = staged.bundleId
+                val message = staged.message
+                if (bundleId != null && message != null) {
+                    store.messages =
+                        HotUpdaterSandboxHistory.remembering(
+                            HotUpdaterSandboxBundleMessage(bundleId, message),
+                            store.messages,
+                        )
+                }
                 // A check from the running app may have switched channels between the SDK's steps.
                 if (host.selection().channel != target) {
                     fail(operationId, target, HotUpdaterSandboxStep.CHECK, HotUpdaterSandboxFailure.Superseded)
@@ -396,7 +525,8 @@ internal class HotUpdaterSandboxCoordinator(
         retryTarget = null
         val selection = readSelection()
         store.recordSelected(selection)
-        publish(state.copy(selection = selection, phase = HotUpdaterSandboxPhase.Idle))
+        acknowledgeLastLaunch()
+        publish(reading(selection, host.launchBundleId()).copy(phase = HotUpdaterSandboxPhase.Idle))
         log("operation $operationId selected ${selection.channel} ${selection.bundleId}")
         switchAwaitsOpen = true
         pump()
@@ -406,7 +536,8 @@ internal class HotUpdaterSandboxCoordinator(
     private fun openSwitchIfAnswered() {
         if (!switchAwaitsOpen || state.phase !is HotUpdaterSandboxPhase.Idle) return
         switchAwaitsOpen = false
-        state.selection?.let(store::recordOpened)
+        state.selection?.let(::recordOpened)
+        publish(state.copy(history = store.history))
         openApp(true, launchFixed)
     }
 
@@ -464,12 +595,7 @@ internal class HotUpdaterSandboxCoordinator(
         }
         val selection = readSelection()
         store.recordSelected(selection)
-        publish(
-            state.copy(
-                selection = selection,
-                phase = HotUpdaterSandboxPhase.Failed(operationId, target, step, failure, selection),
-            ),
-        )
+        publish(reading(selection, host.launchBundleId()).copy(phase = HotUpdaterSandboxPhase.Failed(operationId, target, step, failure, selection)))
     }
 
     /** Asks about the oldest link, unless something is already on screen. */

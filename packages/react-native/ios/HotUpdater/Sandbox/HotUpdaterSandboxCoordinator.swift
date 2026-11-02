@@ -4,7 +4,7 @@ import Foundation
 /// What a check of the target channel did.
 enum HotUpdaterSandboxStaged: Equatable {
     /// The update is staged or committed: `bundleId` is what a launch selects.
-    case update(bundleId: String)
+    case update(bundleId: String, message: String? = nil)
     /// The channel has nothing newer for this build.
     case noUpdate
     /// Another check or reset replaced the selection first.
@@ -58,6 +58,10 @@ protocol HotUpdaterSandboxHost: AnyObject {
     func isAppRunning() -> Bool
     /// Whether the target channel has a bundle this build would run. Throws when the server can't say.
     func preflight(channel: String) async throws -> Bool
+    /// What the last launch left: read, never a request. Settled reads come after `selection()`.
+    func launchEvidence() -> HotUpdaterSandboxLaunchEvidence
+    /// What the build and the SDK's store hold: read, never a request.
+    func details() -> HotUpdaterSandboxDetails
     /// Deletes downloaded bundles and returns to the default channel.
     func reset() async throws -> Bool
     func checkAndStage(
@@ -82,6 +86,12 @@ protocol HotUpdaterSandboxStore: AnyObject {
     var pendingLinks: [String] { get set }
     func recordSelected(_ selection: HotUpdaterSandboxSelection)
     func recordOpened(_ selection: HotUpdaterSandboxSelection)
+    /// The previews this device opened, newest first.
+    var history: [HotUpdaterSandboxHistoryEntry] { get set }
+    /// Each bundle's deploy message, newest first, by bundle ID.
+    var messages: [HotUpdaterSandboxBundleMessage] { get set }
+    /// What the last launch left, until a person moved on from it.
+    var lastLaunch: HotUpdaterSandboxLastLaunch? { get set }
 }
 
 enum HotUpdaterSandboxStep: Equatable {
@@ -131,6 +141,14 @@ struct HotUpdaterSandboxState: Equatable {
     var phase: HotUpdaterSandboxPhase
     /// Links behind the one in `phase`, each asked in turn.
     var queuedLinks: Int
+    var details: HotUpdaterSandboxDetails?
+    var lastLaunch: HotUpdaterSandboxLastLaunch?
+    var history: [HotUpdaterSandboxHistoryEntry] = []
+    /// The deploy message of the selected bundle, when this device knows it.
+    var selectedMessage: String?
+    /// What this process's launch runs, or before one, what it would pick; `selection` is the next launch.
+    var runningBundleId: String?
+    var runningMessage: String?
 }
 
 /// The one owner of a channel switch: fingerprint check, confirmation for a link,
@@ -161,6 +179,10 @@ final class HotUpdaterSandboxCoordinator {
     /// Whether this process's launch runs something other than what the next one
     /// selects, as of the last `readSelection()`: only a reload can apply that.
     private var launchFixed = false
+    /// The bundle of the last launch a person moved on from in this process, whose
+    /// evidence stays readable until the process ends.
+    private var acknowledgedBundleId: String?
+    private let now: () -> Date
 
     private(set) var state = HotUpdaterSandboxState(
         selection: nil,
@@ -173,8 +195,10 @@ final class HotUpdaterSandboxCoordinator {
         host: HotUpdaterSandboxHost,
         store: HotUpdaterSandboxStore,
         openApp: @escaping (_ switched: Bool, _ fixed: Bool) -> Void,
-        log: @escaping (String) -> Void = { _ in }
+        log: @escaping (String) -> Void = { _ in },
+        now: @escaping () -> Date = Date.init
     ) {
+        self.now = now
         self.host = host
         self.store = store
         self.openApp = openApp
@@ -194,13 +218,22 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     /// Reads what storage holds, and asks about the oldest unanswered link.
+    /// Sends no request: opening the screen costs the update server nothing.
     func refresh() async {
         let selection = await readSelection()
-        var next = state
-        next.selection = selection
-        next.hasServerConfig = host.hasServerConfig()
-        publish(next)
+        publish(reading(selection, launched: await host.launchBundleId()))
         pump()
+    }
+
+    /// Keeps what the last launch left, for a launch that started without the
+    /// screen: the next screen tells it, once that launch's evidence is gone.
+    func noteLastLaunch() async {
+        // Read first: before a launch, it settles what the previous process left.
+        _ = await host.selection()
+        let launched = await host.launchBundleId()
+        var next = state
+        next.lastLaunch = settledLastLaunch(launched: launched)
+        publish(next)
     }
 
     /// A link from any source. The same URL already waiting or running counts once.
@@ -292,24 +325,83 @@ final class HotUpdaterSandboxCoordinator {
     /// Opens the app on what's selected, when no switch or question stands in the way.
     func open() async {
         let selection = await readSelection()
+        let launched = await host.launchBundleId()
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
         let reloads = launchFixed && !host.isAppRunning()
-        if reloads {
-            store.recordOpened(selection)
-        } else {
-            let launchBundleId = await host.launchBundleId()
-            store.recordOpened(HotUpdaterSandboxSelection(
-                channel: selection.channel,
-                defaultChannel: selection.defaultChannel,
-                bundleId: launchBundleId,
-                isBuiltIn: selection.isBuiltIn && launchBundleId == selection.bundleId
-            ))
-        }
+        recordOpened(reloads ? selection : HotUpdaterSandboxSelection(
+            channel: selection.channel,
+            defaultChannel: selection.defaultChannel,
+            bundleId: launched,
+            isBuiltIn: selection.isBuiltIn && launched == selection.bundleId
+        ))
+        acknowledgeLastLaunch()
+        publish(reading(selection, launched: launched))
+        openApp(false, reloads)
+    }
+
+    /// Runs the app again from the screen over it: the bundle a launch selects now.
+    func reloadApp() {
+        guard canStart else { return }
+        acknowledgeLastLaunch()
+        openApp(true, true)
+    }
+
+    /// A person moved on from what the last launch left, so it's not told again.
+    func acknowledgeLastLaunch() {
+        guard let shown = store.lastLaunch else { return }
+        acknowledgedBundleId = shown.bundleId
+        store.lastLaunch = nil
+        var next = state
+        next.lastLaunch = nil
+        publish(next)
+    }
+
+    /// Forgets the previews this device opened: what they list is local, so nothing else changes.
+    func clearHistory() {
+        store.history = []
+        var next = state
+        next.history = []
+        publish(next)
+    }
+
+    /// What storage says now, with no request.
+    private func reading(_ selection: HotUpdaterSandboxSelection, launched: String) -> HotUpdaterSandboxState {
         var next = state
         next.selection = selection
-        publish(next)
-        openApp(false, reloads)
+        next.runningBundleId = launched
+        next.runningMessage = store.messages.first { $0.bundleId == launched }?.message
+        next.hasServerConfig = host.hasServerConfig()
+        next.details = host.details()
+        next.history = store.history
+        next.selectedMessage = store.messages.first { $0.bundleId == selection.bundleId }?.message
+        next.lastLaunch = settledLastLaunch(launched: launched)
+        return next
+    }
+
+    /// Reads evidence after the host's reads, which settled the previous launch.
+    private func settledLastLaunch(launched: String) -> HotUpdaterSandboxLastLaunch? {
+        let derived = HotUpdaterSandboxLastLaunch.derive(evidence: host.launchEvidence(), launchBundleId: launched)
+        if let derived, derived.bundleId != acknowledgedBundleId {
+            store.lastLaunch = derived
+        }
+        return store.lastLaunch
+    }
+
+    /// One entry per preview channel: a default channel is the big row, not a
+    /// preview, and the built-in bundle isn't what a channel holds.
+    private func recordOpened(_ selection: HotUpdaterSandboxSelection) {
+        store.recordOpened(selection)
+        guard selection.channel != selection.defaultChannel, !selection.isBuiltIn else { return }
+        store.history = HotUpdaterSandboxHistory.adding(
+            HotUpdaterSandboxHistoryEntry(
+                channel: selection.channel,
+                bundleId: selection.bundleId,
+                message: store.messages.first { $0.bundleId == selection.bundleId }?.message,
+                openedAtMs: now().timeIntervalSince1970 * 1000
+            ),
+            to: store.history
+        )
     }
 
     private var canStart: Bool {
@@ -368,7 +460,13 @@ final class HotUpdaterSandboxCoordinator {
                 return
             }
             await finish(operationId)
-        case .update:
+        case .update(let bundleId, let message):
+            if let message {
+                store.messages = HotUpdaterSandboxHistory.remembering(
+                    HotUpdaterSandboxBundleMessage(bundleId: bundleId, message: message),
+                    in: store.messages
+                )
+            }
             // A check from the running app may have switched channels between the SDK's steps.
             if await host.selection().channel != target {
                 await fail(operationId, target, .check, .superseded)
@@ -383,8 +481,8 @@ final class HotUpdaterSandboxCoordinator {
         retryTarget = nil
         let selection = await readSelection()
         store.recordSelected(selection)
-        var next = state
-        next.selection = selection
+        acknowledgeLastLaunch()
+        var next = reading(selection, launched: await host.launchBundleId())
         next.phase = .idle
         publish(next)
         log("operation \(operationId) selected \(selection.channel) \(selection.bundleId)")
@@ -397,8 +495,11 @@ final class HotUpdaterSandboxCoordinator {
         guard switchAwaitsOpen, state.phase == .idle else { return }
         switchAwaitsOpen = false
         if let selection = state.selection {
-            store.recordOpened(selection)
+            recordOpened(selection)
         }
+        var next = state
+        next.history = store.history
+        publish(next)
         openApp(true, launchFixed)
     }
 
@@ -439,8 +540,7 @@ final class HotUpdaterSandboxCoordinator {
         clearLinkInFlight()
         let selection = await readSelection()
         store.recordSelected(selection)
-        var next = state
-        next.selection = selection
+        var next = reading(selection, launched: await host.launchBundleId())
         next.phase = .failed(operationId: operationId, target: target, step: step, failure: failure, selection: selection)
         publish(next)
     }
