@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
@@ -277,6 +278,31 @@ describe("xcodebuild arguments", () => {
         },
       )}`,
     );
+  });
+
+  it("finds the built .app with the settings that built it", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      outputDirectory: "/out/app",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "simulator",
+      logPrefix: "ios-debug-build",
+      useGenericDestination: true,
+      xcconfig: "Release.xcconfig",
+      extraParams: ["-quiet", "PRODUCT_NAME=Proof"],
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const query = vi
+      .mocked(execa)
+      .mock.calls.map(([, args]) => args as string[])
+      .findLast((args) => args?.includes("-showBuildSettings"));
+    expect(query?.[query.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
+    expect(query).toContain("PRODUCT_NAME=Proof");
+    // A flag for the build, which a settings query doesn't take.
+    expect(query).not.toContain("-quiet");
   });
 
   it("copies the built .app out of DerivedData, then removes DerivedData", async () => {
