@@ -41,7 +41,11 @@ import {
   nativeAppPath,
   otherNativeAppPath,
 } from "../targets.ts";
-import { readWithRetries, waitSync } from "./android-file-read.ts";
+import {
+  readUntilComplete,
+  readWithRetries,
+  waitSync,
+} from "./android-file-read.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -2959,7 +2963,11 @@ function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
 
 function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
   const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
-  const result = readAndroidFileBuffer(remotePath);
+  const result = readUntilComplete(
+    () => readAndroidFileBuffer(remotePath),
+    readAndroidFileByteSize(remotePath),
+    waitSync,
+  );
   if (!result.fileBuffer) {
     return {
       exists: false,
@@ -2976,8 +2984,29 @@ function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
     exists: true,
     fileHash,
     path: remotePath,
-    readError: null,
+    readError: result.readError,
   };
+}
+
+/** The file's size on the device, or null when it can't be read. */
+function readAndroidFileByteSize(remotePath: string): number | null {
+  const result = spawnSync(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "stat",
+      "-c",
+      "%s",
+      androidRunAsReadablePath(remotePath),
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const size = result.status === 0 ? Number(result.stdout.trim()) : Number.NaN;
+  return Number.isSafeInteger(size) ? size : null;
 }
 
 function readBundleAssetFileHash(bundleId: string, assetPath: string) {
