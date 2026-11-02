@@ -68,6 +68,7 @@ vi.mock("@hot-updater/apple-helper", () => ({
     events.push("read train");
     return APP_VERSION_TRAIN;
   }),
+  readIpaHasExportComplianceKey: vi.fn(async () => true),
   readTestFlightBuildStatus: vi.fn(async () => {
     events.push("read state");
     return { testFlightUrl: "https://example.com", status: null };
@@ -215,6 +216,7 @@ import {
   distributeTestFlightBuild,
   findInternalBetaGroup,
   prepareSandboxArchive,
+  readIpaHasExportComplianceKey,
 } from "@hot-updater/apple-helper";
 import { p, secret } from "@hot-updater/cli-tools";
 
@@ -468,6 +470,28 @@ describe("native-build of a sandbox scheme", () => {
           String(message).includes("export compliance"),
         ),
     ).toHaveLength(1);
+    expect(events).not.toContain("read state");
+  });
+
+  it("says what to expect of a processing build without the key, reading no more", async () => {
+    vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(false);
+
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+    });
+
+    expect(
+      vi
+        .mocked(p.log.warn)
+        .mock.calls.filter(([message]) =>
+          String(message).includes("ITSAppUsesNonExemptEncryption"),
+        ),
+    ).toEqual([
+      [
+        "1.7.0 (69) is processing. Without ITSAppUsesNonExemptEncryption in Info.plist, testers can't install it until export compliance is answered in App Store Connect:\nhttps://example.com",
+      ],
+    ]);
     expect(events).not.toContain("read state");
   });
 

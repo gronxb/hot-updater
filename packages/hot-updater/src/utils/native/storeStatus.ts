@@ -5,9 +5,11 @@ import {
 } from "@hot-updater/android-helper";
 import {
   applyTestFlightGroup,
+  readIpaHasExportComplianceKey,
   readTestFlightBuildStatus,
   resolveTestFlightUploadKey,
   type TestFlightBuildState,
+  type TestFlightBuildStatus,
   type TestFlightGroupOutcome,
   type UploadToTestFlightResult,
 } from "@hot-updater/apple-helper";
@@ -151,8 +153,8 @@ export const uploadedTestFlightStatus = (
 
 /**
  * Reads, once, what App Store Connect says of a build it accepted from this run.
- * A failed read fails nothing: the upload stands, with no state, and a warning
- * says why.
+ * A failed read fails nothing: the upload stands, with no state and an undefined
+ * `status`, and a warning says why.
  */
 export const readUploadedTestFlightStatus = async ({
   bundleId,
@@ -162,7 +164,10 @@ export const readUploadedTestFlightStatus = async ({
   bundleId: string;
   uploaded: UploadToTestFlightResult;
   apiKey: Parameters<typeof readTestFlightBuildStatus>[0]["apiKey"];
-}): Promise<StoreStatus> => {
+}): Promise<{
+  store: StoreStatus;
+  status: TestFlightBuildStatus | null | undefined;
+}> => {
   try {
     const { status } = await readTestFlightBuildStatus({
       bundleId,
@@ -170,26 +175,59 @@ export const readUploadedTestFlightStatus = async ({
       bundleVersion: uploaded.bundleVersion,
       apiKey,
     });
-    return uploadedTestFlightStatus(uploaded, status);
+    return { store: uploadedTestFlightStatus(uploaded, status), status };
   } catch (error) {
     p.log.warn(
       `Couldn't read the build's state from App Store Connect.\n${error instanceof Error ? error.message : String(error)}`,
     );
-    return { ...uploadedTestFlightStatus(uploaded, null), state: null };
+    return {
+      store: { ...uploadedTestFlightStatus(uploaded, null), state: null },
+      status: undefined,
+    };
   }
 };
 
-/** What to do about a build testers can't install until compliance is settled. */
-export const exportComplianceNotice = ({
-  version,
-  url,
-}: Pick<StoreStatus, "version" | "url">): string =>
-  [
-    `Testers can't install ${version}: it's waiting on export compliance.`,
-    "Answer it in App Store Connect:",
-    url,
-    "Or set ITSAppUsesNonExemptEncryption in Info.plist for later builds.",
-  ].join("\n");
+/**
+ * What to tell whoever uploaded a build about export compliance, or null with
+ * nothing to tell. The state may lag the upload, so a build still processing is
+ * judged by the `.ipa`, which an unreadable `.ipa` leaves unsaid. `status` is
+ * undefined when nothing read the state.
+ */
+export const testFlightUploadNotice = async ({
+  uploaded,
+  status,
+  ipaPath,
+}: {
+  uploaded: UploadToTestFlightResult;
+  status: TestFlightBuildStatus | null | undefined;
+  ipaPath: string;
+}): Promise<string | null> => {
+  const version = storeVersionLabel(
+    uploaded.shortVersion,
+    uploaded.bundleVersion,
+  );
+  const url = uploaded.testFlightUrl;
+  if (status?.inExportComplianceReview) {
+    return `Testers can't install ${version} yet: Apple is reviewing its export compliance.\n${url}`;
+  }
+  if (status?.state === "missing-compliance") {
+    return [
+      `Testers can't install ${version}: it's waiting on export compliance.`,
+      "Answer it in App Store Connect:",
+      url,
+      "Or set ITSAppUsesNonExemptEncryption in Info.plist for later builds.",
+    ].join("\n");
+  }
+  const processing =
+    status === undefined
+      ? uploaded.state === "PROCESSING"
+      : status === null || status.state === "processing";
+  if (!processing) return null;
+  const hasKey = await readIpaHasExportComplianceKey(ipaPath).catch(() => true);
+  return hasKey
+    ? null
+    : `${version} is processing. Without ITSAppUsesNonExemptEncryption in Info.plist, testers can't install it until export compliance is answered in App Store Connect:\n${url}`;
+};
 
 /**
  * Reads the store's own word on a build this project submitted, for a run that

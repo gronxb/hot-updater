@@ -109,12 +109,27 @@ https://appstoreconnect.apple.com/apps/<app id>/testflight/ios
 Or set ITSAppUsesNonExemptEncryption in Info.plist for later builds.
 ```
 
-With `--json`, `submission.store.state` is `missing-compliance`. The CLI reads
-the state once, right after App Store Connect accepts the build. When that read
-answers `processing`, there is no warning: read the state again later with
-[`native-build find --store-status`](/docs/guides/native-build#find-a-build). A
-build App Store Connect hasn't accepted after 30 minutes gets no read, and
-`submission.store` is `null`.
+With `--json`, `submission.store.state` is `missing-compliance`.
+
+The CLI reads the state once, right after App Store Connect accepts the build,
+and doesn't wait for processing. While the build is still processing, it checks
+the `.ipa`'s `Info.plist` instead. Without `ITSAppUsesNonExemptEncryption`, it
+says what to expect:
+
+```txt
+1.7.0 (66) is processing. Without ITSAppUsesNonExemptEncryption in Info.plist, testers can't install it until export compliance is answered in App Store Connect:
+https://appstoreconnect.apple.com/apps/<app id>/testflight/ios
+```
+
+With the key, it prints nothing more. `submission.store.state` is `processing`,
+and [`native-build find --store-status`](/docs/guides/native-build#find-a-build)
+reads the state again later. A build App Store Connect hasn't accepted after 30
+minutes gets no read, so `submission.store` is `null`, and the same `.ipa` check
+applies.
+
+A build whose answer Apple is reviewing also has the state
+`missing-compliance`. The CLI says Apple is reviewing it, and it needs no answer
+from you.
 
 There are two ways to answer:
 
