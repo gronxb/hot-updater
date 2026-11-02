@@ -68,6 +68,10 @@ vi.mock("@hot-updater/apple-helper", () => ({
     events.push("read train");
     return APP_VERSION_TRAIN;
   }),
+  readTestFlightBuildStatus: vi.fn(async () => {
+    events.push("read state");
+    return { testFlightUrl: "https://example.com", status: null };
+  }),
   resolveTestFlightUploadKey: vi.fn(() => ({
     kind: "asc-api-key",
     name: "asc-api-key",
@@ -207,6 +211,7 @@ vi.mock("../utils/native/nativeBuildSubmission", () => ({
 }));
 
 import {
+  assertBuildIsInternalOnly,
   distributeTestFlightBuild,
   findInternalBetaGroup,
   prepareSandboxArchive,
@@ -437,6 +442,35 @@ describe("native-build of a sandbox scheme", () => {
     });
   });
 
+  it("says a build waits on export compliance from the state it read, reading no more", async () => {
+    vi.mocked(assertBuildIsInternalOnly).mockResolvedValueOnce({
+      appId: "123",
+      buildId: "build-1",
+      audience: "INTERNAL_ONLY",
+      state: "missing-compliance",
+      expiresAtMs: null,
+      testFlightUrl: "https://example.com",
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+      json: true,
+    });
+    const printed = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+    log.mockRestore();
+
+    expect(printed.submission.store.state).toBe("missing-compliance");
+    expect(
+      vi
+        .mocked(p.log.warn)
+        .mock.calls.filter(([message]) =>
+          String(message).includes("export compliance"),
+        ),
+    ).toHaveLength(1);
+    expect(events).not.toContain("read state");
+  });
+
   it("builds nothing for a group App Store Connect refuses", async () => {
     groupFailure = new Error("TestFlight group QA is external");
     const printed = await fail(
@@ -493,6 +527,7 @@ describe("native-build of a normal scheme", () => {
     expect(events).not.toContain("read train");
     expect(events).not.toContain("check ipa");
     expect(events).not.toContain("check audience");
+    expect(events).toContain("read state");
     expect(events).toContain("check artifact");
     expect(assertBuiltArtifact).toHaveBeenCalledWith(
       expect.objectContaining({ sandbox: false }),

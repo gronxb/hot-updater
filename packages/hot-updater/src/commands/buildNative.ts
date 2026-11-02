@@ -112,9 +112,12 @@ import {
   signsWithKeystore,
 } from "../utils/native/signingCredentials";
 import {
+  exportComplianceNotice,
   isStoreBuildReusable,
   playPackageName,
+  readUploadedTestFlightStatus,
   type StoreStatus,
+  uploadedTestFlightStatus,
 } from "../utils/native/storeStatus";
 
 /**
@@ -619,19 +622,7 @@ const buildNativeInternal = async ({
                       apiKey,
                     })
                   : listed;
-              const state = status?.state ?? "processing";
-              const expiresAtMs = status?.expiresAtMs ?? null;
-              return {
-                destination: "testflight",
-                url: uploaded.testFlightUrl,
-                version: storeVersionLabel(
-                  uploaded.shortVersion,
-                  uploaded.bundleVersion,
-                ),
-                state,
-                expiresAtMs,
-                reusable: isStoreBuildReusable(state, expiresAtMs),
-              };
+              return uploadedTestFlightStatus(uploaded, status);
             });
           }
           if (!("refused" in uploaded) && uploaded.state === "COMPLETE") {
@@ -642,6 +633,15 @@ const buildNativeInternal = async ({
             registered = await recordSubmission(registered, "testflight", () =>
               storeVersionLabel(uploaded.shortVersion, uploaded.bundleVersion),
             );
+            // After the record, which a slow or failed read can't hold up. A
+            // sandbox build's state came with its audience check above.
+            if (!sandbox) {
+              storeStatus = await readUploadedTestFlightStatus({
+                bundleId: artifact?.appId ?? iosSchemeConfig!.bundleIdentifier,
+                uploaded,
+                apiKey,
+              });
+            }
           }
         }
         const playServiceAccount =
@@ -767,6 +767,9 @@ const buildNativeInternal = async ({
               storeUrl,
             }),
           );
+        }
+        if (storeStatus?.state === "missing-compliance") {
+          p.log.warn(exportComplianceNotice(storeStatus));
         }
         if (platform === "ios" && result.artifactPath !== undefined) {
           await reportIpaDevices({

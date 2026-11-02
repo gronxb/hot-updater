@@ -59,6 +59,10 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
   assertTestFlightExportOptions: vi.fn(async () => {}),
   buildIos: vi.fn(async () => ({ logFilePath: null })),
   installPodsIfNeeded: vi.fn(async () => {}),
+  readTestFlightBuildStatus: vi.fn(async () => ({
+    testFlightUrl: "https://asc",
+    status: null,
+  })),
   resolveTestFlightUploadKey: vi.fn(() => ({
     kind: "asc-api-key",
     name: "asc-api-key",

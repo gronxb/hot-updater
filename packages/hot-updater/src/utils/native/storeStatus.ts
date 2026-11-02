@@ -9,10 +9,12 @@ import {
   resolveTestFlightUploadKey,
   type TestFlightBuildState,
   type TestFlightGroupOutcome,
+  type UploadToTestFlightResult,
 } from "@hot-updater/apple-helper";
 import {
   getCwd,
   type loadConfig,
+  p,
   readLoadedHotUpdaterEnv,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
@@ -24,6 +26,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import { resolveSandboxApplicationId } from "../version/getAndroidVersion";
+import { storeVersionLabel } from "./nativeBuildSubmission";
 
 /**
  * What a store says of a build a run submitted:
@@ -122,6 +125,71 @@ const unread = (build: NativeBuildRow): StoreStatus => ({
   expiresAtMs: null,
   reusable: true,
 });
+
+/**
+ * A build this run uploaded, as App Store Connect's word on it says. One it
+ * doesn't list yet is on its way, where a recorded build it doesn't list is gone.
+ */
+export const uploadedTestFlightStatus = (
+  uploaded: UploadToTestFlightResult,
+  status: {
+    readonly state: TestFlightBuildState;
+    readonly expiresAtMs: number | null;
+  } | null,
+): StoreStatus => {
+  const state = status?.state ?? "processing";
+  const expiresAtMs = status?.expiresAtMs ?? null;
+  return {
+    destination: "testflight",
+    url: uploaded.testFlightUrl,
+    version: storeVersionLabel(uploaded.shortVersion, uploaded.bundleVersion),
+    state,
+    expiresAtMs,
+    reusable: isStoreBuildReusable(state, expiresAtMs),
+  };
+};
+
+/**
+ * Reads, once, what App Store Connect says of a build it accepted from this run.
+ * A failed read fails nothing: the upload stands, with no state, and a warning
+ * says why.
+ */
+export const readUploadedTestFlightStatus = async ({
+  bundleId,
+  uploaded,
+  apiKey,
+}: {
+  bundleId: string;
+  uploaded: UploadToTestFlightResult;
+  apiKey: Parameters<typeof readTestFlightBuildStatus>[0]["apiKey"];
+}): Promise<StoreStatus> => {
+  try {
+    const { status } = await readTestFlightBuildStatus({
+      bundleId,
+      shortVersion: uploaded.shortVersion,
+      bundleVersion: uploaded.bundleVersion,
+      apiKey,
+    });
+    return uploadedTestFlightStatus(uploaded, status);
+  } catch (error) {
+    p.log.warn(
+      `Couldn't read the build's state from App Store Connect.\n${error instanceof Error ? error.message : String(error)}`,
+    );
+    return { ...uploadedTestFlightStatus(uploaded, null), state: null };
+  }
+};
+
+/** What to do about a build testers can't install until compliance is settled. */
+export const exportComplianceNotice = ({
+  version,
+  url,
+}: Pick<StoreStatus, "version" | "url">): string =>
+  [
+    `Testers can't install ${version}: it's waiting on export compliance.`,
+    "Answer it in App Store Connect:",
+    url,
+    "Or set ITSAppUsesNonExemptEncryption in Info.plist for later builds.",
+  ].join("\n");
 
 /**
  * Reads the store's own word on a build this project submitted, for a run that
