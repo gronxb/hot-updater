@@ -64,6 +64,23 @@ private final class FakeHost: HotUpdaterSandboxHost {
         }
     }
 
+    var evidence = HotUpdaterSandboxLaunchEvidence()
+    var pendingBundleId: String?
+
+    nonisolated func launchEvidence() -> HotUpdaterSandboxLaunchEvidence {
+        MainActor.assumeIsolated { evidence }
+    }
+
+    nonisolated func details() -> HotUpdaterSandboxDetails {
+        MainActor.assumeIsolated {
+            HotUpdaterSandboxDetails(
+                builtInBundleId: "built-in",
+                fingerprintHash: fingerprint,
+                pendingBundleId: pendingBundleId
+            )
+        }
+    }
+
     nonisolated func fingerprintHash() -> String? {
         MainActor.assumeIsolated { fingerprint }
     }
@@ -116,7 +133,7 @@ private final class FakeHost: HotUpdaterSandboxHost {
         } else {
             staged = try stageResult.get()
         }
-        if case .update(let bundleId) = staged {
+        if case .update(let bundleId, _) = staged {
             self.channel = channelAfterStaging ?? channel
             self.bundleId = bundleId
         }
@@ -128,6 +145,9 @@ private final class FakeStore: HotUpdaterSandboxStore {
     var pendingLinks: [String] = []
     var selected: [String] = []
     var opened: [String] = []
+    var history: [HotUpdaterSandboxHistoryEntry] = []
+    var messages: [HotUpdaterSandboxBundleMessage] = []
+    var lastLaunch: HotUpdaterSandboxLastLaunch?
     var openedBundles: [String] = []
 
     func recordSelected(_ selection: HotUpdaterSandboxSelection) {
@@ -163,7 +183,8 @@ private struct Fixture {
         coordinator = HotUpdaterSandboxCoordinator(
             host: host,
             store: store,
-            openApp: { box.opens.append(($0, $1)) }
+            openApp: { box.opens.append(($0, $1)) },
+            now: { Date(timeIntervalSince1970: 1000) }
         )
     }
 }
@@ -896,6 +917,497 @@ struct HotUpdaterSandboxLaunchPolicyTests {
         ))
     }
 }
+private func selection(
+    channel: String = "pr-1",
+    bundleId: String = "ota",
+    defaultChannel: String = "sandbox-release",
+    builtIn: String = "built-in"
+) -> HotUpdaterSandboxSelection {
+    HotUpdaterSandboxSelection(
+        channel: channel,
+        defaultChannel: defaultChannel,
+        bundleId: bundleId,
+        isBuiltIn: bundleId == builtIn
+    )
+}
+
+/// Three launches the SDK can leave, as its own files state them. Each expectation
+/// comes from what happened to the device, not from what the derivation returns.
+struct HotUpdaterSandboxLastLaunchTests {
+    private typealias LastLaunch = HotUpdaterSandboxLastLaunch
+
+    @Test
+    func aCrashBeforeFirstContentRolledBack() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "built-in") == LastLaunch(
+            kind: .crashedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "built-in"
+        ))
+    }
+
+    @Test
+    func aVerifiedCrashDidNotRollBack() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: false)
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "ota") == LastLaunch(
+            kind: .crashed,
+            bundleId: "ota",
+            rolledBackToBundleId: nil
+        ))
+    }
+
+    @Test
+    func leavingBeforeFirstContentLeavesNoMarkerAndNoCrashIsClaimed() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "built-in") == LastLaunch(
+            kind: .endedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "built-in"
+        ))
+    }
+
+    @Test
+    func aMarkerOfAnotherBundleIsNotThatRollbacksCrash() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "other", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        #expect(LastLaunch.derive(evidence: evidence, launchBundleId: "built-in")?.kind == .endedBeforeContent)
+    }
+
+    @Test
+    func noRollbackIsClaimedWhenTheSelectionIsSomewhereElse() {
+        let evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: true),
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        let last = LastLaunch.derive(evidence: evidence, launchBundleId: "newer")
+        #expect(last?.kind == .crashed)
+        #expect(last?.rolledBackToBundleId == nil)
+    }
+
+    @Test
+    func nothingLeftSaysNothing() {
+        #expect(LastLaunch.derive(evidence: HotUpdaterSandboxLaunchEvidence(), launchBundleId: "ota") == nil)
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxScreenStateTests {
+    @Test
+    func openingTheScreenSendsNoRequestInAnyState() async {
+        let crashed = Fixture()
+        crashed.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false)
+        )
+        let fresh = Fixture()
+        fresh.host.serverConfig = false
+        let waiting = Fixture(pendingLinks: [link("pr-1")])
+        waiting.host.serverConfig = false
+        for fixture in [Fixture(), crashed, fresh, waiting, Fixture(pendingLinks: [link("pr-1")])] {
+            let stop = fixture.coordinator.observe { _ in }
+            await fixture.coordinator.refresh()
+            await fixture.coordinator.noteLastLaunch()
+            stop()
+            await settle()
+            #expect(fixture.host.calls.isEmpty)
+        }
+    }
+
+    @Test
+    func aCrashIsToldOnceAPersonMovesOnNotBefore() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "ota"
+        fixture.host.channel = "pr-1"
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "ota", shouldRollback: false)
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch?.kind == .crashed)
+        #expect(fixture.store.lastLaunch?.kind == .crashed)
+
+        await fixture.coordinator.open()
+        #expect(fixture.coordinator.state.lastLaunch == nil)
+        // The marker this process read stays readable, and it's not told again.
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch == nil)
+        #expect(fixture.store.lastLaunch == nil)
+    }
+
+    @Test
+    func anUnseenCrashSurvivesARestartWithNoEvidenceLeft() async {
+        let fixture = Fixture()
+        fixture.store.lastLaunch = HotUpdaterSandboxLastLaunch(
+            kind: .crashedBeforeContent,
+            bundleId: "ota",
+            rolledBackToBundleId: "built-in"
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch?.kind == .crashedBeforeContent)
+    }
+
+    @Test
+    func aSwitchEndsWhatTheLastLaunchLeft() async {
+        let fixture = Fixture()
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            marker: HotUpdaterSandboxCrashMarker(bundleId: "built-in", shouldRollback: false)
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch != nil)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.coordinator.state.lastLaunch == nil)
+    }
+
+    @Test
+    func aSwitchRecordsOneOpenedEntryWithTheBundlesMessage() async {
+        let fixture = Fixture()
+        fixture.host.stageResult = .success(.update(bundleId: "ota", message: "fix: login"))
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        #expect(fixture.store.history == [HotUpdaterSandboxHistoryEntry(
+            channel: "pr-1",
+            bundleId: "ota",
+            message: "fix: login",
+            openedAtMs: 1_000_000
+        )])
+        #expect(fixture.coordinator.state.selectedMessage == "fix: login")
+        #expect(fixture.coordinator.state.history.count == 1)
+    }
+
+    @Test
+    func aMessageBelongsToItsBundleNotItsChannel() async {
+        let fixture = Fixture()
+        fixture.store.messages = [HotUpdaterSandboxBundleMessage(bundleId: "older", message: "old words")]
+        fixture.host.channel = "pr-1"
+        fixture.host.bundleId = "ota"
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.selectedMessage == nil)
+    }
+
+    @Test
+    func whatRunsAndWhatsNextAreReadApart() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-2"
+        fixture.host.bundleId = "staged"
+        fixture.host.runningBundleId = "running"
+        fixture.store.messages = [
+            HotUpdaterSandboxBundleMessage(bundleId: "running", message: "what runs"),
+            HotUpdaterSandboxBundleMessage(bundleId: "staged", message: "what's next"),
+        ]
+        await fixture.coordinator.refresh()
+        let state = fixture.coordinator.state
+        #expect(state.selection?.bundleId == "staged")
+        #expect(state.runningBundleId == "running")
+        #expect(state.selectedMessage == "what's next")
+        #expect(state.runningMessage == "what runs")
+        let row = HotUpdaterSandboxHomeModel(state: state, isOverApp: true, nowMs: 0).bigRow
+        #expect(row.subtitle == "Running bundle running")
+        #expect(row.detail == "Next launch: bundle staged")
+        let over = HotUpdaterSandboxInfoModel(state: state, version: "1", configuration: "Release", isOverApp: true)
+        #expect(over.bundle.first { $0.name == "Current" }?.value == "running")
+        // Before the app starts, a fixed launch's Open reloads into what's next.
+        let before = HotUpdaterSandboxInfoModel(state: state, version: "1", configuration: "Release")
+        #expect(before.bundle.first { $0.name == "Current" }?.value == "staged")
+    }
+
+    @Test
+    func aRollbackIsClaimedAgainstWhatRunsNotWhatsNext() async {
+        let fixture = Fixture()
+        fixture.host.bundleId = "staged"
+        fixture.host.runningBundleId = "built-in"
+        fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(
+            rollback: HotUpdaterSandboxRollback(fromBundleId: "ota", toBundleId: "built-in")
+        )
+        await fixture.coordinator.refresh()
+        #expect(fixture.coordinator.state.lastLaunch?.rolledBackToBundleId == "built-in")
+    }
+
+    @Test
+    func openRecordsWhatOpensOverTheAppAndBeforeIt() async {
+        let over = Fixture()
+        over.host.channel = "pr-2"
+        over.host.bundleId = "staged"
+        over.host.runningBundleId = "running"
+        over.host.appRunning = true
+        await over.coordinator.open()
+        #expect(over.store.history.first?.bundleId == "running")
+        #expect(over.opens.last?.1 == false)
+
+        // Before the app starts, a fixed launch's Open reloads into what's selected.
+        let before = Fixture()
+        before.host.channel = "pr-2"
+        before.host.bundleId = "staged"
+        before.host.runningBundleId = "running"
+        await before.coordinator.open()
+        #expect(before.store.history.first?.bundleId == "staged")
+        #expect(before.opens.last?.1 == true)
+    }
+
+    @Test
+    func aDefaultChannelIsNeverListedAsAPreview() async {
+        let fixture = Fixture()
+        await fixture.coordinator.refresh()
+        await fixture.coordinator.open()
+        #expect(fixture.store.opened == ["sandbox-release"])
+        #expect(fixture.store.history.isEmpty)
+    }
+
+    @Test
+    func theBuiltInBundleLeftOnAPreviewChannelIsNotAPreview() async {
+        let fixture = Fixture()
+        fixture.host.channel = "pr-3"
+        await fixture.coordinator.refresh()
+        await fixture.coordinator.open()
+        #expect(fixture.store.opened == ["pr-3"])
+        #expect(fixture.store.history.isEmpty)
+    }
+
+    @Test
+    func clearingForgetsOnlyTheList() async {
+        let fixture = Fixture()
+        fixture.store.history = [HotUpdaterSandboxHistoryEntry(channel: "pr-1", bundleId: "a", message: nil, openedAtMs: 1)]
+        await fixture.coordinator.refresh()
+        fixture.coordinator.clearHistory()
+        #expect(fixture.store.history.isEmpty)
+        #expect(fixture.coordinator.state.history.isEmpty)
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func reloadAsksForTheReloadAndWaitsForASwitch() async {
+        let fixture = Fixture()
+        fixture.coordinator.reloadApp()
+        #expect(fixture.opens.count == 1)
+        #expect(fixture.opens[0] == (true, true))
+
+        let busy = Fixture()
+        busy.host.preflightGate = Gate()
+        busy.coordinator.switchTo("pr-1")
+        await settle()
+        busy.coordinator.reloadApp()
+        #expect(busy.opens.isEmpty)
+        busy.host.preflightGate?.finish(.success(false))
+        await settle()
+    }
+
+    @Test
+    func theHistoryKeepsTenNewestChannels() {
+        var history: [HotUpdaterSandboxHistoryEntry] = []
+        for index in 0 ..< 12 {
+            history = HotUpdaterSandboxHistory.adding(
+                HotUpdaterSandboxHistoryEntry(channel: "pr-\(index)", bundleId: "b", message: nil, openedAtMs: Double(index)),
+                to: history
+            )
+        }
+        #expect(history.count == 10)
+        #expect(history.first?.channel == "pr-11")
+        history = HotUpdaterSandboxHistory.adding(
+            HotUpdaterSandboxHistoryEntry(channel: "pr-5", bundleId: "c", message: nil, openedAtMs: 99),
+            to: history
+        )
+        #expect(history.count == 10)
+        #expect(history.first?.bundleId == "c")
+        #expect(history.filter { $0.channel == "pr-5" }.count == 1)
+    }
+
+    @Test
+    func openedSaysWhenLocallyNotWhatsAvailable() {
+        let day = 86_400_000.0
+        #expect(HotUpdaterSandboxHistory.openedText(openedAtMs: 0, nowMs: day / 2) == "Opened today")
+        #expect(HotUpdaterSandboxHistory.openedText(openedAtMs: 0, nowMs: day) == "Opened yesterday")
+        #expect(HotUpdaterSandboxHistory.openedText(openedAtMs: 0, nowMs: 3 * day) == "Opened 3 days ago")
+    }
+}
+
+struct HotUpdaterSandboxHomeModelTests {
+    private func state(
+        selection: HotUpdaterSandboxSelection?,
+        running: String? = nil,
+        hasServerConfig: Bool = true,
+        phase: HotUpdaterSandboxPhase = .idle,
+        lastLaunch: HotUpdaterSandboxLastLaunch? = nil,
+        history: [HotUpdaterSandboxHistoryEntry] = [],
+        message: String? = nil
+    ) -> HotUpdaterSandboxState {
+        HotUpdaterSandboxState(
+            selection: selection,
+            hasServerConfig: hasServerConfig,
+            phase: phase,
+            queuedLinks: 0,
+            details: HotUpdaterSandboxDetails(
+                builtInBundleId: "built-in",
+                fingerprintHash: "abc",
+                pendingBundleId: nil
+            ),
+            lastLaunch: lastLaunch,
+            history: history,
+            selectedMessage: message,
+            runningBundleId: running
+        )
+    }
+
+    private func home(_ state: HotUpdaterSandboxState, isOverApp: Bool = false) -> HotUpdaterSandboxHomeModel {
+        HotUpdaterSandboxHomeModel(state: state, isOverApp: isOverApp, nowMs: 0)
+    }
+
+    @Test
+    func theBigRowFollowsTheBundleNotTheChannel() {
+        let otaOnDefault = home(state(selection: selection(channel: "sandbox-release", bundleId: "019a3f00aabbc2")))
+        #expect(otaOnDefault.bigRow.title == "Open sandbox-release")
+        #expect(otaOnDefault.bigRow.detail == "Bundle 019a3f…c2")
+
+        let builtInOnPreview = home(state(selection: selection(channel: "pr-1", bundleId: "built-in")))
+        #expect(builtInOnPreview.bigRow.title == "Open built-in bundle")
+        #expect(builtInOnPreview.bigRow.detail == "Channel pr-1")
+    }
+
+    @Test
+    func aMessageIsShownOnlyWhenKnown() {
+        #expect(home(state(selection: selection())).bigRow.subtitle == nil)
+        #expect(home(state(selection: selection(), message: "fix: login"))
+            .bigRow.subtitle == "fix: login")
+    }
+
+    @Test
+    func overTheAppItSaysRunningAndReload() {
+        let row = home(state(selection: selection()), isOverApp: true).bigRow
+        #expect(row.caption == "Running")
+        #expect(row.title == "Reload")
+        #expect(row.subtitle == "Running pr-1")
+        #expect(row.isReload)
+    }
+
+    @Test
+    func overTheAppRunningAndNextAreSeparateWhenTheyDiffer() {
+        let toBuiltIn = home(state(selection: selection(bundleId: "built-in"), running: "ota"), isOverApp: true).bigRow
+        #expect(toBuiltIn.subtitle == "Running bundle ota")
+        #expect(toBuiltIn.detail == "Next launch: the built-in bundle")
+
+        let toOta = home(state(selection: selection(bundleId: "ota"), running: "built-in"), isOverApp: true).bigRow
+        #expect(toOta.subtitle == "Running the built-in bundle")
+        #expect(toOta.detail == "Next launch: bundle ota")
+    }
+
+    @Test
+    func theDevServerIsWhatRunsWhenItRuns() {
+        let model = HotUpdaterSandboxHomeModel(
+            state: state(selection: selection()),
+            isOverApp: true,
+            runningDevServerHost: "localhost:8081",
+            nowMs: 0
+        )
+        #expect(model.bigRow.subtitle == "Running the dev server")
+        let info = HotUpdaterSandboxInfoModel(
+            state: state(selection: selection()),
+            version: "1.0 (1)",
+            configuration: "Release",
+            isOverApp: true,
+            runningDevServerHost: "localhost:8081"
+        )
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "Dev server")
+    }
+
+    @Test
+    func aRollbackIsClaimedOnlyByItsOwnBanner() {
+        let rolledBack = home(state(
+            selection: selection(bundleId: "built-in"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashedBeforeContent, bundleId: "ota", rolledBackToBundleId: "built-in"),
+            history: [HotUpdaterSandboxHistoryEntry(channel: "pr-9", bundleId: "ota", message: nil, openedAtMs: 0)]
+        )).banner
+        #expect(rolledBack?.text == "pr-9 crashed before its first screen. The device rolled back to the built-in bundle.")
+        #expect(rolledBack?.offersReset == false)
+
+        let verified = home(state(
+            selection: selection(bundleId: "ota"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil)
+        )).banner
+        #expect(verified?.text == "Bundle ota crashed on its last launch, and it's still selected.")
+        #expect(verified?.offersReset == true)
+        #expect(verified?.text.contains("rolled back") == false)
+
+        let left = home(state(
+            selection: selection(bundleId: "built-in"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .endedBeforeContent, bundleId: "ota", rolledBackToBundleId: "built-in")
+        )).banner
+        #expect(left?.text == "Bundle ota didn't reach its first screen. The device rolled back to the built-in bundle.")
+        #expect(left?.text.contains("crashed") == false)
+    }
+
+    @Test
+    func aCrashedBuiltInBundleHasNoResetToOffer() {
+        let banner = home(state(
+            selection: selection(bundleId: "built-in"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "built-in", rolledBackToBundleId: nil)
+        )).banner
+        #expect(banner?.text == "The built-in bundle crashed on its last launch, and it's still selected.")
+        #expect(banner?.offersReset == false)
+    }
+
+    @Test
+    func aCrashedBundleThatsNoLongerSelectedSaysWhatIs() {
+        let banner = home(state(
+            selection: selection(bundleId: "newer"),
+            lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashed, bundleId: "ota", rolledBackToBundleId: nil)
+        )).banner
+        #expect(banner?.text == "Bundle ota crashed on its last launch. Bundle newer is selected now.")
+        #expect(banner?.offersReset == false)
+    }
+
+    @Test
+    func theFirstLaunchSaysAServerAnswerIsNeeded() {
+        let model = home(state(selection: selection(bundleId: "built-in"), hasServerConfig: false))
+        #expect(model.previewHint?.contains("answers one of the app's update checks") == true)
+        #expect(model.previewHint?.contains("Open the app once") == false)
+    }
+
+    @Test
+    func thePreviewListIsWhatsElseThanTheSelectedChannel() {
+        let model = home(state(
+            selection: selection(channel: "pr-1"),
+            history: [
+                HotUpdaterSandboxHistoryEntry(channel: "pr-1", bundleId: "a", message: nil, openedAtMs: 0),
+                HotUpdaterSandboxHistoryEntry(channel: "pr-2", bundleId: "b", message: "words", openedAtMs: 0),
+            ]
+        ))
+        #expect(model.previews == [HotUpdaterSandboxHomeModel.Preview(channel: "pr-2", message: "words", opened: "Opened today")])
+        #expect(model.previewHint == nil)
+    }
+
+    @Test
+    func aSwitchShowsItsStepAndHoldsTheRows() {
+        let model = home(state(
+            selection: selection(),
+            phase: .working(operationId: 1, target: "pr-2", step: .download, progress: 0.5)
+        ))
+        #expect(model.status == HotUpdaterSandboxHomeModel.Status(text: "Downloading pr-2… 50%", progress: 0.5))
+        #expect(model.isBusy)
+    }
+
+    @Test
+    func infoShowsWhatTheStoreHolds() {
+        var withPending = state(selection: selection(bundleId: "019a3f00aabbc2"))
+        withPending.details = HotUpdaterSandboxDetails(
+            builtInBundleId: "built-in",
+            fingerprintHash: nil,
+            pendingBundleId: "019a3f00aabbc2"
+        )
+        let info = HotUpdaterSandboxInfoModel(state: withPending, version: "1.0 (1)", configuration: "Release")
+        #expect(info.build.map(\.name) == ["Version", "Configuration", "Fingerprint", "Built-in bundle", "Default channel"])
+        #expect(info.build.first { $0.name == "Fingerprint" }?.value == "None")
+        #expect(info.bundle.map(\.name) == ["Channel", "Current", "Pending"])
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "019a3f…c2")
+        #expect(info.bundle.first { $0.name == "Pending" }?.value == "019a3f…c2")
+    }
+}
+#endif
 
 struct HotUpdaterSandboxDevHostTests {
     @Test

@@ -117,48 +117,65 @@ describe.runIf(process.platform === "darwin")("patching with plutil", () => {
     );
   });
 
-  it("allows a local dev server, keeping the app's own ATS settings and prompt", async () => {
-    const plist = path.join(app, "Info.plist");
+  it("adds what the screen asks the system for, to the app alone", async () => {
     await patchSandboxArchive({
       archivePath: archive,
       appPath: app,
       schemeConfig: scheme,
     });
-    expect(read(plist).NSAppTransportSecurity.NSAllowsLocalNetworking).toBe(
-      true,
-    );
-    expect(read(plist).NSLocalNetworkUsageDescription).toContain("dev server");
 
-    execFileSync("plutil", [
-      "-replace",
-      "NSLocalNetworkUsageDescription",
-      "-string",
-      "Ours",
-      plist,
-    ]);
-    execFileSync("plutil", [
-      "-insert",
-      "NSAppTransportSecurity.NSExceptionDomains",
-      "-json",
-      '{"a.example":{}}',
-      plist,
-    ]);
-    execFileSync("plutil", [
-      "-replace",
-      "NSAppTransportSecurity.NSAllowsLocalNetworking",
-      "-bool",
-      "false",
-      plist,
-    ]);
+    const info = read(path.join(app, "Info.plist"));
+    expect(info.NSCameraUsageDescription).toEqual(expect.any(String));
+    expect(info.NSLocalNetworkUsageDescription).toEqual(expect.any(String));
+    expect(info.NSAppTransportSecurity).toEqual({
+      NSAllowsLocalNetworking: true,
+    });
+    const extension = read(path.join(appex, "Info.plist"));
+    expect(extension.NSCameraUsageDescription).toBe(undefined);
+    expect(extension.NSAppTransportSecurity).toBe(undefined);
+  });
+
+  it("keeps what the app already set, and its nested transport security entries", async () => {
+    const domains = {
+      "api.example.com": { NSExceptionAllowsInsecureHTTPLoads: true },
+    };
+    await writePlist(path.join(app, "Info.plist"), {
+      CFBundleIdentifier: "com.example.App",
+      NSCameraUsageDescription: "The app's own words",
+      NSLocalNetworkUsageDescription: "The app's own network words",
+      NSAppTransportSecurity: { NSExceptionDomains: domains },
+    });
+
     await patchSandboxArchive({
       archivePath: archive,
       appPath: app,
       schemeConfig: scheme,
     });
-    expect(read(plist).NSLocalNetworkUsageDescription).toBe("Ours");
-    expect(read(plist).NSAppTransportSecurity).toEqual({
-      NSAllowsLocalNetworking: true,
-      NSExceptionDomains: { "a.example": {} },
+
+    expect(read(path.join(app, "Info.plist"))).toMatchObject({
+      NSCameraUsageDescription: "The app's own words",
+      NSLocalNetworkUsageDescription: "The app's own network words",
+      NSAppTransportSecurity: {
+        NSExceptionDomains: domains,
+        NSAllowsLocalNetworking: true,
+      },
+    });
+  });
+
+  it("keeps the app's own local networking value", async () => {
+    await writePlist(path.join(app, "Info.plist"), {
+      CFBundleIdentifier: "com.example.App",
+      NSAppTransportSecurity: { NSAllowsLocalNetworking: false },
+    });
+
+    await patchSandboxArchive({
+      archivePath: archive,
+      appPath: app,
+      schemeConfig: scheme,
+    });
+
+    expect(read(path.join(app, "Info.plist")).NSAppTransportSecurity).toEqual({
+      NSAllowsLocalNetworking: false,
     });
   });
 

@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+
 import { Hono } from "hono";
 
 import {
@@ -17,6 +19,9 @@ import {
   handleAssertMultipleAssetsReplaced,
   handleAssertProxy,
   handleCaptureBuiltInBundleId,
+  recordUnreachableUpdateRequest,
+  startInstallNativeBuildJob,
+  startReadNativeBuildsJob,
   handleCaptureState,
   handleCleanup,
   handleComputeRemoteConfigRolloutSample,
@@ -99,6 +104,18 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
   return c.json({ jobId: startResetRemoteBundlesJob() });
+});
+
+app.post("/e2e/jobs/read-native-builds", (c) =>
+  c.json({ jobId: startReadNativeBuildsJob() }),
+);
+
+app.post("/e2e/jobs/install-native-build", async (c) => {
+  const payload = (await c.req.json()) as { build?: unknown };
+  if (payload.build !== "run" && payload.build !== "other") {
+    return c.json({ error: "build must be run or other" }, 400);
+  }
+  return c.json({ jobId: startInstallNativeBuildJob(payload.build) });
 });
 
 app.post("/e2e/jobs/register-native-build", async (c) => {
@@ -200,6 +217,13 @@ app.post("/e2e/rollback-remote-config", async (c) => {
 });
 
 app.all("/hot-updater/*", async (c) => {
+  if (recordUnreachableUpdateRequest(c.req.raw)) {
+    // A dropped connection, as a device sees a server that is down.
+    (
+      c.env as { incoming?: IncomingMessage } | undefined
+    )?.incoming?.socket.destroy();
+    return c.body(null, 503);
+  }
   return handleProxyUpdateRequest(c.req.raw);
 });
 
@@ -209,6 +233,7 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
+    updateServerUnreachable?: boolean;
     archiveAvailable?: boolean;
     archiveFailureMode?: "corrupt" | "interrupt" | "not-found" | null;
     archiveFailures?: number;
@@ -283,6 +308,9 @@ app.post("/e2e/assert-proxy", async (c) => {
     artifactRequests?: number;
     catalogRequests?: number;
     maxPathCardinality?: number;
+    minArtifactRequests?: number;
+    minCatalogRequests?: number;
+    minDownloadedBytes?: number;
   };
   return c.json(handleAssertProxy(payload));
 });

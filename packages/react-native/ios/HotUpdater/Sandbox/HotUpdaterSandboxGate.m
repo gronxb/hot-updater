@@ -21,6 +21,9 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 + (void)receiveLink:(NSURL *)url scene:(nullable UIWindowScene *)scene;
 + (void)hideScreen;
 + (void)keepKeyWindow:(UIWindow *)window;
++ (void)captureLaunchEvidence;
++ (void)appShowedContent;
++ (void)shakeIn:(UIWindowScene *)scene;
 @end
 
 @interface HotUpdaterSandboxLaunchPolicy : NSObject
@@ -46,6 +49,16 @@ static NSURL *gOwnLinkWhileHeld;
 /// What named the app when it released: a root held earlier is the one that
 /// creates React Native's host, which keeps its launch options for `Linking`.
 static NSDictionary *gOptionsThatReleased;
+
+static void (*gMotionEnded)(id, SEL, UIEventSubtype, UIEvent *);
+
+/// `UIWindow` inherits this method, so the swap covers every responder in the chain.
+static void MotionEnded(id self, SEL cmd, UIEventSubtype motion, UIEvent *event) {
+  if (motion == UIEventSubtypeMotionShake && [self isKindOfClass:UIWindow.class]) {
+    [HotUpdaterSandboxBridge shakeIn:((UIWindow *)self).windowScene];
+  }
+  if (gMotionEnded) gMotionEnded(self, cmd, motion, event);
+}
 
 static BOOL IsSandboxLink(NSURL *url) {
   return url != nil && [HotUpdaterSandboxLaunchPolicy isSandboxScheme:url.scheme];
@@ -84,12 +97,28 @@ static void ReleaseReactNative(NSString *reason) {
 @property (nonatomic, strong, nullable) UIView *reactRoot;
 @end
 
-@implementation HotUpdaterSandboxPlaceholderView
+@implementation HotUpdaterSandboxPlaceholderView {
+  BOOL _hostSetBackground;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+  self = [super initWithFrame:frame];
+  if (self) [super setBackgroundColor:UIColor.systemBackgroundColor];
+  return self;
+}
+
+/// The real root covers this view, so a color the host sets belongs on it.
+- (void)setBackgroundColor:(UIColor *)color {
+  [super setBackgroundColor:color];
+  _hostSetBackground = YES;
+  self.reactRoot.backgroundColor = color;
+}
 
 - (void)adoptRoot:(UIView *)root {
   self.reactRoot = root;
   root.frame = self.bounds;
   root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  if (_hostSetBackground) root.backgroundColor = self.backgroundColor;
   [self insertSubview:root atIndex:0];
 }
 
@@ -200,7 +229,6 @@ static UIView *Hold(NSDictionary *options, UIView * (^start)(NSDictionary *)) {
   }
   if (gReleased) return start(CleanOptions(options));
   HotUpdaterSandboxPlaceholderView *placeholder = [HotUpdaterSandboxPlaceholderView new];
-  placeholder.backgroundColor = UIColor.systemBackgroundColor;
   if (!gHeld) gHeld = [NSMutableArray new];
   [gHeld addObject:^{
     [placeholder adoptRoot:start(CleanOptions(options))];
@@ -303,6 +331,27 @@ static void WrapApplicationDelegate(Class cls) {
   }, kUnhandledPushSeconds);
 }
 
+static NSSet<UIOpenURLContext *> *(*gURLContexts)(id, SEL);
+
+/// A connection's sandbox links reach the screen once, however often the options are read.
+static void TakeSandboxLinks(UISceneConnectionOptions *options, UIWindowScene *scene) {
+  static char kTaken;
+  if (objc_getAssociatedObject(options, &kTaken)) return;
+  objc_setAssociatedObject(options, &kTaken, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  for (UIOpenURLContext *context in gURLContexts(options, @selector(URLContexts))) {
+    if (IsSandboxLink(context.URL)) [HotUpdaterSandboxBridge receiveLink:context.URL scene:scene];
+  }
+}
+
+/// What a scene's own code reads from its connection options: never a sandbox link.
+/// The system builds those options and they can't be copied, so the getter filters.
+static NSSet<UIOpenURLContext *> *OwnURLContexts(id self, SEL cmd) {
+  TakeSandboxLinks(self, ForegroundScene());
+  return [gURLContexts(self, cmd) objectsPassingTest:^BOOL(UIOpenURLContext *context, BOOL *stop) {
+    return !IsSandboxLink(context.URL);
+  }];
+}
+
 /// A scene's cold connection, and its warm links, activities and shortcuts.
 static void WrapSceneDelegate(Class cls) {
   if (!gWrapped) gWrapped = [NSMutableSet new];
@@ -315,13 +364,10 @@ static void WrapSceneDelegate(Class cls) {
       cls, willConnect,
       imp_implementationWithBlock(^(id self, UIScene *scene, UISceneSession *session, UISceneConnectionOptions *options) {
     BOOL forTheApp = options.userActivities.count > 0 || options.notificationResponse != nil || options.shortcutItem != nil;
+    TakeSandboxLinks(options, (UIWindowScene *)scene);
     for (UIOpenURLContext *context in options.URLContexts) {
-      if (IsSandboxLink(context.URL)) {
-        [HotUpdaterSandboxBridge receiveLink:context.URL scene:(UIWindowScene *)scene];
-      } else {
-        gOwnLinkWhileHeld = context.URL;
-        forTheApp = YES;
-      }
+      gOwnLinkWhileHeld = context.URL;
+      forTheApp = YES;
     }
     if (forTheApp) ReleaseReactNative(@"scene connection names the app");
     if (originalConnect) originalConnect(self, willConnect, scene, session, options);
@@ -393,6 +439,9 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
   SEL three = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:");
   Method method5 = factory ? class_getInstanceMethod(factory, five) : NULL;
   Method method3 = factory ? class_getInstanceMethod(factory, three) : NULL;
+  // First, so nothing can settle it before: settling deletes the marker.
+  [HotUpdaterSandboxBridge captureLaunchEvidence];
+
   if (method5) {
     gView5 = (View5)method_setImplementation(method5, (IMP)GatedView5);
   } else if (method3) {
@@ -413,8 +462,20 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
         return gReleased;
       }];
 
+  Method motion = class_getInstanceMethod(UIWindow.class, @selector(motionEnded:withEvent:));
+  gMotionEnded = (void *)method_setImplementation(motion, (IMP)MotionEnded);
+  // React Native's own notification, by name: a recovery reload ends in new content.
+  [NSNotificationCenter.defaultCenter addObserverForName:@"RCTContentDidAppearNotification"
+                                                  object:nil
+                                                   queue:NSOperationQueue.mainQueue
+                                              usingBlock:^(NSNotification *note) {
+                                                [HotUpdaterSandboxBridge appShowedContent];
+                                              }];
+
   Method setDelegate = class_getInstanceMethod(UIApplication.class, @selector(setDelegate:));
   gSetDelegate = (void *)method_setImplementation(setDelegate, (IMP)SetDelegate);
+  Method urlContexts = class_getInstanceMethod(UISceneConnectionOptions.class, @selector(URLContexts));
+  gURLContexts = (void *)method_setImplementation(urlContexts, (IMP)OwnURLContexts);
   [NSNotificationCenter.defaultCenter addObserverForName:UISceneWillConnectNotification
                                                   object:nil
                                                    queue:nil

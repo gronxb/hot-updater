@@ -32,3 +32,7 @@ that reads or writes the normal selection. `HotUpdaterSandboxDevState` says what
 it serves, for this process only. Connecting stops watching a launch of the normal
 selection already prepared, and a crash marker a dev process left is dropped at the
 next start.
+
+`HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
+words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
+the screen knows of dev-server mode.

@@ -18,6 +18,8 @@ protocol HotUpdaterSandboxDevServer: AnyObject {
     /// The host of the running session, when there is one.
     var runningDevServerHost: String? { get }
     var devServerHosts: [HotUpdaterSandboxDevServerHost] { get }
+    /// What the last reload couldn't do. A failed connect says so to its completion.
+    var lastDevServerError: String? { get }
     /// Called when `devServerHosts` or the running session changed.
     var onDevServerChange: (() -> Void)? { get set }
     /// Calls back on the main actor with nil once connected, or with what's wrong.

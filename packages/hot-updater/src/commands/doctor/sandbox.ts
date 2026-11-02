@@ -14,8 +14,8 @@ import type { NativeCheckIssue } from "./issues";
 /** Build adapters no sandbox build has run on yet. */
 const UNQUALIFIED_ADAPTERS = new Set(["rock"]);
 
-/** The Expo SDK a sandbox build has run on. */
-const QUALIFIED_EXPO_SDK = 52;
+/** The Expo SDKs sandbox builds have run on. */
+const QUALIFIED_EXPO_SDKS = new Set([52, 54, 57, 58]);
 
 /** The major version of the Expo SDK a project declares, or null without one. */
 const expoSdkOf = (cwd: string): number | null => {
@@ -79,11 +79,39 @@ const findGoogleServices = (
   return null;
 };
 
-/** Whether a Podfile links frameworks, without the template's `USE_FRAMEWORKS` guard. */
-const linksFrameworks = (podfile: string | null) =>
-  process.env["USE_FRAMEWORKS"] !== undefined ||
-  (podfile !== null &&
-    /^\s*use_frameworks!(?!.*:linkage\s*=>\s*linkage)/mu.test(podfile));
+/**
+ * Whether a Podfile links frameworks. The templates' lines depend on
+ * `USE_FRAMEWORKS`, which is read here, and Expo's first line on
+ * `ios.useFrameworks` in `Podfile.properties.json`.
+ */
+const linksFrameworks = (iosDir: string) => {
+  if (process.env["USE_FRAMEWORKS"] !== undefined) return true;
+  const lines = (readText(path.join(iosDir, "Podfile")) ?? "")
+    .split("\n")
+    .filter((line) => /^\s*use_frameworks!/u.test(line))
+    .filter(
+      (line) =>
+        !/:linkage\s*=>\s*(linkage|ENV\[['"]USE_FRAMEWORKS)/u.test(line),
+    );
+  const fromProperties = (line: string) => line.includes("ios.useFrameworks");
+  return (
+    lines.some((line) => !fromProperties(line)) ||
+    (lines.length > 0 &&
+      podfileProperty(iosDir, "ios.useFrameworks") !== undefined)
+  );
+};
+
+/** A value of Expo's generated `Podfile.properties.json`. */
+const podfileProperty = (iosDir: string, key: string): unknown => {
+  try {
+    const properties = readText(path.join(iosDir, "Podfile.properties.json"));
+    return properties === null
+      ? undefined
+      : (JSON.parse(properties) as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+};
 
 /** Whether the Xcode project has an app extension target. */
 const hasAppExtension = (iosDir: string) =>
@@ -145,7 +173,7 @@ export const checkSandboxSchemes = async (
   }
   if (adapter === "expo") {
     const sdk = expoSdkOf(cwd);
-    if (sdk !== QUALIFIED_EXPO_SDK) {
+    if (sdk === null || !QUALIFIED_EXPO_SDKS.has(sdk)) {
       issues.push(
         unqualified(
           "project",
@@ -166,7 +194,7 @@ export const checkSandboxSchemes = async (
         resolution: "Build with CocoaPods, or remove sandbox: true.",
       });
     }
-    if (linksFrameworks(readText(path.join(iosDir, "Podfile")))) {
+    if (linksFrameworks(iosDir)) {
       issues.push(unqualified("ios", "use_frameworks"));
     }
     if (hasAppExtension(iosDir)) {

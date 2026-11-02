@@ -85,6 +85,36 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
 
+    override fun launchEvidence(): HotUpdaterSandboxLaunchEvidence {
+        val builtIn = HotUpdaterImpl.getMinBundleId()
+        // The launch report is a read: JavaScript gets the same one after.
+        val report = impl.notifyAppReady()
+        val from = report["fromBundleId"] as? String
+        return HotUpdaterSandboxLaunchEvidence(
+            marker =
+                HotUpdaterSandboxProcess.crashMarkerAtStart?.let {
+                    HotUpdaterSandboxCrashMarker(it.launchedBundleId ?: builtIn, it.shouldRollback)
+                },
+            rollback =
+                if (report["status"] == "RECOVERED" && from != null) {
+                    HotUpdaterSandboxRollback(from, report["toBundleId"] as? String ?: builtIn)
+                } else {
+                    null
+                },
+        )
+    }
+
+    override fun details(): HotUpdaterSandboxDetails {
+        val builtIn = HotUpdaterImpl.getMinBundleId()
+        val state = impl.getActiveUpdateState()
+        val active = (state["activeSelection"] as? Map<*, *>)?.get("bundleId") as? String ?: builtIn
+        return HotUpdaterSandboxDetails(
+            builtInBundleId = builtIn,
+            fingerprintHash = impl.getFingerprintHash(),
+            pendingBundleId = active.takeIf { state["verificationPending"] == true },
+        )
+    }
+
     override suspend fun preflight(channel: String): Boolean =
         withContext(Dispatchers.IO) {
             val config = requireConfig()
@@ -149,7 +179,10 @@ internal class HotUpdaterSandboxLiveHost(
                 ) ?: return@withContext HotUpdaterSandboxStaged.NoUpdate
             if (!update.updateBundle(onProgress)) return@withContext HotUpdaterSandboxStaged.Superseded
             val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
-            HotUpdaterSandboxStaged.Update(active?.get("bundleId") as? String ?: HotUpdaterImpl.getMinBundleId())
+            HotUpdaterSandboxStaged.Update(
+                active?.get("bundleId") as? String ?: HotUpdaterImpl.getMinBundleId(),
+                update.message,
+            )
         }
 
     private companion object {
@@ -184,6 +217,79 @@ internal class HotUpdaterSandboxPreferences(
 
     override fun recordOpened(selection: HotUpdaterSandboxSelection) = record(OPENED, selection)
 
+    override var history: List<HotUpdaterSandboxHistoryEntry>
+        get() =
+            readArray(HISTORY).mapNotNull { item ->
+                runCatching {
+                    HotUpdaterSandboxHistoryEntry(
+                        channel = item.getString("channel"),
+                        bundleId = item.getString("bundleId"),
+                        message = item.optString("message").takeIf { item.has("message") },
+                        openedAtMs = item.getLong("openedAtMs"),
+                    )
+                }.getOrNull()
+            }
+        set(value) {
+            writeArray(
+                HISTORY,
+                value.map {
+                    JSONObject()
+                        .put("channel", it.channel)
+                        .put("bundleId", it.bundleId)
+                        .put("message", it.message)
+                        .put("openedAtMs", it.openedAtMs)
+                },
+            )
+        }
+
+    override var messages: List<HotUpdaterSandboxBundleMessage>
+        get() =
+            readArray(MESSAGES).mapNotNull { item ->
+                runCatching { HotUpdaterSandboxBundleMessage(item.getString("bundleId"), item.getString("message")) }.getOrNull()
+            }
+        set(value) {
+            writeArray(MESSAGES, value.map { JSONObject().put("bundleId", it.bundleId).put("message", it.message) })
+        }
+
+    override var lastLaunch: HotUpdaterSandboxLastLaunch?
+        get() {
+            val value = preferences.getString(LAST_LAUNCH, null) ?: return null
+            return runCatching {
+                val item = JSONObject(value)
+                HotUpdaterSandboxLastLaunch(
+                    kind = HotUpdaterSandboxLastLaunch.Kind.valueOf(item.getString("kind")),
+                    bundleId = item.getString("bundleId"),
+                    rolledBackToBundleId = item.optString("rolledBackToBundleId").takeIf { item.has("rolledBackToBundleId") },
+                )
+            }.getOrNull()
+        }
+        set(value) {
+            val item =
+                value?.let {
+                    JSONObject()
+                        .put("kind", it.kind.name)
+                        .put("bundleId", it.bundleId)
+                        .put("rolledBackToBundleId", it.rolledBackToBundleId)
+                        .toString()
+                }
+            preferences.edit().putString(LAST_LAUNCH, item).commit()
+        }
+
+    private fun readArray(key: String): List<JSONObject> {
+        val value = preferences.getString(key, null) ?: return emptyList()
+        return runCatching {
+            val items = JSONArray(value)
+            (0 until items.length()).map(items::getJSONObject)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun writeArray(
+        key: String,
+        items: List<JSONObject>,
+    ) {
+        preferences.edit().putString(key, JSONArray(items).toString()).commit()
+    }
+
     private fun record(
         key: String,
         selection: HotUpdaterSandboxSelection,
@@ -203,5 +309,8 @@ internal class HotUpdaterSandboxPreferences(
         const val PENDING_LINKS = "pendingLinks"
         const val SELECTED = "selected"
         const val OPENED = "opened"
+        const val HISTORY = "history"
+        const val MESSAGES = "messages"
+        const val LAST_LAUNCH = "lastLaunch"
     }
 }

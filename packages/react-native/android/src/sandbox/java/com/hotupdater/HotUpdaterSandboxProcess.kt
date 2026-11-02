@@ -7,6 +7,7 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import java.io.File
 
 /**
  * Follows the app's own activities from the process's start, since a provider
@@ -26,6 +27,17 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         var hostStarted = false
             private set
 
+        /**
+         * What the previous process's crash left, read here because settling
+         * deletes it, and a launch that skips the screen settles it too.
+         */
+        @Volatile
+        var crashMarkerAtStart: PendingCrashRecovery? = null
+            private set
+
+        /** Main's marker, under the app's files directory. */
+        internal fun crashMarkerFile(filesDir: File?) = File(File(filesDir, "bundle-store"), "recovery-crash-marker.json")
+
         private fun isHost(activity: Activity) =
             activity !is HotUpdaterSandboxActivity &&
                 activity !is HotUpdaterRestartActivity &&
@@ -35,8 +47,16 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
     override fun onCreate(): Boolean {
         // Before `Application.onCreate`, where a host may already read its bundle.
         context?.let(HotUpdaterSandboxDev::session)
-        (context?.applicationContext as? Application)?.registerActivityLifecycleCallbacks(
+        val application = context?.applicationContext as? Application
+        crashMarkerAtStart =
+            crashMarkerFile(application?.filesDir)
+                .takeIf(File::exists)
+                ?.let(PendingCrashRecovery::loadFromFile)
+        val shake = application?.let(::HotUpdaterSandboxShake)
+        application?.registerActivityLifecycleCallbacks(
             object : Application.ActivityLifecycleCallbacks {
+                private var notedLastLaunch = false
+
                 override fun onActivityCreated(
                     activity: Activity,
                     savedInstanceState: Bundle?,
@@ -52,9 +72,18 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
 
                 override fun onActivityStarted(activity: Activity) = Unit
 
-                override fun onActivityResumed(activity: Activity) = Unit
+                override fun onActivityResumed(activity: Activity) {
+                    if (!isHost(activity)) return
+                    shake?.watch(activity)
+                    if (!notedLastLaunch) {
+                        notedLastLaunch = true
+                        HotUpdaterSandbox.coordinator(activity).noteLastLaunch()
+                    }
+                }
 
-                override fun onActivityPaused(activity: Activity) = Unit
+                override fun onActivityPaused(activity: Activity) {
+                    if (isHost(activity)) shake?.stop(activity)
+                }
 
                 override fun onActivityStopped(activity: Activity) = Unit
 

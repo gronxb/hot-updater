@@ -23,3 +23,7 @@ A dev session is a process: `HotUpdaterSandboxDev` settles once, before anything
 reads a bundle, whether this one runs a session. Connecting, a reload and Exit
 start a new process through `HotUpdaterSandboxRelaunchActivity`, whose helper
 process being alive is what tells a relaunch from an icon tap.
+
+`HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
+words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
+the screen knows of dev-server mode.

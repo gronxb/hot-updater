@@ -15,7 +15,6 @@ public final class HotUpdaterSandboxBridge: NSObject {
     private static var isReleased: (() -> Bool)?
     private static var window: UIWindow?
     private static var isWatchingForServerAnswer = false
-
     private static let devServer = HotUpdaterSandboxLiveDevServer(
         start: { launchWasPrepared in startDevSession(launchWasPrepared: launchWasPrepared) },
         reload: { NSLog("[HotUpdaterSandbox] reload triggered=%d", reload?() == true) }
@@ -49,6 +48,27 @@ public final class HotUpdaterSandboxBridge: NSObject {
         HotUpdaterSandboxDevLeftover.dropCrashOfLastProcess()
     }
 
+    /// Reads what the last launch left, before anything settles it.
+    @objc public static func captureLaunchEvidence() {
+        HotUpdaterSandboxLiveHost.captureCrashMarker()
+    }
+
+    /// A launch that skipped the screen settled what the last one left, so that
+    /// stays for the next screen. React Native's recovery can also roll back
+    /// inside a running process, so this reads each time the app shows content.
+    @objc public static func appShowedContent() {
+        guard isReleased?() == true else { return }
+        Task { await coordinator.noteLastLaunch() }
+    }
+
+    /// A shake opens the screen over the running app. The first screen is up by
+    /// itself until then.
+    @objc public static func shake(in scene: UIWindowScene?) {
+        guard isReleased?() == true else { return }
+        NSLog("[HotUpdaterSandbox] shake")
+        present(in: scene)
+    }
+
     /// The first screen, before the app's JavaScript starts.
     @objc public static func presentScreen(in scene: UIWindowScene?) {
         present(in: scene)
@@ -75,20 +95,33 @@ public final class HotUpdaterSandboxBridge: NSObject {
         }
     }
 
+    /// The scene to show in: a window with no scene never shows on a scene host, and
+    /// a scene can be between states as the app comes up.
+    private static func screenScene(_ scene: UIWindowScene?) -> UIWindowScene? {
+        if let scene { return scene }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes.first { $0.activationState == .foregroundActive }
+            ?? scenes.first { $0.activationState == .foregroundInactive }
+            ?? scenes.first
+    }
+
     private static func present(in scene: UIWindowScene?) {
         Task { await coordinator.refresh() }
         guard window == nil else { return }
-        let shown = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
+        let shown = screenScene(scene).map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
         shown.windowLevel = .normal + 1
         shown.rootViewController = HotUpdaterSandboxScreen(
             coordinator: coordinator,
             devServer: devServer,
             isOverApp: { isReleased?() == true },
-            onClose: { hideScreen() }
+            onClose: {
+                coordinator.acknowledgeLastLaunch()
+                hideScreen()
+            }
         )
         window = shown
         shown.makeKeyAndVisible()
-        NSLog("[HotUpdaterSandbox] screen shown overApp=%d", isReleased?() == true)
+        NSLog("[HotUpdaterSandbox] screen shown overApp=%d inScene=%d", isReleased?() == true, shown.windowScene != nil)
     }
 
     /// A session starts where the first screen would: over a running app it reloads
@@ -134,10 +167,7 @@ public final class HotUpdaterSandboxBridge: NSObject {
                 try? await Task.sleep(nanoseconds: serverAnswerPollSeconds * 1_000_000_000)
                 guard host.hasServerConfig() else { continue }
                 isWatchingForServerAnswer = false
-                let scene = UIApplication.shared.connectedScenes
-                    .compactMap { $0 as? UIWindowScene }
-                    .first { $0.activationState == .foregroundActive }
-                present(in: scene)
+                present(in: nil)
                 return
             }
             isWatchingForServerAnswer = false

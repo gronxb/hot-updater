@@ -38,6 +38,13 @@ private class FakeHost : HotUpdaterSandboxHost {
         exits += 1
     }
 
+    var evidence = HotUpdaterSandboxLaunchEvidence()
+    var pendingBundleId: String? = null
+
+    override fun launchEvidence() = evidence
+
+    override fun details() = HotUpdaterSandboxDetails("built-in", fingerprint, pendingBundleId)
+
     /** The OTA this process launched, which stays what it runs after a reset deletes it. */
     var runningBundleId: String? = null
 
@@ -89,6 +96,9 @@ private class FakeStore(
 ) : HotUpdaterSandboxStore {
     val selected = ArrayList<String>()
     val opened = ArrayList<String>()
+    override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
+    override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
+    override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
     override fun recordSelected(selection: HotUpdaterSandboxSelection) {
         selected += selection.channel
@@ -112,6 +122,7 @@ private class Fixture(
             // Each step runs at once on the test's thread; a gate holds one open.
             scope = CoroutineScope(Dispatchers.Unconfined),
             openApp = { switched, fixed -> opens += switched to fixed },
+            nowMs = { 1_000_000L },
         )
 
     val phase get() = coordinator.state.phase
@@ -382,6 +393,9 @@ class HotUpdaterSandboxCoordinatorTest {
     private class OpenedStore : HotUpdaterSandboxStore {
         override var pendingLinks: List<String> = emptyList()
         var opened: String? = null
+        override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
+        override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
+        override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
         override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
 
