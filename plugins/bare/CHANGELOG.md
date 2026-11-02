@@ -123,6 +123,13 @@
   - @hot-updater/cli-tools@1.2.0-rc.0
   - @hot-updater/plugin-core@1.2.0-rc.0
 
+## 1.1.6
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.6
+  - @hot-updater/plugin-core@1.1.6
+
 ## 1.1.5
 
 ### Patch Changes

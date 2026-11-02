@@ -211,6 +211,15 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/bsdiff@1.2.0-rc.0
 
+## 1.1.6
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.1.6
+  - @hot-updater/protocol@1.1.6
+  - @hot-updater/server@1.1.6
+  - @hot-updater/plugin-core@1.1.6
+
 ## 1.1.5
 
 ### Patch Changes
