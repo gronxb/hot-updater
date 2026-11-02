@@ -12,10 +12,10 @@ import {
 } from "@/lib/native-builds";
 
 /**
- * The native build a release's bundle reaches, and whether that bundle has
- * a patch from its built-in bundle: the newest build of the release's
- * scope, one read. A release of an app version range targets many builds,
- * so it shows none and reads nothing.
+ * The native build new deploys to a release's scope patch from, and whether
+ * this bundle has a patch from its built-in bundle: the scope's store build,
+ * or with none its newest, in two reads at most. A release of an app version
+ * range targets many builds, so it shows none and reads nothing.
  */
 export function ReleaseNativeBuildLink({
   release,

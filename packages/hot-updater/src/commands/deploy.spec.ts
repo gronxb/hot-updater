@@ -2151,9 +2151,9 @@ describe("deploy rollout wiring", () => {
       await deployByFingerprint();
 
       expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
-      expect(printed().filter((line) => line.includes("Built-in base"))).toEqual(
-        [expect.stringMatching(/\(66\).*store build/)],
-      );
+      expect(
+        printed().filter((line) => line.includes("Built-in base")),
+      ).toEqual([expect.stringMatching(/\(66\).*store build/)]);
       expect(baseWarnings()).toEqual([]);
     });
 
@@ -2171,9 +2171,9 @@ describe("deploy rollout wiring", () => {
       await deployByFingerprint();
 
       expect(baseBundleIds()).toEqual([fixtureBundleId(101)]);
-      expect(printed().filter((line) => line.includes("Built-in base"))).toEqual(
-        [expect.stringMatching(/\(67\).*newest build/)],
-      );
+      expect(
+        printed().filter((line) => line.includes("Built-in base")),
+      ).toEqual([expect.stringMatching(/\(67\).*newest build/)]);
       expect(baseWarnings()).toEqual([]);
     });
 
@@ -2184,15 +2184,14 @@ describe("deploy rollout wiring", () => {
         "01900000-0000-7000-8000-00000000b001",
         { storeBuild: true },
       );
-      const findNativeBuild = vi.spyOn(
-        databaseHarness.core,
-        "findNativeBuild",
-      );
+      const findNativeBuild = vi.spyOn(databaseHarness.core, "findNativeBuild");
 
       try {
         await deployByFingerprint();
         expect(
-          findNativeBuild.mock.calls.filter(([, options]) => !options?.buildKey),
+          findNativeBuild.mock.calls.filter(
+            ([, options]) => !options?.buildKey,
+          ),
         ).toEqual([[expect.anything(), { storeBuild: true }]]);
       } finally {
         findNativeBuild.mockRestore();
@@ -2202,16 +2201,16 @@ describe("deploy rollout wiring", () => {
     it("reads once more only when there is no mark", async () => {
       await configure();
       await registerNativeBuild(fixtureBundleId(100), FINGERPRINT);
-      const findNativeBuild = vi.spyOn(
-        databaseHarness.core,
-        "findNativeBuild",
-      );
+      const findNativeBuild = vi.spyOn(databaseHarness.core, "findNativeBuild");
 
       try {
         await deployByFingerprint();
-        expect(findNativeBuild.mock.calls.map(([, options]) => options)).toEqual(
-          [{ storeBuild: true }, { builtInOlderThan: DEPLOY_BUNDLE_ID }],
-        );
+        expect(
+          findNativeBuild.mock.calls.map(([, options]) => options),
+        ).toEqual([
+          { storeBuild: true },
+          { builtInOlderThan: DEPLOY_BUNDLE_ID },
+        ]);
       } finally {
         findNativeBuild.mockRestore();
       }

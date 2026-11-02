@@ -131,11 +131,13 @@ export interface NativeBuildDetail {
   readonly catalogScopeKey: string;
   /** How many bundles patch from the built-in bundle, or null when its row is gone. */
   readonly builtInBundle: { readonly childCount: number } | null;
-  /**
-   * The newest build of the build's scope, which new deploys take their
-   * patch base from: this build, or the build that supersedes it.
-   */
+  /** The newest build of the build's scope: this build or a later one. */
   readonly newestInScope: NativeBuildRow | null;
+  /**
+   * The build marked as the store build in the scope. New deploys patch from it,
+   * or with no mark from the newest build.
+   */
+  readonly storeBuildInScope: NativeBuildRow | null;
   /**
    * The releases the update check serves an install of this build now,
    * newest first: the scope's catalog, at the build's app version, down to
@@ -147,9 +149,10 @@ export interface NativeBuildDetail {
 }
 
 /**
- * Everything a native build's page shows, in five reads whatever the
- * build: the build, then its built-in bundle, its scope's newest build, its
- * scope's catalog, and one page of patches from it. Null for an unknown ID.
+ * Everything a native build's page shows, in six reads at most: the build,
+ * then its built-in bundle, its scope's newest build and its mark, which a
+ * marked build's own row answers, its scope's catalog, and one page of patches
+ * from it. Null for an unknown ID.
  */
 export async function getNativeBuildDetail(
   core: Pick<
@@ -165,14 +168,19 @@ export async function getNativeBuildDetail(
   const build = await core.getNativeBuild(id);
   if (build === null) return null;
   const catalogScopeKey = nativeBuildCatalogScopeKey(build);
-  const [builtIn, newestInScope, catalog, patches] = await Promise.all([
-    core.getBundle(build.min_bundle_id),
-    core.findNativeBuild(nativeBuildScope(build)),
-    core.getReleaseCatalogRow(catalogScopeKey),
-    listNativeBuildPatches(core, build.min_bundle_id, {
-      limit: NATIVE_BUILD_PATCH_PAGE_SIZE,
-    }),
-  ]);
+  const scope = nativeBuildScope(build);
+  const [builtIn, newestInScope, storeBuildInScope, catalog, patches] =
+    await Promise.all([
+      core.getBundle(build.min_bundle_id),
+      core.findNativeBuild(scope),
+      build.store_build === true
+        ? build
+        : core.findNativeBuild(scope, { storeBuild: true }),
+      core.getReleaseCatalogRow(catalogScopeKey),
+      listNativeBuildPatches(core, build.min_bundle_id, {
+        limit: NATIVE_BUILD_PATCH_PAGE_SIZE,
+      }),
+    ]);
   const servedNow =
     catalog === null || catalog.is_tombstone
       ? []
@@ -191,6 +199,7 @@ export async function getNativeBuildDetail(
     catalogScopeKey,
     builtInBundle: builtIn === null ? null : { childCount: builtIn.childCount },
     newestInScope,
+    storeBuildInScope,
     servedNow,
     patches,
   };

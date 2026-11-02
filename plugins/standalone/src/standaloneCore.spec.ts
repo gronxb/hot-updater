@@ -173,6 +173,85 @@ describe("createStandaloneCoreApi", () => {
     await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
   });
 
+  describe("the store build mark", () => {
+    const scope = {
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "fingerprint",
+      appVersion: null,
+    } as const;
+
+    it("reads the mark and writes it through the admin routes", async () => {
+      const queries: string[] = [];
+      const marks: unknown[] = [];
+      server.use(
+        version(2),
+        http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+          queries.push(new URL(request.url).search);
+          return HttpResponse.json({
+            data: { id: "build-1", store_build: true },
+          });
+        }),
+        http.post(
+          `${BASE_URL}/native-builds/:id/store-build`,
+          async ({ params, request }) => {
+            marks.push([params.id, await request.json()]);
+            return HttpResponse.json({
+              data: { nativeBuild: { id: params.id }, previous: null },
+            });
+          },
+        ),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(
+        core.findNativeBuild(scope, { storeBuild: true }),
+      ).resolves.toMatchObject({ id: "build-1" });
+      await core.findNativeBuild(scope, { builtInOlderThan: "bundle-1" });
+      await expect(
+        core.markNativeBuild("build/1", { storeBuild: true }),
+      ).resolves.toEqual({
+        nativeBuild: { id: "build/1" },
+        previous: null,
+      });
+
+      expect(queries[0]).toContain("storeBuild=true");
+      expect(queries[1]).toContain("builtInOlderThan=bundle-1");
+      expect(marks).toEqual([["build/1", { storeBuild: true }]]);
+    });
+
+    it("finds no mark on a server that answers its newest build instead", async () => {
+      server.use(
+        version(2),
+        http.get(`${BASE_URL}/native-builds/latest`, () =>
+          HttpResponse.json({ data: { id: "build-1" } }),
+        ),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(
+        core.findNativeBuild(scope, { storeBuild: true }),
+      ).resolves.toBeNull();
+    });
+
+    it("asks to upgrade a server without the mark's route", async () => {
+      server.use(
+        version(2),
+        http.post(
+          `${BASE_URL}/native-builds/:id/store-build`,
+          () => new HttpResponse(null, { status: 404 }),
+        ),
+      );
+      const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+      await expect(
+        core.markNativeBuild("build-1", { storeBuild: true }),
+      ).rejects.toThrow(
+        `The server at ${BASE_URL} has no native build store mark route`,
+      );
+    });
+  });
+
   it("deletes a native build by ID, and answers an unknown ID as not_found", async () => {
     const deleted: string[] = [];
     server.use(

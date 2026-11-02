@@ -635,9 +635,7 @@ describe("the store build mark", () => {
     const core = setup();
     await core.registerNativeBuild(registration(1));
     await core.registerNativeBuild(registration(2));
-    expect(
-      await core.findNativeBuild(scope, { storeBuild: true }),
-    ).toBeNull();
+    expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
 
     const marked = await core.markNativeBuild(buildId(1), { storeBuild: true });
 
@@ -733,9 +731,7 @@ describe("the store build mark", () => {
     expect(
       await core.markNativeBuild(buildId(1), { storeBuild: false }),
     ).toMatchObject({ nativeBuild: { store_build: null } });
-    expect(
-      await core.findNativeBuild(scope, { storeBuild: true }),
-    ).toBeNull();
+    expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
     // Clearing a build that doesn't hold the mark leaves the one that does.
     await core.registerNativeBuild(registration(2));
     await core.markNativeBuild(buildId(2), { storeBuild: true });
@@ -770,9 +766,7 @@ describe("the store build mark", () => {
 
     await core.deleteNativeBuild(buildId(1));
 
-    expect(
-      await core.findNativeBuild(scope, { storeBuild: true }),
-    ).toBeNull();
+    expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
     await core.markNativeBuild(buildId(2), { storeBuild: true });
     expect(
       await core.findNativeBuild(scope, { storeBuild: true }),
@@ -801,9 +795,7 @@ describe("the store build mark", () => {
     for (const n of builds) await core.registerNativeBuild(registration(n));
 
     const results = await Promise.all(
-      builds.map((n) =>
-        core.markNativeBuild(buildId(n), { storeBuild: true }),
-      ),
+      builds.map((n) => core.markNativeBuild(buildId(n), { storeBuild: true })),
     );
 
     expect(results.every((result) => result !== null)).toBe(true);
@@ -832,10 +824,14 @@ describe("the store build mark", () => {
     await core.registerNativeBuild(registration(1));
     await core.registerNativeBuild(registration(2));
     await core.registerNativeBuild(
-      registration(3, { minBundleId: `019a0000-0000-7000-8000-${"3".repeat(12)}` }),
+      registration(3, {
+        minBundleId: `019a0000-0000-7000-8000-${"3".repeat(12)}`,
+      }),
     );
     await core.registerNativeBuild(
-      registration(4, { minBundleId: `019a0000-0000-7000-8000-${"4".repeat(12)}` }),
+      registration(4, {
+        minBundleId: `019a0000-0000-7000-8000-${"4".repeat(12)}`,
+      }),
     );
     const bundleId = "01950000-0000-7000-8000-000000000000";
 

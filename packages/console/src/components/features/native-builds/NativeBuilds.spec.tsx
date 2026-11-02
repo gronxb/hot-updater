@@ -856,7 +856,9 @@ describe("BuiltInBundleCard", () => {
     render(<BuiltInBundleCard detail={detail()} />);
 
     expect(screen.getByText("Current baseline.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Mark as store build" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mark as store build" }),
+    );
 
     expect(markMutate).toHaveBeenCalledWith(
       { id: id(1), storeBuild: true },

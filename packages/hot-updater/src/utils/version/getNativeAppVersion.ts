@@ -39,5 +39,6 @@ export const resolveNativeAppVersion = async (
 export const getNativeAppVersion = async (
   platform: Platform,
   scope?: NativeAppVersionScope,
+  baseVersion?: string,
 ): Promise<string | null> =>
-  (await resolveNativeAppVersion(platform, scope)).version;
+  (await resolveNativeAppVersion(platform, scope, baseVersion)).version;

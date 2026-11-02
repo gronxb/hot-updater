@@ -316,9 +316,7 @@ export const createNativeBuildApi = (
       limit: OLDER_BUILDS_PAGE,
       range: { lt: newest.id },
     });
-    const usable = older.find(
-      ({ min_bundle_id }) => min_bundle_id < bundleId,
-    );
+    const usable = older.find(({ min_bundle_id }) => min_bundle_id < bundleId);
     return usable === undefined ? null : pick(usable);
   },
 

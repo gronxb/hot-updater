@@ -32,6 +32,7 @@ import {
   assertStorageOperations,
   createBundleStorageKey,
   createStorageRootUriWithPath,
+  semverSatisfies,
   targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
@@ -66,6 +67,7 @@ import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
 import { loadServer } from "@/utils/loadServer";
+import { describeNativeBuild } from "@/utils/native/describeNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
@@ -233,28 +235,71 @@ const getPatchBaseBundleIds = async ({
 };
 
 /**
- * The built-in bundle of the newest native build registered for the
- * deploy's channel and platform, with its fingerprint or exact app version,
- * so a store install's first OTA arrives as a patch. Registration took its
- * file from the build's artifact, so the patch is made against the bytes
- * the build ships. One indexed read.
+ * The native build scope's app version for a deploy's target: the exact string
+ * a build compiled in. A target that holds the project's version, such as the
+ * range `1.x.x` or a default of `1.7.x` for a project at `1.7`, means that
+ * version; any other is compared as written, so it finds a build only when it
+ * is that build's exact version.
  */
-const getBuiltInBaseBundleId = async ({
+const nativeBuildAppVersionOf = (
+  targetAppVersion: string,
+  projectAppVersion: string | null,
+): string =>
+  projectAppVersion !== null &&
+  semverSatisfies(targetAppVersion, projectAppVersion)
+    ? projectAppVersion
+    : targetAppVersion;
+
+/**
+ * The app version a build of the project would compile in: what the adapter's
+ * prebuild would write stands for a native project that has none yet. Null when
+ * the project declares none, or several, or can't be read here.
+ */
+const readProjectAppVersion = async (
+  platform: Platform,
+  buildAdapter: Awaited<ReturnType<DeployConfig["build"]>>,
+): Promise<string | null> => {
+  try {
+    const values = await buildAdapter.nativeBuild?.getNativeProjectValues?.({
+      platform,
+    });
+    return await getNativeAppVersion(platform, undefined, values?.appVersion);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The one native build whose built-in bundle this deploy patches from, so an
+ * install of it gets its first OTA as a patch. Of the deploy's channel and
+ * platform, with its fingerprint or exact app version: the build marked as the
+ * store build, or the most recently registered one. A build made after this
+ * bundle runs it or a newer one, so it is passed over, marked or not. Registering
+ * took its file from the build's artifact, so the patch is made against the bytes
+ * the build ships. One indexed read when a mark serves the deploy, and one more
+ * when none does.
+ */
+const getBuiltInBase = async ({
   bundleId,
   channel,
   core,
   platform,
+  projectAppVersion,
   target,
 }: {
   bundleId: string;
   channel: string;
   core: HotUpdaterCoreApi;
   platform: Platform;
+  projectAppVersion: string | null;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
   };
-}): Promise<string | null> => {
+}): Promise<{
+  readonly build: NativeBuildRow;
+  readonly marked: boolean;
+} | null> => {
   let scope: NativeBuildScope;
   if (target.fingerprintHash !== null) {
     scope = {
@@ -268,28 +313,31 @@ const getBuiltInBaseBundleId = async ({
       platform,
       channel,
       fingerprintHash: null,
-      appVersion: target.appVersion,
+      appVersion: nativeBuildAppVersionOf(target.appVersion, projectAppVersion),
     };
   } else {
     return null;
   }
-  let nativeBuild: NativeBuildRow | null;
+  const isOlder = (build: NativeBuildRow) =>
+    build.min_bundle_id.localeCompare(bundleId) < 0;
   try {
-    nativeBuild = await core.findNativeBuild(scope);
+    const marked = await core.findNativeBuild(scope, { storeBuild: true });
+    if (marked !== null && isOlder(marked)) {
+      return { build: marked, marked: true };
+    }
+    const newest = await core.findNativeBuild(scope, {
+      builtInOlderThan: bundleId,
+    });
+    // A server from before `builtInOlderThan` answers its newest build.
+    return newest !== null && isOlder(newest)
+      ? { build: newest, marked: false }
+      : null;
   } catch (error) {
     // A self-hosted server without the native build routes answers 404: it
     // holds no native builds.
     if ((error as { status?: unknown } | null)?.status === 404) return null;
     throw error;
   }
-  // A build made after this bundle runs it or a newer one.
-  if (
-    nativeBuild === null ||
-    nativeBuild.min_bundle_id.localeCompare(bundleId) >= 0
-  ) {
-    return null;
-  }
-  return nativeBuild.min_bundle_id;
 };
 
 const createAutoPatches = async ({
@@ -298,6 +346,7 @@ const createAutoPatches = async ({
   core,
   maxBaseBundles,
   platform,
+  projectAppVersion,
   signingPublicKey,
   storageAdapter,
   target,
@@ -307,6 +356,7 @@ const createAutoPatches = async ({
   core: HotUpdaterCoreApi;
   maxBaseBundles: number;
   platform: Platform;
+  projectAppVersion: string | null;
   signingPublicKey: string | null;
   storageAdapter: DeployStorageAdapter;
   target: {
@@ -323,13 +373,14 @@ const createAutoPatches = async ({
     target,
   });
   const failures: { baseBundleId: string; message: string }[] = [];
-  let builtInBaseBundleId: string | null = null;
+  let builtInBase: Awaited<ReturnType<typeof getBuiltInBase>> = null;
   try {
-    builtInBaseBundleId = await getBuiltInBaseBundleId({
+    builtInBase = await getBuiltInBase({
       bundleId,
       channel,
       core,
       platform,
+      projectAppVersion,
       target,
     });
   } catch (error) {
@@ -339,11 +390,13 @@ const createAutoPatches = async ({
     });
   }
   // No release publishes a built-in bundle, so the catalog never names it.
+  const builtInBaseBundleId = builtInBase?.build.min_bundle_id ?? null;
   const baseBundleIds =
     builtInBaseBundleId === null
       ? releasedBaseBundleIds
       : [...releasedBaseBundleIds, builtInBaseBundleId];
   let createdCount = 0;
+  let builtInPatched = false;
 
   for (const baseBundleId of baseBundleIds) {
     try {
@@ -362,6 +415,7 @@ const createAutoPatches = async ({
         },
       );
       createdCount += 1;
+      if (baseBundleId === builtInBaseBundleId) builtInPatched = true;
     } catch (error) {
       failures.push({
         baseBundleId,
@@ -371,6 +425,7 @@ const createAutoPatches = async ({
   }
 
   return {
+    builtInBase: builtInPatched ? builtInBase : null,
     candidateCount: baseBundleIds.length,
     createdCount,
     failures,
@@ -1045,10 +1100,15 @@ const deployPlatform = async ({
     if (config.patch.enabled) {
       const runAutoPatches = async (): Promise<void> => {
         let patchSummary: {
+          builtInBase: {
+            readonly build: NativeBuildRow;
+            readonly marked: boolean;
+          } | null;
           candidateCount: number;
           createdCount: number;
           failures: { baseBundleId: string; message: string }[];
         } = {
+          builtInBase: null,
           candidateCount: 0,
           createdCount: 0,
           failures: [],
@@ -1065,6 +1125,10 @@ const deployPlatform = async ({
                   core,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
+                  projectAppVersion:
+                    target.fingerprintHash === null
+                      ? await readProjectAppVersion(platform, buildAdapter)
+                      : null,
                   signingPublicKey: signingSession?.publicKey ?? null,
                   storageAdapter,
                   target,
@@ -1076,6 +1140,7 @@ const deployPlatform = async ({
                     : "Unknown patch optimization error";
                 p.log.warn(`Partial updates unavailable: ${message}`);
                 patchSummary = {
+                  builtInBase: null,
                   candidateCount: 0,
                   createdCount: 0,
                   failures: [],
@@ -1095,6 +1160,12 @@ const deployPlatform = async ({
           },
         ]);
 
+        if (patchSummary.builtInBase !== null) {
+          const { build, marked } = patchSummary.builtInBase;
+          p.log.info(
+            `Built-in base  ${describeNativeBuild(build)} · ${marked ? "store build" : "newest build"}`,
+          );
+        }
         for (const failure of patchSummary.failures) {
           p.log.warn(
             `Partial update skipped for file ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,

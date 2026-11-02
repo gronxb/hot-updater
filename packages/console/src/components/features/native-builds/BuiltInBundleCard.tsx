@@ -1,9 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CircleCheck, History } from "lucide-react";
+import { toast } from "sonner";
 
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMarkNativeBuildMutation } from "@/lib/api";
 import {
   nativeBuildArtifacts,
   nativeBuildTarget,
@@ -30,44 +33,90 @@ function Row({
   );
 }
 
-/** Whether new deploys patch from this build, or from a newer one of its scope. */
+/** Marks or clears the build where the card says what the mark does. */
+function StoreBuildAction({ detail }: { readonly detail: NativeBuildDetail }) {
+  const { build, channel } = detail;
+  const mark = useMarkNativeBuildMutation();
+  // No store sells a sandbox channel's build, so core refuses the mark.
+  if (channel.startsWith("sandbox-")) return null;
+  const storeBuild = build.store_build !== true;
+  return (
+    <Button
+      className="min-h-11 shrink-0 sm:min-h-8"
+      disabled={mark.isPending}
+      onClick={() =>
+        mark.mutate(
+          { id: build.id, storeBuild },
+          {
+            onSuccess: () => {
+              toast.success(
+                storeBuild ? "Marked as the store build" : "Mark cleared",
+              );
+            },
+            onError: (error) => {
+              toast.error("Could not change the mark", {
+                description: error.message,
+              });
+            },
+          },
+        )
+      }
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      {storeBuild ? "Mark as store build" : "Clear"}
+    </Button>
+  );
+}
+
+/**
+ * Which build new deploys patch from: this one, as the store build or as the
+ * newest with no mark, or another, which it links to.
+ */
 function BaselineStatus({ detail }: { readonly detail: NativeBuildDetail }) {
-  const { build, newestInScope } = detail;
-  if (newestInScope === null) return null;
-  if (newestInScope.id === build.id) {
-    return (
-      <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs">
-        <CircleCheck
+  const { build, newestInScope, storeBuildInScope } = detail;
+  const base = storeBuildInScope ?? newestInScope;
+  if (base === null) return null;
+  const isBase = base.id === build.id;
+  const Icon = isBase ? CircleCheck : History;
+  return (
+    <div className="flex flex-col gap-3 rounded-md border bg-muted/40 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-2">
+        <Icon
           aria-hidden="true"
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
         />
-        <p>
-          <span className="font-medium">Current baseline.</span> New deploys to
-          this scope add a patch from this build's bundle.
-        </p>
+        {storeBuildInScope?.id === build.id ? (
+          <p>
+            <span className="font-medium">Store build.</span> New deploys to
+            this scope patch from this build.
+          </p>
+        ) : isBase ? (
+          <p>
+            <span className="font-medium">Current baseline.</span> The newest
+            build, and no store build is marked. New deploys to this scope patch
+            from this build.
+          </p>
+        ) : (
+          <p>
+            <span className="font-medium">Not the base.</span> New deploys patch
+            from{" "}
+            <Link
+              className="inline-flex items-center gap-0.5 font-medium underline underline-offset-4"
+              params={{ buildId: base.id }}
+              to="/native-builds/$buildId"
+            >
+              {platformLabel(base.platform)}{" "}
+              {nativeBuildArtifacts[base.artifact_kind].label} ·{" "}
+              <TimestampDisplay uuid={base.id} />
+              <ArrowUpRight aria-hidden="true" className="size-3" />
+            </Link>
+            , so this one gets no new patches.
+          </p>
+        )}
       </div>
-    );
-  }
-  return (
-    <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs">
-      <History
-        aria-hidden="true"
-        className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-      />
-      <p>
-        <span className="font-medium">Superseded</span> by{" "}
-        <Link
-          className="inline-flex items-center gap-0.5 font-medium underline underline-offset-4"
-          params={{ buildId: newestInScope.id }}
-          to="/native-builds/$buildId"
-        >
-          {platformLabel(newestInScope.platform)}{" "}
-          {nativeBuildArtifacts[newestInScope.artifact_kind].label} ·{" "}
-          <TimestampDisplay uuid={newestInScope.id} />
-          <ArrowUpRight aria-hidden="true" className="size-3" />
-        </Link>
-        . New deploys patch from that build, so this one gets no new patches.
-      </p>
+      <StoreBuildAction detail={detail} />
     </div>
   );
 }

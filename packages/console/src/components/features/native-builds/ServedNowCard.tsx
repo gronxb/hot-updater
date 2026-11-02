@@ -26,6 +26,8 @@ import {
 import { formatByteSize } from "@/lib/native-builds";
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
+import { CopyableText } from "./CopyableText";
+
 /** How the first OTA to a bundle downloads on this build. */
 export type FirstDownload =
   | { readonly kind: "patch"; readonly byteSize: number }
@@ -86,7 +88,17 @@ export function ServedNowCard({
 }: {
   readonly detail: NativeBuildDetail;
 }) {
-  const { servedNow, patches, catalogScopeKey } = detail;
+  const { build, channel, servedNow, patches, catalogScopeKey } = detail;
+  // A hosted Console runs no diff, so a build marked after its newest OTA went
+  // out gets the command the CLI's mark would have run.
+  const newestBundleId = servedNow[0]?.bundleId;
+  const missingPatch =
+    build.store_build === true &&
+    newestBundleId !== undefined &&
+    newestBundleId !== null &&
+    firstDownloadOf(patches, newestBundleId).kind === "full"
+      ? `npx hot-updater patch -p ${build.platform} -c ${channel} -b ${newestBundleId} --base-artifact-id ${build.min_bundle_id}`
+      : null;
   const scopeLink = (
     <Link
       className="inline-flex items-center gap-0.5 underline-offset-4 hover:underline"
@@ -202,6 +214,19 @@ export function ServedNowCard({
                 })}
               </TableBody>
             </Table>
+            {missingPatch === null ? null : (
+              <div className="flex flex-col gap-2 border-t px-4 py-3 text-xs">
+                <p>
+                  The newest OTA has no patch from this store build, so fresh
+                  installs download all of it. Add one from your project:
+                </p>
+                <CopyableText
+                  label="the patch command"
+                  value={missingPatch}
+                  wrap
+                />
+              </div>
+            )}
             <p className="border-t px-4 py-3 text-xs text-muted-foreground">
               What the update check serves an install of this build now, newest
               first: not the history. {scopeLink}

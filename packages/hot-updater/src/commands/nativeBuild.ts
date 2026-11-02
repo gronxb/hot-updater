@@ -38,13 +38,13 @@ import { createBundleDiff } from "@/utils/createBundleDiff";
 import { type Row, ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
+import { describeNativeBuild } from "../utils/native/describeNativeBuild";
 import {
   downloadNativeBuild,
   nativeBuildDownloadPath,
   nativeBuildFileName,
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
-import { describeNativeBuild } from "../utils/native/describeNativeBuild";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
 import {
   applyStoreTestFlightGroup,
@@ -705,9 +705,8 @@ const patchNewestOta = async (
     return {
       bundleId,
       byteSize:
-        patches.find(
-          ({ baseBundleId }) => baseBundleId === build.min_bundle_id,
-        )?.byteSize ?? 0,
+        patches.find(({ baseBundleId }) => baseBundleId === build.min_bundle_id)
+          ?.byteSize ?? 0,
     };
   } catch (error) {
     warn(
@@ -754,8 +753,7 @@ export const handleNativeBuildMark = async (
           ? `${label} isn't the store build`
           : [
               `${label} is the store build`,
-              previous !== null &&
-                `Replaces ${describeNativeBuild(previous)}`,
+              previous !== null && `Replaces ${describeNativeBuild(previous)}`,
               patch !== null &&
                 `Patched OTA ${patch.bundleId.slice(0, 8)} (${formatBytes(patch.byteSize)})`,
             ]

@@ -255,17 +255,13 @@ describe("getNativeBuildDetail", () => {
 
     const marked = await getNativeBuildDetail(core, buildId(1));
     expect(marked?.storeBuildInScope?.id).toBe(buildId(1));
-    expect(
-      calls.filter((name) => name === "findNativeBuild"),
-    ).toHaveLength(1);
+    expect(calls.filter((name) => name === "findNativeBuild")).toHaveLength(1);
 
     calls.length = 0;
     const other = await getNativeBuildDetail(core, buildId(2));
     expect(other?.storeBuildInScope?.id).toBe(buildId(1));
     expect(other?.newestInScope?.id).toBe(buildId(2));
-    expect(
-      calls.filter((name) => name === "findNativeBuild"),
-    ).toHaveLength(2);
+    expect(calls.filter((name) => name === "findNativeBuild")).toHaveLength(2);
   });
 });
 

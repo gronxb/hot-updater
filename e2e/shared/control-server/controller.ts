@@ -7734,7 +7734,14 @@ async function clearNativeBuildScope(input: {
     if (newest === null || newest.id === input.keepId) break;
     await runLoggedCommand(
       "node",
-      [HOT_UPDATER_CLI_PATH, "native-build", "delete", newest.id, "--yes", "--json"],
+      [
+        HOT_UPDATER_CLI_PATH,
+        "native-build",
+        "delete",
+        newest.id,
+        "--yes",
+        "--json",
+      ],
       {
         cwd: fixtureSession.exampleDir,
         env: getHotUpdaterControlEnv(),

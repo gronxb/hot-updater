@@ -217,6 +217,9 @@ function BuildRow({
               {formatByteSize(build.byte_size)}
             </span>
             <StoreSubmissionBadge build={build} withTime />
+            {build.store_build === true ? (
+              <Badge variant="secondary">Store build</Badge>
+            ) : null}
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span>{target.label}</span>

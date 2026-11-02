@@ -197,7 +197,9 @@ describe("handleNativeBuildMark", () => {
       }),
       { makePrimary: false },
     ]);
-    expect(lines("success")[0]).toContain(`Patched OTA ${otaId(2).slice(0, 8)}`);
+    expect(lines("success")[0]).toContain(
+      `Patched OTA ${otaId(2).slice(0, 8)}`,
+    );
   });
 
   it("skips an OTA that already patches from the build, as a re-run finds", async () => {
