@@ -15,6 +15,11 @@ import {
 } from "../sandboxTestFlight";
 
 const URL_TYPE_NAME = "hot-updater-sandbox";
+const CAMERA_USAGE = "Scans the QR code of a preview to open it in this build.";
+const LOCAL_NETWORK_USAGE =
+  "Connects to the dev server you choose on this network.";
+const ATS_KEY = "NSAppTransportSecurity";
+const ATS_LOCAL_NETWORKING_KEY = "NSAllowsLocalNetworking";
 
 /** A refusal the command prints as it is: the build ran as it should. */
 const refusal = (message: string) =>
@@ -69,6 +74,48 @@ const addUrlScheme = async (plist: string, urlScheme: string) => {
   ]);
 };
 
+const hasKey = async (plist: string, key: string) => {
+  const { exitCode } = await execa(
+    "plutil",
+    ["-extract", key, "xml1", "-o", "-", plist],
+    { reject: false },
+  );
+  return exitCode === 0;
+};
+
+/**
+ * What the sandbox's screen asks the system for: the camera for its QR scanner,
+ * and the local network for a dev server. A value the app already set stays, and
+ * nested App Transport Security entries stay beside the one this adds.
+ */
+const addSandboxPermissions = async (plist: string) => {
+  for (const [key, value] of [
+    ["NSCameraUsageDescription", CAMERA_USAGE],
+    ["NSLocalNetworkUsageDescription", LOCAL_NETWORK_USAGE],
+  ] as const) {
+    if (!(await hasKey(plist, key))) {
+      await plutil(["-insert", key, "-string", value, plist]);
+    }
+  }
+  if (!(await hasKey(plist, ATS_KEY))) {
+    await plutil([
+      "-insert",
+      ATS_KEY,
+      "-json",
+      `{"${ATS_LOCAL_NETWORKING_KEY}":true}`,
+      plist,
+    ]);
+  } else if (!(await hasKey(plist, `${ATS_KEY}.${ATS_LOCAL_NETWORKING_KEY}`))) {
+    await plutil([
+      "-insert",
+      `${ATS_KEY}.${ATS_LOCAL_NETWORKING_KEY}`,
+      "-bool",
+      "true",
+      plist,
+    ]);
+  }
+};
+
 /**
  * The app's dedicated URL scheme, default channel, and the sandbox's key. The
  * URL scheme and App Store Connect's app come from the scheme's
@@ -92,6 +139,7 @@ const patchAppInfoPlist = async (
   );
   await plutil(["-replace", SANDBOX_INFO_PLIST_KEY, "-bool", "true", plist]);
   await addUrlScheme(plist, sandboxUrlSchemeOf(scheme.bundleIdentifier));
+  await addSandboxPermissions(plist);
 };
 
 /** The Info.plist of each app extension inside an `.app`. */
