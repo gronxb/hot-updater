@@ -690,7 +690,7 @@ const patchNewestOta = async (
       return null;
     }
     assertStorageOperations(storage, ["get", "put", "delete"]);
-    const { patches = [] } = await createBundleDiff(
+    const { patches } = await createBundleDiff(
       { baseBundleId: build.min_bundle_id, bundleId },
       {
         core,
@@ -704,8 +704,9 @@ const patchNewestOta = async (
     return {
       bundleId,
       byteSize:
-        patches.find(({ baseBundleId }) => baseBundleId === build.min_bundle_id)
-          ?.byteSize ?? 0,
+        patches?.find(
+          ({ baseBundleId }) => baseBundleId === build.min_bundle_id,
+        )?.byteSize ?? 0,
     };
   } catch (error) {
     warn(

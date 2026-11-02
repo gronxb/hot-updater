@@ -144,6 +144,8 @@ describe("NativeBuildsTable", () => {
         builds={builds([build({ store_build: true }), build({ id: id(3) })])}
         channel={undefined}
         onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
       />,
     );
 

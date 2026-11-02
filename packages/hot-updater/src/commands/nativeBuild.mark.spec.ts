@@ -107,7 +107,9 @@ const storage = createStorageAdapter({
   name: "test",
   protocol: "storage",
   delete: vi.fn(async () => ({ deleted: true as const })),
-  get: vi.fn(async () => null),
+  get: vi.fn(async () => {
+    throw new Error("A mocked diff reads no object");
+  }),
   put: vi.fn(async () => ({ storageUri: "storage://patch" })),
 });
 
