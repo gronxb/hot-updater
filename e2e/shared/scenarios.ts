@@ -24,6 +24,7 @@ import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-
 import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
+import { otaAfterGoingBackToABuildScenario } from "./scenarios/ota-after-going-back-to-a-build.ts";
 import { postContentCrashNativeRecoveryScenario } from "./scenarios/post-content-crash-native-recovery.ts";
 import { postContentCrashNativeRollbackScenario } from "./scenarios/post-content-crash-native-rollback.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
@@ -76,6 +77,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   fingerprintInitialInstallScenario,
   catalogOnlyNoUpdateScenario,
   sameBundleReleaseAdoptionScenario,
+  otaAfterGoingBackToABuildScenario,
   sizeAwareArtifactSelectionScenario,
   assetHeavyOtaUsesArchiveScenario,
   staleCatalogAfterNewerGenerationScenario,

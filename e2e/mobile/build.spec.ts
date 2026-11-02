@@ -17,6 +17,7 @@ import {
 
 const deviceId = "12345678-1234-1234-1234-1234567890AB";
 const minBundleId = "019a0b1c-2d3e-7000-8000-000000000000";
+const otherMinBundleId = "019a0b1c-2d3d-7000-8000-000000000000";
 const otherDeviceId = "ABCDEFAB-1234-1234-1234-1234567890AB";
 const app = loadE2eTarget("v0.85.0");
 const brownfield = loadE2eTarget("brownfield-host");
@@ -137,12 +138,13 @@ describe("native Release builds", () => {
   });
 
   it("builds the debuggable Android Release app without an instrumentation APK", () => {
-    const [command] = createNativeBuildPlan(
+    const command = createNativeBuildPlan(
       { platform: "android", target: app, dryRun: false },
       "/checkout with spaces",
       { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
       minBundleId,
-    );
+      otherMinBundleId,
+    ).at(-1);
     expect(command).toEqual({
       command: "./gradlew",
       args: [
@@ -158,6 +160,69 @@ describe("native Release builds", () => {
     });
   });
 
+  it("builds the other build first on Android, so the run's build stays at its path", () => {
+    const plan = createNativeBuildPlan(
+      { platform: "android", target: app, dryRun: false },
+      "/checkout",
+      {},
+      minBundleId,
+      otherMinBundleId,
+    );
+    const apkDir = "/checkout/examples/v0.85.0/android/app/build/outputs/apk";
+    expect(plan.map((step) => step.command)).toEqual([
+      "./gradlew",
+      "mkdir",
+      "cp",
+      "./gradlew",
+    ]);
+    expect(plan[0]!.args).toContain(`-PMIN_BUNDLE_ID=${otherMinBundleId}`);
+    expect(plan[2]!.args).toEqual([
+      `${apkDir}/release/app-release.apk`,
+      `${apkDir}/other-build/app-release.apk`,
+    ]);
+    expect(plan[3]!.args).toContain(`-PMIN_BUNDLE_ID=${minBundleId}`);
+  });
+
+  it("builds the other build first on iOS, so the run's build stays at its path", () => {
+    const plan = createNativeBuildPlan(
+      { platform: "ios", target: app, deviceId, dryRun: false },
+      "/checkout",
+      {},
+      minBundleId,
+      otherMinBundleId,
+    ).slice(2);
+    const products = "/checkout/examples/v0.85.0/ios/build";
+    expect(plan.map((step) => step.command)).toEqual([
+      "xcodebuild",
+      "rm",
+      "mkdir",
+      "cp",
+      "xcodebuild",
+    ]);
+    expect(plan[0]!.args).toContain(
+      `HOT_UPDATER_MIN_BUNDLE_ID=${otherMinBundleId}`,
+    );
+    expect(plan[3]!.args).toEqual([
+      "-R",
+      `${products}/Build/Products/Release-iphonesimulator/HotUpdaterExample.app`,
+      `${products}/OtherBuild/HotUpdaterExample.app`,
+    ]);
+    expect(plan[4]!.args).toContain(`HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`);
+  });
+
+  it("gives the two builds their own MIN_BUNDLE_IDs by default", () => {
+    const ids = createNativeBuildPlan(
+      { platform: "android", target: app, dryRun: false },
+      "/checkout",
+      {},
+    )
+      .filter((step) => step.command === "./gradlew")
+      .map((step) =>
+        step.args.find((arg) => arg.startsWith("-PMIN_BUNDLE_ID=")),
+      );
+    expect(new Set(ids).size).toBe(2);
+  });
+
   it("preserves both Android simulator architectures by default", () => {
     const [command] = createNativeBuildPlan(
       { platform: "android", target: app, dryRun: false },
@@ -170,12 +235,15 @@ describe("native Release builds", () => {
   });
 
   it("installs prebuilt RN pods before the explicit iOS Release simulator build", () => {
-    const [install, pods, xcode] = createNativeBuildPlan(
+    const plan = createNativeBuildPlan(
       { platform: "ios", target: app, deviceId, dryRun: false },
       "/checkout",
       { HOT_UPDATER_E2E_DEVICE_ID: otherDeviceId },
       minBundleId,
+      otherMinBundleId,
     );
+    const [install, pods] = plan;
+    const xcode = plan.at(-1)!;
     expect(install).toEqual({
       command: "bundle",
       args: ["install"],
@@ -273,7 +341,15 @@ describe("native Release builds", () => {
       const plan = JSON.parse(stdout);
       expect(
         plan.map((command: { command: string }) => command.command),
-      ).toEqual(["bundle", "bundle", "xcodebuild"]);
+      ).toEqual([
+        "bundle",
+        "bundle",
+        "xcodebuild",
+        "rm",
+        "mkdir",
+        "cp",
+        "xcodebuild",
+      ]);
       expect(plan[2].args).toContain("generic/platform=iOS Simulator");
       expect(plan[2].cwd).toBe(
         fileURLToPath(new URL("../../examples/v0.85.0/ios", import.meta.url)),
@@ -395,7 +471,12 @@ describe("native Release builds", () => {
     expect(shouldRetryNativeBuildStep(pods!, 1, crash, 2)).toBe(false);
     expect(shouldRetryNativeBuildStep(pods!, 0, crash, 1)).toBe(false);
     expect(
-      shouldRetryNativeBuildStep(pods!, 1, "[!] Unable to find a specification", 1),
+      shouldRetryNativeBuildStep(
+        pods!,
+        1,
+        "[!] Unable to find a specification",
+        1,
+      ),
     ).toBe(false);
     expect(shouldRetryNativeBuildStep(install!, 1, crash, 1)).toBe(false);
     expect(shouldRetryNativeBuildStep(xcode!, 65, crash, 1)).toBe(false);
@@ -415,7 +496,9 @@ describe("native Release builds", () => {
       podRuns: 1,
     },
   ])("$name", async ({ firstFailure, exitCode, podRuns }) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-build-retry-"));
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "native-build-retry-"),
+    );
     const source = fileURLToPath(new URL("./build.ts", import.meta.url));
     const script = path.join(root, "e2e/mobile/build.ts");
     const bin = path.join(root, "bin");
@@ -455,6 +538,10 @@ describe("native Release builds", () => {
       await fs.writeFile(path.join(bin, "xcodebuild"), tool("xcodebuild"), {
         mode: 0o755,
       });
+      // No build wrote an app for the other build's copy.
+      for (const name of ["rm", "mkdir", "cp"]) {
+        await fs.writeFile(path.join(bin, name), tool(name), { mode: 0o755 });
+      }
       const result = await new Promise<{ code: number | null; output: string }>(
         (resolve, reject) => {
           const child = spawn(process.execPath, [script, "--platform", "ios"], {
@@ -475,9 +562,9 @@ describe("native Release builds", () => {
       expect(steps.filter((step) => step === "bundle exec pod")).toHaveLength(
         podRuns,
       );
-      expect(steps.includes("xcodebuild -workspace HotUpdaterExample.xcworkspace")).toBe(
-        exitCode === 0,
-      );
+      expect(
+        steps.includes("xcodebuild -workspace HotUpdaterExample.xcworkspace"),
+      ).toBe(exitCode === 0);
       const logDir = path.join(root, "e2e/results/native-build");
       if (podRuns === 2) {
         expect(await fs.readdir(logDir)).toEqual([

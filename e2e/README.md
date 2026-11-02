@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 38 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
+Run the same 39 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -75,6 +75,18 @@ binary's own, which the scenario switches the app to at runtime, so
 scenarios. The bot reuses a cached binary across jobs: importing it again
 reports `alreadyImported: true` and succeeds. The job reads the MIN_BUNDLE_ID
 from the binary's bytes itself and fails unless the CLI registered that one.
+
+## Going back to a build
+
+`ota-after-going-back-to-a-build` needs a second binary, so `pnpm -w e2e:build`
+builds the app twice. The other build is a real Release build with its own
+MIN_BUNDLE_ID, and so its own isolation key, written to
+`ios/build/OtherBuild/HotUpdaterExample.app` and
+`android/app/build/outputs/apk/other-build/app-release.apk`. The scenario fails
+when either binary is missing, so a binary cache has to keep both. The scenario
+installs each build over the other, as an update does, with `simctl install` or
+`adb install -r`, and the next scenario's reset puts the run's build back if a
+failure left the other one on the device.
 
 ## Bundle signing
 

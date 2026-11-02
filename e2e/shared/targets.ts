@@ -254,6 +254,31 @@ export function iosDerivedDataDir(
   );
 }
 
+/**
+ * A second real Release build of the same app, with another MIN_BUNDLE_ID and
+ * so another isolation key: what a device gets when a different build of the
+ * app is installed over it. `e2e:build` writes it beside the run's build.
+ */
+export function otherNativeAppPath(
+  target: E2eTarget,
+  platform: "ios" | "android",
+  repositoryRoot: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  if (platform === "ios") {
+    return path.join(
+      iosDerivedDataDir(target, repositoryRoot, env),
+      `OtherBuild/${E2E_APP.name}.app`,
+    );
+  }
+  return path.resolve(
+    repositoryRoot,
+    path.dirname(path.dirname(target.android.apk)),
+    "other-build",
+    path.basename(target.android.apk),
+  );
+}
+
 /** The built app the runner installs, unless a binary path overrides it. */
 export function nativeAppPath(
   target: E2eTarget,

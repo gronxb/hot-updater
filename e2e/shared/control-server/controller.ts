@@ -36,7 +36,11 @@ import {
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
-import { currentE2eTarget, nativeAppPath } from "../targets.ts";
+import {
+  currentE2eTarget,
+  nativeAppPath,
+  otherNativeAppPath,
+} from "../targets.ts";
 import { readWithRetries, waitSync } from "./android-file-read.ts";
 import {
   advanceAndroidRestartWait,
@@ -645,6 +649,7 @@ const capturedCatalogResponses = new Map<
   Map<number, CapturedProxyResponse>
 >();
 let catalogProxyMode: "freeze" | "live" | "replay" = "live";
+let updateServerUnreachable = false;
 let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
@@ -3954,6 +3959,7 @@ function summarizeArchiveInterruption(entry: ArchiveInterruption | undefined) {
 
 export function handleProxyState() {
   return {
+    updateServerUnreachable,
     archiveAvailable,
     archiveFailureMode,
     archiveFailuresRemaining,
@@ -3997,6 +4003,7 @@ export function handleProxyState() {
 }
 
 export function handleConfigureProxy(input: {
+  updateServerUnreachable?: boolean;
   archiveAvailable?: boolean;
   archiveFailureMode?: ArchiveFailureMode | null;
   archiveFailures?: number;
@@ -4022,6 +4029,10 @@ export function handleConfigureProxy(input: {
     archiveFailureMode = null;
     archiveFailuresRemaining = 0;
     archiveInterruptions.clear();
+    updateServerUnreachable = false;
+  }
+  if (input.updateServerUnreachable !== undefined) {
+    updateServerUnreachable = input.updateServerUnreachable;
   }
   if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
   if (input.replayGeneration !== undefined) {
@@ -4338,12 +4349,48 @@ export function handleAssertProxy(input: {
   artifactRequests?: number;
   catalogRequests?: number;
   maxPathCardinality?: number;
+  minArtifactRequests?: number;
+  minCatalogRequests?: number;
+  minDownloadedBytes?: number;
 }) {
+  const downloadedBytes = [...remoteAssetTransfers.values()].reduce(
+    (total, transfer) => total + transfer.bytes,
+    0,
+  );
   const observed = {
     artifactFailuresRemaining,
+    downloadedBytes,
     pathCardinality: proxyPathCounts.size,
     requestCounts: { ...proxyRequestCounts },
+    requestPaths: Object.fromEntries(proxyPathCounts),
   };
+  if (
+    input.minCatalogRequests !== undefined &&
+    proxyRequestCounts.catalog < input.minCatalogRequests
+  ) {
+    throw new ProxyAssertionError("Too few catalog requests", {
+      expectedMinimum: input.minCatalogRequests,
+      observed,
+    });
+  }
+  if (
+    input.minArtifactRequests !== undefined &&
+    proxyRequestCounts.artifact < input.minArtifactRequests
+  ) {
+    throw new ProxyAssertionError("The app requested no artifact", {
+      expectedMinimum: input.minArtifactRequests,
+      observed,
+    });
+  }
+  if (
+    input.minDownloadedBytes !== undefined &&
+    downloadedBytes < input.minDownloadedBytes
+  ) {
+    throw new ProxyAssertionError("The app downloaded no bundle file", {
+      expectedMinimum: input.minDownloadedBytes,
+      observed,
+    });
+  }
   if (
     input.artifactFailuresRemaining !== undefined &&
     artifactFailuresRemaining !== input.artifactFailuresRemaining
@@ -4381,6 +4428,17 @@ export function handleAssertProxy(input: {
     });
   }
   return handleProxyState();
+}
+
+/**
+ * Whether the app's update server is down. The request still counts: the log
+ * shows the app tried. The route drops its connection.
+ */
+export function recordUnreachableUpdateRequest(request: Request): boolean {
+  if (!updateServerUnreachable) return false;
+  const { pathname } = new URL(request.url);
+  recordProxyRequest(classifyProxiedUpdatePath(pathname), pathname);
+  return true;
 }
 
 export async function handleProxyUpdateRequest(request: Request) {
@@ -7661,6 +7719,9 @@ async function mismatchPatchBaseFileHash(input: {
 }
 
 async function resetLocalAppState() {
+  // What an earlier scenario that stopped midway left behind.
+  updateServerUnreachable = false;
+  if (otherNativeBuildInstalled) installNativeBuild("run");
   resetE2eScreenState();
   fixtureSession.observedInsightsEvents = [];
   if (fixtureSession.platform === "ios") {
@@ -8137,6 +8198,81 @@ export function startSeedCrashedBundleFrontierJob(input: {
 
 export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
+}
+
+/**
+ * The two builds' MIN_BUNDLE_IDs, read from their compiled code. A device that
+ * has both must see two isolation keys, or nothing here tests a key change.
+ */
+async function readNativeBuilds() {
+  const { platform } = fixtureSession;
+  const target = currentE2eTarget();
+  const paths = {
+    run: nativeAppPath(target, platform, REPO_DIR, process.env),
+    other: otherNativeAppPath(target, platform, REPO_DIR, process.env),
+  };
+  const missing = Object.values(paths).filter((file) => !fs.existsSync(file));
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing native build: ${missing.join(", ")}. \`pnpm -w e2e:build\` writes both, and a binary cache must keep both.`,
+    );
+  }
+  const run = await readArtifactMinBundleId(paths.run, platform);
+  const other = await readArtifactMinBundleId(paths.other, platform);
+  if (run === other) {
+    throw new Error(`Both native builds have MIN_BUNDLE_ID ${run}`);
+  }
+  return {
+    runBuildMinBundleId: run,
+    otherBuildMinBundleId: other,
+  };
+}
+
+/** The other build, when a scenario left it on the device. */
+let otherNativeBuildInstalled = false;
+
+/** Installs over the app, as an update does: its data stays. */
+function installNativeBuild(build: "run" | "other") {
+  const { platform, appId } = fixtureSession;
+  const target = currentE2eTarget();
+  const file = (build === "run" ? nativeAppPath : otherNativeAppPath)(
+    target,
+    platform,
+    REPO_DIR,
+    process.env,
+  );
+  // Set first: if the install fails, the next reset installs the run's build.
+  otherNativeBuildInstalled = true;
+  if (platform === "ios") {
+    captureCommand(
+      "xcrun",
+      ["simctl", "terminate", deviceId as string, appId],
+      {
+        allowFailure: true,
+      },
+    );
+    captureCommand("xcrun", ["simctl", "install", deviceId as string, file]);
+  } else {
+    captureCommand("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "force-stop",
+      appId,
+    ]);
+    captureCommand("adb", ["-s", deviceId as string, "install", "-r", file]);
+  }
+  otherNativeBuildInstalled = build === "other";
+  return { build };
+}
+
+export function startReadNativeBuildsJob() {
+  return createJob(() => readNativeBuilds());
+}
+
+export function startInstallNativeBuildJob(build: "run" | "other") {
+  return createJob(async () => installNativeBuild(build));
 }
 
 export function startRegisterNativeBuildJob(input: { appVersion: string }) {
