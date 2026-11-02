@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/neon",
   "type": "module",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
