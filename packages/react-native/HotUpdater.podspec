@@ -4,7 +4,8 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 folly_compiler_flags = '-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -Wno-comma -Wno-shorten-64-to-32'
 # ios/HotUpdater/Sandbox is compiled only with the build xcconfig of a sandbox
 # scheme, which sets INCLUDED_SOURCE_FILE_NAMES: any other build leaves it out,
-# whatever the last `pod install` saw.
+# whatever the last `pod install` saw. An app's own setting can replace this one,
+# so those files also compile to nothing without the xcconfig's condition.
 sandbox_excluded_files = "HotUpdaterSandbox*"
 
 Pod::Spec.new do |s|

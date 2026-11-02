@@ -115,7 +115,8 @@ let package = Package(
                 "HotUpdaterSandboxCoordinator.swift",
                 "HotUpdaterSandboxLaunchPolicy.swift",
                 "HotUpdaterSandboxLink.swift",
-            ]
+            ],
+            swiftSettings: [.define("HOT_UPDATER_SANDBOX_LAYER")]
         ),
         .target(
             name: "HotUpdaterSandboxEntryPoints",
@@ -132,12 +133,15 @@ let package = Package(
                 "HotUpdaterSandboxScreen.swift",
             ],
             sources: ["HotUpdaterSandboxEntryPoints.m"],
-            publicHeadersPath: "."
+            publicHeadersPath: ".",
+            cSettings: [.define("HOT_UPDATER_SANDBOX_LAYER", to: "1")]
         ),
         .testTarget(
             name: "HotUpdaterSandboxTest",
             dependencies: ["HotUpdaterSandboxCore", "HotUpdaterSandboxEntryPoints"],
-            path: "Test/Sandbox"
+            path: "Test/Sandbox",
+            // The header the tests import, which a target's cSettings don't reach.
+            swiftSettings: [.unsafeFlags(["-Xcc", "-DHOT_UPDATER_SANDBOX_LAYER=1"])]
         ),
     ]
 ) 

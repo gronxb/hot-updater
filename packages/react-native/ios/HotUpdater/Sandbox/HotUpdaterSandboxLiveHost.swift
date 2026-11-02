@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
 /// The coordinator's view of the SDK: main's native state, and its server as the
@@ -163,3 +164,4 @@ final class HotUpdaterSandboxDefaults: HotUpdaterSandboxStore {
         defaults.set(["channel": selection.channel, "bundleId": selection.bundleId], forKey: key)
     }
 }
+#endif

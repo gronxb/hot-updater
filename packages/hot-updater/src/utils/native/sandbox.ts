@@ -232,7 +232,7 @@ export const assertBuiltArtifact = async ({
   if (!sandbox && info.sandbox.code) {
     throw new Error(
       platform === "ios"
-        ? `The scheme ${scheme} isn't a sandbox scheme, but its build holds the sandbox layer.\nRemove INCLUDED_SOURCE_FILE_NAMES from the project's build settings.`
+        ? `The scheme ${scheme} isn't a sandbox scheme, but its build holds the sandbox layer.\nRemove HOT_UPDATER_SANDBOX_LAYER from the project's build settings.`
         : `The scheme ${scheme} isn't a sandbox scheme, but its build holds the sandbox layer.\nRemove hotUpdaterSandbox from gradle.properties.`,
     );
   }

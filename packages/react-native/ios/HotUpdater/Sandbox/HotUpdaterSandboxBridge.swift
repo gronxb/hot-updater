@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import UIKit
 
 /// The gate's way into the sandbox's Swift side: the process's one coordinator,
@@ -114,3 +115,4 @@ public final class HotUpdaterSandboxBridge: NSObject {
         }
     }
 }
+#endif

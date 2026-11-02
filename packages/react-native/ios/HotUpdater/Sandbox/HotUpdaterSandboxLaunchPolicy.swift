@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
 /// Whether a launch is a person opening the app, or something addressed to the app.
@@ -29,3 +30,4 @@ public final class HotUpdaterSandboxLaunchPolicy: NSObject {
         HotUpdaterSandboxLink.isSandboxScheme(scheme)
     }
 }
+#endif

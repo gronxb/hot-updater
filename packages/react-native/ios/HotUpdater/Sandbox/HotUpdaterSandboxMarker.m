@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 #import <Foundation/Foundation.h>
 
 // Holds the literal the CLI reads from a built app to tell a sandbox build:
@@ -13,3 +14,4 @@
 }
 
 @end
+#endif

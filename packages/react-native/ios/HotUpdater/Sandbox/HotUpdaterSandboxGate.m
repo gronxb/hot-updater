@@ -3,6 +3,7 @@
 // and inside which React Native starts JavaScript. A root requested before a person
 // answers the first screen gets a stable container, and the real call waits. On a
 // host without that method, the gate stays off and the app starts as usual.
+#if HOT_UPDATER_SANDBOX_LAYER
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
@@ -381,6 +382,10 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
 @implementation HotUpdaterSandboxGate
 
 + (void)load {
+  // The last line: whatever compiled this file, only Hot Updater's build of a
+  // sandbox scheme writes this key.
+  if (![[NSBundle.mainBundle objectForInfoDictionaryKey:@"HOT_UPDATER_SANDBOX"] isEqual:@YES]) return;
+
   Class factory = objc_getClass("RCTRootViewFactory");
   SEL five = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:");
   SEL three = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:");
@@ -441,3 +446,4 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
 }
 
 @end
+#endif
