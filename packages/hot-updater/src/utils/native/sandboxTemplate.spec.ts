@@ -60,6 +60,7 @@ const isWrappedWhole = (source: string): boolean => {
 
 const GATE_SELECTORS = {
   five: "viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:",
+  four: "viewWithModuleName:initialProperties:launchOptions:devMenuConfiguration:",
   three: "viewWithModuleName:initialProperties:launchOptions:",
 };
 
@@ -79,12 +80,13 @@ describe("the gate's hold on React Native", () => {
 
   it("swaps the selectors the supported hosts declare", () => {
     expect(gate).toContain(GATE_SELECTORS.five);
+    expect(gate).toContain(GATE_SELECTORS.four);
     expect(gate).toContain(GATE_SELECTORS.three);
     for (const [example, selector] of [
       ["v0.74.1", GATE_SELECTORS.three],
       ["v0.85.0", GATE_SELECTORS.five],
       ["v0.88.0", GATE_SELECTORS.five],
-      ["expo-55", GATE_SELECTORS.three],
+      ["expo-55", GATE_SELECTORS.four],
     ] as const) {
       const factory = path.resolve(
         SDK,
