@@ -48,6 +48,7 @@ import {
   type DeploySecretsStatus,
   deploySecretsInitCommand,
 } from "./doctor/deploySecrets";
+import { checkExpoSdk } from "./doctor/expoSdk";
 import {
   checkFingerprintJson,
   checkUnusedFingerprintJson,
@@ -680,6 +681,7 @@ async function checkNativeStatus({
         ? { fingerprintJsonPath: localFingerprint.path }
         : {}),
       issues: [
+        ...(await checkExpoSdk(config, cwd)),
         ...expectedSigningPublicKey.issues,
         ...(expectedSigningPublicKey.checked
           ? signing.issues.map(toNativeIssue)
@@ -709,6 +711,7 @@ async function checkNativeStatus({
   ]);
 
   const issues = [
+    ...(await checkExpoSdk(config, cwd)),
     ...ios.issues,
     ...android.issues,
     ...expectedSigningPublicKey.issues,

@@ -6,31 +6,14 @@ import type { ConfigResponse } from "@hot-updater/cli-tools";
 
 import { usesSwiftPackageManager } from "../../utils/native/sandbox";
 import { resolveSandboxApplicationId } from "../../utils/version/getAndroidVersion";
+import { expoSdkOf, MINIMUM_EXPO_SDK } from "./expoSdk";
 import type { NativeCheckIssue } from "./issues";
 
 /** Build adapters no sandbox build has run on yet. */
 const UNQUALIFIED_ADAPTERS = new Set(["rock"]);
 
-/** The Expo SDKs sandbox builds have run on. */
-const QUALIFIED_EXPO_SDKS = new Set([52, 54, 57, 58]);
-
-/** The major version of the Expo SDK a project declares, or null without one. */
-const expoSdkOf = (cwd: string): number | null => {
-  const manifest = readText(path.join(cwd, "package.json"));
-  if (manifest === null) return null;
-  try {
-    const { dependencies, devDependencies } = JSON.parse(manifest) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    const declared = /(\d+)/u.exec(
-      dependencies?.["expo"] ?? devDependencies?.["expo"] ?? "",
-    );
-    return declared ? Number(declared[1]) : null;
-  } catch {
-    return null;
-  }
-};
+/** The supported Expo SDKs sandbox builds have run on. */
+const QUALIFIED_EXPO_SDKS = new Set([55, 57, 58]);
 
 const readText = (file: string) =>
   fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : null;
@@ -158,7 +141,9 @@ export const checkSandboxSchemes = async (
   }
   if (adapter === "expo") {
     const sdk = expoSdkOf(cwd);
-    if (sdk === null || !QUALIFIED_EXPO_SDKS.has(sdk)) {
+    // Below the minimum, doctor's Expo SDK error says what to do.
+    const supported = sdk === null || sdk >= MINIMUM_EXPO_SDK;
+    if (supported && (sdk === null || !QUALIFIED_EXPO_SDKS.has(sdk))) {
       issues.push(
         unqualified(
           "project",

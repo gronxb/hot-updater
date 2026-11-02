@@ -2458,6 +2458,55 @@ describe("doctor", () => {
     }
   });
 
+  it("reports an Expo SDK below the minimum, with or without native folders", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    await fs.writeFile(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ dependencies: { expo: "~54.0.38" } }),
+    );
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        build: async () => ({
+          build: vi.fn(),
+          name: "expo",
+          nativeBuild: { getBundleSigningPublicKey: async () => null },
+        }),
+      }),
+    );
+    const report = expect.objectContaining({
+      code: "EXPO_SDK_UNSUPPORTED",
+      commands: ["npx expo install expo@^55.0.0 --fix"],
+    });
+
+    const prebuilt = await doctor();
+    expect(prebuilt).not.toBe(true);
+    if (prebuilt !== true) {
+      expect(prebuilt.details?.native?.issues).toEqual(
+        expect.arrayContaining([report]),
+      );
+    }
+
+    await fs.mkdir(path.join(cwd, "android"));
+    const committed = await doctor();
+    expect(committed).not.toBe(true);
+    if (committed !== true) {
+      expect(committed.details?.native?.issues).toEqual(
+        expect.arrayContaining([report]),
+      );
+    }
+  });
+
   it("reports a leftover fingerprint.json without native folders or a signing hook", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);

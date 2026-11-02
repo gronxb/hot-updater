@@ -6,6 +6,8 @@ icon: expo
 
 ## Installation
 
+The Expo adapter needs Expo SDK 55 or later.
+
 ```package-install
 npm install @hot-updater/expo --save-dev
 ```
@@ -84,15 +86,12 @@ A project that uses `expo-updates` removes it first, as
 
 ## Expo DOM Components (`use dom`)
 
-Expo DOM components need Expo SDK 55 or later and the Babel plugin below. The
-rest of the Expo adapter also works on earlier SDKs.
+Expo DOM components need the Babel plugin below.
 
 A DOM component loads its web bundle from the files built into the app. Once
 Hot Updater installs an update, the Babel plugin points each DOM component at
-the update's copy through `overrideUri`, a prop Expo supports from SDK 55
-([expo/expo#40397](https://github.com/expo/expo/pull/40397)). Without an
-installed update, the component keeps its built-in files. The components need
-no code changes.
+the update's copy through its `overrideUri` prop. Without an installed update,
+the component keeps its built-in files. The components need no code changes.
 
 ### Babel plugin
 

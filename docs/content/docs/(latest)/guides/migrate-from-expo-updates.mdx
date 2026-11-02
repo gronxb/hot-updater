@@ -12,6 +12,8 @@ A native build runs one update library, so `expo-updates` and Hot Updater can't
 share a build. The Hot Updater CLI stops on project commands, `init` included,
 while `expo-updates` is installed, and asks you to remove it, so that comes first.
 The move goes through a new native build, which you release through the stores.
+Hot Updater needs Expo SDK 55 or later, so a project on an earlier SDK upgrades
+first.
 
 <Callout type="warn">
   Users on an EAS build get no Hot Updater OTA until they update from the store.

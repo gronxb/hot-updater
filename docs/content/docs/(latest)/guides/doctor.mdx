@@ -146,6 +146,9 @@ directories exist, `doctor` checks:
   fingerprint hashes match it, and it matches the project's fingerprint now
 - Signing settings match native public key entries
 
+An Expo project below SDK 55 fails with `EXPO_SDK_UNSUPPORTED`, with or without
+native directories.
+
 The native status also shows each platform's app version, the version the
 native project builds (`appVersion` in `details.native.ios` and
 `details.native.android`). To read only the versions, such as in a release

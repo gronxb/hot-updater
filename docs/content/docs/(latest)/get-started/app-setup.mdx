@@ -242,7 +242,8 @@ No additional Babel plugin setup is required.
   </Tab>
   <Tab value="Expo">
 
-Use the Expo build adapter in `hot-updater.config.ts`:
+Hot Updater needs Expo SDK 55 or later. Use the Expo build adapter in
+`hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 import { expo } from "@hot-updater/expo"; // [!code ++]
@@ -284,9 +285,8 @@ npx expo prebuild
 </Callout>
 
 <Callout type="info">
-  Expo DOM components (`use dom`) need Expo SDK 55 or later and a Babel plugin;
-  see [Expo DOM Components (`use
-  dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom).
+  Expo DOM components (`use dom`) need a Babel plugin; see [Expo DOM Components
+  (`use dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom).
 </Callout>
 
   </Tab>

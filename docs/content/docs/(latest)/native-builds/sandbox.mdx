@@ -125,13 +125,12 @@ prompt, holds the link back too.
 
 ### Supported hosts
 
-| Platform | Tested with                                                  |
-| -------- | ------------------------------------------------------------ |
-| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 52, 54, 57 and 58 |
-| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 52, 54, 57 and 58               |
+| Platform | Tested with                                                            |
+| -------- | ---------------------------------------------------------------------- |
+| iOS      | React Native 0.74, 0.85 and 0.88 app delegates, and Expo SDK 55, 57 and 58 |
+| Android  | React Native 0.74, 0.85 and 0.88, and Expo SDK 55, 57 and 58           |
 
-No other Expo SDK has been tested. On Xcode 27, Expo SDK 52's `fmt` 11.0.2 doesn't
-compile: compile that pod as C++17 in the `Podfile` after `expo prebuild`.
+No other Expo SDK has been tested. Hot Updater needs Expo SDK 55 or later.
 
 On iOS, the screen holds your root view inside a stable container until **Open**,
 so overlays and constraints you add to it stay, and a background color you set on it
@@ -260,7 +259,7 @@ The build number becomes the one after the app's highest.
 | Its own `src/<buildType>/AndroidManifest.xml`              | Refused: move what it declares to `src/main`     |
 | A `google-services.json` with no client for the ID         | Google's plugin fails the build: add the client  |
 | The Rock adapter, `use_frameworks`, app extensions         | Builds, but untested: check it on a device first |
-| An Expo SDK other than 52, 54, 57 or 58                    | Builds, but untested: check it on a device first |
+| An Expo SDK other than 55, 57 or 58                        | Builds, but untested: check it on a device first |
 
 The build itself refuses, with the fix, a launcher its activity can't take over:
 
