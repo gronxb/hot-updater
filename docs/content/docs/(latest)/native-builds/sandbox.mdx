@@ -191,12 +191,13 @@ Addresses are entered on the device: a link can't set one.
 
 The build loads a `dev=false` bundle and reloads when you tap **Reload**, which
 fetches it again. There's no Fast Refresh, dev menu or debugger, and changes don't
-appear until you reload.
+appear until you reload. To change the address, tap **Exit dev server**, then connect
+to the new one.
 
 While a dev server runs:
 
-- `reload()` stays on the dev server. Only **Exit** on the first screen returns to
-  your app's bundle.
+- `reload()` stays on the dev server. Only **Exit dev server** on the screen returns
+  to your app's bundle.
 - A crash ends the session: the next launch is a normal one, and a crash of dev
   JavaScript is never held against a bundle.
 - An update check finds nothing, so `wrap`'s forced update can't end the session.
@@ -209,7 +210,7 @@ While a dev server runs:
   reports that channel. Plugin values live in the session, apart from your app's.
   `setCohort` still applies, since it belongs to the device.
 - A preview link asks first, then exits the dev server and asks again on your
-  app's bundle. Switching channels waits for **Exit** the same way.
+  app's bundle. Switching channels waits for **Exit dev server** the same way.
 
 On Android, the JavaScript and its assets download into the app's files, apart from
 updates, and go when a normal launch starts. Each of these replaces the process. On
@@ -218,7 +219,7 @@ in place. A launch of the selected bundle in progress stops counting.
 
 The build allows plain http on the device. On Android, a `networkSecurityConfig` of
 your own still wins: the screen says when it blocks the address, and you allow it
-there. On iOS, that's local addresses, with the system's local network prompt.
+there. On iOS, that's local addresses, with the system's local network prompt, unless your app already sets `NSAllowsLocalNetworking` to false.
 
 The server must answer `/status` and `/index.bundle`. An Expo server's manifest names
 the entry and its transform instead. On Android it must list its assets too, which Metro does and Re.Pack's dev
