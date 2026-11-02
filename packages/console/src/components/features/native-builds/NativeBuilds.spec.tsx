@@ -20,18 +20,21 @@ const {
   downloadLinkQuery,
   downloadUrlQuery,
   installEligibilityQuery,
+  markMutate,
   patchesQuery,
   navigate,
 } = vi.hoisted(() => ({
   downloadLinkQuery: vi.fn(),
   downloadUrlQuery: vi.fn(),
   installEligibilityQuery: vi.fn(),
+  markMutate: vi.fn(),
   patchesQuery: vi.fn(),
   navigate: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   useConfigQuery: () => ({ data: { console: {} } }),
+  useMarkNativeBuildMutation: () => ({ mutate: markMutate, isPending: false }),
   useNativeBuildDownloadLinkQuery: downloadLinkQuery,
   useNativeBuildDownloadUrlQuery: downloadUrlQuery,
   useNativeBuildInstallEligibilityQuery: installEligibilityQuery,
@@ -88,6 +91,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   submitted_to: null,
   submitted_at_ms: null,
   submitted_version: null,
+  store_build: null,
   ...overrides,
 });
 
@@ -109,6 +113,7 @@ const detail = (
     catalogScopeKey: "v1:fingerprint:android:cHItMTMw:1a2b3c4d5e6f7a8b9c0d",
     builtInBundle: { childCount: 2 },
     newestInScope: row,
+    storeBuildInScope: null,
     servedNow: [],
     patches: patchPage([]),
     ...overrides,
@@ -131,6 +136,18 @@ describe("NativeBuildsTable", () => {
     isLoading: false,
     isPlaceholderData: false,
     refetch: vi.fn(),
+  });
+
+  it("badges the marked build, from its row", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build({ store_build: true }), build({ id: id(3) })])}
+        channel={undefined}
+        onChannel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Store build")).toHaveLength(1);
   });
 
   it.each([
@@ -804,16 +821,84 @@ describe("BuiltInBundleCard", () => {
     );
   });
 
-  it("links a superseded build to the build new deploys patch from", () => {
+  it("links a build new deploys don't patch from to the newest one", () => {
     const newer = build({ id: id(9), min_bundle_id: id(10) });
     render(<BuiltInBundleCard detail={detail({ newestInScope: newer })} />);
 
     expect(screen.queryByText("Current baseline.")).toBeNull();
-    expect(screen.getByText("Superseded")).toBeTruthy();
+    expect(screen.getByText("Not the base.")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Android APK/ })).toHaveProperty(
       "href",
       expect.stringContaining(`/native-builds/${id(9)}`),
     );
+    expect(
+      screen.getByRole("button", { name: "Mark as store build" }),
+    ).toBeTruthy();
+  });
+
+  it("links a build the mark passes over to the store build, even when it's the newest", () => {
+    const store = build({
+      id: id(9),
+      min_bundle_id: id(10),
+      store_build: true,
+    });
+    render(<BuiltInBundleCard detail={detail({ storeBuildInScope: store })} />);
+
+    expect(screen.queryByText("Current baseline.")).toBeNull();
+    expect(screen.getByText("Not the base.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Android APK/ })).toHaveProperty(
+      "href",
+      expect.stringContaining(`/native-builds/${id(9)}`),
+    );
+  });
+
+  it("offers the mark on the newest build, and marks it in one press", () => {
+    render(<BuiltInBundleCard detail={detail()} />);
+
+    expect(screen.getByText("Current baseline.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Mark as store build" }));
+
+    expect(markMutate).toHaveBeenCalledWith(
+      { id: id(1), storeBuild: true },
+      expect.anything(),
+    );
+  });
+
+  it("says a marked build is the base, and clears it in one press", () => {
+    const store = build({ store_build: true });
+    render(
+      <BuiltInBundleCard
+        detail={detail({ build: store, storeBuildInScope: store })}
+      />,
+    );
+
+    expect(screen.getByText("Store build.")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Mark as store build" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(markMutate).toHaveBeenCalledWith(
+      { id: id(1), storeBuild: false },
+      expect.anything(),
+    );
+  });
+
+  it("offers no mark on a sandbox channel's build", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({
+            channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
+          }),
+          channel: "sandbox-release",
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Mark as store build" }),
+    ).toBeNull();
   });
 });
 
@@ -826,6 +911,50 @@ describe("ServedNowCard", () => {
     targetCohorts: [],
     shouldForceUpdate: false,
     message: `Release of ${bundleId}`,
+  });
+
+  it("gives a marked build the command for a newest OTA with no patch from it", () => {
+    const store = build({ store_build: true });
+    render(
+      <ServedNowCard
+        detail={detail({
+          build: store,
+          storeBuildInScope: store,
+          servedNow: [release(id(20), id(120))],
+          patches: patchPage([]),
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        `npx hot-updater patch -p android -c pr-130 -b ${id(20)} --base-artifact-id ${id(2)}`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("asks for no patch when the newest OTA has one, or the build isn't marked", () => {
+    const store = build({ store_build: true });
+    render(
+      <>
+        <ServedNowCard
+          detail={detail({
+            build: store,
+            storeBuildInScope: store,
+            servedNow: [release(id(20), id(120)), release(id(19), id(119))],
+            patches: patchPage([id(20)]),
+          })}
+        />
+        <ServedNowCard
+          detail={detail({
+            servedNow: [release(id(20), id(120))],
+            patches: patchPage([]),
+          })}
+        />
+      </>,
+    );
+
+    expect(screen.queryByText(/npx hot-updater patch/)).toBeNull();
   });
 
   it("says how each served bundle's first OTA downloads on this build", () => {

@@ -145,3 +145,20 @@ export function parseNativeBuildImportOutput(
   }
   return JSON.parse(line) as NativeBuildImportOutput;
 }
+
+interface NativeBuildMarkOutput {
+  nativeBuild: { id: string; store_build: boolean | null } | null;
+}
+
+/** The JSON line `native-build mark --json` ends its output with. */
+export function parseNativeBuildMarkOutput(
+  output: string,
+): NativeBuildMarkOutput {
+  const line = output.trim().split("\n").at(-1) ?? "";
+  if (!line.startsWith("{")) {
+    throw new Error(
+      `hot-updater native-build mark --json printed no JSON: ${output}`,
+    );
+  }
+  return JSON.parse(line) as NativeBuildMarkOutput;
+}

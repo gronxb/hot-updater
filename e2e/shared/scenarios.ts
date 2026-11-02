@@ -41,6 +41,7 @@ import { staleCatalogAfterNewerGenerationScenario } from "./scenarios/stale-cata
 import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
 import { storeInstallBuiltInMismatchDownloadsScenario } from "./scenarios/store-install-built-in-mismatch-downloads.ts";
 import { storeInstallPatchesFromBuiltInScenario } from "./scenarios/store-install-patches-from-built-in.ts";
+import { storeInstallPatchesFromMarkedBuildScenario } from "./scenarios/store-install-patches-from-marked-build.ts";
 import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
 import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-cohorts-rollout-interaction.ts";
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
@@ -65,6 +66,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   bspatchManifestDiffFallbackScenario,
   storeInstallPatchesFromBuiltInScenario,
   storeInstallBuiltInMismatchDownloadsScenario,
+  storeInstallPatchesFromMarkedBuildScenario,
   runtimeChannelSwitchResetScenario,
   numericCohortRolloutScenario,
   targetCohortsOnlyScenario,

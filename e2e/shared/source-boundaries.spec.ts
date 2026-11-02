@@ -69,6 +69,7 @@ const expectedScenarioModuleFiles = [
   "startup-hang-recovery.ts",
   "store-install-built-in-mismatch-downloads.ts",
   "store-install-patches-from-built-in.ts",
+  "store-install-patches-from-marked-build.ts",
   "target-cohorts-only.ts",
   "target-cohorts-rollout-interaction.ts",
   "targeted-cohort-switchback.ts",

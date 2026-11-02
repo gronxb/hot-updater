@@ -379,6 +379,136 @@ export const setupCoreAdminTestSuite = (options: {
       expect(after.total).toBe(before.total);
     });
 
+    it("marks one store build per native build scope, replacing and clearing it", async () => {
+      const channel = `store-build-${namespace}`;
+      const register = async (suffix: string, fingerprintHash: string) => {
+        const builtIn = bundleRow(suffix);
+        const response = await admin(
+          "/native-builds",
+          jsonRequest("POST", {
+            id: bundleRow(`8${suffix}`).id,
+            platform: "ios",
+            channel,
+            fingerprintHash,
+            appVersion: null,
+            minBundleId: builtIn.id,
+            gitCommitHash: null,
+            buildKey: null,
+            buildNumber: suffix,
+            artifact: {
+              kind: "ipa",
+              storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
+              byteSize: 1_000,
+            },
+            embeddedBundle: {
+              manifestStorageUri: builtIn.manifest_storage_uri,
+              manifestFileHash: builtIn.manifest_file_hash,
+              assetBaseStorageUri: builtIn.asset_base_storage_uri,
+            },
+          }),
+        );
+        expect(response.status).toBe(201);
+        return ((await response.json()) as { data: NativeBuildRow }).data;
+      };
+      const mark = (id: string, storeBuild: boolean) =>
+        admin(
+          `/native-builds/${id}/store-build`,
+          jsonRequest("POST", { storeBuild }),
+        );
+      const markRead = (fingerprintHash: string) =>
+        `/native-builds/latest?platform=ios&channel=${encodeURIComponent(channel)}&fingerprintHash=${fingerprintHash}&storeBuild=true`;
+
+      const older = await register("64", "store-fingerprint");
+      const newer = await register("65", "store-fingerprint");
+      const otherScope = await register("66", "store-fingerprint-b");
+      expect(older.store_build).toBeNull();
+      expect((await adminJson(markRead("store-fingerprint"))).data).toBeNull();
+
+      const marked = await mark(older.id, true);
+      expect(marked.status).toBe(200);
+      expect(await marked.json()).toMatchObject({
+        data: {
+          nativeBuild: { id: older.id, store_build: true },
+          previous: null,
+        },
+      });
+      expect((await adminJson(markRead("store-fingerprint"))).data).toEqual({
+        ...older,
+        store_build: true,
+      });
+      // The newest build is still the newest, and a mark stays in its scope.
+      expect(
+        (
+          await adminJson(
+            `/native-builds/latest?platform=ios&channel=${encodeURIComponent(channel)}&fingerprintHash=store-fingerprint`,
+          )
+        ).data,
+      ).toEqual(newer);
+      expect(
+        (await adminJson(markRead("store-fingerprint-b"))).data,
+      ).toBeNull();
+
+      // Moving the mark frees its value and takes it in one write, on every
+      // store: the replaced build holds no mark after it.
+      const replaced = await mark(newer.id, true);
+      expect(await replaced.json()).toMatchObject({
+        data: {
+          nativeBuild: { id: newer.id, store_build: true },
+          previous: { id: older.id, store_build: null },
+        },
+      });
+      expect((await adminJson(`/native-builds/${older.id}`)).data).toEqual(
+        older,
+      );
+      expect((await adminJson(markRead("store-fingerprint"))).data).toEqual({
+        ...newer,
+        store_build: true,
+      });
+
+      // Racing marks leave one, whichever store runs them.
+      await Promise.all([
+        mark(older.id, true).then((response) => response.text()),
+        mark(newer.id, true).then((response) => response.text()),
+        mark(older.id, true).then((response) => response.text()),
+      ]);
+      const holders = (
+        await Promise.all(
+          [older, newer].map(
+            async ({ id }) =>
+              (
+                (await adminJson(`/native-builds/${id}`)) as {
+                  data: NativeBuildRow;
+                }
+              ).data.store_build,
+          ),
+        )
+      ).filter((storeBuild) => storeBuild === true);
+      expect(holders).toHaveLength(1);
+
+      const cleared = await mark(newer.id, false);
+      await cleared.text();
+      await mark(older.id, false).then((response) => response.text());
+      expect((await adminJson(markRead("store-fingerprint"))).data).toBeNull();
+
+      // An unknown ID answers null, a body without storeBuild is refused.
+      expect(
+        await (await mark(bundleRow("869").id, true)).json(),
+      ).toMatchObject({ data: null });
+      const refused = await admin(
+        `/native-builds/${older.id}/store-build`,
+        jsonRequest("POST", {}),
+      );
+      expect(refused.status).toBe(400);
+      await refused.text();
+
+      // A deleted build takes its mark, and the next mark takes the value.
+      await mark(otherScope.id, true).then((response) => response.text());
+      await adminJson(`/native-builds/${otherScope.id}`, jsonRequest("DELETE"));
+      expect(
+        (await adminJson(markRead("store-fingerprint-b"))).data,
+      ).toBeNull();
+    });
+
     it("lists the patches that start from a bundle", async () => {
       const base = bundleRow("50");
       const target = bundleRow("51");

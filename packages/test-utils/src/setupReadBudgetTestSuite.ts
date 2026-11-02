@@ -354,6 +354,9 @@ const seed = async (database: MeasuredDatabase) => {
       },
     });
   }
+  await core.markNativeBuild(createBundleFixture("8011").id, {
+    storeBuild: true,
+  });
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
   // Install 1 leaves bundle-b before it applies it again: an apply of the
@@ -612,6 +615,57 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (build) =>
       expect(build).toMatchObject({
         min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build store mark: byStoreBuild, 1 row",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, { storeBuild: true }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
+        store_build: true,
+      }),
+  }),
+  budget({
+    api: "native build store mark of a scope with none: byStoreBuild, no row",
+    read: ({ core }) =>
+      core.findNativeBuild(
+        { ...nativeBuildScope, channel: "no-such-channel" },
+        { storeBuild: true },
+      ),
+    adapter: reads(0, 0, 1, 0),
+    engine: { calls: 1, rows: 0 },
+    check: (build) => expect(build).toBeNull(),
+  }),
+  budget({
+    api: "native build older than a bundle, the newest is: byScope, limit 1",
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, {
+        builtInOlderThan: "ffffffff-ffff-7fff-bfff-ffffffffffff",
+      }),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
+    api: "native build older than a bundle, past the newest: byScope twice",
+    // The newest, then a bounded page of the older builds: only when the
+    // newest was built after the bundle.
+    read: ({ core }) =>
+      core.findNativeBuild(nativeBuildScope, {
+        builtInOlderThan: createBundleFixture("012").id,
+      }),
+    adapter: reads(0, 0, 2, 2),
+    engine: { calls: 2, rows: 2 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("011").id,
       }),
   }),
   budget({
@@ -919,6 +973,24 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         min_bundle_id: createBundleFixture("012").id,
         submitted_to: "testflight",
         submitted_version: "1.0.0 (12)",
+      }),
+  }),
+  budget({
+    api: "native build store mark write: the build, the holder, and 1 write",
+    read: ({ core }) =>
+      core.markNativeBuild(createBundleFixture("8012").id, {
+        storeBuild: true,
+      }),
+    adapter: reads(1, 1, 1, 1),
+    engine: { calls: 2, rows: 2 },
+    writes: 1,
+    check: (result) =>
+      expect(result).toMatchObject({
+        nativeBuild: {
+          min_bundle_id: createBundleFixture("012").id,
+          store_build: true,
+        },
+        previous: { min_bundle_id: createBundleFixture("011").id },
       }),
   }),
   budget({

@@ -100,6 +100,7 @@ import {
   NATIVE_BUILD_CHANNEL_PREFIX,
   nativeBuildChannel,
   parseNativeBuildImportOutput,
+  parseNativeBuildMarkOutput,
   readArtifactMinBundleId,
 } from "./native-build-registration.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
@@ -7619,23 +7620,29 @@ async function resetRemoteBundles() {
  * one the CLI registered. Its channel is the binary's own, so this deletes
  * the releases a failed earlier run left there.
  */
-async function registerNativeBuildFixture(input: { appVersion: string }) {
+async function registerNativeBuildFixture(input: {
+  appVersion: string;
+  /** The other build goes on the channel of a run's build. */
+  build?: "run" | "other";
+  channel?: string;
+}) {
   await assertDependenciesInCheckout({
     checkoutDir: REPO_DIR,
     projectDir: EXAMPLE_DIR,
   });
   const platform = fixtureSession.platform;
-  const artifactPath = nativeAppPath(
+  const build = input.build ?? "run";
+  const artifactPath = (build === "run" ? nativeAppPath : otherNativeAppPath)(
     currentE2eTarget(),
     platform,
     REPO_DIR,
     process.env,
   );
   const minBundleId = await readArtifactMinBundleId(artifactPath, platform);
-  const channel = nativeBuildChannel(minBundleId);
+  const channel = input.channel ?? nativeBuildChannel(minBundleId);
   const logPath = path.join(
     fixtureSession.resultsDir,
-    `native-build-import-${channel}.log`,
+    `native-build-import-${channel}-${build}.log`,
   );
   const output = await runLoggedCommand(
     "node",
@@ -7679,9 +7686,19 @@ async function registerNativeBuildFixture(input: { appVersion: string }) {
   await withConfiguredDatabase(({ core }) =>
     deleteChannelReleases({ core, channels: [channel], platform }),
   );
+  // A scenario that registered a newer build on this channel, and may have
+  // stopped midway, leaves it: the run's build must be the scope's only one.
+  if (build === "run") {
+    await clearNativeBuildScope({
+      appVersion: input.appVersion,
+      channel,
+      keepId: nativeBuild.id,
+    });
+  }
   logE2eFixture("native build imported", {
     alreadyImported: result.alreadyImported === true,
     artifactPath,
+    build,
     channel,
     minBundleId,
     nativeBuildId: nativeBuild.id,
@@ -7689,9 +7706,72 @@ async function registerNativeBuildFixture(input: { appVersion: string }) {
   });
   return {
     nativeBuildChannel: channel,
+    nativeBuildId: nativeBuild.id,
     nativeBuildMinBundleId: minBundleId,
     nativeBuildRegistered: result.alreadyImported !== true,
   };
+}
+
+/**
+ * Deletes the builds of a scope newer than the one to keep, with the real CLI
+ * so their artifacts go too, and clears a mark it holds.
+ */
+async function clearNativeBuildScope(input: {
+  appVersion: string;
+  channel: string;
+  keepId: string;
+}) {
+  const scope = {
+    platform: fixtureSession.platform,
+    channel: input.channel,
+    fingerprintHash: null,
+    appVersion: input.appVersion,
+  };
+  for (;;) {
+    const newest = await withConfiguredDatabase(({ core }) =>
+      core.findNativeBuild(scope),
+    );
+    if (newest === null || newest.id === input.keepId) break;
+    await runLoggedCommand(
+      "node",
+      [HOT_UPDATER_CLI_PATH, "native-build", "delete", newest.id, "--yes", "--json"],
+      {
+        cwd: fixtureSession.exampleDir,
+        env: getHotUpdaterControlEnv(),
+        logPath: path.join(
+          fixtureSession.resultsDir,
+          `native-build-delete-${newest.id}.log`,
+        ),
+      },
+    );
+  }
+  await withConfiguredDatabase(({ core }) =>
+    core.markNativeBuild(input.keepId, { storeBuild: false }),
+  );
+}
+
+/** `hot-updater native-build mark <id> --json`: the store build of its scope. */
+async function markNativeBuildFixture(input: { id: string }) {
+  const logPath = path.join(
+    fixtureSession.resultsDir,
+    `native-build-mark-${input.id}.log`,
+  );
+  const output = await runLoggedCommand(
+    "node",
+    [HOT_UPDATER_CLI_PATH, "native-build", "mark", input.id, "--json"],
+    {
+      cwd: fixtureSession.exampleDir,
+      env: getHotUpdaterControlEnv(),
+      logPath,
+    },
+  );
+  const { nativeBuild } = parseNativeBuildMarkOutput(output);
+  if (nativeBuild?.id !== input.id || nativeBuild.store_build !== true) {
+    throw new Error(
+      `hot-updater native-build mark didn't mark ${input.id}. See ${path.relative(REPO_DIR, logPath)}`,
+    );
+  }
+  return {};
 }
 
 /** Deletes the releases of a native build's channel. */
@@ -8304,8 +8384,16 @@ export function startInstallNativeBuildJob(build: "run" | "other") {
   return createJob(async () => installNativeBuild(build));
 }
 
-export function startRegisterNativeBuildJob(input: { appVersion: string }) {
+export function startRegisterNativeBuildJob(input: {
+  appVersion: string;
+  build?: "run" | "other";
+  channel?: string;
+}) {
   return createJob(() => registerNativeBuildFixture(input));
+}
+
+export function startMarkNativeBuildJob(input: { id: string }) {
+  return createJob(() => markNativeBuildFixture(input));
 }
 
 export function startResetNativeBuildChannelJob(input: { channel: string }) {

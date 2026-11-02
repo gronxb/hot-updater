@@ -79,6 +79,11 @@ The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
 `--json` adds `sandbox`: the `appId` its links derive from, and `otherBuilds`,
 whether the platform has builds there with other native code when none matched.
 
+A build on a `sandbox-*` channel is in another scope than your store build, so
+testing builds on a sandbox scheme don't touch the base a store install's first
+OTA [patches from](/docs/guides/native-build#mark-the-store-build). It can't be
+marked as the store build either.
+
 ## What runs first
 
 A sandbox build shows a native screen with the current channel and bundle before

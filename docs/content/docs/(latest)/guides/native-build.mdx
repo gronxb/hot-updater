@@ -222,7 +222,8 @@ The Console's **Native builds** page lists tracked builds; see
 
 A registered build is found by its platform, its default channel, and its
 fingerprint or, with the app version strategy, its exact app version: the
-newest build of that scope.
+newest build of that scope, which is the one registered last, whenever it was
+built.
 
 The built-in bundle is not an OTA update. No Release publishes it, so no
 device downloads it, and no update check changes. The bundle totals leave it
@@ -230,12 +231,14 @@ out, a release of it and its deletion are refused, and `storage prune` keeps
 its files and the artifact. It is deleted
 with its build; see [Delete a build](#delete-a-build).
 
-`hot-updater deploy` uses it as a Hermes patch base: it adds the built-in
-bundle of the newest registered build of the deploy's channel, platform, and
-fingerprint or exact app version to the patch bases, so a fresh install's first
-OTA downloads a `.bsdiff` patch instead of the complete Hermes bundle. The app
-checks its packaged Hermes file against the hash registered from the artifact
-before it patches, and downloads the complete file when they differ. See
+`hot-updater deploy` uses it as a Hermes patch base: it adds one built-in bundle
+of the deploy's channel, platform, and fingerprint or exact app version to the
+patch bases, from the build [marked as the store build](#mark-the-store-build),
+or with no mark from the newest build. An install of that build downloads its
+first OTA as a `.bsdiff` patch instead of the complete Hermes bundle, and an
+install of any other build downloads the complete file. The app checks its
+packaged Hermes file against the hash registered from the artifact before it
+patches, and downloads the complete file when they differ. See
 [Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
 
 A Debug build loads its JavaScript from Metro and has no built-in bundle, so
@@ -277,9 +280,12 @@ opens the build's page, `/native-builds/<build id>`:
   store track and the store's version and build number, with when it was
   submitted. The list marks those builds too.
 - **Built-in bundle**: the build's min bundle ID, the base its OTAs patch
-  from, how many bundles patch from it, and whether it is the newest build of
-  its scope. `deploy` patches from the newest build of a scope, so a
-  superseded build links to the build that replaced it.
+  from, how many bundles patch from it, and whether new deploys patch from it,
+  as the scope's store build or its newest. A build they don't patch from links
+  to the one they do. **Mark as store build** and **Clear** change the
+  [mark](#mark-the-store-build). The Console creates no patch; when an OTA
+  already out has none from a newly marked build, it shows the `hot-updater
+  patch` command that adds it.
 - **Served now**: the releases the update check offers an install of this
   build now, newer than its built-in bundle, and whether each one's first OTA
   downloads as a patch or as the full bundle.
@@ -333,8 +339,8 @@ adapter's `getDownloadUrl`, and the storage serves the file.
   URLs to avoid it.
 </Callout>
 
-A bundle's detail sheet links to the newest build of its release's scope, and
-says whether the bundle has a patch from it. Deleting a build stays with
+A bundle's detail sheet links to the build of its release's scope that new
+deploys patch from, and says whether the bundle has a patch from it. Deleting a build stays with
 [`native-build delete`](#delete-a-build).
 
 ### Install an APK on a phone
@@ -677,9 +683,10 @@ Delete a registered build you no longer need, such as a finished QA build:
 npx hot-updater native-build delete <build id>
 ```
 
-The command shows the build and asks before it deletes it. It then deletes
-the build and its built-in bundle from the database, then the artifact from
-storage. Bundles deployed with a `.bsdiff` patch from the built-in bundle lose
+The command shows the build and asks before it deletes it, and says so when the
+build is its scope's store build: deploys then go back to the newest build. It
+deletes the build and its built-in bundle from the database, then the artifact
+from storage. Bundles deployed with a `.bsdiff` patch from the built-in bundle lose
 that patch, so a device with that build installed downloads the complete
 bundle; installed apps keep working. The built-in bundle's files stay until
 [`hot-updater storage prune`](/docs/guides/storage-cleanup) deletes them.
@@ -698,6 +705,67 @@ with `artifactDeleted`.
 A self-hosted server reached through `standaloneRepository` needs this
 release's `@hot-updater/server`; an older one answers `404`, and the CLI asks
 you to upgrade it.
+
+## Mark the store build
+
+A deploy patches from one build of a scope. With no mark, that is the newest
+registered build, which stops being the build in the store as soon as a newer
+one is registered on the same channel, with the same fingerprint or app version.
+Mark the build the store sells, so a fresh install's first OTA stays a patch
+however many builds follow it:
+
+```package-install
+npx hot-updater native-build mark <build id>
+```
+
+```txt
+◇  iOS 1.7.0 (66) is the store build
+│  Replaces iOS 1.7.0 (62)
+│  Patched OTA 01a1f3c2 (312 KB)
+```
+
+A scope holds one mark, and a new one replaces it. Mark a build when its release
+goes live, not when you submit it: during review, fresh installs still get the
+previous build. Move the mark at each store release. The mark doesn't expire and
+nothing else moves it, so a mark left on an old build keeps deploys patching from
+it, and installs of the new release download the complete file. The `deploy` line
+shows the build it used. A new fingerprint or app version is a new scope, which
+starts with no mark.
+
+Marking also adds a patch from the build to the newest OTA serving the scope, so
+an OTA already out works too. That is one patch, and the command skips it when
+one exists. When it fails, the command warns and the mark stays; run
+[`hot-updater patch`](/docs/guides/bundle-diffing), which also adds a patch to any
+older OTA.
+
+To stop preferring a build, clear its mark. Deploys go back to the newest build:
+
+```package-install
+npx hot-updater native-build mark <build id> --clear
+```
+
+Both succeed when run again, so a CI job can retry them. Add `--json` to print
+`nativeBuild`, `previous`, and `patch`. A build on a `sandbox-*` channel can't be
+marked, since no store sells it. Deleting a marked build deletes its mark, and
+deploys go back to the newest build.
+
+A release job keeps the build's ID, then marks it when the release is live:
+
+```bash
+# When the build goes to the store.
+id="$(npx hot-updater native-build ios -s release --submit testflight --json | tail -1 | jq -r .nativeBuild.id)"
+
+# When the release is live, in a manual job, or with Mark as store build in the
+# Console.
+npx hot-updater native-build mark "$id"
+```
+
+`native-build import ./app.aab --json` prints the same `nativeBuild.id` for a
+build made elsewhere, including when it was imported before.
+
+A self-hosted server reached through `standaloneRepository` needs this release's
+`@hot-updater/server`; an older one answers `404`, and the CLI asks you to upgrade
+it.
 
 ## Add a build to a TestFlight group
 
@@ -751,10 +819,11 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 | `--json`                    | Print the build, its record or why it has none, and its submission as JSON, the last line          |
 
 The commands of the registry, `native-build find`, `native-build download`,
-`native-build install`, `native-build delete`, `native-build testflight-group`,
-and `native-build import`, are described in [Find a build](#find-a-build),
-[Download a build](#download-a-build), [Install a build](#install-a-build),
-[Delete a build](#delete-a-build),
+`native-build install`, `native-build delete`, `native-build mark`,
+`native-build testflight-group`, and `native-build import`, are described in
+[Find a build](#find-a-build), [Download a build](#download-a-build),
+[Install a build](#install-a-build), [Delete a build](#delete-a-build),
+[Mark the store build](#mark-the-store-build),
 [Add a build to a TestFlight group](#add-a-build-to-a-testflight-group), and
 [Import a build made elsewhere](#import-a-build-made-elsewhere).
 `native-build devices add` and `native-build devices list` register iPhones:

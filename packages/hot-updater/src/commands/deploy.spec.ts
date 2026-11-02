@@ -1905,15 +1905,20 @@ describe("deploy rollout wiring", () => {
     scope:
       | { fingerprintHash: string; appVersion: null }
       | { fingerprintHash: null; appVersion: string },
+    {
+      id = "01900000-0000-7000-8000-00000000b001",
+      buildNumber,
+    }: { readonly id?: string; readonly buildNumber?: string } = {},
   ) =>
     databaseHarness.core.registerNativeBuild({
-      id: "01900000-0000-7000-8000-00000000b001",
+      id,
       platform: "ios",
       channel: "production",
       ...scope,
       minBundleId,
       gitCommitHash: null,
       buildKey: null,
+      ...(buildNumber === undefined ? {} : { buildNumber }),
       artifact: {
         kind: "ipa",
         storageUri: "storage://native-builds/ios/b001/App.ipa",
@@ -2087,6 +2092,292 @@ describe("deploy rollout wiring", () => {
     await deployByFingerprint();
 
     expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+  });
+
+  describe("the built-in base", () => {
+    const FINGERPRINT = {
+      fingerprintHash: "fingerprint-hash",
+      appVersion: null,
+    } as const;
+    const buildIdOf = (n: number) =>
+      `01900000-0000-7000-8000-00000000b${String(n).padStart(3, "0")}`;
+    const baseBundleIds = () =>
+      mockServer.createBundleDiff.mock.calls.map(
+        ([ids]) => ids.baseBundleId as string,
+      );
+    const printed = () =>
+      mockCli.p.log.info.mock.calls.map(([line]) => String(line));
+    const configure = async (
+      updateStrategy: "fingerprint" | "appVersion" = "fingerprint",
+    ) => {
+      mockCli.loadConfig.mockResolvedValue({
+        build: async () => mockBuildAdapter,
+        fingerprint: {},
+        patch: { enabled: true, maxBaseBundles: 1 },
+        updateStrategy,
+      });
+      await mockGetBundlesWithFixtures([]);
+    };
+    const deployTo = (targetAppVersion: string) =>
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion,
+      });
+
+    it("uses the marked build over a newer one in its scope, and says so", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
+        id: buildIdOf(1),
+        buildNumber: "66",
+      });
+      await registerNativeBuild(fixtureBundleId(101), FINGERPRINT, {
+        id: buildIdOf(2),
+        buildNumber: "67",
+      });
+      await databaseHarness.core.markNativeBuild(buildIdOf(1), {
+        storeBuild: true,
+      });
+
+      await deployByFingerprint();
+
+      expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      expect(printed().filter((line) => line.includes("Built-in base"))).toEqual(
+        [expect.stringMatching(/\(66\).*store build/)],
+      );
+      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+    });
+
+    it("uses the newest build when none is marked, and says so", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
+        id: buildIdOf(1),
+        buildNumber: "66",
+      });
+      await registerNativeBuild(fixtureBundleId(101), FINGERPRINT, {
+        id: buildIdOf(2),
+        buildNumber: "67",
+      });
+
+      await deployByFingerprint();
+
+      expect(baseBundleIds()).toEqual([fixtureBundleId(101)]);
+      expect(printed().filter((line) => line.includes("Built-in base"))).toEqual(
+        [expect.stringMatching(/\(67\).*newest build/)],
+      );
+      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+    });
+
+    it("reads the mark once, and no newest build, when a mark serves the deploy", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT);
+      await databaseHarness.core.markNativeBuild(
+        "01900000-0000-7000-8000-00000000b001",
+        { storeBuild: true },
+      );
+      const findNativeBuild = vi.spyOn(
+        databaseHarness.core,
+        "findNativeBuild",
+      );
+
+      try {
+        await deployByFingerprint();
+        expect(
+          findNativeBuild.mock.calls.filter(([, options]) => !options?.buildKey),
+        ).toEqual([[expect.anything(), { storeBuild: true }]]);
+      } finally {
+        findNativeBuild.mockRestore();
+      }
+    });
+
+    it("reads once more only when there is no mark", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT);
+      const findNativeBuild = vi.spyOn(
+        databaseHarness.core,
+        "findNativeBuild",
+      );
+
+      try {
+        await deployByFingerprint();
+        expect(findNativeBuild.mock.calls.map(([, options]) => options)).toEqual(
+          [{ storeBuild: true }, { builtInOlderThan: DEPLOY_BUNDLE_ID }],
+        );
+      } finally {
+        findNativeBuild.mockRestore();
+      }
+    });
+
+    it("falls back to the newest usable build when the marked one is newer than the bundle", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
+        id: buildIdOf(1),
+      });
+      await registerNativeBuild(fixtureBundleId(200), FINGERPRINT, {
+        id: buildIdOf(2),
+      });
+      await databaseHarness.core.markNativeBuild(buildIdOf(2), {
+        storeBuild: true,
+      });
+
+      await deployByFingerprint();
+
+      expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      expect(printed().join("\n")).toContain("newest build");
+    });
+
+    it("reaches past a newest build made after the bundle to an older one", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
+        id: buildIdOf(1),
+      });
+      await registerNativeBuild(fixtureBundleId(200), FINGERPRINT, {
+        id: buildIdOf(2),
+      });
+
+      await deployByFingerprint();
+
+      expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+    });
+
+    it("takes the most recently registered build, whatever its built-in bundle's age", async () => {
+      await configure();
+      await registerNativeBuild(fixtureBundleId(101), FINGERPRINT, {
+        id: buildIdOf(1),
+      });
+      // An older store build imported today holds the slot until a mark says otherwise.
+      await registerNativeBuild(fixtureBundleId(100), FINGERPRINT, {
+        id: buildIdOf(2),
+      });
+
+      await deployByFingerprint();
+
+      expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+    });
+
+    it("patches from no build of another scope, marked or not", async () => {
+      await configure();
+      await registerNativeBuild(
+        fixtureBundleId(100),
+        { fingerprintHash: "another-fingerprint", appVersion: null },
+        { id: buildIdOf(1) },
+      );
+      await databaseHarness.core.markNativeBuild(buildIdOf(1), {
+        storeBuild: true,
+      });
+
+      await deployByFingerprint();
+
+      expect(baseBundleIds()).toEqual([]);
+      expect(printed().join("\n")).not.toContain("Built-in base");
+      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+    });
+
+    describe("with a range target", () => {
+      const inProject = (version: string | null) =>
+        vi.mocked(getNativeAppVersion).mockResolvedValue(version);
+
+      it("uses the project's version when the range holds it", async () => {
+        await configure("appVersion");
+        inProject("1.7.0");
+        await registerNativeBuild(fixtureBundleId(100), {
+          fingerprintHash: null,
+          appVersion: "1.7.0",
+        });
+
+        await deployTo("1.x.x");
+
+        expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      });
+
+      it("finds a build of a two-part version the range holds", async () => {
+        await configure("appVersion");
+        inProject("1.7");
+        await registerNativeBuild(fixtureBundleId(100), {
+          fingerprintHash: null,
+          appVersion: "1.7",
+        });
+
+        await deployTo("1.7.x");
+
+        expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      });
+
+      it("finds a two-part version's build from the exact target it means", async () => {
+        await configure("appVersion");
+        inProject("1.7");
+        await registerNativeBuild(fixtureBundleId(100), {
+          fingerprintHash: null,
+          appVersion: "1.7",
+        });
+
+        await deployTo("1.7.0");
+
+        expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      });
+
+      it("keeps the target as written when the project's version is outside it", async () => {
+        await configure("appVersion");
+        inProject("1.8.0");
+        await registerNativeBuild(fixtureBundleId(100), {
+          fingerprintHash: null,
+          appVersion: "1.7.0",
+        });
+
+        await deployTo("1.7.0");
+
+        expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      });
+
+      it("takes no base for a range the project's version is outside", async () => {
+        await configure("appVersion");
+        inProject("2.0.0");
+        await registerNativeBuild(fixtureBundleId(100), {
+          fingerprintHash: null,
+          appVersion: "1.7.0",
+        });
+
+        await deployTo("1.x.x");
+
+        expect(baseBundleIds()).toEqual([]);
+        expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+      });
+
+      it("takes no base when the project declares no single version", async () => {
+        await configure("appVersion");
+        inProject(null);
+        await registerNativeBuild(fixtureBundleId(100), {
+          fingerprintHash: null,
+          appVersion: "1.7.0",
+        });
+
+        await deployTo("1.x.x");
+
+        expect(baseBundleIds()).toEqual([]);
+        expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+      });
+
+      it("uses a mark in the project's version", async () => {
+        await configure("appVersion");
+        inProject("1.7.0");
+        const scope = { fingerprintHash: null, appVersion: "1.7.0" };
+        await registerNativeBuild(fixtureBundleId(100), scope, {
+          id: buildIdOf(1),
+        });
+        await registerNativeBuild(fixtureBundleId(101), scope, {
+          id: buildIdOf(2),
+        });
+        await databaseHarness.core.markNativeBuild(buildIdOf(1), {
+          storeBuild: true,
+        });
+
+        await deployTo("1.x.x");
+
+        expect(baseBundleIds()).toEqual([fixtureBundleId(100)]);
+      });
+    });
   });
 
   const deployWithFailingNativeBuildLookup = async (error: Error) => {
