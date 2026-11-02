@@ -20,6 +20,9 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 + (void)receiveLink:(NSURL *)url scene:(nullable UIWindowScene *)scene;
 + (void)hideScreen;
 + (void)keepKeyWindow:(UIWindow *)window;
++ (void)captureLaunchEvidence;
++ (void)appShowedContent;
++ (void)shakeIn:(UIWindowScene *)scene;
 @end
 
 @interface HotUpdaterSandboxLaunchPolicy : NSObject
@@ -45,6 +48,16 @@ static NSURL *gOwnLinkWhileHeld;
 /// What named the app when it released: a root held earlier is the one that
 /// creates React Native's host, which keeps its launch options for `Linking`.
 static NSDictionary *gOptionsThatReleased;
+
+static void (*gMotionEnded)(id, SEL, UIEventSubtype, UIEvent *);
+
+/// `UIWindow` inherits this method, so the swap covers every responder in the chain.
+static void MotionEnded(id self, SEL cmd, UIEventSubtype motion, UIEvent *event) {
+  if (motion == UIEventSubtypeMotionShake && [self isKindOfClass:UIWindow.class]) {
+    [HotUpdaterSandboxBridge shakeIn:((UIWindow *)self).windowScene];
+  }
+  if (gMotionEnded) gMotionEnded(self, cmd, motion, event);
+}
 
 static BOOL IsSandboxLink(NSURL *url) {
   return url != nil && [HotUpdaterSandboxLaunchPolicy isSandboxScheme:url.scheme];
@@ -424,6 +437,9 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
   SEL three = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:");
   Method method5 = factory ? class_getInstanceMethod(factory, five) : NULL;
   Method method3 = factory ? class_getInstanceMethod(factory, three) : NULL;
+  // First, so nothing can settle it before: settling deletes the marker.
+  [HotUpdaterSandboxBridge captureLaunchEvidence];
+
   if (method5) {
     gView5 = (View5)method_setImplementation(method5, (IMP)GatedView5);
   } else if (method3) {
@@ -443,6 +459,16 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
       isReleased:^BOOL {
         return gReleased;
       }];
+
+  Method motion = class_getInstanceMethod(UIWindow.class, @selector(motionEnded:withEvent:));
+  gMotionEnded = (void *)method_setImplementation(motion, (IMP)MotionEnded);
+  // React Native's own notification, by name: a recovery reload ends in new content.
+  [NSNotificationCenter.defaultCenter addObserverForName:@"RCTContentDidAppearNotification"
+                                                  object:nil
+                                                   queue:NSOperationQueue.mainQueue
+                                              usingBlock:^(NSNotification *note) {
+                                                [HotUpdaterSandboxBridge appShowedContent];
+                                              }];
 
   Method setDelegate = class_getInstanceMethod(UIApplication.class, @selector(setDelegate:));
   gSetDelegate = (void *)method_setImplementation(setDelegate, (IMP)SetDelegate);

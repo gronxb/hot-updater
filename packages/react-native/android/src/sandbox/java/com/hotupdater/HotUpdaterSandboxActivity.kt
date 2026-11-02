@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.util.Log
+import android.view.WindowManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +39,9 @@ internal object HotUpdaterSandbox {
                 log = { Log.i(TAG, it) },
             ).also { coordinator = it }
         }
+
+    /** Until dev-server mode is in this build, it says so. */
+    val devServer: HotUpdaterSandboxDevServer = HotUpdaterSandboxNoDevServer()
 
     fun attach(activity: HotUpdaterSandboxActivity) {
         screen = WeakReference(activity)
@@ -154,7 +158,9 @@ class HotUpdaterSandboxActivity : Activity() {
         val coordinator = HotUpdaterSandbox.coordinator(this)
         HotUpdaterSandbox.attach(this)
         if (screen == null) {
-            val shown = HotUpdaterSandboxScreen(this, coordinator)
+            @Suppress("DEPRECATION")
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer)
             screen = shown
             setContentView(shown.view)
             stopObserving = coordinator.observe(shown::render)
@@ -207,6 +213,9 @@ class HotUpdaterSandboxActivity : Activity() {
     }
 
     override fun onDestroy() {
+        // Back over the app: a person saw the screen and moved on. A start that
+        // passed through to the app showed nothing, so what it left stays to tell.
+        if (isFinishing && screen != null && isOverApp) HotUpdaterSandbox.coordinator(this).acknowledgeLastLaunch()
         stopObserving?.invoke()
         stopObserving = null
         HotUpdaterSandbox.detach(this)

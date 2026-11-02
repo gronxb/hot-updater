@@ -86,17 +86,50 @@ marked as the store build either.
 
 ## What runs first
 
-A sandbox build shows a native screen with the current channel and bundle before
-your app's JavaScript starts. **Open** starts your app.
+A sandbox build shows a native screen before your app's JavaScript starts. Tap the
+big row to start your app.
 
-| How the app starts                                     | What happens                       |
-| ------------------------------------------------------ | ---------------------------------- |
-| Launcher icon, cold                                    | The screen                         |
-| Launcher icon, app running                             | The running app                    |
-| A sandbox link                                         | The screen, which asks to open it  |
-| Your app's own link, a notification, or a shortcut     | Your app, no screen                |
-| A silent push or a background task                     | Your app in the background. With the screen up, your app keeps waiting |
-| `reload()`                                             | Your app, no screen                |
+| How the app starts                                 | What happens                                                           |
+| -------------------------------------------------- | ---------------------------------------------------------------------- |
+| Launcher icon, cold                                | The screen                                                             |
+| Launcher icon, app running                         | The running app                                                        |
+| A sandbox link                                     | The screen, which asks to open it                                      |
+| Your app's own link, a notification, or a shortcut | Your app, no screen                                                    |
+| A silent push or a background task                 | Your app in the background. With the screen up, your app keeps waiting |
+| `reload()`                                         | Your app, no screen                                                    |
+
+### The screen
+
+| Part            | What it does                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Big row         | Starts the bundle the next launch runs, named by the bundle: an update on the default channel isn't the built-in bundle |
+| Dev server      | Lists hosts and takes a new one. This version can't connect to a dev server yet, and tapping a host says so             |
+| OTA previews    | The last 10 channels this device opened, newest first. They say what you opened, not what the server has now            |
+| Scan QR code    | iOS scans in the app. Android opens the system camera, so check that your phone's camera opens the link                 |
+| Enter a channel | A channel name, or a whole preview link                                                                                 |
+| Info            | The build's version, fingerprint and built-in bundle, what's selected and pending, and **Reset to built-in bundle**     |
+
+Opening the screen sends your update server nothing. A preview row or a channel you
+type starts right away, and deletes downloaded bundles. A preview link always asks
+first, even one you paste, and gets the same fingerprint check as a scanned one.
+
+Shake the device to open the same screen over your running app. It says what's
+running, and **Reload** runs it again. When the next launch would run another
+bundle, the screen says which. The close button returns to your app, as does Back
+on Android.
+
+After a launch that failed, a banner says what happened:
+
+| What happened                               | What the banner says                                             |
+| ------------------------------------------- | ---------------------------------------------------------------- |
+| A crash before the bundle's first screen    | It crashed, and the device rolled back                           |
+| A launch that ended before its first screen | It didn't reach its first screen, and the device rolled back     |
+| A crash after the bundle's first screen     | It crashed and stays selected, with **Reset to built-in bundle** |
+
+A bundle that reached its first screen has passed its check, so a later crash doesn't
+roll it back. Opening it runs it again until you switch or reset.
+
+### Links
 
 On Android, a notification that opens a bare `getLaunchIntentForPackage` intent looks
 just like the launcher icon, so a cold start shows the screen. An extra on the

@@ -5,6 +5,24 @@ import Foundation
 /// app's JavaScript left it after an answered check. No new native API: the check
 /// and the update are `HotUpdaterInstance`'s.
 final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
+    /// What the previous process's crash left, read before anything can settle it.
+    private static var crashMarkerAtStart: PendingCrashRecovery?
+
+    /// Runs at `+load`, before the host's code: settling deletes the marker, and
+    /// a launch that skips the screen settles it too.
+    static func captureCrashMarker() {
+        let documents = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
+        // Main's store, as `HotUpdaterCrashMarker` documents it.
+        let url = URL(fileURLWithPath: documents)
+            .appendingPathComponent("bundle-store")
+            .appendingPathComponent(HotUpdaterCrashMarker.filename)
+        guard let data = try? Data(contentsOf: url),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return
+        }
+        crashMarkerAtStart = PendingCrashRecovery.from(json: json)
+    }
+
     private var impl: HotUpdaterImpl { HotUpdaterNativeUpdateBridge.sharedImpl }
     private let appIsRunning: () -> Bool
 
@@ -70,6 +88,52 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         return await Task.detached {
             impl.bundleIdForUpdateCheck() ?? HotUpdaterImpl.minBundleId()
         }.value
+    }
+
+    func launchEvidence() -> HotUpdaterSandboxLaunchEvidence {
+        let builtIn = HotUpdaterImpl.minBundleId()
+        var evidence = HotUpdaterSandboxLaunchEvidence()
+        if let marker = Self.crashMarkerAtStart {
+            evidence.marker = HotUpdaterSandboxCrashMarker(
+                bundleId: marker.launchedBundleId ?? builtIn,
+                shouldRollback: marker.shouldRollback
+            )
+        }
+        // The launch report is a read: JavaScript gets the same one after.
+        let report = impl.notifyAppReady()
+        if report["status"] as? String == "RECOVERED", let from = report["fromBundleId"] as? String {
+            evidence.rollback = HotUpdaterSandboxRollback(
+                fromBundleId: from,
+                toBundleId: report["toBundleId"] as? String ?? builtIn
+            )
+            // A JavaScript crash can recover inside this process, whose marker came and
+            // went after the start. Crash history then names the bundle, where a launch
+            // that only ended leaves it waiting for its retry.
+            if evidence.marker?.bundleId != from, historyRecordsCrash(of: from) {
+                evidence.marker = HotUpdaterSandboxCrashMarker(bundleId: from, shouldRollback: true)
+            }
+        }
+        return evidence
+    }
+
+    private func historyRecordsCrash(of bundleId: String) -> Bool {
+        let documents = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
+        let url = URL(fileURLWithPath: documents)
+            .appendingPathComponent("bundle-store")
+            .appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+        let history = CrashedHistory.load(from: url)
+        return history.contains(bundleId) && history.interruptedLaunch?.bundleId != bundleId
+    }
+
+    func details() -> HotUpdaterSandboxDetails {
+        let builtIn = HotUpdaterImpl.minBundleId()
+        let state = impl.getActiveUpdateState()
+        let active = (state["activeSelection"] as? [String: Any])?["bundleId"] as? String ?? builtIn
+        return HotUpdaterSandboxDetails(
+            builtInBundleId: builtIn,
+            fingerprintHash: impl.getFingerprintHash(),
+            pendingBundleId: state["verificationPending"] as? Bool == true ? active : nil
+        )
     }
 
     func preflight(channel: String) async throws -> Bool {
@@ -139,7 +203,7 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         guard try await update.updateBundle(onProgress: onProgress) else {
             return .superseded
         }
-        return .update(bundleId: update.bundleId)
+        return .update(bundleId: update.bundleId, message: update.message)
     }
 }
 
@@ -160,8 +224,37 @@ final class HotUpdaterSandboxDefaults: HotUpdaterSandboxStore {
         record("opened", selection)
     }
 
+    var history: [HotUpdaterSandboxHistoryEntry] {
+        get { read("history") ?? [] }
+        set { write(newValue, "history") }
+    }
+
+    var messages: [HotUpdaterSandboxBundleMessage] {
+        get { read("messages") ?? [] }
+        set { write(newValue, "messages") }
+    }
+
+    var lastLaunch: HotUpdaterSandboxLastLaunch? {
+        get { read("lastLaunch") }
+        set {
+            if let newValue {
+                write(newValue, "lastLaunch")
+            } else {
+                defaults.removeObject(forKey: "lastLaunch")
+            }
+        }
+    }
+
     private func record(_ key: String, _ selection: HotUpdaterSandboxSelection) {
         defaults.set(["channel": selection.channel, "bundleId": selection.bundleId], forKey: key)
+    }
+
+    private func read<T: Decodable>(_ key: String) -> T? {
+        defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
+    }
+
+    private func write<T: Encodable>(_ value: T, _ key: String) {
+        defaults.set(try? JSONEncoder().encode(value), forKey: key)
     }
 }
 #endif
