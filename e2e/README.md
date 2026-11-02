@@ -83,7 +83,9 @@ builds the app twice. The other build is a real Release build with its own
 MIN_BUNDLE_ID, and so its own isolation key, written to
 `ios/build/OtherBuild/HotUpdaterExample.app` and
 `android/app/build/outputs/apk/other-build/app-release.apk`. The scenario fails
-when either binary is missing, so a binary cache has to keep both. The scenario
+when either binary is missing, so a binary cache has to keep both. The other
+build's path follows the run's, so setting `HOT_UPDATER_E2E_IOS_BINARY_PATH` or
+`HOT_UPDATER_E2E_ANDROID_BINARY_PATH` moves both. The scenario
 installs each build over the other, as an update does, with `simctl install` or
 `adb install -r`, and the next scenario's reset puts the run's build back if a
 failure left the other one on the device.
