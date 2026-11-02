@@ -74,7 +74,7 @@ const CHANNEL_ID_PREFIX = "channel:";
  * How many older builds of a scope a deploy looks through for one older than
  * its bundle, when a build made after the bundle is the newest.
  */
-const OLDER_BUILDS_PAGE = 10;
+const OLDER_BUILDS_LIMIT = 10;
 
 /** How many times a mark runs again after losing its scope's mark to another. */
 const MARK_ATTEMPTS = 8;
@@ -309,15 +309,23 @@ export const createNativeBuildApi = (
     if (bundleId === undefined || newest.min_bundle_id < bundleId) {
       return pick(newest);
     }
-    const { rows: older } = await db.findMany("native_builds", {
-      index: "byScope",
-      where: { scope_key: scopeKey },
-      order: "desc",
-      limit: OLDER_BUILDS_PAGE,
-      range: { lt: newest.id },
-    });
-    const usable = older.find(({ min_bundle_id }) => min_bundle_id < bundleId);
-    return usable === undefined ? null : pick(usable);
+    // One row a read: a build made after the bundle is rare, and the next is
+    // usually the one a deploy wants.
+    let after = newest.id;
+    for (let read = 0; read < OLDER_BUILDS_LIMIT; read += 1) {
+      const { rows: older } = await db.findMany("native_builds", {
+        index: "byScope",
+        where: { scope_key: scopeKey },
+        order: "desc",
+        limit: 1,
+        range: { lt: after },
+      });
+      const build = older[0];
+      if (build === undefined) return null;
+      if (build.min_bundle_id < bundleId) return pick(build);
+      after = build.id;
+    }
+    return null;
   },
 
   async recordNativeBuildSubmission(id, { destination, version }) {

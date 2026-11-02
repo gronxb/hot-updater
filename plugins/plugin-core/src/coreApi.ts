@@ -187,8 +187,8 @@ export interface HotUpdaterCoreApi {
    * native build key, also one read. With `storeBuild`, the scope's marked
    * build or null, also one read. With `builtInOlderThan`, the newest of the
    * scope whose built-in bundle is older than that bundle: one read when the
-   * newest is, and one more, of a bounded page, when a build made after the
-   * bundle is in the way.
+   * newest is, and one more for each build made after the bundle that is in
+   * the way, ten at most.
    */
   findNativeBuild(
     scope: NativeBuildScope,

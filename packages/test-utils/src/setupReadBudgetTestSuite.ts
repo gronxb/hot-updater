@@ -655,8 +655,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "native build older than a bundle, past the newest: byScope twice",
-    // The newest, then a bounded page of the older builds: only when the
-    // newest was built after the bundle.
+    // The newest, then the next: only when the newest was built after the
+    // bundle.
     read: ({ core }) =>
       core.findNativeBuild(nativeBuildScope, {
         builtInOlderThan: createBundleFixture("012").id,
