@@ -18,6 +18,7 @@ import {
   assertStorageOperations,
   type NativeBuildArtifactKind,
   type NativeBuildRow,
+  type NativeBuildScope,
   type Platform,
 } from "@hot-updater/plugin-core";
 import {
@@ -97,11 +98,16 @@ export const handleNativeBuildFind = async (
       options.scheme === undefined
         ? undefined
         : schemeArtifactKind(config, options.platform, options.scheme);
+    const sandboxAppId =
+      options.scheme === undefined
+        ? null
+        : schemeSandboxAppId(config, options.platform, options.scheme);
 
     // The registry `native-build ios|android` tracks builds in.
     const server = await loadServer(await loadConfig(null));
     let nativeBuild: NativeBuildRow | null;
     let downloadUrl: string | null = null;
+    let otherBuilds = false;
     try {
       nativeBuild = await server.core.findNativeBuild(scope);
       if (
@@ -116,6 +122,9 @@ export const handleNativeBuildFind = async (
           server.storage,
           nativeBuild,
         );
+      }
+      if (options.json && sandboxAppId !== null && nativeBuild === null) {
+        otherBuilds = await hasOtherSandboxBuilds(server, scope);
       }
     } finally {
       await safeDispose(server);
@@ -143,6 +152,9 @@ export const handleNativeBuildFind = async (
             nativeBuild,
             downloadUrl,
             ...(options.storeStatus ? { store } : {}),
+            ...(sandboxAppId === null
+              ? {}
+              : { sandbox: { appId: sandboxAppId, otherBuilds } }),
           },
           null,
           2,
@@ -205,6 +217,59 @@ const schemeArtifactKind = (
     : config.nativeBuild.ios[scheme]?.simulator
       ? "app"
       : "ipa";
+
+/**
+ * The app ID a sandbox scheme's links derive their URL scheme from, or null for
+ * any other scheme: the configured ID, before Android's `.sandbox` suffix.
+ */
+const schemeSandboxAppId = (
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  platform: Platform,
+  scheme: string,
+): string | null => {
+  if (platform === "android") {
+    const android = config.nativeBuild.android[scheme];
+    return android?.sandbox ? android.packageName : null;
+  }
+  const ios = config.nativeBuild.ios[scheme];
+  return ios?.sandbox ? ios.bundleIdentifier : null;
+};
+
+/** One page of a channel's builds, newest first. */
+const SANDBOX_BUILDS_PAGE = 100;
+
+/**
+ * Whether the scope's sandbox channel has a build of the platform with other
+ * native code, which tells a pull request that changed its native code from a
+ * project with no sandbox build yet. Android and iOS can share the channel of
+ * a scheme name, and no index holds a channel's builds by platform, so it reads
+ * pages until one has such a build or the channel runs out. It reads nothing
+ * when a build matched.
+ */
+const hasOtherSandboxBuilds = async (
+  server: LoadedServer,
+  scope: NativeBuildScope,
+): Promise<boolean> => {
+  const channel = await server.core.findChannelByName(scope.channel);
+  if (channel === null) return false;
+  for (let after: string | undefined; ; ) {
+    const page = await server.core.listNativeBuilds({
+      channelId: channel.id,
+      order: "desc",
+      limit: SANDBOX_BUILDS_PAGE,
+      ...(after === undefined ? {} : { after }),
+    });
+    const found = page.some(
+      (build) =>
+        build.platform === scope.platform &&
+        (build.fingerprint_hash !== scope.fingerprintHash ||
+          build.app_version !== scope.appVersion),
+    );
+    if (found) return true;
+    if (page.length < SANDBOX_BUILDS_PAGE) return false;
+    after = page.at(-1)!.id;
+  }
+};
 
 /** Prints why a command failed, on stderr under `--json`, and exits. */
 const failCommand = (error: unknown, json: boolean | undefined) => {

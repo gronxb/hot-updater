@@ -453,8 +453,10 @@ describe("a preview with no store input", () => {
     ).toEqual([]);
     const [preview] = JSON.parse(harness.outputs.get("previews")!);
     expect(preview).not.toHaveProperty("store");
-    const find = fake.calls.find(([, sub]) => sub === "find")!;
-    expect(find).toContain("-c");
-    expect(find).not.toContain("--store-status");
+    const finds = fake.calls.filter(([, sub]) => sub === "find");
+    // The build's lookup asks what the project embeds, and the download's names
+    // the pull request's channel.
+    expect(finds.at(-1)).toContain("-c");
+    for (const find of finds) expect(find).not.toContain("--store-status");
   });
 });

@@ -16,8 +16,10 @@ import {
 import {
   consoleLink,
   nativeBuildDownloadLink,
-  nativeBuildPageLink,
   nativeBuildInstallUrl,
+  nativeBuildPageLink,
+  previewLink,
+  previewQrLink,
   renderClosedComment,
   renderPreviewComment,
 } from "./comment.mjs";
@@ -44,6 +46,9 @@ export { parseJsonOutput };
  *   builds embed and its bundles deploy to.
  * @property {Partial<Record<Platform, "testflight" | "play-internal">>} submits
  *   The store each platform's sandbox build goes to; none previews as before.
+ * @property {Partial<Record<Platform, string>>} fallbackSchemes The normal
+ *   scheme each platform builds on the pull request's channel when its native
+ *   code differs from its sandbox builds'.
  * @property {string | null} testFlightGroup The internal TestFlight group of an
  *   iOS sandbox build.
  * @property {boolean} credit
@@ -122,6 +127,18 @@ export const parseInputs = (env, event) => {
   const channel = input("CHANNEL") || `pr-${event.number}`;
 
   const submits = parseSubmits(input);
+  /** @type {Inputs["fallbackSchemes"]} */
+  const fallbackSchemes = {};
+  for (const platform of platforms) {
+    const fallback = input(`${platform.toUpperCase()}_FALLBACK_SCHEME`);
+    if (fallback === "") continue;
+    if (submits[platform] !== undefined) {
+      throw new Error(
+        `${platform}-fallback-scheme doesn't go with ${platform}-submit: the store gets a new sandbox build.\nRemove one of them.`,
+      );
+    }
+    fallbackSchemes[platform] = fallback;
+  }
   const testFlightGroup = input("IOS_TESTFLIGHT_GROUP") || null;
   if (testFlightGroup !== null && submits.ios === undefined) {
     throw new Error(
@@ -151,6 +168,7 @@ export const parseInputs = (env, event) => {
     schemes,
     channel,
     submits,
+    fallbackSchemes,
     testFlightGroup,
     credit: parseFlag(input, "CREDIT", true),
     comment: parseFlag(input, "COMMENT", true),
@@ -197,14 +215,15 @@ const artifactFileName = (storageUri) => {
 const findDownloadUrl = async (
   deps,
   inputs,
-  { platform, nativeBuild: { id } },
+  { platform, nativeBuild: { id }, sandbox, store, fallbackScheme },
 ) => {
   try {
     const found = await findNativeBuild(deps, {
       platform,
-      scheme: /** @type {string} */ (inputs.schemes[platform]),
+      scheme:
+        fallbackScheme ?? /** @type {string} */ (inputs.schemes[platform]),
       // A sandbox scheme's channel is its own, which `find` refuses to be told.
-      channel: inputs.submits[platform] ? null : inputs.channel,
+      channel: sandbox || store ? null : inputs.channel,
     });
     if (found.nativeBuild?.id === id) return found.downloadUrl ?? null;
     deps.log.notice(
@@ -293,6 +312,7 @@ const findOrSubmitStoreBuild = async (
       target: found,
       built: false,
       store: foundStore,
+      sandbox: found.sandbox,
     };
   }
   const noLongerOffered = submitted !== null;
@@ -351,8 +371,38 @@ const findOrSubmitStoreBuild = async (
       expiresAtMs: null,
       reusable: true,
     },
+    sandbox: found.sandbox,
   };
 };
+
+/**
+ * What a sandbox build adds to its preview: the link a QR code holds, derived
+ * from the app's ID, which nothing stores. A link names a fingerprint, so a
+ * build matched by app version has none.
+ *
+ * @param {Inputs} inputs
+ * @param {{ appId: string } | undefined} sandbox
+ * @param {import("../../shared/nativeBuild.mjs").BuildTarget} target
+ * @param {NativeBuildRow} build
+ * @returns {{ sandbox?: import("./comment.mjs").SandboxPreview }}
+ */
+const sandboxOf = (inputs, sandbox, { fingerprintHash }, build) =>
+  sandbox === undefined
+    ? {}
+    : {
+        sandbox: {
+          appId: sandbox.appId,
+          link:
+            fingerprintHash === null
+              ? null
+              : previewLink({
+                  appId: sandbox.appId,
+                  channel: inputs.channel,
+                  fingerprintHash,
+                }),
+          minBundleId: build.min_bundle_id ?? null,
+        },
+      };
 
 /**
  * Deploys one platform's bundle to the pull request's channel, after
@@ -371,13 +421,8 @@ const previewPlatform = async (deps, inputs, event, platform) => {
   const scheme = /** @type {string} */ (inputs.schemes[platform]);
   const submit = inputs.submits[platform];
   if (submit) {
-    const { build, target, built, store } = await findOrSubmitStoreBuild(
-      deps,
-      inputs,
-      event,
-      platform,
-      submit,
-    );
+    const { build, target, built, store, sandbox } =
+      await findOrSubmitStoreBuild(deps, inputs, event, platform, submit);
     const bundleId = await deployBundle(deps, {
       platform,
       channel: inputs.channel,
@@ -399,26 +444,96 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       built,
       bundleId,
       store,
+      ...sandboxOf(inputs, sandbox, target, build),
       installUrl:
         store?.url ?? nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
     };
   }
-  const found = await findNativeBuild(deps, {
+  // With no channel, `find` answers for a sandbox scheme's own, and otherwise
+  // for what the project embeds, which `channel set` made the pull request's.
+  const found = await findNativeBuild(deps, { platform, scheme });
+  const fallback = inputs.fallbackSchemes[platform];
+  if (found.channel !== `sandbox-${scheme}`) {
+    if (fallback !== undefined) {
+      throw new Error(
+        `${platform}-fallback-scheme goes with a sandbox scheme, and ${scheme} isn't one.\nSet sandbox: true on it, or remove ${platform}-fallback-scheme.`,
+      );
+    }
+    const { preview } = await deployOnNativeBuild(deps, inputs, event, {
+      platform,
+      scheme,
+      channel: inputs.channel,
+      // A config plugin can decide the channel, whatever `channel set` wrote.
+      found:
+        found.channel === inputs.channel
+          ? found
+          : await findNativeBuild(deps, {
+              platform,
+              scheme,
+              channel: inputs.channel,
+            }),
+    });
+    return preview;
+  }
+  if (
+    found.nativeBuild === null &&
+    found.sandbox?.otherBuilds &&
+    fallback !== undefined
+  ) {
+    deps.log.info(
+      `Building ${fallback} for ${platform}: the sandbox builds have other native code than ${describeTarget(found)}.`,
+    );
+    const { preview } = await deployOnNativeBuild(deps, inputs, event, {
+      platform,
+      scheme: fallback,
+      channel: inputs.channel,
+      found: await findNativeBuild(deps, {
+        platform,
+        scheme: fallback,
+        channel: inputs.channel,
+      }),
+    });
+    return { ...preview, fallbackScheme: fallback };
+  }
+  const { preview, build } = await deployOnNativeBuild(deps, inputs, event, {
     platform,
     scheme,
-    channel: inputs.channel,
+    channel: found.channel,
+    found,
   });
+  return {
+    ...preview,
+    ...sandboxOf(inputs, found.sandbox, preview.target, build),
+  };
+};
+
+/**
+ * Deploys the pull request's bundle after finding, or building and tracking,
+ * a native build of the scheme that embeds `channel`.
+ *
+ * @param {Deps} deps
+ * @param {Inputs} inputs
+ * @param {PullRequestEvent} event
+ * @param {{ platform: Platform, scheme: string, channel: string, found: import("../../shared/nativeBuild.mjs").NativeBuildFindResult }} options
+ * @returns {Promise<{ preview: PlatformPreview & { installUrl: string }, build: NativeBuildRow }>}
+ */
+const deployOnNativeBuild = async (
+  deps,
+  inputs,
+  event,
+  { platform, scheme, channel, found },
+) => {
   /** @type {import("../../shared/nativeBuild.mjs").BuildTarget} */
   let target = {
     fingerprintHash: found.fingerprintHash,
     appVersion: found.appVersion,
   };
-  /** @type {PlatformPreview["nativeBuild"]} */
-  let nativeBuild;
+  /** @type {NativeBuildRow} */
+  let build;
   const built = found.nativeBuild === null;
   if (found.nativeBuild === null) {
     deps.log.info(
-      `Building ${platform}: no native build on ${inputs.channel} has ${describeTarget(found)}.`,
+      `Building ${platform}: no native build on ${channel} has ${describeTarget(found)}.`,
     );
     const since = Date.now();
     // Every native build is tracked, so the preview can install it.
@@ -434,9 +549,11 @@ const previewPlatform = async (deps, inputs, event, platform) => {
         throw error;
       })
     );
-    if (registered.build.channel !== inputs.channel) {
+    if (registered.build.channel !== channel) {
       throw new Error(
-        `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${inputs.channel}. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to ${inputs.channel}.`,
+        channel === inputs.channel
+          ? `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${channel}. An Expo project sets the channel in the @hot-updater/expo config plugin, such as from a PREVIEW_CHANNEL variable the job sets to ${channel}.`
+          : `native-build ${platform} built a native build that embeds the ${registered.build.channel} channel, not ${channel}.`,
       );
     }
     if (registered.nativeBuild === null) {
@@ -451,20 +568,12 @@ const previewPlatform = async (deps, inputs, event, platform) => {
       fingerprintHash: registered.build.fingerprintHash,
       appVersion: registered.build.appVersion,
     };
-    nativeBuild = {
-      id: registered.nativeBuild.id,
-      artifactKind: registered.nativeBuild.artifact_kind,
-      fileName: artifactFileName(registered.nativeBuild.artifact_storage_uri),
-    };
+    build = registered.nativeBuild;
   } else {
     deps.log.info(
       `Reusing ${platform} native build ${found.nativeBuild.id} (${describeTarget(found)}).`,
     );
-    nativeBuild = {
-      id: found.nativeBuild.id,
-      artifactKind: found.nativeBuild.artifact_kind,
-      fileName: artifactFileName(found.nativeBuild.artifact_storage_uri),
-    };
+    build = found.nativeBuild;
     await refreshFingerprint(deps, found);
   }
 
@@ -474,44 +583,43 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     target,
     message: `#${event.number} ${event.title}`,
   });
+  const nativeBuild = {
+    id: build.id,
+    artifactKind: build.artifact_kind,
+    fileName: artifactFileName(build.artifact_storage_uri),
+  };
 
   return {
-    platform,
-    target,
-    nativeBuild,
-    built,
-    bundleId,
-    installUrl: nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
+    build,
+    preview: {
+      platform,
+      target,
+      nativeBuild,
+      built,
+      bundleId,
+      installUrl: nativeBuildInstallUrl(inputs.consoleUrl, nativeBuild),
+    },
   };
 };
 
 /**
- * Whether the comment can show the Console's QR code of an APK's download or
- * an IPA's page: GitHub fetches a comment's images from the internet, so the
- * runner checks that the Console answers with that URL under its own address. A
- * private Console, such as one on a VPN, is out of reach, and the comment
- * keeps only the links.
+ * Whether the Console serves a QR code that holds `expected` to the runner.
+ * GitHub fetches a comment's images from the internet, so a private Console,
+ * such as one on a VPN, is out of reach, and the comment keeps only the links.
  *
  * @param {Deps} deps
- * @param {Inputs} inputs
- * @param {PlatformPreview["nativeBuild"]} nativeBuild
+ * @param {string} url
+ * @param {string} header The response header that says what the image holds.
+ * @param {string} expected
  */
-const servesDownloadQr = async (deps, inputs, { id, artifactKind }) => {
-  const page = artifactKind === "ipa";
-  const url = consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
-    build: id,
-    ...(page ? { target: "page" } : {}),
-  });
-  const expected = page
-    ? nativeBuildPageLink(inputs.consoleUrl, id)
-    : nativeBuildDownloadLink(inputs.consoleUrl, id);
+const servesQr = async (deps, url, header, expected) => {
   let cause;
   try {
     const response = await deps.fetch(url, { method: "HEAD" });
-    const downloadUrl = response.headers.get("x-hot-updater-download-url");
-    if (response.ok && downloadUrl === expected) return true;
+    const held = response.headers.get(header);
+    if (response.ok && held === expected) return true;
     cause = response.ok
-      ? `the QR code at ${url} holds ${downloadUrl}, not ${expected}`
+      ? `the QR code at ${url} holds ${held}, not ${expected}`
       : `the Console answered ${response.status} to ${url}`;
   } catch (error) {
     cause = `the Console is unreachable from the runner (${error instanceof Error ? error.message : String(error)})`;
@@ -540,12 +648,42 @@ export const runPreview = async (deps, inputs, event) => {
   }
   /** @type {string[]} */
   const qrCodes = [];
-  for (const { nativeBuild, store } of previews) {
+  /** @type {Platform[]} */
+  const previewQrCodes = [];
+  for (const { platform, nativeBuild, target, sandbox, store } of previews) {
+    if (sandbox) {
+      if (
+        sandbox.link !== null &&
+        (await servesQr(
+          deps,
+          previewQrLink(inputs.consoleUrl, {
+            appId: sandbox.appId,
+            channel: inputs.channel,
+            fingerprintHash: /** @type {string} */ (target.fingerprintHash),
+          }),
+          "x-hot-updater-preview-link",
+          sandbox.link,
+        ))
+      ) {
+        previewQrCodes.push(platform);
+      }
+      continue;
+    }
+    // An IPA's holds its page, where an iPhone checks whether it can install.
+    const page = nativeBuild.artifactKind === "ipa";
     if (
-      // An IPA's holds its page, where an iPhone checks whether it can install.
-      (nativeBuild.artifactKind === "apk" ||
-        (nativeBuild.artifactKind === "ipa" && !store)) &&
-      (await servesDownloadQr(deps, inputs, nativeBuild))
+      (nativeBuild.artifactKind === "apk" || (page && !store)) &&
+      (await servesQr(
+        deps,
+        consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
+          build: nativeBuild.id,
+          ...(page ? { target: "page" } : {}),
+        }),
+        "x-hot-updater-download-url",
+        page
+          ? nativeBuildPageLink(inputs.consoleUrl, nativeBuild.id)
+          : nativeBuildDownloadLink(inputs.consoleUrl, nativeBuild.id),
+      ))
     ) {
       qrCodes.push(nativeBuild.id);
     }
@@ -555,6 +693,7 @@ export const runPreview = async (deps, inputs, event) => {
     channel: inputs.channel,
     previews,
     qrCodes,
+    previewQrCodes,
     headSha: event.headSha,
     credit: inputs.credit,
   });
@@ -567,9 +706,10 @@ export const runPreview = async (deps, inputs, event) => {
     });
   }
   deps.setOutput("previews", JSON.stringify(outputs));
-  for (const { platform, installUrl, downloadUrl, store } of outputs) {
+  for (const { platform, installUrl, downloadUrl, store, sandbox } of outputs) {
     deps.setOutput(`${platform}-install-url`, installUrl);
     deps.setOutput(`${platform}-download-url`, downloadUrl ?? "");
+    if (sandbox) deps.setOutput(`${platform}-sandbox-link`, sandbox.link ?? "");
     if (store) {
       deps.setOutput(`${platform}-store-url`, store.url ?? "");
       deps.setOutput(`${platform}-store-state`, store.state ?? "");

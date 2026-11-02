@@ -67,7 +67,9 @@ device. [A separate app](#a-separate-app-on-ios) installs beside it.
 
 The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
 `sandbox-*` channel, and a sandbox build can't register on any other.
-`native-build find --scheme <scheme>` looks on that channel by itself.
+`native-build find --scheme <scheme>` looks on that channel by itself, and with
+`--json` adds `sandbox`: the `appId` its links derive from, and `otherBuilds`,
+whether the platform has builds there with other native code when none matched.
 
 ## What runs first
 
@@ -91,6 +93,8 @@ hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash
 
 It never reaches your app's `Linking`. The app ID in it is the scheme's
 `bundleIdentifier` or `packageName`, without the `.sandbox` suffix.
+[Pull request previews](/docs/guides/pull-request-previews#open-a-pull-request-in-a-sandbox-build)
+comment one with its QR code for each pull request.
 
 ### Opening a link
 

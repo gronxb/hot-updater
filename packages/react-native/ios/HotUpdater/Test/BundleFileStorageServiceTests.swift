@@ -3631,6 +3631,198 @@ struct BundleFileStorageServiceTests {
         }
     }
 
+    // MARK: - Metadata after an isolation key change
+
+    @Test(arguments: [false, true])
+    func anIsolationKeyChangeForgetsTheBundlesItDeletes(verificationPending: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root, verificationPending: verificationPending)
+
+        // A build of another key that writes nothing, such as one with no network.
+        let otherBuild = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "other-key")
+        _ = otherBuild.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+
+        // The original build finds its key again, and nothing it names.
+        let back = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        #expect(back.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(back.getActiveUpdateState()["activeSelection"] is NSNull)
+        #expect(back.getActiveUpdateState()["stableSelection"] is NSNull)
+        // It never launched here, so nothing refuses it when it is offered again.
+        #expect(back.getCrashHistory().contains("ota-bundle") == false)
+    }
+
+    @Test
+    func anIsolationKeyChangeClearsTheMetadataBeforeItDeletesTheBundles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root)
+        var bundleExistedAtWrite: Bool?
+        var written: BundleMetadata?
+
+        _ = makeInstanceStorageService(
+            documentsDirectory: root,
+            instance: .main,
+            isolationKey: "other-key",
+            metadataWriter: { metadata, file in
+                bundleExistedAtWrite = FileManager.default.fileExists(atPath: bundle.path)
+                written = metadata
+                return metadata.save(to: file)
+            }
+        )
+
+        // A crash after this write leaves only files that nothing names.
+        #expect(bundleExistedAtWrite == true)
+        #expect(written?.isolationKey == "other-key")
+        #expect(written?.stagingBundleId == nil)
+        #expect(written?.stagingSelection == nil)
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+    }
+
+    @Test
+    func aFailedMetadataWriteKeepsTheBundlesAndTheNextStartCleansThem() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root)
+
+        _ = makeInstanceStorageService(
+            documentsDirectory: root,
+            instance: .main,
+            isolationKey: "other-key",
+            metadataWriter: { _, _ in false }
+        )
+
+        // What is stored and what is on disk still agree.
+        #expect(FileManager.default.fileExists(atPath: bundle.path))
+        #expect(makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+            .peekLaunchBundleId() == "ota-bundle")
+
+        _ = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "other-key")
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+    }
+
+    @Test
+    func aKeyChangeReadsMetadataAReleasedVersionWrote() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bundle = try stageBundleUnderOriginalKey(root)
+        try writeReleasedMetadata(root, stagingBundleId: "ota-bundle")
+
+        _ = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "other-key")
+
+        #expect(FileManager.default.fileExists(atPath: bundle.path) == false)
+        let back = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        #expect(back.getActiveUpdateState()["activeSelection"] is NSNull)
+    }
+
+    /// The state a released version's cleanup left behind, under the same key:
+    /// an appVersion build of the same version, or the deprecated verbatim key.
+    @Test(arguments: [false, true])
+    func settlingForgetsAVerifiedBundleWithoutFiles(releasedFormat: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        if releasedFormat {
+            try writeReleasedMetadata(root, stagingBundleId: "ota-bundle")
+        } else {
+            try writeMetadata(documentsDirectory: root, BundleMetadata(
+                isolationKey: originalKey,
+                stagingBundleId: "ota-bundle",
+                stagingSelection: otaSelection
+            ))
+        }
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+
+        service.settlePreviousLaunch { nil }
+
+        #expect(service.getActiveUpdateState()["activeSelection"] is NSNull)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(service.getCrashHistory().bundles.isEmpty)
+        #expect(service.notifyAppReady()["status"] as? String == LaunchReportStatus.unchanged.rawValue)
+    }
+
+    @Test
+    func settlingKeepsTheStableBundleWhenOnlyTheStagedOneLostItsFiles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "ota-bundle",
+            stagingSelection: otaSelection
+        ))
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+
+        let active = try #require(service.getActiveUpdateState()["activeSelection"] as? [String: Any])
+        #expect(active["bundleId"] as? String == "stable-bundle")
+    }
+
+    /// A rollback to a stable bundle whose files were gone left its selection active.
+    @Test
+    func settlingForgetsASelectionARollbackLeftWithoutABundle() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stagingSelection: otaSelection
+        ))
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+
+        service.settlePreviousLaunch { nil }
+
+        #expect(service.getActiveUpdateState()["activeSelection"] is NSNull)
+    }
+
+    @Test
+    func settlingKeepsWhatHasNoFilesByDesign() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let builtInSelection = PersistedSelection(
+            kind: "BUILTIN",
+            releaseId: "rollback-release",
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash",
+            channel: "production",
+            selectionContextHash: "context"
+        )
+        let pending = try createBundleDirectory(documentsDirectory: root, bundleId: "pending-bundle")
+        try writeBundle(in: pending, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: pending, bundleId: "pending-bundle")
+        // iOS records the built-in bundle as the stable one under a staged first OTA.
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stableBundleId: "builtin-bundle",
+            stagingBundleId: "pending-bundle",
+            verificationPending: true
+        ))
+        let service = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        service.settlePreviousLaunch { nil }
+        let metadata = try #require(BundleMetadata.load(
+            from: bundleStoreMetadataURL(root),
+            expectedIsolationKey: originalKey
+        ))
+        #expect(metadata.stableBundleId == "builtin-bundle")
+        #expect(metadata.stagingBundleId == "pending-bundle")
+        #expect(metadata.verificationPending)
+
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: originalKey,
+            stagingSelection: builtInSelection
+        ))
+        let builtIn = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: originalKey)
+        builtIn.settlePreviousLaunch { nil }
+        let active = try #require(builtIn.getActiveUpdateState()["activeSelection"] as? [String: Any])
+        #expect(active["kind"] as? String == "BUILTIN")
+    }
+
     @Test(arguments: [true, false])
     func aChannelResetLeavesTheOtherInstancesBundles(resetMain: Bool) throws {
         let root = try makeWorkingDirectory()
@@ -3697,12 +3889,67 @@ struct BundleFileStorageServiceTests {
 private let testIsolationKey = "test-isolation-key"
 private let widgetIsolationKey = "widget-isolation-key"
 
+private let originalKey = "original-key"
+
+private let otaSelection = PersistedSelection(
+    kind: "BUNDLE",
+    releaseId: "ota-release",
+    bundleId: "ota-bundle",
+    catalogId: "project-a",
+    scopeKey: "scope-production",
+    generation: 1,
+    catalogHash: "hash",
+    channel: "production",
+    selectionContextHash: "context"
+)
+
+private func bundleStoreMetadataURL(_ documentsDirectory: URL) -> URL {
+    documentsDirectory
+        .appendingPathComponent("bundle-store", isDirectory: true)
+        .appendingPathComponent(BundleMetadata.metadataFilename)
+}
+
+/// A build under `originalKey` that holds one downloaded bundle.
+private func stageBundleUnderOriginalKey(
+    _ documentsDirectory: URL,
+    verificationPending: Bool = false
+) throws -> URL {
+    let bundle = try createBundleDirectory(documentsDirectory: documentsDirectory, bundleId: "ota-bundle")
+    try writeBundle(in: bundle, bundleFileName: "index.ios.bundle")
+    try writeManifest(in: bundle, bundleId: "ota-bundle")
+    try writeMetadata(documentsDirectory: documentsDirectory, BundleMetadata(
+        isolationKey: originalKey,
+        stagingBundleId: "ota-bundle",
+        stagingSelection: otaSelection,
+        verificationPending: verificationPending
+    ))
+    return bundle
+}
+
+/// metadata.json as a released version wrote it, without the selection fields.
+private func writeReleasedMetadata(_ documentsDirectory: URL, stagingBundleId: String) throws {
+    let json: [String: Any] = [
+        "schema": "metadata-v2",
+        "isolation_key": originalKey,
+        "staging_bundle_id": stagingBundleId,
+        "verification_pending": false,
+        "updated_at": 1_793_553_150_125.0,
+    ]
+    let file = bundleStoreMetadataURL(documentsDirectory)
+    try FileManager.default.createDirectory(
+        at: file.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try JSONSerialization.data(withJSONObject: json).write(to: file)
+}
+
 private func makeInstanceStorageService(
     documentsDirectory: URL,
     instance: HotUpdaterInstanceEnvironment,
     isolationKey: String,
     downloadService: DownloadService = UnusedDownloadService(),
-    builtInAssetResolver: BuiltInAssetResolver? = nil
+    builtInAssetResolver: BuiltInAssetResolver? = nil,
+    metadataWriter: @escaping (BundleMetadata, URL) -> Bool = { metadata, file in metadata.save(to: file) }
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
@@ -3712,7 +3959,8 @@ private func makeInstanceStorageService(
         instance: instance,
         builtInBundleIdProvider: { "builtin-bundle" },
         builtInAssetResolver: builtInAssetResolver,
-        downloadRetryDelay: 0
+        downloadRetryDelay: 0,
+        metadataWriter: metadataWriter
     )
 }
 
