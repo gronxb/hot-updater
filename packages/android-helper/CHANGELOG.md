@@ -1,5 +1,49 @@
 # @hot-updater/android-helper
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- a1ae453: Preview a pull request through TestFlight internal testing or Google Play's internal track, with the preview action's `ios-submit: testflight` and `android-submit: play-internal` on a sandbox scheme. Nothing changes for a preview that sets neither.
+  - The store build lives on the sandbox scheme's channel, so pull requests with the same fingerprint share it, with no new upload. The bundle deploys to the pull request's channel.
+  - The comment shows the store's link and state in place of **Download**. New outputs: `android-store-url`, `ios-store-url`, `android-store-state`, `ios-store-state`, and `store` in `previews`.
+  - `native-build find --store-status` asks the store for a submitted build's state. A TestFlight build near its expiry, or a Google Play build a newer release replaced, gets a new build.
+  - `native-build ios --testflight-group <name> --what-to-test <text>` adds a sandbox build to an internal TestFlight group and sets its What to Test. An external group stops the build before it starts. `native-build testflight-group <id> <group> --scheme <scheme>` adds a sandbox build already on TestFlight to an internal group, as a reused preview does.
+  - A sandbox `.aab`'s version code follows Google Play, as a sandbox `.ipa`'s build number follows App Store Connect, and a cached sandbox build the store may already hold gets a new number.
+  - The Console's Install card leads with the store for a build a store took, in place of its QR code.
+
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+- 3d95e55: Sandbox builds now show a native screen before the app's JavaScript starts, and open preview links natively. `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles. See the Sandbox builds guide.
+  - iOS: a gate at the deepest `RCTRootViewFactory` method holds React Native behind a stable container until the screen's Open. Notifications, background entry points, shortcuts and the app's own links start the app at once; a host it can't gate starts as usual, with a log.
+  - Android: the build reads the variant's merged manifest and moves the launcher entry to the sandbox's activity, which forwards anything addressed to the app with its intent. It refuses more than one launcher and task settings its activity can't share a task with.
+  - A link is checked against the build's fingerprint, confirmed by name, checked on the server, and only then deletes downloaded bundles. A failure afterwards shows what's selected now and offers a retry. A link waits across restarts for the app's first answered update check.
+  - `createPreviewLink` and `parsePreviewLink` join `@hot-updater/protocol/native-artifact`, and an artifact check refuses a sandbox build whose launcher or URL scheme isn't the sandbox's.
+
+### Patch Changes
+
+- 1ed1acd: Sign with the scheme's `signing.keystore` on Linux. The Gradle wrapper's `/bin/sh` is dash on Debian and Ubuntu, which silently drops the `ORG_GRADLE_PROJECT_android.injected.signing.*` variables, so a build there signed with the project's own config, such as the debug keystore. The wrapper now runs under bash when it needs them, so a Linux runner needs bash for a signed build.
+- 64fe8d8: Download and install a tracked native build from the CLI.
+  - `hot-updater native-build download <id> [-o path]` writes the artifact through the config's storage (`storage.get`), with no Console and no download URL.
+  - `hot-updater native-build install <id> [--simulator <udid>] [--device <serial>]` downloads a simulator `.app` or `.apk`, installs it on a booted simulator or a connected Android device, and opens the app the artifact names, so a sandbox build's `.sandbox` application ID works the same way.
+  - `native-build find --json` adds `downloadUrl`, the storage's `getDownloadUrl` result or `null`. Only a Console signs a signed link: the CLI doesn't hold its secret.
+  - The Console's Install card shows `native-build install` for a simulator build, in place of the `xcrun simctl` commands.
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+- Updated dependencies [ef790db]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes

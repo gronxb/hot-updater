@@ -1,5 +1,31 @@
 # @hot-updater/plugin-core
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+### Patch Changes
+
+- b54eddc: Remove `aggregateBatching: { mode: "memory" }`, which kept a process's aggregate changes in a buffer until a timer wrote them, so a crash lost them. Batched aggregates now always go through log rows, in the same write as the transaction that made them. `aggregateBatching: { windowMs }` and `aggregateBatching: false` stay, and `mode` is gone from the type, so `{ mode: "log" }` and `{ mode: "memory" }` are TypeScript errors: delete the key.
+  - A JavaScript config that still passes `mode` runs the same way: the key is ignored. Its `windowMs`, or 60 seconds without one, is how often a commit compacts.
+  - `dynamoDB`, `firebaseDatabase`, and `cosmosDatabase` need no migration: log rows live in the same table, collection, or container, under the same indexes. A hand-written DynamoDB policy with a `dynamodb:LeadingKeys` condition must list `aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`, as the managed policy does.
+  - A report on these stores costs about 3 more write units than it did in memory mode, for its log row and the row's delete. Totals on other shards keep counting: reads sum every shard.
+  - `hot-updater db migrate` creates no log tables. A store with a table per model that you passed `aggregateBatching` yourself, such as a custom SQL adapter, used to run memory mode without them; its batched writes now fail until you run `adapter.migrations.apply(aggregateBatchingTables)` or drop the option.
+  - `hotUpdater.flush()` stays and merges pending log rows. A server no longer needs it before exiting. `createEngine(...).dispose()`, which only stopped the removed timer, is gone: delete the call.
+
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/protocol@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes

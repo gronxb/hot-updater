@@ -1,5 +1,106 @@
 # hot-updater
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 818c27d: The preview action works with a sandbox scheme. It finds the sandbox build by fingerprint on `sandbox-<scheme>`, builds only when there's none, deploys the pull request's bundle to its own channel, and comments the install link and a QR code of the sandbox link.
+  - `android-fallback-scheme` and `ios-fallback-scheme` name a normal scheme to build on the pull request's channel when its native code differs from every sandbox build. Without one, the action builds a new sandbox build.
+  - `android-sandbox-link` and `ios-sandbox-link` are new outputs. A user with no sandbox scheme gets the same comment and outputs.
+  - `native-build find --json` adds `sandbox`, for a sandbox scheme only: `appId` and `otherBuilds`.
+  - The Console serves `/_hot-updater/native-builds/preview-qr`, which takes a link's app ID, channel and fingerprint, reads nothing, and only ever holds a sandbox link.
+
+- a1ae453: Preview a pull request through TestFlight internal testing or Google Play's internal track, with the preview action's `ios-submit: testflight` and `android-submit: play-internal` on a sandbox scheme. Nothing changes for a preview that sets neither.
+  - The store build lives on the sandbox scheme's channel, so pull requests with the same fingerprint share it, with no new upload. The bundle deploys to the pull request's channel.
+  - The comment shows the store's link and state in place of **Download**. New outputs: `android-store-url`, `ios-store-url`, `android-store-state`, `ios-store-state`, and `store` in `previews`.
+  - `native-build find --store-status` asks the store for a submitted build's state. A TestFlight build near its expiry, or a Google Play build a newer release replaced, gets a new build.
+  - `native-build ios --testflight-group <name> --what-to-test <text>` adds a sandbox build to an internal TestFlight group and sets its What to Test. An external group stops the build before it starts. `native-build testflight-group <id> <group> --scheme <scheme>` adds a sandbox build already on TestFlight to an internal group, as a reused preview does.
+  - A sandbox `.aab`'s version code follows Google Play, as a sandbox `.ipa`'s build number follows App Store Connect, and a cached sandbox build the store may already hold gets a new number.
+  - The Console's Install card leads with the store for a build a store took, in place of its QR code.
+
+- 1ed1acd: Add the `actions/release` GitHub Action, the one step a push to a release branch needs. On each platform it looks up the project's fingerprint and deploys a bundle when a store build has it, or builds a native build and submits it to TestFlight or Google Play's internal track when none does. A tracked build with no recorded submission goes through `native-build --submit` again, so rerunning a failed submit can't turn green on a bundle. `dry-run: true` only prints each decision. The `result` output and the job's summary show every platform; a failed lookup deploys and builds nothing, and a platform that fails fails the run without stopping the other one.
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+- 3d95e55: Sandbox builds now show a native screen before the app's JavaScript starts, and open preview links natively. `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles. See the Sandbox builds guide.
+  - iOS: a gate at the deepest `RCTRootViewFactory` method holds React Native behind a stable container until the screen's Open. Notifications, background entry points, shortcuts and the app's own links start the app at once; a host it can't gate starts as usual, with a log.
+  - Android: the build reads the variant's merged manifest and moves the launcher entry to the sandbox's activity, which forwards anything addressed to the app with its intent. It refuses more than one launcher and task settings its activity can't share a task with.
+  - A link is checked against the build's fingerprint, confirmed by name, checked on the server, and only then deletes downloaded bundles. A failure afterwards shows what's selected now and offers a retry. A link waits across restarts for the app's first answered update check.
+  - `createPreviewLink` and `parsePreviewLink` join `@hot-updater/protocol/native-artifact`, and an artifact check refuses a sandbox build whose launcher or URL scheme isn't the sandbox's.
+
+### Patch Changes
+
+- a40da17: Make the CLI's human output shorter and easier to read. `--json` is unchanged.
+  - Messages say what is wrong and one next step. Doctor, `secrets`, `deploy`, and the secrets adapters drop sentences that restated a line, explained internals, or applied only rarely.
+  - `p` wraps prose at word boundaries. A command, a URL, or a path stays whole on its own line, however long: no command is split with ` \` any more, so each one copies as printed. Text a tool wrote, such as a build's output, prints as the tool wrote it.
+  - An error or a warning shows a provider's message instead of its raw JSON, such as Cloudflare's `errors[].message`: doctor now says `Could not check the release catalogs: 401 Authentication error`.
+  - `secrets put --kind android-keystore` without a terminal refuses once, listing all it needs: `--key-alias` and the password variables that aren't set.
+  - An unexpected failure in `deploy`, `patch`, or `fingerprint` prints its message as an error. `DEBUG=1` adds the stack.
+
+- ad99046: Install an ad hoc IPA on an iPhone from the Console, and register iPhones from the CLI.
+  - A build's page on an iPhone checks whether the IPA includes that phone, reading its `Info.plist` and provisioning profiles from storage with HTTP Range requests. It offers "Check this iPhone", then "Install" or "Not in this build", with "Install anyway" second. A storage that answers Range with the whole file shows "Installation details unavailable", and nothing downloads.
+  - "Check this iPhone" installs a UDID-only profile. The phone lands on a page, which takes no session and reads nothing, with its UDID, one command to send a maintainer, and a copy button. The UDID stays in the phone's `localStorage`.
+  - Install opens `itms-services` on `/_hot-updater/native-builds/{id}/manifest.plist?t=`, which verifies its download token before any read and mints nothing. An Install link lasts about an hour.
+  - `native-build devices add --udid <UDID> --name <name>` (`--udid` repeats) registers iPhones in App Store Connect, each at most once, and `native-build devices list` reads them back. The Console never holds an Apple key.
+  - `native-build ios` prints how many devices the `.ipa` lists, and with `--udid` whether each is included. A sandbox scheme can export with `release-testing`.
+  - A pull request preview's QR code of an IPA holds the build's page, through `/_hot-updater/native-builds/qr?target=page`, which stays anonymous and reads nothing.
+  - `@hot-updater/protocol/native-artifact` adds `readIpaInstallInfo`, `readProfileServiceUdid` and `normalizeIosUdid`. Its plist parser now reads crafted XML in linear time.
+  - An ad hoc export in CI signs in the build's own keychain, and only its development certificates are revoked.
+  - An iOS build's output and cache hold only the `.ipa` of its export. Xcode's `Packaging.log`, which holds the API key's bearer token for 20 minutes, no longer reaches `.hot-updater/output`. Build logs mask any JSON Web Token.
+
+- 64fe8d8: Download and install a tracked native build from the CLI.
+  - `hot-updater native-build download <id> [-o path]` writes the artifact through the config's storage (`storage.get`), with no Console and no download URL.
+  - `hot-updater native-build install <id> [--simulator <udid>] [--device <serial>]` downloads a simulator `.app` or `.apk`, installs it on a booted simulator or a connected Android device, and opens the app the artifact names, so a sandbox build's `.sandbox` application ID works the same way.
+  - `native-build find --json` adds `downloadUrl`, the storage's `getDownloadUrl` result or `null`. Only a Console signs a signed link: the CLI doesn't hold its secret.
+  - The Console's Install card shows `native-build install` for a simulator build, in place of the `xcrun simctl` commands.
+
+- c6e18f9: The preview action's outputs say how to install and fetch each platform's build.
+  - `android-install-url` and `ios-install-url`: the Console's download link, or for a simulator build, the `native-build install` command.
+  - `android-download-url` and `ios-download-url`: the storage's URL from `native-build find --json`, for a later step. Empty when the storage gives none; `hot-updater native-build download <id>` always works.
+  - The `previews` JSON has the same values per platform, as `installUrl` and `downloadUrl`, which is `null` where the output is empty.
+  - The comment's simulator install is now `npx hot-updater native-build install <id>`, in place of the `unzip` and `xcrun simctl` commands.
+  - The preview and release actions no longer print `native-build find --json`'s output in the job's log, since its `downloadUrl` is a credential until it expires.
+
+- 68d6347: Fix what real-account runs of the secrets adapters found.
+  - A rejected or missing credential names what's in use: `AWS_ACCESS_KEY_ID`, `CLOUDSDK_AUTH_ACCESS_TOKEN`, `AZURE_CLIENT_SECRET`, a `credentials` option, or the set `AWS_PROFILE`, instead of a sign-in that can't replace it.
+  - `secretManager()` no longer prints the Google auth library's `MetadataLookupWarning`.
+  - `keyVault()` says to check `vaultName` or `vaultUrl` when the vault's host doesn't resolve.
+  - `doctor` prints one block for a secrets adapter it can't read, listing the names, and closes with `2 secrets not checked, 1 warning.` instead of a pass. It still exits 0.
+  - `doctor` says when `hot-updater` isn't in `package.json`, instead of `hot-updater CLI not found`.
+  - The `Source` row shows an adapter's description whole, instead of a shortened fragment, and `secretManager()` describes a secret as the other adapters do.
+
+- ef790db: Add `hot-updater secrets pull [--out .env.hotupdater] [--only a,b] [--force]`, the mirror of `secrets import`: it writes the deploy credentials a team `secrets` adapter holds to a local env file for development and local builds.
+  - A store is read by name, so it pulls what the config's adapters read with `secret()` and `HOT_UPDATER_API_KEY`, or exactly the names `--only` lists. App runtime env is out of scope.
+  - Build credentials (App Store Connect API key, Play service account, upload keystore, bundle signing key) are skipped and named, and never read: builds read them from the store, so a copy would only be a private key on disk.
+  - The file ends up 0600 and is merged, keeping other lines and comments. A name the file holds with another value is asked about at a terminal, and refused without one unless `--force`. It warns when git doesn't ignore the file, and never prints values.
+  - With `localSecrets()` there is nothing to pull: it says so and exits 0.
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [1ed1acd]
+- Updated dependencies [cf8b1fa]
+- Updated dependencies [ad99046]
+- Updated dependencies [64fe8d8]
+- Updated dependencies [818c27d]
+- Updated dependencies [a1ae453]
+- Updated dependencies [20006f2]
+- Updated dependencies [134d970]
+- Updated dependencies [3d95e55]
+- Updated dependencies [ef790db]
+- Updated dependencies [b444c62]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/server@1.2.0-rc.13
+  - @hot-updater/android-helper@1.2.0-rc.13
+  - @hot-updater/console@1.2.0-rc.13
+  - @hot-updater/apple-helper@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/bsdiff@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes

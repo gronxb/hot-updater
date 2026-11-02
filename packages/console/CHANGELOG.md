@@ -1,5 +1,64 @@
 # @hot-updater/console
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 818c27d: The preview action works with a sandbox scheme. It finds the sandbox build by fingerprint on `sandbox-<scheme>`, builds only when there's none, deploys the pull request's bundle to its own channel, and comments the install link and a QR code of the sandbox link.
+  - `android-fallback-scheme` and `ios-fallback-scheme` name a normal scheme to build on the pull request's channel when its native code differs from every sandbox build. Without one, the action builds a new sandbox build.
+  - `android-sandbox-link` and `ios-sandbox-link` are new outputs. A user with no sandbox scheme gets the same comment and outputs.
+  - `native-build find --json` adds `sandbox`, for a sandbox scheme only: `appId` and `otherBuilds`.
+  - The Console serves `/_hot-updater/native-builds/preview-qr`, which takes a link's app ID, channel and fingerprint, reads nothing, and only ever holds a sandbox link.
+
+- a1ae453: Preview a pull request through TestFlight internal testing or Google Play's internal track, with the preview action's `ios-submit: testflight` and `android-submit: play-internal` on a sandbox scheme. Nothing changes for a preview that sets neither.
+  - The store build lives on the sandbox scheme's channel, so pull requests with the same fingerprint share it, with no new upload. The bundle deploys to the pull request's channel.
+  - The comment shows the store's link and state in place of **Download**. New outputs: `android-store-url`, `ios-store-url`, `android-store-state`, `ios-store-state`, and `store` in `previews`.
+  - `native-build find --store-status` asks the store for a submitted build's state. A TestFlight build near its expiry, or a Google Play build a newer release replaced, gets a new build.
+  - `native-build ios --testflight-group <name> --what-to-test <text>` adds a sandbox build to an internal TestFlight group and sets its What to Test. An external group stops the build before it starts. `native-build testflight-group <id> <group> --scheme <scheme>` adds a sandbox build already on TestFlight to an internal group, as a reused preview does.
+  - A sandbox `.aab`'s version code follows Google Play, as a sandbox `.ipa`'s build number follows App Store Connect, and a cached sandbox build the store may already hold gets a new number.
+  - The Console's Install card leads with the store for a build a store took, in place of its QR code.
+
+### Patch Changes
+
+- cf8b1fa: Install an APK on a phone from a build's signed link.
+  - A build's page creates its signed link when it opens. The QR code, the download button and the link to copy all use it, so a phone without a Console session goes straight to the download. "Create a link without sign-in" is gone.
+  - The page no longer reads the download URL every 30 seconds. A Console that can't sign, such as a local `hot-updater console`, shows the storage's URL in the QR code, read when the page opens and when someone comes back to it.
+  - A streamed `.apk` always answers `content-type: application/vnd.android.package-archive`, and a streamed build's `content-disposition` also has a plain `filename` for clients that don't read `filename*`.
+  - The Install card says what Android needs: the browser's "Install unknown apps" permission, and that an install over the same package signed with another key fails.
+  - An APK on an emulator or over USB shows `native-build install` in place of the `adb install` command.
+
+- ad99046: Install an ad hoc IPA on an iPhone from the Console, and register iPhones from the CLI.
+  - A build's page on an iPhone checks whether the IPA includes that phone, reading its `Info.plist` and provisioning profiles from storage with HTTP Range requests. It offers "Check this iPhone", then "Install" or "Not in this build", with "Install anyway" second. A storage that answers Range with the whole file shows "Installation details unavailable", and nothing downloads.
+  - "Check this iPhone" installs a UDID-only profile. The phone lands on a page, which takes no session and reads nothing, with its UDID, one command to send a maintainer, and a copy button. The UDID stays in the phone's `localStorage`.
+  - Install opens `itms-services` on `/_hot-updater/native-builds/{id}/manifest.plist?t=`, which verifies its download token before any read and mints nothing. An Install link lasts about an hour.
+  - `native-build devices add --udid <UDID> --name <name>` (`--udid` repeats) registers iPhones in App Store Connect, each at most once, and `native-build devices list` reads them back. The Console never holds an Apple key.
+  - `native-build ios` prints how many devices the `.ipa` lists, and with `--udid` whether each is included. A sandbox scheme can export with `release-testing`.
+  - A pull request preview's QR code of an IPA holds the build's page, through `/_hot-updater/native-builds/qr?target=page`, which stays anonymous and reads nothing.
+  - `@hot-updater/protocol/native-artifact` adds `readIpaInstallInfo`, `readProfileServiceUdid` and `normalizeIosUdid`. Its plist parser now reads crafted XML in linear time.
+  - An ad hoc export in CI signs in the build's own keychain, and only its development certificates are revoked.
+  - An iOS build's output and cache hold only the `.ipa` of its export. Xcode's `Packaging.log`, which holds the API key's bearer token for 20 minutes, no longer reaches `.hot-updater/output`. Build logs mask any JSON Web Token.
+
+- 64fe8d8: Download and install a tracked native build from the CLI.
+  - `hot-updater native-build download <id> [-o path]` writes the artifact through the config's storage (`storage.get`), with no Console and no download URL.
+  - `hot-updater native-build install <id> [--simulator <udid>] [--device <serial>]` downloads a simulator `.app` or `.apk`, installs it on a booted simulator or a connected Android device, and opens the app the artifact names, so a sandbox build's `.sandbox` application ID works the same way.
+  - `native-build find --json` adds `downloadUrl`, the storage's `getDownloadUrl` result or `null`. Only a Console signs a signed link: the CLI doesn't hold its secret.
+  - The Console's Install card shows `native-build install` for a simulator build, in place of the `xcrun simctl` commands.
+
+- b444c62: Download a native build without a Console session through a signed link.
+  - A build's page creates a link, `/api/native-builds/<build id>/download?t=<token>`, that works for 30 days for that build only, and a script can `curl`. The Console signs it with a key derived from `BETTER_AUTH_SECRET` and stores nothing. An expired or changed link answers `403`; requests without a token still ask for the session, and a local console still asks for its own.
+  - A valid link redirects to the storage's download URL. When the storage gives no URL a browser can fetch, including when it can't sign one, the Console streams the file through `storage.get`, which costs more: the docs say so.
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+- Updated dependencies [ef790db]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/server@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/bsdiff@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes
