@@ -55,4 +55,6 @@ the same migration. To apply SQL with your own tooling, generate it with
 tables only.
 
 On serverless platforms, prefer the database's pooled connection URL, such as
-Neon's `DATABASE_URL`.
+Neon's `DATABASE_URL`. For a Neon branch,
+[`neonDatabase`](/docs/database-adapters/neon) reaches the same tables over
+HTTP, with no connection pool.
