@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
 /// A host the Dev server section lists.
@@ -24,3 +25,4 @@ protocol HotUpdaterSandboxDevServer: AnyObject {
     func reloadDevServer()
     func exitDevServer()
 }
+#endif

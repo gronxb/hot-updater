@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import UIKit
 
 /// What this process runs while a dev session lasts, read by
@@ -307,3 +308,4 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
         onDevServerChange?()
     }
 }
+#endif

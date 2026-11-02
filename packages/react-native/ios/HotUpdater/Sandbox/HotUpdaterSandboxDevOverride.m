@@ -4,6 +4,7 @@
 // directly (HotUpdater.mm), so the session holds across an in-place reload.
 // Swift calling the same methods within the SDK and the sandbox's own view keep
 // the real implementation.
+#if HOT_UPDATER_SANDBOX_LAYER
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
@@ -62,6 +63,10 @@ static id (*gTakeEvents)(id, SEL, id);
 @implementation HotUpdaterSandboxDevOverride
 
 + (void)load {
+  // The last line: whatever compiled this file, only Hot Updater's build of a
+  // sandbox scheme writes this key.
+  if (![[NSBundle.mainBundle objectForInfoDictionaryKey:@"HOT_UPDATER_SANDBOX"] isEqual:@YES]) return;
+
   Class impl = objc_getClass("_TtC10HotUpdater14HotUpdaterImpl");
   Class bridge = objc_getClass("HotUpdaterNativeUpdateBridge");
   Class bridgeMeta = bridge ? object_getClass(bridge) : Nil;
@@ -182,3 +187,4 @@ static id (*gTakeEvents)(id, SEL, id);
 }
 
 @end
+#endif

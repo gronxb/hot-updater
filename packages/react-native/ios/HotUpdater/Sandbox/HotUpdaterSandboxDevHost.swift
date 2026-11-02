@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
 /// A host as a person typed it: `host:port`, or with its scheme.
@@ -61,3 +62,4 @@ struct HotUpdaterSandboxDevEntry: Equatable {
     var path = "index"
     var query = ""
 }
+#endif

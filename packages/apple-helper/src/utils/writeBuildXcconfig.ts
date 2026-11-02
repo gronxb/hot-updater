@@ -115,12 +115,17 @@ const AUTOMATIC_SIGNING = {
 /** The sandbox layer's sources, by the file names the podspec excludes. */
 const SANDBOX_SOURCES = "HotUpdaterSandbox*";
 
+/** What each of those sources is wrapped in: without it, they compile to nothing. */
+const SANDBOX_CONDITION = "HOT_UPDATER_SANDBOX_LAYER";
+
 /**
  * The settings a build sets over the scheme's: the MIN_BUNDLE_ID the CLI
  * issues and reports, and automatic signing when an App Store Connect API key
  * signs, which a target set to manual signing would not use.
  *
- * A sandbox scheme brings the sandbox layer's sources back. Any other scheme
+ * A sandbox scheme brings the sandbox layer's sources back, and sets the
+ * condition they compile under, which nothing else sets: any build can undo the
+ * podspec's exclusion, and those sources then compile to nothing. Any other scheme
  * excludes them again: a scheme's `xcconfig`, which outranks the pod's settings
  * on every target, would otherwise replace the podspec's exclusion, and the
  * layer would compile into a store build.
@@ -137,6 +142,10 @@ export const buildSettingsOverScheme = ({
   HOT_UPDATER_MIN_BUNDLE_ID: minBundleId,
   ...(authenticationArgs ? AUTOMATIC_SIGNING : {}),
   ...(sandbox
-    ? { INCLUDED_SOURCE_FILE_NAMES: SANDBOX_SOURCES }
+    ? {
+        INCLUDED_SOURCE_FILE_NAMES: SANDBOX_SOURCES,
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: `$(inherited) ${SANDBOX_CONDITION}`,
+        GCC_PREPROCESSOR_DEFINITIONS: `$(inherited) ${SANDBOX_CONDITION}=1`,
+      }
     : { EXCLUDED_SOURCE_FILE_NAMES: `$(inherited) ${SANDBOX_SOURCES}` }),
 });

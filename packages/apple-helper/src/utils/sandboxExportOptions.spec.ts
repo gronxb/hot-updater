@@ -133,6 +133,9 @@ describe("buildSettingsOverScheme", () => {
     ).toEqual({
       HOT_UPDATER_MIN_BUNDLE_ID: "id",
       INCLUDED_SOURCE_FILE_NAMES: "HotUpdaterSandbox*",
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS:
+        "$(inherited) HOT_UPDATER_SANDBOX_LAYER",
+      GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) HOT_UPDATER_SANDBOX_LAYER=1",
     });
   });
 

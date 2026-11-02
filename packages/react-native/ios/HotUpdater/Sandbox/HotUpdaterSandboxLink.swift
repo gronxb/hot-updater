@@ -1,3 +1,4 @@
+#if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
 /// What a preview link asks this build to run.
@@ -88,3 +89,4 @@ private extension String {
         return String(bytes: bytes, encoding: .utf8)
     }
 }
+#endif

@@ -1,4 +1,5 @@
 // The gate's background entry points, apart from UIKit so tests can drive them.
+#if HOT_UPDATER_SANDBOX_LAYER
 #import "HotUpdaterSandboxEntryPoints.h"
 
 #import <objc/runtime.h>
@@ -87,3 +88,4 @@ void HotUpdaterSandboxWrapTaskRegistration(Class scheduler, HotUpdaterSandboxEnt
       }),
       "B@:@@@?");
 }
+#endif

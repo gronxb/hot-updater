@@ -4,7 +4,10 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { writeBuildXcconfig } from "./writeBuildXcconfig";
+import {
+  buildSettingsOverScheme,
+  writeBuildXcconfig,
+} from "./writeBuildXcconfig";
 
 let directory: string;
 
@@ -57,6 +60,52 @@ HOT_UPDATER_MIN_BUNDLE_ID[sdk=iphonesimulator*] = id
       }),
     ).rejects.toThrow(
       `${path.join(directory, "Signing.xcconfig")}:2 sets CODE_SIGN_STYLE[sdk=iphoneos*][config=Release], which would outrank the value the build sets.`,
+    );
+  });
+
+  it("refuses a sandbox scheme's condition setting that would outrank the build's", async () => {
+    await write(
+      "Release.xcconfig",
+      "GCC_PREPROCESSOR_DEFINITIONS[config=Release] = RELEASE=1\n",
+    );
+
+    await expect(
+      writeBuildXcconfig({
+        directory,
+        sourceDir: directory,
+        xcconfig: "Release.xcconfig",
+        settings: buildSettingsOverScheme({
+          minBundleId: "id",
+          sandbox: true,
+        }),
+      }),
+    ).rejects.toThrow(
+      `${path.join(directory, "Release.xcconfig")}:1 sets GCC_PREPROCESSOR_DEFINITIONS[config=Release]`,
+    );
+  });
+
+  it("keeps what a scheme's xcconfig sets for the conditions without a condition", async () => {
+    await write(
+      "Release.xcconfig",
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS = APP\nGCC_PREPROCESSOR_DEFINITIONS = APP=1\n",
+    );
+
+    const { xcconfig } = await writeBuildXcconfig({
+      directory,
+      sourceDir: directory,
+      xcconfig: "Release.xcconfig",
+      settings: buildSettingsOverScheme({ minBundleId: "id", sandbox: true }),
+    });
+
+    const written = await fs.readFile(xcconfig, "utf-8");
+    expect(written).toContain(
+      "SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) HOT_UPDATER_SANDBOX_LAYER\n",
+    );
+    expect(written).toContain(
+      "GCC_PREPROCESSOR_DEFINITIONS = $(inherited) HOT_UPDATER_SANDBOX_LAYER=1\n",
+    );
+    expect(written.indexOf("#include")).toBeLessThan(
+      written.indexOf("SWIFT_ACTIVE_COMPILATION_CONDITIONS"),
     );
   });
 
