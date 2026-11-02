@@ -168,7 +168,11 @@ class HotUpdaterSandboxScreenStateTest {
 
     @Test
     fun `opening the screen sends no request in any state`() {
-        val crashed = ScreenFixture().apply { host.evidence = HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("built-in", false)) }
+        val crashed =
+            ScreenFixture().apply {
+                host.evidence =
+                    HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("built-in", false))
+            }
         val fresh = ScreenFixture().apply { host.serverConfig = false }
         val waiting = ScreenFixture(listOf(pending)).apply { host.serverConfig = false }
         for (fixture in listOf(ScreenFixture(), crashed, fresh, waiting, ScreenFixture(listOf(pending)))) {
@@ -187,7 +191,11 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.host.channel = "pr-1"
         fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(HotUpdaterSandboxCrashMarker("ota", false))
         fixture.coordinator.refresh()
-        assertEquals(HotUpdaterSandboxLastLaunch.Kind.CRASHED, fixture.coordinator.state.lastLaunch?.kind)
+        assertEquals(
+            HotUpdaterSandboxLastLaunch.Kind.CRASHED,
+            fixture.coordinator.state.lastLaunch
+                ?.kind,
+        )
         assertEquals(HotUpdaterSandboxLastLaunch.Kind.CRASHED, fixture.store.lastLaunch?.kind)
 
         fixture.coordinator.open()
@@ -204,7 +212,11 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.store.lastLaunch =
             HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.CRASHED_BEFORE_CONTENT, "ota", "built-in")
         fixture.coordinator.refresh()
-        assertEquals(HotUpdaterSandboxLastLaunch.Kind.CRASHED_BEFORE_CONTENT, fixture.coordinator.state.lastLaunch?.kind)
+        assertEquals(
+            HotUpdaterSandboxLastLaunch.Kind.CRASHED_BEFORE_CONTENT,
+            fixture.coordinator.state.lastLaunch
+                ?.kind,
+        )
     }
 
     @Test
@@ -271,7 +283,11 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.host.launchOverride = "built-in"
         fixture.host.evidence = HotUpdaterSandboxLaunchEvidence(rollback = HotUpdaterSandboxRollback("ota", "built-in"))
         fixture.coordinator.refresh()
-        assertEquals("built-in", fixture.coordinator.state.lastLaunch?.rolledBackToBundleId)
+        assertEquals(
+            "built-in",
+            fixture.coordinator.state.lastLaunch
+                ?.rolledBackToBundleId,
+        )
     }
 
     @Test
@@ -282,7 +298,12 @@ class HotUpdaterSandboxScreenStateTest {
         over.host.launchOverride = "running"
         over.host.appRunning = true
         over.coordinator.open()
-        assertEquals("running", over.store.history.first().bundleId)
+        assertEquals(
+            "running",
+            over.store.history
+                .first()
+                .bundleId,
+        )
         assertEquals(false, over.opens.last().second)
 
         // Before the app starts, a fixed launch's Open restarts into what's selected.
@@ -291,7 +312,12 @@ class HotUpdaterSandboxScreenStateTest {
         before.host.bundleId = "staged"
         before.host.launchOverride = "running"
         before.coordinator.open()
-        assertEquals("staged", before.store.history.first().bundleId)
+        assertEquals(
+            "staged",
+            before.store.history
+                .first()
+                .bundleId,
+        )
         assertEquals(true, before.opens.last().second)
     }
 
@@ -321,7 +347,10 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.coordinator.refresh()
         fixture.coordinator.clearHistory()
         assertTrue(fixture.store.history.isEmpty())
-        assertTrue(fixture.coordinator.state.history.isEmpty())
+        assertTrue(
+            fixture.coordinator.state.history
+                .isEmpty(),
+        )
         assertTrue(fixture.host.calls.isEmpty())
     }
 
@@ -550,7 +579,10 @@ class HotUpdaterSandboxCrashMarkerFileTest {
     /** The SDK keeps the file's name private, so its own reader says this is the one. */
     @Test
     fun `the marker the process reads at start is the one the SDK reads`() {
-        val filesDir = java.nio.file.Files.createTempDirectory("marker").toFile()
+        val filesDir =
+            java.nio.file.Files
+                .createTempDirectory("marker")
+                .toFile()
         val marker = HotUpdaterSandboxProcess.crashMarkerFile(filesDir)
         marker.parentFile?.mkdirs()
         marker.writeText("""{"bundleId":"ota","shouldRollback":true}""")

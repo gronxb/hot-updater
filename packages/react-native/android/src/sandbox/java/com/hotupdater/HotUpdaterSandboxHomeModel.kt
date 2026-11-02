@@ -101,7 +101,12 @@ internal data class HotUpdaterSandboxHomeModel(
                         isOverApp,
                     )
             if (isOverApp) {
-                return runningRow(selection, state.runningBundleId ?: selection.bundleId, state.details?.builtInBundleId, state.runningMessage)
+                return runningRow(
+                    selection,
+                    state.runningBundleId ?: selection.bundleId,
+                    state.details?.builtInBundleId,
+                    state.runningMessage,
+                )
             }
             val bundleId = selection.bundleId
             if (selection.isBuiltIn || bundleId == null) {

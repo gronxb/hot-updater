@@ -595,7 +595,12 @@ internal class HotUpdaterSandboxCoordinator(
         }
         val selection = readSelection()
         store.recordSelected(selection)
-        publish(reading(selection, host.launchBundleId()).copy(phase = HotUpdaterSandboxPhase.Failed(operationId, target, step, failure, selection)))
+        publish(
+            reading(
+                selection,
+                host.launchBundleId(),
+            ).copy(phase = HotUpdaterSandboxPhase.Failed(operationId, target, step, failure, selection)),
+        )
     }
 
     /** Asks about the oldest link, unless something is already on screen. */

@@ -518,7 +518,10 @@ internal class HotUpdaterSandboxScreen(
         content.addSpaced(card(primaryRow(model)), 8)
         addDevServer(content, model)
         addPreviews(content, model)
-        content.addSpaced(text(HotUpdaterSandboxHomeModel.HINT, 13f, colors.secondary, lines = 0).apply { setPadding(dp(4), 0, dp(4), 0) }, 18)
+        content.addSpaced(
+            text(HotUpdaterSandboxHomeModel.HINT, 13f, colors.secondary, lines = 0).apply { setPadding(dp(4), 0, dp(4), 0) },
+            18,
+        )
     }
 
     private fun statusCard(status: HotUpdaterSandboxHomeModel.Status): View {
@@ -541,7 +544,12 @@ internal class HotUpdaterSandboxScreen(
     private fun bannerCard(banner: HotUpdaterSandboxHomeModel.Banner): View {
         val line = horizontal()
         line.setPadding(dp(16), dp(14), dp(16), dp(14))
-        line.addView(icon(R.drawable.hot_updater_sandbox_warning, ACCENT, 22).apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(12) })
+        line.addView(
+            icon(R.drawable.hot_updater_sandbox_warning, ACCENT, 22).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd =
+                    dp(12)
+            },
+        )
         line.addWeighted(text(banner.text, 15f, colors.text, lines = 0))
         if (!banner.offersReset) return card(line)
         return card(
@@ -558,7 +566,11 @@ internal class HotUpdaterSandboxScreen(
         tile.background = rounded(ACCENT, 10)
         tile.layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) }
         tile.addView(
-            icon(if (model.bigRow.isReload) R.drawable.hot_updater_sandbox_reload else R.drawable.hot_updater_sandbox_play, Color.WHITE, 24),
+            icon(
+                if (model.bigRow.isReload) R.drawable.hot_updater_sandbox_reload else R.drawable.hot_updater_sandbox_play,
+                Color.WHITE,
+                24,
+            ),
             FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER),
         )
         return row(tile, model.bigRow.title, model.bigRow.subtitle, model.bigRow.detail, enabled = !model.isBusy) {
@@ -607,7 +619,12 @@ internal class HotUpdaterSandboxScreen(
     private fun connect(host: String) {
         devServer.connect(host) { problem ->
             if (problem != null) {
-                alertBuilder().setTitle("Couldn't connect to $host").setMessage(problem).setPositiveButton("OK", null).show().accented()
+                alertBuilder()
+                    .setTitle("Couldn't connect to $host")
+                    .setMessage(problem)
+                    .setPositiveButton("OK", null)
+                    .show()
+                    .accented()
             }
         }
     }
@@ -676,7 +693,10 @@ internal class HotUpdaterSandboxScreen(
         content.addSpaced(infoGroups, 18)
         infoReset.setOnClickListener { coordinator.resetToBuiltIn() }
         content.addSpaced(card(infoReset), 22)
-        content.addSpaced(text(HotUpdaterSandboxHomeModel.RESET_NOTE, 13f, colors.secondary, lines = 0).apply { setPadding(dp(4), 0, dp(4), 0) }, 8)
+        content.addSpaced(
+            text(HotUpdaterSandboxHomeModel.RESET_NOTE, 13f, colors.secondary, lines = 0).apply { setPadding(dp(4), 0, dp(4), 0) },
+            8,
+        )
         return content
     }
 
@@ -702,8 +722,7 @@ internal class HotUpdaterSandboxScreen(
         return "${info.versionName} (${info.versionCode})"
     }
 
-    private fun configuration() =
-        if (activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) "Debug" else "Release"
+    private fun configuration() = if (activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) "Debug" else "Release"
 
     // MARK: questions
 
