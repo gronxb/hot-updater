@@ -145,25 +145,24 @@ describe("checkSandboxSchemes", () => {
     ]);
   });
 
-  it("takes the Expo SDK sandbox builds ran on, and warns about any other", async () => {
-    write(
-      "package.json",
-      JSON.stringify({ dependencies: { expo: "~52.0.49" } }),
-    );
-    expect(
-      await checkSandboxSchemes(config(androidSandbox, "expo"), root),
-    ).toEqual([]);
+  it("takes the Expo SDKs sandbox builds ran on, and warns about any other", async () => {
+    for (const expo of ["~52.0.49", "~54.0.36", "~57.0.31", "~58.0.22"]) {
+      write("package.json", JSON.stringify({ dependencies: { expo } }));
+      expect(
+        await checkSandboxSchemes(config(androidSandbox, "expo"), root),
+      ).toEqual([]);
+    }
 
     write(
       "package.json",
-      JSON.stringify({ devDependencies: { expo: "^54.0.0" } }),
+      JSON.stringify({ devDependencies: { expo: "^55.0.0" } }),
     );
     expect(
       await checkSandboxSchemes(config(androidSandbox, "expo"), root),
     ).toEqual([
       expect.objectContaining({
         code: "SANDBOX_UNQUALIFIED",
-        message: "Sandbox builds aren't tested with Expo SDK 54 yet.",
+        message: "Sandbox builds aren't tested with Expo SDK 55 yet.",
       }),
     ]);
 
@@ -173,6 +172,28 @@ describe("checkSandboxSchemes", () => {
     ).toEqual([
       expect.objectContaining({
         message: "Sandbox builds aren't tested with this Expo SDK yet.",
+      }),
+    ]);
+  });
+
+  it("reads Expo's generated use_frameworks lines by what they depend on", async () => {
+    const expoPodfile = `target 'App' do
+  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+end
+`;
+    write("ios/Podfile", expoPodfile);
+    write("ios/Podfile.properties.json", '{"expo.jsEngine":"hermes"}');
+    expect(await checkSandboxSchemes(config(iosSandbox), root)).toEqual([]);
+
+    write(
+      "ios/Podfile.properties.json",
+      '{"expo.jsEngine":"hermes","ios.useFrameworks":"static"}',
+    );
+    expect(await checkSandboxSchemes(config(iosSandbox), root)).toEqual([
+      expect.objectContaining({
+        code: "SANDBOX_UNQUALIFIED",
+        message: "Sandbox builds aren't tested with use_frameworks yet.",
       }),
     ]);
   });
