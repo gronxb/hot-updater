@@ -28,6 +28,7 @@ import {
   prepareSandboxArchive,
   type SandboxArchivePlan,
   TestFlightBuildExistsError,
+  type TestFlightBuildStatus,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
@@ -114,7 +115,10 @@ import {
 import {
   isStoreBuildReusable,
   playPackageName,
+  readUploadedTestFlightStatus,
   type StoreStatus,
+  testFlightUploadNotice,
+  uploadedTestFlightStatus,
 } from "../utils/native/storeStatus";
 
 /**
@@ -213,6 +217,7 @@ const buildNativeInternal = async ({
         let storeUrl: string | undefined;
         // What the store says of the build this run submitted.
         let storeStatus: StoreStatus | null = null;
+        let storeNotice: string | null = null;
         const preparedConfig = await prepareNativeBuild({
           ...options,
           platform,
@@ -598,42 +603,36 @@ const buildNativeInternal = async ({
                 : undefined,
             "testflight",
           );
+          // What App Store Connect said of the build, undefined with no answer.
+          let testFlightStatus: TestFlightBuildStatus | null | undefined;
           if ("refused" in uploaded) {
             existingSubmission = uploaded.refused;
           } else if (sandbox) {
-            storeStatus = await reportUploadFailure(async () => {
-              const listed = await assertBuildIsInternalOnly({
-                ipaPath: result.artifactPath,
-                apiKey,
-              });
-              const status =
-                betaGroup || whatToTest !== undefined
-                  ? await distributeTestFlightBuild({
-                      build: {
-                        appId: listed.appId,
-                        shortVersion: uploaded.shortVersion,
-                        bundleVersion: uploaded.bundleVersion,
-                        testFlightUrl: listed.testFlightUrl,
-                      },
-                      ...(betaGroup ? { group: betaGroup } : {}),
-                      ...(whatToTest === undefined ? {} : { whatToTest }),
-                      apiKey,
-                    })
-                  : listed;
-              const state = status?.state ?? "processing";
-              const expiresAtMs = status?.expiresAtMs ?? null;
-              return {
-                destination: "testflight",
-                url: uploaded.testFlightUrl,
-                version: storeVersionLabel(
-                  uploaded.shortVersion,
-                  uploaded.bundleVersion,
-                ),
-                state,
-                expiresAtMs,
-                reusable: isStoreBuildReusable(state, expiresAtMs),
-              };
-            });
+            ({ store: storeStatus, status: testFlightStatus } =
+              await reportUploadFailure(async () => {
+                const listed = await assertBuildIsInternalOnly({
+                  ipaPath: result.artifactPath,
+                  apiKey,
+                });
+                const status =
+                  betaGroup || whatToTest !== undefined
+                    ? await distributeTestFlightBuild({
+                        build: {
+                          appId: listed.appId,
+                          shortVersion: uploaded.shortVersion,
+                          bundleVersion: uploaded.bundleVersion,
+                          testFlightUrl: listed.testFlightUrl,
+                        },
+                        ...(betaGroup ? { group: betaGroup } : {}),
+                        ...(whatToTest === undefined ? {} : { whatToTest }),
+                        apiKey,
+                      })
+                    : listed;
+                return {
+                  store: uploadedTestFlightStatus(uploaded, status),
+                  status,
+                };
+              }));
           }
           if (!("refused" in uploaded) && uploaded.state === "COMPLETE") {
             storeUrl = uploaded.testFlightUrl;
@@ -643,6 +642,24 @@ const buildNativeInternal = async ({
             registered = await recordSubmission(registered, "testflight", () =>
               storeVersionLabel(uploaded.shortVersion, uploaded.bundleVersion),
             );
+            // After the record, which a slow or failed read can't hold up. A
+            // sandbox build's state came with its audience check above.
+            if (!sandbox) {
+              ({ store: storeStatus, status: testFlightStatus } =
+                await readUploadedTestFlightStatus({
+                  bundleId:
+                    artifact?.appId ?? iosSchemeConfig!.bundleIdentifier,
+                  uploaded,
+                  apiKey,
+                }));
+            }
+          }
+          if (!("refused" in uploaded)) {
+            storeNotice = await testFlightUploadNotice({
+              uploaded,
+              status: testFlightStatus,
+              ipaPath: result.artifactPath,
+            });
           }
         }
         const playServiceAccount =
@@ -769,6 +786,7 @@ const buildNativeInternal = async ({
             }),
           );
         }
+        if (storeNotice) p.log.warn(storeNotice);
         if (platform === "ios" && result.artifactPath !== undefined) {
           await reportIpaDevices({
             artifactPath: path.resolve(getCwd(), result.artifactPath),

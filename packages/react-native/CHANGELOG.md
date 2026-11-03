@@ -113,6 +113,21 @@
   - @hot-updater/plugin-insights@1.2.0-rc.0
   - @hot-updater/plugin-remote-config@1.2.0-rc.0
 
+## 1.1.6
+
+### Patch Changes
+
+- c7a05c6: fix(ios): the `HotUpdater` pod links with `use_frameworks! :linkage => :dynamic` again: it looks up `RCTExceptionsManager` at runtime instead of linking against `React-CoreModules` (#1729). `HotUpdater.podspec` now follows the `create-react-native-library` template: it always calls `install_modules_dependencies` (React Native 0.71 and later) and takes React Native's minimum iOS version from `min_ios_version_supported`.
+- 7cc4b67: Keep an OTA from getting stuck after an app goes back to an earlier build.
+
+  When a build of another fingerprint, channel, or version is installed, the SDK deletes the downloaded bundles. It left `metadata.json` naming them. If that build wrote no metadata of its own, because it had no network or its channel was empty, reinstalling the original build brought the old selection back: the app ran its built-in JavaScript, `getBundleId()` reported the deleted OTA, and `checkForUpdate` stopped offering it until a newer release was published.
+  - The cleanup now replaces the metadata before it deletes the bundles, so a crash between the two leaves only files nothing names. A pending OTA caught by the cleanup is no longer recorded as crashed.
+  - A launch now forgets a verified bundle whose files are gone, so a device already left in this state reports what it runs and installs the OTA again.
+
+- @hot-updater/protocol@1.1.6
+  - @hot-updater/plugin-insights@1.1.6
+  - @hot-updater/plugin-remote-config@1.1.6
+
 ## 1.1.5
 
 ### Patch Changes

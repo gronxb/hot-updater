@@ -459,6 +459,44 @@ describe("readTestFlightBuildStatus", () => {
     expect(status?.state).toBe(state);
   });
 
+  it("keeps a build in export compliance review as missing-compliance, marked as Apple's review", async () => {
+    const { fetch } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": listedBuild(
+        { processingState: "VALID" },
+        "IN_EXPORT_COMPLIANCE_REVIEW",
+      ),
+    });
+    const { status } = await read(fetch);
+    expect(status?.state).toBe("missing-compliance");
+    expect(status?.inExportComplianceReview).toBe(true);
+  });
+
+  it("doesn't mark an expired build as in Apple's review", async () => {
+    const { fetch } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": listedBuild(
+        { processingState: "VALID", expired: true },
+        "IN_EXPORT_COMPLIANCE_REVIEW",
+      ),
+    });
+    const { status } = await read(fetch);
+    expect(status?.state).toBe("expired");
+    expect(status?.inExportComplianceReview).toBeUndefined();
+  });
+
+  it("doesn't mark a build that still needs the answer as in Apple's review", async () => {
+    const { fetch } = recordingAsc({
+      "GET /v1/apps": APPS,
+      "GET /v1/builds": listedBuild(
+        { processingState: "VALID" },
+        "MISSING_EXPORT_COMPLIANCE",
+      ),
+    });
+    const { status } = await read(fetch);
+    expect(status?.inExportComplianceReview).toBeUndefined();
+  });
+
   it("says nothing of a build App Store Connect no longer lists", async () => {
     const { fetch } = recordingAsc({
       "GET /v1/apps": APPS,

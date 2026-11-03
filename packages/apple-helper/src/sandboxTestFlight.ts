@@ -267,6 +267,11 @@ export interface TestFlightBuildStatus {
   /** The audience App Store Connect holds it for, or null until it says. */
   readonly audience: string | null;
   readonly state: TestFlightBuildState;
+  /**
+   * Set when a `missing-compliance` build has its answer and Apple is reviewing
+   * it, so nobody needs to answer it again.
+   */
+  readonly inExportComplianceReview?: boolean;
   /** When TestFlight stops offering it, or null until it says. */
   readonly expiresAtMs: number | null;
 }
@@ -332,16 +337,21 @@ const readBuildStatus = async (
     ?.attributes?.internalBuildState;
   const processing = build.attributes?.processingState;
   const expiration = build.attributes?.expirationDate;
+  const state: TestFlightBuildState = build.attributes?.expired
+    ? "expired"
+    : processing === "PROCESSING" || !processing
+      ? "processing"
+      : processing !== "VALID"
+        ? "failed"
+        : (STATE_OF_INTERNAL_BUILD[internal ?? ""] ?? "ready");
   return {
     buildId: build.id,
     audience: build.attributes?.buildAudienceType ?? null,
-    state: build.attributes?.expired
-      ? "expired"
-      : processing === "PROCESSING" || !processing
-        ? "processing"
-        : processing !== "VALID"
-          ? "failed"
-          : (STATE_OF_INTERNAL_BUILD[internal ?? ""] ?? "ready"),
+    state,
+    ...(state === "missing-compliance" &&
+    internal === "IN_EXPORT_COMPLIANCE_REVIEW"
+      ? { inExportComplianceReview: true }
+      : {}),
     expiresAtMs: expiration ? Date.parse(expiration) : null,
   };
 };

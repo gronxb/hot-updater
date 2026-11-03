@@ -27,6 +27,11 @@ vi.mock("@hot-updater/apple-helper", () => ({
       bundleVersion: "7",
     };
   }),
+  readIpaHasExportComplianceKey: vi.fn(async () => true),
+  readTestFlightBuildStatus: vi.fn(async () => ({
+    testFlightUrl: "https://asc",
+    status: null,
+  })),
   resolveTestFlightUploadKey: vi.fn(() => ({
     kind: "asc-api-key",
     name: "asc-api-key",
