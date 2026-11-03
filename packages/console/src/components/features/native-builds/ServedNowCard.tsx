@@ -220,11 +220,7 @@ export function ServedNowCard({
                   The newest OTA has no patch from this store build, so fresh
                   installs download all of it. Add one from your project:
                 </p>
-                <CopyableText
-                  label="the patch command"
-                  value={missingPatch}
-                  wrap
-                />
+                <CopyableText label="the patch command" value={missingPatch} />
               </div>
             )}
             <p className="border-t px-4 py-3 text-xs text-muted-foreground">

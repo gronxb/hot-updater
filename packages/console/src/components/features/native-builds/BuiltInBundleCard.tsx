@@ -65,7 +65,7 @@ function StoreBuildAction({ detail }: { readonly detail: NativeBuildDetail }) {
       type="button"
       variant="outline"
     >
-      {storeBuild ? "Mark as store build" : "Clear"}
+      {storeBuild ? "Mark as store build" : "Clear mark"}
     </Button>
   );
 }

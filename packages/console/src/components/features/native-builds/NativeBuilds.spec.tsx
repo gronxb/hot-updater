@@ -880,7 +880,7 @@ describe("BuiltInBundleCard", () => {
     expect(
       screen.queryByRole("button", { name: "Mark as store build" }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear mark" }));
 
     expect(markMutate).toHaveBeenCalledWith(
       { id: id(1), storeBuild: false },
