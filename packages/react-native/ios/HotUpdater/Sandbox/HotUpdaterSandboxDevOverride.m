@@ -31,6 +31,8 @@ static NSDictionary *EmptyState(void) {
   };
 }
 
+static NSString *const HUDevNoInstall = @"A dev session installs no updates. Exit the dev server first.";
+
 static BOOL IsDev(id impl) {
   return [HotUpdaterSandboxDevState bundleURLForImpl:impl] != nil;
 }
@@ -136,21 +138,25 @@ static id (*gTakeEvents)(id, SEL, id);
   });
   HU_SWAP(impl, Commit, @selector(commitReleaseSelection:resolver:rejecter:), ^(id me, id params, HUResolve resolve, id reject) {
     if (IsDev(me)) {
-      resolve(@YES);
+      resolve(@NO);
     } else {
       gCommit(me, @selector(commitReleaseSelection:resolver:rejecter:), params, resolve, reject);
     }
   });
   HU_SWAP(impl, Update, @selector(updateBundle:resolver:rejecter:), ^(id me, id params, HUResolve resolve, id reject) {
     if (IsDev(me)) {
-      resolve(@{});
+      // Any resolve would make its JavaScript take the request's channel: a dev session
+      // installs nothing, so it says so the way a failed download does.
+      ((void (^)(NSString *, NSString *, NSError *))reject)(@"UNKNOWN_ERROR", HUDevNoInstall, nil);
     } else {
       gUpdate(me, @selector(updateBundle:resolver:rejecter:), params, resolve, reject);
     }
   });
   HU_SWAP(impl, Install, @selector(installArtifact:resolver:rejecter:), ^(id me, id params, HUResolve resolve, id reject) {
     if (IsDev(me)) {
-      resolve(@{});
+      // Any resolve would make its JavaScript take the request's channel: a dev session
+      // installs nothing, so it says so the way a failed download does.
+      ((void (^)(NSString *, NSString *, NSError *))reject)(@"UNKNOWN_ERROR", HUDevNoInstall, nil);
     } else {
       gInstall(me, @selector(installArtifact:resolver:rejecter:), params, resolve, reject);
     }

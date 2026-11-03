@@ -227,10 +227,18 @@ class HotUpdaterSandboxDevTest {
                 null
             }
             assertNull(dev.peekLaunchBundleId())
-            assertEquals(
-                BundleDelivery.ARCHIVE,
-                dev.updateBundle("b", "u", "h", emptyMap(), null, null, null) {}.delivery,
+            // An install that resolved at all would switch its JavaScript to the request's channel.
+            assertTrue(
+                "a dev install resolved",
+                try {
+                    dev.updateBundle("b", "u", "h", emptyMap(), null, null, null) {}
+                    false
+                } catch (error: HotUpdaterException) {
+                    true
+                },
             )
+            // So would a committed selection.
+            assertFalse("a dev selection committed", dev.commitReleaseSelection(PersistedSelection.bareBundle("b")))
             assertTrue(dev.acceptReleaseCatalog("c", "s", 1, "h", "ch", "sc"))
             assertNull(dev.getActiveUpdateState()["activeSelection"])
             assertNull(dev.getActiveUpdateState()["stableSelection"])

@@ -312,7 +312,10 @@ internal class HotUpdaterSandboxDevStorage(
         fileResolver: ArtifactFileResolver?,
         selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
-    ): UpdateBundleResult = UpdateBundleResult(BundleDelivery.ARCHIVE, false)
+    ): UpdateBundleResult =
+        // Any result would make its JavaScript take the request's channel: a dev session
+        // installs nothing, so it says so the way a failed download does.
+        throw HotUpdaterException("UNKNOWN_ERROR", "A dev session installs no updates. Exit the dev server first.")
 
     override fun acceptReleaseCatalog(
         catalogId: String,
@@ -340,7 +343,7 @@ internal class HotUpdaterSandboxDevStorage(
         selectionContextHash: String,
     ): Boolean = true
 
-    override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = true
+    override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = false
 
     override fun markLaunchStarted(launchedBundleId: String?) = Unit
 
