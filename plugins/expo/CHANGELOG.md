@@ -1,5 +1,39 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 7d6a7c9: The minimum Expo SDK is now 55, in the `expo` peer range of `@hot-updater/expo` and in the docs.
+  - A project on an earlier SDK upgrades Expo first with `npx expo install expo@^55.0.0 --fix`, then runs `npx expo prebuild --clean` and releases a new native build.
+  - On an earlier SDK, `expo prebuild` with the config plugin and the Expo build adapter's bundle build stop with that command. Both read the `expo` the project installs.
+  - `hot-updater doctor` reports an Expo project below SDK 55 as an error, `EXPO_SDK_UNSUPPORTED`, from the installed `expo`, or from the declared range when Expo isn't installed.
+
+### Patch Changes
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [a40da17]
+- Updated dependencies [ad99046]
+- Updated dependencies [7d6a7c9]
+- Updated dependencies [a5daa89]
+- Updated dependencies [64fe8d8]
+- Updated dependencies [1e85609]
+- Updated dependencies [c6e18f9]
+- Updated dependencies [818c27d]
+- Updated dependencies [a1ae453]
+- Updated dependencies [1ed1acd]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+- Updated dependencies [ea52563]
+- Updated dependencies [eafdc72]
+- Updated dependencies [68d6347]
+- Updated dependencies [ef790db]
+- Updated dependencies [21fea57]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - hot-updater@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/bare@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes
