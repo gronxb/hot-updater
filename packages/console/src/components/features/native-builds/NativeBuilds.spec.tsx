@@ -154,7 +154,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build({ store_build: true }), build({ id: id(3) })])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -182,7 +181,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([row])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -197,7 +195,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([row], { next: row.id })}
         channel={undefined}
         onChannel={onChannel}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -248,7 +245,6 @@ describe("NativeBuildsTable", () => {
         ])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -279,7 +275,6 @@ describe("NativeBuildsTable", () => {
         ])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -305,7 +300,6 @@ describe("NativeBuildsTable", () => {
           builds={builds([row])}
           channel={undefined}
           onChannel={vi.fn()}
-          onPage={vi.fn()}
           paged={false}
         />,
       );
@@ -353,7 +347,6 @@ describe("NativeBuildsTable", () => {
         ])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -375,7 +368,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([build({ build_number: "66" })])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -398,7 +390,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([submitted, build()])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -423,7 +414,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -452,7 +442,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel="pr-131"
         onChannel={onChannel}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -464,22 +453,87 @@ describe("NativeBuildsTable", () => {
     expect(onChannel).toHaveBeenCalledWith(undefined);
   });
 
-  it("leads an empty older page back to the newest builds", () => {
-    const onPage = vi.fn();
+  it("leads an empty older page back to the channel's newest builds", () => {
     render(
       <NativeBuildsTable
         builds={builds([])}
-        channel={undefined}
+        channel="pr-130"
         onChannel={vi.fn()}
-        onPage={onPage}
         paged
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show the newest builds" }),
+    expect(
+      screen.getByRole("link", { name: "Show the newest builds" }),
+    ).toHaveProperty(
+      "href",
+      expect.stringMatching(/\/native-builds\?channel=pr-130$/),
     );
-    expect(onPage).toHaveBeenCalledWith({});
+  });
+
+  it("pages with Previous and Next as Bundles does, and offers Newest past the first page", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build()], { next: id(9), previous: id(8) })}
+        channel="pr-130"
+        onChannel={vi.fn()}
+        paged
+      />,
+    );
+
+    const pages = screen.getByRole("navigation", {
+      name: "Native build pages",
+    });
+    expect(pages.textContent).toContain("1 entry, newest first");
+    expect(
+      screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
+    ).toBe(`/native-builds?channel=pr-130&after=${id(8)}`);
+    expect(
+      screen.getByRole("link", { name: "Next" }).getAttribute("href"),
+    ).toBe(`/native-builds?channel=pr-130&before=${id(9)}`);
+    expect(
+      screen.getByRole("link", { name: "Newest" }).getAttribute("href"),
+    ).toBe("/native-builds?channel=pr-130");
+  });
+
+  it("disables Previous and Next at the ends, with no Newest on the first page", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build()])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(screen.queryByRole("link", { name: "Newest" })).toBeNull();
+  });
+
+  it("opens a build from the keyboard, as a Bundles row does", () => {
+    const row = build();
+    render(
+      <NativeBuildsTable
+        builds={builds([row])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    fireEvent.keyDown(
+      screen.getByRole("row", { name: `Open native build ${row.id}` }),
+      { key: "Enter" },
+    );
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/native-builds/$buildId",
+      params: { buildId: row.id },
+    });
   });
 });
 

@@ -3,15 +3,15 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   CircleOff,
   Filter,
+  Package,
   RotateCcw,
   Tags,
   X,
 } from "lucide-react";
-import { Fragment, type MouseEvent, useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -19,20 +19,25 @@ import {
   DataCard,
   DataCardField,
   DataCardSkeletons,
+  DataCardsEmpty,
   DataTable,
   DataTableFrame,
+  DataTableEmpty,
   DataTableFullRow,
   DataTablePagination,
   DataTableRow,
+  openOutsideControls,
   DataTableSkeletonRows,
 } from "@/components/DataTable";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { BundleChildrenPanel } from "@/components/features/bundles/BundleChildrenPanel";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
 import { useReleaseColumns } from "@/components/features/FeatureSlots";
+import { CopyableText } from "@/components/features/native-builds/CopyableText";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
 import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
+import { RelativeTime } from "@/components/RelativeTime";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TargetDisplay } from "@/components/TargetDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -78,29 +83,6 @@ const statusFilterItems = [
   { label: "Enabled", value: "enabled" },
   { label: "Disabled", value: "disabled" },
 ];
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-const tableDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-});
-
-/**
- * Opens a bundle from a click anywhere on its row or card, except on a
- * control inside it, which keeps its own action.
- */
-const openOutsideControls =
-  (open: () => void) => (event: MouseEvent<HTMLElement>) => {
-    if (
-      event.target instanceof Element &&
-      event.target.closest("button, a, input, select, textarea")
-    ) {
-      return;
-    }
-    open();
-  };
-
 export const Route = createFileRoute("/")({
   component: BundlesPage,
   validateSearch: validateReleaseSearch,
@@ -504,6 +486,51 @@ function BundlesPage() {
     releaseId: undefined,
   };
 
+  const empty = (
+    <DataTableEmpty
+      icon={Package}
+      title={
+        onLaterPage
+          ? "No more bundles"
+          : hasReleaseFilters(search)
+            ? "No bundles match these filters"
+            : "No bundles yet"
+      }
+    >
+      {onLaterPage ? (
+        <Link
+          className={buttonVariants({
+            className: "mt-1 min-h-11 sm:min-h-8",
+            variant: "outline",
+          })}
+          search={newestSearch}
+          to="/"
+        >
+          Show the newest bundles
+        </Link>
+      ) : hasReleaseFilters(search) ? (
+        <Button
+          className="mt-1 min-h-11 sm:min-h-8"
+          onClick={() => go({})}
+          variant="outline"
+        >
+          Clear filters
+        </Button>
+      ) : (
+        <>
+          <p>Deploy one from your app's project:</p>
+          <div className="w-full text-left">
+            <CopyableText
+              label="the deploy command"
+              value="npx hot-updater deploy"
+              wrap
+            />
+          </div>
+        </>
+      )}
+    </DataTableEmpty>
+  );
+
   return (
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
       <BundleFilterToolbar
@@ -587,11 +614,11 @@ function BundlesPage() {
                               />
                               {release.platform === "ios" ? "iOS" : "Android"}
                             </DataCardField>
-                            <DataCardField
-                              label="Created"
-                              valueClassName="tabular-nums"
-                            >
-                              {dateFormatter.format(release.created_at_ms)}
+                            <DataCardField label="Created">
+                              <RelativeTime
+                                ms={release.created_at_ms}
+                                withDate
+                              />
                             </DataCardField>
                             <DataCardField label="Rollout">
                               <RolloutPercentageBadge
@@ -634,10 +661,11 @@ function BundlesPage() {
                                 <dt className="text-muted-foreground">
                                   Target
                                 </dt>
-                                <dd className="min-w-0 truncate text-right font-mono">
-                                  {release.target_app_version ??
-                                    release.fingerprint_hash ??
-                                    "—"}
+                                <dd className="flex min-w-0 justify-end">
+                                  <TargetDisplay
+                                    appVersion={release.target_app_version}
+                                    fingerprintHash={release.fingerprint_hash}
+                                  />
                                 </dd>
                               </div>
                               <div className="flex items-start justify-between gap-3">
@@ -662,13 +690,7 @@ function BundlesPage() {
                     );
                   })
                 ) : (
-                  <p className="p-8 text-center text-sm text-muted-foreground">
-                    {onLaterPage
-                      ? "No more bundles on this side."
-                      : hasReleaseFilters(search)
-                        ? "No bundles match these filters."
-                        : "No bundles yet. Deploy an update to see it here."}
-                  </p>
+                  <DataCardsEmpty>{empty}</DataCardsEmpty>
                 )}
               </div>
             ) : (
@@ -712,20 +734,9 @@ function BundlesPage() {
                               ? "selected"
                               : undefined
                           }
-                          onClick={openOutsideControls(() =>
-                            go({ ...search, releaseId: release.id }, false),
-                          )}
-                          onKeyDown={(event) => {
-                            if (
-                              event.target !== event.currentTarget ||
-                              (event.key !== "Enter" && event.key !== " ")
-                            ) {
-                              return;
-                            }
-                            event.preventDefault();
-                            go({ ...search, releaseId: release.id }, false);
-                          }}
-                          tabIndex={0}
+                          onOpen={() =>
+                            go({ ...search, releaseId: release.id }, false)
+                          }
                         >
                           <TableCell>
                             <BundleEntry
@@ -817,11 +828,8 @@ function BundlesPage() {
                           >
                             {release.message || "-"}
                           </TableCell>
-                          <TableCell
-                            className="whitespace-nowrap text-xs text-muted-foreground"
-                            title={dateFormatter.format(release.created_at_ms)}
-                          >
-                            {tableDateFormatter.format(release.created_at_ms)}
+                          <TableCell className="text-xs text-muted-foreground">
+                            <RelativeTime ms={release.created_at_ms} />
                           </TableCell>
                         </DataTableRow>
                         {isExpanded && release.bundle_id ? (
@@ -844,11 +852,7 @@ function BundlesPage() {
                 )}
                 {!releasesQuery.isPending && releases.length === 0 ? (
                   <DataTableFullRow columns={columnCount}>
-                    {onLaterPage
-                      ? "No more bundles on this side."
-                      : hasReleaseFilters(search)
-                        ? "No bundles match these filters."
-                        : "No bundles yet. Deploy an update to see it here."}
+                    {empty}
                   </DataTableFullRow>
                 ) : null}
               </DataTable>
@@ -860,69 +864,12 @@ function BundlesPage() {
           <DataTablePagination
             count={releases.length}
             label="Bundle pagination"
-          >
-            {onLaterPage ? (
-              <Link
-                className={buttonVariants({
-                  className: "h-8 flex-1 px-3 text-xs sm:flex-none",
-                  size: "sm",
-                  variant: "ghost",
-                })}
-                search={newestSearch}
-                to="/"
-              >
-                Newest
-              </Link>
-            ) : null}
-            {previousSearch ? (
-              <Link
-                className={buttonVariants({
-                  className: "h-8 flex-1 px-3 text-xs sm:flex-none",
-                  size: "sm",
-                  variant: "outline",
-                })}
-                search={previousSearch}
-                to="/"
-              >
-                <ChevronLeft data-icon="inline-start" />
-                Previous
-              </Link>
-            ) : (
-              <Button
-                className="h-8 flex-1 px-3 text-xs sm:flex-none"
-                disabled
-                size="sm"
-                variant="outline"
-              >
-                <ChevronLeft data-icon="inline-start" />
-                Previous
-              </Button>
-            )}
-            {nextSearch ? (
-              <Link
-                className={buttonVariants({
-                  className: "h-8 flex-1 px-3 text-xs sm:flex-none",
-                  size: "sm",
-                  variant: "outline",
-                })}
-                search={nextSearch}
-                to="/"
-              >
-                Next
-                <ChevronRight data-icon="inline-end" />
-              </Link>
-            ) : (
-              <Button
-                className="h-8 flex-1 px-3 text-xs sm:flex-none"
-                disabled
-                size="sm"
-                variant="outline"
-              >
-                Next
-                <ChevronRight data-icon="inline-end" />
-              </Button>
-            )}
-          </DataTablePagination>
+            newest={onLaterPage ? { search: newestSearch, to: "/" } : undefined}
+            next={nextSearch ? { search: nextSearch, to: "/" } : undefined}
+            previous={
+              previousSearch ? { search: previousSearch, to: "/" } : undefined
+            }
+          />
         ) : null}
       </div>
 

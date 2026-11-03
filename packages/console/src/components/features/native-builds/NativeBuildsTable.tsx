@@ -1,35 +1,39 @@
-import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import {
+  extractTimestampFromUUIDv7,
+  type NativeBuildRow,
+} from "@hot-updater/plugin-core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
   Download,
-  HardDriveDownload,
+  HardDrive,
   RefreshCw,
 } from "lucide-react";
-import type { MouseEvent } from "react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   DataCard,
   DataCardField,
   DataCardSkeletons,
+  DataCardsEmpty,
   DataTable,
+  DataTableEmpty,
   DataTableFrame,
   DataTableFullRow,
   DataTablePagination,
   DataTableRow,
   DataTableSkeletonRows,
+  openOutsideControls,
 } from "@/components/DataTable";
 import { PlatformLabel } from "@/components/PlatformIcon";
+import { RelativeTime } from "@/components/RelativeTime";
 import {
   BuildKeyDisplay,
   NoValue,
   TargetDisplay,
 } from "@/components/TargetDisplay";
-import { TimestampDisplay } from "@/components/TimestampDisplay";
 import {
   Alert,
   AlertAction,
@@ -60,94 +64,95 @@ export const NATIVE_BUILD_GUIDE_URL =
 
 const COLUMNS = 12;
 
-/** Keeps a click on a control inside a row from opening the build. */
-const stop = (event: MouseEvent) => event.stopPropagation();
+/** The page of the list that shows `channel`'s builds, or every build. */
+const channelSearch = (channel: string | undefined) =>
+  channel === undefined ? {} : { channel };
 
 function EmptyState({
   channel,
   paged,
   onClearChannel,
-  onNewest,
 }: {
   readonly channel: string | undefined;
   readonly paged: boolean;
   readonly onClearChannel: () => void;
-  readonly onNewest: () => void;
 }) {
-  return (
-    <div className="mx-auto flex max-w-sm flex-col items-center gap-2 whitespace-normal">
-      <HardDriveDownload aria-hidden="true" className="size-5" />
-      {paged ? (
-        <>
-          <p className="font-medium text-foreground">No more native builds</p>
-          <Button
-            className="mt-1 min-h-11 sm:min-h-8"
-            onClick={onNewest}
-            variant="outline"
-          >
-            Show the newest builds
-          </Button>
-        </>
-      ) : channel !== undefined ? (
-        <>
-          <p className="font-medium text-foreground">
+  if (paged) {
+    return (
+      <DataTableEmpty icon={HardDrive} title="No more native builds">
+        <Link
+          className={buttonVariants({
+            className: "mt-1 min-h-11 sm:min-h-8",
+            variant: "outline",
+          })}
+          search={channelSearch(channel)}
+          to="/native-builds"
+        >
+          Show the newest builds
+        </Link>
+      </DataTableEmpty>
+    );
+  }
+  if (channel !== undefined) {
+    return (
+      <DataTableEmpty
+        icon={HardDrive}
+        title={
+          <>
             No native build embeds <span translate="no">{channel}</span>
-          </p>
-          <p>
-            A build embeds the channel it was built on. Build one on this
-            channel, or list every channel's builds.
-          </p>
-          <Button
-            className="mt-1 min-h-11 sm:min-h-8"
-            onClick={onClearChannel}
-            variant="outline"
-          >
-            Show all channels
-          </Button>
-        </>
-      ) : (
-        <>
-          <p className="font-medium text-foreground">No native builds</p>
-          <p>
-            Build one with{" "}
-            <code className="font-mono text-xs">native-build android</code> or{" "}
-            <code className="font-mono text-xs">native-build ios</code>, or
-            import one built elsewhere:
-          </p>
-          <div className="w-full text-left">
-            <CopyableText
-              label="the import command"
-              value={IMPORT_COMMAND}
-              wrap
-            />
-          </div>
-          <a
-            className={buttonVariants({
-              className: "mt-1 min-h-11 sm:min-h-8",
-              variant: "outline",
-            })}
-            href={NATIVE_BUILD_GUIDE_URL}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Native build guide
-            <ArrowUpRight data-icon="inline-end" />
-          </a>
-          <a
-            className={buttonVariants({
-              className: "min-h-11 sm:min-h-8",
-              variant: "outline",
-            })}
-            href={IMPORT_GUIDE_URL}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Import guide
-            <ArrowUpRight data-icon="inline-end" />
-          </a>
-        </>
-      )}
-    </div>
+          </>
+        }
+      >
+        <p>
+          A build embeds the channel it was built on. Build one on this channel,
+          or list every channel's builds.
+        </p>
+        <Button
+          className="mt-1 min-h-11 sm:min-h-8"
+          onClick={onClearChannel}
+          variant="outline"
+        >
+          Show all channels
+        </Button>
+      </DataTableEmpty>
+    );
+  }
+  return (
+    <DataTableEmpty icon={HardDrive} title="No native builds">
+      <p>
+        Build one with{" "}
+        <code className="font-mono text-xs">native-build android</code> or{" "}
+        <code className="font-mono text-xs">native-build ios</code>, or import
+        one built elsewhere:
+      </p>
+      <div className="w-full text-left">
+        <CopyableText label="the import command" value={IMPORT_COMMAND} wrap />
+      </div>
+      <a
+        className={buttonVariants({
+          className: "mt-1 min-h-11 sm:min-h-8",
+          variant: "outline",
+        })}
+        href={NATIVE_BUILD_GUIDE_URL}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Native build guide
+        <ArrowUpRight data-icon="inline-end" />
+      </a>
+      <a
+        className={buttonVariants({
+          className: "min-h-11 sm:min-h-8",
+          variant: "outline",
+        })}
+        href={IMPORT_GUIDE_URL}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Import guide
+        <ArrowUpRight data-icon="inline-end" />
+      </a>
+    </DataTableEmpty>
   );
 }
 
@@ -158,8 +163,7 @@ const buildTitle = (build: NativeBuildRow) =>
 function BuildLink({ build }: { readonly build: NativeBuildRow }) {
   return (
     <Link
-      className="font-medium whitespace-nowrap underline-offset-4 hover:underline"
-      onClick={stop}
+      className="rounded-sm font-medium whitespace-nowrap text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       params={{ buildId: build.id }}
       to="/native-builds/$buildId"
     >
@@ -180,10 +184,7 @@ function ChannelFilterButton({
     <button
       aria-label={`Show the builds that embed ${channel}`}
       className="rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      onClick={(event) => {
-        event.stopPropagation();
-        onChannel(channel);
-      }}
+      onClick={() => onChannel(channel)}
       type="button"
     >
       <ChannelBadge channel={channel} className="whitespace-nowrap" />
@@ -215,7 +216,6 @@ function DownloadButton({ build }: { readonly build: NativeBuildRow }) {
       })}
       download
       href={nativeBuildDownloadPath(build.id)}
-      onClick={stop}
     >
       <Download data-icon="inline-start" />
       Download
@@ -233,17 +233,14 @@ function BuildNumber({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
-/** The built-in bundle's whole ID: never cut, since it names the base. */
+/** The built-in bundle's whole ID, as Bundles shows a bundle ID. */
 function BuiltInBundleId({ build }: { readonly build: NativeBuildRow }) {
-  return (
-    <span
-      className="font-mono text-xs [overflow-wrap:anywhere] text-muted-foreground"
-      translate="no"
-    >
-      {build.min_bundle_id}
-    </span>
-  );
+  return <BundleIdDisplay bundleId={build.min_bundle_id} />;
 }
+
+/** When the build was registered, from its ID. */
+const createdAt = (build: NativeBuildRow) =>
+  extractTimestampFromUUIDv7(build.id);
 
 function BuildRow({
   build,
@@ -256,7 +253,8 @@ function BuildRow({
   const channel = nativeBuildChannel(build);
   return (
     <DataTableRow
-      onClick={() =>
+      aria-label={`Open native build ${build.id}`}
+      onOpen={() =>
         void navigate({
           to: "/native-builds/$buildId",
           params: { buildId: build.id },
@@ -296,8 +294,8 @@ function BuildRow({
       <TableCell>
         <CommitLink hash={build.git_commit_hash} />
       </TableCell>
-      <TableCell className="whitespace-nowrap">
-        <TimestampDisplay uuid={build.id} />
+      <TableCell className="text-xs text-muted-foreground">
+        <RelativeTime ms={createdAt(build)} />
       </TableCell>
       <TableCell className="text-right">
         <DownloadButton build={build} />
@@ -319,26 +317,30 @@ function BuildCard({
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
-      onClick={() =>
-        void navigate({
-          to: "/native-builds/$buildId",
-          params: { buildId: build.id },
-        })
-      }
+      onClick={openOutsideControls(
+        () =>
+          void navigate({
+            to: "/native-builds/$buildId",
+            params: { buildId: build.id },
+          }),
+      )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <BuildLink build={build} />
-          <TimestampDisplay uuid={build.id} />
-        </div>
+        <BuildLink build={build} />
         <ChannelFilterButton channel={channel} onChannel={onChannel} />
       </div>
       <dl className="grid grid-cols-2 gap-3 text-xs">
         <DataCardField label="Platform" valueClassName="font-medium">
           <PlatformLabel platform={build.platform} />
         </DataCardField>
+        <DataCardField label="Created">
+          <RelativeTime ms={createdAt(build)} withDate />
+        </DataCardField>
         <DataCardField label="Build">
           <BuildNumber build={build} />
+        </DataCardField>
+        <DataCardField label="Size" valueClassName="tabular-nums">
+          {formatByteSize(build.byte_size)}
         </DataCardField>
         <DataCardField className="col-span-2" label="Target">
           <TargetDisplay
@@ -352,11 +354,8 @@ function BuildCard({
         <DataCardField className="col-span-2" label="Built-in bundle">
           <BuiltInBundleId build={build} />
         </DataCardField>
-        <DataCardField label="Commit">
+        <DataCardField className="col-span-2" label="Commit">
           <CommitLink hash={build.git_commit_hash} />
-        </DataCardField>
-        <DataCardField label="Size" valueClassName="tabular-nums">
-          {formatByteSize(build.byte_size)}
         </DataCardField>
         <DataCardField className="col-span-2" label="Store">
           <StoreCell build={build} />
@@ -379,7 +378,6 @@ export function NativeBuildsTable({
   channel,
   paged,
   onChannel,
-  onPage,
 }: {
   readonly builds: {
     readonly data: NativeBuildListResult | undefined;
@@ -393,7 +391,6 @@ export function NativeBuildsTable({
   /** Whether the list shows a page other than the newest. */
   readonly paged: boolean;
   readonly onChannel: (channel: string | undefined) => void;
-  readonly onPage: (page: { before?: string; after?: string }) => void;
 }) {
   const isMobile = useIsMobile();
   const rows = builds.data?.data;
@@ -425,7 +422,6 @@ export function NativeBuildsTable({
     <EmptyState
       channel={channel}
       onClearChannel={() => onChannel(undefined)}
-      onNewest={() => onPage({})}
       paged={paged}
     />
   );
@@ -443,9 +439,7 @@ export function NativeBuildsTable({
             {builds.isLoading ? (
               <DataCardSkeletons label="Loading native builds" />
             ) : rows?.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                {empty}
-              </div>
+              <DataCardsEmpty>{empty}</DataCardsEmpty>
             ) : (
               rows?.map((build) => (
                 <div key={build.id} role="listitem">
@@ -484,9 +478,7 @@ export function NativeBuildsTable({
                 label="Loading native builds"
               />
             ) : rows?.length === 0 ? (
-              <DataTableFullRow className="h-44" columns={COLUMNS}>
-                {empty}
-              </DataTableFullRow>
+              <DataTableFullRow columns={COLUMNS}>{empty}</DataTableFullRow>
             ) : (
               rows?.map((build) => (
                 <BuildRow build={build} key={build.id} onChannel={onChannel} />
@@ -496,28 +488,31 @@ export function NativeBuildsTable({
         )}
       </DataTableFrame>
       {builds.isLoading || rows === undefined ? null : (
-        <DataTablePagination count={rows.length} label="Native build pages">
-          <Button
-            className="h-8 flex-1 px-3 text-xs sm:flex-none"
-            disabled={previous === undefined || builds.isPlaceholderData}
-            onClick={() => onPage({ after: previous })}
-            size="sm"
-            variant="outline"
-          >
-            <ChevronLeft data-icon="inline-start" />
-            Newer
-          </Button>
-          <Button
-            className="h-8 flex-1 px-3 text-xs sm:flex-none"
-            disabled={next === undefined || builds.isPlaceholderData}
-            onClick={() => onPage({ before: next })}
-            size="sm"
-            variant="outline"
-          >
-            Older
-            <ChevronRight data-icon="inline-end" />
-          </Button>
-        </DataTablePagination>
+        <DataTablePagination
+          count={rows.length}
+          label="Native build pages"
+          newest={
+            paged
+              ? { search: channelSearch(channel), to: "/native-builds" }
+              : undefined
+          }
+          next={
+            next === undefined
+              ? undefined
+              : {
+                  search: { ...channelSearch(channel), before: next },
+                  to: "/native-builds",
+                }
+          }
+          previous={
+            previous === undefined
+              ? undefined
+              : {
+                  search: { ...channelSearch(channel), after: previous },
+                  to: "/native-builds",
+                }
+          }
+        />
       )}
     </>
   );

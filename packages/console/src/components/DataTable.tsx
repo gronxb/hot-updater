@@ -1,5 +1,8 @@
-import type { ComponentProps, ReactNode } from "react";
+import { Link, type LinkProps } from "@tanstack/react-router";
+import { ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -48,13 +51,47 @@ export function DataTable({
   );
 }
 
-/** A row that opens its item: hover, focus, and selection as one style. */
+/**
+ * Opens an item from a click anywhere on its row or card, except on a
+ * control inside it, which keeps its own action.
+ */
+export const openOutsideControls =
+  (open: () => void) => (event: MouseEvent<HTMLElement>) => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("button, a, input, select, textarea")
+    ) {
+      return;
+    }
+    open();
+  };
+
+/**
+ * A row that opens its item: a click outside its controls, or Enter or Space
+ * on the focused row, with hover, focus, and selection as one style.
+ */
 export function DataTableRow({
   className,
+  onOpen,
   ...props
-}: ComponentProps<typeof TableRow>) {
+}: ComponentProps<typeof TableRow> & {
+  /** Opens the row's item. */
+  readonly onOpen: () => void;
+}) {
   return (
     <TableRow
+      onClick={openOutsideControls(onOpen)}
+      onKeyDown={(event) => {
+        if (
+          event.target !== event.currentTarget ||
+          (event.key !== "Enter" && event.key !== " ")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onOpen();
+      }}
+      tabIndex={0}
       className={cn(
         "cursor-pointer transition-[background-color,filter] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none data-[state=selected]:bg-muted/15 [&>td]:py-3",
         className,
@@ -96,13 +133,41 @@ export function DataTableFullRow({
   return (
     <TableRow>
       <TableCell
-        className={cn("h-40 text-center text-muted-foreground", className)}
+        className={cn("h-44 text-center text-muted-foreground", className)}
         colSpan={columns}
       >
         {children}
       </TableCell>
     </TableRow>
   );
+}
+
+/**
+ * What an empty list says: the page's icon, what is missing, and what to do
+ * about it, in a table row or a card list.
+ */
+export function DataTableEmpty({
+  icon: Icon,
+  title,
+  children,
+}: {
+  readonly icon: LucideIcon;
+  readonly title: ReactNode;
+  /** A sentence and the actions that fill the list. */
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div className="mx-auto flex max-w-sm flex-col items-center gap-2 whitespace-normal text-center text-sm text-muted-foreground">
+      <Icon aria-hidden="true" className="size-5" />
+      <p className="font-medium text-foreground">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+/** The empty card list on a narrow screen. */
+export function DataCardsEmpty({ children }: { readonly children: ReactNode }) {
+  return <div className="p-8">{children}</div>;
 }
 
 /** Placeholder cards while the first page loads on a narrow screen. */
@@ -150,17 +215,30 @@ export function DataCardField({
   );
 }
 
-/** The bar under a list: how many entries show, and the page controls. */
+/** A page of a list: the route and the search that shows it. */
+export type PageLink = Pick<LinkProps, "to" | "search">;
+
+/**
+ * The bar under a list: how many entries show, and Previous and Next, links
+ * to the newer and older pages, or disabled at either end. Newest shows on any
+ * page but the first.
+ */
 export function DataTablePagination({
   count,
   label,
-  children,
+  newest,
+  previous,
+  next,
 }: {
   readonly count: number;
   /** The navigation's name, such as "Bundle pagination". */
   readonly label: string;
-  /** The page controls, each `h-8 flex-1 px-3 text-xs sm:flex-none`. */
-  readonly children: ReactNode;
+  /** The first page, when the list shows another. */
+  readonly newest?: PageLink;
+  /** The newer page, if any. */
+  readonly previous?: PageLink;
+  /** The older page, if any. */
+  readonly next?: PageLink;
 }) {
   return (
     <nav
@@ -172,7 +250,67 @@ export function DataTablePagination({
         {count === 1 ? "entry" : "entries"}, newest first
       </p>
       <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-        {children}
+        {newest ? (
+          <Link
+            className={buttonVariants({
+              className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+              size: "sm",
+              variant: "ghost",
+            })}
+            search={newest.search}
+            to={newest.to}
+          >
+            Newest
+          </Link>
+        ) : null}
+        {previous ? (
+          <Link
+            className={buttonVariants({
+              className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+              size: "sm",
+              variant: "outline",
+            })}
+            search={previous.search}
+            to={previous.to}
+          >
+            <ChevronLeft data-icon="inline-start" />
+            Previous
+          </Link>
+        ) : (
+          <Button
+            className="h-8 flex-1 px-3 text-xs sm:flex-none"
+            disabled
+            size="sm"
+            variant="outline"
+          >
+            <ChevronLeft data-icon="inline-start" />
+            Previous
+          </Button>
+        )}
+        {next ? (
+          <Link
+            className={buttonVariants({
+              className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+              size: "sm",
+              variant: "outline",
+            })}
+            search={next.search}
+            to={next.to}
+          >
+            Next
+            <ChevronRight data-icon="inline-end" />
+          </Link>
+        ) : (
+          <Button
+            className="h-8 flex-1 px-3 text-xs sm:flex-none"
+            disabled
+            size="sm"
+            variant="outline"
+          >
+            Next
+            <ChevronRight data-icon="inline-end" />
+          </Button>
+        )}
       </div>
     </nav>
   );

@@ -130,12 +130,6 @@ export function NativeBuildsPage({
           builds={builds}
           channel={channel}
           onChannel={filterBy}
-          onPage={(page) =>
-            onSearchChange({
-              ...(channel === undefined ? {} : { channel }),
-              ...page,
-            })
-          }
           paged={before !== undefined || after !== undefined}
         />
       </div>
