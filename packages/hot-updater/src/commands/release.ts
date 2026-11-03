@@ -1,14 +1,17 @@
 import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
-import type {
-  HotUpdaterCoreApi,
-  ReleaseFilter,
-  ReleasePolicyPatch,
-  ReleaseRow,
+import {
+  type HotUpdaterCoreApi,
+  ReleaseCatalogMutationError,
+  type ReleaseFilter,
+  ReleaseManagementError,
+  type ReleasePolicyPatch,
+  type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 import { loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
+import { publicBundleMessage } from "../utils/publicBundleError";
 import { printBanner } from "../utils/printBanner";
 import { canPrompt } from "../utils/prompt";
 
@@ -168,6 +171,69 @@ export const confirmMutation = async (
   const confirmed = await p.confirm({ initialValue: false, message });
   if (p.isCancel(confirmed) || !confirmed) process.exit(2);
 };
+
+const RELEASE_NOT_FOUND = "RELEASE_NOT_FOUND";
+
+/**
+ * Ends a bundle command core refused, such as for an ID no bundle has, with
+ * the reason and no stack: on stdout as JSON under `--json`, with the
+ * message on stderr. An artifact ID, which `native-build mark` and
+ * `patch -b` print, names no bundle, so a missing ID costs one indexed read
+ * for the newest bundle that ships it, only on this path. Anything but a
+ * refusal is thrown on.
+ */
+const failBundleCommand = async (
+  core: HotUpdaterCoreApi,
+  releaseId: string,
+  error: unknown,
+  { json, outcome }: { readonly json?: boolean; readonly outcome: string },
+): Promise<void> => {
+  if (
+    !(error instanceof ReleaseManagementError) &&
+    !(error instanceof ReleaseCatalogMutationError)
+  ) {
+    throw error;
+  }
+  const notFound = error.code === RELEASE_NOT_FOUND;
+  const [shipping = null] = notFound
+    ? await core
+        .listReleases({
+          filter: { kind: "bundle", bundleId: releaseId },
+          limit: 1,
+          order: "desc",
+        })
+        .catch(() => [])
+    : [];
+  const message = notFound
+    ? [
+        `No bundle with ID ${releaseId}.`,
+        shipping !== null &&
+          `That's an artifact ID. Use bundle ${shipping.id}`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : publicBundleMessage(error.message);
+  if (json) {
+    console.log(
+      JSON.stringify({
+        id: releaseId,
+        [outcome]: false,
+        reason: notFound ? "not_found" : error.code.toLowerCase(),
+        ...(shipping === null ? {} : { releaseId: shipping.id }),
+      }),
+    );
+    console.error(fitText(message));
+  } else {
+    p.log.error(message);
+  }
+  process.exitCode = 1;
+};
+
+const notFoundError = (releaseId: string) =>
+  new ReleaseManagementError(
+    RELEASE_NOT_FOUND,
+    `Release "${releaseId}" was not found.`,
+  );
 
 const channelNames = async (core: HotUpdaterCoreApi) =>
   new Map(
@@ -334,11 +400,19 @@ export const handleReleaseUpdate = async (
       patch,
       releaseId,
     };
-    if (options.dryRun) {
-      printUpdatePreview(await core.preflightReleasePolicy(target), options);
-      return;
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      if (options.dryRun) {
+        printUpdatePreview(await core.preflightReleasePolicy(target), options);
+        return;
+      }
+      result = await core.updateReleasePolicy(target);
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
     }
-    const result = await core.updateReleasePolicy(target);
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -371,8 +445,12 @@ export const handleReleaseEnablement = async (
     if (!enabled) {
       const release = await core.getRelease(releaseId);
       if (release === null) {
-        p.log.error(`No bundle with ID ${releaseId}.`);
-        process.exit(1);
+        return await failBundleCommand(
+          core,
+          releaseId,
+          notFoundError(releaseId),
+          { json: options.json, outcome: "updated" },
+        );
       }
       expectedRevision ??= release.revision;
 
@@ -411,11 +489,19 @@ export const handleReleaseEnablement = async (
       `${enabled ? "Enable" : "Disable"} this bundle?`,
       options.yes,
     );
-    const result = await core.updateReleasePolicy({
-      ...(expectedRevision === undefined ? {} : { expectedRevision }),
-      patch: { enabled },
-      releaseId,
-    });
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      result = await core.updateReleasePolicy({
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
+        patch: { enabled },
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
+    }
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -446,14 +532,29 @@ export const handleReleaseDelete = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const release = await core.getRelease(releaseId);
+    if (release === null) {
+      return await failBundleCommand(core, releaseId, notFoundError(releaseId), {
+        json: options.json,
+        outcome: "deleted",
+      });
+    }
     // Core deletes the artifact with the last bundle on it.
-    const artifactId = (await core.getRelease(releaseId))?.bundle_id ?? null;
-    const result = await core.deleteRelease({
-      ...(options.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: options.expectedRevision }),
-      releaseId,
-    });
+    const artifactId = release.bundle_id;
+    let result: Awaited<ReturnType<typeof core.deleteRelease>>;
+    try {
+      result = await core.deleteRelease({
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: options.expectedRevision }),
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "deleted",
+      });
+    }
     const deletedArtifactId =
       artifactId !== null && (await core.getBundle(artifactId)) === null
         ? artifactId
