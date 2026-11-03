@@ -156,15 +156,36 @@ This means devices currently on `OTA A` or `OTA B` can download a small patch to
 `OTA C` instead of the complete new Hermes bundle file. Devices on an older OTA
 outside the selected patch bases download the complete new Hermes bundle file.
 
-Deploy also adds one patch base beyond `maxBaseBundles`: the built-in bundle of
-the newest native build [registered](/docs/guides/native-build#how-a-build-is-tracked),
-by `native-build` or by
+Deploy also adds exactly one patch base beyond `maxBaseBundles`: the built-in
+bundle of one native build
+[registered](/docs/guides/native-build#how-a-build-is-tracked), by `native-build`
+or by
 [importing a build made elsewhere](/docs/guides/native-build#import-a-build-made-elsewhere),
 for the deploy's channel and platform, with the same fingerprint or, with the
-App Version strategy, the exact app version the build compiled in. Devices that
-run that build with no OTA installed, such as a fresh store install, then
-download a patch for their first OTA. A target app version range such as `1.x.x`
-matches no single build, so it adds no built-in base.
+App Version strategy, the exact app version the build compiled in. Of that scope
+it takes:
+
+1. the build [marked as the store build](/docs/guides/native-build#mark-the-store-build);
+2. with no mark, the most recently registered build. That means registered, not
+   built: importing an old build today makes it the newest.
+
+A build whose built-in bundle is newer than the deployed bundle can't take that
+bundle, so deploy passes over it for the next one. `deploy` prints which build it
+used, and whether it was marked:
+
+```txt
+Built-in base  iOS 1.7.0 (66) · store build
+```
+
+Devices that run that build with no OTA installed, such as a fresh store install,
+then download a patch for their first OTA. Devices on any other build of the scope
+download the complete Hermes bundle file: the update is larger, and still correct.
+
+A target app version range such as `1.x.x` uses your project's app version when
+the range holds it, so a build of that version is the base, and installs of other
+versions in the range download the complete file. When the range doesn't hold the
+project's version, or the project declares several, the deploy adds no built-in
+base.
 
 Notes:
 

@@ -17,6 +17,7 @@ import type {
   DatabaseBundleMetadata,
   NativeBuildArtifactKind,
   NativeBuildDeleteResult,
+  NativeBuildMarkResult,
   NativeBuildRow,
   NativeBuildSubmissionDestination,
   Platform,
@@ -181,13 +182,22 @@ export interface HotUpdaterCoreApi {
   /** A native build by ID: one read of its key. */
   getNativeBuild(id: string): Promise<NativeBuildRow | null>;
   /**
-   * The newest native build of a scope: one read of its index. With
-   * `buildKey`, the newest of the scope registered with that native build
-   * key, also one read.
+   * The newest native build of a scope: the one registered last, in one read
+   * of its index. With `buildKey`, the newest of the scope registered with that
+   * native build key, also one read. With `storeBuild`, the scope's marked
+   * build or null, also one read. With `builtInOlderThan`, the newest of the
+   * scope whose built-in bundle is older than that bundle: one read when the
+   * newest is, and then a page of older builds per read until one is, when
+   * builds made after the bundle are in the way. With `buildKey` too, only
+   * builds of that key.
    */
   findNativeBuild(
     scope: NativeBuildScope,
-    options?: { readonly buildKey?: string },
+    options?: {
+      readonly buildKey?: string;
+      readonly storeBuild?: true;
+      readonly builtInOlderThan?: string;
+    },
   ): Promise<NativeBuildRow | null>;
   /**
    * One page of native builds, by ID: oldest or newest first. With
@@ -268,4 +278,13 @@ export interface HotUpdaterCoreApi {
    * full bundles. Its artifact stays in storage for the caller to delete.
    */
   deleteNativeBuild(id: string): Promise<NativeBuildDeleteResult>;
+  /**
+   * Marks a build as what the store sells, replacing its scope's mark in one
+   * write, or clears the mark it holds. Running it again changes nothing. Null
+   * for an unknown ID. A sandbox channel's build can't be marked.
+   */
+  markNativeBuild(
+    id: string,
+    mark: { readonly storeBuild: boolean },
+  ): Promise<NativeBuildMarkResult | null>;
 }

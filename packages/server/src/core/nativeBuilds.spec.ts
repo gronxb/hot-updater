@@ -619,6 +619,284 @@ describe("the native build registry", () => {
   });
 });
 
+describe("the store build mark", () => {
+  const scope = {
+    platform: "ios",
+    channel: "production",
+    fingerprintHash: "fingerprint-a",
+    appVersion: null,
+  } as const;
+  const marksIn = async (core: ReturnType<typeof setup>) =>
+    (await core.listNativeBuilds({ limit: 100 }))
+      .filter((build) => build.store_build === true)
+      .map(({ id }) => id);
+
+  it("marks a build, which the scope's read finds and the newest read ignores", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(registration(2));
+    expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
+
+    const marked = await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    expect(marked).toMatchObject({
+      nativeBuild: { id: buildId(1), store_build: true },
+      previous: null,
+    });
+    expect(
+      await core.findNativeBuild(scope, { storeBuild: true }),
+    ).toMatchObject({ id: buildId(1), store_build: true });
+    expect(await core.findNativeBuild(scope)).toMatchObject({
+      id: buildId(2),
+      store_build: null,
+    });
+    expect(await core.getNativeBuild(buildId(1))).toMatchObject({
+      store_build: true,
+    });
+  });
+
+  it("replaces the scope's mark, so one build holds it", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(registration(2));
+    await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    const replaced = await core.markNativeBuild(buildId(2), {
+      storeBuild: true,
+    });
+
+    expect(replaced).toMatchObject({
+      nativeBuild: { id: buildId(2), store_build: true },
+      previous: { id: buildId(1), store_build: null },
+    });
+    expect(await marksIn(core)).toEqual([buildId(2)]);
+  });
+
+  it("keeps a mark to its own scope", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(
+      registration(2, { fingerprintHash: "fingerprint-b" }),
+    );
+    await core.registerNativeBuild(registration(3, { channel: "beta" }));
+    await core.registerNativeBuild(
+      registration(4, {
+        platform: "android",
+        artifact: {
+          kind: "aab",
+          storageUri: "storage://native-builds/android/4/App.aab",
+          byteSize: 1,
+        },
+      }),
+    );
+    await core.registerNativeBuild(
+      registration(5, { fingerprintHash: null, appVersion: "1.0.0" }),
+    );
+    await core.registerNativeBuild(
+      registration(6, { fingerprintHash: null, appVersion: "1.1.0" }),
+    );
+
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      await core.markNativeBuild(buildId(n), { storeBuild: true });
+    }
+
+    expect(await marksIn(core)).toEqual(
+      [1, 2, 3, 4, 5, 6].map((n) => buildId(n)),
+    );
+    expect(
+      await core.findNativeBuild(
+        { ...scope, fingerprintHash: null, appVersion: "1.0.0" },
+        { storeBuild: true },
+      ),
+    ).toMatchObject({ id: buildId(5) });
+  });
+
+  it("clears a mark, and marking again changes nothing", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    expect(
+      await core.markNativeBuild(buildId(1), { storeBuild: true }),
+    ).toMatchObject({
+      nativeBuild: { id: buildId(1), store_build: true },
+      previous: null,
+    });
+    expect(
+      await core.markNativeBuild(buildId(1), { storeBuild: false }),
+    ).toMatchObject({
+      nativeBuild: { id: buildId(1), store_build: null },
+      previous: null,
+    });
+    expect(
+      await core.markNativeBuild(buildId(1), { storeBuild: false }),
+    ).toMatchObject({ nativeBuild: { store_build: null } });
+    expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
+    // Clearing a build that doesn't hold the mark leaves the one that does.
+    await core.registerNativeBuild(registration(2));
+    await core.markNativeBuild(buildId(2), { storeBuild: true });
+    await core.markNativeBuild(buildId(1), { storeBuild: false });
+    expect(await marksIn(core)).toEqual([buildId(2)]);
+  });
+
+  it("refuses a sandbox channel's build, and answers null for an unknown one", async () => {
+    const core = setup();
+    await core.registerNativeBuild(
+      registration(1, { channel: "sandbox-release" }),
+    );
+
+    await expect(
+      core.markNativeBuild(buildId(1), { storeBuild: true }),
+    ).rejects.toThrow(NativeBuildInputError);
+    expect(await marksIn(core)).toEqual([]);
+    // Clearing asks nothing of a store.
+    await expect(
+      core.markNativeBuild(buildId(1), { storeBuild: false }),
+    ).resolves.toMatchObject({ nativeBuild: { store_build: null } });
+    expect(
+      await core.markNativeBuild(buildId(9), { storeBuild: true }),
+    ).toBeNull();
+  });
+
+  it("drops the mark with a deleted build, and the scope can be marked again", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(registration(2));
+    await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    await core.deleteNativeBuild(buildId(1));
+
+    expect(await core.findNativeBuild(scope, { storeBuild: true })).toBeNull();
+    await core.markNativeBuild(buildId(2), { storeBuild: true });
+    expect(
+      await core.findNativeBuild(scope, { storeBuild: true }),
+    ).toMatchObject({ id: buildId(2) });
+  });
+
+  it("keeps the mark through a store submission and a new registration", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    await core.recordNativeBuildSubmission(buildId(1), {
+      destination: "testflight",
+      version: "1.0.0 (1)",
+    });
+    await core.registerNativeBuild(registration(2));
+
+    expect(
+      await core.findNativeBuild(scope, { storeBuild: true }),
+    ).toMatchObject({ id: buildId(1), submitted_to: "testflight" });
+  });
+
+  it("leaves one mark when marks of a scope race, with none before them", async () => {
+    const core = setup();
+    const builds = [1, 2, 3, 4, 5, 6];
+    for (const n of builds) await core.registerNativeBuild(registration(n));
+
+    const results = await Promise.all(
+      builds.map((n) => core.markNativeBuild(buildId(n), { storeBuild: true })),
+    );
+
+    expect(results.every((result) => result !== null)).toBe(true);
+    expect(await marksIn(core)).toHaveLength(1);
+  });
+
+  it("leaves one mark when marks of a scope race to replace one", async () => {
+    const core = setup();
+    const builds = [1, 2, 3, 4, 5, 6];
+    for (const n of builds) await core.registerNativeBuild(registration(n));
+    await core.markNativeBuild(buildId(1), { storeBuild: true });
+
+    await Promise.all(
+      builds
+        .slice(1)
+        .map((n) => core.markNativeBuild(buildId(n), { storeBuild: true })),
+    );
+
+    const marks = await marksIn(core);
+    expect(marks).toHaveLength(1);
+    expect(marks).not.toContain(buildId(1));
+  });
+
+  it("finds a build older than a bundle however many newer builds are in the way", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    for (let n = 2; n <= 12; n += 1) {
+      await core.registerNativeBuild(
+        registration(n, {
+          minBundleId: `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+        }),
+      );
+    }
+
+    expect(
+      await core.findNativeBuild(scope, {
+        builtInOlderThan: "01950000-0000-7000-8000-000000000000",
+      }),
+    ).toMatchObject({ id: buildId(1) });
+    expect(
+      await core.findNativeBuild(scope, {
+        builtInOlderThan: "01800000-0000-7000-8000-000000000000",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps a build key through the builds newer than the bundle", async () => {
+    const core = setup();
+    const keyA = `nbk1:${"a".repeat(64)}`;
+    const keyB = `nbk1:${"b".repeat(64)}`;
+    await core.registerNativeBuild(registration(1, { buildKey: keyA }));
+    await core.registerNativeBuild(registration(2, { buildKey: keyB }));
+    await core.registerNativeBuild(
+      registration(3, {
+        buildKey: keyA,
+        minBundleId: `019a0000-0000-7000-8000-${"3".repeat(12)}`,
+      }),
+    );
+
+    expect(
+      await core.findNativeBuild(scope, {
+        buildKey: keyA,
+        builtInOlderThan: "01950000-0000-7000-8000-000000000000",
+      }),
+    ).toMatchObject({ id: buildId(1), build_key: keyA });
+  });
+
+  it("finds the newest build older than a bundle, past builds newer than it", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    await core.registerNativeBuild(registration(2));
+    await core.registerNativeBuild(
+      registration(3, {
+        minBundleId: `019a0000-0000-7000-8000-${"3".repeat(12)}`,
+      }),
+    );
+    await core.registerNativeBuild(
+      registration(4, {
+        minBundleId: `019a0000-0000-7000-8000-${"4".repeat(12)}`,
+      }),
+    );
+    const bundleId = "01950000-0000-7000-8000-000000000000";
+
+    expect(
+      await core.findNativeBuild(scope, { builtInOlderThan: bundleId }),
+    ).toMatchObject({ id: buildId(2) });
+    // The usual case reads the newest build alone, and takes it.
+    expect(
+      await core.findNativeBuild(scope, {
+        builtInOlderThan: "01ff0000-0000-7000-8000-000000000000",
+      }),
+    ).toMatchObject({ id: buildId(4) });
+    // No build is older than the oldest.
+    expect(
+      await core.findNativeBuild(scope, {
+        builtInOlderThan: "01000000-0000-7000-8000-000000000000",
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("a built-in bundle row and released SDKs", () => {
   // A device on a release build reports its MIN_BUNDLE_ID as its current
   // bundle, which the server already looks up. Registering the build makes

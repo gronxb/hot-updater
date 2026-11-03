@@ -124,8 +124,9 @@ export function PatchesCard({
                 <EmptyTitle>No patches from this build</EmptyTitle>
                 <EmptyDescription>
                   A deploy adds a patch from this build's bundle while it is its
-                  scope's newest build and the deploy config turns patches on,
-                  with <code className="font-mono">patch</code> in{" "}
+                  scope's store build, or its newest build with none marked, and
+                  the deploy config turns patches on, with{" "}
+                  <code className="font-mono">patch</code> in{" "}
                   <code className="font-mono">hot-updater.config.ts</code>.
                 </EmptyDescription>
               </EmptyHeader>

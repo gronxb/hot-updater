@@ -98,6 +98,7 @@ const defaultScenarioNames = [
   "bspatch-manifest-diff-fallback",
   "store-install-patches-from-built-in",
   "store-install-built-in-mismatch-downloads",
+  "store-install-patches-from-marked-build",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",
@@ -353,6 +354,87 @@ describe("E2E scenario contract", () => {
     });
   });
 
+  describe("store-install-patches-from-marked-build", () => {
+    const name = "store-install-patches-from-marked-build";
+    const reason =
+      "The store install's first update wasn't a patch from the marked build:";
+
+    it("passes only when every step holds", async () => {
+      await expect(runScenarioFailingAt(name)).resolves.toEqual(
+        expect.arrayContaining([
+          "mark the store build",
+          "the server log shows only a patch downloaded",
+        ]),
+      );
+    });
+
+    it("names the newer build the mark must win over, and registers it after the store build", async () => {
+      const calls = await recordScenarioCalls(name);
+      const controlSteps = calls.flatMap((call) =>
+        call.kind === "control" ? [call] : [],
+      );
+      const register = controlSteps.filter(
+        ({ pathName }) => pathName === "/e2e/jobs/register-native-build",
+      );
+      expect(register.map(({ body }) => body)).toEqual([
+        { appVersion: "1.0" },
+        { appVersion: "1.0", build: "other", channel: "$storeBuildChannel" },
+      ]);
+      const deploy = controlSteps.find(
+        ({ pathName }) => pathName === "/e2e/jobs/deploy-bundle",
+      );
+      // Naming a base would wait for that patch, so a deploy from the wrong
+      // base would fail on the wait, not on what the device downloads.
+      expect(deploy?.body).not.toHaveProperty("diffBaseBundleId");
+      const steps = controlSteps.map(({ pathName }) => pathName);
+      expect(steps.indexOf("/e2e/jobs/mark-native-build")).toBeLessThan(
+        steps.indexOf("/e2e/jobs/deploy-bundle"),
+      );
+    });
+
+    it.each([
+      "the app installs the first update",
+      "the server log shows only a patch downloaded",
+      "the first update runs",
+    ])("fails when %s doesn't hold, then checks the rest", async (stage) => {
+      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
+        `${reason}\nmismatch at ${stage}`,
+      );
+    });
+
+    it.each([
+      "read both builds' IDs from their code",
+      "register the store build",
+      "register a newer build on the store build's channel",
+      "mark the store build",
+      "deploy the first update",
+      "launch the fresh store install",
+      "the store install runs its built-in bundle",
+      "install the first update",
+      "run the first update",
+    ])("stops at once when %s fails", async (stage) => {
+      await expect(runScenarioFailingAt(name, stage)).rejects.toThrow(
+        new RegExp(`^mismatch at ${stage}$`),
+      );
+    });
+
+    it("expects only what the app renders and the server's log shows", async () => {
+      const calls = await recordScenarioCalls(name);
+      const controlPaths = calls.flatMap((call) =>
+        call.kind === "control" ? [call.pathName] : [],
+      );
+      expect(new Set(controlPaths)).toEqual(
+        new Set([
+          "/e2e/jobs/read-native-builds",
+          "/e2e/jobs/register-native-build",
+          "/e2e/jobs/mark-native-build",
+          "/e2e/jobs/deploy-bundle",
+          "/e2e/assert-bundle-artifact-transfers",
+        ]),
+      );
+    });
+  });
+
   it("keeps Console Insights and Remote Config enabled for every standalone database profile", async () => {
     // Given: Console Insights is an acceptance checkpoint after each device
     // scenario, every standalone adapter implements the insights model, and
@@ -379,7 +461,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(39);
+    expect(new Set(listScenarioNames()).size).toBe(40);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {
@@ -393,6 +475,7 @@ describe("E2E scenario contract", () => {
       // native build `native-build ios|android` tracks.
       "store-install-patches-from-built-in",
       "store-install-built-in-mismatch-downloads",
+      "store-install-patches-from-marked-build",
       // The post-crash native check is proved on the example app first; a
       // host's runtime may outlive a fatal of the React Native it embeds.
       "post-content-crash-native-recovery",

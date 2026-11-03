@@ -118,8 +118,9 @@ grep -laF -e 'Ad Hoc Provisioning Profile: com.example.app</string>' -e 'XC Ad H
 ```
 
 Each rebuild becomes its scope's newest build, so bundles deployed before it no
-longer reach an install of it until they are deployed again. Register iPhones
-together, then rebuild once.
+longer reach an install of it until they are deployed again, and new deploys
+patch from it unless a [store build is marked](/docs/guides/native-build#mark-the-store-build).
+Register iPhones together, then rebuild once.
 
 </Step>
 <Step>

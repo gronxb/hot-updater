@@ -14,6 +14,7 @@ import {
   getChannels,
   getConfig,
   getNativeBuildDetail,
+  markNativeBuild as markNativeBuildApi,
   createNativeBuildDownloadLink,
   getNativeBuildDownloadUrl,
   getNativeBuildInstallEligibility,
@@ -315,6 +316,29 @@ export function useDeleteChannelMutation() {
       deleteChannelApi({ data: input }).then((response) => response.data),
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    },
+  });
+}
+
+/**
+ * Marks a build as its scope's store build, or clears it. The mark it replaced
+ * is on another build's page, in the list and in a release sheet's link, so
+ * they read again.
+ */
+export function useMarkNativeBuildMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; storeBuild: boolean }) =>
+      markNativeBuildApi({ data: input }),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["native-build"] }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.nativeBuilds.all,
+        }),
+        // A release sheet links the build new deploys patch from.
+        queryClient.invalidateQueries({ queryKey: ["release-native-build"] }),
+      ]);
     },
   });
 }

@@ -221,6 +221,30 @@ describe("getNativeBuildDetail", () => {
     expect(detail?.servedNow.map(({ bundleId }) => bundleId)).toEqual([id(20)]);
   });
 
+  it("serves a two-part version's install its own version's release, not a later patch version's", async () => {
+    const core = memoryCore();
+    const scope: Scope = {
+      platform: "android",
+      channel: "beta",
+      fingerprintHash: null,
+      appVersion: "1.7",
+    };
+    await register(core, 1, id(10), scope);
+    await deploy(core, bundle(20), {
+      channel: "beta",
+      fingerprintHash: null,
+      targetAppVersion: "1.7.0",
+    });
+    await deploy(core, bundle(21), {
+      channel: "beta",
+      fingerprintHash: null,
+      targetAppVersion: "1.7.1",
+    });
+
+    const detail = await getNativeBuildDetail(core, buildId(1));
+    expect(detail?.servedNow.map(({ bundleId }) => bundleId)).toEqual([id(20)]);
+  });
+
   it("reads five times whatever the build, and nothing for an unknown ID", async () => {
     const memory = memoryCore();
     await register(memory, 1, id(10));
@@ -233,6 +257,7 @@ describe("getNativeBuildDetail", () => {
     expect(calls.sort()).toEqual(
       [
         "findNativeBuild",
+        "findNativeBuild",
         "getBundle",
         "getNativeBuild",
         "getReleaseCatalogRow",
@@ -243,6 +268,24 @@ describe("getNativeBuildDetail", () => {
     calls.length = 0;
     await expect(getNativeBuildDetail(core, buildId(9))).resolves.toBeNull();
     expect(calls).toEqual(["getNativeBuild"]);
+  });
+
+  it("reads the scope's mark only for a build that doesn't hold it", async () => {
+    const memory = memoryCore();
+    await register(memory, 1, id(10));
+    await register(memory, 2, id(11));
+    await memory.markNativeBuild(buildId(1), { storeBuild: true });
+    const { core, calls } = counted(memory);
+
+    const marked = await getNativeBuildDetail(core, buildId(1));
+    expect(marked?.storeBuildInScope?.id).toBe(buildId(1));
+    expect(calls.filter((name) => name === "findNativeBuild")).toHaveLength(1);
+
+    calls.length = 0;
+    const other = await getNativeBuildDetail(core, buildId(2));
+    expect(other?.storeBuildInScope?.id).toBe(buildId(1));
+    expect(other?.newestInScope?.id).toBe(buildId(2));
+    expect(calls.filter((name) => name === "findNativeBuild")).toHaveLength(2);
   });
 });
 

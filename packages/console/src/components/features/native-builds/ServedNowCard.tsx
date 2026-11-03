@@ -25,6 +25,9 @@ import {
 } from "@/components/ui/table";
 import { formatByteSize } from "@/lib/native-builds";
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
+import { shellQuote } from "@/lib/shell";
+
+import { CopyableText } from "./CopyableText";
 
 /** How the first OTA to a bundle downloads on this build. */
 export type FirstDownload =
@@ -86,7 +89,27 @@ export function ServedNowCard({
 }: {
   readonly detail: NativeBuildDetail;
 }) {
-  const { servedNow, patches, catalogScopeKey } = detail;
+  const { build, channel, servedNow, patches, catalogScopeKey } = detail;
+  // A hosted Console runs no diff, so a marked build whose first OTA has no
+  // patch from it gets the command that adds one. The first OTA is the newest
+  // release that serves anyone: one at 0% with no cohort serves no install.
+  const firstOta = servedNow.find(
+    ({ rolloutCohortCount, targetCohorts }) =>
+      rolloutCohortCount > 0 || targetCohorts.length > 0,
+  )?.bundleId;
+  const missingPatch =
+    build.store_build === true &&
+    firstOta !== undefined &&
+    firstOta !== null &&
+    firstDownloadOf(patches, firstOta).kind === "full"
+      ? [
+          "npx hot-updater patch",
+          `-p ${build.platform}`,
+          `-c ${shellQuote(channel)}`,
+          `-b ${shellQuote(firstOta)}`,
+          `--base-artifact-id ${shellQuote(build.min_bundle_id)}`,
+        ].join(" ")
+      : null;
   const scopeLink = (
     <Link
       className="inline-flex items-center gap-0.5 underline-offset-4 hover:underline"
@@ -202,6 +225,15 @@ export function ServedNowCard({
                 })}
               </TableBody>
             </Table>
+            {missingPatch === null ? null : (
+              <div className="flex flex-col gap-2 border-t px-4 py-3 text-xs">
+                <p>
+                  The OTA fresh installs get first has no patch from this store
+                  build, so they download all of it. Add one from your project:
+                </p>
+                <CopyableText label="the patch command" value={missingPatch} />
+              </div>
+            )}
             <p className="border-t px-4 py-3 text-xs text-muted-foreground">
               What the update check serves an install of this build now, newest
               first: not the history. {scopeLink}

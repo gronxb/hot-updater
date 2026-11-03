@@ -29,6 +29,7 @@ import {
 import { type Row, ui } from "../utils/cli-ui";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
+import { describeNativeBuild } from "../utils/native/describeNativeBuild";
 import {
   downloadNativeBuild,
   nativeBuildDownloadPath,
@@ -36,6 +37,7 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import { findMissingStorePatch } from "../utils/native/storeBuildPatch";
 import {
   applyStoreTestFlightGroup,
   readStoreStatus,
@@ -568,6 +570,8 @@ export const handleNativeBuildDelete = async (
             ui.kv("Kind", build.artifact_kind),
             ui.kv("Size", formatBytes(build.byte_size)),
             ui.kv("Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))),
+            build.store_build === true &&
+              "This is the scope's store build; deploys go back to the newest build.",
           ]),
         );
       }
@@ -634,5 +638,61 @@ export const handleNativeBuildDelete = async (
   } catch (error) {
     p.log.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
+  }
+};
+
+/**
+ * Marks a build as what the store sells, or clears its mark. A new mark
+ * changes no published OTA: when the OTA a fresh install gets first has no
+ * patch from the build, it prints the command that adds one. Running it again
+ * changes nothing, for CI.
+ */
+export const handleNativeBuildMark = async (
+  id: string,
+  options: { readonly clear?: boolean; readonly json?: boolean },
+) => {
+  if (!options.json) printBanner();
+  try {
+    const config = await loadConfig(null);
+    const server = await loadServer(config);
+    try {
+      const marked = await server.core.markNativeBuild(id, {
+        storeBuild: !options.clear,
+      });
+      if (marked === null) {
+        await requireNativeBuild(server, id);
+        return;
+      }
+      const { nativeBuild, previous } = marked;
+      const label = describeNativeBuild(nativeBuild);
+      // Deploys with patches off add none either, so nothing is missing.
+      const missingPatch =
+        options.clear || !config.patch?.enabled
+          ? null
+          : await findMissingStorePatch(server.core, nativeBuild);
+      if (options.json) {
+        console.log(JSON.stringify({ nativeBuild, previous, missingPatch }));
+        return;
+      }
+      p.log.success(
+        options.clear
+          ? `${label} isn't the store build`
+          : [
+              `${label} is the store build`,
+              previous !== null && `Replaces ${describeNativeBuild(previous)}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+      );
+      if (missingPatch !== null) {
+        p.log.warn(
+          `OTA ${missingPatch.bundleId.slice(0, 8)} has no patch from it, so fresh installs download all of it.\n${missingPatch.command}`,
+        );
+      }
+    } finally {
+      await safeDispose(server);
+    }
+  } catch (error) {
+    failCommand(error, options.json);
   }
 };

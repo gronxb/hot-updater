@@ -558,16 +558,26 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
 
   // A scope without a build answers 200 with null data, so a 404 means a
   // server without these routes.
-  // With `buildKey`, the newest build of the scope with that native build key.
+  // With `buildKey`, the newest build of the scope with that native build key;
+  // with `storeBuild=true`, its marked build; with `builtInOlderThan`, its newest
+  // build older than that bundle.
   findNativeBuild: onCore(async (core, request) => {
     const url = new URL(request.url);
     const scope = nativeBuildScopeOf(url);
     const buildKey = url.searchParams.get("buildKey");
+    const builtInOlderThan = url.searchParams.get("builtInOlderThan");
+    const options = {
+      ...(buildKey === null ? {} : { buildKey }),
+      ...(url.searchParams.get("storeBuild") === "true"
+        ? { storeBuild: true as const }
+        : {}),
+      ...(builtInOlderThan === null ? {} : { builtInOlderThan }),
+    };
     return json({
       data: await refusingInvalid(() =>
-        buildKey === null
+        Object.keys(options).length === 0
           ? core.findNativeBuild(scope)
-          : core.findNativeBuild(scope, { buildKey }),
+          : core.findNativeBuild(scope, options),
       ),
     });
   }),
@@ -620,6 +630,23 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
           requireRouteParam(params, "id"),
           submission,
         ),
+      ),
+    });
+  }),
+
+  // An unknown ID answers 200 with null data, so a 404 means a server without
+  // the route.
+  markNativeBuild: onCore(async (core, request, params) => {
+    const input = await body(request);
+    if (!isRecord(input) || typeof input.storeBuild !== "boolean") {
+      throw new HandlerBadRequestError(
+        "A native build's store build mark needs storeBuild, true or false.",
+      );
+    }
+    const mark = { storeBuild: input.storeBuild };
+    return json({
+      data: await refusingInvalid(() =>
+        core.markNativeBuild(requireRouteParam(params, "id"), mark),
       ),
     });
   }),
@@ -707,6 +734,11 @@ export const ADMIN_ROUTES: readonly {
     method: "POST",
     path: "/native-builds/:id/submission",
     handler: "recordNativeBuildSubmission",
+  },
+  {
+    method: "POST",
+    path: "/native-builds/:id/store-build",
+    handler: "markNativeBuild",
   },
   {
     method: "DELETE",
