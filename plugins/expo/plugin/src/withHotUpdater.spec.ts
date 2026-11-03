@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -939,4 +939,56 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
       expect(result).toBe(_expected);
     });
   });
+});
+
+describe("withHotUpdater - Expo SDK floor", () => {
+  it.each(["android", "ios"] as const)(
+    "refuses to prebuild %s on an SDK below 55",
+    async (platform) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-sdk-"));
+      tempDirs.push(dir);
+      await mkdir(path.join(dir, "node_modules/expo"), { recursive: true });
+      await writeFile(
+        path.join(dir, "node_modules/expo/package.json"),
+        JSON.stringify({ name: "expo", version: "54.0.38" }),
+      );
+      vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
+        updateStrategy: "appVersion",
+      } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
+
+      const config = withHotUpdater(
+        {
+          _internal: { projectRoot: dir },
+          name: "Hot Updater Test",
+          slug: "hot-updater-test",
+        },
+        {},
+      );
+      const mod =
+        platform === "android"
+          ? config.mods?.android?.manifest
+          : config.mods?.ios?.infoPlist;
+      if (!mod) throw new Error(`${platform} mod was not registered`);
+
+      await expect(
+        (mod as (config: unknown) => Promise<unknown>)({
+          ...config,
+          modRawConfig: config,
+          modRequest: {
+            introspect: true,
+            modName: platform === "android" ? "manifest" : "infoPlist",
+            platform,
+            platformProjectRoot: path.join(dir, platform),
+            projectRoot: dir,
+          },
+          modResults:
+            platform === "android"
+              ? { manifest: { $: {}, application: [{}] } }
+              : {},
+        }),
+      ).rejects.toThrow(
+        "Hot Updater requires Expo SDK 55 or later. Run:\nnpx expo install expo@^55.0.0 --fix",
+      );
+    },
+  );
 });

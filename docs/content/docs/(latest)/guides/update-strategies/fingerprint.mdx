@@ -141,8 +141,7 @@ differs only in where it reads two inputs, so `fingerprint create` before
 
 - **Native packages** come from Expo's autolinking, as the native build links
   them: Expo modules from `expo-modules-autolinking resolve`, and React Native
-  packages from its `react-native-config` (from SDK 52), or from React Native
-  CLI on earlier SDKs or with
+  packages from its `react-native-config`, or from React Native CLI with
   `EXPO_USE_COMMUNITY_AUTOLINKING=1`. In a monorepo, a module is linked when it
   is listed in the app's `dependencies` or found in
   `expo.autolinking.searchPaths`. Set `EXPO_USE_COMMUNITY_AUTOLINKING`

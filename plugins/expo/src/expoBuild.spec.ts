@@ -127,3 +127,32 @@ describe("Expo build engine from evaluated config", () => {
     expect(mocks.compileHermes).not.toHaveBeenCalled();
   });
 });
+
+describe("Expo SDK floor", () => {
+  it("refuses a build on an SDK below 55, before bundling", async () => {
+    const cwd = await createProject({});
+    // The real expo package, reporting SDK 54.
+    const real = await fs.realpath(path.join(cwd, "node_modules/expo"));
+    await fs.rm(path.join(cwd, "node_modules/expo"));
+    await fs.mkdir(path.join(cwd, "node_modules/expo"));
+    for (const entry of await fs.readdir(real)) {
+      if (entry === "package.json") continue;
+      await fs.symlink(
+        path.join(real, entry),
+        path.join(cwd, "node_modules/expo", entry),
+      );
+    }
+    const manifest = JSON.parse(
+      await fs.readFile(path.join(real, "package.json"), "utf8"),
+    ) as Record<string, unknown>;
+    await fs.writeFile(
+      path.join(cwd, "node_modules/expo/package.json"),
+      JSON.stringify({ ...manifest, version: "54.0.38" }),
+    );
+
+    await expect(expo()({ cwd }).build({ platform: "ios" })).rejects.toThrow(
+      "Hot Updater requires Expo SDK 55 or later. Run:\nnpx expo install expo@^55.0.0 --fix",
+    );
+    expect(mocks.execa).not.toHaveBeenCalled();
+  });
+});

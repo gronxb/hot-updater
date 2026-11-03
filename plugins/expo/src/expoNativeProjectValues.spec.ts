@@ -84,10 +84,10 @@ describe("getExpoNativeProjectValues", () => {
     });
     const before = await hashTree(cwd);
 
-    // The project's own Expo SDK decides: SDK 50, this package's, writes
-    // `version` for iOS, where later SDKs prefer `ios.version`.
+    // The project's own Expo SDK decides: SDK 55, this package's, prefers
+    // `ios.version` for iOS.
     await expect(getExpoNativeProjectValues(cwd, "ios")).resolves.toEqual({
-      appVersion: "3.4.5",
+      appVersion: "3.4.6",
       channel: "qa",
     });
     await expect(

@@ -7,4 +7,4 @@ Respect more of the app's own code in a sandbox build, and report sandbox hosts 
 
 - iOS: a `backgroundColor` the app sets on its root view before **Open** now reaches the real root.
 - iOS: a sandbox link no longer shows in the `urlContexts` of a scene delegate's connection options.
-- `hot-updater doctor` no longer warns about `use_frameworks` on an Expo project that doesn't enable it, and treats Expo SDK 52, 54, 57 and 58 as tested.
+- `hot-updater doctor` no longer warns about `use_frameworks` on an Expo project that doesn't enable it, and treats Expo SDK 55, 57 and 58 as tested.
