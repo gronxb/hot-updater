@@ -90,6 +90,12 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,
+  // The Expo SDK check reads the project's expo as the CLI does.
+  ...(({ EXPO_SDK_UPGRADE_COMMAND, MINIMUM_EXPO_SDK, readExpoSdk }) => ({
+    EXPO_SDK_UPGRADE_COMMAND,
+    MINIMUM_EXPO_SDK,
+    readExpoSdk,
+  }))(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   // The secrets check reads the environment and the adapter as the CLI does.
   ...(({
     bundleSigningPutCommand,

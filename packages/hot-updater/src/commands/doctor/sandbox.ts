@@ -2,11 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { findSandboxGradleBlocker } from "@hot-updater/android-helper";
-import type { ConfigResponse } from "@hot-updater/cli-tools";
+import {
+  type ConfigResponse,
+  MINIMUM_EXPO_SDK,
+  readExpoSdk,
+} from "@hot-updater/cli-tools";
 
 import { usesSwiftPackageManager } from "../../utils/native/sandbox";
 import { resolveSandboxApplicationId } from "../../utils/version/getAndroidVersion";
-import { expoSdkOf, MINIMUM_EXPO_SDK } from "./expoSdk";
 import type { NativeCheckIssue } from "./issues";
 
 /** Build adapters no sandbox build has run on yet. */
@@ -140,7 +143,7 @@ export const checkSandboxSchemes = async (
     issues.push(unqualified("project", `the ${adapter} build adapter`));
   }
   if (adapter === "expo") {
-    const sdk = expoSdkOf(cwd);
+    const sdk = readExpoSdk(cwd)?.sdk ?? null;
     // Below the minimum, doctor's Expo SDK error says what to do.
     const supported = sdk === null || sdk >= MINIMUM_EXPO_SDK;
     if (supported && (sdk === null || !QUALIFIED_EXPO_SDKS.has(sdk))) {
