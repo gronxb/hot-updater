@@ -843,6 +843,7 @@ function BundlesPage() {
           <DataTablePagination
             count={releases.length}
             label="Bundle pagination"
+            pending={releasesQuery.isPlaceholderData}
             newest={onLaterPage ? { search: newestSearch, to: "/" } : undefined}
             next={nextSearch ? { search: nextSearch, to: "/" } : undefined}
             previous={

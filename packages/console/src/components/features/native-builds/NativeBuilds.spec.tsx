@@ -531,6 +531,31 @@ describe("NativeBuildsTable", () => {
     ).toBe("/native-builds?channel=pr-130");
   });
 
+  it("keeps the pager disabled while the previous channel's page stands in for the new one", () => {
+    render(
+      <NativeBuildsTable
+        builds={{
+          ...builds([build()], { next: id(9), previous: id(8) }),
+          isPlaceholderData: true,
+        }}
+        channel="pr-131"
+        onChannel={vi.fn()}
+        paged
+      />,
+    );
+
+    // Its cursors belong to the previous channel's list.
+    for (const name of ["Previous", "Next", "Newest"]) {
+      expect(screen.queryByRole("link", { name })).toBeNull();
+    }
+    expect(
+      screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("disables Previous and Next at the ends, with no Newest on the first page", () => {
     render(
       <NativeBuildsTable

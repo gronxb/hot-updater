@@ -206,6 +206,7 @@ export type PageLink = Pick<LinkProps, "to" | "search">;
 export function DataTablePagination({
   count,
   label,
+  pending = false,
   newest,
   previous,
   next,
@@ -213,6 +214,11 @@ export function DataTablePagination({
   readonly count: number;
   /** The navigation's name, such as "Bundle pagination". */
   readonly label: string;
+  /**
+   * Whether the list shows the previous query's page while the next loads:
+   * its cursors belong to that query, so the controls wait.
+   */
+  readonly pending?: boolean;
   /** The first page, when the list shows another. */
   readonly newest?: PageLink;
   /** The newer page, if any. */
@@ -230,7 +236,7 @@ export function DataTablePagination({
         {count === 1 ? "entry" : "entries"}, newest first
       </p>
       <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-        {newest ? (
+        {newest && !pending ? (
           <Link
             className={buttonVariants({
               className: "h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none",
@@ -243,7 +249,7 @@ export function DataTablePagination({
             Newest
           </Link>
         ) : null}
-        {previous ? (
+        {previous && !pending ? (
           <Link
             className={buttonVariants({
               className: "h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none",
@@ -267,7 +273,7 @@ export function DataTablePagination({
             Previous
           </Button>
         )}
-        {next ? (
+        {next && !pending ? (
           <Link
             className={buttonVariants({
               className: "h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none",

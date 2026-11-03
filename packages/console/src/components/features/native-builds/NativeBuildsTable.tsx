@@ -516,6 +516,7 @@ export function NativeBuildsTable({
         <DataTablePagination
           count={rows.length}
           label="Native build pages"
+          pending={builds.isPlaceholderData}
           newest={
             paged
               ? { search: channelSearch(channel), to: "/native-builds" }
