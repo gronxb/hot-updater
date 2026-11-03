@@ -1,5 +1,51 @@
 # @hot-updater/cli-tools
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- a5daa89: Track local native modules the fingerprint missed.
+
+  A local Expo module from `create-expo-module --local` has no `package.json`, so the fingerprint recorded only its name, and a renamed function or an edited native body shipped as an OTA onto a binary without it. The fingerprint now follows these modules' native files and `expo-module.config.json`, the same inputs as a module with a `package.json`, on Expo apps and on bare apps with Expo modules installed.
+
+  Also tracked now:
+  - a local Expo module whose `package.json` has no `name`, or a different one, and a local Expo module named like its app;
+  - platform source paths in `react-native.config.js` with no `root`;
+  - a local React Native package that only Expo's autolinking finds, on a bare app with Expo modules installed;
+  - a `file:` folder dependency that pnpm, Yarn, or Bun copies into `node_modules`.
+
+  **Who sees a one-time fingerprint change:** only a project with one of these modules. Every other project, including stock Expo, bare, and Rock apps and local modules that have a `package.json`, keeps a byte-identical fingerprint. The engine stays `hot-updater/interface@1`.
+
+  **What to do:** if `doctor` or `deploy` reports a changed fingerprint naming the module's files, run `npx hot-updater fingerprint create`, rebuild, and release the app. Installed binaries on the old fingerprint stop receiving new updates until users have the new build.
+
+### Patch Changes
+
+- ad99046: Install an ad hoc IPA on an iPhone from the Console, and register iPhones from the CLI.
+  - A build's page on an iPhone checks whether the IPA includes that phone, reading its `Info.plist` and provisioning profiles from storage with HTTP Range requests. It offers "Check this iPhone", then "Install" or "Not in this build", with "Install anyway" second. A storage that answers Range with the whole file shows "Installation details unavailable", and nothing downloads.
+  - "Check this iPhone" installs a UDID-only profile. The phone lands on a page, which takes no session and reads nothing, with its UDID, one command to send a maintainer, and a copy button. The UDID stays in the phone's `localStorage`.
+  - Install opens `itms-services` on `/_hot-updater/native-builds/{id}/manifest.plist?t=`, which verifies its download token before any read and mints nothing. An Install link lasts about an hour.
+  - `native-build devices add --udid <UDID> --name <name>` (`--udid` repeats) registers iPhones in App Store Connect, each at most once, and `native-build devices list` reads them back. The Console never holds an Apple key.
+  - `native-build ios` prints how many devices the `.ipa` lists, and with `--udid` whether each is included. A sandbox scheme can export with `release-testing`.
+  - A pull request preview's QR code of an IPA holds the build's page, through `/_hot-updater/native-builds/qr?target=page`, which stays anonymous and reads nothing.
+  - `@hot-updater/protocol/native-artifact` adds `readIpaInstallInfo`, `readProfileServiceUdid` and `normalizeIosUdid`. Its plist parser now reads crafted XML in linear time.
+  - An ad hoc export in CI signs in the build's own keychain, and only its development certificates are revoked.
+  - An iOS build's output and cache hold only the `.ipa` of its export. Xcode's `Packaging.log`, which holds the API key's bearer token for 20 minutes, no longer reaches `.hot-updater/output`. Build logs mask any JSON Web Token.
+
+- ef790db: Add `hot-updater secrets pull [--out .env.hotupdater] [--only a,b] [--force]`, the mirror of `secrets import`: it writes the deploy credentials a team `secrets` adapter holds to a local env file for development and local builds.
+  - A store is read by name, so it pulls what the config's adapters read with `secret()` and `HOT_UPDATER_API_KEY`, or exactly the names `--only` lists. App runtime env is out of scope.
+  - Build credentials (App Store Connect API key, Play service account, upload keystore, bundle signing key) are skipped and named, and never read: builds read them from the store, so a copy would only be a private key on disk.
+  - The file ends up 0600 and is merged, keeping other lines and comments. A name the file holds with another value is asked about at a terminal, and refused without one unless `--force`. It warns when git doesn't ignore the file, and never prints values.
+  - With `localSecrets()` there is nothing to pull: it says so and exits 0.
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [1e85609]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/server@1.2.0-rc.13
+  - @hot-updater/protocol@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes

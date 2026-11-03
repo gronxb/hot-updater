@@ -1,5 +1,55 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+- 3d95e55: Sandbox builds now show a native screen before the app's JavaScript starts, and open preview links natively. `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles. See the Sandbox builds guide.
+  - iOS: a gate at the deepest `RCTRootViewFactory` method holds React Native behind a stable container until the screen's Open. Notifications, background entry points, shortcuts and the app's own links start the app at once; a host it can't gate starts as usual, with a log.
+  - Android: the build reads the variant's merged manifest and moves the launcher entry to the sandbox's activity, which forwards anything addressed to the app with its intent. It refuses more than one launcher and task settings its activity can't share a task with.
+  - A link is checked against the build's fingerprint, confirmed by name, checked on the server, and only then deletes downloaded bundles. A failure afterwards shows what's selected now and offers a retry. A link waits across restarts for the app's first answered update check.
+  - `createPreviewLink` and `parsePreviewLink` join `@hot-updater/protocol/native-artifact`, and an artifact check refuses a sandbox build whose launcher or URL scheme isn't the sandbox's.
+
+- ea52563: A sandbox build's first screen is now a real screen: Home and Info tabs, dark mode, and the same screen over the running app with a shake. It sends the update server nothing when it opens, and `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles.
+  - Home: the bundle the next launch runs, by bundle rather than by channel; a Dev server section; the previews this device opened; Scan QR; Enter a channel. iOS scans in the app. Android opens the system camera, and a pasted link gets the same checks.
+  - Over the app: Running, Reload, and what the next launch runs when it differs.
+  - A crash banner from what the launch left: a rollback only when one happened, and a verified bundle that crashed stays selected, with a reset.
+  - A sandbox app's `Info.plist` gets the camera and local network usage texts and `NSAllowsLocalNetworking`, keeping any value the app set.
+
+### Patch Changes
+
+- 7cc4b67: Keep an OTA from getting stuck after an app goes back to an earlier build.
+
+  When a build of another fingerprint, channel, or version is installed, the SDK deletes the downloaded bundles. It left `metadata.json` naming them. If that build wrote no metadata of its own, because it had no network or its channel was empty, reinstalling the original build brought the old selection back: the app ran its built-in JavaScript, `getBundleId()` reported the deleted OTA, and `checkForUpdate` stopped offering it until a newer release was published.
+  - The cleanup now replaces the metadata before it deletes the bundles, so a crash between the two leaves only files nothing names. A pending OTA caught by the cleanup is no longer recorded as crashed.
+  - A launch now forgets a verified bundle whose files are gone, so a device already left in this state reports what it runs and installs the OTA again.
+
+- 134d970: Keep the iOS sandbox layer out of a build that overrides the pod's excluded files.
+  - An app's own `EXCLUDED_SOURCE_FILE_NAMES` replaced the only thing keeping the layer out, so a plain `xcodebuild` could show the sandbox screen. Its sources now compile to nothing without a condition only Hot Updater's build of a sandbox scheme sets, and it starts only with the `Info.plist` key that build writes
+  - On Android, a project that gave every library a build type or flavor named `sandbox` compiled the layer in, unused. Those source sets now stay empty
+  - A scheme's `xcconfig` that sets `SWIFT_ACTIVE_COMPILATION_CONDITIONS` or `GCC_PREPROCESSOR_DEFINITIONS` with a condition such as `[config=Release]` is now refused for a sandbox scheme, since it would outrank the build's own
+
+- 7d6a7c9: Show a sandbox build's first screen on React Native 0.83, and so on Expo SDK 55. iOS started the app straight away there, because the gate didn't hold the root view method that version calls.
+- eafdc72: Respect more of the app's own code in a sandbox build, and report sandbox hosts correctly.
+  - iOS: a `backgroundColor` the app sets on its root view before **Open** now reaches the real root.
+  - iOS: a sandbox link no longer shows in the `urlContexts` of a scene delegate's connection options.
+  - `hot-updater doctor` no longer warns about `use_frameworks` on an Expo project that doesn't enable it, and treats Expo SDK 55, 57 and 58 as tested.
+
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/protocol@1.2.0-rc.13
+  - @hot-updater/plugin-insights@1.2.0-rc.13
+  - @hot-updater/plugin-remote-config@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes

@@ -1,5 +1,83 @@
 # @hot-updater/plugin-core
 
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 1e85609: Mark the build the store sells, so a fresh install's first OTA stays a patch however many builds follow it.
+  - `hot-updater native-build mark <id> [--clear]` marks a build as its scope's store build, replacing the scope's mark in one write, or clears it. A build on a `sandbox-*` channel can't be marked. Run it again and it changes nothing. It changes no OTA already out: when the OTA a fresh install gets first has no patch from the build, it prints the `hot-updater patch` command that adds one, and `--json` carries it as `missingPatch`. The Native builds page in the Console has the same action, and shows the same command.
+  - `hot-updater deploy` patches from exactly one built-in bundle of its scope: the store build, or with no mark the most recently registered build, in one more indexed read. It prints which one, and whether it was marked. A build made after the deployed bundle is passed over for an older one instead of leaving the deploy with no built-in base.
+  - A target range such as `1.x.x`, and a default target such as `1.7.x` for a project at `1.7`, use the project's app version for that lookup when the range holds it. They found no build before.
+  - `native_builds` has a nullable `store_build` and a unique `byStoreBuild` index, in v1.2's existing `0002` migrations. `schema.core` stays `1.2.0`, so a database a v1.2 prerelease migrated needs the column and the index by hand.
+
+  If you deployed a 1.2.0 prerelease, its database already ran `0002` without `store_build`, and nothing reports it: the schema check, `hot-updater doctor` and `db migrate` all pass. Apply this before you deploy this release's server or CLI, or native build registration and `native-build mark` fail:
+  - Cloudflare D1, and Kysely on SQLite or libSQL:
+
+    ```sql
+    ALTER TABLE "native_builds" ADD COLUMN "store_build" INTEGER;
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("scope_key", "store_build");
+    ```
+
+  - Supabase:
+
+    ```sql
+    ALTER TABLE "hot_updater_v1_native_builds" ADD COLUMN "store_build" boolean;
+    CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byStoreBuild" ON "hot_updater_v1_native_builds" ("scope_key", "store_build");
+    ```
+
+  - PostgreSQL (`@hot-updater/postgres`, and Kysely on PostgreSQL):
+
+    ```sql
+    ALTER TABLE "native_builds" ADD COLUMN "store_build" boolean;
+    CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_byStoreBuild" ON "native_builds" ("scope_key", "store_build");
+    ```
+
+  - Kysely on MySQL:
+
+    ```sql
+    ALTER TABLE `native_builds` ADD COLUMN `store_build` boolean;
+    CREATE UNIQUE INDEX `native_builds_byStoreBuild` ON `native_builds` (`scope_key`, `store_build`);
+    ```
+
+  - MongoDB:
+
+    ```js
+    db.native_builds.createIndex(
+      { scope_key: 1, store_build: 1 },
+      {
+        name: "native_builds_byStoreBuild",
+        unique: true,
+        partialFilterExpression: { store_build: { $exists: true } },
+      },
+    );
+    ```
+
+  - Prisma and Drizzle: run `hot-updater db generate`, then apply it with the ORM.
+
+  DynamoDB, Firestore and Cosmos DB need nothing.
+
+- 20006f2: Add sandbox builds: `sandbox: true` on a `nativeBuild` scheme builds the app with a native layer for testing, which no other build compiles. `@hot-updater/react-native` gets no new API and no new bridge method. See the Sandbox builds guide.
+  - iOS: the layer's sources stay excluded unless the CLI's build xcconfig brings them back, and the CLI patches the archive's Info.plist before the export: a dedicated URL scheme and the default channel `sandbox-<scheme>`. The bundle ID stays what Xcode builds: the store app's by default, or a separate configuration's, which `bundleIdentifier` must name. The `.ipa` is for TestFlight internal testing only: the CLI checks it before the upload and reads `buildAudienceType` after it. A closed version train raises the sandbox build's version under the fingerprint strategy, and stops with a next step under `appVersion`.
+  - A normal build excludes the layer again over a scheme's own `xcconfig`, which would otherwise replace the podspec's exclusion.
+  - Android: `-PhotUpdaterSandbox=<scheme>` attaches `src/sandbox`, and a CLI-written init script adds `.sandbox` to the application ID and a manifest overlay for the channel. No project file changes. AGP 9's default DSL and a project's own build type manifest are refused.
+  - Registry: the channel `sandbox-<scheme>` is reserved, with no new column. Before a build is tracked or uploaded, and in `native-build import`, the CLI reads the artifact: a sandbox build must hold the layer and embed a normal build's fingerprint, and a normal build must hold none of it.
+  - `hot-updater doctor` reports what a sandbox scheme can't build with, a `google-services.json` with no client for the real application ID, and what no sandbox build has been tested with.
+  - Fix a repeat `assembleRelease` failing with `it is internal in file` on Kotlin 2: every build's `MIN_BUNDLE_ID` changes a generated Java class, so the SDK's module no longer compiles Kotlin incrementally.
+
+### Patch Changes
+
+- b54eddc: Remove `aggregateBatching: { mode: "memory" }`, which kept a process's aggregate changes in a buffer until a timer wrote them, so a crash lost them. Batched aggregates now always go through log rows, in the same write as the transaction that made them. `aggregateBatching: { windowMs }` and `aggregateBatching: false` stay, and `mode` is gone from the type, so `{ mode: "log" }` and `{ mode: "memory" }` are TypeScript errors: delete the key.
+  - A JavaScript config that still passes `mode` runs the same way: the key is ignored. Its `windowMs`, or 60 seconds without one, is how often a commit compacts.
+  - `dynamoDB`, `firebaseDatabase`, and `cosmosDatabase` need no migration: log rows live in the same table, collection, or container, under the same indexes. A hand-written DynamoDB policy with a `dynamodb:LeadingKeys` condition must list `aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`, as the managed policy does.
+  - A report on these stores costs about 3 more write units than it did in memory mode, for its log row and the row's delete. Totals on other shards keep counting: reads sum every shard.
+  - `hot-updater db migrate` creates no log tables. A store with a table per model that you passed `aggregateBatching` yourself, such as a custom SQL adapter, used to run memory mode without them; its batched writes now fail until you run `adapter.migrations.apply(aggregateBatchingTables)` or drop the option.
+  - `hotUpdater.flush()` stays and merges pending log rows. A server no longer needs it before exiting. `createEngine(...).dispose()`, which only stopped the removed timer, is gone: delete the call.
+
+- Updated dependencies [ad99046]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+  - @hot-updater/protocol@1.2.0-rc.13
+
 ## 1.2.0-rc.12
 
 ### Patch Changes
