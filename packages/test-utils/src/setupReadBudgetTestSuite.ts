@@ -977,11 +977,14 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "native build store mark write: the build, the holder, and 1 write",
+    // A store's index copy holds no version, so a transaction reads the holder's
+    // row for its guard.
     read: ({ core }) =>
       core.markNativeBuild(createBundleFixture("8012").id, {
         storeBuild: true,
       }),
-    adapter: reads(1, 1, 1, 1),
+    adapter: (indexCopies) =>
+      indexCopies ? reads(2, 2, 1, 1) : reads(1, 1, 1, 1),
     engine: { calls: 2, rows: 2 },
     writes: 1,
     check: (result) =>
