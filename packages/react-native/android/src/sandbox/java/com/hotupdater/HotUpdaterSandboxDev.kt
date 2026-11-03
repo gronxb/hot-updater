@@ -75,6 +75,7 @@ internal class HotUpdaterSandboxDevFiles(
     /**
      * The session a starting process runs, once. The claim goes either way, so
      * the launch after this one can't take it, whatever happens to this one.
+     * It goes only after the helper is checked: the helper lives until it's gone.
      */
     fun takeSession(
         isWitnessAlive: (Int) -> Boolean,
@@ -82,20 +83,22 @@ internal class HotUpdaterSandboxDevFiles(
     ): HotUpdaterSandboxDevSession? {
         val file = claim
         if (!file.isFile) return null
-        val claim = runCatching { HotUpdaterSandboxDevClaim.parse(file.readText()) }.getOrNull()
-        file.delete()
-        if (claim == null) return null
-        val age = elapsedRealtime - claim.elapsedRealtime
-        if (age < 0 || age > CLAIM_MAX_AGE_MS || !isWitnessAlive(claim.witnessPid)) {
-            Log.i(TAG, "dropped a claim nobody relaunched this process for")
-            return null
+        try {
+            val claim = runCatching { HotUpdaterSandboxDevClaim.parse(file.readText()) }.getOrNull() ?: return null
+            val age = elapsedRealtime - claim.elapsedRealtime
+            if (age < 0 || age > CLAIM_MAX_AGE_MS || !isWitnessAlive(claim.witnessPid)) {
+                Log.i(TAG, "dropped a claim nobody relaunched this process for")
+                return null
+            }
+            val bundle = bundle(claim.sessionId)
+            if (!bundle.isFile) {
+                Log.w(TAG, "dropped a claim without its bundle")
+                return null
+            }
+            return HotUpdaterSandboxDevSession(claim.sessionId, claim.host, bundle)
+        } finally {
+            file.delete()
         }
-        val bundle = bundle(claim.sessionId)
-        if (!bundle.isFile) {
-            Log.w(TAG, "dropped a claim without its bundle")
-            return null
-        }
-        return HotUpdaterSandboxDevSession(claim.sessionId, claim.host, bundle)
     }
 
     /** What no running process needs: everything, or all but `running`'s. */

@@ -76,6 +76,16 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
+    fun `the helper lives until the claim is gone, so the claim goes only after the helper is checked`() {
+        val files = files().withSession("one")
+        files.writeClaim(claim())
+        // HotUpdaterSandboxRelaunchActivity kills itself as soon as the claim is gone.
+        val session = files.takeSession({ it == 7 && files.claim.exists() }, 1_500)
+        assertEquals("one", session?.id)
+        assertFalse(files.claim.exists())
+    }
+
+    @Test
     fun `an icon tap after an abandoned relaunch finds its helper gone`() {
         val files = files().withSession("one")
         files.writeClaim(claim())
