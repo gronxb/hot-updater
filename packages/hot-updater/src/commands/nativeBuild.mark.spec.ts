@@ -211,6 +211,16 @@ describe("handleNativeBuildMark", () => {
     expect(lines("warn").join("\n")).toContain(command(otaId(1)));
   });
 
+  it("names the OTA a two-part version's install is served, not a later patch version's", async () => {
+    await register(6, { appVersion: "1.7" });
+    await deployOta(otaId(1), { targetAppVersion: "1.7.0" });
+    await deployOta(otaId(2), { targetAppVersion: "1.7.1" });
+
+    await mark(buildId(6));
+
+    expect(lines("warn").join("\n")).toContain(command(otaId(1)));
+  });
+
   it("quotes a channel the shell would split", async () => {
     const channel = "qa team;x";
     await register(6, { channel });

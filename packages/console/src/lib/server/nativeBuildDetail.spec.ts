@@ -221,6 +221,30 @@ describe("getNativeBuildDetail", () => {
     expect(detail?.servedNow.map(({ bundleId }) => bundleId)).toEqual([id(20)]);
   });
 
+  it("serves a two-part version's install its own version's release, not a later patch version's", async () => {
+    const core = memoryCore();
+    const scope: Scope = {
+      platform: "android",
+      channel: "beta",
+      fingerprintHash: null,
+      appVersion: "1.7",
+    };
+    await register(core, 1, id(10), scope);
+    await deploy(core, bundle(20), {
+      channel: "beta",
+      fingerprintHash: null,
+      targetAppVersion: "1.7.0",
+    });
+    await deploy(core, bundle(21), {
+      channel: "beta",
+      fingerprintHash: null,
+      targetAppVersion: "1.7.1",
+    });
+
+    const detail = await getNativeBuildDetail(core, buildId(1));
+    expect(detail?.servedNow.map(({ bundleId }) => bundleId)).toEqual([id(20)]);
+  });
+
   it("reads five times whatever the build, and nothing for an unknown ID", async () => {
     const memory = memoryCore();
     await register(memory, 1, id(10));
