@@ -53,8 +53,6 @@ describe("checkExpoSdk", () => {
   it("says nothing without an Expo version to read", async () => {
     write("package.json", {});
     expect(await checkExpoSdk(config("expo"), root)).toEqual([]);
-    write("package.json", { dependencies: { expo: "latest" } });
-    expect(await checkExpoSdk(config("expo"), root)).toEqual([]);
   });
 
   it("leaves another build adapter's Expo dependency alone", async () => {

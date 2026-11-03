@@ -26,29 +26,31 @@ const readJson = <T>(file: string): T | null => {
 };
 
 /**
- * The major version of a project's Expo SDK, or null without one: what's
- * installed, else what `package.json` declares, as a range such as `catalog:`
- * or `latest` names no version.
+ * The major version of a project's Expo SDK, or null without one: what
+ * `package.json` declares, else, for a range that names no version such as
+ * `catalog:` or `latest`, what's installed.
  */
 export const expoSdkOf = (cwd: string): number | null => {
-  try {
-    const installed = readJson<{ version?: string }>(
-      createRequire(path.join(cwd, "package.json")).resolve(
-        "expo/package.json",
-      ),
-    );
-    const sdk = majorOf(installed?.version);
-    if (sdk !== null) return sdk;
-  } catch {
-    // Not installed: the declared range is all there is.
-  }
   const manifest = readJson<{
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   }>(path.join(cwd, "package.json"));
-  return majorOf(
-    manifest?.dependencies?.["expo"] ?? manifest?.devDependencies?.["expo"],
-  );
+  const declared =
+    manifest?.dependencies?.["expo"] ?? manifest?.devDependencies?.["expo"];
+  if (declared === undefined) return null;
+  const sdk = majorOf(declared);
+  if (sdk !== null) return sdk;
+  try {
+    return majorOf(
+      readJson<{ version?: string }>(
+        createRequire(path.join(cwd, "package.json")).resolve(
+          "expo/package.json",
+        ),
+      )?.version,
+    );
+  } catch {
+    return null;
+  }
 };
 
 /** An Expo project below the SDK Hot Updater supports. */
