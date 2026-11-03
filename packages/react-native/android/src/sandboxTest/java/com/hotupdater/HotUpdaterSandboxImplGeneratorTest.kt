@@ -60,7 +60,8 @@ class HotUpdaterSandboxImplGeneratorTest {
         assertEquals(5, added.size)
         assertEquals(
             source.filterNot {
-                it.startsWith("        this.bundleStorage =") || it.startsWith("        this.preferences =") ||
+                it.startsWith("        this.bundleStorage =") ||
+                    it.startsWith("        this.preferences =") ||
                     it.startsWith("        this.keyValueStorage =")
             },
             generated.filterNot { it.contains("HotUpdaterSandboxDev") },
