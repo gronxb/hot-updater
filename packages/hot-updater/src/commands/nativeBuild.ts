@@ -644,7 +644,7 @@ export const handleNativeBuildDelete = async (
   }
 };
 
-/** Why `native-build mark` changed nothing, for its `--json` output. */
+/** Why `native-build mark` refused a build, for its `--json` output. */
 class MarkRefusal extends Error {
   constructor(
     readonly reason: "not_found" | "sandbox_channel",
@@ -723,7 +723,7 @@ export const handleNativeBuildMark = async (
   } catch (error) {
     if (!(error instanceof MarkRefusal))
       return failCommand(error, options.json);
-    // Under --json, a mark that changed nothing is still one JSON document
+    // Under --json, a refused mark is still one JSON document
     // on stdout, with a reason a CI job can test, and the command fails.
     if (options.json) {
       console.log(
