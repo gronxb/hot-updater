@@ -445,8 +445,57 @@ describe("Bundle commands", () => {
         deleted: false,
         reason: "enabled_release",
       });
-      expect(stderr().replace(/\s+/gu, " ")).toContain("before hard deletion");
-      expect(stderr()).not.toContain("Release");
+      // What's wrong, then the command to run, whole on its own line.
+      expect(stderr().split("\n")).toEqual([
+        `Bundle ${releaseId.slice(0, 8)} is enabled. Disable it first:`,
+        `npx hot-updater bundle disable ${releaseId}`,
+      ]);
+      expect(process.exitCode).toBe(1);
+      await expect(
+        databaseHarness.core.getRelease(releaseId),
+      ).resolves.not.toBeNull();
+    });
+
+    it("names the command that disables an enabled bundle it won't delete", async () => {
+      const { releaseId } = await deployed();
+      const { handleBundleDelete } = await import("./bundle");
+
+      await handleBundleDelete(releaseId, { yes: true });
+
+      expect(log.error).toHaveBeenCalledOnce();
+      const lines = stripVTControlCharacters(
+        String(log.error.mock.calls[0]?.[0]),
+      ).split("\n");
+      expect(lines).toEqual([
+        `Bundle ${releaseId.slice(0, 8)} is enabled. Disable it first:`,
+        `npx hot-updater bundle disable ${releaseId}`,
+      ]);
+      for (const line of lines.slice(0, -1)) {
+        expect(line.length).toBeLessThanOrEqual(73);
+      }
+      expect(process.exitCode).toBe(1);
+    });
+
+    it("names the command that shows a bundle whose revision moved on", async () => {
+      const { releaseId } = await deployed();
+      const { handleBundleEnablement } = await import("./bundle");
+
+      await handleBundleEnablement(releaseId, false, {
+        expectedRevision: 9,
+        json: true,
+        yes: true,
+      });
+
+      expect(printed()).toEqual({
+        id: releaseId,
+        updated: false,
+        reason: "version_conflict",
+      });
+      expect(stderr().split("\n")).toEqual([
+        `Bundle ${releaseId.slice(0, 8)} is revision 1; expected 9.`,
+        "See what changed:",
+        `npx hot-updater bundle show ${releaseId}`,
+      ]);
       expect(process.exitCode).toBe(1);
     });
   });

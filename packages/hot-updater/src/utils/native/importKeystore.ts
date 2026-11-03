@@ -110,7 +110,8 @@ export const checkKeystoreEntry = async (
 /**
  * `secrets put android-keystore <file>` at a terminal: asks for the
  * keystore's alias, unless it holds one key, and its passwords, checks
- * that they open it as Gradle's signing does, and stores it as `name`.
+ * that they open it as Gradle's signing does, and stores it as `name`,
+ * unless the store already holds that value: then it writes nothing.
  * The key's password is tried as the store's first: they are often one.
  */
 export const importKeystore = async ({
@@ -118,12 +119,15 @@ export const importKeystore = async ({
   name,
   file: typed,
   keytool,
+  held,
 }: {
   readonly secrets: SecretsAdapter;
   readonly name: string;
   /** The keystore file, as typed. */
   readonly file: string;
   readonly keytool?: RunKeytool;
+  /** What the store holds as `name` now, and where. */
+  readonly held?: { readonly value: string; readonly source: string };
 }): Promise<void> => {
   const file = readTypedPath(typed);
   if (!isReadableFile(file)) {
@@ -203,14 +207,22 @@ export const importKeystore = async ({
     ).result;
 
   const value = androidKeystoreValue(entry);
-  await storeCredential(secrets, name, value);
+  // A new version of the same value would push the real previous one out
+  // of a store that keeps one.
+  const unchanged = held !== undefined && held.value === value;
+  if (!unchanged) await storeCredential(secrets, name, value);
   p.log.success(
-    ui.block(`${LABEL} stored`, [
+    ui.block(`${LABEL} ${unchanged ? "already stored" : "stored"}`, [
       name !== KIND && ui.kv("Name", name),
       ui.kv("Alias", keyAlias),
       ...fingerprintRows(certificate.fingerprints),
-      ui.kv("Source", ui.source(describeStoredSecret(secrets, name))),
+      ui.kv(
+        "Source",
+        ui.source(
+          unchanged ? held.source : describeStoredSecret(secrets, name),
+        ),
+      ),
     ]),
   );
-  await offerIssuedKeyToGitHub({ name, value, secrets });
+  if (!unchanged) await offerIssuedKeyToGitHub({ name, value, secrets });
 };

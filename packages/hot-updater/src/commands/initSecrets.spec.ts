@@ -102,13 +102,18 @@ describe("init with a team secrets store", () => {
     });
     await storeInitTeamSecrets(team!, directory);
 
-    // Then: the store holds every credential, read back once
+    // Then: the store holds every credential, and only the new one was
+    // written, with no new version of what the teammate stored, then read
+    // back: a replay read, a read of what it holds, and a read-back
     expect(Object.fromEntries(values)).toEqual({
       HOT_UPDATER_CLOUDFLARE_API_TOKEN: "stored-token",
       HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "new-access-key",
       HOT_UPDATER_API_KEY: "stored-app-key",
     });
-    expect(adapter.get).toHaveBeenCalledTimes(2);
+    expect(adapter.set.mock.calls.map(([name]) => name)).toEqual([
+      "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+    ]);
+    expect(adapter.get).toHaveBeenCalledTimes(3);
     // and .env.hotupdater keeps what init wrote, which the app's build reads
     expect(await envFile()).toContain("HOT_UPDATER_API_KEY=stored-app-key");
     expect(mocks.success).toHaveBeenCalledWith(
