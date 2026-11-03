@@ -5,7 +5,7 @@ import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
-import { withPublicBundleErrors } from "../utils/publicBundleError";
+import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
 
 export type PromoteAction = "copy" | "move";
 
@@ -66,8 +66,12 @@ export const handlePromote = async (
       core.listChannels(),
     ]);
     if (source === null) {
-      p.log.error(`No bundle with ID ${sourceReleaseId}.`);
-      process.exit(1);
+      return await failBundleCommand(
+        core,
+        sourceReleaseId,
+        notFoundError(sourceReleaseId),
+        { outcome: "promoted" },
+      );
     }
     const sourceChannel =
       channels.find(({ id }) => id === source.channel_id)?.name ??
@@ -89,14 +93,19 @@ export const handlePromote = async (
         process.exit(2);
       }
     }
-    const result = await withPublicBundleErrors(() =>
-      core.promoteRelease({
+    let result: Awaited<ReturnType<typeof core.promoteRelease>>;
+    try {
+      result = await core.promoteRelease({
         action,
         expectedRevision: source.revision,
         releaseId: source.id,
         targetChannel,
-      }),
-    );
+      });
+    } catch (error) {
+      return await failBundleCommand(core, sourceReleaseId, error, {
+        outcome: "promoted",
+      });
+    }
     const promoted = result.target.release;
     if (promoted === null)
       throw new Error("Promoted bundle was not persisted.");

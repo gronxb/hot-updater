@@ -757,6 +757,10 @@ Both succeed when run again, so a CI job can retry them. Add `--json` to print
 marked, since no store sells it. Deleting a marked build deletes its mark, and
 deploys go back to the newest build.
 
+When it refuses the build, the command exits with code 1, and `--json` prints
+`{ "id", "marked": false, "reason" }` (`"cleared"` with `--clear`). `reason` is
+`not_found` for an ID no build has, or `sandbox_channel`.
+
 A release job keeps the build's ID, then marks it when the release is live:
 
 ```bash

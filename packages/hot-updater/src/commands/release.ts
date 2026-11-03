@@ -11,6 +11,7 @@ import { loadServer } from "@/utils/loadServer";
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 import { canPrompt } from "../utils/prompt";
+import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
 
 const DEFAULT_LIMIT = 20;
 
@@ -334,11 +335,19 @@ export const handleReleaseUpdate = async (
       patch,
       releaseId,
     };
-    if (options.dryRun) {
-      printUpdatePreview(await core.preflightReleasePolicy(target), options);
-      return;
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      if (options.dryRun) {
+        printUpdatePreview(await core.preflightReleasePolicy(target), options);
+        return;
+      }
+      result = await core.updateReleasePolicy(target);
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
     }
-    const result = await core.updateReleasePolicy(target);
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -371,8 +380,12 @@ export const handleReleaseEnablement = async (
     if (!enabled) {
       const release = await core.getRelease(releaseId);
       if (release === null) {
-        p.log.error(`No bundle with ID ${releaseId}.`);
-        process.exit(1);
+        return await failBundleCommand(
+          core,
+          releaseId,
+          notFoundError(releaseId),
+          { json: options.json, outcome: "updated" },
+        );
       }
       expectedRevision ??= release.revision;
 
@@ -411,11 +424,19 @@ export const handleReleaseEnablement = async (
       `${enabled ? "Enable" : "Disable"} this bundle?`,
       options.yes,
     );
-    const result = await core.updateReleasePolicy({
-      ...(expectedRevision === undefined ? {} : { expectedRevision }),
-      patch: { enabled },
-      releaseId,
-    });
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      result = await core.updateReleasePolicy({
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
+        patch: { enabled },
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
+    }
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -446,14 +467,34 @@ export const handleReleaseDelete = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const release = await core.getRelease(releaseId);
+    if (release === null) {
+      return await failBundleCommand(
+        core,
+        releaseId,
+        notFoundError(releaseId),
+        {
+          json: options.json,
+          outcome: "deleted",
+        },
+      );
+    }
     // Core deletes the artifact with the last bundle on it.
-    const artifactId = (await core.getRelease(releaseId))?.bundle_id ?? null;
-    const result = await core.deleteRelease({
-      ...(options.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: options.expectedRevision }),
-      releaseId,
-    });
+    const artifactId = release.bundle_id;
+    let result: Awaited<ReturnType<typeof core.deleteRelease>>;
+    try {
+      result = await core.deleteRelease({
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: options.expectedRevision }),
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "deleted",
+      });
+    }
     const deletedArtifactId =
       artifactId !== null && (await core.getBundle(artifactId)) === null
         ? artifactId

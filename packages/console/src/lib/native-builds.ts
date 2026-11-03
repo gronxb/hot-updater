@@ -27,6 +27,28 @@ export const nativeBuildArtifacts: Record<
 export const platformLabel = (platform: "ios" | "android") =>
   platform === "ios" ? "iOS" : "Android";
 
+/**
+ * A build as the CLI names it, such as `iOS 1.7.0 (66)`: the store's label
+ * when a store took it, else its app version and build number. Null when it
+ * reports neither, for the caller to name it another way.
+ */
+export const nativeBuildLabel = (
+  build: Pick<
+    NativeBuildRow,
+    "platform" | "submitted_version" | "app_version" | "build_number"
+  >,
+): string | null => {
+  const label =
+    build.submitted_version ??
+    [
+      build.app_version,
+      build.build_number === null ? null : `(${build.build_number})`,
+    ]
+      .filter((part) => part !== null)
+      .join(" ");
+  return label === "" ? null : `${platformLabel(build.platform)} ${label}`;
+};
+
 /** The console route that redirects to a build's artifact in storage. */
 export const nativeBuildDownloadPath = (id: string) =>
   `/api/native-builds/${encodeURIComponent(id)}/download`;

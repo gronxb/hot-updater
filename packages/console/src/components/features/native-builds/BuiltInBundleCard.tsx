@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMarkNativeBuildMutation } from "@/lib/api";
 import {
   nativeBuildArtifacts,
+  nativeBuildLabel,
   nativeBuildTarget,
   platformLabel,
 } from "@/lib/native-builds";
@@ -107,9 +108,13 @@ function BaselineStatus({ detail }: { readonly detail: NativeBuildDetail }) {
               params={{ buildId: base.id }}
               to="/native-builds/$buildId"
             >
-              {platformLabel(base.platform)}{" "}
-              {nativeBuildArtifacts[base.artifact_kind].label} ·{" "}
-              <TimestampDisplay uuid={base.id} />
+              {nativeBuildLabel(base) ?? (
+                <>
+                  {platformLabel(base.platform)}{" "}
+                  {nativeBuildArtifacts[base.artifact_kind].label} ·{" "}
+                  <TimestampDisplay uuid={base.id} />
+                </>
+              )}
               <ArrowUpRight aria-hidden="true" className="size-3" />
             </Link>
             , so this one gets no new patches.

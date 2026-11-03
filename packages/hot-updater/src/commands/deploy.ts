@@ -45,7 +45,10 @@ import {
   createBundleManifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
-import { createBundleDiff } from "@/utils/createBundleDiff";
+import {
+  createBundleDiff,
+  UnchangedHermesBundleError,
+} from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
   assertNativeSdkEmbedsFingerprint,
@@ -396,6 +399,7 @@ const createAutoPatches = async ({
       ? releasedBaseBundleIds
       : [...releasedBaseBundleIds, builtInBaseBundleId];
   let createdCount = 0;
+  let unchangedCount = 0;
   let builtInPatched = false;
 
   for (const baseBundleId of baseBundleIds) {
@@ -417,6 +421,11 @@ const createAutoPatches = async ({
       createdCount += 1;
       if (baseBundleId === builtInBaseBundleId) builtInPatched = true;
     } catch (error) {
+      // Same JS as the base: no patch is needed, so nothing is wrong.
+      if (error instanceof UnchangedHermesBundleError) {
+        unchangedCount += 1;
+        continue;
+      }
       failures.push({
         baseBundleId,
         message: error instanceof Error ? error.message : "Unknown patch error",
@@ -429,6 +438,7 @@ const createAutoPatches = async ({
     candidateCount: baseBundleIds.length,
     createdCount,
     failures,
+    unchangedCount,
   };
 };
 
@@ -1107,11 +1117,13 @@ const deployPlatform = async ({
           candidateCount: number;
           createdCount: number;
           failures: { baseBundleId: string; message: string }[];
+          unchangedCount: number;
         } = {
           builtInBase: null,
           candidateCount: 0,
           createdCount: 0,
           failures: [],
+          unchangedCount: 0,
         };
 
         await p.tasks([
@@ -1144,6 +1156,7 @@ const deployPlatform = async ({
                   candidateCount: 0,
                   createdCount: 0,
                   failures: [],
+                  unchangedCount: 0,
                 };
               }
 
@@ -1152,7 +1165,10 @@ const deployPlatform = async ({
               }
 
               if (!patchSummary.createdCount) {
-                return "Skipped (no patch artifacts created)";
+                return patchSummary.unchangedCount ===
+                  patchSummary.candidateCount
+                  ? "Skipped (Hermes bundle unchanged)"
+                  : "Skipped (no patch artifacts created)";
               }
 
               return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
