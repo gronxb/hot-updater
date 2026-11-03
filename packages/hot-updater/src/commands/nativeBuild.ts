@@ -21,8 +21,10 @@ import {
   type NativeBuildScope,
   type Platform,
 } from "@hot-updater/plugin-core";
+import { decodeChannelKey } from "@hot-updater/protocol";
 import {
   blobSource,
+  isSandboxChannel,
   readNativeArtifact,
 } from "@hot-updater/protocol/native-artifact";
 
@@ -281,16 +283,17 @@ const failCommand = (error: unknown, json: boolean | undefined) => {
   process.exit(1);
 };
 
+const nativeBuildNotFound = (id: string) =>
+  new Error(
+    `No native build ${id}.\nFind one: npx hot-updater native-build find -p <platform>`,
+  );
+
 const requireNativeBuild = async (
   server: LoadedServer,
   id: string,
 ): Promise<NativeBuildRow> => {
   const build = await server.core.getNativeBuild(id);
-  if (build === null) {
-    throw new Error(
-      `No native build ${id}.\nFind one: npx hot-updater native-build find -p <platform>`,
-    );
-  }
+  if (build === null) throw nativeBuildNotFound(id);
   return build;
 };
 
@@ -641,6 +644,19 @@ export const handleNativeBuildDelete = async (
   }
 };
 
+/** Why `native-build mark` changed nothing, for its `--json` output. */
+class MarkRefusal extends Error {
+  constructor(
+    readonly reason: "not_found" | "sandbox_channel",
+    override readonly cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+  }
+}
+
+const channelNameOf = (build: Pick<NativeBuildRow, "channel_id">) =>
+  decodeChannelKey(build.channel_id.slice("channel:".length));
+
 /**
  * Marks a build as what the store sells, or clears its mark. A new mark
  * changes no published OTA: when the OTA a fresh install gets first has no
@@ -656,12 +672,24 @@ export const handleNativeBuildMark = async (
     const config = await loadConfig(null);
     const server = await loadServer(config);
     try {
-      const marked = await server.core.markNativeBuild(id, {
-        storeBuild: !options.clear,
-      });
+      let marked: Awaited<ReturnType<typeof server.core.markNativeBuild>>;
+      try {
+        marked = await server.core.markNativeBuild(id, {
+          storeBuild: !options.clear,
+        });
+      } catch (error) {
+        // Core's refusal has no public class, and a standalone server sends
+        // it as a 400, so the build, read only on this path, tells it.
+        const build = options.json
+          ? await server.core.getNativeBuild(id).catch(() => null)
+          : null;
+        if (build !== null && isSandboxChannel(channelNameOf(build))) {
+          throw new MarkRefusal("sandbox_channel", error);
+        }
+        throw error;
+      }
       if (marked === null) {
-        await requireNativeBuild(server, id);
-        return;
+        throw new MarkRefusal("not_found", nativeBuildNotFound(id));
       }
       const { nativeBuild, previous } = marked;
       const label = describeNativeBuild(nativeBuild);
@@ -693,6 +721,18 @@ export const handleNativeBuildMark = async (
       await safeDispose(server);
     }
   } catch (error) {
-    failCommand(error, options.json);
+    if (!(error instanceof MarkRefusal)) return failCommand(error, options.json);
+    // Under --json, a mark that changed nothing is still one JSON document
+    // on stdout, with a reason a CI job can test, and the command fails.
+    if (options.json) {
+      console.log(
+        JSON.stringify({
+          id,
+          [options.clear ? "cleared" : "marked"]: false,
+          reason: error.reason,
+        }),
+      );
+    }
+    failCommand(error.cause, options.json);
   }
 };
