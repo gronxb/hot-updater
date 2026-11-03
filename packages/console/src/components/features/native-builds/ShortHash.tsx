@@ -26,7 +26,7 @@ export function ShortHash({
   return (
     <button
       aria-label={`Copy the ${label} ${value}`}
-      className="cursor-copy rounded-sm font-mono text-xs whitespace-nowrap tabular-nums underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="relative cursor-copy rounded-sm font-mono after:absolute after:-inset-x-2 after:-inset-y-4 sm:after:hidden text-xs whitespace-nowrap tabular-nums underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       onClick={(event) => {
         event.stopPropagation();
         void copy();

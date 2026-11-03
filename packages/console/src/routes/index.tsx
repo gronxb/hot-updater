@@ -17,7 +17,6 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   DataCard,
-  DataCardField,
   DataCardSkeletons,
   DataCardsEmpty,
   DataTable,
@@ -114,7 +113,7 @@ function BundleFilterToolbar({
 
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
-      <SidebarTrigger className="-ml-1" />
+      <SidebarTrigger className="-ml-1 size-11 lg:size-7" />
       <h1 className="sr-only">Bundles</h1>
       <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
         <Filter className="size-3.5" />
@@ -131,7 +130,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Channel"
-          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 sm:w-[140px] sm:data-[size=default]:h-8"
         >
           <SelectValue />
         </SelectTrigger>
@@ -156,7 +155,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Platform"
-          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:data-[size=default]:h-8"
           title={channelSelected ? undefined : "Choose a channel first"}
         >
           <SelectValue />
@@ -191,7 +190,7 @@ function BundleFilterToolbar({
       >
         <SelectTrigger
           aria-label="Status"
-          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+          className="w-[calc(50%-0.25rem)] min-w-[132px] text-xs data-[size=default]:h-11 max-sm:order-2 sm:w-[140px] sm:data-[size=default]:h-8"
         >
           <SelectValue />
         </SelectTrigger>
@@ -205,6 +204,7 @@ function BundleFilterToolbar({
       </Select>
       <Button
         aria-label="Manage channels"
+        className="size-11 max-sm:order-1 sm:size-7"
         onClick={onManageChannels}
         size="icon-sm"
         title="Manage channels"
@@ -213,11 +213,11 @@ function BundleFilterToolbar({
         <Tags />
       </Button>
       {search.bundleId ? (
-        <Badge className="max-w-48 gap-1" variant="secondary">
+        <Badge className="max-w-48 gap-1 max-sm:order-3" variant="secondary">
           Artifact filter
           <button
             aria-label="Clear artifact filter"
-            className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="relative rounded-sm after:absolute after:-inset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden"
             onClick={() => onChange({ bundleId: undefined })}
             type="button"
           >
@@ -226,11 +226,11 @@ function BundleFilterToolbar({
         </Badge>
       ) : null}
       {search.scopeKey ? (
-        <Badge className="max-w-48 gap-1" variant="secondary">
+        <Badge className="max-w-48 gap-1 max-sm:order-3" variant="secondary">
           Target filter
           <button
             aria-label="Clear target filter"
-            className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="relative rounded-sm after:absolute after:-inset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden"
             onClick={() => onChange({ scopeKey: undefined })}
             type="button"
           >
@@ -240,7 +240,7 @@ function BundleFilterToolbar({
       ) : null}
       {hasFilters ? (
         <Button
-          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground sm:ml-auto"
+          className="h-11 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:order-3 sm:ml-auto sm:h-8"
           onClick={onClear}
           size="sm"
           variant="ghost"
@@ -283,7 +283,7 @@ function BundleEntry({
               : "Show advanced artifact diagnostics"
           }
           title="Advanced artifact diagnostics"
-          className="size-8 shrink-0 touch-manipulation"
+          className="size-11 shrink-0 touch-manipulation sm:size-8"
           onClick={onToggleExpand}
           size="icon"
           type="button"
@@ -292,7 +292,7 @@ function BundleEntry({
           {expanded ? <ChevronDown /> : <ChevronRight />}
         </Button>
       ) : (
-        <span aria-hidden="true" className="size-8 shrink-0" />
+        <span aria-hidden="true" className="size-11 shrink-0 sm:size-8" />
       )}
       <button
         aria-label={`Open details for ID ${release.id}`}
@@ -572,6 +572,7 @@ function BundlesPage() {
                         <DataCard
                           aria-label={`Bundle ${release.id}`}
                           className={cn(
+                            "gap-3",
                             release.currentlyUnreachable &&
                               "bg-muted/35 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
                             isExpanded && "border-b-0 bg-primary/5",
@@ -603,81 +604,59 @@ function BundlesPage() {
                               className="shrink-0"
                             />
                           </div>
-                          <dl className="grid grid-cols-2 gap-3 text-xs">
-                            <DataCardField
-                              label="Platform"
-                              valueClassName="flex items-center gap-2 font-medium"
-                            >
+                          <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1.5 text-foreground">
                               <PlatformIcon
                                 className="size-4"
                                 platform={release.platform}
                               />
                               {release.platform === "ios" ? "iOS" : "Android"}
-                            </DataCardField>
-                            <DataCardField label="Created">
-                              <RelativeTime
-                                ms={release.created_at_ms}
-                                withDate
+                            </span>
+                            {patchCount === undefined || patchCount > 0 ? (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span>
+                                  {patchCount === undefined
+                                    ? "Checking patches"
+                                    : `${patchCount} ${
+                                        patchCount === 1 ? "patch" : "patches"
+                                      }`}
+                                </span>
+                              </>
+                            ) : null}
+                            <span aria-hidden="true">·</span>
+                            <RelativeTime ms={release.created_at_ms} />
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+                            <RolloutPercentageBadge
+                              percentage={release.rollout_cohort_count / 10}
+                            />
+                            <ReleaseStateBadge release={release} />
+                            {release.should_force_update ? (
+                              <Badge variant="secondary">Force update</Badge>
+                            ) : null}
+                            <span className="flex items-center">
+                              <span className="sr-only">Target </span>
+                              <TargetDisplay
+                                appVersion={release.target_app_version}
+                                fingerprintHash={release.fingerprint_hash}
                               />
-                            </DataCardField>
-                            <DataCardField label="Rollout">
-                              <RolloutPercentageBadge
-                                percentage={release.rollout_cohort_count / 10}
+                            </span>
+                          </div>
+                          {featureColumns.map(({ Cell, feature, label }) => (
+                            <div className="mt-3 text-xs" key={feature}>
+                              <span className="sr-only">{label}</span>
+                              <Cell
+                                releaseId={release.id}
+                                releases={slotReleases}
                               />
-                            </DataCardField>
-                            <DataCardField label="Patches">
-                              {patchCount === undefined
-                                ? "Checking"
-                                : patchCount > 0
-                                  ? `${patchCount} ${
-                                      patchCount === 1 ? "patch" : "patches"
-                                    }`
-                                  : "—"}
-                            </DataCardField>
-                            {featureColumns.map(({ Cell, feature, label }) => (
-                              <div
-                                className="col-span-2 rounded-md bg-muted/40 p-3"
-                                key={feature}
-                              >
-                                <dt className="mb-2 text-muted-foreground">
-                                  {label}
-                                </dt>
-                                <dd>
-                                  <Cell
-                                    releaseId={release.id}
-                                    releases={slotReleases}
-                                  />
-                                </dd>
-                              </div>
-                            ))}
-                            <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
-                              <ReleaseStateBadge release={release} />
-                              {release.should_force_update ? (
-                                <Badge variant="secondary">Force update</Badge>
-                              ) : null}
                             </div>
-                            <div className="col-span-2 grid grid-cols-1 gap-2 rounded-md border bg-background/80 p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <dt className="text-muted-foreground">
-                                  Target
-                                </dt>
-                                <dd className="flex min-w-0 justify-end">
-                                  <TargetDisplay
-                                    appVersion={release.target_app_version}
-                                    fingerprintHash={release.fingerprint_hash}
-                                  />
-                                </dd>
-                              </div>
-                              <div className="flex items-start justify-between gap-3">
-                                <dt className="text-muted-foreground">
-                                  Message
-                                </dt>
-                                <dd className="min-w-0 text-right text-foreground">
-                                  {release.message || "—"}
-                                </dd>
-                              </div>
-                            </div>
-                          </dl>
+                          ))}
+                          {release.message ? (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {release.message}
+                            </p>
+                          ) : null}
                         </DataCard>
                         {isExpanded && release.bundle_id ? (
                           <ReleaseBundleChildrenPanel

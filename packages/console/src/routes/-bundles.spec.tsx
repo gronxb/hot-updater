@@ -255,7 +255,7 @@ describe("BundlesPage", () => {
     render(<BundlesPage />);
     const card = screen.getByRole("article", { name: "Bundle release-1" });
 
-    fireEvent.click(within(card).getByText("Platform"));
+    fireEvent.click(within(card).getByText("Stable release"));
 
     expect(mocks.navigate).toHaveBeenCalledWith({
       resetScroll: false,
@@ -434,6 +434,23 @@ describe("BundlesPage", () => {
       );
     },
   );
+
+  it("shows a bundle as a compact card, as Native builds does: what and where, then delivery, insights, and message", () => {
+    mocks.isMobile.mockReturnValue(true);
+    render(<BundlesPage />);
+    const card = screen.getByRole("article", { name: "Bundle release-1" });
+
+    // No label-value boxes: lines of values, a few cards to a screen.
+    expect(card.querySelector(":scope > dl")).toBeNull();
+    const meta = card.children[1]!;
+    expect(meta.textContent).toMatch(/^iOS·1 patch·.+ ago$/);
+    const delivery = card.children[2]!;
+    expect(delivery.textContent).toContain("Target 1.2.x");
+    expect(
+      within(card).getByRole("link", { name: /Downloaded 107 Launched 98/ }),
+    ).toBeTruthy();
+    expect(card.lastElementChild!.textContent).toBe("Stable release");
+  });
 
   it("shows a card's fingerprint target as the table's pill", () => {
     mocks.isMobile.mockReturnValue(true);

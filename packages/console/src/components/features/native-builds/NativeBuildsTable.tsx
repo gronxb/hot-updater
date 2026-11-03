@@ -14,7 +14,6 @@ import {
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   DataCard,
-  DataCardField,
   DataCardSkeletons,
   DataCardsEmpty,
   DataTable,
@@ -26,7 +25,7 @@ import {
   DataTableSkeletonRows,
   openOutsideControls,
 } from "@/components/DataTable";
-import { PlatformLabel } from "@/components/PlatformIcon";
+import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
 import { RelativeTime } from "@/components/RelativeTime";
 import {
   BuildKeyDisplay,
@@ -166,7 +165,7 @@ function BuildLink({ build }: { readonly build: NativeBuildRow }) {
   return (
     <Link
       aria-label={buildTitle(build)}
-      className="rounded-sm font-medium whitespace-nowrap text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="relative rounded-sm font-medium whitespace-nowrap text-foreground transition-colors underline-offset-4 after:absolute after:-inset-x-[10px] after:-inset-y-[10px] hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
       params={{ buildId: build.id }}
       to="/native-builds/$buildId"
     >
@@ -186,7 +185,7 @@ function ChannelFilterButton({
   return (
     <button
       aria-label={`Show the builds that embed ${channel}`}
-      className="rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className="relative rounded-md text-left after:absolute after:inset-x-0 after:-inset-y-[11px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
       onClick={() => onChannel(channel)}
       type="button"
     >
@@ -202,7 +201,20 @@ function ChannelFilterButton({
 function StoreCell({ build }: { readonly build: NativeBuildRow }) {
   if (!isSubmitted(build) && build.store_build !== true) return <NoValue />;
   return (
-    <span className="flex flex-col items-start gap-1">
+    <StoreBadges build={build} className="flex flex-col items-start gap-1" />
+  );
+}
+
+/** The store badges, laid out by the caller. */
+function StoreBadges({
+  build,
+  className,
+}: {
+  readonly build: NativeBuildRow;
+  readonly className: string;
+}) {
+  return (
+    <span className={className}>
       <StoreSubmissionBadge build={build} />
       {build.store_build === true ? (
         <Badge variant="secondary">Store build</Badge>
@@ -299,7 +311,11 @@ function BuildRow({
   );
 }
 
-/** A build's card on a narrow screen, with the same values as its row. */
+/**
+ * A build's card on a narrow screen, scannable a few to a screen: what it is
+ * and where, then when, then its target and build key, then its store. Every
+ * value of the row is on it, and a tap opens the build's page.
+ */
 function BuildCard({
   build,
   onChannel,
@@ -309,9 +325,11 @@ function BuildCard({
 }) {
   const navigate = useNavigate();
   const channel = nativeBuildChannel(build);
+  const stored = isSubmitted(build) || build.store_build === true;
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}
+      className="gap-3 border-b-0"
       onClick={openOutsideControls(
         () =>
           void navigate({
@@ -320,39 +338,55 @@ function BuildCard({
           }),
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <BuildLink build={build} />
-        <ChannelFilterButton channel={channel} onChannel={onChannel} />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <PlatformIcon
+            className="size-4 shrink-0 text-muted-foreground"
+            platform={build.platform}
+          />
+          <BuildLink build={build} />
+          <ChannelFilterButton channel={channel} onChannel={onChannel} />
+        </div>
+        <DownloadButton build={build} />
       </div>
-      <dl className="grid grid-cols-2 gap-3 text-xs">
-        <DataCardField label="Platform" valueClassName="font-medium">
-          <PlatformLabel platform={build.platform} />
-        </DataCardField>
-        <DataCardField label="Created">
-          <RelativeTime ms={createdAt(build)} withDate />
-        </DataCardField>
-        <DataCardField label="Build">
-          <BuildNumber build={build} />
-        </DataCardField>
-        <DataCardField label="Size" valueClassName="tabular-nums">
-          {formatByteSize(build.byte_size)}
-        </DataCardField>
-        <DataCardField className="col-span-2" label="Target">
+      <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <span className="sr-only">{platformLabel(build.platform)}</span>
+        {build.build_number ? (
+          <>
+            <span translate="no">
+              Build{" "}
+              <span className="font-mono tabular-nums text-foreground">
+                {build.build_number}
+              </span>
+            </span>
+            <span aria-hidden="true">·</span>
+          </>
+        ) : null}
+        <span className="tabular-nums">{formatByteSize(build.byte_size)}</span>
+        <span aria-hidden="true">·</span>
+        <RelativeTime ms={createdAt(build)} />
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-xs">
+        <span className="flex items-center">
+          <span className="sr-only">Target </span>
           <TargetDisplay
             appVersion={build.app_version}
             fingerprintHash={build.fingerprint_hash}
           />
-        </DataCardField>
-        <DataCardField className="col-span-2" label="Build key">
-          <BuildKeyDisplay value={build.build_key} />
-        </DataCardField>
-        <DataCardField className="col-span-2" label="Store">
-          <StoreCell build={build} />
-        </DataCardField>
-      </dl>
-      <div className="flex justify-end">
-        <DownloadButton build={build} />
+        </span>
+        {build.build_key ? (
+          <span className="flex items-center">
+            <span className="sr-only">Build key </span>
+            <BuildKeyDisplay value={build.build_key} />
+          </span>
+        ) : null}
       </div>
+      {stored ? (
+        <StoreBadges
+          build={build}
+          className="flex flex-wrap items-center gap-1.5"
+        />
+      ) : null}
     </DataCard>
   );
 }
@@ -431,7 +465,11 @@ export function NativeBuildsTable({
               <DataCardsEmpty>{empty}</DataCardsEmpty>
             ) : (
               rows?.map((build) => (
-                <div key={build.id} role="listitem">
+                <div
+                  className="border-b last:border-b-0"
+                  key={build.id}
+                  role="listitem"
+                >
                   <BuildCard build={build} onChannel={onChannel} />
                 </div>
               ))

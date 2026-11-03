@@ -1,6 +1,12 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -313,13 +319,17 @@ describe("NativeBuildsTable", () => {
     ).toBeNull();
   });
 
-  it("shows each build as a card at 390 px, with the same target and build key", () => {
+  it("shows each build as a compact card at 390 px: what and where, then when, then target and build key, then store", () => {
     const width = window.innerWidth;
     window.innerWidth = 390;
     try {
       const row = build({
         build_key: `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`,
         build_number: "66",
+        submitted_to: "play-internal",
+        submitted_at_ms: Date.now(),
+        submitted_version: "1.3.0 (66)",
+        store_build: true,
       });
       render(
         <NativeBuildsTable
@@ -332,18 +342,32 @@ describe("NativeBuildsTable", () => {
 
       expect(screen.queryByRole("table")).toBeNull();
       const card = screen.getByRole("article");
-      const field = (label: string) =>
-        [...card.querySelectorAll("dt")].find(
-          (term) => term.textContent === label,
-        )?.nextElementSibling?.textContent;
-      expect(field("Target")).toBe("1a2b3c4d…9c0d");
-      expect(field("Build key")).toBe("a1b2c3d4…9f0e");
-      expect(field("Built-in bundle")).toBeUndefined();
-      expect(field("Build")).toBe("66");
+      // No label-value boxes: lines of values, a few cards to a screen.
+      expect(card.querySelector("dl")).toBeNull();
+      const [primary, meta, hashes, store] = [...card.children];
       expect(
-        screen.getByRole("link", { name: "Download app-release.apk" }),
+        within(primary as HTMLElement).getByRole("link", {
+          name: "Android APK",
+        }).textContent,
+      ).toBe("APK");
+      expect(
+        within(primary as HTMLElement).getByRole("button", {
+          name: "Show the builds that embed pr-130",
+        }),
       ).toBeTruthy();
-      fireEvent.click(screen.getByText("50.0 MB"));
+      expect(
+        within(primary as HTMLElement).getByRole("link", {
+          name: "Download app-release.apk",
+        }),
+      ).toBeTruthy();
+      expect(meta!.textContent).toMatch(/^AndroidBuild 66·50\.0 MB·.+ ago$/);
+      expect(hashes!.textContent).toBe(
+        "Target 1a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
+      );
+      expect(store!.textContent).toBe("Play internal1.3.0 (66)Store build");
+      // The built-in bundle and commit are on the build's page.
+      expect(card.textContent).not.toContain(row.min_bundle_id);
+      fireEvent.click(meta!);
       expect(navigate).toHaveBeenCalledWith({
         to: "/native-builds/$buildId",
         params: { buildId: row.id },
@@ -353,44 +377,24 @@ describe("NativeBuildsTable", () => {
     }
   });
 
-  it("keeps one kind of value per cell for a store build", () => {
-    const fingerprint = "898148943179aabbccddeeff00112233445566778899";
-    render(
-      <NativeBuildsTable
-        builds={builds([
-          build({
-            platform: "ios",
-            artifact_kind: "ipa",
-            artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
-            byte_size: 31_562_957,
-            fingerprint_hash: fingerprint,
-            build_number: "17",
-            submitted_to: "testflight",
-            submitted_at_ms: Date.now() - 4 * 3_600_000,
-            submitted_version: "1.0.0 (17)",
-            store_build: true,
-          }),
-        ])}
-        channel={undefined}
-        onChannel={vi.fn()}
-        paged={false}
-      />,
-    );
-
-    const row = screen.getAllByRole("row")[1]!;
-    // The Platform column names the platform; the artifact names its kind,
-    // and its link still reads as the whole build for screen readers.
-    expect(cellText(row, "Artifact")).toBe("IPA");
-    expect(screen.getByRole("link", { name: "iOS IPA" }).textContent).toBe(
-      "IPA",
-    );
-    expect(cellText(row, "Platform")).toBe("iOS");
-    expect(cellText(row, "Build")).toBe("17");
-    expect(cellText(row, "Target")).toBe("89814894…8899");
-    expect(cellText(row, "Store")).toBe("TestFlight1.0.0 (17)Store build");
-    expect(cellText(row, "Size")).toBe("30.1 MB");
-    // The build's own time, not the submission's.
-    expect(cellText(row, "Created")).toMatch(/ ago$/);
+  it("leaves an imported build's card without a build key line or store line", () => {
+    const width = window.innerWidth;
+    window.innerWidth = 390;
+    try {
+      render(
+        <NativeBuildsTable
+          builds={builds([build({ build_key: null })])}
+          channel={undefined}
+          onChannel={vi.fn()}
+          paged={false}
+        />,
+      );
+      const card = screen.getByRole("article");
+      expect(card.children).toHaveLength(3);
+      expect(card.textContent).not.toContain("Build key");
+    } finally {
+      window.innerWidth = width;
+    }
   });
 
   it("shows the build number the artifact reports, from the row", () => {

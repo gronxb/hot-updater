@@ -93,7 +93,7 @@ export function NativeBuildsPage({
           >
             <SelectTrigger
               aria-label="Channel"
-              className="h-11 min-w-0 flex-1 text-xs sm:h-8 sm:w-48 sm:flex-none"
+              className="min-w-0 flex-1 text-xs data-[size=default]:h-11 sm:w-48 sm:flex-none sm:data-[size=default]:h-8"
             >
               <SelectValue />
             </SelectTrigger>

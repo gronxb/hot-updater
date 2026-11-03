@@ -195,26 +195,6 @@ export function DataCard({ className, ...props }: ComponentProps<"article">) {
   );
 }
 
-/** A labelled value of a card, in its two-column grid. */
-export function DataCardField({
-  label,
-  className,
-  valueClassName,
-  children,
-}: {
-  readonly label: string;
-  readonly className?: string;
-  readonly valueClassName?: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div className={cn("rounded-md bg-muted/40 p-3", className)}>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-1", valueClassName)}>{children}</dd>
-    </div>
-  );
-}
-
 /** A page of a list: the route and the search that shows it. */
 export type PageLink = Pick<LinkProps, "to" | "search">;
 
@@ -253,7 +233,7 @@ export function DataTablePagination({
         {newest ? (
           <Link
             className={buttonVariants({
-              className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+              className: "h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none",
               size: "sm",
               variant: "ghost",
             })}
@@ -266,7 +246,7 @@ export function DataTablePagination({
         {previous ? (
           <Link
             className={buttonVariants({
-              className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+              className: "h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none",
               size: "sm",
               variant: "outline",
             })}
@@ -278,7 +258,7 @@ export function DataTablePagination({
           </Link>
         ) : (
           <Button
-            className="h-8 flex-1 px-3 text-xs sm:flex-none"
+            className="h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none"
             disabled
             size="sm"
             variant="outline"
@@ -290,7 +270,7 @@ export function DataTablePagination({
         {next ? (
           <Link
             className={buttonVariants({
-              className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+              className: "h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none",
               size: "sm",
               variant: "outline",
             })}
@@ -302,7 +282,7 @@ export function DataTablePagination({
           </Link>
         ) : (
           <Button
-            className="h-8 flex-1 px-3 text-xs sm:flex-none"
+            className="h-11 flex-1 px-3 text-xs sm:h-8 sm:flex-none"
             disabled
             size="sm"
             variant="outline"
