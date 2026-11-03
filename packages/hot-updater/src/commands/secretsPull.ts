@@ -84,21 +84,24 @@ const askReplacements = async (
 };
 
 /** A warning that names how the file could get committed, and the fix. */
-const warnWhenCommittable = (target: string, label: string) => {
+/** Refuses a file git tracks: a commit would publish what it is given. */
+const assertUntracked = (target: string, label: string) => {
   if (
     isProjectFileTracked({
       cwd: path.dirname(target),
       filePath: path.basename(target),
     })
   ) {
-    p.log.warn(
+    throw new Error(
       fitMessage([
         `${label} is tracked by git.`,
         ui.withCommand("Untrack it:", `git rm --cached ${label}`),
       ]),
     );
-    return;
   }
+};
+
+const warnWhenCommittable = (target: string, label: string) => {
   if (isFileUnignoredByGit(target)) {
     p.log.warn(
       fitMessage([`${label} isn't gitignored.`, "Add it to .gitignore."]),
@@ -120,6 +123,8 @@ const warnWhenCommittable = (target: string, label: string) => {
  * - A value the file holds that differs is asked about at a terminal, and
  *   refuses without one unless `--force`. Nothing is written after a refusal.
  * - Values are never printed: every value is masked as soon as it is read.
+ * - A file git tracks is refused before the store is read, since a commit
+ *   would publish it. One git doesn't ignore is written, with a warning.
  */
 export const handleSecretsPull = async ({
   out = DEFAULT_PULL_FILE,
@@ -146,6 +151,7 @@ export const handleSecretsPull = async ({
     const cwd = getCwd();
     const target = path.resolve(cwd, out);
     const label = ui.fitPath(target);
+    assertUntracked(target, label);
     const buildNames = getBuildSecretNames(config);
     const isBuildCredential = (name: string) =>
       buildNames.includes(name) ||

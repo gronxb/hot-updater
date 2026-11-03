@@ -222,7 +222,10 @@ describe("hot-updater secrets put bundle-signing-key", () => {
 
   it("refuses a store that doesn't read the key back", async () => {
     const { store } = writableStore();
-    store.get.mockResolvedValue({ "bundle-signing-key": "another" });
+    // Nothing is stored before; the store reads back another value after.
+    store.get
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({ "bundle-signing-key": "another" });
     const file = path.join(directory, "key.pem");
     await fs.writeFile(file, rsaKey(2048, "pkcs8").pem);
 
@@ -441,5 +444,87 @@ describe("hot-updater secrets put", () => {
     );
     expect(password).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("hot-updater secrets put over a stored value", () => {
+  const ascKey = async (keyId: string) => {
+    const p8 = path.join(directory, `AuthKey_${keyId}.p8`);
+    await fs.writeFile(p8, P8);
+    return { kind: "asc-api-key" as const, p8, keyId, issuerId: "issuer" };
+  };
+  const ascValue = (keyId: string) =>
+    JSON.stringify({ keyId, issuerId: "issuer", p8: P8 });
+
+  it("refuses another value without --replace, keeping the stored one", async () => {
+    const old = ascValue("OLDKEY1");
+    const { store, held } = writableStore({ "asc-api-key": old });
+
+    await handleSecretsPut("asc-api-key", await ascKey("NEWKEY1"));
+
+    expect(store.set).not.toHaveBeenCalled();
+    expect(held.get("asc-api-key")).toBe(old);
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      "spec://asc-api-key already holds another asc-api-key.\nBack it up, then run the same command with --replace.",
+    );
+  });
+
+  it("overwrites it with --replace", async () => {
+    const { store, held } = writableStore({
+      "asc-api-key": ascValue("OLDKEY1"),
+    });
+
+    await handleSecretsPut("asc-api-key", {
+      ...(await ascKey("NEWKEY1")),
+      replace: true,
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set).toHaveBeenCalledOnce();
+    expect(JSON.parse(held.get("asc-api-key")!).keyId).toBe("NEWKEY1");
+  });
+
+  it("writes nothing when the same value is stored", async () => {
+    const { store } = writableStore({ "asc-api-key": ascValue("SAMEKEY1") });
+
+    await handleSecretsPut("asc-api-key", await ascKey("SAMEKEY1"));
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(messages()[0]).toContain("Secret already stored");
+  });
+
+  it("refuses a stored bundle signing key's replacement, which shipped apps verify against", async () => {
+    const old = rsaKey(2048, "pkcs8");
+    const next = rsaKey(2048, "pkcs8");
+    const { store } = writableStore({ "bundle-signing-key": old.pkcs8 });
+    const pem = path.join(directory, "next.pem");
+    await fs.writeFile(pem, next.pem);
+
+    await handleSecretsPut("bundle-signing-key", { file: pem });
+
+    expect(store.set).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("refuses a stored keystore before asking for its passwords", async () => {
+    const { store } = writableStore({
+      "release-keystore": '{"keystore":"old"}',
+    });
+    const file = path.join(directory, "release.jks");
+    await fs.writeFile(file, Buffer.from([0xfe, 0xed]));
+
+    await handleSecretsPut("release-keystore", {
+      kind: "android-keystore",
+      keystore: file,
+    });
+
+    expect(password).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      "spec://release-keystore already holds another android-keystore.\nBack it up, then run the same command with --replace.",
+    );
   });
 });

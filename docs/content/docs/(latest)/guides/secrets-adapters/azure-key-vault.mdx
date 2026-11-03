@@ -46,7 +46,7 @@ loads them, and the Function App init deploys doesn't include them.
   fails it rather than reading as missing.
 - `set` adds a new version of the secret, which creates it when it does not
   exist, and tags it `hot-updater-name` with the name it holds. Key Vault
-  keeps the older versions.
+  keeps the older versions, so the previous one can be restored.
 - `set` on a deleted secret that is still recoverable fails with the
   `az keyvault secret recover` and `az keyvault secret purge` commands for
   it: Key Vault holds a deleted name until it is recovered or purged.

@@ -593,6 +593,10 @@ secretsCommand
     "--service-account <file>",
     "play-service-account: the service account's JSON key file",
   )
+  .option(
+    "--replace",
+    "overwrite another value stored as the name, which may be its only copy",
+  )
   .addHelpText(
     "after",
     [

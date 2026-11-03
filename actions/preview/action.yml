@@ -177,6 +177,7 @@ runs:
         include-hidden-files: true
         if-no-files-found: ignore
         overwrite: true
+        retention-days: 1
     - if: failure() && steps.run.outputs.android-build-log != ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
@@ -185,3 +186,4 @@ runs:
         include-hidden-files: true
         if-no-files-found: ignore
         overwrite: true
+        retention-days: 1

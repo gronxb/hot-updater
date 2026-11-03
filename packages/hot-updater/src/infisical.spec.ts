@@ -530,7 +530,7 @@ describe("infisical", () => {
   it.each([
     "http://infisical.example.com",
     "https://user:pass@infisical.example.com",
-    "https://infisical.example.com/?x=1",
+    "https://infisical.example.com/?token=x",
     "https://infisical.example.com/#x",
     "not a url",
   ])("refuses siteUrl %s on first use", async (siteUrl) => {
@@ -543,8 +543,9 @@ describe("infisical", () => {
     const error = (await secrets
       .get(["a"], { cwd })
       .catch((thrown: unknown) => thrown)) as Error;
+    // Not quoted when it may hold credentials: a user, a query, a fragment.
     expect(error.message.split("\n")[0]).toBe(
-      siteUrl.includes("@")
+      /[@?#]/u.test(siteUrl)
         ? "infisical() can't use siteUrl."
         : `infisical() can't use siteUrl ${JSON.stringify(siteUrl)}.`,
     );

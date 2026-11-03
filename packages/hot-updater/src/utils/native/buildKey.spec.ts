@@ -1034,6 +1034,24 @@ describe("computeNativeBuildKey", () => {
     expect((await changedBy(() => {}, env("0"), env("1"))).changed).toEqual([
       "env:EXPO_USE_COMMUNITY_AUTOLINKING",
     ]);
+    // A signing config's passwords are credentials, however it names them:
+    // not even their hash is kept.
+    write(
+      "apps/mobile/android/app/build.gradle",
+      'storePassword System.getenv("MYAPP_STORE_PASS")\nkeyPassword System.getenv("KEY_PASS")\ndef passphrase = System.getenv("RELEASE_PASSPHRASE")\n',
+    );
+    const passwords = (value: string) => ({
+      env: {
+        GRADLE_USER_HOME: gradleHome,
+        MYAPP_STORE_PASS: value,
+        KEY_PASS: value,
+        RELEASE_PASSPHRASE: value,
+      },
+    });
+    expect(await changedBy(() => {}, passwords("a"), passwords("b"))).toEqual({
+      changed: [],
+      same: true,
+    });
     write(
       "apps/mobile/android/app/build.gradle",
       'dependencies { implementation("com.example:lib:+") }\n',

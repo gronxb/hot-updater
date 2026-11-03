@@ -66,3 +66,4 @@ runs:
         include-hidden-files: true
         if-no-files-found: ignore
         overwrite: true
+        retention-days: 1

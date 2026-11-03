@@ -78,6 +78,12 @@ describe.each([
     (output: string) =>
       `hot-updater-preview-build-log-${output.replace("-build-log", "")}`,
   ],
+  [
+    "release",
+    ["ios-build-log", "android-build-log"],
+    (output: string) =>
+      `hot-updater-release-build-log-${output.replace("-build-log", "")}`,
+  ],
 ])("%s action.yml", (name, outputs, artifactName) => {
   it("uploads each failed build's log as an artifact, with a pinned upload-artifact", async () => {
     const action = await readAction(name);
@@ -99,6 +105,9 @@ describe.each([
       expect(step).toContain("include-hidden-files: true");
       // A re-run of the job uploads it again.
       expect(step).toContain("overwrite: true");
+      // Masking covers only the values the CLI knows: a log that printed
+      // another job secret is gone the next day.
+      expect(step).toContain("retention-days: 1");
       // The action's output, beside the step's.
       expect(action).toContain(
         `  ${output}:\n    description: >-\n      When the`,

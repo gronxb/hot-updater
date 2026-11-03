@@ -578,7 +578,7 @@ describe("secretManager set", () => {
     });
   });
 
-  it("destroys only the versions it added before, never another version", async () => {
+  it("keeps the version it added last as the previous one, destroys older ones it added, never another version", async () => {
     fake.createSecret(key);
     fake.addUserVersion(key, "added in the Cloud Console");
     fake.secrets.get(key)!.annotations = { team: "mobile" };
@@ -589,11 +589,12 @@ describe("secretManager set", () => {
     await secrets.set?.("asc-api-key", "four", context);
     await secrets.set?.("asc-api-key", "five", context);
 
-    // 1 and 3 were added by others; 2 and 4 were replaced by the adapter.
-    expect(fake.enabled(key)).toEqual([1, 3, 5]);
+    // 1 and 3 were added by others; 2 was replaced twice by the adapter,
+    // and 4, which "five" replaced, stays as the previous value.
+    expect(fake.enabled(key)).toEqual([1, 3, 4, 5]);
     expect(fake.secrets.get(key)?.annotations).toEqual({
       team: "mobile",
-      "hot-updater-versions": "5",
+      "hot-updater-versions": "5,4",
     });
     await expect(secrets.get(["asc-api-key"], context)).resolves.toEqual({
       "asc-api-key": "five",
@@ -603,22 +604,24 @@ describe("secretManager set", () => {
   it("keeps a version it could not destroy listed for the next set", async () => {
     const secrets = secretManager({ projectId: "demo-project", prefix: "" });
     await secrets.set?.("asc-api-key", "one", context);
+    await secrets.set?.("asc-api-key", "two", context);
     fake.state.failDestroy.add(1);
 
-    await secrets.set?.("asc-api-key", "two", context);
-    expect(fake.enabled(key)).toEqual([1, 2]);
+    await secrets.set?.("asc-api-key", "three", context);
+    expect(fake.enabled(key)).toEqual([1, 2, 3]);
     expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
-      "2,1",
+      "3,2,1",
     );
 
     fake.state.failDestroy.clear();
-    await secrets.set?.("asc-api-key", "three", context);
-    expect(fake.enabled(key)).toEqual([3]);
+    await secrets.set?.("asc-api-key", "four", context);
+    expect(fake.enabled(key)).toEqual([3, 4]);
   });
 
   it("keeps a version listed when its destroy request fails to connect", async () => {
     const secrets = secretManager({ projectId: "demo-project", prefix: "" });
     await secrets.set?.("asc-api-key", "one", context);
+    await secrets.set?.("asc-api-key", "two", context);
     const fetchFake = fake.fetchMock.getMockImplementation()!;
     fake.fetchMock.mockImplementation(async (input, init) => {
       if (String(input).endsWith("/versions/1:destroy")) {
@@ -627,23 +630,24 @@ describe("secretManager set", () => {
       return fetchFake(input, init);
     });
 
-    await secrets.set?.("asc-api-key", "two", context);
+    await secrets.set?.("asc-api-key", "three", context);
 
-    expect(fake.enabled(key)).toEqual([1, 2]);
+    expect(fake.enabled(key)).toEqual([1, 2, 3]);
     expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
-      "2,1",
+      "3,2,1",
     );
   });
 
   it("treats a version destroyed by someone else as destroyed", async () => {
     const secrets = secretManager({ projectId: "demo-project", prefix: "" });
     await secrets.set?.("asc-api-key", "one", context);
+    await secrets.set?.("asc-api-key", "two", context);
     fake.secrets.get(key)!.versions[0]!.state = "DESTROYED";
 
-    await secrets.set?.("asc-api-key", "two", context);
+    await secrets.set?.("asc-api-key", "three", context);
 
     expect(fake.secrets.get(key)?.annotations["hot-updater-versions"]).toBe(
-      "2",
+      "3,2",
     );
   });
 
@@ -715,19 +719,20 @@ describe("secretManager set", () => {
       "asc-api-key": "two",
     });
   });
-  it("waits for latest to resolve to the new version before it destroys the old one", async () => {
+  it("waits for latest to resolve to the new version before it destroys an old one", async () => {
     const secrets = secretManager({ projectId: "demo-project", prefix: "" });
     await secrets.set?.("asc-api-key", "one", context);
+    await secrets.set?.("asc-api-key", "two", context);
     fake.state.latestLag = 2;
 
-    await secrets.set?.("asc-api-key", "two", context);
+    await secrets.set?.("asc-api-key", "three", context);
 
     const latestReads = fake.requests.filter(({ url }) =>
       url.endsWith("/versions/latest:access"),
     );
-    // One read for the first set, three for the second: two stale.
-    expect(latestReads).toHaveLength(4);
-    expect(fake.enabled(key)).toEqual([2]);
+    // One read for each of the first two sets, three for the third: two stale.
+    expect(latestReads).toHaveLength(5);
+    expect(fake.enabled(key)).toEqual([2, 3]);
   });
 
   it("reads again while latest still names a disabled version", async () => {
@@ -794,12 +799,13 @@ describe("secretManager set", () => {
     };
 
     await secrets.set?.("asc-api-key", "two", context);
+    // 1, the value "two" replaced, stays listed as the previous one.
     expect(fake.secrets.get(key)?.annotations).toEqual({
-      "hot-updater-versions": "2,3",
+      "hot-updater-versions": "2,1,3",
       team: "mobile",
     });
 
     await secrets.set?.("asc-api-key", "four", context);
-    expect(fake.enabled(key)).toEqual([4]);
+    expect(fake.enabled(key)).toEqual([3, 4]);
   });
 });
