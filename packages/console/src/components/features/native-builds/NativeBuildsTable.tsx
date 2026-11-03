@@ -1,17 +1,37 @@
-import type { NativeBuildRow } from "@hot-updater/plugin-core";
+import {
+  extractTimestampFromUUIDv7,
+  type NativeBuildRow,
+} from "@hot-updater/plugin-core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
   Download,
-  HardDriveDownload,
+  HardDrive,
   RefreshCw,
 } from "lucide-react";
 
-import { PlatformIcon } from "@/components/PlatformIcon";
-import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { ChannelBadge } from "@/components/ChannelBadge";
+import {
+  DataCard,
+  DataCardSkeletons,
+  DataCardsEmpty,
+  DataTable,
+  DataTableEmpty,
+  DataTableFrame,
+  DataTableFullRow,
+  DataTablePagination,
+  DataTableRow,
+  DataTableSkeletonRows,
+  openOutsideControls,
+} from "@/components/DataTable";
+import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
+import { RelativeTime } from "@/components/RelativeTime";
+import {
+  BuildKeyDisplay,
+  NoValue,
+  TargetDisplay,
+} from "@/components/TargetDisplay";
 import {
   Alert,
   AlertAction,
@@ -20,162 +40,220 @@ import {
 } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   formatByteSize,
   nativeBuildArtifacts,
   nativeBuildChannel,
   nativeBuildDownloadPath,
   nativeBuildFileName,
-  nativeBuildTarget,
   platformLabel,
 } from "@/lib/native-builds";
 import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
-import { CommitLink } from "./CommitLink";
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
-import { ShortHash } from "./ShortHash";
-import { StoreSubmissionBadge } from "./StoreSubmission";
+import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/native-build#how-a-build-is-tracked";
 
-const COLUMNS = 6;
+const COLUMNS = 10;
 
-function EmptyRow({
+/** The page of the list that shows `channel`'s builds, or every build. */
+const channelSearch = (channel: string | undefined) =>
+  channel === undefined ? {} : { channel };
+
+function EmptyState({
   channel,
   paged,
   onClearChannel,
-  onNewest,
 }: {
   readonly channel: string | undefined;
   readonly paged: boolean;
   readonly onClearChannel: () => void;
-  readonly onNewest: () => void;
 }) {
-  return (
-    <TableRow>
-      <TableCell
-        className="h-44 text-center text-muted-foreground"
-        colSpan={COLUMNS}
+  if (paged) {
+    return (
+      <DataTableEmpty icon={HardDrive} title="No more native builds">
+        <Link
+          className={buttonVariants({
+            className: "mt-1 min-h-11 sm:min-h-8",
+            variant: "outline",
+          })}
+          search={channelSearch(channel)}
+          to="/native-builds"
+        >
+          Show the newest builds
+        </Link>
+      </DataTableEmpty>
+    );
+  }
+  if (channel !== undefined) {
+    return (
+      <DataTableEmpty
+        icon={HardDrive}
+        title={
+          <>
+            No native build embeds <span translate="no">{channel}</span>
+          </>
+        }
       >
-        <div className="mx-auto flex max-w-sm flex-col items-center gap-2 whitespace-normal">
-          <HardDriveDownload aria-hidden="true" className="size-5" />
-          {paged ? (
-            <>
-              <p className="font-medium text-foreground">
-                No more native builds
-              </p>
-              <Button
-                className="mt-1 min-h-11 sm:min-h-8"
-                onClick={onNewest}
-                variant="outline"
-              >
-                Show the newest builds
-              </Button>
-            </>
-          ) : channel !== undefined ? (
-            <>
-              <p className="font-medium text-foreground">
-                No native build embeds <span translate="no">{channel}</span>
-              </p>
-              <p>
-                A build embeds the channel it was built on. Build one on this
-                channel, or list every channel's builds.
-              </p>
-              <Button
-                className="mt-1 min-h-11 sm:min-h-8"
-                onClick={onClearChannel}
-                variant="outline"
-              >
-                Show all channels
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="font-medium text-foreground">No native builds</p>
-              <p>
-                Build one with{" "}
-                <code className="font-mono text-xs">native-build android</code>{" "}
-                or <code className="font-mono text-xs">native-build ios</code>,
-                or import one built elsewhere:
-              </p>
-              <div className="w-full text-left">
-                <CopyableText
-                  label="the import command"
-                  value={IMPORT_COMMAND}
-                  wrap
-                />
-              </div>
-              <a
-                className={buttonVariants({
-                  className: "mt-1 min-h-11 sm:min-h-8",
-                  variant: "outline",
-                })}
-                href={NATIVE_BUILD_GUIDE_URL}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Native build guide
-                <ArrowUpRight data-icon="inline-end" />
-              </a>
-              <a
-                className={buttonVariants({
-                  className: "min-h-11 sm:min-h-8",
-                  variant: "outline",
-                })}
-                href={IMPORT_GUIDE_URL}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Import guide
-                <ArrowUpRight data-icon="inline-end" />
-              </a>
-            </>
-          )}
-        </div>
-      </TableCell>
-    </TableRow>
+        <p>
+          A build embeds the channel it was built on. Build one on this channel,
+          or list every channel's builds.
+        </p>
+        <Button
+          className="mt-1 min-h-11 sm:min-h-8"
+          onClick={onClearChannel}
+          variant="outline"
+        >
+          Show all channels
+        </Button>
+      </DataTableEmpty>
+    );
+  }
+  return (
+    <DataTableEmpty icon={HardDrive} title="No native builds">
+      <p>
+        Build one with{" "}
+        <code className="font-mono text-xs">native-build android</code> or{" "}
+        <code className="font-mono text-xs">native-build ios</code>, or import
+        one built elsewhere:
+      </p>
+      <div className="w-full text-left">
+        <CopyableText label="the import command" value={IMPORT_COMMAND} wrap />
+      </div>
+      <a
+        className={buttonVariants({
+          className: "mt-1 min-h-11 sm:min-h-8",
+          variant: "outline",
+        })}
+        href={NATIVE_BUILD_GUIDE_URL}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Native build guide
+        <ArrowUpRight data-icon="inline-end" />
+      </a>
+      <a
+        className={buttonVariants({
+          className: "min-h-11 sm:min-h-8",
+          variant: "outline",
+        })}
+        href={IMPORT_GUIDE_URL}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Import guide
+        <ArrowUpRight data-icon="inline-end" />
+      </a>
+    </DataTableEmpty>
   );
 }
 
-function LoadingRows() {
-  return Array.from({ length: 3 }, (_, index) => (
-    <TableRow key={index}>
-      <TableCell className="space-y-2 py-3">
-        {index === 0 ? (
-          <span className="sr-only">Loading native builds</span>
-        ) : null}
-        <Skeleton className="h-3.5 w-40" />
-        <Skeleton className="h-3 w-24" />
-      </TableCell>
-      <TableCell className="hidden md:table-cell">
-        <Skeleton className="h-5 w-20" />
-      </TableCell>
-      <TableCell className="hidden xl:table-cell">
-        <Skeleton className="h-3.5 w-28" />
-      </TableCell>
-      <TableCell className="hidden xl:table-cell">
-        <Skeleton className="h-3.5 w-14" />
-      </TableCell>
-      <TableCell className="hidden sm:table-cell">
-        <Skeleton className="h-3.5 w-20" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="ml-auto h-6 w-16" />
-      </TableCell>
-    </TableRow>
-  ));
+/** What a build is: its platform's name and artifact kind, such as "Android APK". */
+const buildTitle = (build: NativeBuildRow) =>
+  `${platformLabel(build.platform)} ${nativeBuildArtifacts[build.artifact_kind].label}`;
+
+/**
+ * The build's artifact kind, such as "IPA", linking to its page. The Platform
+ * beside it names the platform; the link's name is the whole build.
+ */
+function BuildLink({ build }: { readonly build: NativeBuildRow }) {
+  return (
+    <Link
+      aria-label={buildTitle(build)}
+      className="relative rounded-sm font-medium whitespace-nowrap text-foreground transition-colors underline-offset-4 after:absolute after:-inset-x-[10px] after:-inset-y-[10px] hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
+      params={{ buildId: build.id }}
+      to="/native-builds/$buildId"
+    >
+      {nativeBuildArtifacts[build.artifact_kind].label}
+    </Link>
+  );
 }
+
+/** The channel the build embeds; a click lists that channel's builds. */
+function ChannelFilterButton({
+  channel,
+  onChannel,
+}: {
+  readonly channel: string;
+  readonly onChannel: (channel: string) => void;
+}) {
+  return (
+    <button
+      aria-label={`Show the builds that embed ${channel}`}
+      className="relative rounded-md text-left after:absolute after:inset-x-0 after:-inset-y-[11px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
+      onClick={() => onChannel(channel)}
+      type="button"
+    >
+      <ChannelBadge channel={channel} className="whitespace-nowrap" />
+    </button>
+  );
+}
+
+/**
+ * The store track a build went to, and under it the store build mark, so a
+ * build with both stays one badge wide.
+ */
+function StoreCell({ build }: { readonly build: NativeBuildRow }) {
+  if (!isSubmitted(build) && build.store_build !== true) return <NoValue />;
+  return (
+    <StoreBadges build={build} className="flex flex-col items-start gap-1" />
+  );
+}
+
+/** The store badges, laid out by the caller. */
+function StoreBadges({
+  build,
+  className,
+}: {
+  readonly build: NativeBuildRow;
+  readonly className: string;
+}) {
+  return (
+    <span className={className}>
+      <StoreSubmissionBadge build={build} />
+      {build.store_build === true ? (
+        <Badge variant="secondary">Store build</Badge>
+      ) : null}
+    </span>
+  );
+}
+
+function DownloadButton({ build }: { readonly build: NativeBuildRow }) {
+  return (
+    <a
+      aria-label={`Download ${nativeBuildFileName(build)}`}
+      className={buttonVariants({
+        className: "min-h-11 sm:min-h-8",
+        size: "sm",
+        variant: "outline",
+      })}
+      download
+      href={nativeBuildDownloadPath(build.id)}
+    >
+      <Download data-icon="inline-start" />
+      Download
+    </a>
+  );
+}
+
+function BuildNumber({ build }: { readonly build: NativeBuildRow }) {
+  return build.build_number ? (
+    <span className="font-mono tabular-nums" translate="no">
+      {build.build_number}
+    </span>
+  ) : (
+    <NoValue />
+  );
+}
+
+/** When the build was registered, from its ID. */
+const createdAt = (build: NativeBuildRow) =>
+  extractTimestampFromUUIDv7(build.id);
 
 function BuildRow({
   build,
@@ -185,140 +263,144 @@ function BuildRow({
   readonly onChannel: (channel: string) => void;
 }) {
   const navigate = useNavigate();
-  const target = nativeBuildTarget(build);
   const channel = nativeBuildChannel(build);
-  const title = `${platformLabel(build.platform)} ${nativeBuildArtifacts[build.artifact_kind].label}`;
   return (
-    <TableRow
-      className="cursor-pointer"
-      onClick={() =>
+    <DataTableRow
+      aria-label={`Open native build ${build.id}`}
+      onOpen={() =>
         void navigate({
           to: "/native-builds/$buildId",
           params: { buildId: build.id },
         })
       }
     >
-      <TableCell className="py-3 whitespace-normal">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <PlatformIcon
-              className="size-3.5 shrink-0 text-muted-foreground"
-              platform={build.platform}
-            />
-            <Link
-              className="font-medium underline-offset-4 hover:underline"
-              onClick={(event) => event.stopPropagation()}
-              params={{ buildId: build.id }}
-              to="/native-builds/$buildId"
-            >
-              {title}
-            </Link>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {formatByteSize(build.byte_size)}
-            </span>
-            <StoreSubmissionBadge build={build} withTime />
-            {build.store_build === true ? (
-              <Badge variant="secondary">Store build</Badge>
-            ) : null}
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            <span>{target.label}</span>
-            {build.fingerprint_hash === null ? (
-              <span className="font-mono text-foreground" translate="no">
-                {target.value}
-              </span>
-            ) : (
-              <ShortHash
-                label="fingerprint"
-                length={12}
-                value={build.fingerprint_hash}
-              />
-            )}
-            {!build.build_number ? null : (
-              <span className="tabular-nums" translate="no">
-                · build {build.build_number}
-              </span>
-            )}
-            <span className="md:hidden" translate="no">
-              · {channel}
-            </span>
-            {build.git_commit_hash === null ? null : (
-              <span className="inline-flex items-center gap-1 xl:hidden">
-                · commit <CommitLink hash={build.git_commit_hash} />
-              </span>
-            )}
-          </div>
-          {/* Below xl the column hides, so the whole ID shows here. */}
-          <div className="text-xs text-muted-foreground xl:hidden">
-            Built-in bundle{" "}
-            <span
-              className="font-mono [overflow-wrap:anywhere] text-foreground"
-              translate="no"
-            >
-              {build.min_bundle_id}
-            </span>
-          </div>
-        </div>
+      <TableCell>
+        <BuildLink build={build} />
       </TableCell>
-      <TableCell className="hidden md:table-cell">
-        <button
-          aria-label={`Show the builds that embed ${channel}`}
-          className="rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          onClick={(event) => {
-            event.stopPropagation();
-            onChannel(channel);
-          }}
-          type="button"
-        >
-          <Badge className="whitespace-nowrap" translate="no" variant="outline">
-            {channel}
-          </Badge>
-        </button>
+      <TableCell>
+        <ChannelFilterButton channel={channel} onChannel={onChannel} />
       </TableCell>
-      <TableCell className="hidden xl:table-cell">
-        <span
-          className="font-mono text-xs text-muted-foreground"
-          translate="no"
-        >
-          {build.min_bundle_id}
-        </span>
+      <TableCell className="whitespace-nowrap">
+        <PlatformLabel platform={build.platform} />
       </TableCell>
-      <TableCell className="hidden xl:table-cell">
-        <CommitLink hash={build.git_commit_hash} />
+      <TableCell>
+        <BuildNumber build={build} />
       </TableCell>
-      <TableCell className="hidden sm:table-cell">
-        <TimestampDisplay uuid={build.id} />
+      <TableCell>
+        <TargetDisplay
+          appVersion={build.app_version}
+          fingerprintHash={build.fingerprint_hash}
+        />
+      </TableCell>
+      <TableCell>
+        <BuildKeyDisplay value={build.build_key} />
+      </TableCell>
+      <TableCell>
+        <StoreCell build={build} />
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
+        {formatByteSize(build.byte_size)}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        <RelativeTime ms={createdAt(build)} />
       </TableCell>
       <TableCell className="text-right">
-        <a
-          aria-label={`Download ${nativeBuildFileName(build)}`}
-          className={buttonVariants({
-            className: "min-h-11 sm:min-h-7",
-            size: "sm",
-            variant: "outline",
-          })}
-          download
-          href={nativeBuildDownloadPath(build.id)}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Download data-icon="inline-start" />
-          Download
-        </a>
+        <DownloadButton build={build} />
       </TableCell>
-    </TableRow>
+    </DataTableRow>
   );
 }
 
 /**
- * The registered native builds, newest first, one page at a time. A row
- * opens the build's page; its channel filters the list by that channel.
+ * A build's card on a narrow screen, scannable a few to a screen: what it is
+ * and where, then when, then its target and build key, then its store. Every
+ * value of the row is on it, and a tap opens the build's page.
+ */
+function BuildCard({
+  build,
+  onChannel,
+}: {
+  readonly build: NativeBuildRow;
+  readonly onChannel: (channel: string) => void;
+}) {
+  const navigate = useNavigate();
+  const channel = nativeBuildChannel(build);
+  const stored = isSubmitted(build) || build.store_build === true;
+  return (
+    <DataCard
+      aria-label={`Native build ${buildTitle(build)} ${build.id}`}
+      className="gap-3 border-b-0"
+      onClick={openOutsideControls(
+        () =>
+          void navigate({
+            to: "/native-builds/$buildId",
+            params: { buildId: build.id },
+          }),
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <PlatformIcon
+            className="size-4 shrink-0 text-muted-foreground"
+            platform={build.platform}
+          />
+          <BuildLink build={build} />
+          <ChannelFilterButton channel={channel} onChannel={onChannel} />
+        </div>
+        <DownloadButton build={build} />
+      </div>
+      <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <span className="sr-only">{platformLabel(build.platform)}</span>
+        {build.build_number ? (
+          <>
+            <span translate="no">
+              Build{" "}
+              <span className="font-mono tabular-nums text-foreground">
+                {build.build_number}
+              </span>
+            </span>
+            <span aria-hidden="true">·</span>
+          </>
+        ) : null}
+        <span className="tabular-nums">{formatByteSize(build.byte_size)}</span>
+        <span aria-hidden="true">·</span>
+        <RelativeTime ms={createdAt(build)} />
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-xs">
+        <span className="flex items-center">
+          <span className="sr-only">Target </span>
+          <TargetDisplay
+            appVersion={build.app_version}
+            fingerprintHash={build.fingerprint_hash}
+          />
+        </span>
+        {build.build_key ? (
+          <span className="flex items-center">
+            <span className="sr-only">Build key </span>
+            <BuildKeyDisplay value={build.build_key} />
+          </span>
+        ) : null}
+      </div>
+      {stored ? (
+        <StoreBadges
+          build={build}
+          className="flex flex-wrap items-center gap-1.5"
+        />
+      ) : null}
+    </DataCard>
+  );
+}
+
+/**
+ * The registered native builds, newest first, one page at a time, as a
+ * column table like Bundles' on wide screens and cards on narrow ones. A
+ * row opens the build's page; its channel filters the list by that channel.
  */
 export function NativeBuildsTable({
   builds,
   channel,
   paged,
   onChannel,
-  onPage,
 }: {
   readonly builds: {
     readonly data: NativeBuildListResult | undefined;
@@ -332,96 +414,132 @@ export function NativeBuildsTable({
   /** Whether the list shows a page other than the newest. */
   readonly paged: boolean;
   readonly onChannel: (channel: string | undefined) => void;
-  readonly onPage: (page: { before?: string; after?: string }) => void;
 }) {
+  const isMobile = useIsMobile();
   const rows = builds.data?.data;
   const { next, previous } = builds.data ?? {};
 
   if (builds.isError) {
     return (
-      <div className="p-4">
-        <Alert variant="destructive">
-          <AlertTriangle />
-          <AlertTitle>Native builds couldn't be loaded</AlertTitle>
-          <AlertDescription>
-            Check your connection and try again.
-          </AlertDescription>
-          <AlertAction>
-            <Button
-              onClick={() => void builds.refetch()}
-              size="xs"
-              variant="outline"
-            >
-              <RefreshCw data-icon="inline-start" />
-              Retry
-            </Button>
-          </AlertAction>
-        </Alert>
-      </div>
+      <Alert variant="destructive">
+        <AlertTriangle />
+        <AlertTitle>Native builds couldn't be loaded</AlertTitle>
+        <AlertDescription>
+          Check your connection and try again.
+        </AlertDescription>
+        <AlertAction>
+          <Button
+            onClick={() => void builds.refetch()}
+            size="xs"
+            variant="outline"
+          >
+            <RefreshCw data-icon="inline-start" />
+            Retry
+          </Button>
+        </AlertAction>
+      </Alert>
     );
   }
 
+  const empty = (
+    <EmptyState
+      channel={channel}
+      onClearChannel={() => onChannel(undefined)}
+      paged={paged}
+    />
+  );
+
   return (
     <>
-      <Table aria-busy={builds.isPlaceholderData} aria-label="Native builds">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Build</TableHead>
-            <TableHead className="hidden md:table-cell">Channel</TableHead>
-            <TableHead className="hidden xl:table-cell">
-              Built-in bundle
-            </TableHead>
-            <TableHead className="hidden xl:table-cell">Commit</TableHead>
-            <TableHead className="hidden sm:table-cell">Created</TableHead>
-            <TableHead className="text-right">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {builds.isLoading ? (
-            <LoadingRows />
-          ) : rows?.length === 0 ? (
-            <EmptyRow
-              channel={channel}
-              onClearChannel={() => onChannel(undefined)}
-              onNewest={() => onPage({})}
-              paged={paged}
-            />
-          ) : (
-            rows?.map((build) => (
-              <BuildRow build={build} key={build.id} onChannel={onChannel} />
-            ))
-          )}
-        </TableBody>
-      </Table>
-      {next !== undefined || previous !== undefined ? (
-        <nav
-          aria-label="Native build pages"
-          className="flex items-center justify-end gap-2 border-t px-4 py-2"
-        >
-          <Button
-            className="min-h-11 sm:min-h-7"
-            disabled={previous === undefined || builds.isPlaceholderData}
-            onClick={() => onPage({ after: previous })}
-            size="sm"
-            variant="ghost"
+      <DataTableFrame>
+        {isMobile ? (
+          <div
+            aria-busy={builds.isPlaceholderData}
+            aria-label="Native builds"
+            className="h-full overflow-y-auto aria-busy:opacity-60"
+            role="list"
           >
-            <ChevronLeft data-icon="inline-start" />
-            Newer
-          </Button>
-          <Button
-            className="min-h-11 sm:min-h-7"
-            disabled={next === undefined || builds.isPlaceholderData}
-            onClick={() => onPage({ before: next })}
-            size="sm"
-            variant="ghost"
+            {builds.isLoading ? (
+              <DataCardSkeletons label="Loading native builds" />
+            ) : rows?.length === 0 ? (
+              <DataCardsEmpty>{empty}</DataCardsEmpty>
+            ) : (
+              rows?.map((build) => (
+                <div
+                  className="border-b last:border-b-0"
+                  key={build.id}
+                  role="listitem"
+                >
+                  <BuildCard build={build} onChannel={onChannel} />
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <DataTable
+            aria-busy={builds.isPlaceholderData}
+            aria-label="Native builds"
+            className="aria-busy:opacity-60"
+            header={
+              <>
+                <TableHead>Artifact</TableHead>
+                <TableHead>Channel</TableHead>
+                <TableHead>Platform</TableHead>
+                <TableHead>Build</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead>Build key</TableHead>
+                <TableHead>Store</TableHead>
+                <TableHead>Size</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </>
+            }
           >
-            Older
-            <ChevronRight data-icon="inline-end" />
-          </Button>
-        </nav>
-      ) : null}
+            {builds.isLoading ? (
+              <DataTableSkeletonRows
+                columns={COLUMNS}
+                label="Loading native builds"
+              />
+            ) : rows?.length === 0 ? (
+              <DataTableFullRow columns={COLUMNS}>{empty}</DataTableFullRow>
+            ) : (
+              rows?.map((build) => (
+                <BuildRow build={build} key={build.id} onChannel={onChannel} />
+              ))
+            )}
+          </DataTable>
+        )}
+      </DataTableFrame>
+      {builds.isLoading || rows === undefined ? null : (
+        <DataTablePagination
+          count={rows.length}
+          label="Native build pages"
+          pending={builds.isPlaceholderData}
+          newest={
+            paged
+              ? { search: channelSearch(channel), to: "/native-builds" }
+              : undefined
+          }
+          next={
+            next === undefined
+              ? undefined
+              : {
+                  search: { ...channelSearch(channel), before: next },
+                  to: "/native-builds",
+                }
+          }
+          previous={
+            previous === undefined
+              ? undefined
+              : {
+                  search: { ...channelSearch(channel), after: previous },
+                  to: "/native-builds",
+                }
+          }
+        />
+      )}
     </>
   );
 }

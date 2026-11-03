@@ -802,6 +802,17 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     kind: "ipa",
     gitCommitHash: "b48e0c21",
   },
+  // A production IPA on the fingerprint strategy, which TestFlight took and
+  // its scope sells.
+  {
+    n: 29,
+    platform: "ios",
+    channel: "production",
+    target: { fingerprint: "fp-ios-production-1-0-0" },
+    minBundleId: "01971f60-0000-7000-8000-000000000000",
+    kind: "ipa",
+    gitCommitHash: "7f3c2d18",
+  },
 ];
 for (const build of demoNativeBuilds) {
   const id = nativeBuildId(build.n);
@@ -818,7 +829,12 @@ for (const build of demoNativeBuilds) {
       : { fingerprintHash: null, appVersion: build.target.appVersion }),
     minBundleId: build.minBundleId,
     gitCommitHash: build.gitCommitHash,
-    buildKey: null,
+    // The CLI keys each build it makes by its inputs; an imported build, one
+    // with no commit, has no key.
+    buildKey:
+      build.gitCommitHash === null
+        ? null
+        : `nbk1:${toSeedHash("build-key", `${build.n}`)}`,
     buildNumber: String(100 + build.n),
     artifact: {
       kind: build.kind,
@@ -854,7 +870,7 @@ for (const build of demoNativeBuilds) {
   }
 }
 
-// The production IPA went to TestFlight and the AAB to Google Play's
+// The production IPAs went to TestFlight and the AAB to Google Play's
 // internal track, which the CLI records once the store took each.
 await core.recordNativeBuildSubmission(nativeBuildId(21), {
   destination: "testflight",
@@ -864,9 +880,14 @@ await core.recordNativeBuildSubmission(nativeBuildId(22), {
   destination: "play-internal",
   version: "1.3.0 (122)",
 });
+await core.recordNativeBuildSubmission(nativeBuildId(29), {
+  destination: "testflight",
+  version: "1.0.0 (129)",
+});
 
 // What the store sells of the production IPA's scope.
 await core.markNativeBuild(nativeBuildId(21), { storeBuild: true });
+await core.markNativeBuild(nativeBuildId(29), { storeBuild: true });
 
 // Oldest first, one deploy each, so a patch's base is stored before it.
 const releaseIdByBundle = new Map<string, string>();

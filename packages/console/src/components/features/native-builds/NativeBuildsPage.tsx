@@ -1,7 +1,6 @@
 import { HardDrive, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -54,7 +53,7 @@ export function NativeBuildsPage({
     onSearchChange(next === undefined ? {} : { channel: next });
 
   return (
-    <div className="flex h-svh min-h-0 flex-col">
+    <div className="flex h-svh min-h-0 min-w-0 flex-col">
       <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-background px-3 py-3 sm:min-h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
         <SidebarTrigger className="-ml-1 size-11 lg:size-7" />
         <div className="flex items-center gap-1.5">
@@ -69,82 +68,70 @@ export function NativeBuildsPage({
         </p>
       </header>
 
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-        <Card className="mx-auto w-full max-w-6xl overflow-hidden shadow-sm">
-          <div className="flex items-center gap-2 border-b px-4 py-3">
-            <Select
-              items={[
-                { label: "All channels", value: ALL_CHANNELS },
-                ...choices.map((name) => ({
-                  label: name,
-                  value: channelValue(name),
-                })),
-              ]}
-              onOpenChange={(open) => {
-                // A pull request's channel appears while the page is open.
-                if (open) void channels.refetch();
-              }}
-              onValueChange={(value) =>
-                filterBy(
-                  value?.startsWith(CHANNEL_VALUE_PREFIX)
-                    ? value.slice(CHANNEL_VALUE_PREFIX.length)
-                    : undefined,
-                )
-              }
-              value={
-                channel === undefined ? ALL_CHANNELS : channelValue(channel)
-              }
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
+        <div className="flex items-center gap-2">
+          <Select
+            items={[
+              { label: "All channels", value: ALL_CHANNELS },
+              ...choices.map((name) => ({
+                label: name,
+                value: channelValue(name),
+              })),
+            ]}
+            onOpenChange={(open) => {
+              // A pull request's channel appears while the page is open.
+              if (open) void channels.refetch();
+            }}
+            onValueChange={(value) =>
+              filterBy(
+                value?.startsWith(CHANNEL_VALUE_PREFIX)
+                  ? value.slice(CHANNEL_VALUE_PREFIX.length)
+                  : undefined,
+              )
+            }
+            value={channel === undefined ? ALL_CHANNELS : channelValue(channel)}
+          >
+            <SelectTrigger
+              aria-label="Channel"
+              className="min-w-0 flex-1 text-xs data-[size=default]:h-11 sm:w-48 sm:flex-none sm:data-[size=default]:h-8"
             >
-              <SelectTrigger
-                aria-label="Channel"
-                className="h-11 min-w-0 flex-1 text-xs sm:h-8 sm:w-48 sm:flex-none"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value={ALL_CHANNELS}>All channels</SelectItem>
-                  {choices.map((name) => (
-                    <SelectItem
-                      key={name}
-                      translate="no"
-                      value={channelValue(name)}
-                    >
-                      {name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <div className="ml-auto">
-              <ImportBuildDialog />
-            </div>
-            <Button
-              aria-label="Refresh native builds"
-              className="size-11 sm:size-7"
-              disabled={builds.isLoading}
-              onClick={() => void builds.refetch()}
-              size="icon-sm"
-              variant="ghost"
-            >
-              <RefreshCw aria-hidden="true" />
-            </Button>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value={ALL_CHANNELS}>All channels</SelectItem>
+                {choices.map((name) => (
+                  <SelectItem
+                    key={name}
+                    translate="no"
+                    value={channelValue(name)}
+                  >
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <div className="ml-auto">
+            <ImportBuildDialog />
           </div>
-          <CardContent className="p-0">
-            <NativeBuildsTable
-              builds={builds}
-              channel={channel}
-              onChannel={filterBy}
-              onPage={(page) =>
-                onSearchChange({
-                  ...(channel === undefined ? {} : { channel }),
-                  ...page,
-                })
-              }
-              paged={before !== undefined || after !== undefined}
-            />
-          </CardContent>
-        </Card>
+          <Button
+            aria-label="Refresh native builds"
+            className="size-11 sm:size-7"
+            disabled={builds.isLoading}
+            onClick={() => void builds.refetch()}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <RefreshCw aria-hidden="true" />
+          </Button>
+        </div>
+        <NativeBuildsTable
+          builds={builds}
+          channel={channel}
+          onChannel={filterBy}
+          paged={before !== undefined || after !== undefined}
+        />
       </div>
     </div>
   );

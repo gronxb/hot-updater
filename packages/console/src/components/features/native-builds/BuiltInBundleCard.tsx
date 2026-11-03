@@ -2,21 +2,21 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CircleCheck, History } from "lucide-react";
 import { toast } from "sonner";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ChannelBadge } from "@/components/ChannelBadge";
+import { BuildKeyDisplay, TargetDisplay } from "@/components/TargetDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMarkNativeBuildMutation } from "@/lib/api";
 import {
   nativeBuildArtifacts,
   nativeBuildLabel,
-  nativeBuildTarget,
   platformLabel,
 } from "@/lib/native-builds";
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
-import { ShortHash } from "./ShortHash";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
 function Row({
@@ -136,7 +136,6 @@ export function BuiltInBundleCard({
   readonly detail: NativeBuildDetail;
 }) {
   const { build, builtInBundle, channel } = detail;
-  const target = nativeBuildTarget(build);
   const childCount = builtInBundle?.childCount ?? 0;
 
   return (
@@ -149,9 +148,7 @@ export function BuiltInBundleCard({
       <CardContent className="flex flex-col gap-4 p-4 sm:p-6">
         <dl className="flex flex-col gap-3">
           <Row label="Bundle ID">
-            <span className="break-all font-mono text-xs" translate="no">
-              {build.min_bundle_id}
-            </span>
+            <BundleIdDisplay bundleId={build.min_bundle_id} />
           </Row>
           <Row label="OTAs patching from it">
             <span className="tabular-nums">
@@ -162,32 +159,31 @@ export function BuiltInBundleCard({
             <span className="flex flex-wrap items-center gap-1.5">
               <Link
                 aria-label={`Show the builds that embed ${channel}`}
+                className="relative rounded-md after:absolute after:inset-x-0 after:-inset-y-[11px] sm:after:hidden"
                 search={{ channel }}
                 to="/native-builds"
               >
-                <Badge translate="no" variant="outline">
-                  {channel}
-                </Badge>
+                <ChannelBadge channel={channel} />
               </Link>
               <span className="text-xs">{platformLabel(build.platform)}</span>
-              <span className="text-xs text-muted-foreground">
-                · {target.label}
-              </span>
-              {build.fingerprint_hash === null ? (
-                <span className="font-mono text-xs" translate="no">
-                  {target.value}
-                </span>
-              ) : (
-                <ShortHash
-                  label="fingerprint"
-                  length={12}
-                  value={build.fingerprint_hash}
-                />
-              )}
+            </span>
+          </Row>
+          {/* The Native builds table's Target and Build key cells. */}
+          <Row label="Target">
+            <span className="text-xs">
+              <TargetDisplay
+                appVersion={build.app_version}
+                fingerprintHash={build.fingerprint_hash}
+              />
+            </span>
+          </Row>
+          <Row label="Build key">
+            <span className="text-xs">
+              <BuildKeyDisplay value={build.build_key} />
             </span>
           </Row>
           {!build.build_number ? null : (
-            <Row label="Build number">
+            <Row label="Build">
               <span className="font-mono text-xs tabular-nums" translate="no">
                 {build.build_number}
               </span>

@@ -137,7 +137,7 @@ export function BundleMovementSummary({
     >
       {input ? (
         <Link
-          className="min-w-0 rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="relative min-w-0 rounded-sm after:absolute after:inset-x-0 after:-inset-y-3 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:after:hidden"
           to="/insights"
           search={{
             platform: input.platform,

@@ -16,7 +16,7 @@ export function CommitLink({ hash }: { readonly hash: string | null }) {
     <ShortHash label="commit" length={7} value={hash} />
   ) : (
     <a
-      className="font-mono text-xs whitespace-nowrap underline-offset-4 hover:underline"
+      className="relative font-mono text-xs whitespace-nowrap underline-offset-4 after:absolute after:-inset-x-2 after:-inset-y-4 hover:underline sm:after:hidden"
       href={url}
       onClick={(event) => event.stopPropagation()}
       rel="noreferrer"

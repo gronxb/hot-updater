@@ -32,7 +32,7 @@ export function ImportBuildDialog() {
         render={
           <Button
             aria-label="Import a build"
-            className="min-h-11 sm:min-h-7"
+            className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-0"
             size="sm"
             variant="outline"
           />

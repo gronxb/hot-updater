@@ -85,7 +85,10 @@ export function NativeBuildDetailPage({
               platform={detail.build.platform}
             />
             <span className="min-w-0 [overflow-wrap:anywhere]">
-              {platformLabel(detail.build.platform)}{" "}
+              {/* The icon names the platform; screen readers hear it. */}
+              <span className="sr-only">
+                {platformLabel(detail.build.platform)}{" "}
+              </span>
               {nativeBuildArtifacts[detail.build.artifact_kind].label} ·{" "}
               <span translate="no">{detail.channel}</span>
             </span>

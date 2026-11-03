@@ -1,6 +1,12 @@
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -138,13 +144,22 @@ describe("NativeBuildsTable", () => {
     refetch: vi.fn(),
   });
 
+  /** The text of `row`'s cell under the column headed `header`. */
+  const cellText = (row: HTMLElement, header: string) => {
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    const index = headers.indexOf(header);
+    expect(index, `a ${header} column`).toBeGreaterThanOrEqual(0);
+    return row.querySelectorAll("td")[index]!.textContent;
+  };
+
   it("badges the marked build, from its row", () => {
     render(
       <NativeBuildsTable
         builds={builds([build({ store_build: true }), build({ id: id(3) })])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -165,21 +180,50 @@ describe("NativeBuildsTable", () => {
       "an earlier CLI's Android platform byte",
       "019a1b2c-3d4e-7000-8000-02a1b2c3d4e5",
     ],
-  ])("shows a built-in bundle ID with %s in full", (_form, minBundleId) => {
-    const row = build({ min_bundle_id: minBundleId });
+  ])(
+    "shows a built-in bundle ID with %s in full on the build's page",
+    (_form, minBundleId) => {
+      render(
+        <BuiltInBundleCard
+          detail={detail({ build: build({ min_bundle_id: minBundleId }) })}
+        />,
+      );
+      expect(
+        screen.getByText("Bundle ID", { selector: "dt" }).nextElementSibling
+          ?.textContent,
+      ).toBe(minBundleId);
+    },
+  );
+
+  it("keeps the columns people scan or act on, and leaves the built-in bundle and commit to the build's page", () => {
     render(
       <NativeBuildsTable
-        builds={builds([row])}
+        builds={builds([build()])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
-    expect(screen.getAllByText(minBundleId)).toHaveLength(2);
+
+    expect(
+      screen.getAllByRole("columnheader").map((cell) => cell.textContent),
+    ).toEqual([
+      "Artifact",
+      "Channel",
+      "Platform",
+      "Build",
+      "Target",
+      "Build key",
+      "Store",
+      "Size",
+      "Created",
+      "Actions",
+    ]);
+    expect(screen.queryByText(id(2))).toBeNull();
+    expect(screen.queryByTitle("abcdef1234567")).toBeNull();
   });
 
-  it("lists each build with its decoded channel and built-in bundle, and opens its page", () => {
+  it("lists each build with its decoded channel, and opens its page", () => {
     const row = build();
     const onChannel = vi.fn();
     render(
@@ -187,7 +231,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([row], { next: row.id })}
         channel={undefined}
         onChannel={onChannel}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -196,19 +239,11 @@ describe("NativeBuildsTable", () => {
       "href",
       expect.stringContaining(`/native-builds/${row.id}`),
     );
-    // The whole built-in bundle ID, in its column and, for narrow widths,
-    // under the build: never cut.
-    expect(screen.getAllByText(row.min_bundle_id)).toHaveLength(2);
-    expect(document.body.textContent).not.toContain("…");
-    // The commit as git shows it, the fingerprint by its prefix; the full
-    // values on hover.
-    expect(screen.getAllByTitle("abcdef1234567")[0]!.textContent).toBe(
-      "abcdef1",
-    );
-    expect(screen.getByTitle(row.fingerprint_hash!).textContent).toBe(
-      "1a2b3c4d5e6f",
-    );
-    expect(screen.getByText("50.0 MB")).toBeTruthy();
+    // The fingerprint as the Bundles table's Target shows it.
+    const [, buildRow] = screen.getAllByRole("row");
+    expect(cellText(buildRow!, "Target")).toBe("1a2b3c4d…9c0d");
+    expect(cellText(buildRow!, "Platform")).toBe("Android");
+    expect(cellText(buildRow!, "Size")).toBe("50.0 MB");
     // The channel comes from the ID, with no channel read.
     fireEvent.click(
       screen.getByRole("button", {
@@ -224,12 +259,142 @@ describe("NativeBuildsTable", () => {
       expect.stringContaining(`/api/native-builds/${row.id}/download`),
     );
 
-    fireEvent.click(screen.getByText("Fingerprint"));
+    fireEvent.click(screen.getByText("50.0 MB"));
     expect(navigate).toHaveBeenCalledWith({
       to: "/native-builds/$buildId",
       params: { buildId: row.id },
     });
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
+  });
+
+  it("shows the target and the build key in their own columns, shortened as Bundles shortens a fingerprint", () => {
+    const fingerprint = "e7b2a84d0123456789abcdef0123456789ab9efb";
+    const buildKey = `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`;
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({ fingerprint_hash: fingerprint, build_key: buildKey }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1]!;
+    // The Bundles table's Target cell: `xxxxxxxx…xxxx`, the full value copied.
+    expect(cellText(row, "Target")).toBe("e7b2a84d…9efb");
+    expect(
+      screen.getByRole("button", { name: `Copy full value: ${fingerprint}` })
+        .textContent,
+    ).toBe("e7b2a84d…9efb");
+    // The build key past its `nbk1:` prefix, shortened as the fingerprint is.
+    expect(cellText(row, "Build key")).toBe("a1b2c3d4…9f0e");
+    expect(
+      screen.getByRole("button", { name: `Copy full value: ${buildKey}` }),
+    ).toBeTruthy();
+  });
+
+  it("shows an app-version build's target as its app version, and an imported build's missing build key as -", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({
+            fingerprint_hash: null,
+            app_version: "1.4.2",
+            build_key: null,
+          }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1]!;
+    expect(cellText(row, "Target")).toBe("1.4.2");
+    expect(cellText(row, "Build key")).toBe("-");
+    expect(
+      screen.queryByRole("button", { name: /Copy full value/ }),
+    ).toBeNull();
+  });
+
+  it("shows each build as a compact card at 390 px: what and where, then when, then target and build key, then store", () => {
+    const width = window.innerWidth;
+    window.innerWidth = 390;
+    try {
+      const row = build({
+        build_key: `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`,
+        build_number: "66",
+        submitted_to: "play-internal",
+        submitted_at_ms: Date.now(),
+        submitted_version: "1.3.0 (66)",
+        store_build: true,
+      });
+      render(
+        <NativeBuildsTable
+          builds={builds([row])}
+          channel={undefined}
+          onChannel={vi.fn()}
+          paged={false}
+        />,
+      );
+
+      expect(screen.queryByRole("table")).toBeNull();
+      const card = screen.getByRole("article");
+      // No label-value boxes: lines of values, a few cards to a screen.
+      expect(card.querySelector("dl")).toBeNull();
+      const [primary, meta, hashes, store] = [...card.children];
+      expect(
+        within(primary as HTMLElement).getByRole("link", {
+          name: "Android APK",
+        }).textContent,
+      ).toBe("APK");
+      expect(
+        within(primary as HTMLElement).getByRole("button", {
+          name: "Show the builds that embed pr-130",
+        }),
+      ).toBeTruthy();
+      expect(
+        within(primary as HTMLElement).getByRole("link", {
+          name: "Download app-release.apk",
+        }),
+      ).toBeTruthy();
+      expect(meta!.textContent).toMatch(/^AndroidBuild 66·50\.0 MB·.+ ago$/);
+      expect(hashes!.textContent).toBe(
+        "Target 1a2b3c4d…9c0dBuild key a1b2c3d4…9f0e",
+      );
+      expect(store!.textContent).toBe("Play internal1.3.0 (66)Store build");
+      // The built-in bundle and commit are on the build's page.
+      expect(card.textContent).not.toContain(row.min_bundle_id);
+      fireEvent.click(meta!);
+      expect(navigate).toHaveBeenCalledWith({
+        to: "/native-builds/$buildId",
+        params: { buildId: row.id },
+      });
+    } finally {
+      window.innerWidth = width;
+    }
+  });
+
+  it("leaves an imported build's card without a build key line or store line", () => {
+    const width = window.innerWidth;
+    window.innerWidth = 390;
+    try {
+      render(
+        <NativeBuildsTable
+          builds={builds([build({ build_key: null })])}
+          channel={undefined}
+          onChannel={vi.fn()}
+          paged={false}
+        />,
+      );
+      const card = screen.getByRole("article");
+      expect(card.children).toHaveLength(3);
+      expect(card.textContent).not.toContain("Build key");
+    } finally {
+      window.innerWidth = width;
+    }
   });
 
   it("shows the build number the artifact reports, from the row", () => {
@@ -238,12 +403,11 @@ describe("NativeBuildsTable", () => {
         builds={builds([build({ build_number: "66" })])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
 
-    expect(screen.getAllByRole("row")[1]!.textContent).toContain("build 66");
+    expect(cellText(screen.getAllByRole("row")[1]!, "Build")).toBe("66");
   });
 
   it("marks a build a store took with its track and the store's label, from the row alone", () => {
@@ -261,16 +425,20 @@ describe("NativeBuildsTable", () => {
         builds={builds([submitted, build()])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
 
     const [, submittedRow, plainRow] = screen.getAllByRole("row");
-    expect(plainRow!.textContent).not.toContain("build ");
+    expect(cellText(plainRow!, "Build")).toBe("-");
     expect(submittedRow!.textContent).toContain("TestFlight");
     expect(submittedRow!.textContent).toContain("1.7.0 (66)");
-    expect(submittedRow!.textContent).toContain("3 days ago");
+    // When it was submitted is the badge's tooltip; the row's time is the
+    // build's own, under Created.
+    expect(cellText(submittedRow!, "Store")).not.toContain("3 days ago");
+    expect(
+      screen.getByTitle(/^Submitted to TestFlight 3 days ago, /),
+    ).toBeTruthy();
     // A build no store took shows no store.
     expect(plainRow!.textContent).not.toMatch(/TestFlight|Play internal/);
   });
@@ -281,7 +449,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel={undefined}
         onChannel={vi.fn()}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -310,7 +477,6 @@ describe("NativeBuildsTable", () => {
         builds={builds([])}
         channel="pr-131"
         onChannel={onChannel}
-        onPage={vi.fn()}
         paged={false}
       />,
     );
@@ -322,22 +488,112 @@ describe("NativeBuildsTable", () => {
     expect(onChannel).toHaveBeenCalledWith(undefined);
   });
 
-  it("leads an empty older page back to the newest builds", () => {
-    const onPage = vi.fn();
+  it("leads an empty older page back to the channel's newest builds", () => {
     render(
       <NativeBuildsTable
         builds={builds([])}
-        channel={undefined}
+        channel="pr-130"
         onChannel={vi.fn()}
-        onPage={onPage}
         paged
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show the newest builds" }),
+    expect(
+      screen.getByRole("link", { name: "Show the newest builds" }),
+    ).toHaveProperty(
+      "href",
+      expect.stringMatching(/\/native-builds\?channel=pr-130$/),
     );
-    expect(onPage).toHaveBeenCalledWith({});
+  });
+
+  it("pages with Previous and Next as Bundles does, and offers Newest past the first page", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build()], { next: id(9), previous: id(8) })}
+        channel="pr-130"
+        onChannel={vi.fn()}
+        paged
+      />,
+    );
+
+    const pages = screen.getByRole("navigation", {
+      name: "Native build pages",
+    });
+    expect(pages.textContent).toContain("1 entry, newest first");
+    expect(
+      screen.getByRole("link", { name: "Previous" }).getAttribute("href"),
+    ).toBe(`/native-builds?channel=pr-130&after=${id(8)}`);
+    expect(
+      screen.getByRole("link", { name: "Next" }).getAttribute("href"),
+    ).toBe(`/native-builds?channel=pr-130&before=${id(9)}`);
+    expect(
+      screen.getByRole("link", { name: "Newest" }).getAttribute("href"),
+    ).toBe("/native-builds?channel=pr-130");
+  });
+
+  it("keeps the pager disabled while the previous channel's page stands in for the new one", () => {
+    render(
+      <NativeBuildsTable
+        builds={{
+          ...builds([build()], { next: id(9), previous: id(8) }),
+          isPlaceholderData: true,
+        }}
+        channel="pr-131"
+        onChannel={vi.fn()}
+        paged
+      />,
+    );
+
+    // Its cursors belong to the previous channel's list.
+    for (const name of ["Previous", "Next", "Newest"]) {
+      expect(screen.queryByRole("link", { name })).toBeNull();
+    }
+    expect(
+      screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("disables Previous and Next at the ends, with no Newest on the first page", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([build()])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(screen.queryByRole("link", { name: "Newest" })).toBeNull();
+  });
+
+  it("opens a build from the keyboard, as a Bundles row does", () => {
+    const row = build();
+    render(
+      <NativeBuildsTable
+        builds={builds([row])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    fireEvent.keyDown(
+      screen.getByRole("row", { name: `Open native build ${row.id}` }),
+      { key: "Enter" },
+    );
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/native-builds/$buildId",
+      params: { buildId: row.id },
+    });
   });
 });
 
@@ -809,6 +1065,38 @@ describe("a submitted build's page", () => {
 });
 
 describe("BuiltInBundleCard", () => {
+  /** The value of the card's row labelled `label`. */
+  const rowValue = (label: string) =>
+    screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
+
+  it("shows the target and the build key as the Native builds table does", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({
+            build_key: `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`,
+            build_number: "121",
+          }),
+        })}
+      />,
+    );
+    expect(rowValue("Build")).toBe("121");
+    expect(rowValue("Target")).toBe("1a2b3c4d…9c0d");
+    expect(rowValue("Build key")).toBe("a1b2c3d4…9f0e");
+  });
+
+  it("shows an app-version build's app version, and - for no build key", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({ fingerprint_hash: null, app_version: "1.4.2" }),
+        })}
+      />,
+    );
+    expect(rowValue("Target")).toBe("1.4.2");
+    expect(rowValue("Build key")).toBe("-");
+  });
+
   it("shows the built-in bundle, its patch count, and that new deploys patch from it", () => {
     render(<BuiltInBundleCard detail={detail()} />);
 
