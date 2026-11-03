@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CircleCheck, History } from "lucide-react";
 import { toast } from "sonner";
 
+import { BuildKeyDisplay, TargetDisplay } from "@/components/TargetDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,11 @@ import { useMarkNativeBuildMutation } from "@/lib/api";
 import {
   nativeBuildArtifacts,
   nativeBuildLabel,
-  nativeBuildTarget,
   platformLabel,
 } from "@/lib/native-builds";
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
 
 import { CommitLink } from "./CommitLink";
-import { ShortHash } from "./ShortHash";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
 function Row({
@@ -136,7 +135,6 @@ export function BuiltInBundleCard({
   readonly detail: NativeBuildDetail;
 }) {
   const { build, builtInBundle, channel } = detail;
-  const target = nativeBuildTarget(build);
   const childCount = builtInBundle?.childCount ?? 0;
 
   return (
@@ -170,24 +168,24 @@ export function BuiltInBundleCard({
                 </Badge>
               </Link>
               <span className="text-xs">{platformLabel(build.platform)}</span>
-              <span className="text-xs text-muted-foreground">
-                · {target.label}
-              </span>
-              {build.fingerprint_hash === null ? (
-                <span className="font-mono text-xs" translate="no">
-                  {target.value}
-                </span>
-              ) : (
-                <ShortHash
-                  label="fingerprint"
-                  length={12}
-                  value={build.fingerprint_hash}
-                />
-              )}
+            </span>
+          </Row>
+          {/* The Native builds table's Target and Build key cells. */}
+          <Row label="Target">
+            <span className="text-xs">
+              <TargetDisplay
+                appVersion={build.app_version}
+                fingerprintHash={build.fingerprint_hash}
+              />
+            </span>
+          </Row>
+          <Row label="Build key">
+            <span className="text-xs">
+              <BuildKeyDisplay value={build.build_key} />
             </span>
           </Row>
           {!build.build_number ? null : (
-            <Row label="Build number">
+            <Row label="Build">
               <span className="font-mono text-xs tabular-nums" translate="no">
                 {build.build_number}
               </span>

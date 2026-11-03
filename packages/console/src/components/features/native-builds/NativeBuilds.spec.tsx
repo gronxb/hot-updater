@@ -138,6 +138,16 @@ describe("NativeBuildsTable", () => {
     refetch: vi.fn(),
   });
 
+  /** The text of `row`'s cell under the column headed `header`. */
+  const cellText = (row: HTMLElement, header: string) => {
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    const index = headers.indexOf(header);
+    expect(index, `a ${header} column`).toBeGreaterThanOrEqual(0);
+    return row.querySelectorAll("td")[index]!.textContent;
+  };
+
   it("badges the marked build, from its row", () => {
     render(
       <NativeBuildsTable
@@ -176,7 +186,7 @@ describe("NativeBuildsTable", () => {
         paged={false}
       />,
     );
-    expect(screen.getAllByText(minBundleId)).toHaveLength(2);
+    expect(screen.getByText(minBundleId)).toBeTruthy();
   });
 
   it("lists each build with its decoded channel and built-in bundle, and opens its page", () => {
@@ -196,19 +206,15 @@ describe("NativeBuildsTable", () => {
       "href",
       expect.stringContaining(`/native-builds/${row.id}`),
     );
-    // The whole built-in bundle ID, in its column and, for narrow widths,
-    // under the build: never cut.
-    expect(screen.getAllByText(row.min_bundle_id)).toHaveLength(2);
-    expect(document.body.textContent).not.toContain("…");
-    // The commit as git shows it, the fingerprint by its prefix; the full
-    // values on hover.
-    expect(screen.getAllByTitle("abcdef1234567")[0]!.textContent).toBe(
-      "abcdef1",
-    );
-    expect(screen.getByTitle(row.fingerprint_hash!).textContent).toBe(
-      "1a2b3c4d5e6f",
-    );
-    expect(screen.getByText("50.0 MB")).toBeTruthy();
+    // The whole built-in bundle ID in its column: never cut.
+    const [, buildRow] = screen.getAllByRole("row");
+    expect(cellText(buildRow!, "Built-in bundle")).toBe(row.min_bundle_id);
+    // The commit as git shows it, the full value on hover; the fingerprint
+    // as the Bundles table's Target shows it.
+    expect(screen.getByTitle("abcdef1234567").textContent).toBe("abcdef1");
+    expect(cellText(buildRow!, "Target")).toBe("1a2b3c4d…9c0d");
+    expect(cellText(buildRow!, "Platform")).toBe("Android");
+    expect(cellText(buildRow!, "Size")).toBe("50.0 MB");
     // The channel comes from the ID, with no channel read.
     fireEvent.click(
       screen.getByRole("button", {
@@ -224,12 +230,143 @@ describe("NativeBuildsTable", () => {
       expect.stringContaining(`/api/native-builds/${row.id}/download`),
     );
 
-    fireEvent.click(screen.getByText("Fingerprint"));
+    fireEvent.click(screen.getByText("50.0 MB"));
     expect(navigate).toHaveBeenCalledWith({
       to: "/native-builds/$buildId",
       params: { buildId: row.id },
     });
     expect(document.body.textContent).not.toMatch(CHANNEL_LINK_TEXT);
+  });
+
+  it("shows the target and the build key in their own columns, shortened as Bundles shortens a fingerprint", () => {
+    const fingerprint = "e7b2a84d0123456789abcdef0123456789ab9efb";
+    const buildKey = `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`;
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({ fingerprint_hash: fingerprint, build_key: buildKey }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1]!;
+    // The Bundles table's Target cell: `xxxxxxxx…xxxx`, the full value copied.
+    expect(cellText(row, "Target")).toBe("e7b2a84d…9efb");
+    expect(
+      screen.getByRole("button", { name: `Copy full value: ${fingerprint}` })
+        .textContent,
+    ).toBe("e7b2a84d…9efb");
+    // The build key keeps 8 characters past its `nbk1:` prefix.
+    expect(cellText(row, "Build key")).toBe("nbk1:a1b2c3d4…9f0e");
+    expect(
+      screen.getByRole("button", { name: `Copy full value: ${buildKey}` }),
+    ).toBeTruthy();
+  });
+
+  it("shows an app-version build's target as its app version, and an imported build's missing build key as -", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({
+            fingerprint_hash: null,
+            app_version: "1.4.2",
+            build_key: null,
+          }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1]!;
+    expect(cellText(row, "Target")).toBe("1.4.2");
+    expect(cellText(row, "Build key")).toBe("-");
+    expect(
+      screen.queryByRole("button", { name: /Copy full value/ }),
+    ).toBeNull();
+  });
+
+  it("shows each build as a card at 390 px, with the same target and build key", () => {
+    const width = window.innerWidth;
+    window.innerWidth = 390;
+    try {
+      const row = build({
+        build_key: `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`,
+        build_number: "66",
+      });
+      render(
+        <NativeBuildsTable
+          builds={builds([row])}
+          channel={undefined}
+          onChannel={vi.fn()}
+          onPage={vi.fn()}
+          paged={false}
+        />,
+      );
+
+      expect(screen.queryByRole("table")).toBeNull();
+      const card = screen.getByRole("article");
+      const field = (label: string) =>
+        [...card.querySelectorAll("dt")].find(
+          (term) => term.textContent === label,
+        )?.nextElementSibling?.textContent;
+      expect(field("Target")).toBe("1a2b3c4d…9c0d");
+      expect(field("Build key")).toBe("nbk1:a1b2c3d4…9f0e");
+      expect(field("Built-in bundle")).toBe(row.min_bundle_id);
+      expect(field("Build")).toBe("66");
+      expect(
+        screen.getByRole("link", { name: "Download app-release.apk" }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText("50.0 MB"));
+      expect(navigate).toHaveBeenCalledWith({
+        to: "/native-builds/$buildId",
+        params: { buildId: row.id },
+      });
+    } finally {
+      window.innerWidth = width;
+    }
+  });
+
+  it("keeps one kind of value per cell for a store build", () => {
+    const fingerprint = "898148943179aabbccddeeff00112233445566778899";
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({
+            platform: "ios",
+            artifact_kind: "ipa",
+            artifact_storage_uri: "r2://bucket/native-builds/ios/019a/App.ipa",
+            byte_size: 31_562_957,
+            fingerprint_hash: fingerprint,
+            build_number: "17",
+            submitted_to: "testflight",
+            submitted_at_ms: Date.now() - 4 * 3_600_000,
+            submitted_version: "1.0.0 (17)",
+            store_build: true,
+          }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        onPage={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    const row = screen.getAllByRole("row")[1]!;
+    expect(cellText(row, "Artifact")).toBe("iOS IPA");
+    expect(cellText(row, "Platform")).toBe("iOS");
+    expect(cellText(row, "Build")).toBe("17");
+    expect(cellText(row, "Target")).toBe("89814894…8899");
+    expect(cellText(row, "Store")).toBe("TestFlight1.0.0 (17)Store build");
+    expect(cellText(row, "Size")).toBe("30.1 MB");
+    // The build's own time, not the submission's.
+    expect(cellText(row, "Created")).toMatch(/ ago$/);
   });
 
   it("shows the build number the artifact reports, from the row", () => {
@@ -243,7 +380,7 @@ describe("NativeBuildsTable", () => {
       />,
     );
 
-    expect(screen.getAllByRole("row")[1]!.textContent).toContain("build 66");
+    expect(cellText(screen.getAllByRole("row")[1]!, "Build")).toBe("66");
   });
 
   it("marks a build a store took with its track and the store's label, from the row alone", () => {
@@ -267,10 +404,15 @@ describe("NativeBuildsTable", () => {
     );
 
     const [, submittedRow, plainRow] = screen.getAllByRole("row");
-    expect(plainRow!.textContent).not.toContain("build ");
+    expect(cellText(plainRow!, "Build")).toBe("-");
     expect(submittedRow!.textContent).toContain("TestFlight");
     expect(submittedRow!.textContent).toContain("1.7.0 (66)");
-    expect(submittedRow!.textContent).toContain("3 days ago");
+    // When it was submitted is the badge's tooltip; the row's time is the
+    // build's own, under Created.
+    expect(cellText(submittedRow!, "Store")).not.toContain("3 days ago");
+    expect(
+      screen.getByTitle(/^Submitted to TestFlight 3 days ago, /),
+    ).toBeTruthy();
     // A build no store took shows no store.
     expect(plainRow!.textContent).not.toMatch(/TestFlight|Play internal/);
   });
@@ -809,6 +951,38 @@ describe("a submitted build's page", () => {
 });
 
 describe("BuiltInBundleCard", () => {
+  /** The value of the card's row labelled `label`. */
+  const rowValue = (label: string) =>
+    screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
+
+  it("shows the target and the build key as the Native builds table does", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({
+            build_key: `nbk1:a1b2c3d4${"0".repeat(52)}9f0e`,
+            build_number: "121",
+          }),
+        })}
+      />,
+    );
+    expect(rowValue("Build")).toBe("121");
+    expect(rowValue("Target")).toBe("1a2b3c4d…9c0d");
+    expect(rowValue("Build key")).toBe("nbk1:a1b2c3d4…9f0e");
+  });
+
+  it("shows an app-version build's app version, and - for no build key", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: build({ fingerprint_hash: null, app_version: "1.4.2" }),
+        })}
+      />,
+    );
+    expect(rowValue("Target")).toBe("1.4.2");
+    expect(rowValue("Build key")).toBe("-");
+  });
+
   it("shows the built-in bundle, its patch count, and that new deploys patch from it", () => {
     render(<BuiltInBundleCard detail={detail()} />);
 

@@ -6,9 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleOff,
-  Fingerprint,
   Filter,
-  Package,
   RotateCcw,
   Tags,
   X,
@@ -17,15 +15,26 @@ import { Fragment, type MouseEvent, useEffect, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
+import {
+  DataCard,
+  DataCardField,
+  DataCardSkeletons,
+  DataTable,
+  DataTableFrame,
+  DataTableFullRow,
+  DataTablePagination,
+  DataTableRow,
+  DataTableSkeletonRows,
+} from "@/components/DataTable";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { BundleChildrenPanel } from "@/components/features/bundles/BundleChildrenPanel";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
 import { useReleaseColumns } from "@/components/features/FeatureSlots";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
-import { HashValueDisplay } from "@/components/HashValueDisplay";
-import { PlatformIcon } from "@/components/PlatformIcon";
+import { PlatformIcon, PlatformLabel } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
+import { TargetDisplay } from "@/components/TargetDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -39,14 +48,7 @@ import {
 } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   useBundleChildCountsQuery,
@@ -520,15 +522,11 @@ function BundlesPage() {
             <AlertDescription>{releasesQuery.error.message}</AlertDescription>
           </Alert>
         ) : (
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
+          <DataTableFrame>
             {isMobile ? (
               <div className="h-full overflow-y-auto">
                 {releasesQuery.isPending ? (
-                  <div className="flex flex-col gap-3 p-4">
-                    {Array.from({ length: 5 }, (_, index) => (
-                      <Skeleton className="h-44 w-full" key={index} />
-                    ))}
-                  </div>
+                  <DataCardSkeletons />
                 ) : releases.length ? (
                   releases.map((release) => {
                     const channelName =
@@ -544,10 +542,9 @@ function BundlesPage() {
                       <Fragment key={release.id}>
                         {/* The ID button opens it for keyboards and screen
                             readers; a tap anywhere else on the card does too. */}
-                        <article
+                        <DataCard
                           aria-label={`Bundle ${release.id}`}
                           className={cn(
-                            "flex cursor-pointer touch-manipulation flex-col gap-4 border-b p-4 transition-[background-color,filter] last:border-b-0 hover:bg-muted/10 active:bg-muted/20 motion-reduce:transition-none data-[state=selected]:bg-muted/15",
                             release.currentlyUnreachable &&
                               "bg-muted/35 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
                             isExpanded && "border-b-0 bg-primary/5",
@@ -580,44 +577,36 @@ function BundlesPage() {
                             />
                           </div>
                           <dl className="grid grid-cols-2 gap-3 text-xs">
-                            <div className="rounded-md bg-muted/40 p-3">
-                              <dt className="text-muted-foreground">
-                                Platform
-                              </dt>
-                              <dd className="mt-1 flex items-center gap-2 font-medium">
-                                <PlatformIcon
-                                  className="size-4"
-                                  platform={release.platform}
-                                />
-                                {release.platform === "ios" ? "iOS" : "Android"}
-                              </dd>
-                            </div>
-                            <div className="rounded-md bg-muted/40 p-3">
-                              <dt className="text-muted-foreground">Created</dt>
-                              <dd className="mt-1 tabular-nums">
-                                {dateFormatter.format(release.created_at_ms)}
-                              </dd>
-                            </div>
-                            <div className="rounded-md bg-muted/40 p-3">
-                              <dt className="text-muted-foreground">Rollout</dt>
-                              <dd className="mt-1">
-                                <RolloutPercentageBadge
-                                  percentage={release.rollout_cohort_count / 10}
-                                />
-                              </dd>
-                            </div>
-                            <div className="rounded-md bg-muted/40 p-3">
-                              <dt className="text-muted-foreground">Patches</dt>
-                              <dd className="mt-1">
-                                {patchCount === undefined
-                                  ? "Checking"
-                                  : patchCount > 0
-                                    ? `${patchCount} ${
-                                        patchCount === 1 ? "patch" : "patches"
-                                      }`
-                                    : "—"}
-                              </dd>
-                            </div>
+                            <DataCardField
+                              label="Platform"
+                              valueClassName="flex items-center gap-2 font-medium"
+                            >
+                              <PlatformIcon
+                                className="size-4"
+                                platform={release.platform}
+                              />
+                              {release.platform === "ios" ? "iOS" : "Android"}
+                            </DataCardField>
+                            <DataCardField
+                              label="Created"
+                              valueClassName="tabular-nums"
+                            >
+                              {dateFormatter.format(release.created_at_ms)}
+                            </DataCardField>
+                            <DataCardField label="Rollout">
+                              <RolloutPercentageBadge
+                                percentage={release.rollout_cohort_count / 10}
+                              />
+                            </DataCardField>
+                            <DataCardField label="Patches">
+                              {patchCount === undefined
+                                ? "Checking"
+                                : patchCount > 0
+                                  ? `${patchCount} ${
+                                      patchCount === 1 ? "patch" : "patches"
+                                    }`
+                                  : "—"}
+                            </DataCardField>
                             {featureColumns.map(({ Cell, feature, label }) => (
                               <div
                                 className="col-span-2 rounded-md bg-muted/40 p-3"
@@ -661,7 +650,7 @@ function BundlesPage() {
                               </div>
                             </div>
                           </dl>
-                        </article>
+                        </DataCard>
                         {isExpanded && release.bundle_id ? (
                           <ReleaseBundleChildrenPanel
                             onDetailClick={openChildBundle}
@@ -683,9 +672,9 @@ function BundlesPage() {
                 )}
               </div>
             ) : (
-              <Table className="min-w-max">
-                <TableHeader className="bg-muted/40">
-                  <TableRow className="border-b border-border/60 hover:bg-transparent [&>th]:h-10 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:text-muted-foreground/70">
+              <DataTable
+                header={
+                  <>
                     <TableHead>ID</TableHead>
                     <TableHead>Channel</TableHead>
                     <TableHead>Platform</TableHead>
@@ -699,296 +688,241 @@ function BundlesPage() {
                     ))}
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {releasesQuery.isPending
-                    ? Array.from({ length: 7 }, (_, index) => (
-                        <TableRow key={index}>
-                          <TableCell colSpan={columnCount}>
-                            <Skeleton className="h-8 w-full" />
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    : releases.map((release) => {
-                        const isExpanded = expandedReleaseId === release.id;
-                        const panelId = `bundle-lineage-panel-${release.id}`;
+                  </>
+                }
+              >
+                {releasesQuery.isPending ? (
+                  <DataTableSkeletonRows columns={columnCount} />
+                ) : (
+                  releases.map((release) => {
+                    const isExpanded = expandedReleaseId === release.id;
+                    const panelId = `bundle-lineage-panel-${release.id}`;
 
-                        return (
-                          <Fragment key={release.id}>
-                            <TableRow
-                              aria-label={`Open bundle ${release.id}`}
-                              className={cn(
-                                "cursor-pointer transition-[background-color,filter] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none data-[state=selected]:bg-muted/15 [&>td]:py-3",
-                                release.currentlyUnreachable &&
-                                  "bg-muted/35 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
-                                isExpanded && "bg-primary/5",
-                              )}
-                              data-state={
-                                search.releaseId === release.id
-                                  ? "selected"
-                                  : undefined
+                    return (
+                      <Fragment key={release.id}>
+                        <DataTableRow
+                          aria-label={`Open bundle ${release.id}`}
+                          className={cn(
+                            release.currentlyUnreachable &&
+                              "bg-muted/35 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
+                            isExpanded && "bg-primary/5",
+                          )}
+                          data-state={
+                            search.releaseId === release.id
+                              ? "selected"
+                              : undefined
+                          }
+                          onClick={openOutsideControls(() =>
+                            go({ ...search, releaseId: release.id }, false),
+                          )}
+                          onKeyDown={(event) => {
+                            if (
+                              event.target !== event.currentTarget ||
+                              (event.key !== "Enter" && event.key !== " ")
+                            ) {
+                              return;
+                            }
+                            event.preventDefault();
+                            go({ ...search, releaseId: release.id }, false);
+                          }}
+                          tabIndex={0}
+                        >
+                          <TableCell>
+                            <BundleEntry
+                              expanded={isExpanded}
+                              onOpen={() =>
+                                go({ ...search, releaseId: release.id }, false)
                               }
-                              onClick={openOutsideControls(() =>
-                                go({ ...search, releaseId: release.id }, false),
-                              )}
-                              onKeyDown={(event) => {
-                                if (
-                                  event.target !== event.currentTarget ||
-                                  (event.key !== "Enter" && event.key !== " ")
-                                ) {
-                                  return;
-                                }
-                                event.preventDefault();
-                                go({ ...search, releaseId: release.id }, false);
-                              }}
-                              tabIndex={0}
+                              onToggleExpand={() =>
+                                setExpandedReleaseId(
+                                  isExpanded ? undefined : release.id,
+                                )
+                              }
+                              release={release}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <ChannelBadge
+                              channel={
+                                channelNames.get(release.channel_id) ??
+                                release.channel_id
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <PlatformLabel platform={release.platform} />
+                          </TableCell>
+                          <TableCell>
+                            {release.bundle_id &&
+                            patchCountsByBundleId[release.bundle_id] ===
+                              undefined ? (
+                              <span className="text-sm text-muted-foreground">
+                                Checking
+                              </span>
+                            ) : release.bundle_id &&
+                              patchCountsByBundleId[release.bundle_id]! > 0 ? (
+                              <Badge variant="secondary">
+                                {patchCountsByBundleId[release.bundle_id]}{" "}
+                                {patchCountsByBundleId[release.bundle_id] === 1
+                                  ? "patch"
+                                  : "patches"}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <TargetDisplay
+                              appVersion={release.target_app_version}
+                              fingerprintHash={release.fingerprint_hash}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center">
+                              <EnabledStatusIcon enabled={release.enabled} />
+                              <span className="sr-only">
+                                {release.enabled ? "Enabled" : "Disabled"}
+                              </span>
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center">
+                              <EnabledStatusIcon
+                                enabled={release.should_force_update}
+                                falseIcon="minus"
+                              />
+                              <span className="sr-only">
+                                {release.should_force_update
+                                  ? "Required"
+                                  : "Optional"}
+                              </span>
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <RolloutPercentageBadge
+                              percentage={release.rollout_cohort_count / 10}
+                            />
+                          </TableCell>
+                          {featureColumns.map(({ Cell, feature }) => (
+                            <TableCell key={feature}>
+                              <Cell
+                                releaseId={release.id}
+                                releases={slotReleases}
+                              />
+                            </TableCell>
+                          ))}
+                          <TableCell
+                            className="text-sm text-muted-foreground"
+                            title={release.message ?? undefined}
+                          >
+                            {release.message || "-"}
+                          </TableCell>
+                          <TableCell
+                            className="whitespace-nowrap text-xs text-muted-foreground"
+                            title={dateFormatter.format(release.created_at_ms)}
+                          >
+                            {tableDateFormatter.format(release.created_at_ms)}
+                          </TableCell>
+                        </DataTableRow>
+                        {isExpanded && release.bundle_id ? (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell
+                              className="border-t-0 p-0"
+                              colSpan={columnCount}
                             >
-                              <TableCell>
-                                <BundleEntry
-                                  expanded={isExpanded}
-                                  onOpen={() =>
-                                    go(
-                                      { ...search, releaseId: release.id },
-                                      false,
-                                    )
-                                  }
-                                  onToggleExpand={() =>
-                                    setExpandedReleaseId(
-                                      isExpanded ? undefined : release.id,
-                                    )
-                                  }
-                                  release={release}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <ChannelBadge
-                                  channel={
-                                    channelNames.get(release.channel_id) ??
-                                    release.channel_id
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap">
-                                <span className="flex items-center gap-2">
-                                  <PlatformIcon
-                                    className="size-4"
-                                    platform={release.platform}
-                                  />
-                                  {release.platform === "ios"
-                                    ? "iOS"
-                                    : "Android"}
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                {release.bundle_id &&
-                                patchCountsByBundleId[release.bundle_id] ===
-                                  undefined ? (
-                                  <span className="text-sm text-muted-foreground">
-                                    Checking
-                                  </span>
-                                ) : release.bundle_id &&
-                                  patchCountsByBundleId[release.bundle_id]! >
-                                    0 ? (
-                                  <Badge variant="secondary">
-                                    {patchCountsByBundleId[release.bundle_id]}{" "}
-                                    {patchCountsByBundleId[
-                                      release.bundle_id
-                                    ] === 1
-                                      ? "patch"
-                                      : "patches"}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground">
-                                    -
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {release.target_app_version ? (
-                                  <span className="flex items-center gap-2">
-                                    <Package className="size-4 shrink-0 text-muted-foreground" />
-                                    <span className="font-medium">
-                                      {release.target_app_version}
-                                    </span>
-                                  </span>
-                                ) : release.fingerprint_hash ? (
-                                  <span className="flex min-w-[160px] items-center gap-2">
-                                    <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
-                                    <HashValueDisplay
-                                      maxLength={12}
-                                      value={release.fingerprint_hash}
-                                    />
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground">
-                                    -
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <span className="flex items-center">
-                                  <EnabledStatusIcon
-                                    enabled={release.enabled}
-                                  />
-                                  <span className="sr-only">
-                                    {release.enabled ? "Enabled" : "Disabled"}
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <span className="flex items-center">
-                                  <EnabledStatusIcon
-                                    enabled={release.should_force_update}
-                                    falseIcon="minus"
-                                  />
-                                  <span className="sr-only">
-                                    {release.should_force_update
-                                      ? "Required"
-                                      : "Optional"}
-                                  </span>
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <RolloutPercentageBadge
-                                  percentage={release.rollout_cohort_count / 10}
-                                />
-                              </TableCell>
-                              {featureColumns.map(({ Cell, feature }) => (
-                                <TableCell key={feature}>
-                                  <Cell
-                                    releaseId={release.id}
-                                    releases={slotReleases}
-                                  />
-                                </TableCell>
-                              ))}
-                              <TableCell
-                                className="text-sm text-muted-foreground"
-                                title={release.message ?? undefined}
-                              >
-                                {release.message || "-"}
-                              </TableCell>
-                              <TableCell
-                                className="whitespace-nowrap text-xs text-muted-foreground"
-                                title={dateFormatter.format(
-                                  release.created_at_ms,
-                                )}
-                              >
-                                {tableDateFormatter.format(
-                                  release.created_at_ms,
-                                )}
-                              </TableCell>
-                            </TableRow>
-                            {isExpanded && release.bundle_id ? (
-                              <TableRow className="hover:bg-transparent">
-                                <TableCell
-                                  className="border-t-0 p-0"
-                                  colSpan={columnCount}
-                                >
-                                  <ReleaseBundleChildrenPanel
-                                    onDetailClick={openChildBundle}
-                                    panelId={panelId}
-                                    release={release}
-                                  />
-                                </TableCell>
-                              </TableRow>
-                            ) : null}
-                          </Fragment>
-                        );
-                      })}
-                  {!releasesQuery.isPending && releases.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        className="h-40 text-center text-muted-foreground"
-                        colSpan={columnCount}
-                      >
-                        {onLaterPage
-                          ? "No more bundles on this side."
-                          : hasReleaseFilters(search)
-                            ? "No bundles match these filters."
-                            : "No bundles yet. Deploy an update to see it here."}
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
+                              <ReleaseBundleChildrenPanel
+                                onDetailClick={openChildBundle}
+                                panelId={panelId}
+                                release={release}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })
+                )}
+                {!releasesQuery.isPending && releases.length === 0 ? (
+                  <DataTableFullRow columns={columnCount}>
+                    {onLaterPage
+                      ? "No more bundles on this side."
+                      : hasReleaseFilters(search)
+                        ? "No bundles match these filters."
+                        : "No bundles yet. Deploy an update to see it here."}
+                  </DataTableFullRow>
+                ) : null}
+              </DataTable>
             )}
-          </div>
+          </DataTableFrame>
         )}
 
         {!releasesQuery.isError && !releasesQuery.isPending ? (
-          <nav
-            aria-label="Bundle pagination"
-            className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
+          <DataTablePagination
+            count={releases.length}
+            label="Bundle pagination"
           >
-            <p className="text-xs font-medium text-muted-foreground">
-              <span className="text-foreground">{releases.length}</span>{" "}
-              {releases.length === 1 ? "entry" : "entries"}, newest first
-            </p>
-            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-              {onLaterPage ? (
-                <Link
-                  className={buttonVariants({
-                    className: "h-8 flex-1 px-3 text-xs sm:flex-none",
-                    size: "sm",
-                    variant: "ghost",
-                  })}
-                  search={newestSearch}
-                  to="/"
-                >
-                  Newest
-                </Link>
-              ) : null}
-              {previousSearch ? (
-                <Link
-                  className={buttonVariants({
-                    className: "h-8 flex-1 px-3 text-xs sm:flex-none",
-                    size: "sm",
-                    variant: "outline",
-                  })}
-                  search={previousSearch}
-                  to="/"
-                >
-                  <ChevronLeft data-icon="inline-start" />
-                  Previous
-                </Link>
-              ) : (
-                <Button
-                  className="h-8 flex-1 px-3 text-xs sm:flex-none"
-                  disabled
-                  size="sm"
-                  variant="outline"
-                >
-                  <ChevronLeft data-icon="inline-start" />
-                  Previous
-                </Button>
-              )}
-              {nextSearch ? (
-                <Link
-                  className={buttonVariants({
-                    className: "h-8 flex-1 px-3 text-xs sm:flex-none",
-                    size: "sm",
-                    variant: "outline",
-                  })}
-                  search={nextSearch}
-                  to="/"
-                >
-                  Next
-                  <ChevronRight data-icon="inline-end" />
-                </Link>
-              ) : (
-                <Button
-                  className="h-8 flex-1 px-3 text-xs sm:flex-none"
-                  disabled
-                  size="sm"
-                  variant="outline"
-                >
-                  Next
-                  <ChevronRight data-icon="inline-end" />
-                </Button>
-              )}
-            </div>
-          </nav>
+            {onLaterPage ? (
+              <Link
+                className={buttonVariants({
+                  className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+                  size: "sm",
+                  variant: "ghost",
+                })}
+                search={newestSearch}
+                to="/"
+              >
+                Newest
+              </Link>
+            ) : null}
+            {previousSearch ? (
+              <Link
+                className={buttonVariants({
+                  className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+                  size: "sm",
+                  variant: "outline",
+                })}
+                search={previousSearch}
+                to="/"
+              >
+                <ChevronLeft data-icon="inline-start" />
+                Previous
+              </Link>
+            ) : (
+              <Button
+                className="h-8 flex-1 px-3 text-xs sm:flex-none"
+                disabled
+                size="sm"
+                variant="outline"
+              >
+                <ChevronLeft data-icon="inline-start" />
+                Previous
+              </Button>
+            )}
+            {nextSearch ? (
+              <Link
+                className={buttonVariants({
+                  className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+                  size: "sm",
+                  variant: "outline",
+                })}
+                search={nextSearch}
+                to="/"
+              >
+                Next
+                <ChevronRight data-icon="inline-end" />
+              </Link>
+            ) : (
+              <Button
+                className="h-8 flex-1 px-3 text-xs sm:flex-none"
+                disabled
+                size="sm"
+                variant="outline"
+              >
+                Next
+                <ChevronRight data-icon="inline-end" />
+              </Button>
+            )}
+          </DataTablePagination>
         ) : null}
       </div>
 

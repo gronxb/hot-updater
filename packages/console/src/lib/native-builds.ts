@@ -218,12 +218,6 @@ export const nativeBuildFileName = (build: NativeBuildRow): string => {
   }
 };
 
-/** What the build compiled in: its app version, or its fingerprint. */
-export const nativeBuildTarget = (build: NativeBuildRow) =>
-  build.app_version === null
-    ? { label: "Fingerprint", value: build.fingerprint_hash ?? "" }
-    : { label: "App version", value: build.app_version };
-
 const UNITS = ["B", "KB", "MB", "GB"] as const;
 
 /** A byte count in the largest unit that keeps it at or above 1. */

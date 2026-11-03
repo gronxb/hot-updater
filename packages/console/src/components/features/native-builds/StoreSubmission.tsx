@@ -39,9 +39,18 @@ function SubmittedAt({ ms }: { readonly ms: number | null }) {
   );
 }
 
+/** When the submission was recorded, as a tooltip says it. */
+const submittedTitle = (build: Submitted) => {
+  const destination = `Submitted to ${storeTrackLabels[build.submitted_to]}`;
+  if (build.submitted_at_ms === null) return destination;
+  const date = dayjs(build.submitted_at_ms);
+  return `${destination} ${date.fromNow()}, ${date.format("YYYY-MM-DD HH:mm:ss")}`;
+};
+
 /**
  * The store track a build went to, with the store's label of it, such as
- * "TestFlight 1.7.0 (66)": none for a build no store took.
+ * "TestFlight 1.7.0 (66)": none for a build no store took. Its tooltip says
+ * when it was submitted.
  */
 export function StoreSubmissionBadge({
   build,
@@ -56,7 +65,7 @@ export function StoreSubmissionBadge({
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <Badge
         className="gap-1"
-        title={`Submitted to ${storeTrackLabels[build.submitted_to]}`}
+        title={submittedTitle(build)}
         variant="secondary"
       >
         <Send aria-hidden="true" className="size-3" />
