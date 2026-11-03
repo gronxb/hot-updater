@@ -1,5 +1,46 @@
 # hot-updater
 
+## 1.2.0-rc.14
+
+### Minor Changes
+
+- 11ee65d: A sandbox build can run JavaScript from a dev server. Enter its address on the first screen; `reload()` stays on it, a crash ends it, and only **Exit dev server** returns to your app's bundle. Dev JavaScript's update checks, `updateBundle`, `resetChannel` and launch reports leave the selected bundle's state as it was, and its crash is never held against a bundle. See the Sandbox builds guide.
+  - Android: a sandbox build compiles a generated `HotUpdaterImpl` from the source it packages, in place of the original, and refuses a source it doesn't recognize. A normal build's compile inputs don't change. It refuses an app that takes the SDK as a prebuilt AAR, and the Rock adapter on Android.
+  - iOS: the sandbox template overrides `HotUpdaterImpl`'s bridge-facing methods, with no change to a normal build's sources. A sandbox archive allows local networking.
+  - `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles.
+
+### Patch Changes
+
+- 56fb167: Fix findings from the 1.2.0-rc.13 QA.
+  - `native-build mark --json` prints `{ "id", "marked": false, "reason" }` (`"cleared"` with `--clear`) when it refuses the build, with `reason` `not_found` for an ID no build has or `sandbox_channel`, and still exits with code 1. It printed nothing on stdout.
+  - `bundle update`, `enable`, `disable`, `delete` and `promote` end a refusal, such as an ID no bundle has or deleting an enabled bundle, with its message and no stack trace, and under `--json` print `{ "id", "updated" | "deleted": false, "reason" }` (`promote` has no `--json`). Given an Artifact ID, such as the one `native-build mark` and `patch -b` print, they name the bundle ID to use.
+  - `deploy` no longer warns "Partial update skipped" for a patch base whose Hermes bundle is unchanged: no patch is needed, and the step reports `Skipped (Hermes bundle unchanged)`.
+  - `doctor` keeps Google Play check details in one column, and puts the detail of a long application ID on the line under it.
+  - The Console's native build page names the build new deploys patch from by app version and build number, such as `iOS 1.7.0 (66)`, as the CLI does.
+
+- cc31804: Harden how credentials are stored, replaced, and printed.
+  - `secrets put` keeps a name that already holds another value, such as the only copy of an upload keystore or the signing key shipped apps verify bundles with, and asks you to back it up and run the same command with `--replace`. A keystore is refused before its passwords are asked. Putting the same value again stores nothing and succeeds.
+  - Google Cloud `secretManager().set` keeps the version it replaced as the previous one, as AWS keeps `AWSPREVIOUS`, and destroys only older versions it added. Each secret holds at most two active versions.
+  - `secrets pull` refuses a file git tracks before it reads the store, naming `git rm --cached`. It used to write the file and then warn.
+  - A failed native build's summary masks credentials before it cuts long lines, so a cut no longer leaves part of a value unmasked.
+  - A native build's key no longer records the hash of an environment variable named like `STORE_PASS`, `KEY_PASS`, or `*_PASSPHRASE`.
+  - `infisical()` doesn't print a rejected `siteUrl` that has a query or fragment, which may hold a token.
+  - The `native-build`, `preview`, and `release` actions keep a failed build's log artifact for one day.
+
+- Updated dependencies [5e00b33]
+- Updated dependencies [b931240]
+- Updated dependencies [56fb167]
+- Updated dependencies [11ee65d]
+- Updated dependencies [cc31804]
+  - @hot-updater/console@1.2.0-rc.14
+  - @hot-updater/android-helper@1.2.0-rc.14
+  - @hot-updater/apple-helper@1.2.0-rc.14
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/bsdiff@1.2.0-rc.14
+  - @hot-updater/protocol@1.2.0-rc.14
+  - @hot-updater/server@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
 ## 1.2.0-rc.13
 
 ### Minor Changes

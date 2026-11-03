@@ -1,5 +1,34 @@
 # @hot-updater/console
 
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- 5e00b33: The Console's Channels dialog lists each channel by its name only. It no longer prints the channel's internal id (such as `channel:cHJvZHVjdGlvbg`) under the name.
+- b931240: The Console's Native builds page lists builds in a column table like the Bundles page's, one kind of value per column: Artifact, Channel, Platform, Build, Target, Build key, Store, Size, and Created, with the built-in bundle and commit on the build's page. Target shows what OTAs target as the Bundles Target column shows it (the fingerprint, or the app version), and Build key shows the native build key of the build's inputs. The store badge's tooltip says when the build was submitted. Both tables share one shell and their cells, and a narrow screen shows each build as a card. A build's page shows the same Target, Build key, and Build.
+
+  Channel badges take their colors from the theme's `channel-*` tokens, with AA contrast in light and dark, and table headers read at AA contrast.
+
+  Native builds and Bundles page with the same Newest, Previous, and Next links, open a row from the keyboard the same way, show when an item was created as relative time with the exact time on hover (and under it on a card), and say what fills an empty list with an icon, a title, and the action that fills it. A Bundles card shows its target as the table's pill, and a native build's built-in bundle shows as a bundle ID does.
+
+  The Native builds list fits a 1440 px window with the sidebar open: the artifact column names the kind (`IPA`, `APK`, `AAB`, `Simulator app`) beside Platform, the store build mark sits under the store badge, and the build key shows past its `nbk1:` prefix, shortened as a fingerprint is.
+
+  On a phone, both lists show compact cards, a few to a screen, and every control, page button, filter, and copyable value takes a 44 px tap.
+
+- 56fb167: Fix findings from the 1.2.0-rc.13 QA.
+  - `native-build mark --json` prints `{ "id", "marked": false, "reason" }` (`"cleared"` with `--clear`) when it refuses the build, with `reason` `not_found` for an ID no build has or `sandbox_channel`, and still exits with code 1. It printed nothing on stdout.
+  - `bundle update`, `enable`, `disable`, `delete` and `promote` end a refusal, such as an ID no bundle has or deleting an enabled bundle, with its message and no stack trace, and under `--json` print `{ "id", "updated" | "deleted": false, "reason" }` (`promote` has no `--json`). Given an Artifact ID, such as the one `native-build mark` and `patch -b` print, they name the bundle ID to use.
+  - `deploy` no longer warns "Partial update skipped" for a patch base whose Hermes bundle is unchanged: no patch is needed, and the step reports `Skipped (Hermes bundle unchanged)`.
+  - `doctor` keeps Google Play check details in one column, and puts the detail of a long application ID on the line under it.
+  - The Console's native build page names the build new deploys patch from by app version and build number, such as `iOS 1.7.0 (66)`, as the CLI does.
+
+- Updated dependencies [cc31804]
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/bsdiff@1.2.0-rc.14
+  - @hot-updater/protocol@1.2.0-rc.14
+  - @hot-updater/server@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
 ## 1.2.0-rc.13
 
 ### Minor Changes

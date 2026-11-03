@@ -1,5 +1,11 @@
 # @hot-updater/plugin-core
 
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- @hot-updater/protocol@1.2.0-rc.14
+
 ## 1.2.0-rc.13
 
 ### Minor Changes
