@@ -15,6 +15,7 @@ export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
   return (
     <Badge
       variant="outline"
+      translate="no"
       data-channel={COLORED_CHANNELS.has(name) ? name : undefined}
       className={cn(
         "border-channel-other/20 bg-channel-other/10 text-channel-other",

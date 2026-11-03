@@ -2,9 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CircleCheck, History } from "lucide-react";
 import { toast } from "sonner";
 
+import { ChannelBadge } from "@/components/ChannelBadge";
 import { BuildKeyDisplay, TargetDisplay } from "@/components/TargetDisplay";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMarkNativeBuildMutation } from "@/lib/api";
@@ -163,9 +163,7 @@ export function BuiltInBundleCard({
                 search={{ channel }}
                 to="/native-builds"
               >
-                <Badge translate="no" variant="outline">
-                  {channel}
-                </Badge>
+                <ChannelBadge channel={channel} />
               </Link>
               <span className="text-xs">{platformLabel(build.platform)}</span>
             </span>
