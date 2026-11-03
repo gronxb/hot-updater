@@ -492,7 +492,9 @@ describe("hot-updater secrets put play-service-account <file>", () => {
 
     expect(process.exitCode).toBeUndefined();
     expect(held.get("play-service-account")).toBe(NEW_SERVICE_ACCOUNT);
+    // Checked for another value first, then stored and read back.
     expect(calls).toEqual([
+      "get play-service-account",
       "set play-service-account",
       "get play-service-account",
     ]);

@@ -10,6 +10,7 @@ import {
 } from "./LogWriter";
 import { truncateLine } from "./messageLines";
 import { toolOutput } from "./prompts";
+import { maskSecretValues } from "./secretMasking";
 import { type Step, startStep } from "./step";
 
 type LinePattern = string | RegExp;
@@ -212,8 +213,10 @@ export class BuildLogger {
     const first = lines.findIndex((line) => line.trim());
     const last = lines.findLastIndex((line) => line.trim());
     const summary = first === -1 ? [] : lines.slice(first, last + 1);
+    // A registered value is masked before the cut, which would leave a
+    // part of it no mask matches.
     return maxWidth
-      ? summary.map((line) => truncateLine(line, maxWidth))
+      ? summary.map((line) => truncateLine(maskSecretValues(line), maxWidth))
       : summary;
   }
 

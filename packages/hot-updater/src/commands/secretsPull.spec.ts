@@ -563,7 +563,7 @@ describe("hot-updater secrets pull", () => {
       expect(warnings()).toEqual([]);
     });
 
-    it("warns that a tracked file is tracked, even when .gitignore lists it", async () => {
+    it("refuses a file git tracks, even when .gitignore lists it, writing nothing", async () => {
       git("init", "--quiet");
       await fs.writeFile(envFile(), "OTHER=1\n");
       git("add", ".env.hotupdater");
@@ -576,9 +576,12 @@ describe("hot-updater secrets pull", () => {
 
       await handleSecretsPull();
 
-      expect(warnings()).toHaveLength(1);
-      expect(warnings()[0]).toContain(".env.hotupdater is tracked by git.");
-      expect(warnings()[0]).toContain("git rm --cached .env.hotupdater");
+      expect(process.exitCode).toBe(1);
+      expect(log.error).toHaveBeenCalledWith(
+        ".env.hotupdater is tracked by git.\nUntrack it: git rm --cached .env.hotupdater",
+      );
+      expect(store.get).not.toHaveBeenCalled();
+      await expect(fs.readFile(envFile(), "utf8")).resolves.toBe("OTHER=1\n");
     });
 
     it("doesn't warn outside a work tree", async () => {

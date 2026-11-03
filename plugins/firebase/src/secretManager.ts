@@ -608,10 +608,11 @@ export const secretManager = ({
     /**
      * Adds `value` as the secret's newest version, creating the secret when
      * it is missing, and waits until the `latest` alias resolves to it. Then
-     * it destroys the older versions this adapter added, which the secret's
-     * `hot-updater-versions` annotation lists: versions added any other way
-     * are never touched. The permissions this needs are checked before
-     * anything is written. A version that could not be destroyed stays
+     * it destroys the versions this adapter added before the previous one,
+     * which the secret's `hot-updater-versions` annotation lists, keeping
+     * the previous value: versions added any other way are never touched.
+     * The permissions this needs are checked on the secret, once it exists,
+     * before any version is added. A version that could not be destroyed stays
      * listed for the next `set`. The annotation is updated against the
      * secret's etag, so a concurrent `set` loses no listed version. When
      * `latest` does not resolve to the new version in time, or the
@@ -652,14 +653,24 @@ export const secretManager = ({
         );
       }
 
-      // Destroying the previous version before readers of `latest` see the
-      // new one would break them.
+      // The newest version it added before stays, as the previous value,
+      // like AWS's AWSPREVIOUS: a replaced key can still be recovered.
+      const own = trackedVersions(current).filter(
+        (entry) => Number(entry) < Number(version),
+      );
+      const previous = own.reduce<string | undefined>(
+        (newest, entry) =>
+          newest === undefined || Number(entry) > Number(newest)
+            ? entry
+            : newest,
+        undefined,
+      );
+      // Destroying a version before readers of `latest` see the new one
+      // would break them.
       const visible = await waitForLatest(token, secret, version);
       const destroyed = new Set<string>();
       if (visible) {
-        const older = trackedVersions(current).filter(
-          (entry) => Number(entry) < Number(version),
-        );
+        const older = own.filter((entry) => entry !== previous);
         const results = await Promise.all(
           older.map((entry) => destroy(token, secret, entry)),
         );
@@ -679,7 +690,11 @@ export const secretManager = ({
             base = (await readSecret(token, secret)) ?? {};
           }
           const listed = [
-            ...new Set([version, ...trackedVersions(base)]),
+            ...new Set([
+              version,
+              ...(previous === undefined ? [] : [previous]),
+              ...trackedVersions(base),
+            ]),
           ].filter((entry) => !destroyed.has(entry));
           updated = await request(
             token,

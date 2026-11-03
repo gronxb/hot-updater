@@ -91,15 +91,17 @@ export interface SecretsPutOptions {
   readonly keyAlias?: string;
   /** play-service-account: the service account's JSON key file. */
   readonly serviceAccount?: string;
+  /** Overwrite another value stored as the name. */
+  readonly replace?: boolean;
 }
 
-type ValueFlag = Exclude<keyof SecretsPutOptions, "kind" | "file">;
+type ValueFlag = Exclude<keyof SecretsPutOptions, "kind" | "file" | "replace">;
 
 /**
  * Options with the kind they store, and the file as its flag, or as `pem`
  * for the bundle signing key, which takes no flag.
  */
-type PutValues = Omit<SecretsPutOptions, "kind" | "file"> & {
+type PutValues = Omit<SecretsPutOptions, "kind" | "file" | "replace"> & {
   readonly kind: PutKind;
   readonly pem?: string;
 };
@@ -145,7 +147,7 @@ const isSecretKind = (kind: string): kind is PutKind =>
  */
 const readPutValues = (
   name: string,
-  { kind: given, file, ...flags }: SecretsPutOptions,
+  { kind: given, file, replace: _replace, ...flags }: SecretsPutOptions,
 ): PutValues => {
   if (given !== undefined && !isSecretKind(given)) {
     throw new Error(`--kind is one of:\n${SECRET_KINDS.join(", ")}`);
@@ -382,6 +384,19 @@ export const handleSecretsPut = async (
     assertKindFlags(options);
     // The alias and passwords of a keystore are asked at a terminal only.
     const asksKeystore = kind === "android-keystore" && !options.keyAlias;
+    // Another value stored as the name may be its only copy, such as a Play
+    // upload key or the key shipped apps verify bundles with: it is kept
+    // unless --replace. The same value again stores nothing.
+    const found = await readSecretWithSource(secrets, name, cwd);
+    if (found !== undefined) registerCredentialValue(found.value);
+    const refuseReplacing = () =>
+      new Error(
+        `${found!.source} already holds another ${kind}.\nBack it up, then run the same command with --replace.`,
+      );
+    // A keystore's value needs its passwords: refused before they are asked.
+    if (found !== undefined && !given.replace && asksKeystore) {
+      throw refuseReplacing();
+    }
     const missingInputs =
       kind === "android-keystore"
         ? describeMissingKeystoreInputs(options.keyAlias)
@@ -392,6 +407,17 @@ export const handleSecretsPut = async (
       return;
     }
     const value = await readSecretValue(options);
+    if (found !== undefined && !given.replace) {
+      if (found.value !== value) throw refuseReplacing();
+      p.log.success(
+        ui.block("Secret already stored", [
+          ui.kv("Name", name),
+          ui.kv("Kind", kind),
+          ui.kv("Source", ui.source(found.source)),
+        ]),
+      );
+      return;
+    }
     await storeCredential(secrets, name, value);
     // The key the apps' embedded public key must match.
     const fingerprint =

@@ -346,7 +346,9 @@ When the build fails, the job's log shows the build's errors and the path of
 the CLI's build log, which keeps the whole output of `xcodebuild` or Gradle,
 and the action uploads that log as the
 `hot-updater-build-log-<platform>-<scheme>` artifact. Download it from the
-run's **Summary** page.
+run's **Summary** page within a day: the artifact is kept for one day, since
+the CLI masks only the credentials it reads, not every value the build may
+print.
 
 Upload the artifact with `actions/upload-artifact` to keep it with the run:
 
