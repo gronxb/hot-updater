@@ -259,15 +259,16 @@ caps the artifact size.
 The Console's **Native builds** page lists the tracked builds, newest first,
 in a table like the Bundles page's, one kind of value per column:
 
-- **Artifact**: the build's kind, such as `iOS IPA`, which opens its page.
+- **Artifact**: the build's kind, such as `IPA`, which opens its page.
 - **Channel** and **Platform**.
 - **Build**: the build number the artifact reports.
 - **Target**: what its OTAs target, as the Bundles page's Target column shows
   it: the fingerprint, or the app version under the `appVersion` strategy.
 - **Build key**: the [native build key](#reuse-a-build) of the build's
-  inputs. An imported build has none.
-- **Store**: the store track it was submitted to, with when on hover, and the
-  [store build mark](#mark-the-store-build).
+  inputs, shown past its `nbk1:` prefix and copied whole. An imported build
+  has none.
+- **Store**: the store track it was submitted to, with when on hover, and
+  under it the [store build mark](#mark-the-store-build).
 - **Size** and **Created**, when the build was registered.
 
 The build's page holds the rest, such as its built-in bundle and commit.

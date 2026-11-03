@@ -158,14 +158,19 @@ function EmptyState({
 const buildTitle = (build: NativeBuildRow) =>
   `${platformLabel(build.platform)} ${nativeBuildArtifacts[build.artifact_kind].label}`;
 
+/**
+ * The build's artifact kind, such as "IPA", linking to its page. The Platform
+ * beside it names the platform; the link's name is the whole build.
+ */
 function BuildLink({ build }: { readonly build: NativeBuildRow }) {
   return (
     <Link
+      aria-label={buildTitle(build)}
       className="rounded-sm font-medium whitespace-nowrap text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       params={{ buildId: build.id }}
       to="/native-builds/$buildId"
     >
-      {buildTitle(build)}
+      {nativeBuildArtifacts[build.artifact_kind].label}
     </Link>
   );
 }
@@ -190,11 +195,14 @@ function ChannelFilterButton({
   );
 }
 
-/** The store track a build went to, and the store build mark. */
+/**
+ * The store track a build went to, and under it the store build mark, so a
+ * build with both stays one badge wide.
+ */
 function StoreCell({ build }: { readonly build: NativeBuildRow }) {
   if (!isSubmitted(build) && build.store_build !== true) return <NoValue />;
   return (
-    <span className="flex flex-wrap items-center gap-1.5">
+    <span className="flex flex-col items-start gap-1">
       <StoreSubmissionBadge build={build} />
       {build.store_build === true ? (
         <Badge variant="secondary">Store build</Badge>

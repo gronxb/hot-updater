@@ -42,12 +42,12 @@ describe("TargetDisplay", () => {
 });
 
 describe("BuildKeyDisplay", () => {
-  it("keeps 8 characters past the nbk1: prefix, and copies the whole key", () => {
+  it("shows the key as the fingerprint is shown, past its nbk1: prefix, and copies the whole key", () => {
     render(<BuildKeyDisplay value={BUILD_KEY} />);
     expect(
       screen.getByRole("button", { name: `Copy full value: ${BUILD_KEY}` })
         .textContent,
-    ).toBe("nbk1:a1b2c3d4…9f0e");
+    ).toBe("a1b2c3d4…9f0e");
   });
 
   it("shows - for an imported build, which has no key", () => {

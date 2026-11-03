@@ -282,8 +282,8 @@ describe("NativeBuildsTable", () => {
       screen.getByRole("button", { name: `Copy full value: ${fingerprint}` })
         .textContent,
     ).toBe("e7b2a84d…9efb");
-    // The build key keeps 8 characters past its `nbk1:` prefix.
-    expect(cellText(row, "Build key")).toBe("nbk1:a1b2c3d4…9f0e");
+    // The build key past its `nbk1:` prefix, shortened as the fingerprint is.
+    expect(cellText(row, "Build key")).toBe("a1b2c3d4…9f0e");
     expect(
       screen.getByRole("button", { name: `Copy full value: ${buildKey}` }),
     ).toBeTruthy();
@@ -337,7 +337,7 @@ describe("NativeBuildsTable", () => {
           (term) => term.textContent === label,
         )?.nextElementSibling?.textContent;
       expect(field("Target")).toBe("1a2b3c4d…9c0d");
-      expect(field("Build key")).toBe("nbk1:a1b2c3d4…9f0e");
+      expect(field("Build key")).toBe("a1b2c3d4…9f0e");
       expect(field("Built-in bundle")).toBeUndefined();
       expect(field("Build")).toBe("66");
       expect(
@@ -378,7 +378,12 @@ describe("NativeBuildsTable", () => {
     );
 
     const row = screen.getAllByRole("row")[1]!;
-    expect(cellText(row, "Artifact")).toBe("iOS IPA");
+    // The Platform column names the platform; the artifact names its kind,
+    // and its link still reads as the whole build for screen readers.
+    expect(cellText(row, "Artifact")).toBe("IPA");
+    expect(screen.getByRole("link", { name: "iOS IPA" }).textContent).toBe(
+      "IPA",
+    );
     expect(cellText(row, "Platform")).toBe("iOS");
     expect(cellText(row, "Build")).toBe("17");
     expect(cellText(row, "Target")).toBe("89814894…8899");
@@ -1048,7 +1053,7 @@ describe("BuiltInBundleCard", () => {
     );
     expect(rowValue("Build")).toBe("121");
     expect(rowValue("Target")).toBe("1a2b3c4d…9c0d");
-    expect(rowValue("Build key")).toBe("nbk1:a1b2c3d4…9f0e");
+    expect(rowValue("Build key")).toBe("a1b2c3d4…9f0e");
   });
 
   it("shows an app-version build's app version, and - for no build key", () => {

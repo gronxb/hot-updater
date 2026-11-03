@@ -6,6 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface HashValueDisplayProps {
   value: string;
+  /** What the pill shows, shortened, when it isn't `value`; `value` is copied. */
+  display?: string;
   maxLength?: number;
   className?: string;
   buttonClassName?: string;
@@ -18,12 +20,13 @@ export const shortenIdentifier = (value: string, maxLength = 12) =>
 
 export function HashValueDisplay({
   value,
+  display = value,
   maxLength = 12,
   className,
   buttonClassName,
 }: HashValueDisplayProps) {
-  const isTruncated = value.length > maxLength;
-  const truncated = shortenIdentifier(value, maxLength);
+  const isTruncated = display !== value || display.length > maxLength;
+  const truncated = shortenIdentifier(display, maxLength);
 
   const copyValue = async () => {
     try {
