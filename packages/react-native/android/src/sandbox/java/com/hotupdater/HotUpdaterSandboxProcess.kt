@@ -38,10 +38,15 @@ internal class HotUpdaterSandboxProcess : ContentProvider() {
         /** Main's marker, under the app's files directory. */
         internal fun crashMarkerFile(filesDir: File?) = File(File(filesDir, "bundle-store"), "recovery-crash-marker.json")
 
-        private fun isHost(activity: Activity) = activity !is HotUpdaterSandboxActivity && activity !is HotUpdaterRestartActivity
+        private fun isHost(activity: Activity) =
+            activity !is HotUpdaterSandboxActivity &&
+                activity !is HotUpdaterRestartActivity &&
+                activity !is HotUpdaterSandboxRelaunchActivity
     }
 
     override fun onCreate(): Boolean {
+        // Before `Application.onCreate`, where a host may already read its bundle.
+        context?.let(HotUpdaterSandboxDev::session)
         val application = context?.applicationContext as? Application
         crashMarkerAtStart =
             crashMarkerFile(application?.filesDir)

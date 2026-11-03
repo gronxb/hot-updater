@@ -57,6 +57,18 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         impl.getFingerprintHash()
     }
 
+    var isRunningDevServer: Bool {
+        HotUpdaterSandboxDevState.running != nil
+    }
+
+    /// Set by the bridge, which owns the dev server and the screen.
+    @MainActor var exitDevServerAction: () -> Void = {}
+
+    /// The coordinator, on the main actor, is the only caller.
+    func exitDevServerForLink() {
+        MainActor.assumeIsolated { exitDevServerAction() }
+    }
+
     func hasServerConfig() -> Bool {
         config() != nil
     }
@@ -84,6 +96,10 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     }
 
     func launchBundleId() async -> String {
+        // In a dev session this process runs no bundle: it isn't behind the selection.
+        if isRunningDevServer {
+            return await selection().bundleId
+        }
         let impl = impl
         return await Task.detached {
             impl.bundleIdForUpdateCheck() ?? HotUpdaterImpl.minBundleId()

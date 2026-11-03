@@ -595,7 +595,7 @@ internal class HotUpdaterSandboxScreen(
         val rows = ArrayList<View>()
         val running = devServer.runningDevServerHost
         if (running != null) {
-            rows += row(dot(GREEN), running, "Dev server running") { devServer.reloadDevServer() }
+            rows += row(dot(GREEN), running, devServer.lastDevServerError ?: "Dev server running") { devServer.reloadDevServer() }
             rows += row(null, "Exit dev server") { devServer.exitDevServer() }
         } else {
             devServer.devServerHosts.forEach { host ->

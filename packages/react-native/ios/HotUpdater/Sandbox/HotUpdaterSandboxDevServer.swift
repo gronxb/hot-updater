@@ -18,36 +18,13 @@ protocol HotUpdaterSandboxDevServer: AnyObject {
     /// The host of the running session, when there is one.
     var runningDevServerHost: String? { get }
     var devServerHosts: [HotUpdaterSandboxDevServerHost] { get }
+    /// What the last reload couldn't do. A failed connect says so to its completion.
+    var lastDevServerError: String? { get }
     /// Called when `devServerHosts` or the running session changed.
     var onDevServerChange: (() -> Void)? { get set }
     /// Calls back on the main actor with nil once connected, or with what's wrong.
     func connect(host: String, completion: @escaping (String?) -> Void)
     func reloadDevServer()
     func exitDevServer()
-}
-
-/// The default until dev-server mode is in this build: it lists the address a
-/// simulator would use, and says so when asked to connect.
-@MainActor
-final class HotUpdaterSandboxNoDevServer: HotUpdaterSandboxDevServer {
-    var onDevServerChange: (() -> Void)?
-    var isRunningDevServer: Bool { false }
-    var runningDevServerHost: String? { nil }
-
-    var devServerHosts: [HotUpdaterSandboxDevServerHost] {
-        #if targetEnvironment(simulator)
-        return [HotUpdaterSandboxDevServerHost(address: "localhost:8081", isRunning: nil)]
-        #else
-        return []
-        #endif
-    }
-
-    func connect(host: String, completion: @escaping (String?) -> Void) {
-        completion("This build can't run JavaScript from a dev server yet.")
-    }
-
-    func reloadDevServer() {}
-
-    func exitDevServer() {}
 }
 #endif

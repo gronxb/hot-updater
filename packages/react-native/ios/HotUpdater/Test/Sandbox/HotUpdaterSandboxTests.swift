@@ -50,6 +50,20 @@ private final class FakeHost: HotUpdaterSandboxHost {
     /// The OTA this process launched, which stays what it runs after a reset deletes it.
     var runningBundleId: String?
     var channelAfterStaging: String?
+    var runsDevServer = false
+    var devExits = 0
+
+    nonisolated var isRunningDevServer: Bool {
+        MainActor.assumeIsolated { runsDevServer }
+    }
+
+    nonisolated func exitDevServerForLink() {
+        MainActor.assumeIsolated {
+            devExits += 1
+            runsDevServer = false
+        }
+    }
+
     var evidence = HotUpdaterSandboxLaunchEvidence()
     var pendingBundleId: String?
 
@@ -155,6 +169,7 @@ private func settle() async {
 private struct Fixture {
     let host = FakeHost()
     let store = FakeStore()
+    let lock = HotUpdaterSandboxLock()
     var opens: [(Bool, Bool)] { box.opens }
     private let box = Box()
     let coordinator: HotUpdaterSandboxCoordinator
@@ -170,13 +185,141 @@ private struct Fixture {
             host: host,
             store: store,
             openApp: { box.opens.append(($0, $1)) },
-            now: { Date(timeIntervalSince1970: 1000) }
+            now: { Date(timeIntervalSince1970: 1000) },
+            lock: lock
         )
     }
 }
 
 @MainActor
 struct HotUpdaterSandboxCoordinatorTests {
+    @Test
+    func inADevSessionAConfirmedLinkExitsItAndIsAskedAgain() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.confirmLink()
+        await settle()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.store.pendingLinks == [link("pr-1")])
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link to ask again")
+            return
+        }
+    }
+
+    @Test
+    func openingInADevSessionRecordsNoBundleAsOpened() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        await fixture.coordinator.open()
+        #expect(fixture.store.opened.isEmpty)
+        #expect(fixture.opens.count == 1)
+    }
+
+    @Test
+    func aDevSessionsOpenNeverReloadsWhateverThisLaunchAndTheNextOneSay() async {
+        // What makes a normal launch fixed: it runs one bundle, and the next selects another.
+        let normal = Fixture()
+        normal.host.runningBundleId = "ota-1"
+        normal.host.bundleId = "ota-2"
+        await normal.coordinator.open()
+        #expect(normal.opens.first?.1 == true)
+
+        let dev = Fixture()
+        dev.host.runsDevServer = true
+        dev.host.runningBundleId = "ota-1"
+        dev.host.bundleId = "ota-2"
+        await dev.coordinator.refresh()
+        await dev.coordinator.open()
+        #expect(dev.opens.first?.1 == false)
+        #expect(dev.store.opened.isEmpty)
+    }
+
+    @Test
+    func inADevSessionARowOrAResetAsksToExitFirstAndChangesNothing() async {
+        let fixture = Fixture()
+        fixture.host.runsDevServer = true
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "The dev server is running. Exit it, then try again.")
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.host.devExits == 0)
+    }
+
+    @Test
+    func aSessionThatStartsDuringASwitchStopsItBeforeAnythingChanges() async {
+        let fixture = Fixture()
+        let preflight = Gate<Bool>()
+        fixture.host.preflightGate = preflight
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1"])
+        // A dev server's session starts while the preflight awaits.
+        fixture.host.runsDevServer = true
+        preflight.finish(.success(true))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1"], "the switch went on in a dev session")
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "The dev server is running. Exit it, then try again.")
+    }
+
+    @Test
+    func aSwitchWhileADevServerConnectsIsRefusedAndChangesNothing() async {
+        let fixture = Fixture()
+        #expect(fixture.lock.take(.devServer))
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "A dev server is connecting. Wait for it, then try again.")
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.dismiss()
+        fixture.lock.release(.devServer)
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1"])
+    }
+
+    @Test
+    func aSwitchHoldsTheLockUntilItEndsEitherWay() async {
+        let fixture = Fixture()
+        let preflight = Gate<Bool>()
+        fixture.host.preflightGate = preflight
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.lock.holder == .switching)
+        preflight.finish(.failure(FakeError.offline))
+        await settle()
+        #expect(fixture.lock.holder == nil)
+        fixture.host.preflightGate = nil
+        fixture.coordinator.retry()
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "preflight pr-1", "reset", "check pr-1"])
+        #expect(fixture.lock.holder == nil)
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.lock.holder == nil)
+    }
+
     @Test
     func aLinkConfirmsThenRunsEveryStepInOrderAndOpens() async {
         let fixture = Fixture()
@@ -1328,6 +1471,182 @@ struct HotUpdaterSandboxHomeModelTests {
         #expect(info.bundle.map(\.name) == ["Channel", "Current", "Pending"])
         #expect(info.bundle.first { $0.name == "Current" }?.value == "019a3f…c2")
         #expect(info.bundle.first { $0.name == "Pending" }?.value == "019a3f…c2")
+    }
+}
+
+struct HotUpdaterSandboxDevHostTests {
+    @Test
+    func hostsNormalizeAsAPersonTypesThem() {
+        #expect(HotUpdaterSandboxDevHost.normalize(" 192.168.0.2 ") == "http://192.168.0.2:8081")
+        #expect(HotUpdaterSandboxDevHost.normalize("192.168.0.2:9000/") == "http://192.168.0.2:9000")
+        #expect(HotUpdaterSandboxDevHost.normalize("https://dev.example.com") == "https://dev.example.com:8081")
+        #expect(HotUpdaterSandboxDevHost.normalize("[::1]") == "http://[::1]:8081")
+        for bad in ["", "ftp://host", "host/path", "two words"] {
+            #expect(HotUpdaterSandboxDevHost.normalize(bad) == nil)
+        }
+    }
+
+    @Test
+    func recentHostsComeFirstEachOnce() {
+        #expect(HotUpdaterSandboxDevHost.listed(isSimulator: true, recent: ["http://a:1", "http://localhost:8081"]) == ["http://a:1", "http://localhost:8081"])
+        #expect(HotUpdaterSandboxDevHost.listed(isSimulator: false, recent: []) == [])
+    }
+
+    @Test
+    func anExpoManifestNamesTheEntryAndTheTransformNeverItsDevSettings() {
+        let manifest = #"{"launchAsset":{"url":"http://127.0.0.1:8099/examples/expo-52/index.ts.bundle?platform=ios&dev=true&hot=false&transform.engine=hermes&transform.bytecode=1&unstable_transformProfile=hermes-stable"}}"#
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(manifest.utf8)) == HotUpdaterSandboxDevEntry(
+            path: "examples/expo-52/index.ts",
+            query: "&transform.engine=hermes&unstable_transformProfile=hermes-stable"
+        ))
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data("React Native packager is running.".utf8)) == nil)
+        #expect(HotUpdaterSandboxDevHost.entry(ofManifest: Data(#"{"launchAsset":{}}"#.utf8)) == nil)
+    }
+
+    @Test
+    func theBundleIsDevFalse() {
+        #expect(HotUpdaterSandboxDevHost.bundleURL(host: "http://a:1")?.absoluteString == "http://a:1/index.bundle?platform=ios&dev=false&minify=false")
+    }
+}
+/// A dev server whose answers wait for the test.
+@MainActor
+private final class SlowDevServer {
+    private var waiting: [CheckedContinuation<HotUpdaterSandboxDevResolved, Never>] = []
+    var pending: Int { waiting.count }
+
+    func resolve(_ host: String) async -> HotUpdaterSandboxDevResolved {
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func answer(_ result: HotUpdaterSandboxDevResolved) {
+        waiting.removeFirst().resume(returning: result)
+    }
+}
+
+@MainActor
+private func settle(until done: () -> Bool = { false }) async {
+    for _ in 0 ..< 200 {
+        if done() { return }
+        await Task.yield()
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxDevConnectorTests {
+    @Test
+    func aConnectWhileASwitchRunsIsRefusedAndStartsNothing() async {
+        let server = SlowDevServer()
+        let lock = HotUpdaterSandboxLock()
+        var committed = 0
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, _ in committed += 1 },
+            lock: lock
+        )
+        #expect(lock.take(.switching))
+        var failure: String?
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { failure != nil }
+        #expect(failure == "A preview is being opened. Wait for it, then connect.")
+        #expect(server.pending == 0)
+        #expect(committed == 0)
+        #expect(lock.holder == .switching)
+    }
+
+    @Test
+    func aConnectionHoldsTheLockWhileItFetchesAndReleasesItEitherWay() async {
+        let server = SlowDevServer()
+        let lock = HotUpdaterSandboxLock()
+        var committed = 0
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, _ in committed += 1 },
+            lock: lock
+        )
+        var failure: String? = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        #expect(lock.holder == .devServer)
+        server.answer(.failure("a:1 answered 500 for its JavaScript."))
+        await settle { failure != "unanswered" }
+        #expect(lock.holder == nil)
+        failure = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { failure == nil }
+        #expect(committed == 1)
+        #expect(lock.holder == nil)
+    }
+
+    @Test
+    func exitDuringAReloadStillFetchingStartsNothing() async {
+        let server = SlowDevServer()
+        var committed: [URL] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, url in committed.append(url) },
+            lock: HotUpdaterSandboxLock()
+        )
+        connector.reload("http://a:1")
+        await settle { server.pending == 1 }
+        connector.ended()
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle()
+        #expect(committed.isEmpty)
+    }
+
+    @Test
+    func aConnectAfterExitStartsASessionAsUsual() async {
+        let server = SlowDevServer()
+        var committed: [URL] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, url in committed.append(url) },
+            lock: HotUpdaterSandboxLock()
+        )
+        connector.ended()
+        var failure: String? = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { failure == nil }
+        #expect(failure == nil)
+        #expect(committed.count == 1)
+    }
+
+    @Test
+    func aFailedReloadIsShownOnTheScreen() async {
+        let server = SlowDevServer()
+        var changes = 0
+        let connector = HotUpdaterSandboxDevConnector(resolve: { await server.resolve($0) }, commit: { _, _ in }, lock: HotUpdaterSandboxLock())
+        connector.onChange = { changes += 1 }
+        connector.reload("http://a:1")
+        await settle { server.pending == 1 }
+        server.answer(.failure("a:1 answered 500 for its JavaScript."))
+        await settle { changes > 0 }
+        #expect(connector.lastError == "a:1 answered 500 for its JavaScript.")
+        #expect(changes == 1)
+    }
+
+    @Test
+    func connectionsRunOneAtATime() async {
+        let server = SlowDevServer()
+        var committed: [String] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { host, _ in committed.append(host) },
+            lock: HotUpdaterSandboxLock()
+        )
+        connector.connect("http://a:1") { _ in }
+        connector.connect("http://b:2") { _ in }
+        await settle { server.pending == 1 }
+        #expect(server.pending == 1)
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { server.pending == 1 && committed.count == 1 }
+        server.answer(.bundle(URL(string: "http://b:2/index.bundle")!))
+        await settle { committed.count == 2 }
+        #expect(committed == ["http://a:1", "http://b:2"])
     }
 }
 #endif

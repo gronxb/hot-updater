@@ -130,6 +130,17 @@ describe("withSandboxGradleArgs", () => {
 });
 
 describe("the files a sandbox build writes", () => {
+  it("refuses an app whose SDK isn't compiled from source", () => {
+    const script = sandboxInitScript({
+      appModuleName: "app",
+      variant: "release",
+      overlay: "/tmp/overlay.xml",
+    });
+    expect(script).toContain("hotUpdaterSandboxSdkProject");
+    expect(script).toContain("gradle.taskGraph.whenReady");
+    expect(script).toContain("prebuilt AAR");
+  });
+
   it("acts on the app module only, after the project's settings, and appends the suffix", () => {
     const script = sandboxInitScript({
       appModuleName: "app",

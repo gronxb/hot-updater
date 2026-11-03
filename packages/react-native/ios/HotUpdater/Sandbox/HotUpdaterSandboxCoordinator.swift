@@ -46,6 +46,10 @@ func hotUpdaterSandboxNextLaunchBundleId(
 protocol HotUpdaterSandboxHost: AnyObject {
     /// The fingerprint this build embeds, or nil without one.
     func fingerprintHash() -> String?
+    /// Whether this process runs a dev server's JavaScript, where nothing can change the normal selection.
+    var isRunningDevServer: Bool { get }
+    /// Ends the dev session, with the screen still up to answer a link.
+    func exitDevServerForLink()
     /// Whether the app's JavaScript left a server config: a server answered one of its checks.
     func hasServerConfig() -> Bool
     /// What the next launch selects, as storage holds it. Settles the previous launch
@@ -71,6 +75,9 @@ protocol HotUpdaterSandboxHost: AnyObject {
 }
 
 extension HotUpdaterSandboxHost {
+    var isRunningDevServer: Bool { false }
+    func exitDevServerForLink() {}
+
     func launchBundleId() async -> String {
         await selection().bundleId
     }
@@ -151,6 +158,32 @@ struct HotUpdaterSandboxState: Equatable {
     var runningMessage: String?
 }
 
+/// The one serialization point for what changes the selection or a dev session in
+/// this process: a switch (a preview link, a channel, the built-in bundle) or a dev
+/// server connection (connect, Reload). Each holds it across all its awaits, and
+/// whichever comes second is refused, never queued behind the other.
+@MainActor
+final class HotUpdaterSandboxLock {
+    enum Holder: Equatable {
+        case switching
+        case devServer
+    }
+
+    static let shared = HotUpdaterSandboxLock()
+
+    private(set) var holder: Holder?
+
+    func take(_ who: Holder) -> Bool {
+        guard holder == nil else { return false }
+        holder = who
+        return true
+    }
+
+    func release(_ who: Holder) {
+        if holder == who { holder = nil }
+    }
+}
+
 /// The one owner of a channel switch: fingerprint check, confirmation for a link,
 /// catalog preflight, reset, the SDK's check and update, then opening the app.
 /// One switch runs at a time, and a row, a typed channel or a reset can't start
@@ -166,6 +199,7 @@ final class HotUpdaterSandboxCoordinator {
     /// reload can apply the switch.
     private let openApp: (_ switched: Bool, _ fixed: Bool) -> Void
     private let log: (String) -> Void
+    private let lock: HotUpdaterSandboxLock
     private var listeners: [Int: (HotUpdaterSandboxState) -> Void] = [:]
     private var nextListenerId = 0
     private var queue: [String]
@@ -196,9 +230,11 @@ final class HotUpdaterSandboxCoordinator {
         store: HotUpdaterSandboxStore,
         openApp: @escaping (_ switched: Bool, _ fixed: Bool) -> Void,
         log: @escaping (String) -> Void = { _ in },
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        lock: HotUpdaterSandboxLock = .shared
     ) {
         self.now = now
+        self.lock = lock
         self.host = host
         self.store = store
         self.openApp = openApp
@@ -250,6 +286,13 @@ final class HotUpdaterSandboxCoordinator {
     /// Accepts the link in `.confirming`.
     func confirmLink() {
         guard case .confirming(let link) = state.phase else { return }
+        // The link stays stored, and the screen asks about it on the normal selection.
+        if host.isRunningDevServer {
+            host.exitDevServerForLink()
+            setPhase(.idle)
+            pump()
+            return
+        }
         linkInFlight = link.url
         begin(target: link.channel)
     }
@@ -304,7 +347,10 @@ final class HotUpdaterSandboxCoordinator {
         // Taken now, so nothing else can start while the selection is read.
         setPhase(.working(operationId: operationId, target: "", step: .reset, progress: nil))
         Task { @MainActor in
+            guard await takeLock(operationId, "") else { return }
+            defer { lock.release(.switching) }
             let target = await host.selection().defaultChannel
+            if await refuseInDevSession(operationId, target) { return }
             setPhase(.working(operationId: operationId, target: target, step: .reset, progress: nil))
             guard let reset = await attempt(operationId, target, .reset, { try await self.host.reset() }) else { return }
             guard reset else {
@@ -329,12 +375,15 @@ final class HotUpdaterSandboxCoordinator {
         // Over a running app, opening shows what it runs: what's selected waits for
         // its launch. Before the app starts, what's selected is what opens.
         let reloads = launchFixed && !host.isAppRunning()
-        recordOpened(reloads ? selection : HotUpdaterSandboxSelection(
-            channel: selection.channel,
-            defaultChannel: selection.defaultChannel,
-            bundleId: launched,
-            isBuiltIn: selection.isBuiltIn && launched == selection.bundleId
-        ))
+        // A dev session runs no bundle, so it says nothing about one.
+        if !host.isRunningDevServer {
+            recordOpened(reloads ? selection : HotUpdaterSandboxSelection(
+                channel: selection.channel,
+                defaultChannel: selection.defaultChannel,
+                bundleId: launched,
+                isBuiltIn: selection.isBuiltIn && launched == selection.bundleId
+            ))
+        }
         acknowledgeLastLaunch()
         publish(reading(selection, launched: launched))
         openApp(false, reloads)
@@ -425,7 +474,27 @@ final class HotUpdaterSandboxCoordinator {
         Task { @MainActor in await run(operationId, target) }
     }
 
+    /// A switch holds the lock for all of its steps, so no dev server connects between them.
+    private func takeLock(_ operationId: Int, _ target: String) async -> Bool {
+        guard lock.take(.switching) else {
+            await fail(operationId, target, .preflight, .error("A dev server is connecting. Wait for it, then try again."))
+            return false
+        }
+        return true
+    }
+
+    /// A dev process's native state is the dev session's, so a switch waits for its Exit.
+    /// Asked again after every await, before a step that changes the selection.
+    private func refuseInDevSession(_ operationId: Int, _ target: String, _ step: HotUpdaterSandboxStep = .preflight) async -> Bool {
+        guard host.isRunningDevServer else { return false }
+        await fail(operationId, target, step, .error("The dev server is running. Exit it, then try again."))
+        return true
+    }
+
     private func run(_ operationId: Int, _ target: String) async {
+        guard await takeLock(operationId, target) else { return }
+        defer { lock.release(.switching) }
+        if await refuseInDevSession(operationId, target) { return }
         let before = await host.selection()
         let toDefault = target == before.defaultChannel
         guard let hasBundle = await attempt(operationId, target, .preflight, {
@@ -437,6 +506,7 @@ final class HotUpdaterSandboxCoordinator {
             return
         }
         if before.channel != target {
+            if await refuseInDevSession(operationId, target, .reset) { return }
             setPhase(.working(operationId: operationId, target: target, step: .reset, progress: nil))
             guard let reset = await attempt(operationId, target, .reset, { try await self.host.reset() }) else { return }
             guard reset else {
@@ -444,6 +514,7 @@ final class HotUpdaterSandboxCoordinator {
                 return
             }
         }
+        if await refuseInDevSession(operationId, target, .check) { return }
         setPhase(.working(operationId: operationId, target: target, step: .check, progress: nil))
         guard let staged = await attempt(operationId, target, .check, {
             try await self.host.checkAndStage(channel: target) { progress in
@@ -507,7 +578,8 @@ final class HotUpdaterSandboxCoordinator {
     private func readSelection() async -> HotUpdaterSandboxSelection {
         let selection = await host.selection()
         let launchBundleId = await host.launchBundleId()
-        launchFixed = launchBundleId != selection.bundleId
+        // A dev process runs no selection, and only Exit replaces it.
+        launchFixed = !host.isRunningDevServer && launchBundleId != selection.bundleId
         return selection
     }
 

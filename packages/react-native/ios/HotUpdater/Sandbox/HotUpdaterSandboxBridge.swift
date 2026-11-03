@@ -15,10 +15,16 @@ public final class HotUpdaterSandboxBridge: NSObject {
     private static var isReleased: (() -> Bool)?
     private static var window: UIWindow?
     private static var isWatchingForServerAnswer = false
-    /// Until dev-server mode is in this build, it says so.
-    private static let devServer: HotUpdaterSandboxDevServer = HotUpdaterSandboxNoDevServer()
+    private static let devServer = HotUpdaterSandboxLiveDevServer(
+        start: { launchWasPrepared in startDevSession(launchWasPrepared: launchWasPrepared) },
+        reload: { NSLog("[HotUpdaterSandbox] reload triggered=%d", reload?() == true) }
+    )
 
-    private static let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
+    private static let host: HotUpdaterSandboxLiveHost = {
+        let host = HotUpdaterSandboxLiveHost(isAppRunning: { isReleased?() == true })
+        host.exitDevServerAction = { devServer.exitDevServer() }
+        return host
+    }()
     private static let coordinator = HotUpdaterSandboxCoordinator(
         host: host,
         store: HotUpdaterSandboxDefaults(),
@@ -35,6 +41,11 @@ public final class HotUpdaterSandboxBridge: NSObject {
         Self.release = release
         Self.reload = reload
         Self.isReleased = isReleased
+    }
+
+    /// Before anything settles what the last process left.
+    @objc public static func dropCrashOfLastDevProcess() {
+        HotUpdaterSandboxDevLeftover.dropCrashOfLastProcess()
     }
 
     /// Reads what the last launch left, before anything settles it.
@@ -111,6 +122,20 @@ public final class HotUpdaterSandboxBridge: NSObject {
         window = shown
         shown.makeKeyAndVisible()
         NSLog("[HotUpdaterSandbox] screen shown overApp=%d inScene=%d", isReleased?() == true, shown.windowScene != nil)
+    }
+
+    /// A session starts where the first screen would: over a running app it reloads
+    /// in place, and a URL a host already holds is replaced the same way.
+    private static func startDevSession(launchWasPrepared: Bool) {
+        if isReleased?() == true {
+            NSLog("[HotUpdaterSandbox] dev reload triggered=%d", reload?() == true)
+            hideScreen()
+            return
+        }
+        if launchWasPrepared {
+            NSLog("[HotUpdaterSandbox] launch already fixed, dev reload triggered=%d", reload?() == true)
+        }
+        release?()
     }
 
     private static func open(switched: Bool, fixed: Bool) {

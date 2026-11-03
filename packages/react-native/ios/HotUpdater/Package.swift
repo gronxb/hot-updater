@@ -104,9 +104,11 @@ let package = Package(
             exclude: [
                 "README.md",
                 "HotUpdaterSandboxBridge.swift",
+                "HotUpdaterSandboxDevOverride.m",
                 "HotUpdaterSandboxEntryPoints.h",
                 "HotUpdaterSandboxEntryPoints.m",
                 "HotUpdaterSandboxGate.m",
+                "HotUpdaterSandboxLiveDevServer.swift",
                 "HotUpdaterSandboxLiveHost.swift",
                 "HotUpdaterSandboxMarker.m",
                 "HotUpdaterSandboxScanner.swift",
@@ -114,6 +116,7 @@ let package = Package(
             ],
             sources: [
                 "HotUpdaterSandboxCoordinator.swift",
+                "HotUpdaterSandboxDevHost.swift",
                 "HotUpdaterSandboxDevServer.swift",
                 "HotUpdaterSandboxHistory.swift",
                 "HotUpdaterSandboxHomeModel.swift",

@@ -5,5 +5,7 @@ allprojects { project ->
   if (project.path != ":hot-updater_react-native") return
   project.plugins.withId("com.android.library") {
     project.extensions.getByName("android").sourceSets.getByName("test").java.srcDir(tests)
+    // The generator's tests load the file a build runs, with the Groovy that build has.
+    project.dependencies.add("testImplementation", "org.apache.groovy:groovy:4.0.24")
   }
 }

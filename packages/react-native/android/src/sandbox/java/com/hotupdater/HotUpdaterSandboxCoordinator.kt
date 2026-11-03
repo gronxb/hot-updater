@@ -56,6 +56,13 @@ internal interface HotUpdaterSandboxHost {
     /** The fingerprint this build embeds, or null without one. */
     fun fingerprintHash(): String?
 
+    /** Whether this process runs a dev server's JavaScript, where nothing can change the normal selection. */
+    val isRunningDevServer: Boolean
+        get() = false
+
+    /** Ends the dev session: a new process, on the first screen. */
+    fun exitDevServer() = Unit
+
     /** Whether the app's JavaScript left a server config: a server answered one of its checks. */
     fun hasServerConfig(): Boolean
 
@@ -194,6 +201,36 @@ internal data class HotUpdaterSandboxState(
 )
 
 /**
+ * The one serialization point for what changes the selection or a dev session in
+ * this process: a switch (a preview link, a channel, the built-in bundle) or a dev
+ * server connection (connect, Reload). Each holds it across all its suspensions,
+ * and whichever comes second is refused, never queued behind the other.
+ */
+internal class HotUpdaterSandboxLock {
+    enum class Holder { SWITCHING, DEV_SERVER }
+
+    @Volatile
+    var holder: Holder? = null
+        private set
+
+    @Synchronized
+    fun take(who: Holder): Boolean {
+        if (holder != null) return false
+        holder = who
+        return true
+    }
+
+    @Synchronized
+    fun release(who: Holder) {
+        if (holder == who) holder = null
+    }
+
+    companion object {
+        val process = HotUpdaterSandboxLock()
+    }
+}
+
+/**
  * The one owner of a channel switch: fingerprint check, confirmation for a link,
  * catalog preflight, reset, the SDK's check and update, then opening the app.
  * One switch runs at a time, and a row, a typed channel or a reset can't start
@@ -214,6 +251,7 @@ internal class HotUpdaterSandboxCoordinator(
     private val openApp: (switched: Boolean, fixed: Boolean) -> Unit,
     private val log: (String) -> Unit = {},
     private val nowMs: () -> Long = System::currentTimeMillis,
+    private val lock: HotUpdaterSandboxLock = HotUpdaterSandboxLock.process,
 ) {
     private val listeners = LinkedHashSet<(HotUpdaterSandboxState) -> Unit>()
     private val queue = ArrayList(store.pendingLinks)
@@ -293,6 +331,11 @@ internal class HotUpdaterSandboxCoordinator(
     /** Accepts the link in [HotUpdaterSandboxPhase.Confirming]. */
     fun confirmLink() {
         val phase = state.phase as? HotUpdaterSandboxPhase.Confirming ?: return
+        // The link stays stored, and the first screen asks about it in the new process.
+        if (host.isRunningDevServer) {
+            host.exitDevServer()
+            return
+        }
         linkInFlight = phase.link.url
         begin(phase.link.channel)
     }
@@ -343,14 +386,20 @@ internal class HotUpdaterSandboxCoordinator(
         // Taken now, so nothing else can start while the selection is read.
         publish(state.copy(phase = HotUpdaterSandboxPhase.Working(operationId, "", HotUpdaterSandboxStep.RESET)))
         scope.launch {
-            val target = host.selection().defaultChannel
-            publish(state.copy(phase = HotUpdaterSandboxPhase.Working(operationId, target, HotUpdaterSandboxStep.RESET)))
-            val reset = attempt(operationId, target, HotUpdaterSandboxStep.RESET) { host.reset() } ?: return@launch
-            if (!reset) {
-                fail(operationId, target, HotUpdaterSandboxStep.RESET, HotUpdaterSandboxFailure.ResetFailed)
-                return@launch
+            if (!takeLock(operationId, "")) return@launch
+            try {
+                val target = host.selection().defaultChannel
+                if (refuseInDevSession(operationId, target)) return@launch
+                publish(state.copy(phase = HotUpdaterSandboxPhase.Working(operationId, target, HotUpdaterSandboxStep.RESET)))
+                val reset = attempt(operationId, target, HotUpdaterSandboxStep.RESET) { host.reset() } ?: return@launch
+                if (!reset) {
+                    fail(operationId, target, HotUpdaterSandboxStep.RESET, HotUpdaterSandboxFailure.ResetFailed)
+                    return@launch
+                }
+                finish(operationId)
+            } finally {
+                lock.release(HotUpdaterSandboxLock.Holder.SWITCHING)
             }
-            finish(operationId)
         }
         return true
     }
@@ -369,13 +418,16 @@ internal class HotUpdaterSandboxCoordinator(
             // Over a running app, opening shows what it runs: what's selected waits
             // for its launch. Before the app starts, what's selected is what opens.
             val restarts = launchFixed && !host.isAppRunning()
-            recordOpened(
-                if (restarts) {
-                    selection
-                } else {
-                    selection.copy(bundleId = launched, isBuiltIn = selection.isBuiltIn && launched == selection.bundleId)
-                },
-            )
+            // A dev session runs no bundle, so it says nothing about one.
+            if (!host.isRunningDevServer) {
+                recordOpened(
+                    if (restarts) {
+                        selection
+                    } else {
+                        selection.copy(bundleId = launched, isBuiltIn = selection.isBuiltIn && launched == selection.bundleId)
+                    },
+                )
+            }
             acknowledgeLastLaunch()
             publish(reading(selection, launched))
             openApp(false, restarts)
@@ -457,10 +509,57 @@ internal class HotUpdaterSandboxCoordinator(
         scope.launch { run(operationId, target) }
     }
 
+    /** A switch holds the lock for all of its steps, so no dev server connects between them. */
+    private suspend fun takeLock(
+        operationId: Long,
+        target: String,
+    ): Boolean {
+        if (lock.take(HotUpdaterSandboxLock.Holder.SWITCHING)) return true
+        fail(
+            operationId,
+            target,
+            HotUpdaterSandboxStep.PREFLIGHT,
+            HotUpdaterSandboxFailure.Error("A dev server is connecting. Wait for it, then try again."),
+        )
+        return false
+    }
+
+    /**
+     * A dev process's native state is the dev session's, so a switch waits for its Exit.
+     * Asked again after every suspension, before a step that changes the selection.
+     */
+    private suspend fun refuseInDevSession(
+        operationId: Long,
+        target: String,
+        step: HotUpdaterSandboxStep = HotUpdaterSandboxStep.PREFLIGHT,
+    ): Boolean {
+        if (!host.isRunningDevServer) return false
+        fail(
+            operationId,
+            target,
+            step,
+            HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again."),
+        )
+        return true
+    }
+
     private suspend fun run(
         operationId: Long,
         target: String,
     ) {
+        if (!takeLock(operationId, target)) return
+        try {
+            runHolding(operationId, target)
+        } finally {
+            lock.release(HotUpdaterSandboxLock.Holder.SWITCHING)
+        }
+    }
+
+    private suspend fun runHolding(
+        operationId: Long,
+        target: String,
+    ) {
+        if (refuseInDevSession(operationId, target)) return
         val before = host.selection()
         val toDefault = target == before.defaultChannel
         val hasBundle = attempt(operationId, target, HotUpdaterSandboxStep.PREFLIGHT) { host.preflight(target) } ?: return
@@ -470,6 +569,7 @@ internal class HotUpdaterSandboxCoordinator(
             return
         }
         if (before.channel != target) {
+            if (refuseInDevSession(operationId, target, HotUpdaterSandboxStep.RESET)) return
             step(operationId, target, HotUpdaterSandboxStep.RESET)
             val reset = attempt(operationId, target, HotUpdaterSandboxStep.RESET) { host.reset() } ?: return
             if (!reset) {
@@ -477,6 +577,7 @@ internal class HotUpdaterSandboxCoordinator(
                 return
             }
         }
+        if (refuseInDevSession(operationId, target, HotUpdaterSandboxStep.CHECK)) return
         step(operationId, target, HotUpdaterSandboxStep.CHECK)
         val staged =
             attempt(operationId, target, HotUpdaterSandboxStep.CHECK) {
@@ -544,7 +645,8 @@ internal class HotUpdaterSandboxCoordinator(
     /** What the next launch selects, and with it whether this process's launch runs that. */
     private suspend fun readSelection(): HotUpdaterSandboxSelection {
         val selection = host.selection()
-        launchFixed = host.launchBundleId() != selection.bundleId
+        // A dev process runs no selection, and only Exit replaces it.
+        launchFixed = !host.isRunningDevServer && host.launchBundleId() != selection.bundleId
         return selection
     }
 

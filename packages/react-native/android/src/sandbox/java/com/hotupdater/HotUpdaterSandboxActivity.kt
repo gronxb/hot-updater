@@ -29,6 +29,20 @@ internal object HotUpdaterSandbox {
     private var coordinator: HotUpdaterSandboxCoordinator? = null
     private var screen: WeakReference<HotUpdaterSandboxActivity>? = null
 
+    @Volatile
+    private var devServer: HotUpdaterSandboxLiveDevServer? = null
+
+    fun devServer(context: Context): HotUpdaterSandboxDevServer =
+        devServer ?: synchronized(this) {
+            devServer ?: HotUpdaterSandboxLiveDevServer(
+                context = context,
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+                onLeavingNormalLaunch = {
+                    HotUpdaterSandboxDev.clearNormalLaunchStarted(HotUpdater.getInstance(context.applicationContext).getRunningBundleId())
+                },
+            ).also { devServer = it }
+        }
+
     fun coordinator(context: Context): HotUpdaterSandboxCoordinator =
         coordinator ?: synchronized(this) {
             coordinator ?: HotUpdaterSandboxCoordinator(
@@ -39,9 +53,6 @@ internal object HotUpdaterSandbox {
                 log = { Log.i(TAG, it) },
             ).also { coordinator = it }
         }
-
-    /** Until dev-server mode is in this build, it says so. */
-    val devServer: HotUpdaterSandboxDevServer = HotUpdaterSandboxNoDevServer()
 
     fun attach(activity: HotUpdaterSandboxActivity) {
         screen = WeakReference(activity)
@@ -160,7 +171,7 @@ class HotUpdaterSandboxActivity : Activity() {
         if (screen == null) {
             @Suppress("DEPRECATION")
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer)
+            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this))
             screen = shown
             setContentView(shown.view)
             stopObserving = coordinator.observe(shown::render)

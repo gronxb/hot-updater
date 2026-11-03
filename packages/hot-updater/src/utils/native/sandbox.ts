@@ -76,12 +76,15 @@ export const assertSandboxBuildAllowed = async ({
   iosScheme,
   androidScheme,
   submit,
+  buildAdapter,
 }: {
   platform: Platform;
   scheme: string;
   iosScheme?: NativeBuildIosScheme;
   androidScheme?: NativeBuildAndroidScheme;
   submit?: NativeBuildSubmissionDestination;
+  /** The config's build adapter, once the config is read. */
+  buildAdapter?: string;
 }): Promise<void> => {
   const schemeConfig = platform === "ios" ? iosScheme : androidScheme;
   if (!schemeConfig?.sandbox) {
@@ -128,9 +131,14 @@ export const assertSandboxBuildAllowed = async ({
     }
     return;
   }
+  if (buildAdapter === "rock") throw new Error(sandboxRockRefusal(scheme));
   const blocker = findSandboxGradleBlocker(androidScheme ?? {});
   if (blocker) throw new Error(blocker);
 };
+
+/** Android's dev server compiles the SDK from source, which no Rock build has been run with. */
+export const sandboxRockRefusal = (scheme: string) =>
+  `The sandbox scheme ${scheme} builds Android with the rock build adapter, which sandbox builds don't support yet.\nBuild it with the bare adapter, or remove sandbox: true.`;
 
 /** Reads a built artifact: a simulator `.app` is read as its zip archive. */
 export const readBuiltArtifact = async (

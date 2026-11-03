@@ -31,6 +31,13 @@ private class FakeHost : HotUpdaterSandboxHost {
     var stageResult: Result<HotUpdaterSandboxStaged> = Result.success(HotUpdaterSandboxStaged.Update("ota"))
     var progress: ((Double) -> Unit)? = null
     var channelAfterStaging: String? = null
+    override var isRunningDevServer = false
+    var exits = 0
+
+    override fun exitDevServer() {
+        exits += 1
+    }
+
     var evidence = HotUpdaterSandboxLaunchEvidence()
     var pendingBundleId: String? = null
 
@@ -107,6 +114,7 @@ private class Fixture(
 ) {
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
+    val lock = HotUpdaterSandboxLock()
     val opens = ArrayList<Pair<Boolean, Boolean>>()
     val coordinator =
         HotUpdaterSandboxCoordinator(
@@ -116,12 +124,128 @@ private class Fixture(
             scope = CoroutineScope(Dispatchers.Unconfined),
             openApp = { switched, fixed -> opens += switched to fixed },
             nowMs = { 1_000_000L },
+            lock = lock,
         )
 
     val phase get() = coordinator.state.phase
 }
 
 class HotUpdaterSandboxCoordinatorTest {
+    @Test
+    fun `in a dev session a confirmed link exits it, and stays stored for the new process`() {
+        val fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        fixture.coordinator.receiveLink(link("pr-1"))
+        fixture.coordinator.confirmLink()
+        assertEquals(1, fixture.host.exits)
+        assertTrue(fixture.host.calls.isEmpty())
+        assertEquals(listOf(link("pr-1")), fixture.store.pendingLinks)
+    }
+
+    @Test
+    fun `opening in a dev session records no bundle as opened`() {
+        val fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        fixture.coordinator.open()
+        assertEquals(emptyList<String>(), fixture.store.opened)
+        assertEquals(listOf(false to false), fixture.opens)
+    }
+
+    @Test
+    fun `a dev session's Open never restarts, whatever this launch and the next one say`() {
+        val fixture = Fixture()
+        // What makes a normal launch fixed: it runs one bundle, and the next selects another.
+        fixture.host.runningBundleId = "ota-1"
+        fixture.host.bundleId = "ota-2"
+        fixture.coordinator.open()
+        assertEquals("a normal process restarts", listOf(false to true), fixture.opens)
+
+        val dev = Fixture()
+        dev.host.isRunningDevServer = true
+        dev.host.runningBundleId = "ota-1"
+        dev.host.bundleId = "ota-2"
+        dev.coordinator.refresh()
+        dev.coordinator.open()
+        assertEquals(listOf(false to false), dev.opens)
+        assertEquals(emptyList<String>(), dev.store.opened)
+    }
+
+    @Test
+    fun `in a dev session a row or a reset asks to exit first and changes nothing`() {
+        val fixture = Fixture()
+        fixture.host.isRunningDevServer = true
+        assertTrue(fixture.coordinator.switchTo("pr-1"))
+        val failed = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again."), failed.failure)
+        assertTrue(fixture.host.calls.isEmpty())
+        fixture.coordinator.dismiss()
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Failed)
+        assertTrue(fixture.host.calls.isEmpty())
+        assertEquals(0, fixture.host.exits)
+    }
+
+    @Test
+    fun `a session that starts during a switch stops it before anything changes`() {
+        val fixture = Fixture()
+        val preflight = CompletableDeferred<Boolean>()
+        fixture.host.preflightGate = preflight
+        assertTrue(fixture.coordinator.switchTo("pr-1"))
+        assertEquals(listOf("preflight pr-1"), fixture.host.calls)
+        // A dev server's session starts while the preflight suspends.
+        fixture.host.isRunningDevServer = true
+        preflight.complete(true)
+        assertEquals("the switch went on in a dev session", listOf("preflight pr-1"), fixture.host.calls)
+        val failed = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again."), failed.failure)
+    }
+
+    @Test
+    fun `a switch while a dev server connects is refused and changes nothing`() {
+        val fixture = Fixture()
+        assertTrue(fixture.lock.take(HotUpdaterSandboxLock.Holder.DEV_SERVER))
+        assertTrue(fixture.coordinator.switchTo("pr-1"))
+        val failed = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.Error("A dev server is connecting. Wait for it, then try again."), failed.failure)
+        fixture.coordinator.dismiss()
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Failed)
+        assertTrue(fixture.host.calls.isEmpty())
+        fixture.coordinator.dismiss()
+        fixture.lock.release(HotUpdaterSandboxLock.Holder.DEV_SERVER)
+        assertTrue(fixture.coordinator.switchTo("pr-1"))
+        assertEquals(listOf("preflight pr-1", "reset", "check pr-1"), fixture.host.calls)
+    }
+
+    @Test
+    fun `a switch holds the lock until it ends, either way`() {
+        val fixture = Fixture()
+        val preflight = CompletableDeferred<Boolean>()
+        fixture.host.preflightGate = preflight
+        assertTrue(fixture.coordinator.switchTo("pr-1"))
+        assertEquals(HotUpdaterSandboxLock.Holder.SWITCHING, fixture.lock.holder)
+        assertFalse("a connect got the lock during a switch", fixture.lock.take(HotUpdaterSandboxLock.Holder.DEV_SERVER))
+        preflight.completeExceptionally(IOException("offline"))
+        assertNull(fixture.lock.holder)
+        fixture.host.preflightGate = null
+        fixture.coordinator.retry()
+        assertEquals(listOf("preflight pr-1", "preflight pr-1", "reset", "check pr-1"), fixture.host.calls)
+        assertNull(fixture.lock.holder)
+        assertTrue(fixture.coordinator.resetToBuiltIn())
+        assertNull(fixture.lock.holder)
+    }
+
+    @Test
+    fun `the lock has one holder, and only its holder releases it`() {
+        val lock = HotUpdaterSandboxLock()
+        assertTrue(lock.take(HotUpdaterSandboxLock.Holder.DEV_SERVER))
+        assertFalse(lock.take(HotUpdaterSandboxLock.Holder.SWITCHING))
+        lock.release(HotUpdaterSandboxLock.Holder.SWITCHING)
+        assertEquals(HotUpdaterSandboxLock.Holder.DEV_SERVER, lock.holder)
+        lock.release(HotUpdaterSandboxLock.Holder.DEV_SERVER)
+        assertTrue(lock.take(HotUpdaterSandboxLock.Holder.SWITCHING))
+    }
+
     @Test
     fun `a link confirms, then runs every step in order and opens`() {
         val fixture = Fixture()

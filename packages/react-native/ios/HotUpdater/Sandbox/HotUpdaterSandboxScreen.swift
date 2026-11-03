@@ -505,11 +505,12 @@ private final class HomeController: UIViewController, UIGestureRecognizerDelegat
         }))
         var views: [UIView] = [help]
         if let running = devServer.runningDevServerHost {
-            views.append(row(lead: dot(.systemGreen), title: running, subtitle: "Dev server running") { [weak self] in
+            views.append(row(lead: dot(.systemGreen), title: running, subtitle: devServer.lastDevServerError ?? "Dev server running") { [weak self] in
                 self?.devServer.reloadDevServer()
             })
             views.append(row(lead: nil, title: "Exit dev server") { [weak self] in
                 self?.devServer.exitDevServer()
+                self?.onClose()
             })
         } else {
             for host in devServer.devServerHosts {

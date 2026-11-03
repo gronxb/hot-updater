@@ -16,6 +16,7 @@ extern BOOL HotUpdaterPerformRecoveryReload(void);
 // when React Native is a prebuilt framework.
 @interface HotUpdaterSandboxBridge : NSObject
 + (void)configureWithRelease:(void (^)(void))release reload:(BOOL (^)(void))reload isReleased:(BOOL (^)(void))isReleased;
++ (void)dropCrashOfLastDevProcess;
 + (void)presentScreenIn:(nullable UIWindowScene *)scene;
 + (void)receiveLink:(NSURL *)url scene:(nullable UIWindowScene *)scene;
 + (void)hideScreen;
@@ -440,6 +441,7 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
   // sandbox scheme writes this key.
   if (![[NSBundle.mainBundle objectForInfoDictionaryKey:@"HOT_UPDATER_SANDBOX"] isEqual:@YES]) return;
 
+  [HotUpdaterSandboxBridge dropCrashOfLastDevProcess];
   Class factory = objc_getClass("RCTRootViewFactory");
   SEL five = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:");
   SEL four = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:devMenuConfiguration:");

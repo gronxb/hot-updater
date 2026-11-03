@@ -1,0 +1,70 @@
+// Applied by build.gradle only with -PhotUpdaterSandbox, which only the CLI passes.
+// A sandbox build compiles a generated HotUpdaterImpl in place of the packaged one,
+// so a dev server's JavaScript runs under this SDK's own getters. No other build
+// reads this file, and its output isn't a source of any other build.
+
+@CacheableTask
+abstract class GenerateHotUpdaterSandboxImpl extends DefaultTask {
+  @InputFile
+  @PathSensitive(PathSensitivity.NONE)
+  abstract RegularFileProperty getSource()
+
+  @InputFile
+  @PathSensitive(PathSensitivity.NONE)
+  abstract RegularFileProperty getGenerator()
+
+  @OutputDirectory
+  abstract DirectoryProperty getOutputDirectory()
+
+  @TaskAction
+  void generate() {
+    def source = getSource().get().asFile
+    def generator = new GroovyClassLoader(getClass().classLoader).parseClass(getGenerator().get().asFile)
+    def output = getOutputDirectory().file("com/hotupdater/HotUpdaterImplSandbox.kt").get().asFile
+    output.parentFile.mkdirs()
+    try {
+      output.setText(generator.generate(source.getText("UTF-8"), source.path), "UTF-8")
+    } catch (IllegalStateException refusal) {
+      throw new GradleException(refusal.message)
+    }
+  }
+}
+
+def replaced = "**/com/hotupdater/HotUpdaterImpl.kt"
+def generatedDirectory = layout.buildDirectory.dir("generated/hotUpdaterSandbox")
+def generateImpl = tasks.register("generateHotUpdaterSandboxImpl", GenerateHotUpdaterSandboxImpl) {
+  source = file("src/main/java/com/hotupdater/HotUpdaterImpl.kt")
+  generator = file("src/sandbox/HotUpdaterSandboxImplGenerator.groovy")
+  outputDirectory = generatedDirectory
+}
+
+android.sourceSets.main.java.srcDir(generatedDirectory.get().asFile)
+
+tasks.configureEach { task ->
+  def type = task.class.name
+  if (type.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile")) {
+    // The compile task's own filter: a Java source set's never reaches Kotlin.
+    task.exclude(replaced)
+    task.dependsOn(generateImpl)
+    // A test compile holds the tests alone, and reads the rest from this one's output.
+    def isTest = task.name.contains("UnitTest") || task.name.contains("AndroidTest")
+    task.doFirst {
+      def names = task.sources.files.findAll { it.path.contains("com/hotupdater/".replace("/", File.separator)) }*.name
+      def originals = names.count { it == "HotUpdaterImpl.kt" }
+      def replacements = names.count { it == "HotUpdaterImplSandbox.kt" }
+      if (originals != 0 || (!isTest && replacements != 1)) {
+        throw new GradleException(
+          "A sandbox build must compile the generated HotUpdaterImpl alone, and ${task.path} has ${originals} packaged and ${replacements} generated.\n" +
+            "Remove what adds sources to @hot-updater/react-native for this build.",
+        )
+      }
+    }
+  } else if (task.name.toLowerCase().contains("lint") || task.name.toLowerCase().contains("sources")) {
+    // They read the source set, which holds the generated directory.
+    if (task != generateImpl.get()) task.dependsOn(generateImpl)
+  }
+}
+
+// The CLI's init script refuses a build in which this never ran: an app that takes
+// the SDK as a prebuilt AAR has nothing to replace.
+rootProject.ext.hotUpdaterSandboxSdkProject = project.path

@@ -375,6 +375,7 @@ const buildNativeInternal = async ({
             iosScheme: iosSchemeConfig,
             androidScheme: androidSchemeConfig,
             submit: upload,
+            buildAdapter: buildAdapter.name,
           }),
         );
         if (ascApiKey) {

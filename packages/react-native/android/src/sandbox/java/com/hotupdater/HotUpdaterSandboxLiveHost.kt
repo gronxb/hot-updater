@@ -35,23 +35,40 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun fingerprintHash(): String? = impl.getFingerprintHash()
 
-    override fun hasServerConfig(): Boolean = config() != null
+    override val isRunningDevServer: Boolean
+        get() = HotUpdaterSandboxDev.session(context) != null
+
+    override fun exitDevServer() = HotUpdaterSandbox.devServer(context).exitDevServer()
+
+    override fun hasServerConfig(): Boolean =
+        if (isRunningDevServer) {
+            // Only the app's own launches leave the normal selection's server.
+            RecoveryCheckConfig.parse(KeyValueStorageService.create(context).getItem(RecoveryCheckConfig.KEY)) != null
+        } else {
+            config() != null
+        }
 
     override suspend fun selection(): HotUpdaterSandboxSelection =
         withContext(Dispatchers.IO) {
             val builtIn = HotUpdaterImpl.getMinBundleId()
+            // In a dev session, what the next normal launch selects, with nothing settled.
+            val normal = if (isRunningDevServer) HotUpdaterSandboxDev.normalSelection() else null
             // Read first: before a launch, it settles what the previous process left.
-            val launchBundleId = impl.getBundleIdForUpdateCheck()
+            val launchBundleId = if (isRunningDevServer) null else impl.getBundleIdForUpdateCheck()
             val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
             val bundleId =
-                hotUpdaterSandboxNextLaunchBundleId(
-                    runningBundleId = impl.getRunningBundleId(),
-                    launchBundleId = launchBundleId,
-                    activeBundleId = active?.get("bundleId") as? String,
-                    builtInBundleId = builtIn,
-                )
+                if (isRunningDevServer) {
+                    normal?.first ?: builtIn
+                } else {
+                    hotUpdaterSandboxNextLaunchBundleId(
+                        runningBundleId = impl.getRunningBundleId(),
+                        launchBundleId = launchBundleId,
+                        activeBundleId = active?.get("bundleId") as? String,
+                        builtInBundleId = builtIn,
+                    )
+                }
             HotUpdaterSandboxSelection(
-                channel = impl.getChannel(),
+                channel = if (isRunningDevServer) normal?.second ?: impl.getDefaultChannel() else impl.getChannel(),
                 defaultChannel = impl.getDefaultChannel(),
                 bundleId = bundleId,
                 isBuiltIn = bundleId == builtIn,
@@ -59,7 +76,12 @@ internal class HotUpdaterSandboxLiveHost(
         }
 
     override suspend fun launchBundleId(): String =
-        withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
+        if (isRunningDevServer) {
+            // The SDK's read answers for the dev session, which runs no bundle.
+            selection().bundleId ?: HotUpdaterImpl.getMinBundleId()
+        } else {
+            withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
+        }
 
     override fun isAppRunning(): Boolean = HotUpdaterSandboxProcess.hostActivities > 0
 
@@ -84,7 +106,8 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun details(): HotUpdaterSandboxDetails {
         val builtIn = HotUpdaterImpl.getMinBundleId()
-        val state = impl.getActiveUpdateState()
+        // A dev session's own view holds nothing pending, and the normal selection's may.
+        val state = (if (isRunningDevServer) HotUpdaterSandboxDev.normalActiveState() else null) ?: impl.getActiveUpdateState()
         val active = (state["activeSelection"] as? Map<*, *>)?.get("bundleId") as? String ?: builtIn
         return HotUpdaterSandboxDetails(
             builtInBundleId = builtIn,
