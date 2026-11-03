@@ -15,12 +15,38 @@ const ascApiKey = {
   issuerId: "issuer",
 };
 
+const TESTFLIGHT_URL =
+  "https://appstoreconnect.apple.com/apps/123/testflight/ios";
+
+/** An upload App Store Connect hadn't accepted when the wait ended. */
+const STILL_PROCESSING = {
+  appId: "123",
+  buildUploadId: "upload-1",
+  state: "PROCESSING",
+  testFlightUrl: TESTFLIGHT_URL,
+  shortVersion: "1.7.0",
+  bundleVersion: "66",
+} as const;
+
+/** What App Store Connect answers for the build, in `state`. */
+const buildStatus = (state: string) => ({
+  testFlightUrl: TESTFLIGHT_URL,
+  status: {
+    buildId: "build-1",
+    audience: "ALL_USERS",
+    state,
+    expiresAtMs: null,
+  },
+});
+
 vi.mock("@hot-updater/apple-helper", () => ({
   TestFlightBuildExistsError: class TestFlightBuildExistsError extends Error {},
   assertTestFlightExportOptions: vi.fn(async () => {
     events.push("check export options");
   }),
   buildIos: vi.fn(async () => ({ logFilePath: null })),
+  readIpaHasExportComplianceKey: vi.fn(async () => true),
+  readTestFlightBuildStatus: vi.fn(async () => buildStatus("ready")),
   resolveTestFlightUploadKey: vi.fn(() => {
     events.push("check scheme");
     return { kind: "asc-api-key", name: "asc-api-key" };
@@ -31,8 +57,9 @@ vi.mock("@hot-updater/apple-helper", () => ({
       appId: "123",
       buildUploadId: "upload-1",
       state: "COMPLETE",
-      testFlightUrl:
-        "https://appstoreconnect.apple.com/apps/123/testflight/ios",
+      testFlightUrl: TESTFLIGHT_URL,
+      shortVersion: "1.7.0",
+      bundleVersion: "66",
     };
   }),
 }));
@@ -76,11 +103,19 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     }
   }),
 }));
+vi.mock("../utils/native/sandbox", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/native/sandbox")>()),
+  assertBuiltArtifact: vi.fn(async () => null),
+}));
+vi.mock("../utils/native/reportIpaDevices", () => ({
+  reportIpaDevices: vi.fn(async () => {}),
+}));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
   prepareNativeBuild: vi.fn(async (options) => {
     const iosSchemeConfig = {
+      bundleIdentifier: "com.example.app",
       configuration: "Release",
       signing: { ascApiKey: secret("asc-api-key") },
     } as unknown as EnrichedNativeBuildIosScheme;
@@ -151,6 +186,8 @@ vi.mock("@/utils/native/registerNativeBuild", () => ({
 }));
 
 import {
+  readIpaHasExportComplianceKey,
+  readTestFlightBuildStatus,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
@@ -268,6 +305,252 @@ describe("native-build ios --submit testflight", () => {
     // The resolver deletes its temporary files before the process exits.
     expect(events.slice(-2)).toEqual(["dispose", "exit"]);
     exit.mockRestore();
+  });
+});
+
+describe("the state of a build App Store Connect accepted", () => {
+  const upload = async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleNativeBuildCreate("ios", {
+      scheme: "release",
+      submit: "testflight",
+      json: true,
+    });
+    const printed = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+    log.mockRestore();
+    return printed.submission.store;
+  };
+  const warnings = () =>
+    vi.mocked(p.log.warn).mock.calls.map(([message]) => message);
+
+  it("says a build waits on export compliance, and carries the state in --json", async () => {
+    vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+      buildStatus("missing-compliance") as never,
+    );
+
+    expect(await upload()).toEqual({
+      destination: "testflight",
+      url: TESTFLIGHT_URL,
+      version: "1.7.0 (66)",
+      state: "missing-compliance",
+      expiresAtMs: null,
+      reusable: true,
+    });
+    expect(warnings()).toEqual([
+      [
+        "Testers can't install 1.7.0 (66): it's waiting on export compliance.",
+        "Answer it in App Store Connect:",
+        TESTFLIGHT_URL,
+        "Or set ITSAppUsesNonExemptEncryption in Info.plist for later builds.",
+      ].join("\n"),
+    ]);
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it("reads the state once, for the version and number it uploaded", async () => {
+    await upload();
+
+    expect(readTestFlightBuildStatus).toHaveBeenCalledTimes(1);
+    expect(readTestFlightBuildStatus).toHaveBeenCalledWith({
+      bundleId: "com.example.app",
+      shortVersion: "1.7.0",
+      bundleVersion: "66",
+      apiKey: ascApiKey,
+    });
+  });
+
+  it.each(["ready", "processing"])(
+    "says nothing of a build that is %s",
+    async (state) => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+        buildStatus(state) as never,
+      );
+
+      expect(await upload()).toMatchObject({ state });
+      expect(warnings()).toEqual([]);
+    },
+  );
+
+  it("counts a build App Store Connect doesn't list yet as processing", async () => {
+    vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce({
+      testFlightUrl: TESTFLIGHT_URL,
+      status: null,
+    });
+
+    expect(await upload()).toMatchObject({
+      state: "processing",
+      reusable: true,
+    });
+    expect(warnings()).toEqual([]);
+  });
+
+  it("still succeeds when the state can't be read, with no state in --json", async () => {
+    vi.mocked(readTestFlightBuildStatus).mockRejectedValueOnce(
+      new Error("App Store Connect answered 500."),
+    );
+
+    expect(await upload()).toEqual({
+      destination: "testflight",
+      url: TESTFLIGHT_URL,
+      version: "1.7.0 (66)",
+      state: null,
+      expiresAtMs: null,
+      reusable: true,
+    });
+    expect(warnings()).toEqual([
+      "Couldn't read the build's state from App Store Connect.\nApp Store Connect answered 500.",
+    ]);
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it("reads nothing for a build App Store Connect is still processing after the wait", async () => {
+    vi.mocked(uploadToTestFlight).mockResolvedValueOnce(STILL_PROCESSING);
+
+    expect(await upload()).toBeNull();
+    expect(readTestFlightBuildStatus).not.toHaveBeenCalled();
+  });
+
+  describe("while App Store Connect processes it", () => {
+    const EXPECTED = [
+      "1.7.0 (66) is processing. Without ITSAppUsesNonExemptEncryption in Info.plist, testers can't install it until export compliance is answered in App Store Connect:",
+      TESTFLIGHT_URL,
+    ].join("\n");
+
+    it("says what to expect of an .ipa without the key, keeping the state", async () => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+        buildStatus("processing") as never,
+      );
+      vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(false);
+
+      expect(await upload()).toMatchObject({ state: "processing" });
+      expect(readIpaHasExportComplianceKey).toHaveBeenCalledWith(
+        "/out/export/App.ipa",
+      );
+      expect(warnings()).toEqual([EXPECTED]);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it("says it of a build App Store Connect doesn't list yet", async () => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce({
+        testFlightUrl: TESTFLIGHT_URL,
+        status: null,
+      });
+      vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(false);
+
+      await upload();
+
+      expect(warnings()).toEqual([EXPECTED]);
+    });
+
+    it("says it of a build still processing after the wait, reading no state", async () => {
+      vi.mocked(uploadToTestFlight).mockResolvedValueOnce(STILL_PROCESSING);
+      vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(false);
+
+      await upload();
+
+      expect(readTestFlightBuildStatus).not.toHaveBeenCalled();
+      expect(warnings()).toEqual([EXPECTED]);
+    });
+
+    it("says nothing new of an .ipa with the key", async () => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+        buildStatus("processing") as never,
+      );
+      vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(true);
+
+      await upload();
+
+      expect(readIpaHasExportComplianceKey).toHaveBeenCalledTimes(1);
+      expect(warnings()).toEqual([]);
+    });
+
+    it("says nothing, and fails nothing, when the .ipa can't be read", async () => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+        buildStatus("processing") as never,
+      );
+      vi.mocked(readIpaHasExportComplianceKey).mockRejectedValueOnce(
+        new Error("unzip failed"),
+      );
+
+      expect(await upload()).toMatchObject({ state: "processing" });
+      expect(warnings()).toEqual([]);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it("reads the state once, and never polls", async () => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+        buildStatus("processing") as never,
+      );
+
+      await upload();
+
+      expect(readTestFlightBuildStatus).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it.each(["ready", "failed", "expired"])(
+    "reads no .ipa for a build that is %s",
+    async (state) => {
+      vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+        buildStatus(state) as never,
+      );
+
+      await upload();
+
+      expect(readIpaHasExportComplianceKey).not.toHaveBeenCalled();
+      expect(warnings()).toEqual([]);
+    },
+  );
+
+  it("keeps to the failed read's warning when the state can't be read", async () => {
+    vi.mocked(readTestFlightBuildStatus).mockRejectedValueOnce(
+      new Error("App Store Connect answered 500."),
+    );
+    vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(false);
+
+    await upload();
+
+    expect(warnings()).toEqual([
+      "Couldn't read the build's state from App Store Connect.\nApp Store Connect answered 500.",
+    ]);
+  });
+
+  it("asks nothing of a build waiting on the answer, whatever the .ipa holds", async () => {
+    vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce(
+      buildStatus("missing-compliance") as never,
+    );
+    vi.mocked(readIpaHasExportComplianceKey).mockResolvedValueOnce(true);
+
+    await upload();
+
+    expect(readIpaHasExportComplianceKey).not.toHaveBeenCalled();
+    expect(warnings()).toHaveLength(1);
+  });
+
+  it("says Apple is reviewing a build in export compliance review, and asks for no answer", async () => {
+    vi.mocked(readTestFlightBuildStatus).mockResolvedValueOnce({
+      testFlightUrl: TESTFLIGHT_URL,
+      status: {
+        buildId: "build-1",
+        audience: "ALL_USERS",
+        state: "missing-compliance",
+        inExportComplianceReview: true,
+        expiresAtMs: null,
+      },
+    } as never);
+
+    expect(await upload()).toEqual({
+      destination: "testflight",
+      url: TESTFLIGHT_URL,
+      version: "1.7.0 (66)",
+      state: "missing-compliance",
+      expiresAtMs: null,
+      reusable: true,
+    });
+    expect(warnings()).toEqual([
+      `Testers can't install 1.7.0 (66) yet: Apple is reviewing its export compliance.\n${TESTFLIGHT_URL}`,
+    ]);
+    expect(String(warnings()[0])).not.toMatch(/answer/iu);
   });
 });
 

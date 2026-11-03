@@ -80,6 +80,7 @@ import {
   uncheckedSecretNames,
 } from "./doctor/secrets";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
+import { checkTestFlightCompliance } from "./doctor/testFlightCompliance";
 import {
   hasVerificationOptions,
   verifyInfrastructure,
@@ -720,6 +721,7 @@ async function checkNativeStatus({
       : []),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
     ...(await checkSandboxSchemes(config, cwd)),
+    ...(await checkTestFlightCompliance(config, cwd)),
   ];
 
   if (requireFingerprint && localFingerprint) {

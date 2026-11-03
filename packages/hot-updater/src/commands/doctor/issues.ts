@@ -25,6 +25,7 @@ export interface NativeCheckIssue {
     | "SANDBOX_BUILD_BLOCKED"
     | "SANDBOX_GOOGLE_SERVICES_CLIENT_MISSING"
     | "SANDBOX_UNQUALIFIED"
+    | "TESTFLIGHT_COMPLIANCE_UNSET"
     | SigningConfigIssue["code"];
   message: string;
   resolution: string;

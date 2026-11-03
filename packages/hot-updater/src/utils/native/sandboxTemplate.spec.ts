@@ -189,11 +189,16 @@ describe("the sandbox template", () => {
   it("excludes the iOS sources in every podspec branch", () => {
     const podspec = read("HotUpdater.podspec");
     expect(podspec).toContain('sandbox_excluded_files = "HotUpdaterSandbox*"');
-    // Both pod_target_xcconfig assignments, which replace each other.
-    expect(podspec.match(/pod_target_xcconfig\s*=\s*\{/gu)).toHaveLength(2);
+    // Every pod_target_xcconfig assignment, since each replaces the last.
+    const assignments = podspec.match(/pod_target_xcconfig\s*=\s*\{/gu) ?? [];
+    expect(assignments.length).toBeGreaterThan(0);
     expect(
       podspec.match(/"EXCLUDED_SOURCE_FILE_NAMES" => sandbox_excluded_files/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(assignments.length);
+    // install_modules_dependencies extends the config set before it.
+    expect(podspec.indexOf("EXCLUDED_SOURCE_FILE_NAMES")).toBeLessThan(
+      podspec.indexOf("install_modules_dependencies(s)"),
+    );
     expect(podspec).not.toContain('"INCLUDED_SOURCE_FILE_NAMES" =>');
   });
 

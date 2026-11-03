@@ -52,6 +52,14 @@
   - @hot-updater/plugin-core@1.2.0-rc.9
   - @hot-updater/postgres@1.2.0-rc.9
 
+## 1.1.6
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.1.6
+  - @hot-updater/postgres@1.1.6
+  - @hot-updater/storage-s3@1.1.6
+
 ## 1.1.5
 
 ### Patch Changes

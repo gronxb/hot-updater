@@ -83,3 +83,26 @@ export const readIpaInternalTestingOnly = (ipaPath: string): Promise<boolean> =>
     );
     return exitCode === 0 && value.trim() === "true";
   });
+
+/**
+ * Whether an `.ipa`'s app answers export compliance in its Info.plist. Either
+ * value is an answer, so this asks only whether the key is there.
+ */
+export const readIpaHasExportComplianceKey = (
+  ipaPath: string,
+): Promise<boolean> =>
+  withIpaInfoPlist(ipaPath, async (infoPlist) => {
+    const { exitCode } = await execa(
+      "plutil",
+      [
+        "-extract",
+        "ITSAppUsesNonExemptEncryption",
+        "raw",
+        "-o",
+        "-",
+        infoPlist,
+      ],
+      { reject: false },
+    );
+    return exitCode === 0;
+  });

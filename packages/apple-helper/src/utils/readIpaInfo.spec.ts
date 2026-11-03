@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readIpaInfo } from "./readIpaInfo";
+import { readIpaHasExportComplianceKey, readIpaInfo } from "./readIpaInfo";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
 
@@ -78,6 +78,46 @@ describe("readIpaInfo", () => {
 
     await expect(readIpaInfo("/out/App.ipa")).rejects.toThrow(
       "App.ipa's Info.plist has no CFBundleVersion.",
+    );
+  });
+});
+
+describe("readIpaHasExportComplianceKey", () => {
+  const plutilAnswers = (answer: { stdout: string; exitCode: number }) =>
+    vi.mocked(execa).mockImplementation((async (
+      command: string,
+      args: string[],
+    ) => {
+      if (command === "unzip" && args[0] === "-Z1") {
+        return { stdout: "Payload/App.app/Info.plist" };
+      }
+      if (command === "plutil") {
+        expect(args[1]).toBe("ITSAppUsesNonExemptEncryption");
+        return answer;
+      }
+      return { stdout: "" };
+    }) as never);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each(["false\n", "true\n"])(
+    "counts a key that holds %j, since either is an answer",
+    async (stdout) => {
+      plutilAnswers({ stdout, exitCode: 0 });
+
+      await expect(readIpaHasExportComplianceKey("/out/App.ipa")).resolves.toBe(
+        true,
+      );
+    },
+  );
+
+  it("says so when the app's Info.plist has no key", async () => {
+    plutilAnswers({ stdout: "", exitCode: 1 });
+
+    await expect(readIpaHasExportComplianceKey("/out/App.ipa")).resolves.toBe(
+      false,
     );
   });
 });
