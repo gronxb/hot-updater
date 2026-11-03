@@ -209,7 +209,7 @@ function DownloadButton({ build }: { readonly build: NativeBuildRow }) {
     <a
       aria-label={`Download ${nativeBuildFileName(build)}`}
       className={buttonVariants({
-        className: "min-h-11 sm:min-h-7",
+        className: "min-h-11 sm:min-h-8",
         size: "sm",
         variant: "outline",
       })}
@@ -437,7 +437,7 @@ export function NativeBuildsTable({
           <div
             aria-busy={builds.isPlaceholderData}
             aria-label="Native builds"
-            className="h-full overflow-y-auto"
+            className="h-full overflow-y-auto aria-busy:opacity-60"
             role="list"
           >
             {builds.isLoading ? (
@@ -458,6 +458,7 @@ export function NativeBuildsTable({
           <DataTable
             aria-busy={builds.isPlaceholderData}
             aria-label="Native builds"
+            className="aria-busy:opacity-60"
             header={
               <>
                 <TableHead>Artifact</TableHead>

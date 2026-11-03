@@ -29,6 +29,7 @@ export function DataTableFrame({ children }: { readonly children: ReactNode }) {
 export function DataTable({
   header,
   children,
+  className,
   ...props
 }: Omit<ComponentProps<typeof Table>, "children"> & {
   /** The header row's cells. */
@@ -36,9 +37,9 @@ export function DataTable({
   readonly children: ReactNode;
 }) {
   return (
-    <Table className="min-w-max" {...props}>
+    <Table className={cn("min-w-max", className)} {...props}>
       <TableHeader className="bg-muted/40">
-        <TableRow className="border-b border-border/60 hover:bg-transparent [&>th]:h-10 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:text-muted-foreground/70">
+        <TableRow className="border-b border-border/60 hover:bg-transparent [&>th]:h-10 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:text-muted-foreground">
           {header}
         </TableRow>
       </TableHeader>
