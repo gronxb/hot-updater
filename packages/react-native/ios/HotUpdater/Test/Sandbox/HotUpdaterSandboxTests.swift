@@ -1442,4 +1442,96 @@ struct HotUpdaterSandboxDevHostTests {
         #expect(HotUpdaterSandboxDevHost.bundleURL(host: "http://a:1")?.absoluteString == "http://a:1/index.bundle?platform=ios&dev=false&minify=false")
     }
 }
+/// A dev server whose answers wait for the test.
+@MainActor
+private final class SlowDevServer {
+    private var waiting: [CheckedContinuation<HotUpdaterSandboxDevResolved, Never>] = []
+    var pending: Int { waiting.count }
+
+    func resolve(_ host: String) async -> HotUpdaterSandboxDevResolved {
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func answer(_ result: HotUpdaterSandboxDevResolved) {
+        waiting.removeFirst().resume(returning: result)
+    }
+}
+
+@MainActor
+private func settle(until done: () -> Bool = { false }) async {
+    for _ in 0 ..< 200 {
+        if done() { return }
+        await Task.yield()
+    }
+}
+
+@MainActor
+struct HotUpdaterSandboxDevConnectorTests {
+    @Test
+    func exitDuringAReloadStillFetchingStartsNothing() async {
+        let server = SlowDevServer()
+        var committed: [URL] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, url in committed.append(url) }
+        )
+        connector.reload("http://a:1")
+        await settle { server.pending == 1 }
+        connector.ended()
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle()
+        #expect(committed.isEmpty)
+    }
+
+    @Test
+    func aConnectAfterExitStartsASessionAsUsual() async {
+        let server = SlowDevServer()
+        var committed: [URL] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, url in committed.append(url) }
+        )
+        connector.ended()
+        var failure: String? = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { failure == nil }
+        #expect(failure == nil)
+        #expect(committed.count == 1)
+    }
+
+    @Test
+    func aFailedReloadIsShownOnTheScreen() async {
+        let server = SlowDevServer()
+        var changes = 0
+        let connector = HotUpdaterSandboxDevConnector(resolve: { await server.resolve($0) }, commit: { _, _ in })
+        connector.onChange = { changes += 1 }
+        connector.reload("http://a:1")
+        await settle { server.pending == 1 }
+        server.answer(.failure("a:1 answered 500 for its JavaScript."))
+        await settle { changes > 0 }
+        #expect(connector.lastError == "a:1 answered 500 for its JavaScript.")
+        #expect(changes == 1)
+    }
+
+    @Test
+    func connectionsRunOneAtATime() async {
+        let server = SlowDevServer()
+        var committed: [String] = []
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { host, _ in committed.append(host) }
+        )
+        connector.connect("http://a:1") { _ in }
+        connector.connect("http://b:2") { _ in }
+        await settle { server.pending == 1 }
+        #expect(server.pending == 1)
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { server.pending == 1 && committed.count == 1 }
+        server.answer(.bundle(URL(string: "http://b:2/index.bundle")!))
+        await settle { committed.count == 2 }
+        #expect(committed == ["http://a:1", "http://b:2"])
+    }
+}
 #endif

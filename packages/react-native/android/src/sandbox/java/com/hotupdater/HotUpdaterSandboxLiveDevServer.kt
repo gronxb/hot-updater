@@ -138,13 +138,13 @@ internal class HotUpdaterSandboxDevFetcher(
         val hash = asset.getString("hash")
         val location = asset.getString("httpServerLocation")
         val scales = asset.getJSONArray("scales")
-        val base = resourceName(location, name)
         for (index in 0 until scales.length()) {
             val scale = scales.getDouble(index)
             val folder = if (type in DRAWABLE_TYPES) "drawable-${scaleFolder(scale)}" else "raw"
             val suffix = if (scale == 1.0) "" else "@${scale.toString().removeSuffix(".0")}x"
             val separator = if (location.contains("?")) "&" else "?"
-            download("$host$location/$name$suffix.$type${separator}platform=android&hash=$hash", File(session, "$folder/$base.$type"))
+            val target = assetTarget(session, folder, location, name, type)
+            download("$host$location/$name$suffix.$type${separator}platform=android&hash=$hash", target)
         }
     }
 
@@ -202,6 +202,33 @@ internal class HotUpdaterSandboxDevFetcher(
         /** Re.Pack's dev server, for one. */
         const val NO_ASSET_LIST = "This dev server has no /index.assets, which Android needs for its assets, and Metro has."
 
+        private val ASSET_TYPE = Regex("[A-Za-z0-9]{1,16}")
+
+        /**
+         * Where an asset the server lists goes in the session, as React Native reads
+         * it there. The server names it, so anything that could leave the session is
+         * refused before a directory or a file is made.
+         */
+        fun assetTarget(
+            session: File,
+            folder: String,
+            location: String,
+            name: String,
+            type: String,
+        ): File {
+            val listed = "$location/$name.$type"
+
+            fun refuse(): Nothing = throw IOException("The dev server listed an asset this build won't write, $listed")
+            if (!ASSET_TYPE.matches(type)) refuse()
+            if (name.isEmpty() || name.contains('/') || name.contains('\\') || name.contains("..")) refuse()
+            if (!location.startsWith("/") || location.split('/', '?', '&', '=').any { it == ".." }) refuse()
+            val base = resourceName(location, name)
+            if (base.isEmpty()) refuse()
+            val target = File(session, "$folder/$base.$type")
+            if (!target.canonicalPath.startsWith(session.canonicalPath + File.separator)) refuse()
+            return target
+        }
+
         fun resourceName(
             location: String,
             name: String,
@@ -241,6 +268,10 @@ internal class HotUpdaterSandboxLiveDevServer(
     private val preferences = this.context.getSharedPreferences("hot_updater_sandbox", Context.MODE_PRIVATE)
     private val answered = HashMap<String, Boolean>()
     private val probeClient = OkHttpClient.Builder().callTimeout(1, TimeUnit.SECONDS).build()
+
+    /** Set by Exit. A reload still fetching then starts nothing: Exit's relaunch is the last word. */
+    @Volatile
+    private var exiting = false
 
     override val isRunningDevServer: Boolean
         get() = HotUpdaterSandboxDev.session(context) != null
@@ -343,6 +374,10 @@ internal class HotUpdaterSandboxLiveDevServer(
             val reason = (error.message ?: error.toString()).trimEnd('.')
             return "Couldn't load JavaScript from $name. $reason. Check that the dev server runs and this device can reach it."
         }
+        if (exiting) {
+            files.session(id).deleteRecursively()
+            return null
+        }
         remember(url)
         if (!isRunningDevServer) onLeavingNormalLaunch()
         HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Dev(id, url))
@@ -361,6 +396,7 @@ internal class HotUpdaterSandboxLiveDevServer(
     /** Only here does a dev session end, other than with its process. */
     override fun exitDevServer() {
         if (!isRunningDevServer) return
+        exiting = true
         HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.FirstScreen)
     }
 }

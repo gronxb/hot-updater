@@ -1,6 +1,71 @@
 #if HOT_UPDATER_SANDBOX_LAYER
 import Foundation
 
+/// What resolving a host's JavaScript came to.
+enum HotUpdaterSandboxDevResolved {
+    case bundle(URL)
+    case failure(String)
+}
+
+/// Connections, one at a time, and what a reload says when it can't. Exit ends
+/// what's still fetching: its requests can't be cancelled, so a connection checks,
+/// right before it starts a session, that no Exit came while it fetched.
+@MainActor
+final class HotUpdaterSandboxDevConnector {
+    private let resolve: (String) async -> HotUpdaterSandboxDevResolved
+    private let commit: (String, URL) -> Void
+    private var connections: Task<Void, Never>?
+    private var generation = 0
+
+    /// What the last reload couldn't do. A failed connect says so to its completion.
+    private(set) var lastError: String?
+    var onChange: (() -> Void)?
+
+    /// `resolve` fetches a host's JavaScript; `commit` starts the session on it.
+    init(
+        resolve: @escaping (String) async -> HotUpdaterSandboxDevResolved,
+        commit: @escaping (String, URL) -> Void
+    ) {
+        self.resolve = resolve
+        self.commit = commit
+    }
+
+    func connect(_ host: String, completion: @escaping (String?) -> Void) {
+        let previous = connections
+        let started = generation
+        connections = Task { @MainActor in
+            await previous?.value
+            let resolved = await resolve(host)
+            guard started == generation else {
+                // The session ended while this fetched: it says nothing more.
+                completion(nil)
+                return
+            }
+            switch resolved {
+            case .failure(let message):
+                completion(message)
+            case .bundle(let url):
+                commit(host, url)
+                completion(nil)
+            }
+        }
+    }
+
+    /// Fetches the running host's JavaScript again. The session goes on if it can't.
+    func reload(_ host: String) {
+        connect(host) { [weak self] failure in
+            self?.lastError = failure
+            self?.onChange?()
+        }
+    }
+
+    /// The session ended: nothing still fetching starts one.
+    func ended() {
+        generation += 1
+        lastError = nil
+    }
+}
+
 /// A host as a person typed it: `host:port`, or with its scheme.
 enum HotUpdaterSandboxDevHost {
     private static let defaultPort = 8081

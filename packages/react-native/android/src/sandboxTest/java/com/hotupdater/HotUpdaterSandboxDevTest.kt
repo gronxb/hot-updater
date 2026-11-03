@@ -16,6 +16,41 @@ class HotUpdaterSandboxDevTest {
     @get:Rule
     val folder = TemporaryFolder()
 
+    private fun refused(block: () -> Unit): Boolean =
+        try {
+            block()
+            false
+        } catch (error: java.io.IOException) {
+            true
+        }
+
+    @Test
+    fun `an asset the server names outside the session is refused before anything is written`() {
+        val session = File(folder.root, "dev/sessions/one")
+        val target = HotUpdaterSandboxDevFetcher.Companion::assetTarget
+        // What a server or anyone on the network path could answer, each with a way out of the session.
+        assertTrue(refused { target(session, "raw", "/assets", "logo", "../seed") })
+        assertTrue(refused { target(session, "raw", "/assets", "logo", "../../../../../bundle-store/metadata.json") })
+        assertTrue(refused { target(session, "raw", "/assets", "logo", "png/../../x") })
+        assertTrue(refused { target(session, "raw", "/assets", "logo", "") })
+        assertTrue(refused { target(session, "raw", "/assets", "../logo", "png") })
+        assertTrue(refused { target(session, "raw", "/assets/../../x", "logo", "png") })
+        assertFalse(File(folder.root, "dev").exists())
+    }
+
+    @Test
+    fun `an asset goes where React Native reads it, inside the session`() {
+        val session = File(folder.root, "dev/sessions/one")
+        assertEquals(
+            File(session, "drawable-mdpi/src_logo.png").canonicalFile,
+            HotUpdaterSandboxDevFetcher.assetTarget(session, "drawable-mdpi", "/assets/src", "logo", "png").canonicalFile,
+        )
+        assertEquals(
+            File(session, "raw/font.ttf").canonicalFile,
+            HotUpdaterSandboxDevFetcher.assetTarget(session, "raw", "/assets", "font", "ttf").canonicalFile,
+        )
+    }
+
     private fun files() = HotUpdaterSandboxDevFiles(File(folder.root, "dev"))
 
     private fun HotUpdaterSandboxDevFiles.withSession(id: String): HotUpdaterSandboxDevFiles {

@@ -109,13 +109,22 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
     private let reload: () -> Void
     private let defaults = UserDefaults(suiteName: "hot-updater-sandbox") ?? .standard
     private var answered: [String: Bool] = [:]
-    private var connections: Task<Void, Never>?
+    private lazy var connector = HotUpdaterSandboxDevConnector(
+        resolve: { host in
+            switch await Self.resolveBundle(host: host) {
+            case .success(let bundle): return .bundle(bundle)
+            case .failure(let failure): return .failure(failure.message)
+            }
+        },
+        commit: { [weak self] host, bundle in self?.startSession(host: host, bundle: bundle) }
+    )
 
     /// What the last reload couldn't do. A failed connect says so to its completion.
-    private(set) var lastDevServerError: String?
+    var lastDevServerError: String? { connector.lastError }
 
     var onDevServerChange: (() -> Void)? {
         didSet {
+            connector.onChange = onDevServerChange
             if onDevServerChange != nil { probe() }
         }
     }
@@ -256,26 +265,17 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
             completion("\"\(host)\" isn't a dev server address. Enter one like 192.168.0.2:8081.")
             return
         }
-        let previous = connections
-        connections = Task { @MainActor in
-            await previous?.value
-            let bundle: URL
-            switch await Self.resolveBundle(host: url) {
-            case .success(let resolved):
-                bundle = resolved
-            case .failure(let failure):
-                completion(failure.message)
-                return
-            }
-            remember(url)
-            let wasPrepared = retireNormalLaunch()
-            HotUpdaterSandboxDevLeftover.mark()
-            HotUpdaterSandboxDevState.set(bundle)
-            NSLog("[HotUpdaterSandbox] dev session on %@", url)
-            completion(nil)
-            start(wasPrepared)
-            onDevServerChange?()
-        }
+        connector.connect(url, completion: completion)
+    }
+
+    private func startSession(host: String, bundle: URL) {
+        remember(host)
+        let wasPrepared = retireNormalLaunch()
+        HotUpdaterSandboxDevLeftover.mark()
+        HotUpdaterSandboxDevState.set(bundle)
+        NSLog("[HotUpdaterSandbox] dev session on %@", host)
+        start(wasPrepared)
+        onDevServerChange?()
     }
 
     /// The launch of the normal selection stops being watched and counted as
@@ -293,14 +293,13 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
     /// Fetches the running host's JavaScript again. The session goes on if it can't.
     func reloadDevServer() {
         guard let host = runningHostURL else { return }
-        connect(host: host) { [weak self] failure in
-            self?.lastDevServerError = failure
-        }
+        connector.reload(host)
     }
 
     /// Only here does a dev session end, other than with its process.
     func exitDevServer() {
         guard isRunningDevServer else { return }
+        connector.ended()
         HotUpdaterSandboxDevState.set(nil)
         HotUpdaterSandboxDevLeftover.clear()
         NSLog("[HotUpdaterSandbox] dev session ended")
