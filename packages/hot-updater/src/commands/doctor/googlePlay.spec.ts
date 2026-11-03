@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
+import { fitText } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { checkPlayAccess } = vi.hoisted(() => ({
@@ -106,7 +107,7 @@ describe("doctor's Google Play check", () => {
     expect(stripVTControlCharacters(text)).toBe(
       [
         "Google Play",
-        "✗ com.example.app      invite the service account",
+        "✗ com.example.app          invite the service account",
         `  ${EMAIL}`,
         "  App permission: Release apps to testing tracks",
         `  https://play.google.com/console/u/0/developers/_/users-and-permissions?invite=${encodeURIComponent(EMAIL)}`,
@@ -151,6 +152,34 @@ describe("doctor's Google Play check", () => {
     ]);
   });
 
+  it("keeps the details in one column when an application ID is long", () => {
+    const { text } = formatGooglePlayStatus({
+      packages: [
+        {
+          packageName: "com.gronstudio.codexrelay",
+          access: { status: "denied", email: EMAIL },
+        },
+        {
+          packageName: "com.gronstudio.codexrelay.sandbox",
+          access: { status: "not-found", email: EMAIL },
+        },
+      ],
+    });
+    const plain = stripVTControlCharacters(text);
+    const lines = plain.split("\n");
+
+    // The printer rewraps a line it finds too long, which joins a label and
+    // its detail with one space; this layout is printed as it is.
+    expect(fitText(plain)).toBe(plain);
+    const details = lines
+      .filter((line) => line.startsWith("✗ "))
+      .map((line) => /^✗ \S+( +)\S/u.exec(line))
+      .filter((match) => match !== null)
+      .map((match) => match.index + match[0].length - 1);
+    expect(new Set(details).size).toBeLessThanOrEqual(1);
+    expect(lines).toContain("  upload the first .aab in Play Console");
+  });
+
   it("says it couldn't check a package Google didn't answer for", async () => {
     checkPlayAccess.mockRejectedValue(new Error("fetch failed"));
 
@@ -161,7 +190,7 @@ describe("doctor's Google Play check", () => {
 
     expect(
       stripVTControlCharacters(formatGooglePlayStatus(status!).text),
-    ).toContain("✗ com.example.app      can't check\n  fetch failed");
+    ).toContain("✗ com.example.app          can't check\n  fetch failed");
   });
 
   it("marks a package whose upload keystore is missing, whatever its access", async () => {
@@ -213,7 +242,7 @@ describe("doctor's Google Play check", () => {
     expect(stripVTControlCharacters(text)).toBe(
       [
         "Google Play",
-        "✗ com.example.app      upload keystore missing",
+        "✗ com.example.app          upload keystore missing",
         "✗ com.example.app.staging  upload the first .aab in Play Console",
         "  Upload keystore staging-keystore is missing too.",
         "Guide: https://hot-updater.dev/docs/native-builds/google-play",

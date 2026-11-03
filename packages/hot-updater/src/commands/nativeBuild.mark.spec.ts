@@ -336,6 +336,51 @@ describe("handleNativeBuildMark", () => {
 
     expect(lines("error")[0]).toContain("native-build find");
   });
+
+  it("prints JSON a CI job can parse for a build that isn't registered", async () => {
+    await expect(mark(buildId(9), { json: true })).rejects.toThrow(
+      "process.exit",
+    );
+
+    expect(vi.mocked(console.log)).toHaveBeenCalledOnce();
+    expect(output()).toEqual({
+      id: buildId(9),
+      marked: false,
+      reason: "not_found",
+    });
+    expect(String(vi.mocked(console.error).mock.calls[0]?.[0])).toContain(
+      "native-build find",
+    );
+  });
+
+  it("prints JSON for a clear of a build that isn't registered", async () => {
+    await expect(mark(buildId(9), { clear: true, json: true })).rejects.toThrow(
+      "process.exit",
+    );
+
+    expect(output()).toEqual({
+      id: buildId(9),
+      cleared: false,
+      reason: "not_found",
+    });
+  });
+
+  it("prints JSON for a sandbox channel's build it refuses", async () => {
+    await register(6, { channel: "sandbox-release" });
+
+    await expect(mark(buildId(6), { json: true })).rejects.toThrow(
+      "process.exit",
+    );
+
+    expect(output()).toEqual({
+      id: buildId(6),
+      marked: false,
+      reason: "sandbox_channel",
+    });
+    expect(String(vi.mocked(console.error).mock.calls[0]?.[0])).toContain(
+      "sandbox",
+    );
+  });
 });
 
 describe("deleting a marked build", () => {

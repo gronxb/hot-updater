@@ -164,20 +164,18 @@ describe("Bundle commands", () => {
     expect(table).not.toContain(otherChannel.id);
   });
 
-  it("translates internal release mutation errors at the public boundary", async () => {
+  it("says in public words that a bundle wasn't found, and fails", async () => {
     const { handleBundleUpdate } = await import("./bundle");
 
-    await expect(
-      handleBundleUpdate("00000000-0000-7000-8000-000000000099", {
-        message: "updated",
-        yes: true,
-      }),
-    ).rejects.toMatchObject({
-      message: 'Bundle "00000000-0000-7000-8000-000000000099" was not found.',
-      cause: expect.objectContaining({
-        message:
-          'Release "00000000-0000-7000-8000-000000000099" was not found.',
-      }),
+    await handleBundleUpdate("00000000-0000-7000-8000-000000000099", {
+      message: "updated",
+      yes: true,
     });
+
+    expect(log.error).toHaveBeenCalledExactlyOnceWith(
+      "No bundle with ID 00000000-0000-7000-8000-000000000099.",
+    );
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
   });
 });

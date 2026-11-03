@@ -99,6 +99,26 @@ describe("handlePromote", () => {
     }
   });
 
+  it("names the bundle to promote when given its artifact ID, and promotes nothing", async () => {
+    vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit");
+    }) as never);
+    const { handlePromote } = await import("./promote");
+
+    await handlePromote(sourceBundle.id, {
+      action: "copy",
+      target: "beta",
+      yes: true,
+    });
+
+    expect(log.error).toHaveBeenCalledExactlyOnceWith(
+      `No bundle with ID ${sourceBundle.id}.\nThat's an artifact ID. Use bundle ${sourceReleaseId}`,
+    );
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+    expect(await releasesForChannel("beta")).toEqual([]);
+  });
+
   it("creates a target-channel Release that reuses the source Bundle", async () => {
     const { handlePromote } = await import("./promote");
 
@@ -176,9 +196,11 @@ describe("handlePromote", () => {
     });
     const { handlePromote } = await import("./promote");
 
-    await expect(
-      handlePromote(sourceReleaseId, { target: "beta" }),
-    ).rejects.toThrow(/revision/i);
+    await handlePromote(sourceReleaseId, { target: "beta" });
+
+    expect(String(log.error.mock.calls[0]?.[0])).toMatch(/^Bundle .*revision/u);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
 
     expect(await releasesForChannel("beta")).toEqual([]);
     await expect(
@@ -193,12 +215,15 @@ describe("handlePromote", () => {
   it("rejects a promotion back into the same Release scope", async () => {
     const { handlePromote } = await import("./promote");
 
-    await expect(
-      handlePromote(sourceReleaseId, {
-        target: "production",
-        yes: true,
-      }),
-    ).rejects.toThrow(/same/i);
+    await handlePromote(sourceReleaseId, {
+      target: "production",
+      yes: true,
+    });
+
+    expect(String(log.error.mock.calls[0]?.[0])).toMatch(/same/iu);
+    expect(String(log.error.mock.calls[0]?.[0])).not.toContain("Release");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
   });
 });
 
