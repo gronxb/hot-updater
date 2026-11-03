@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { parseEnv } from "node:util";
+import { parseEnv, stripVTControlCharacters } from "node:util";
 
 import {
   getBuildSecretNames,
@@ -577,7 +577,9 @@ describe("hot-updater secrets pull", () => {
       await handleSecretsPull();
 
       expect(process.exitCode).toBe(1);
-      expect(log.error).toHaveBeenCalledWith(
+      expect(
+        stripVTControlCharacters(String(log.error.mock.calls[0]?.[0])),
+      ).toBe(
         ".env.hotupdater is tracked by git.\nUntrack it: git rm --cached .env.hotupdater",
       );
       expect(store.get).not.toHaveBeenCalled();
