@@ -147,6 +147,15 @@ describe("ChannelManagementDialog", () => {
     expect(mockToastSuccess).toHaveBeenCalledWith("Channel beta created");
   });
 
+  it("lists a channel by its name, without its internal id", () => {
+    mockApi.channels = [{ id: "channel:cHJvZHVjdGlvbg", name: "production" }];
+
+    render(<ChannelManagementDialog open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByText("production")).toBeTruthy();
+    expect(screen.queryByText("channel:cHJvZHVjdGlvbg")).toBeNull();
+  });
+
   it("deletes an empty channel after confirmation", async () => {
     mockApi.channels = [{ id: "channel-beta", name: "beta" }];
     mockDeleteChannel.mutateAsync.mockResolvedValue({ deleted: true });

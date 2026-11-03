@@ -161,14 +161,9 @@ export function ChannelManagementDialog({
                     key={channel.id}
                     className="flex min-h-12 items-center gap-3 px-3 py-2"
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">
-                        {channel.name}
-                      </p>
-                      <p className="truncate font-mono text-[10px] text-muted-foreground">
-                        {channel.id}
-                      </p>
-                    </div>
+                    <p className="min-w-0 flex-1 truncate text-xs font-medium">
+                      {channel.name}
+                    </p>
                     <Button
                       type="button"
                       variant="ghost"
