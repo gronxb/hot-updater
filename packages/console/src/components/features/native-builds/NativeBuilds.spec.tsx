@@ -174,20 +174,50 @@ describe("NativeBuildsTable", () => {
       "an earlier CLI's Android platform byte",
       "019a1b2c-3d4e-7000-8000-02a1b2c3d4e5",
     ],
-  ])("shows a built-in bundle ID with %s in full", (_form, minBundleId) => {
-    const row = build({ min_bundle_id: minBundleId });
+  ])(
+    "shows a built-in bundle ID with %s in full on the build's page",
+    (_form, minBundleId) => {
+      render(
+        <BuiltInBundleCard
+          detail={detail({ build: build({ min_bundle_id: minBundleId }) })}
+        />,
+      );
+      expect(
+        screen.getByText("Bundle ID", { selector: "dt" }).nextElementSibling
+          ?.textContent,
+      ).toBe(minBundleId);
+    },
+  );
+
+  it("keeps the columns people scan or act on, and leaves the built-in bundle and commit to the build's page", () => {
     render(
       <NativeBuildsTable
-        builds={builds([row])}
+        builds={builds([build()])}
         channel={undefined}
         onChannel={vi.fn()}
         paged={false}
       />,
     );
-    expect(screen.getByText(minBundleId)).toBeTruthy();
+
+    expect(
+      screen.getAllByRole("columnheader").map((cell) => cell.textContent),
+    ).toEqual([
+      "Artifact",
+      "Channel",
+      "Platform",
+      "Build",
+      "Target",
+      "Build key",
+      "Store",
+      "Size",
+      "Created",
+      "Actions",
+    ]);
+    expect(screen.queryByText(id(2))).toBeNull();
+    expect(screen.queryByTitle("abcdef1234567")).toBeNull();
   });
 
-  it("lists each build with its decoded channel and built-in bundle, and opens its page", () => {
+  it("lists each build with its decoded channel, and opens its page", () => {
     const row = build();
     const onChannel = vi.fn();
     render(
@@ -203,12 +233,8 @@ describe("NativeBuildsTable", () => {
       "href",
       expect.stringContaining(`/native-builds/${row.id}`),
     );
-    // The whole built-in bundle ID in its column: never cut.
+    // The fingerprint as the Bundles table's Target shows it.
     const [, buildRow] = screen.getAllByRole("row");
-    expect(cellText(buildRow!, "Built-in bundle")).toBe(row.min_bundle_id);
-    // The commit as git shows it, the full value on hover; the fingerprint
-    // as the Bundles table's Target shows it.
-    expect(screen.getByTitle("abcdef1234567").textContent).toBe("abcdef1");
     expect(cellText(buildRow!, "Target")).toBe("1a2b3c4d…9c0d");
     expect(cellText(buildRow!, "Platform")).toBe("Android");
     expect(cellText(buildRow!, "Size")).toBe("50.0 MB");
@@ -312,7 +338,7 @@ describe("NativeBuildsTable", () => {
         )?.nextElementSibling?.textContent;
       expect(field("Target")).toBe("1a2b3c4d…9c0d");
       expect(field("Build key")).toBe("nbk1:a1b2c3d4…9f0e");
-      expect(field("Built-in bundle")).toBe(row.min_bundle_id);
+      expect(field("Built-in bundle")).toBeUndefined();
       expect(field("Build")).toBe("66");
       expect(
         screen.getByRole("link", { name: "Download app-release.apk" }),

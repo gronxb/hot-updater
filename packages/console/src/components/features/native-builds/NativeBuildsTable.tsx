@@ -11,7 +11,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   DataCard,
@@ -54,7 +53,6 @@ import {
 } from "@/lib/native-builds";
 import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
-import { CommitLink } from "./CommitLink";
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
@@ -62,7 +60,7 @@ import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 export const NATIVE_BUILD_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/native-build#how-a-build-is-tracked";
 
-const COLUMNS = 12;
+const COLUMNS = 10;
 
 /** The page of the list that shows `channel`'s builds, or every build. */
 const channelSearch = (channel: string | undefined) =>
@@ -233,11 +231,6 @@ function BuildNumber({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
-/** The built-in bundle's whole ID, as Bundles shows a bundle ID. */
-function BuiltInBundleId({ build }: { readonly build: NativeBuildRow }) {
-  return <BundleIdDisplay bundleId={build.min_bundle_id} />;
-}
-
 /** When the build was registered, from its ID. */
 const createdAt = (build: NativeBuildRow) =>
   extractTimestampFromUUIDv7(build.id);
@@ -287,12 +280,6 @@ function BuildRow({
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
         {formatByteSize(build.byte_size)}
-      </TableCell>
-      <TableCell>
-        <BuiltInBundleId build={build} />
-      </TableCell>
-      <TableCell>
-        <CommitLink hash={build.git_commit_hash} />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         <RelativeTime ms={createdAt(build)} />
@@ -350,12 +337,6 @@ function BuildCard({
         </DataCardField>
         <DataCardField className="col-span-2" label="Build key">
           <BuildKeyDisplay value={build.build_key} />
-        </DataCardField>
-        <DataCardField className="col-span-2" label="Built-in bundle">
-          <BuiltInBundleId build={build} />
-        </DataCardField>
-        <DataCardField className="col-span-2" label="Commit">
-          <CommitLink hash={build.git_commit_hash} />
         </DataCardField>
         <DataCardField className="col-span-2" label="Store">
           <StoreCell build={build} />
@@ -463,8 +444,6 @@ export function NativeBuildsTable({
                 <TableHead>Build key</TableHead>
                 <TableHead>Store</TableHead>
                 <TableHead>Size</TableHead>
-                <TableHead>Built-in bundle</TableHead>
-                <TableHead>Commit</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">
                   <span className="sr-only">Actions</span>
