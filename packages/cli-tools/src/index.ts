@@ -26,6 +26,7 @@ export * from "./interfaceFingerprint";
 export * from "./LogWriter";
 export * from "./loadConfig";
 export * from "./serverDefinition";
+export * from "./expoSdk";
 export * from "./log";
 export * from "./makeEnv";
 export * from "./mergeEnvFile";

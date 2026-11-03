@@ -178,6 +178,11 @@ describe("createHotUpdater with plugins", () => {
         path: "/native-builds/:id/submission",
         access: "admin",
       },
+      {
+        method: "POST",
+        path: "/native-builds/:id/store-build",
+        access: "admin",
+      },
       { method: "DELETE", path: "/native-builds/:id", access: "admin" },
       { method: "GET", path: "/notes/:id", access: "client" },
       { method: "DELETE", path: "/notes/:id", access: "admin" },

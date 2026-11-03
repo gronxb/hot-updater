@@ -84,6 +84,7 @@ import { keysExportPublic, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import {
   handleNativeBuildDelete,
+  handleNativeBuildMark,
   handleNativeBuildDownload,
   handleNativeBuildFind,
   handleNativeBuildTestFlightGroup,
@@ -431,6 +432,16 @@ nativeBuildCommand
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleNativeBuildDelete);
+
+nativeBuildCommand
+  .command("mark")
+  .description(
+    "Mark a registered native build as the one the store sells, so OTAs patch from its built-in bundle over a newer build's. Run it when the release goes live",
+  )
+  .argument("<id>", "the native build's ID, as native-build find prints it")
+  .option("--clear", "clear the build's mark: deploys use the newest build")
+  .option("--json", "output the build, what it replaced, and its patch as JSON")
+  .action(handleNativeBuildMark);
 
 nativeBuildCommand
   .command("import")

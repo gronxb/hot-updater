@@ -11,6 +11,7 @@ import type {
   HotUpdaterCoreApi,
   KeysetInput,
   NativeBuildDeleteResult,
+  NativeBuildMarkResult,
   NativeBuildRow,
   NativeBuildScope,
   PromoteReleaseResult,
@@ -295,18 +296,25 @@ export const createStandaloneCoreApi = (
       call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`, {
         requiredRoute: "native build",
       }),
-    // A server that predates native build keys ignores `buildKey` and
-    // answers the scope's newest build, whose key then differs: no build.
+    // A server that predates native build keys or the store build mark ignores
+    // `buildKey` or `storeBuild` and answers the scope's newest build, whose
+    // key or mark then differs: no build.
     findNativeBuild: async (scope, options) => {
       const buildKey = options?.buildKey;
       const row = await call<NativeBuildRow>("GET", "/native-builds/latest", {
         query: {
           ...nativeBuildScopeParams(scope),
           ...(buildKey === undefined ? {} : { buildKey }),
+          ...(options?.storeBuild ? { storeBuild: "true" } : {}),
+          ...(options?.builtInOlderThan === undefined
+            ? {}
+            : { builtInOlderThan: options.builtInOlderThan }),
         },
         requiredRoute: "native build",
       });
-      return buildKey !== undefined && row?.build_key !== buildKey ? null : row;
+      if (buildKey !== undefined && row?.build_key !== buildKey) return null;
+      if (options?.storeBuild && row?.store_build !== true) return null;
+      return row;
     },
     // A server without the native build routes holds no native builds: its
     // schema fence refuses a database whose schema has them. So its 404
@@ -397,6 +405,14 @@ export const createStandaloneCoreApi = (
         body: submission,
         requiredRoute: "native build submission",
       }),
+    // An unknown ID answers 200 with null data; a 404 means a server without
+    // the route.
+    markNativeBuild: (id, mark) =>
+      call<NativeBuildMarkResult>(
+        "POST",
+        `/native-builds/${encode(id)}/store-build`,
+        { body: mark, requiredRoute: "native build store mark" },
+      ),
     deleteNativeBuild: async (id) =>
       (await call<NativeBuildDeleteResult>(
         "DELETE",

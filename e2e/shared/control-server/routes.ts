@@ -56,6 +56,7 @@ import {
   startWaitForAppExitJob,
   startWaitForCrashMarkerJob,
   startPatchReleaseJob,
+  startMarkNativeBuildJob,
   startRegisterNativeBuildJob,
   startResetNativeBuildChannelJob,
   startResetRemoteBundlesJob,
@@ -119,13 +120,34 @@ app.post("/e2e/jobs/install-native-build", async (c) => {
 });
 
 app.post("/e2e/jobs/register-native-build", async (c) => {
-  const payload = (await c.req.json()) as { appVersion?: unknown };
+  const payload = (await c.req.json()) as {
+    appVersion?: unknown;
+    build?: unknown;
+    channel?: unknown;
+  };
   if (typeof payload.appVersion !== "string" || !payload.appVersion) {
     return c.json({ error: "appVersion is required" }, 400);
   }
+  if (payload.build === "other" && typeof payload.channel !== "string") {
+    return c.json({ error: "the other build needs a channel" }, 400);
+  }
   return c.json({
-    jobId: startRegisterNativeBuildJob({ appVersion: payload.appVersion }),
+    jobId: startRegisterNativeBuildJob({
+      appVersion: payload.appVersion,
+      ...(payload.build === "other" ? { build: "other" as const } : {}),
+      ...(typeof payload.channel === "string"
+        ? { channel: payload.channel }
+        : {}),
+    }),
   });
+});
+
+app.post("/e2e/jobs/mark-native-build", async (c) => {
+  const payload = (await c.req.json()) as { id?: unknown };
+  if (typeof payload.id !== "string" || !payload.id) {
+    return c.json({ error: "id is required" }, 400);
+  }
+  return c.json({ jobId: startMarkNativeBuildJob({ id: payload.id }) });
 });
 
 app.post("/e2e/jobs/reset-native-build-channel", async (c) => {

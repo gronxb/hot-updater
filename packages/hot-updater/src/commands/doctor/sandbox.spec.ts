@@ -146,7 +146,8 @@ describe("checkSandboxSchemes", () => {
   });
 
   it("takes the Expo SDKs sandbox builds ran on, and warns about any other", async () => {
-    for (const expo of ["~52.0.49", "~54.0.36", "~57.0.31", "~58.0.22"]) {
+    // Below the minimum, the Expo SDK check reports it instead.
+    for (const expo of ["~52.0.49", "~55.0.32", "~57.0.31", "~58.0.22"]) {
       write("package.json", JSON.stringify({ dependencies: { expo } }));
       expect(
         await checkSandboxSchemes(config(androidSandbox, "expo"), root),
@@ -155,14 +156,14 @@ describe("checkSandboxSchemes", () => {
 
     write(
       "package.json",
-      JSON.stringify({ devDependencies: { expo: "^55.0.0" } }),
+      JSON.stringify({ devDependencies: { expo: "^56.0.0" } }),
     );
     expect(
       await checkSandboxSchemes(config(androidSandbox, "expo"), root),
     ).toEqual([
       expect.objectContaining({
         code: "SANDBOX_UNQUALIFIED",
-        message: "Sandbox builds aren't tested with Expo SDK 55 yet.",
+        message: "Sandbox builds aren't tested with Expo SDK 56 yet.",
       }),
     ]);
 

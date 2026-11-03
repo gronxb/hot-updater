@@ -305,9 +305,9 @@ export const getNativeBuildPatches = createServerFn({ method: "GET" })
   });
 
 /**
- * The newest native build of a release's scope, which its patches start
- * from: one read. A release of an app version range has no one build, and
- * reads nothing.
+ * The native build new deploys to a release's scope patch from: the scope's
+ * store build in one read, or with no mark its newest build in one more. A
+ * release of an app version range has no one build, and reads nothing.
  */
 export const getReleaseNativeBuild = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
@@ -322,8 +322,26 @@ export const getReleaseNativeBuild = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const scope = releaseNativeBuildScope(data);
     if (scope === null) return null;
-    return (await prepare()).core.findNativeBuild(scope);
+    const { core } = await prepare();
+    return (
+      (await core.findNativeBuild(scope, { storeBuild: true })) ??
+      core.findNativeBuild(scope)
+    );
   });
+
+/**
+ * Marks a build as what the store sells, replacing its scope's mark, or clears
+ * its mark: only for a signed-in caller. It creates no patch: a hosted Console
+ * doesn't run the diff.
+ */
+export const markNativeBuild = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string; storeBuild: boolean }) => input)
+  .handler(async ({ data }) =>
+    (await prepare()).core.markNativeBuild(data.id, {
+      storeBuild: data.storeBuild,
+    }),
+  );
 
 /**
  * The URL a phone downloads a build from when the Console can't sign a link,

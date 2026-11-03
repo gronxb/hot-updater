@@ -9,6 +9,7 @@ import {
   assertDependenciesInCheckout,
   nativeBuildChannel,
   parseNativeBuildImportOutput,
+  parseNativeBuildMarkOutput,
   readArtifactMinBundleId,
 } from "./native-build-registration.ts";
 
@@ -79,6 +80,22 @@ describe("the installed E2E app's native build", () => {
       ),
     ).toEqual({ ok: true, alreadyImported: true, nativeBuild });
     expect(() => parseNativeBuildImportOutput("■  failed\n")).toThrow(
+      "printed no JSON",
+    );
+  });
+});
+
+describe("the store build mark", () => {
+  it("reads the JSON line native-build mark --json ends its output with", () => {
+    const nativeBuild = { id: "build", store_build: true };
+    expect(
+      parseNativeBuildMarkOutput(
+        ["◆  warning", JSON.stringify({ nativeBuild, previous: null }), ""].join(
+          "\n",
+        ),
+      ),
+    ).toEqual({ nativeBuild, previous: null });
+    expect(() => parseNativeBuildMarkOutput("■  failed\n")).toThrow(
       "printed no JSON",
     );
   });

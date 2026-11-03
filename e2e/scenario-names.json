@@ -11,6 +11,7 @@
   "bspatch-manifest-diff-fallback",
   "store-install-patches-from-built-in",
   "store-install-built-in-mismatch-downloads",
+  "store-install-patches-from-marked-build",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",

@@ -2,7 +2,11 @@ import fs from "fs";
 import path from "path";
 
 import { compileHermes } from "@hot-updater/bare";
-import { log, readBundleSigningPublicKeyFile } from "@hot-updater/cli-tools";
+import {
+  assertSupportedExpoSdk,
+  log,
+  readBundleSigningPublicKeyFile,
+} from "@hot-updater/cli-tools";
 import type {
   BuildAdapterArgs,
   BuildAdapter,
@@ -223,6 +227,7 @@ export const expo =
         },
       },
       build: async ({ platform }) => {
+        assertSupportedExpoSdk(cwd);
         const buildPath = path.join(cwd, outDir);
 
         await fs.promises.rm(buildPath, { recursive: true, force: true });

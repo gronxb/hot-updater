@@ -854,6 +854,9 @@ await core.recordNativeBuildSubmission(nativeBuildId(22), {
   version: "1.3.0 (122)",
 });
 
+// What the store sells of the production IPA's scope.
+await core.markNativeBuild(nativeBuildId(21), { storeBuild: true });
+
 // Oldest first, one deploy each, so a patch's base is stored before it.
 const releaseIdByBundle = new Map<string, string>();
 for (const deployment of [...bundles].sort((left, right) =>

@@ -238,13 +238,21 @@ static UIView *Hold(NSDictionary *options, UIView * (^start)(NSDictionary *)) {
 }
 
 typedef UIView * (*View5)(id, SEL, NSString *, NSDictionary *, NSDictionary *, id, id);
+typedef UIView * (*View4)(id, SEL, NSString *, NSDictionary *, NSDictionary *, id);
 typedef UIView * (*View3)(id, SEL, NSString *, NSDictionary *, NSDictionary *);
 static View5 gView5;
+static View4 gView4;
 static View3 gView3;
 
 static UIView *GatedView5(id self, SEL cmd, NSString *name, NSDictionary *props, NSDictionary *options, id bundle, id devMenu) {
   return Hold(options, ^UIView *(NSDictionary *clean) {
     return gView5(self, cmd, name, props, clean, bundle, devMenu);
+  });
+}
+
+static UIView *GatedView4(id self, SEL cmd, NSString *name, NSDictionary *props, NSDictionary *options, id devMenu) {
+  return Hold(options, ^UIView *(NSDictionary *clean) {
+    return gView4(self, cmd, name, props, clean, devMenu);
   });
 }
 
@@ -436,14 +444,18 @@ static void SetDelegate(id self, SEL cmd, id delegate) {
   [HotUpdaterSandboxBridge dropCrashOfLastDevProcess];
   Class factory = objc_getClass("RCTRootViewFactory");
   SEL five = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:bundleConfiguration:devMenuConfiguration:");
+  SEL four = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:devMenuConfiguration:");
   SEL three = NSSelectorFromString(@"viewWithModuleName:initialProperties:launchOptions:");
   Method method5 = factory ? class_getInstanceMethod(factory, five) : NULL;
+  Method method4 = factory ? class_getInstanceMethod(factory, four) : NULL;
   Method method3 = factory ? class_getInstanceMethod(factory, three) : NULL;
   // First, so nothing can settle it before: settling deletes the marker.
   [HotUpdaterSandboxBridge captureLaunchEvidence];
 
   if (method5) {
     gView5 = (View5)method_setImplementation(method5, (IMP)GatedView5);
+  } else if (method4) {
+    gView4 = (View4)method_setImplementation(method4, (IMP)GatedView4);
   } else if (method3) {
     gView3 = (View3)method_setImplementation(method3, (IMP)GatedView3);
   } else {

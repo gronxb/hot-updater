@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 39 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
+Run the same 40 OTA, Remote Config, Console Insights, and bundle signing scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -75,6 +75,15 @@ binary's own, which the scenario switches the app to at runtime, so
 scenarios. The bot reuses a cached binary across jobs: importing it again
 reports `alreadyImported: true` and succeeds. The job reads the MIN_BUNDLE_ID
 from the binary's bytes itself and fails unless the CLI registered that one.
+
+## The marked store build
+
+`store-install-patches-from-marked-build` registers the run's binary and then
+the second binary described below on the same channel and app version, marks
+the first with `hot-updater native-build mark`, deploys, and has a fresh install
+of the first binary take the OTA. The server's request log has to show one patch
+and no file or archive. Registering the run's binary deletes any other build
+left in its scope, so the other built-in scenarios still patch from it.
 
 ## Going back to a build
 
