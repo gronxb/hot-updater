@@ -11,6 +11,7 @@ import {
   type Credentials,
   CredentialUnavailableError,
   credentialPutCommand,
+  MESSAGE_WIDTH,
   registerCredentialValue,
 } from "@hot-updater/cli-tools";
 
@@ -131,6 +132,7 @@ export const describePlayAccess = (
   }
 };
 
+/** The narrowest label column, so a build's checks line up run to run. */
 const LABEL_WIDTH = 19;
 
 const MARKS = {
@@ -139,25 +141,47 @@ const MARKS = {
   undefined: ui.muted("·"),
 } as const;
 
-/** The widest check line, Clack's three-column gutter left out. */
-const CHECK_WIDTH = 77;
+/** A check line: its mark, a space, the label padded to `width`, and two spaces. */
+const besideWidth = (width: number, detail: string) =>
+  2 + width + 2 + detail.length;
 
 /**
- * Check lines, aligned, each with the lines under it indented. A detail
- * that doesn't fit beside a long label, such as an application ID, goes
- * on the line under it.
+ * Check lines, each with the lines under it indented. Details start in one
+ * column, after the widest label whose detail still fits beside it within
+ * the message width; a longer label, such as an application ID, has its
+ * detail on the line under it, so no row pushes its detail out of line.
  */
-export const formatPlayChecks = (checks: readonly PlayCheck[]): string[] =>
-  checks.flatMap(({ ok, label, detail, lines = [] }) => {
+export const formatPlayChecks = (checks: readonly PlayCheck[]): string[] => {
+  const fitsAt = (width: number) =>
+    checks.every(
+      ({ label, detail }) =>
+        !detail ||
+        label.length > width ||
+        besideWidth(width, detail) <= MESSAGE_WIDTH,
+    );
+  const width = Math.max(
+    LABEL_WIDTH,
+    ...checks
+      .filter(
+        ({ label, detail }) =>
+          detail && besideWidth(label.length, detail) <= MESSAGE_WIDTH,
+      )
+      .map(({ label }) => label.length)
+      .filter(fitsAt),
+  );
+  return checks.flatMap(({ ok, label, detail, lines = [] }) => {
     const mark = MARKS[String(ok) as keyof typeof MARKS];
-    const beside = detail && `${label.padEnd(LABEL_WIDTH)}  ${detail}`;
-    const fits = beside !== undefined && 2 + beside.length <= CHECK_WIDTH;
+    const fits =
+      detail !== undefined &&
+      label.length <= width &&
+      besideWidth(width, detail) <= MESSAGE_WIDTH;
     return [
-      `${mark} ${beside && fits ? beside : label}`,
+      `${mark} ${fits ? `${label.padEnd(width)}  ${detail}` : label}`,
       ...(detail && !fits ? [detail] : []),
       ...lines,
     ].map((line, index) => (index === 0 ? line : `  ${line}`));
   });
+};
 
 export interface GooglePlayReadiness {
   readonly packageName: string;
