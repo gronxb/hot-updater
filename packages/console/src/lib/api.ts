@@ -322,7 +322,8 @@ export function useDeleteChannelMutation() {
 
 /**
  * Marks a build as its scope's store build, or clears it. The mark it replaced
- * is on another build's page and in the list, so both read again.
+ * is on another build's page, in the list and in a release sheet's link, so
+ * they read again.
  */
 export function useMarkNativeBuildMutation() {
   const queryClient = useQueryClient();
@@ -335,6 +336,8 @@ export function useMarkNativeBuildMutation() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.nativeBuilds.all,
         }),
+        // A release sheet links the build new deploys patch from.
+        queryClient.invalidateQueries({ queryKey: ["release-native-build"] }),
       ]);
     },
   });
