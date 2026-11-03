@@ -246,8 +246,10 @@ class HotUpdaterSandboxDevTest {
             assertNull(dev.getBundleId())
             assertTrue(dev.getManifest().isEmpty())
             assertTrue(dev.getManifestForBundle("b").isEmpty())
-            assertTrue(dev.resetChannel())
-            assertTrue(dev.resetChannelIfSelectionCurrent("c", "s", 1, "h", "ch", "sc"))
+            // Nothing changed, so the JavaScript keeps the session's channel: on true it
+            // would take the build's default channel and check the normal catalog.
+            assertFalse(dev.resetChannel())
+            assertFalse(dev.resetChannelIfSelectionCurrent("c", "s", 1, "h", "ch", "sc"))
 
             assertFalse("a dev session consumed a crash marker", settled)
             assertEquals(emptyList<String>(), normal.calls)

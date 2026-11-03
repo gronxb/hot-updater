@@ -166,16 +166,18 @@ static id (*gTakeEvents)(id, SEL, id);
       gSetItem(me, @selector(setStorageItem:value:), key, value);
     }
   });
+  // A dev session's reset changes nothing, and says so: on YES its JavaScript would take
+  // the build's default channel and check the normal catalog.
   HU_SWAP(bridgeMeta, Reset, @selector(resetChannelWithImpl:resolver:rejecter:), ^(id me, id target, HUResolve resolve, id reject) {
     if (IsDev(target)) {
-      resolve(@YES);
+      resolve(@NO);
     } else {
       gReset(me, @selector(resetChannelWithImpl:resolver:rejecter:), target, resolve, reject);
     }
   });
   HU_SWAP(bridgeMeta, ResetIf, @selector(resetChannelIfSelectionCurrentWithImpl:params:resolver:rejecter:), ^(id me, id target, id params, HUResolve resolve, id reject) {
     if (IsDev(target)) {
-      resolve(@YES);
+      resolve(@NO);
     } else {
       gResetIf(me, @selector(resetChannelIfSelectionCurrentWithImpl:params:resolver:rejecter:), target, params, resolve, reject);
     }

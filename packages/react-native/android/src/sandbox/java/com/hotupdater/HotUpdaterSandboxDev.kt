@@ -364,7 +364,9 @@ internal class HotUpdaterSandboxDevStorage(
 
     override fun getManifestForBundle(bundleId: String?): Map<String, Any?> = emptyMap()
 
-    override suspend fun resetChannel(): Boolean = true
+    // Nothing changed, which keeps the session's channel in its JavaScript: true would
+    // make it take the build's default channel and check the normal catalog.
+    override suspend fun resetChannel(): Boolean = false
 
     override suspend fun resetChannelIfSelectionCurrent(
         catalogId: String,
@@ -373,7 +375,7 @@ internal class HotUpdaterSandboxDevStorage(
         catalogHash: String,
         channel: String,
         selectionContextHash: String,
-    ): Boolean = true
+    ): Boolean = false
 }
 
 /** Main's preferences in a dev session: a channel without releases, and no writes. */
