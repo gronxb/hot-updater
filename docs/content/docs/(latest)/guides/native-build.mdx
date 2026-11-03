@@ -543,8 +543,11 @@ succeeds. With `--json`, the last line has `submission: { destination,
 skipped: "already-submitted", existing }`, where `existing` has the
 `destination`, the store's `version` label, `submittedAtMs` (null when the
 store said so), and `source` (`recorded` or `store`). Bump the build number
-to upload a new build. A sandbox build this run submitted also has
-`submission.store`, as [`--store-status`](#find-a-build) prints it. With `--json`, the last line also has `cache: { hit,
+to upload a new build. A build this run uploaded to TestFlight, and a sandbox
+build it submitted to Google Play, also has `submission.store`, as
+[`--store-status`](#find-a-build) prints it: a `state` of `missing-compliance`
+is a build [waiting on export compliance](/docs/native-builds/testflight#answer-export-compliance).
+With `--json`, the last line also has `cache: { hit,
 key, uncacheable, changed }`: `hit` is `storage`, `local`, or null.
 
 Preview jobs keep finding builds by scope with

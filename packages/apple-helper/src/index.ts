@@ -26,6 +26,7 @@ export {
   readTestFlightBuildStatus,
   type SandboxArchivePlan,
   type TestFlightBuildState,
+  type TestFlightBuildStatus,
   type TestFlightGroupOutcome,
 } from "./sandboxTestFlight";
 export {
@@ -45,6 +46,7 @@ export {
 } from "./uploadToTestFlight";
 export type { AppleDeviceType } from "./types";
 export { installPodsIfNeeded } from "./utils/cocoapods";
+export { readIpaHasExportComplianceKey } from "./utils/readIpaInfo";
 export { assertSandboxExportOptions } from "./utils/xcodeSigning";
 export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";

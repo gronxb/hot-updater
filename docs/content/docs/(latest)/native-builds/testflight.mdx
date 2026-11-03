@@ -74,6 +74,8 @@ After the build is tracked, the CLI:
 3. Uploads the `.ipa` with the App Store Connect API's build uploads.
 4. Waits up to 30 minutes for App Store Connect to accept the build, and
    prints the warnings and errors it reports.
+5. Reads the build's state once, and warns when the build is
+   [waiting on export compliance](#answer-export-compliance).
 
 App Store Connect takes each build number once per version: raise
 `CFBundleVersion` for every build you upload. When an upload fails, the build
@@ -90,3 +92,54 @@ Connect is still processing after 30 minutes, a failed upload, and
 already has, from this or another upload, is skipped with `Already on
 TestFlight` and its version, such as `1.7.0 (66)`; see
 [Reuse a build](/docs/guides/native-build#reuse-a-build).
+
+## Answer export compliance
+
+App Store Connect keeps a build from testers until someone answers whether the
+app uses non-exempt encryption. The answer is your legal declaration, so the
+CLI never gives it and never writes it into your project.
+
+When a build App Store Connect accepted is waiting on the answer, the CLI warns
+and still exits 0:
+
+```txt
+Testers can't install 1.7.0 (66): it's waiting on export compliance.
+Answer it in App Store Connect:
+https://appstoreconnect.apple.com/apps/<app id>/testflight/ios
+Or set ITSAppUsesNonExemptEncryption in Info.plist for later builds.
+```
+
+With `--json`, `submission.store.state` is `missing-compliance`.
+
+The CLI reads the state once, right after App Store Connect accepts the build,
+and doesn't wait for processing. While the build is still processing, it checks
+the `.ipa`'s `Info.plist` instead. Without `ITSAppUsesNonExemptEncryption`, it
+says what to expect:
+
+```txt
+1.7.0 (66) is processing. Without ITSAppUsesNonExemptEncryption in Info.plist, testers can't install it until export compliance is answered in App Store Connect:
+https://appstoreconnect.apple.com/apps/<app id>/testflight/ios
+```
+
+With the key, it prints nothing more. `submission.store.state` is `processing`,
+and [`native-build find --store-status`](/docs/guides/native-build#find-a-build)
+reads the state again later. A build App Store Connect hasn't accepted after 30
+minutes gets no read, so `submission.store` is `null`, and the same `.ipa` check
+applies.
+
+A build whose answer Apple is reviewing also has the state
+`missing-compliance`. The CLI says Apple is reviewing it, and it needs no answer
+from you.
+
+There are two ways to answer:
+
+- **For a build already uploaded:** open the build on the app's TestFlight page
+  in App Store Connect, and answer the export compliance question.
+- **For later builds:** set `ITSAppUsesNonExemptEncryption` in the app's
+  `Info.plist` to your answer. In an Expo project, set
+  `ios.config.usesNonExemptEncryption` in the app config, which sets that key in
+  the build's `Info.plist`.
+
+`hot-updater doctor` warns when a scheme can submit to TestFlight and the
+`Info.plist` files in `platform.ios.infoPlistPaths` don't have the key. It checks
+only files that exist, so it says nothing before a prebuild generates `ios/`.
