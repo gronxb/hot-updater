@@ -119,7 +119,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@/utils/createBundleDiff", () => ({
+vi.mock("@/utils/createBundleDiff", async () => ({
+  ...(await vi.importActual<typeof import("../utils/createBundleDiff")>(
+    "../utils/createBundleDiff",
+  )),
   createBundleDiff: mockServer.createBundleDiff,
 }));
 
@@ -2476,6 +2479,55 @@ describe("deploy rollout wiring", () => {
       {
         makePrimary: true,
       },
+    );
+  });
+
+  it("doesn't warn when a base's Hermes bundle is the same as the new one", async () => {
+    const { UnchangedHermesBundleError } = await vi.importActual<
+      typeof import("../utils/createBundleDiff")
+    >("../utils/createBundleDiff");
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 2,
+      },
+      updateStrategy: "appVersion",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(118) },
+        release: { targetAppVersion: "1.0.x" },
+      },
+      {
+        bundle: { id: fixtureBundleId(119) },
+        release: { targetAppVersion: "1.0.x" },
+      },
+    ]);
+    mockServer.createBundleDiff.mockRejectedValue(
+      new UnchangedHermesBundleError(),
+    );
+    const taskResults: unknown[] = [];
+    mockCli.p.tasks.mockImplementation(async (tasks) => {
+      for (const task of tasks) taskResults.push(await task.task(() => {}));
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledTimes(2);
+    expect(mockCli.p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Partial update skipped"),
+    );
+    expect(taskResults).toContain("Skipped (Hermes bundle unchanged)");
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      expect.stringContaining("Deployment successful"),
     );
   });
 
