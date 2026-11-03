@@ -126,8 +126,43 @@ class HotUpdaterSandboxDevTest {
         val files = files().withSession("one").withSession("two")
         files.keyValueFile.writeText("{}")
         val running = HotUpdaterSandboxDevSession("one", "host", files.bundle("one"))
-        assertEquals(listOf(files.session("two")), files.staleEntries(running))
-        assertEquals(setOf("sessions", "storage.json"), files.staleEntries(null).map { it.name }.toSet())
+        files.retireStale(running).forEach(File::deleteRecursively)
+        assertTrue(files.bundle("one").isFile)
+        assertFalse(files.session("two").exists())
+        assertTrue(files.keyValueFile.isFile)
+        files.retireStale(null).forEach(File::deleteRecursively)
+        assertEquals(
+            emptyList<File>(),
+            files.root
+                .walk()
+                .filter { it.isFile }
+                .toList(),
+        )
+    }
+
+    @Test
+    fun `a session fetched while the last one's cleanup runs survives it`() {
+        val files = files().withSession("old")
+        val retired = files.retireStale(null)
+        // A connect's fetch, before the cleanup thread gets to run.
+        files.withSession("new")
+        retired.forEach(File::deleteRecursively)
+        assertTrue("the cleanup deleted a session fetched after it", files.bundle("new").isFile)
+        assertFalse(files.session("old").exists())
+    }
+
+    @Test
+    fun `what a killed process left to delete goes at the next launch`() {
+        val files = files().withSession("old")
+        files.retireStale(null)
+        files.retireStale(null).forEach(File::deleteRecursively)
+        assertEquals(
+            emptyList<File>(),
+            files.root
+                .walk()
+                .filter { it.isFile }
+                .toList(),
+        )
     }
 
     private class Recording : BundleStorageService {

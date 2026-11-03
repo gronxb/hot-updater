@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 private const val TAG = "HotUpdaterSandboxDev"
 
@@ -102,17 +103,37 @@ internal class HotUpdaterSandboxDevFiles(
     }
 
     /** What no running process needs: everything, or all but `running`'s. */
-    fun staleEntries(running: HotUpdaterSandboxDevSession?): List<File> =
+    private fun staleEntries(running: HotUpdaterSandboxDevSession?): List<File> =
         if (running == null) {
-            root.listFiles()?.toList().orEmpty()
+            root.listFiles()?.filter { it.name != TRASH }.orEmpty()
         } else {
             File(root, SESSIONS).listFiles()?.filter { it.name != running.id }.orEmpty()
         }
+
+    /**
+     * Moves what no running process needs into the trash, each by one rename, and
+     * returns what to delete: this move, and any a killed process left. A session
+     * fetched afterwards is a new directory, so deleting these can't reach it. An
+     * entry that won't move stays for the next launch, never deleted in place.
+     */
+    fun retireStale(running: HotUpdaterSandboxDevSession?): List<File> {
+        val trash = File(root, TRASH)
+        val left = trash.listFiles()?.toList().orEmpty()
+        val stale = staleEntries(running)
+        if (stale.isEmpty()) return left
+        val batch = File(trash, UUID.randomUUID().toString())
+        if (!batch.mkdirs()) return left
+        stale.forEach { entry ->
+            if (!entry.renameTo(File(batch, entry.name))) Log.w(TAG, "left ${entry.name} for the next launch")
+        }
+        return left + batch
+    }
 
     companion object {
         private const val CLAIM = "claim.json"
         private const val KEY_VALUE = "storage.json"
         private const val SESSIONS = "sessions"
+        private const val TRASH = "trash"
         const val BUNDLE = "index.android.bundle"
 
         /** A relaunch that takes longer than this is treated as abandoned. */
@@ -179,9 +200,9 @@ internal object HotUpdaterSandboxDev {
             if (isMainProcess(context)) {
                 files(context)?.let { files ->
                     session = files.takeSession({ isWitnessAlive(context, it) }, SystemClock.elapsedRealtime())
-                    val stale = files.staleEntries(session)
-                    if (stale.isNotEmpty()) {
-                        Thread { stale.forEach(File::deleteRecursively) }.start()
+                    val retired = files.retireStale(session)
+                    if (retired.isNotEmpty()) {
+                        Thread { retired.forEach(File::deleteRecursively) }.start()
                     }
                 }
             }

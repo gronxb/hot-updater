@@ -354,6 +354,8 @@ internal class HotUpdaterSandboxLiveDevServer(
 
     /** A failure as a message, or null once the relaunch started. */
     private fun fetchAndRelaunch(url: String): String? {
+        // Settled first, so what this process cleans up has moved out of the sessions it fetches into.
+        HotUpdaterSandboxDev.session(context)
         val policy =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && url.startsWith("http://")) {
                 NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(HotUpdaterSandboxDevHost.hostname(url))
