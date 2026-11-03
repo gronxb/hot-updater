@@ -101,7 +101,8 @@ describe("hot-updater secrets import", () => {
       HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key",
       HOT_UPDATER_API_KEY: "app-api-key",
     });
-    expect(store.get).toHaveBeenCalledTimes(1);
+    // Once for what it holds, once to read the values back.
+    expect(store.get).toHaveBeenCalledTimes(2);
     expect(log.success).toHaveBeenCalledWith(
       [
         "Stored in the teamStore secrets adapter",
@@ -119,6 +120,28 @@ describe("hot-updater secrets import", () => {
     expect(
       await fs.readFile(path.join(directory, ".env.hotupdater"), "utf8"),
     ).toBe(ENV_FILE);
+  });
+
+  it("writes no new version of a value the adapter already holds, and still lists it", async () => {
+    const { store, held } = teamStore();
+    held.set("HOT_UPDATER_CLOUDFLARE_API_TOKEN", "api-token");
+    held.set("HOT_UPDATER_API_KEY", "old-api-key");
+    configure(store, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
+
+    await handleSecretsImport();
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set.mock.calls.map(([name]) => name)).toEqual([
+      "HOT_UPDATER_API_KEY",
+    ]);
+    expect(held.get("HOT_UPDATER_API_KEY")).toBe("app-api-key");
+    expect(log.success).toHaveBeenCalledWith(
+      [
+        "Stored in the teamStore secrets adapter",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        "HOT_UPDATER_API_KEY",
+      ].join("\n"),
+    );
   });
 
   it("refuses without a team store", async () => {

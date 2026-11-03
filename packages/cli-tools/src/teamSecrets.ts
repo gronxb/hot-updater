@@ -75,9 +75,11 @@ export const readMissingFromTeamSecrets = async (
 /**
  * Stores each of `names` that `envFile`, `.env.hotupdater` by default,
  * holds through `secrets`, then reads them back in one call. Only the file
- * is read, never the environment. The file is left as it is. Returns the
- * names stored, in the order of `names`; throws when the adapter reads
- * back another value.
+ * is read, never the environment. The file is left as it is. A value the
+ * adapter already holds is not written again: a store that keeps versions
+ * would gain a copy, and one that keeps a single previous version would
+ * lose the real one. Returns the names the adapter holds the file's value
+ * for, in the order of `names`; throws when it reads back another value.
  */
 export const storeEnvFileSecrets = async (
   secrets: SecretsAdapter,
@@ -100,13 +102,22 @@ export const storeEnvFileSecrets = async (
   }
   if (values.size === 0) return [];
   const stored = [...values.keys()];
-  for (const [name, value] of values) {
-    // Masked before it is sent, so no failure can print it.
+  for (const value of values.values()) {
+    // Masked before it is sent or compared, so no failure can print it.
     registerSecretValue(value);
-    await secrets.set(name, value, { cwd });
   }
-  const read = await secrets.get(stored, { cwd });
-  const unread = stored.filter(
+  const before = await readSecrets(secrets, stored, cwd);
+  const written: string[] = [];
+  for (const [name, value] of values) {
+    const held = Object.hasOwn(before, name) ? before[name] : undefined;
+    if (typeof held === "string") registerSecretValue(held);
+    if (held === value) continue;
+    await secrets.set(name, value, { cwd });
+    written.push(name);
+  }
+  if (written.length === 0) return stored;
+  const read = await secrets.get(written, { cwd });
+  const unread = written.filter(
     (name) =>
       (Object.hasOwn(read, name) ? read[name] : undefined) !== values.get(name),
   );

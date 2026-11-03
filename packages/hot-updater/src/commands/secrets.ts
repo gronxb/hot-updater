@@ -386,7 +386,8 @@ export const handleSecretsPut = async (
     const asksKeystore = kind === "android-keystore" && !options.keyAlias;
     // Another value stored as the name may be its only copy, such as a Play
     // upload key or the key shipped apps verify bundles with: it is kept
-    // unless --replace. The same value again stores nothing.
+    // unless --replace. The same value again stores nothing, with --replace
+    // too: a store that keeps one previous version would lose the real one.
     const found = await readSecretWithSource(secrets, name, cwd);
     if (found !== undefined) registerCredentialValue(found.value);
     const refuseReplacing = () =>
@@ -403,12 +404,16 @@ export const handleSecretsPut = async (
         : undefined;
     if (missingInputs !== undefined) throw new Error(missingInputs);
     if (asksKeystore) {
-      await importKeystore({ secrets, name, file: options.keystore! });
+      await importKeystore({
+        secrets,
+        name,
+        file: options.keystore!,
+        held: found,
+      });
       return;
     }
     const value = await readSecretValue(options);
-    if (found !== undefined && !given.replace) {
-      if (found.value !== value) throw refuseReplacing();
+    if (found?.value === value) {
       p.log.success(
         ui.block("Secret already stored", [
           ui.kv("Name", name),
@@ -418,6 +423,7 @@ export const handleSecretsPut = async (
       );
       return;
     }
+    if (found !== undefined && !given.replace) throw refuseReplacing();
     await storeCredential(secrets, name, value);
     // The key the apps' embedded public key must match.
     const fingerprint =

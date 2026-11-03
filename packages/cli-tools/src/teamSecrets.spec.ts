@@ -42,7 +42,7 @@ const writeEnvFile = (text: string) =>
   fs.writeFile(path.join(directory, ".env.hotupdater"), text);
 
 describe("storeEnvFileSecrets", () => {
-  it("stores the names .env.hotupdater sets, reads them back in one get, and leaves the file as it is", async () => {
+  it("stores the names .env.hotupdater sets, reads what it holds and then back in one get each, and leaves the file as it is", async () => {
     const file = [
       "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID=account-id",
       "HOT_UPDATER_CLOUDFLARE_API_TOKEN=api-token-value",
@@ -70,11 +70,59 @@ describe("storeEnvFileSecrets", () => {
       HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token-value",
       HOT_UPDATER_API_KEY: "app-api-key",
     });
-    expect(adapter.get).toHaveBeenCalledTimes(1);
+    expect(adapter.get).toHaveBeenCalledTimes(2);
     expect(
       await fs.readFile(path.join(directory, ".env.hotupdater"), "utf8"),
     ).toBe(file);
     expect(maskSecretValues("token api-token-value")).toBe("token ********");
+  });
+
+  it("writes no new version of a value the adapter already holds, and reads back only what it wrote", async () => {
+    await writeEnvFile(
+      [
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN=api-token-value",
+        "HOT_UPDATER_API_KEY=new-app-api-key",
+        "",
+      ].join("\n"),
+    );
+    const { adapter, values } = teamStore({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token-value",
+      HOT_UPDATER_API_KEY: "old-app-api-key",
+    });
+
+    const stored = await storeEnvFileSecrets(
+      adapter,
+      ["HOT_UPDATER_CLOUDFLARE_API_TOKEN", "HOT_UPDATER_API_KEY"],
+      directory,
+    );
+
+    expect(stored).toEqual([
+      "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      "HOT_UPDATER_API_KEY",
+    ]);
+    expect(adapter.set.mock.calls.map(([name]) => name)).toEqual([
+      "HOT_UPDATER_API_KEY",
+    ]);
+    expect(values.get("HOT_UPDATER_API_KEY")).toBe("new-app-api-key");
+    expect(adapter.get.mock.calls.map(([names]) => names)).toEqual([
+      ["HOT_UPDATER_CLOUDFLARE_API_TOKEN", "HOT_UPDATER_API_KEY"],
+      ["HOT_UPDATER_API_KEY"],
+    ]);
+  });
+
+  it("writes and reads back nothing when the adapter holds every value", async () => {
+    await writeEnvFile("HOT_UPDATER_API_KEY=app-api-key\n");
+    const { adapter } = teamStore({ HOT_UPDATER_API_KEY: "app-api-key" });
+
+    const stored = await storeEnvFileSecrets(
+      adapter,
+      ["HOT_UPDATER_API_KEY"],
+      directory,
+    );
+
+    expect(stored).toEqual(["HOT_UPDATER_API_KEY"]);
+    expect(adapter.set).not.toHaveBeenCalled();
+    expect(adapter.get).toHaveBeenCalledOnce();
   });
 
   it("reads the file, not a value the environment sets over it", async () => {

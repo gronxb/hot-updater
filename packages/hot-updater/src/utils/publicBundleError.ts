@@ -5,6 +5,8 @@ import {
   ReleaseManagementError,
 } from "@hot-updater/plugin-core";
 
+import { ui } from "./cli-ui";
+
 /** Core's message about a release, in the CLI's words: a bundle. */
 export const publicBundleMessage = (message: string): string =>
   message
@@ -25,6 +27,35 @@ export const withPublicBundleErrors = async <T>(
 };
 
 const RELEASE_NOT_FOUND = "RELEASE_NOT_FOUND";
+
+/**
+ * A refusal core words for every client, in the CLI's words: what's wrong,
+ * naming the bundle by its first 8 characters, and the command to run next
+ * on a line of its own, whole for copying.
+ */
+const refusalMessage = (
+  error: ReleaseManagementError | ReleaseCatalogMutationError,
+  releaseId: string,
+): string => {
+  const shortId = releaseId.slice(0, 8);
+  switch (error.code) {
+    case "ENABLED_RELEASE":
+      return ui.withCommand(
+        `Bundle ${shortId} is enabled. Disable it first:`,
+        `npx hot-updater bundle disable ${releaseId}`,
+      );
+    case "VERSION_CONFLICT":
+      return [
+        publicBundleMessage(error.message).replace(`"${releaseId}"`, shortId),
+        ui.withCommand(
+          "See what changed:",
+          `npx hot-updater bundle show ${releaseId}`,
+        ),
+      ].join("\n");
+    default:
+      return publicBundleMessage(error.message);
+  }
+};
 
 /**
  * Ends a bundle command core refused, such as for an ID no bundle has, with
@@ -63,7 +94,7 @@ export const failBundleCommand = async (
       ]
         .filter(Boolean)
         .join("\n")
-    : publicBundleMessage(error.message);
+    : refusalMessage(error, releaseId);
   if (json) {
     console.log(
       JSON.stringify({

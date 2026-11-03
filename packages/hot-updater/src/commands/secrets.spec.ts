@@ -13,6 +13,10 @@ import {
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  androidKeystoreValue,
+  findKeytool,
+} from "../utils/native/androidKeystore";
 import { handleSecretsPut } from "./secrets";
 
 const { log, password, printBanner, text } = vi.hoisted(() => ({
@@ -493,6 +497,83 @@ describe("hot-updater secrets put over a stored value", () => {
     expect(process.exitCode).toBeUndefined();
     expect(store.set).not.toHaveBeenCalled();
     expect(messages()[0]).toContain("Secret already stored");
+  });
+
+  it("writes nothing for the same value with --replace, which a store keeping one previous version would lose the real one to", async () => {
+    const { store } = writableStore({ "asc-api-key": ascValue("SAMEKEY1") });
+
+    await handleSecretsPut("asc-api-key", {
+      ...(await ascKey("SAMEKEY1")),
+      replace: true,
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(messages()[0]).toContain("Secret already stored");
+  });
+
+  it("writes nothing for the same bundle signing key with --replace", async () => {
+    const key = rsaKey(2048, "pkcs1");
+    const { store } = writableStore({ "bundle-signing-key": key.pkcs8 });
+    const pem = path.join(directory, "same.pem");
+    await fs.writeFile(pem, key.pem);
+
+    await handleSecretsPut("bundle-signing-key", { file: pem, replace: true });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(messages()[0]).toContain("Secret already stored");
+  });
+
+  it("writes nothing for the same keystore a terminal asks the passwords of, with --replace", async () => {
+    const keystore = Buffer.from([0xfe, 0xed, 0xfe, 0xed, 0x08]);
+    const file = path.join(directory, "release.jks");
+    await fs.writeFile(file, keystore);
+    const { store } = writableStore({
+      "release-keystore": androidKeystoreValue({
+        keystore,
+        storePassword: "same-password",
+        keyAlias: "upload",
+        keyPassword: "same-password",
+      }),
+    });
+    // keytool lists the one key; the JDK mock opens it with any password.
+    const run = await vi.mocked(findKeytool)();
+    vi.mocked(findKeytool).mockResolvedValueOnce(async (args, ...rest) =>
+      args[0] === "-list"
+        ? {
+            exitCode: 0,
+            stdout: "Alias name: upload\nEntry type: PrivateKeyEntry\n",
+            stderr: "",
+          }
+        : run(args, ...rest),
+    );
+    password.mockResolvedValue("same-password");
+
+    // At a terminal, which asks the alias and passwords.
+    const tty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+    try {
+      await handleSecretsPut("release-keystore", {
+        kind: "android-keystore",
+        keystore: file,
+        replace: true,
+      });
+    } finally {
+      if (tty === undefined) {
+        delete (process.stdin as { isTTY?: boolean }).isTTY;
+      } else {
+        Object.defineProperty(process.stdin, "isTTY", tty);
+      }
+    }
+
+    expect(log.error).not.toHaveBeenCalled();
+    expect(password).toHaveBeenCalledOnce();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(messages()[0]).toContain("Upload key already stored");
   });
 
   it("refuses a stored bundle signing key's replacement, which shipped apps verify against", async () => {
