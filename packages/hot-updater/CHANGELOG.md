@@ -696,6 +696,20 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/bsdiff@1.2.0-rc.0
 
+## 1.1.7
+
+### Patch Changes
+
+- Updated dependencies [f7297d5]
+  - @hot-updater/console@1.1.7
+  - @hot-updater/android-helper@1.1.7
+  - @hot-updater/apple-helper@1.1.7
+  - @hot-updater/bsdiff@1.1.7
+  - @hot-updater/cli-tools@1.1.7
+  - @hot-updater/protocol@1.1.7
+  - @hot-updater/server@1.1.7
+  - @hot-updater/plugin-core@1.1.7
+
 ## 1.1.6
 
 ### Patch Changes
