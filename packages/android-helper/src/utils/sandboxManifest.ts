@@ -142,6 +142,17 @@ export const resolveSandboxLauncher = (
   }
   const refusal = taskRefusal(name, activity);
   if (refusal !== null) throw new Error(refusal);
+  // The sandbox's screen runs in the application's process, and a session in the
+  // process its launcher opens: they must be one.
+  const launcherProcess = attribute(activity, "process");
+  if (
+    launcherProcess !== undefined &&
+    launcherProcess !== attribute(application ?? {}, "process")
+  ) {
+    throw new Error(
+      `Sandbox builds run the launcher in the application's process, and ${name} sets android:process ${launcherProcess}.\nRemove it, or set the same android:process on <application>, for this build variant.`,
+    );
+  }
   const shortcuts = asArray(element["meta-data"]).find(
     (item) => attribute(item, "name") === SHORTCUTS,
   );

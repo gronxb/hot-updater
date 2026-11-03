@@ -24,6 +24,12 @@ const merged = (components: string) =>
   </application>
 </manifest>`;
 
+const mergedWithProcess = (process: string, components: string) =>
+  merged(components).replace(
+    '<application android:label="@string/app_name">',
+    `<application android:label="@string/app_name" android:process="${process}">`,
+  );
+
 const activity = (attributes = "", children = LAUNCHER_FILTER) =>
   `<activity android:name="com.example.app.MainActivity" ${attributes}>${children}</activity>`;
 
@@ -43,6 +49,17 @@ describe("resolveSandboxLauncher", () => {
         data: [],
       },
     });
+  });
+
+  it("keeps an application's own process, on it or on the launcher too", () => {
+    expect(
+      resolveSandboxLauncher(mergedWithProcess(":app", activity())).name,
+    ).toBe("com.example.app.MainActivity");
+    expect(
+      resolveSandboxLauncher(
+        mergedWithProcess(":app", activity('android:process=":app"')),
+      ).name,
+    ).toBe("com.example.app.MainActivity");
   });
 
   it("takes a launcher with an extra category whole, so the merger can match it", () => {
@@ -113,6 +130,16 @@ describe("resolveSandboxLauncher", () => {
       "a task affinity",
       merged(activity('android:taskAffinity="com.other"')),
       "Sandbox builds don't support taskAffinity on the launcher com.example.app.MainActivity.\nRemove it from this build variant.",
+    ],
+    [
+      "a launcher in a process of its own",
+      merged(activity('android:process=":ui"')),
+      "Sandbox builds run the launcher in the application's process, and com.example.app.MainActivity sets android:process :ui.\nRemove it, or set the same android:process on <application>, for this build variant.",
+    ],
+    [
+      "a launcher in another process than the application's",
+      mergedWithProcess(":app", activity('android:process=":ui"')),
+      "Sandbox builds run the launcher in the application's process, and com.example.app.MainActivity sets android:process :ui.\nRemove it, or set the same android:process on <application>, for this build variant.",
     ],
     [
       "a document launch mode",

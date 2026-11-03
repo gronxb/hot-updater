@@ -86,6 +86,18 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
+    fun `the app's own process is the one its application names, never the relaunch helper's`() {
+        val dev = HotUpdaterSandboxDev
+        assertTrue("an application with android:process", dev.isMainProcessName("com.x:app", "com.x", "com.x:app"))
+        assertFalse(dev.isMainProcessName("com.x:app", "com.x", "com.x"))
+        assertTrue(dev.isMainProcessName("com.x", "com.x", "com.x"))
+        assertTrue(dev.isMainProcessName(null, "com.x", "com.x"))
+        assertFalse(dev.isMainProcessName("com.x", "com.x", "com.x:hotupdater_restart"))
+        assertFalse(dev.isMainProcessName("com.x:hotupdater_restart", "com.x", "com.x:hotupdater_restart"))
+        assertFalse(dev.isMainProcessName("com.x", "com.x", null))
+    }
+
+    @Test
     fun `an icon tap after an abandoned relaunch finds its helper gone`() {
         val files = files().withSession("one")
         files.writeClaim(claim())

@@ -178,8 +178,21 @@ internal object HotUpdaterSandboxDev {
             } else {
                 runCatching { File("/proc/self/cmdline").readText().trimEnd('\u0000') }.getOrNull()
             }
-        return name == packageName
+        return isMainProcessName(context.applicationInfo?.processName, packageName, name)
     }
+
+    /**
+     * The app's own process: the one its `<application android:process>` names, the
+     * package name without one. The relaunch helper's process never is.
+     */
+    fun isMainProcessName(
+        applicationProcess: String?,
+        packageName: String,
+        processName: String?,
+    ): Boolean =
+        processName != null &&
+            processName == (applicationProcess ?: packageName) &&
+            !HotUpdaterProcess.isRestartProcessName(packageName, processName)
 
     private fun isWitnessAlive(
         context: Context,

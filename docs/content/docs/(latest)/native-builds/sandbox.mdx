@@ -352,3 +352,5 @@ The build itself refuses, with the fix, a launcher its activity can't take over:
   and shortcuts, and opens it.
 - `singleInstance`, `singleInstancePerTask`, `taskAffinity` or a `documentLaunchMode`
   on the launcher's activity. `singleTask` is fine.
+- An `android:process` on the launcher's activity other than the application's. An
+  `android:process` on `<application>` is fine: the sandbox runs in that process too.
