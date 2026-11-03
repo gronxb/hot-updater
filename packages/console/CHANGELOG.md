@@ -353,6 +353,16 @@
   - @hot-updater/protocol@1.2.0-rc.0
   - @hot-updater/bsdiff@1.2.0-rc.0
 
+## 1.1.7
+
+### Patch Changes
+
+- f7297d5: The Console's Channels dialog lists each channel by its name only. It no longer prints the channel's internal id (such as `channel:cHJvZHVjdGlvbg`) under the name.
+- @hot-updater/bsdiff@1.1.7
+  - @hot-updater/protocol@1.1.7
+  - @hot-updater/server@1.1.7
+  - @hot-updater/plugin-core@1.1.7
+
 ## 1.1.6
 
 ### Patch Changes
