@@ -819,6 +819,50 @@ describe("the store build mark", () => {
     expect(marks).not.toContain(buildId(1));
   });
 
+  it("finds a build older than a bundle however many newer builds are in the way", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+    for (let n = 2; n <= 12; n += 1) {
+      await core.registerNativeBuild(
+        registration(n, {
+          minBundleId: `019a0000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+        }),
+      );
+    }
+
+    expect(
+      await core.findNativeBuild(scope, {
+        builtInOlderThan: "01950000-0000-7000-8000-000000000000",
+      }),
+    ).toMatchObject({ id: buildId(1) });
+    expect(
+      await core.findNativeBuild(scope, {
+        builtInOlderThan: "01800000-0000-7000-8000-000000000000",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps a build key through the builds newer than the bundle", async () => {
+    const core = setup();
+    const keyA = `nbk1:${"a".repeat(64)}`;
+    const keyB = `nbk1:${"b".repeat(64)}`;
+    await core.registerNativeBuild(registration(1, { buildKey: keyA }));
+    await core.registerNativeBuild(registration(2, { buildKey: keyB }));
+    await core.registerNativeBuild(
+      registration(3, {
+        buildKey: keyA,
+        minBundleId: `019a0000-0000-7000-8000-${"3".repeat(12)}`,
+      }),
+    );
+
+    expect(
+      await core.findNativeBuild(scope, {
+        buildKey: keyA,
+        builtInOlderThan: "01950000-0000-7000-8000-000000000000",
+      }),
+    ).toMatchObject({ id: buildId(1), build_key: keyA });
+  });
+
   it("finds the newest build older than a bundle, past builds newer than it", async () => {
     const core = setup();
     await core.registerNativeBuild(registration(1));

@@ -937,6 +937,33 @@ describe("ServedNowCard", () => {
     ).toBeTruthy();
   });
 
+  it("asks for the first OTA's patch past a newer release no install gets, quoted for the shell", () => {
+    const store = build({
+      store_build: true,
+      channel_id: `channel:${encodeChannelKey("qa team;x")}`,
+    });
+    render(
+      <ServedNowCard
+        detail={detail({
+          build: store,
+          channel: "qa team;x",
+          storeBuildInScope: store,
+          servedNow: [
+            { ...release(id(21), id(121)), rolloutCohortCount: 0 },
+            release(id(20), id(120)),
+          ],
+          patches: patchPage([]),
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        `npx hot-updater patch -p android -c 'qa team;x' -b ${id(20)} --base-artifact-id ${id(2)}`,
+      ),
+    ).toBeTruthy();
+  });
+
   it("asks for no patch when the newest OTA has one, or the build isn't marked", () => {
     const store = build({ store_build: true });
     render(

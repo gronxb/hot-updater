@@ -6,7 +6,6 @@ import {
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBundleDiff } from "../utils/createBundleDiff";
 import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
 
@@ -25,14 +24,12 @@ const { loadConfig, loadServer, log } = vi.hoisted(() => ({
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
-  getBundleSigningPublicKey: vi.fn(async () => "public-key"),
   loadConfig,
   p: { isCancel: () => false, log },
 }));
 vi.mock("../utils/loadServer", () => ({ loadServer }));
 vi.mock("@/utils/loadServer", () => ({ loadServer }));
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
-vi.mock("../utils/createBundleDiff", () => ({ createBundleDiff: vi.fn() }));
 
 const databaseHarness = createDatabaseHarness();
 
@@ -76,10 +73,12 @@ const deployOta = async (
   {
     channel = CHANNEL,
     patches = [],
+    rolloutCohortCount = 1000,
     targetAppVersion = "1.7.0",
   }: {
     readonly channel?: string;
     readonly patches?: NonNullable<Bundle["patches"]>;
+    readonly rolloutCohortCount?: number;
     readonly targetAppVersion?: string;
   } = {},
 ) => {
@@ -91,6 +90,7 @@ const deployOta = async (
         enabled: true,
         fingerprintHash: null,
         message: null,
+        rolloutCohortCount,
         shouldForceUpdate: false,
         targetAppVersion,
       },
@@ -129,11 +129,6 @@ describe("handleNativeBuildMark", () => {
     loadServer.mockImplementation(async () =>
       testServer({ database: databaseHarness.database, storage }),
     );
-    vi.mocked(createBundleDiff).mockImplementation((async ({
-      baseBundleId,
-    }: {
-      baseBundleId: string;
-    }) => ({ patches: [{ baseBundleId, byteSize: 2_048 }] })) as never);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(process, "exit").mockImplementation((() => {
@@ -158,7 +153,7 @@ describe("handleNativeBuildMark", () => {
       expect.stringMatching(/iOS 1\.7\.0 \(66\) is the store build/),
     ]);
     expect(lines("success")[0]!.split("\n").length).toBeLessThanOrEqual(3);
-    expect(createBundleDiff).not.toHaveBeenCalled();
+    expect(lines("warn")).toEqual([]);
   });
 
   it("says which build it replaced", async () => {
@@ -175,35 +170,60 @@ describe("handleNativeBuildMark", () => {
     ).resolves.toMatchObject({ store_build: null });
   });
 
-  it("patches the live OTA from the build, once and no other", async () => {
+  const command = (bundleId: string, channel = CHANNEL) =>
+    `npx hot-updater patch -p ios -c ${channel} -b ${bundleId} --base-artifact-id ${builtInId(6)}`;
+  const patchesOf = async (bundleId: string) =>
+    (await databaseHarness.core.getBundle(bundleId))?.patches ?? [];
+
+  it("names the patch the OTA a fresh install gets is missing, and changes no OTA", async () => {
     await register(6);
     await deployOta(otaId(1));
     await deployOta(otaId(2));
-    const findBaseBundleIds = vi.spyOn(
-      databaseHarness.core,
-      "findBaseBundleIds",
-    );
+    const reads = {
+      catalog: vi.spyOn(databaseHarness.core, "getReleaseCatalogRow"),
+      bundle: vi.spyOn(databaseHarness.core, "getBundle"),
+      bases: vi.spyOn(databaseHarness.core, "findBaseBundleIds"),
+      update: vi.spyOn(databaseHarness.core, "updateBundle"),
+    };
 
     await mark(buildId(6));
 
-    // One read of the scope's catalog, one patch: never a walk over its OTAs.
-    expect(findBaseBundleIds).toHaveBeenCalledOnce();
-    expect(findBaseBundleIds.mock.calls[0]![2]).toBe(1);
-    expect(createBundleDiff).toHaveBeenCalledOnce();
-    expect(vi.mocked(createBundleDiff).mock.calls[0]).toEqual([
-      { baseBundleId: builtInId(6), bundleId: otaId(2) },
-      expect.objectContaining({
-        signingPublicKey: "public-key",
-        storageAdapter: storage,
-      }),
-      { makePrimary: false },
+    expect(lines("warn")).toEqual([
+      `OTA ${otaId(2).slice(0, 8)} has no patch from it, so fresh installs download all of it.\n${command(otaId(2))}`,
     ]);
-    expect(lines("success")[0]).toContain(
-      `Patched OTA ${otaId(2).slice(0, 8)}`,
+    // Two reads: the scope's catalog and the OTA. No write but the mark.
+    expect(reads.catalog).toHaveBeenCalledOnce();
+    expect(reads.bundle).toHaveBeenCalledOnce();
+    expect(reads.bases).not.toHaveBeenCalled();
+    expect(reads.update).not.toHaveBeenCalled();
+    expect(storage.put).not.toHaveBeenCalled();
+    await expect(patchesOf(otaId(2))).resolves.toEqual([]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("passes over a newer OTA no install gets", async () => {
+    await register(6);
+    await deployOta(otaId(1));
+    await deployOta(otaId(2), { rolloutCohortCount: 0 });
+
+    await mark(buildId(6));
+
+    expect(lines("warn").join("\n")).toContain(command(otaId(1)));
+  });
+
+  it("quotes a channel the shell would split", async () => {
+    const channel = "qa team;x";
+    await register(6, { channel });
+    await deployOta(otaId(1), { channel });
+
+    await mark(buildId(6));
+
+    expect(lines("warn").join("\n")).toContain(
+      command(otaId(1), `'qa team;x'`),
     );
   });
 
-  it("skips an OTA that already patches from the build, as a re-run finds", async () => {
+  it("names nothing when the OTA already patches from the build", async () => {
     await register(6);
     await deployOta(otaId(1), {
       patches: [
@@ -218,60 +238,35 @@ describe("handleNativeBuildMark", () => {
     });
 
     await mark(buildId(6));
-    await mark(buildId(6));
 
-    expect(createBundleDiff).not.toHaveBeenCalled();
+    expect(lines("warn")).toEqual([]);
   });
 
-  it("patches an OTA of the build's own scope only", async () => {
+  it("names nothing for an OTA of another scope, or one older than the build", async () => {
+    await deployOta("018f0000-0000-7000-8000-00000000c001");
     await register(6);
     await deployOta(otaId(1), { targetAppVersion: "2.0.0" });
     await deployOta(otaId(2), { channel: "beta" });
 
     await mark(buildId(6));
 
-    expect(createBundleDiff).not.toHaveBeenCalled();
+    expect(lines("warn")).toEqual([]);
   });
 
-  it("patches no OTA older than the build", async () => {
-    await deployOta("018f0000-0000-7000-8000-00000000c001");
-    await register(6);
-
-    await mark(buildId(6));
-
-    expect(createBundleDiff).not.toHaveBeenCalled();
-  });
-
-  it("creates no patch when the project turned patches off", async () => {
+  it("names nothing when the project turned patches off", async () => {
     loadConfig.mockResolvedValue({ patch: { enabled: false } });
     await register(6);
     await deployOta(otaId(1));
 
     await mark(buildId(6));
 
-    expect(createBundleDiff).not.toHaveBeenCalled();
+    expect(lines("warn")).toEqual([]);
     await expect(
       databaseHarness.core.getNativeBuild(buildId(6)),
     ).resolves.toMatchObject({ store_build: true });
   });
 
-  it("keeps the mark and warns when the patch fails", async () => {
-    await register(6);
-    await deployOta(otaId(1));
-    vi.mocked(createBundleDiff).mockRejectedValueOnce(
-      new Error("storage is down"),
-    );
-
-    await mark(buildId(6));
-
-    await expect(
-      databaseHarness.core.getNativeBuild(buildId(6)),
-    ).resolves.toMatchObject({ store_build: true });
-    expect(lines("warn").join("\n")).toContain("storage is down");
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  it("clears the mark and touches no patch", async () => {
+  it("clears the mark and names nothing", async () => {
     await register(6);
     await deployOta(otaId(1));
     await mark(buildId(6));
@@ -285,7 +280,7 @@ describe("handleNativeBuildMark", () => {
     expect(lines("success")).toEqual([
       expect.stringMatching(/iOS 1\.7\.0 \(66\) isn't the store build/),
     ]);
-    expect(createBundleDiff).not.toHaveBeenCalled();
+    expect(lines("warn")).toEqual([]);
   });
 
   it("succeeds when run again, for a CI job's retry", async () => {
@@ -299,7 +294,7 @@ describe("handleNativeBuildMark", () => {
     expect(process.exit).not.toHaveBeenCalled();
   });
 
-  it("prints the build, what it replaced and its patch as JSON", async () => {
+  it("prints the build, what it replaced and the missing patch as JSON", async () => {
     await register(2);
     await register(6);
     await mark(buildId(2));
@@ -310,7 +305,7 @@ describe("handleNativeBuildMark", () => {
     expect(output()).toMatchObject({
       nativeBuild: { id: buildId(6), store_build: true },
       previous: { id: buildId(2), store_build: null },
-      patch: { bundleId: otaId(1), byteSize: expect.any(Number) },
+      missingPatch: { bundleId: otaId(1), command: command(otaId(1)) },
     });
   });
 

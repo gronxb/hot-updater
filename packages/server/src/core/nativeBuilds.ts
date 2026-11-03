@@ -71,10 +71,10 @@ const SANDBOX_CHANNEL_PREFIX = "sandbox-";
 const CHANNEL_ID_PREFIX = "channel:";
 
 /**
- * How many older builds of a scope a deploy looks through for one older than
- * its bundle, when a build made after the bundle is the newest.
+ * How many older builds of a scope one read takes, looking for one older than
+ * a bundle when a build made after the bundle is the newest.
  */
-const OLDER_BUILDS_LIMIT = 10;
+const OLDER_BUILDS_PAGE = 20;
 
 /** How many times a mark runs again after losing its scope's mark to another. */
 const MARK_ATTEMPTS = 8;
@@ -289,43 +289,48 @@ export const createNativeBuildApi = (
       });
       return marked === null ? null : pick(marked);
     }
-    const { rows } =
-      buildKey === undefined
-        ? await db.findMany("native_builds", {
+    // The scope's builds newest first, or with a build key its builds of that
+    // key: the newest alone, or a page of those older than `before`.
+    const read = (limit: number, before?: string) => {
+      const page = {
+        order: "desc" as const,
+        limit,
+        ...(before === undefined ? {} : { range: { lt: before } }),
+      };
+      return buildKey === undefined
+        ? db.findMany("native_builds", {
             index: "byScope",
             where: { scope_key: scopeKey },
-            order: "desc",
-            limit: 1,
+            ...page,
           })
-        : await db.findMany("native_builds", {
+        : db.findMany("native_builds", {
             index: "byBuildKey",
             where: { scope_key: scopeKey, build_key: buildKey },
-            order: "desc",
-            limit: 1,
+            ...page,
           });
+    };
+    const { rows } = await read(1);
     const newest = rows[0];
     if (newest === undefined) return null;
     const bundleId = options?.builtInOlderThan;
     if (bundleId === undefined || newest.min_bundle_id < bundleId) {
       return pick(newest);
     }
-    // One row a read: a build made after the bundle is rare, and the next is
-    // usually the one a deploy wants.
-    let after = newest.id;
-    for (let read = 0; read < OLDER_BUILDS_LIMIT; read += 1) {
-      const { rows: older } = await db.findMany("native_builds", {
-        index: "byScope",
-        where: { scope_key: scopeKey },
-        order: "desc",
-        limit: 1,
-        range: { lt: after },
-      });
-      const build = older[0];
-      if (build === undefined) return null;
-      if (build.min_bundle_id < bundleId) return pick(build);
-      after = build.id;
+    // A build made after the bundle can't take it. No index orders a scope by
+    // its built-in bundles, so the older builds are read a page at a time
+    // until one is older than the bundle, or the scope runs out: only when
+    // the newest was made after the bundle.
+    for (let before = newest.id; ; ) {
+      const { rows: older } = await read(OLDER_BUILDS_PAGE, before);
+      // oxlint-disable-next-line hot-updater/no-filtered-find-many -- no index selects builds by their built-in bundle; this path runs only past a build made after the bundle
+      const usable = older.find(
+        ({ min_bundle_id }) => min_bundle_id < bundleId,
+      );
+      if (usable !== undefined) return pick(usable);
+      const last = older.at(-1);
+      if (older.length < OLDER_BUILDS_PAGE || last === undefined) return null;
+      before = last.id;
     }
-    return null;
   },
 
   async recordNativeBuildSubmission(id, { destination, version }) {

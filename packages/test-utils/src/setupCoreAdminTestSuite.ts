@@ -465,25 +465,41 @@ export const setupCoreAdminTestSuite = (options: {
         store_build: true,
       });
 
-      // Racing marks leave one, whichever store runs them.
-      await Promise.all([
-        mark(older.id, true).then((response) => response.text()),
-        mark(newer.id, true).then((response) => response.text()),
-        mark(older.id, true).then((response) => response.text()),
-      ]);
-      const holders = (
-        await Promise.all(
-          [older, newer].map(
-            async ({ id }) =>
-              (
-                (await adminJson(`/native-builds/${id}`)) as {
-                  data: NativeBuildRow;
-                }
-              ).data.store_build,
-          ),
-        )
-      ).filter((storeBuild) => storeBuild === true);
-      expect(holders).toHaveLength(1);
+      // Racing marks leave one, whichever store runs them, and every one of
+      // them succeeds: a loser takes the value after the winner.
+      const race = async (ids: readonly string[]) => {
+        const responses = await Promise.all(ids.map((id) => mark(id, true)));
+        expect(responses.map(({ status }) => status)).toEqual(
+          ids.map(() => 200),
+        );
+        const results = (await Promise.all(
+          responses.map((response) => response.json()),
+        )) as { data: { nativeBuild: NativeBuildRow } }[];
+        expect(results.map(({ data }) => data.nativeBuild.store_build)).toEqual(
+          ids.map(() => true),
+        );
+        const holders = (
+          await Promise.all(
+            [older, newer].map(
+              async ({ id }) =>
+                (
+                  (await adminJson(`/native-builds/${id}`)) as {
+                    data: NativeBuildRow;
+                  }
+                ).data,
+            ),
+          )
+        ).filter(({ store_build }) => store_build === true);
+        expect(holders).toHaveLength(1);
+        expect(ids).toContain(holders[0]!.id);
+      };
+      await race([older.id, newer.id, older.id]);
+
+      // From a scope with no mark: the first marks meet at the index.
+      await mark(older.id, false).then((response) => response.text());
+      await mark(newer.id, false).then((response) => response.text());
+      expect((await adminJson(markRead("store-fingerprint"))).data).toBeNull();
+      await race([older.id, newer.id]);
 
       const cleared = await mark(newer.id, false);
       await cleared.text();

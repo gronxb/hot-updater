@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { formatByteSize } from "@/lib/native-builds";
 import type { NativeBuildDetail } from "@/lib/server/nativeBuilds";
+import { shellQuote } from "@/lib/shell";
 
 import { CopyableText } from "./CopyableText";
 
@@ -89,15 +90,25 @@ export function ServedNowCard({
   readonly detail: NativeBuildDetail;
 }) {
   const { build, channel, servedNow, patches, catalogScopeKey } = detail;
-  // A hosted Console runs no diff, so a build marked after its newest OTA went
-  // out gets the command the CLI's mark would have run.
-  const newestBundleId = servedNow[0]?.bundleId;
+  // A hosted Console runs no diff, so a marked build whose first OTA has no
+  // patch from it gets the command that adds one. The first OTA is the newest
+  // release that serves anyone: one at 0% with no cohort serves no install.
+  const firstOta = servedNow.find(
+    ({ rolloutCohortCount, targetCohorts }) =>
+      rolloutCohortCount > 0 || targetCohorts.length > 0,
+  )?.bundleId;
   const missingPatch =
     build.store_build === true &&
-    newestBundleId !== undefined &&
-    newestBundleId !== null &&
-    firstDownloadOf(patches, newestBundleId).kind === "full"
-      ? `npx hot-updater patch -p ${build.platform} -c ${channel} -b ${newestBundleId} --base-artifact-id ${build.min_bundle_id}`
+    firstOta !== undefined &&
+    firstOta !== null &&
+    firstDownloadOf(patches, firstOta).kind === "full"
+      ? [
+          "npx hot-updater patch",
+          `-p ${build.platform}`,
+          `-c ${shellQuote(channel)}`,
+          `-b ${shellQuote(firstOta)}`,
+          `--base-artifact-id ${shellQuote(build.min_bundle_id)}`,
+        ].join(" ")
       : null;
   const scopeLink = (
     <Link
@@ -217,8 +228,8 @@ export function ServedNowCard({
             {missingPatch === null ? null : (
               <div className="flex flex-col gap-2 border-t px-4 py-3 text-xs">
                 <p>
-                  The newest OTA has no patch from this store build, so fresh
-                  installs download all of it. Add one from your project:
+                  The OTA fresh installs get first has no patch from this store
+                  build, so they download all of it. Add one from your project:
                 </p>
                 <CopyableText label="the patch command" value={missingPatch} />
               </div>

@@ -13,28 +13,20 @@ import {
   listSimulators,
   selectSimulator,
 } from "@hot-updater/apple-helper";
-import {
-  fitText,
-  getBundleSigningPublicKey,
-  loadConfig,
-  p,
-} from "@hot-updater/cli-tools";
+import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   type NativeBuildArtifactKind,
   type NativeBuildRow,
   type NativeBuildScope,
   type Platform,
-  targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
-import { decodeChannelKey } from "@hot-updater/protocol";
 import {
   blobSource,
   readNativeArtifact,
 } from "@hot-updater/protocol/native-artifact";
 
 import { type Row, ui } from "../utils/cli-ui";
-import { createBundleDiff } from "../utils/createBundleDiff";
 import { formatBytes } from "../utils/formatBytes";
 import { type LoadedServer, loadServer } from "../utils/loadServer";
 import { describeNativeBuild } from "../utils/native/describeNativeBuild";
@@ -45,6 +37,7 @@ import {
   resolveNativeBuildDownloadUrl,
 } from "../utils/native/downloadNativeBuild";
 import { resolveNativeBuildScope } from "../utils/native/nativeBuildScope";
+import { findMissingStorePatch } from "../utils/native/storeBuildPatch";
 import {
   applyStoreTestFlightGroup,
   readStoreStatus,
@@ -648,77 +641,11 @@ export const handleNativeBuildDelete = async (
   }
 };
 
-/** Sorts after every bundle ID, so a catalog read names the newest bundle. */
-const NEWER_THAN_ANY_BUNDLE = "ffffffff-ffff-ffff-ffff-ffffffffffff";
-
 /**
- * Adds a patch from a marked build to the newest OTA serving its scope, for a
- * release that went live after the OTA was deployed. One point read of the
- * scope's catalog, one read of the OTA's patches, and one patch, however many
- * OTAs the scope has, so an older one stays with `hot-updater patch`. The mark
- * stands whatever happens here.
- */
-const patchNewestOta = async (
-  config: Awaited<ReturnType<typeof loadConfig>>,
-  server: LoadedServer,
-  build: NativeBuildRow,
-  warn: (message: string) => void,
-): Promise<{ readonly bundleId: string; readonly byteSize: number } | null> => {
-  if (!config.patch?.enabled) return null;
-  const { core, storage } = server;
-  try {
-    const candidateKey = targetBaseCandidateKey({
-      appVersion: build.app_version,
-      channel: decodeChannelKey(build.channel_id.slice("channel:".length)),
-      fingerprintHash: build.fingerprint_hash,
-      platform: build.platform,
-    });
-    if (candidateKey === null) return null;
-    const [bundleId] = await core.findBaseBundleIds(
-      candidateKey,
-      NEWER_THAN_ANY_BUNDLE,
-      1,
-    );
-    // A build made after the OTA can't take it, so nothing would use its patch.
-    if (bundleId === undefined || bundleId <= build.min_bundle_id) return null;
-    const ota = await core.getBundle(bundleId);
-    if (
-      ota?.patches.some(
-        ({ base_bundle_id }) => base_bundle_id === build.min_bundle_id,
-      )
-    ) {
-      return null;
-    }
-    assertStorageOperations(storage, ["get", "put", "delete"]);
-    const { patches } = await createBundleDiff(
-      { baseBundleId: build.min_bundle_id, bundleId },
-      {
-        core,
-        signingPublicKey: await getBundleSigningPublicKey(config.signing, {
-          secrets: config.secrets,
-        }),
-        storageAdapter: storage,
-      },
-      { makePrimary: false },
-    );
-    return {
-      bundleId,
-      byteSize:
-        patches?.find(
-          ({ baseBundleId }) => baseBundleId === build.min_bundle_id,
-        )?.byteSize ?? 0,
-    };
-  } catch (error) {
-    warn(
-      `Couldn't patch the live OTA from this build.\n${error instanceof Error ? error.message : String(error)}`,
-    );
-    return null;
-  }
-};
-
-/**
- * Marks a build as what the store sells, or clears its mark, and for a new mark
- * patches the OTA already out. Running it again changes nothing, for CI.
+ * Marks a build as what the store sells, or clears its mark. A new mark
+ * changes no published OTA: when the OTA a fresh install gets first has no
+ * patch from the build, it prints the command that adds one. Running it again
+ * changes nothing, for CI.
  */
 export const handleNativeBuildMark = async (
   id: string,
@@ -738,14 +665,13 @@ export const handleNativeBuildMark = async (
       }
       const { nativeBuild, previous } = marked;
       const label = describeNativeBuild(nativeBuild);
-      const patch = options.clear
-        ? null
-        : await patchNewestOta(config, server, nativeBuild, (message) => {
-            if (options.json) console.error(fitText(message));
-            else p.log.warn(message);
-          });
+      // Deploys with patches off add none either, so nothing is missing.
+      const missingPatch =
+        options.clear || !config.patch?.enabled
+          ? null
+          : await findMissingStorePatch(server.core, nativeBuild);
       if (options.json) {
-        console.log(JSON.stringify({ nativeBuild, previous, patch }));
+        console.log(JSON.stringify({ nativeBuild, previous, missingPatch }));
         return;
       }
       p.log.success(
@@ -754,12 +680,15 @@ export const handleNativeBuildMark = async (
           : [
               `${label} is the store build`,
               previous !== null && `Replaces ${describeNativeBuild(previous)}`,
-              patch !== null &&
-                `Patched OTA ${patch.bundleId.slice(0, 8)} (${formatBytes(patch.byteSize)})`,
             ]
               .filter(Boolean)
               .join("\n"),
       );
+      if (missingPatch !== null) {
+        p.log.warn(
+          `OTA ${missingPatch.bundleId.slice(0, 8)} has no patch from it, so fresh installs download all of it.\n${missingPatch.command}`,
+        );
+      }
     } finally {
       await safeDispose(server);
     }
