@@ -791,6 +791,17 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     kind: "aab",
     gitCommitHash: null,
   },
+  // A newer production IPA than the one the store sells, which the mark
+  // passes over: new deploys keep patching from build 21.
+  {
+    n: 28,
+    platform: "ios",
+    channel: "production",
+    target: { appVersion: "1.4.2" },
+    minBundleId: "01971f10-0000-7000-8000-000000000000",
+    kind: "ipa",
+    gitCommitHash: "b48e0c21",
+  },
 ];
 for (const build of demoNativeBuilds) {
   const id = nativeBuildId(build.n);

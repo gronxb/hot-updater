@@ -854,6 +854,55 @@ describe("BuiltInBundleCard", () => {
     );
   });
 
+  it("names the base by app version and build number, as the CLI does", () => {
+    const store = build({
+      id: id(9),
+      platform: "ios",
+      artifact_kind: "ipa",
+      app_version: "1.7.0",
+      build_number: "66",
+      min_bundle_id: id(10),
+      store_build: true,
+    });
+    const newer = build({
+      id: id(11),
+      platform: "ios",
+      artifact_kind: "ipa",
+      app_version: "1.7.0",
+      build_number: "67",
+      min_bundle_id: id(12),
+    });
+    render(
+      <BuiltInBundleCard
+        detail={detail({
+          build: newer,
+          newestInScope: newer,
+          storeBuildInScope: store,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "iOS 1.7.0 (66)" }),
+    ).toHaveProperty(
+      "href",
+      expect.stringContaining(`/native-builds/${id(9)}`),
+    );
+  });
+
+  it("names the base by the store's label when a store took it", () => {
+    const store = build({
+      id: id(9),
+      submitted_version: "1.7.0 (66)",
+      platform: "ios",
+      artifact_kind: "ipa",
+      store_build: true,
+    });
+    render(<BuiltInBundleCard detail={detail({ storeBuildInScope: store })} />);
+
+    expect(screen.getByRole("link", { name: "iOS 1.7.0 (66)" })).toBeTruthy();
+  });
+
   it("offers the mark on the newest build, and marks it in one press", () => {
     render(<BuiltInBundleCard detail={detail()} />);
 
