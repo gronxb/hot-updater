@@ -73,13 +73,5 @@
   },
   "engines": {
     "node": ">=22.11.0"
-  },
-  "codegenConfig": {
-    "name": "HotUpdaterExampleSpec",
-    "type": "modules",
-    "jsSrcsDir": "./src",
-    "android": {
-      "javaPackageName": "com.hotupdaterexample"
-    }
   }
 }
