@@ -253,14 +253,16 @@ internal class HotUpdaterSandboxDevFetcher(
 }
 
 /**
- * The one owner of connecting and reloading: connections run one at a time, the
- * running session's files stay until its process exits, and success replaces
- * this process, so a launch always starts from a settled state.
+ * The one owner of connecting and reloading: connections run one at a time, each
+ * holding the sandbox's lock while it fetches, the running session's files stay
+ * until its process exits, and success replaces this process, so a launch always
+ * starts from a settled state.
  */
 internal class HotUpdaterSandboxLiveDevServer(
     context: Context,
     private val scope: CoroutineScope,
     private val onLeavingNormalLaunch: () -> Unit = {},
+    private val lock: HotUpdaterSandboxLock = HotUpdaterSandboxLock.process,
 ) : HotUpdaterSandboxDevServer {
     private val context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
@@ -347,7 +349,21 @@ internal class HotUpdaterSandboxLiveDevServer(
         }
         scope.launch {
             connections.withLock {
-                completion(withContext(Dispatchers.IO) { fetchAndRelaunch(url) })
+                // Held while it fetches, so no switch runs beside it. A connection that
+                // relaunched keeps it: its process ends.
+                if (!lock.take(HotUpdaterSandboxLock.Holder.DEV_SERVER)) {
+                    completion("A preview is being opened. Wait for it, then connect.")
+                    return@withLock
+                }
+                val failure =
+                    try {
+                        withContext(Dispatchers.IO) { fetchAndRelaunch(url) }
+                    } catch (error: Throwable) {
+                        lock.release(HotUpdaterSandboxLock.Holder.DEV_SERVER)
+                        throw error
+                    }
+                if (failure != null) lock.release(HotUpdaterSandboxLock.Holder.DEV_SERVER)
+                completion(failure)
             }
         }
     }

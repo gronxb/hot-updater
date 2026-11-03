@@ -169,6 +169,7 @@ private func settle() async {
 private struct Fixture {
     let host = FakeHost()
     let store = FakeStore()
+    let lock = HotUpdaterSandboxLock()
     var opens: [(Bool, Bool)] { box.opens }
     private let box = Box()
     let coordinator: HotUpdaterSandboxCoordinator
@@ -184,7 +185,8 @@ private struct Fixture {
             host: host,
             store: store,
             openApp: { box.opens.append(($0, $1)) },
-            now: { Date(timeIntervalSince1970: 1000) }
+            now: { Date(timeIntervalSince1970: 1000) },
+            lock: lock
         )
     }
 }
@@ -252,6 +254,70 @@ struct HotUpdaterSandboxCoordinatorTests {
         await settle()
         #expect(fixture.host.calls.isEmpty)
         #expect(fixture.host.devExits == 0)
+    }
+
+    @Test
+    func aSessionThatStartsDuringASwitchStopsItBeforeAnythingChanges() async {
+        let fixture = Fixture()
+        let preflight = Gate<Bool>()
+        fixture.host.preflightGate = preflight
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1"])
+        // A dev server's session starts while the preflight awaits.
+        fixture.host.runsDevServer = true
+        preflight.finish(.success(true))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1"], "the switch went on in a dev session")
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "The dev server is running. Exit it, then try again.")
+    }
+
+    @Test
+    func aSwitchWhileADevServerConnectsIsRefusedAndChangesNothing() async {
+        let fixture = Fixture()
+        #expect(fixture.lock.take(.devServer))
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        guard case .failed(_, _, _, .error(let message), _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a failure")
+            return
+        }
+        #expect(message == "A dev server is connecting. Wait for it, then try again.")
+        fixture.coordinator.dismiss()
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.dismiss()
+        fixture.lock.release(.devServer)
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "reset", "check pr-1"])
+    }
+
+    @Test
+    func aSwitchHoldsTheLockUntilItEndsEitherWay() async {
+        let fixture = Fixture()
+        let preflight = Gate<Bool>()
+        fixture.host.preflightGate = preflight
+        #expect(fixture.coordinator.switchTo("pr-1"))
+        await settle()
+        #expect(fixture.lock.holder == .switching)
+        preflight.finish(.failure(FakeError.offline))
+        await settle()
+        #expect(fixture.lock.holder == nil)
+        fixture.host.preflightGate = nil
+        fixture.coordinator.retry()
+        await settle()
+        #expect(fixture.host.calls == ["preflight pr-1", "preflight pr-1", "reset", "check pr-1"])
+        #expect(fixture.lock.holder == nil)
+        #expect(fixture.coordinator.resetToBuiltIn())
+        await settle()
+        #expect(fixture.lock.holder == nil)
     }
 
     @Test
@@ -1468,12 +1534,59 @@ private func settle(until done: () -> Bool = { false }) async {
 @MainActor
 struct HotUpdaterSandboxDevConnectorTests {
     @Test
+    func aConnectWhileASwitchRunsIsRefusedAndStartsNothing() async {
+        let server = SlowDevServer()
+        let lock = HotUpdaterSandboxLock()
+        var committed = 0
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, _ in committed += 1 },
+            lock: lock
+        )
+        #expect(lock.take(.switching))
+        var failure: String?
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { failure != nil }
+        #expect(failure == "A preview is being opened. Wait for it, then connect.")
+        #expect(server.pending == 0)
+        #expect(committed == 0)
+        #expect(lock.holder == .switching)
+    }
+
+    @Test
+    func aConnectionHoldsTheLockWhileItFetchesAndReleasesItEitherWay() async {
+        let server = SlowDevServer()
+        let lock = HotUpdaterSandboxLock()
+        var committed = 0
+        let connector = HotUpdaterSandboxDevConnector(
+            resolve: { await server.resolve($0) },
+            commit: { _, _ in committed += 1 },
+            lock: lock
+        )
+        var failure: String? = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        #expect(lock.holder == .devServer)
+        server.answer(.failure("a:1 answered 500 for its JavaScript."))
+        await settle { failure != "unanswered" }
+        #expect(lock.holder == nil)
+        failure = "unanswered"
+        connector.connect("http://a:1") { failure = $0 }
+        await settle { server.pending == 1 }
+        server.answer(.bundle(URL(string: "http://a:1/index.bundle")!))
+        await settle { failure == nil }
+        #expect(committed == 1)
+        #expect(lock.holder == nil)
+    }
+
+    @Test
     func exitDuringAReloadStillFetchingStartsNothing() async {
         let server = SlowDevServer()
         var committed: [URL] = []
         let connector = HotUpdaterSandboxDevConnector(
             resolve: { await server.resolve($0) },
-            commit: { _, url in committed.append(url) }
+            commit: { _, url in committed.append(url) },
+            lock: HotUpdaterSandboxLock()
         )
         connector.reload("http://a:1")
         await settle { server.pending == 1 }
@@ -1489,7 +1602,8 @@ struct HotUpdaterSandboxDevConnectorTests {
         var committed: [URL] = []
         let connector = HotUpdaterSandboxDevConnector(
             resolve: { await server.resolve($0) },
-            commit: { _, url in committed.append(url) }
+            commit: { _, url in committed.append(url) },
+            lock: HotUpdaterSandboxLock()
         )
         connector.ended()
         var failure: String? = "unanswered"
@@ -1505,7 +1619,7 @@ struct HotUpdaterSandboxDevConnectorTests {
     func aFailedReloadIsShownOnTheScreen() async {
         let server = SlowDevServer()
         var changes = 0
-        let connector = HotUpdaterSandboxDevConnector(resolve: { await server.resolve($0) }, commit: { _, _ in })
+        let connector = HotUpdaterSandboxDevConnector(resolve: { await server.resolve($0) }, commit: { _, _ in }, lock: HotUpdaterSandboxLock())
         connector.onChange = { changes += 1 }
         connector.reload("http://a:1")
         await settle { server.pending == 1 }
@@ -1521,7 +1635,8 @@ struct HotUpdaterSandboxDevConnectorTests {
         var committed: [String] = []
         let connector = HotUpdaterSandboxDevConnector(
             resolve: { await server.resolve($0) },
-            commit: { host, _ in committed.append(host) }
+            commit: { host, _ in committed.append(host) },
+            lock: HotUpdaterSandboxLock()
         )
         connector.connect("http://a:1") { _ in }
         connector.connect("http://b:2") { _ in }

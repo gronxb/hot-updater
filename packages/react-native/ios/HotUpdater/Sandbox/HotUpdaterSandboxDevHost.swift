@@ -9,11 +9,13 @@ enum HotUpdaterSandboxDevResolved {
 
 /// Connections, one at a time, and what a reload says when it can't. Exit ends
 /// what's still fetching: its requests can't be cancelled, so a connection checks,
-/// right before it starts a session, that no Exit came while it fetched.
+/// right before it starts a session, that no Exit came while it fetched. Each
+/// connection holds the sandbox's lock while it fetches, so no switch runs beside it.
 @MainActor
 final class HotUpdaterSandboxDevConnector {
     private let resolve: (String) async -> HotUpdaterSandboxDevResolved
     private let commit: (String, URL) -> Void
+    private let lock: HotUpdaterSandboxLock
     private var connections: Task<Void, Never>?
     private var generation = 0
 
@@ -24,10 +26,12 @@ final class HotUpdaterSandboxDevConnector {
     /// `resolve` fetches a host's JavaScript; `commit` starts the session on it.
     init(
         resolve: @escaping (String) async -> HotUpdaterSandboxDevResolved,
-        commit: @escaping (String, URL) -> Void
+        commit: @escaping (String, URL) -> Void,
+        lock: HotUpdaterSandboxLock = .shared
     ) {
         self.resolve = resolve
         self.commit = commit
+        self.lock = lock
     }
 
     func connect(_ host: String, completion: @escaping (String?) -> Void) {
@@ -35,6 +39,11 @@ final class HotUpdaterSandboxDevConnector {
         let started = generation
         connections = Task { @MainActor in
             await previous?.value
+            guard lock.take(.devServer) else {
+                completion("A preview is being opened. Wait for it, then connect.")
+                return
+            }
+            defer { lock.release(.devServer) }
             let resolved = await resolve(host)
             guard started == generation else {
                 // The session ended while this fetched: it says nothing more.
