@@ -1,5 +1,17 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- Updated dependencies [56fb167]
+- Updated dependencies [11ee65d]
+- Updated dependencies [cc31804]
+  - hot-updater@1.2.0-rc.14
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/bare@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
 ## 1.2.0-rc.13
 
 ### Minor Changes

@@ -1,5 +1,21 @@
 # @hot-updater/apple-helper
 
+## 1.2.0-rc.14
+
+### Minor Changes
+
+- 11ee65d: A sandbox build can run JavaScript from a dev server. Enter its address on the first screen; `reload()` stays on it, a crash ends it, and only **Exit dev server** returns to your app's bundle. Dev JavaScript's update checks, `updateBundle`, `resetChannel` and launch reports leave the selected bundle's state as it was, and its crash is never held against a bundle. See the Sandbox builds guide.
+  - Android: a sandbox build compiles a generated `HotUpdaterImpl` from the source it packages, in place of the original, and refuses a source it doesn't recognize. A normal build's compile inputs don't change. It refuses an app that takes the SDK as a prebuilt AAR, and the Rock adapter on Android.
+  - iOS: the sandbox template overrides `HotUpdaterImpl`'s bridge-facing methods, with no change to a normal build's sources. A sandbox archive allows local networking.
+  - `@hot-updater/react-native` gets no new API, no new bridge method, and no change to any source a normal build compiles.
+
+### Patch Changes
+
+- Updated dependencies [cc31804]
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/protocol@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
 ## 1.2.0-rc.13
 
 ### Minor Changes
