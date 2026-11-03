@@ -11,9 +11,9 @@ import {
 import { loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
-import { publicBundleMessage } from "../utils/publicBundleError";
 import { printBanner } from "../utils/printBanner";
 import { canPrompt } from "../utils/prompt";
+import { publicBundleMessage } from "../utils/publicBundleError";
 
 const DEFAULT_LIMIT = 20;
 
@@ -207,8 +207,7 @@ const failBundleCommand = async (
   const message = notFound
     ? [
         `No bundle with ID ${releaseId}.`,
-        shipping !== null &&
-          `That's an artifact ID. Use bundle ${shipping.id}`,
+        shipping !== null && `That's an artifact ID. Use bundle ${shipping.id}`,
       ]
         .filter(Boolean)
         .join("\n")
@@ -534,10 +533,15 @@ export const handleReleaseDelete = async (
     const core = server.core;
     const release = await core.getRelease(releaseId);
     if (release === null) {
-      return await failBundleCommand(core, releaseId, notFoundError(releaseId), {
-        json: options.json,
-        outcome: "deleted",
-      });
+      return await failBundleCommand(
+        core,
+        releaseId,
+        notFoundError(releaseId),
+        {
+          json: options.json,
+          outcome: "deleted",
+        },
+      );
     }
     // Core deletes the artifact with the last bundle on it.
     const artifactId = release.bundle_id;

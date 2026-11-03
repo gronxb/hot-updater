@@ -721,7 +721,8 @@ export const handleNativeBuildMark = async (
       await safeDispose(server);
     }
   } catch (error) {
-    if (!(error instanceof MarkRefusal)) return failCommand(error, options.json);
+    if (!(error instanceof MarkRefusal))
+      return failCommand(error, options.json);
     // Under --json, a mark that changed nothing is still one JSON document
     // on stdout, with a reason a CI job can test, and the command fails.
     if (options.json) {

@@ -354,9 +354,9 @@ describe("handleNativeBuildMark", () => {
   });
 
   it("prints JSON for a clear of a build that isn't registered", async () => {
-    await expect(
-      mark(buildId(9), { clear: true, json: true }),
-    ).rejects.toThrow("process.exit");
+    await expect(mark(buildId(9), { clear: true, json: true })).rejects.toThrow(
+      "process.exit",
+    );
 
     expect(output()).toEqual({
       id: buildId(9),

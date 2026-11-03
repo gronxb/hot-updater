@@ -4,7 +4,6 @@ import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 import { fitText } from "@hot-updater/cli-tools";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { checkPlayAccess } = vi.hoisted(() => ({

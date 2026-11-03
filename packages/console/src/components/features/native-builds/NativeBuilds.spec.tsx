@@ -882,9 +882,7 @@ describe("BuiltInBundleCard", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "iOS 1.7.0 (66)" }),
-    ).toHaveProperty(
+    expect(screen.getByRole("link", { name: "iOS 1.7.0 (66)" })).toHaveProperty(
       "href",
       expect.stringContaining(`/native-builds/${id(9)}`),
     );
