@@ -1,5 +1,13 @@
 # @hot-updater/apple-helper
 
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.19
+  - @hot-updater/protocol@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+
 ## 1.2.0-rc.18
 
 ### Patch Changes
