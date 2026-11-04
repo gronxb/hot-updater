@@ -640,6 +640,44 @@ const checkSigning = (config: ConfigResponse): SigningStatus | undefined => {
   return undefined;
 };
 
+/**
+ * fingerprint.json's checks for a fingerprint project, with or without
+ * native folders (Expo CNG has none): MISSING_FINGERPRINT_JSON without it,
+ * which deploy refuses and native builds embed no fingerprint without, else
+ * its comparison with the project's fingerprint. Nothing for appVersion.
+ */
+async function checkProjectFingerprint(
+  cwd: string,
+  updateStrategy: string,
+  context: DoctorContext,
+): Promise<{ fingerprintJsonPath?: string; issues: NativeCheckIssue[] }> {
+  if (updateStrategy !== "fingerprint") return { issues: [] };
+  const localFingerprint = await readLocalFingerprintFile(cwd);
+  if (!localFingerprint) {
+    return {
+      issues: [
+        {
+          type: "error",
+          platform: "project",
+          code: "MISSING_FINGERPRINT_JSON",
+          message:
+            "fingerprint.json is missing for fingerprint update strategy.",
+          resolution: "Run `npx hot-updater fingerprint create`.",
+          commands: [...FINGERPRINT_RECOVERY_COMMANDS],
+          paths: ["fingerprint.json"],
+        },
+      ],
+    };
+  }
+  return {
+    fingerprintJsonPath: localFingerprint.path,
+    issues: await checkFingerprintJson(
+      localFingerprint.value,
+      context.fingerprints,
+    ),
+  };
+}
+
 async function checkNativeStatus({
   cwd,
   context,
@@ -657,9 +695,23 @@ async function checkNativeStatus({
     const getNativeSigningPublicKey =
       buildAdapter.nativeBuild?.getBundleSigningPublicKey;
     if (!getNativeSigningPublicKey) {
-      const unused = checkUnusedFingerprintJson(cwd, config.updateStrategy);
-      return unused.length > 0
-        ? { updateStrategy: config.updateStrategy, issues: unused }
+      const fingerprint = await checkProjectFingerprint(
+        cwd,
+        config.updateStrategy,
+        context,
+      );
+      const issues = [
+        ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
+        ...fingerprint.issues,
+      ];
+      return issues.length > 0 || fingerprint.fingerprintJsonPath
+        ? {
+            updateStrategy: config.updateStrategy,
+            ...(fingerprint.fingerprintJsonPath
+              ? { fingerprintJsonPath: fingerprint.fingerprintJsonPath }
+              : {}),
+            issues,
+          }
         : undefined;
     }
 
@@ -672,14 +724,15 @@ async function checkNativeStatus({
       expectedPublicKey: expectedSigningPublicKey.publicKey,
       nativePublicKey: nativeSigningPublicKey?.publicKey ?? null,
     });
-    const localFingerprint =
-      config.updateStrategy === "fingerprint"
-        ? await readLocalFingerprintFile(cwd)
-        : null;
+    const fingerprint = await checkProjectFingerprint(
+      cwd,
+      config.updateStrategy,
+      context,
+    );
     return {
       updateStrategy: config.updateStrategy,
-      ...(localFingerprint
-        ? { fingerprintJsonPath: localFingerprint.path }
+      ...(fingerprint.fingerprintJsonPath
+        ? { fingerprintJsonPath: fingerprint.fingerprintJsonPath }
         : {}),
       issues: [
         ...(await checkExpoSdk(config, cwd)),
@@ -688,19 +741,12 @@ async function checkNativeStatus({
           ? signing.issues.map(toNativeIssue)
           : []),
         ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
-        ...(localFingerprint
-          ? await checkFingerprintJson(
-              localFingerprint.value,
-              context.fingerprints,
-            )
-          : []),
+        ...fingerprint.issues,
       ],
     };
   }
 
   const config = await loadConfig(null);
-  const localFingerprint = await readLocalFingerprintFile(cwd);
-  const requireFingerprint = config.updateStrategy === "fingerprint";
   const expectedSigningPublicKey = await readSigningPublicKey(config, cwd);
 
   const [ios, android, signing] = await Promise.all([
@@ -723,31 +769,16 @@ async function checkNativeStatus({
     ...(await checkSandboxSchemes(config, cwd)),
     ...(await checkTestFlightCompliance(config, cwd)),
   ];
-
-  if (requireFingerprint && localFingerprint) {
-    issues.push(
-      ...(await checkFingerprintJson(
-        localFingerprint.value,
-        context.fingerprints,
-      )),
-    );
-  }
-
-  if (requireFingerprint && !localFingerprint) {
-    issues.push({
-      type: "error",
-      platform: "project",
-      code: "MISSING_FINGERPRINT_JSON",
-      message: "fingerprint.json is missing for fingerprint update strategy.",
-      resolution: "Run `npx hot-updater fingerprint create`.",
-      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
-      paths: ["fingerprint.json"],
-    });
-  }
+  const fingerprint = await checkProjectFingerprint(
+    cwd,
+    config.updateStrategy,
+    context,
+  );
+  issues.push(...fingerprint.issues);
 
   return {
     updateStrategy: config.updateStrategy,
-    fingerprintJsonPath: localFingerprint?.path,
+    fingerprintJsonPath: fingerprint.fingerprintJsonPath,
     ios: ios.status,
     android: android.status,
     issues,

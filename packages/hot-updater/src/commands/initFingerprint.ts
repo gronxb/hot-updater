@@ -5,6 +5,10 @@ import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 
 import { createAndInjectFingerprintFiles } from "@/utils/fingerprint";
 
+/** What to do with a fingerprint.json created for the first time. */
+export const FINGERPRINT_JSON_COMMIT_HINT =
+  "Commit fingerprint.json. Native builds embed its fingerprint, and deploy targets it.";
+
 /**
  * After a provider's init wrote hot-updater.config.ts: a fingerprint project
  * without fingerprint.json gets one, which native builds embed and deploy
@@ -34,8 +38,6 @@ export const prepareInitFingerprint = async (): Promise<readonly string[]> => {
     return ["npx hot-updater fingerprint create"];
   }
   s.stop("Created fingerprint.json");
-  p.log.info(
-    "Commit fingerprint.json. Native builds embed its fingerprint, and deploy targets it.",
-  );
+  p.log.info(FINGERPRINT_JSON_COMMIT_HINT);
   return [];
 };

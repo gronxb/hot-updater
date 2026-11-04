@@ -27,6 +27,7 @@ import {
 
 import { ui } from "../utils/cli-ui";
 import { reportUnexpectedError } from "../utils/reportUnexpectedError";
+import { FINGERPRINT_JSON_COMMIT_HINT } from "./initFingerprint";
 
 const exitWithFingerprintError = (error: unknown): never => {
   reportUnexpectedError(error);
@@ -52,9 +53,11 @@ export const handleCreateFingerprint = async () => {
   const readFingerprintJson = () =>
     fs.promises.readFile(fingerprintJsonPath, "utf8").catch(() => null);
   let fileChanged = false;
+  let created = false;
 
   try {
     const before = await readFingerprintJson();
+    created = before === null;
     localFingerprint = await readLocalFingerprint();
     result = await createAndInjectFingerprintFiles();
     fileChanged = (await readFingerprintJson()) !== before;
@@ -68,7 +71,10 @@ export const handleCreateFingerprint = async () => {
     exitWithFingerprintError(error);
   }
 
-  if (diffChanged && result) {
+  if (created) {
+    // A first fingerprint.json changes nothing a build embedded.
+    p.log.info(FINGERPRINT_JSON_COMMIT_HINT);
+  } else if (diffChanged && result) {
     p.log.success(ui.line([ui.path("fingerprint.json"), "changed."]));
     p.log.warn("Rebuild the native app to embed the new fingerprint.");
 

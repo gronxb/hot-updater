@@ -151,7 +151,9 @@ directories exist, `doctor` checks:
 - Signing settings match native public key entries
 
 An Expo project below SDK 55 fails with `EXPO_SDK_UNSUPPORTED`, with or without
-native directories.
+native directories. The `fingerprint.json` checks run without native
+directories too, as in an Expo project that generates them at prebuild:
+without the file, `doctor` fails with `MISSING_FINGERPRINT_JSON`.
 
 The native status also shows each platform's app version, the version the
 native project builds (`appVersion` in `details.native.ios` and
