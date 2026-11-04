@@ -56,7 +56,7 @@ describe("prepareInitFingerprint", () => {
   it("creates fingerprint.json for a fingerprint project without one, and says to commit it", async () => {
     mocks.loadConfig.mockResolvedValue({ updateStrategy: "fingerprint" });
 
-    await prepareInitFingerprint();
+    await expect(prepareInitFingerprint()).resolves.toEqual([]);
 
     expect(mocks.loadConfig).toHaveBeenCalledWith(null);
     expect(mocks.createAndInjectFingerprintFiles).toHaveBeenCalledOnce();
@@ -70,7 +70,7 @@ describe("prepareInitFingerprint", () => {
   it("leaves an appVersion project alone", async () => {
     mocks.loadConfig.mockResolvedValue({ updateStrategy: "appVersion" });
 
-    await prepareInitFingerprint();
+    await expect(prepareInitFingerprint()).resolves.toEqual([]);
 
     expect(mocks.createAndInjectFingerprintFiles).not.toHaveBeenCalled();
     expect(mocks.spinner.start).not.toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe("prepareInitFingerprint", () => {
     mocks.loadConfig.mockResolvedValue({ updateStrategy: "fingerprint" });
     await fs.writeFile(path.join(mocks.cwd, "fingerprint.json"), "{}");
 
-    await prepareInitFingerprint();
+    await expect(prepareInitFingerprint()).resolves.toEqual([]);
 
     expect(mocks.createAndInjectFingerprintFiles).not.toHaveBeenCalled();
     await expect(
@@ -88,19 +88,18 @@ describe("prepareInitFingerprint", () => {
     ).resolves.toBe("{}");
   });
 
-  it("names the one next step, without failing init, when it can't fingerprint", async () => {
+  it("returns the one next step, without failing init, when it can't fingerprint", async () => {
     mocks.loadConfig.mockResolvedValue({ updateStrategy: "fingerprint" });
     mocks.createAndInjectFingerprintFiles.mockRejectedValue(
       new Error("no native project"),
     );
 
-    await expect(prepareInitFingerprint()).resolves.toBeUndefined();
+    await expect(prepareInitFingerprint()).resolves.toEqual([
+      "npx hot-updater fingerprint create",
+    ]);
 
     expect(mocks.spinner.error).toHaveBeenCalledWith(
       "Creating fingerprint.json failed: no native project",
-    );
-    expect(mocks.warn).toHaveBeenCalledWith(
-      "Next step: npx hot-updater fingerprint create",
     );
     expect(process.exitCode).toBeUndefined();
   });
@@ -108,12 +107,11 @@ describe("prepareInitFingerprint", () => {
   it("leaves a config that doesn't load to doctor, without failing init", async () => {
     mocks.loadConfig.mockRejectedValue(new Error("bad config"));
 
-    await expect(prepareInitFingerprint()).resolves.toBeUndefined();
+    await expect(prepareInitFingerprint()).resolves.toEqual([
+      "npx hot-updater doctor",
+    ]);
 
     expect(mocks.createAndInjectFingerprintFiles).not.toHaveBeenCalled();
-    expect(mocks.warn).toHaveBeenCalledWith(
-      "Next step: npx hot-updater doctor",
-    );
     expect(process.exitCode).toBeUndefined();
   });
 });

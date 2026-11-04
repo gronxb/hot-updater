@@ -639,9 +639,18 @@ describe("Cloudflare init discovery", () => {
     mocks.provisionClientCredential.mockResolvedValue(credential);
 
     // When
-    await runInit({ build: "bare" });
+    const result = await runInit({ build: "bare" });
 
     // Then
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
     expect(commands).toEqual([
       ["d1", "migrations", "apply", "ota", "--remote"],
       ["deploy", "--name", "hot-updater"],

@@ -6,6 +6,7 @@ import {
   HotUpdateDirUtil,
   InitError,
   makeEnv,
+  type RunInitResult,
   MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
@@ -235,6 +236,7 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
+  let result: RunInitResult;
   try {
     const { initProvider, runInit } = await loadInitProvider(provider);
     const cwd = process.cwd();
@@ -260,7 +262,7 @@ export const init = async (options: InitOptions = {}) => {
         throw new MissingInitInputsError([...new Set(missingInputs)]);
       }
     }
-    await runInit({
+    result = await runInit({
       build: buildAdapterPackage.name,
       envFile: options.envFile,
       ...(team === undefined ? {} : { secretsEnv: team.secretsEnv }),
@@ -273,5 +275,20 @@ export const init = async (options: InitOptions = {}) => {
     throw error;
   }
 
-  await prepareInitFingerprint();
+  if (result !== null) await closeInit(result);
+};
+
+/**
+ * Init's closing, once the provider's init set the project up: the
+ * fingerprint.json step, then every next step, the provider's first, then
+ * "Done! 🎉", so nothing prints after it.
+ */
+export const closeInit = async ({
+  nextSteps,
+}: NonNullable<RunInitResult>): Promise<void> => {
+  const steps = [...nextSteps, ...(await prepareInitFingerprint())];
+  for (const step of steps) {
+    p.log.message(`Next step: ${step}`);
+  }
+  p.log.success("Done! 🎉");
 };

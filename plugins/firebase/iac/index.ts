@@ -18,6 +18,7 @@ import {
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
+  type RunInitResult,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
@@ -457,7 +458,7 @@ export const runInit = async ({
   build,
   envFile,
   secretsEnv,
-}: RunInitOptions) => {
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(
     process.cwd(),
@@ -561,7 +562,7 @@ export const runInit = async ({
     });
     await makeEnv(persistedInputs);
     await removeTmpDir();
-    return;
+    return null;
   }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
@@ -749,17 +750,18 @@ export const runInit = async ({
   );
   await removeTmpDir();
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  if (!applicationCredentials) {
-    p.log.message(
-      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
-    );
-  }
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
+      ),
+      ...(applicationCredentials
+        ? []
+        : [
+            "Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+          ]),
+    ],
+  };
 };
 
 // What init asks for and checks before `runInit`.

@@ -195,7 +195,17 @@ describe("Supabase init", () => {
   it("deploys the prebuilt Edge Function on the bucket, with the import map of what it vendors", async () => {
     root = await project();
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    const result = await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
 
     const { index, imports } = deployed.function!;
     expect(index).toContain('"bundles"');

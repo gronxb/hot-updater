@@ -8,20 +8,20 @@ import { createAndInjectFingerprintFiles } from "@/utils/fingerprint";
 /**
  * After a provider's init wrote hot-updater.config.ts: a fingerprint project
  * without fingerprint.json gets one, which native builds embed and deploy
- * targets. Without it, a build embeds no fingerprint and deploy refuses. A
- * failure names the one command that writes it, and init still succeeds:
- * its cloud resources exist by now.
+ * targets. Without it, a build embeds no fingerprint and deploy refuses.
+ * Returns the next steps init's closing prints: on a failure, the one
+ * command that resolves it, and init still succeeds, since its cloud
+ * resources exist by now.
  */
-export const prepareInitFingerprint = async (): Promise<void> => {
+export const prepareInitFingerprint = async (): Promise<readonly string[]> => {
   let updateStrategy: string;
   try {
     ({ updateStrategy } = await loadConfig(null));
   } catch {
-    p.log.warn("Next step: npx hot-updater doctor");
-    return;
+    return ["npx hot-updater doctor"];
   }
-  if (updateStrategy !== "fingerprint") return;
-  if (fs.existsSync(path.join(getCwd(), "fingerprint.json"))) return;
+  if (updateStrategy !== "fingerprint") return [];
+  if (fs.existsSync(path.join(getCwd(), "fingerprint.json"))) return [];
 
   const s = p.spinner();
   s.start("Creating fingerprint.json");
@@ -31,11 +31,11 @@ export const prepareInitFingerprint = async (): Promise<void> => {
     s.error(
       `Creating fingerprint.json failed: ${error instanceof Error ? error.message : String(error)}`,
     );
-    p.log.warn("Next step: npx hot-updater fingerprint create");
-    return;
+    return ["npx hot-updater fingerprint create"];
   }
   s.stop("Created fingerprint.json");
   p.log.info(
     "Commit fingerprint.json. Native builds embed its fingerprint, and deploy targets it.",
   );
+  return [];
 };

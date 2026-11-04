@@ -14,6 +14,7 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -72,7 +73,7 @@ export const runInit = async ({
   build,
   envFile,
   secretsEnv,
-}: RunInitOptions) => {
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(
     process.cwd(),
@@ -451,12 +452,14 @@ export const runInit = async ({
     ...(credential === undefined ? {} : { credential }),
     clientPlugins: server.clientPlugins,
   });
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/aws#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/aws#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // Shared request templates for the infrastructure scaffold.

@@ -16,6 +16,7 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -142,7 +143,7 @@ export const runInit = async ({
   build,
   envFile,
   secretsEnv,
-}: RunInitOptions) => {
+}: RunInitOptions): Promise<RunInitResult> => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
@@ -712,12 +713,13 @@ export const runInit = async ({
     clientPlugins: server.clientPlugins,
   });
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // What init asks for and checks before `runInit`.
