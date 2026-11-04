@@ -253,8 +253,9 @@ describe("CLI commands", () => {
     expect(secrets).toMatch(/^\s+put \[options\] <name>\s/m);
     expect(secrets).toMatch(/^\s+issue \[options\] <kind> \[name\]\s/m);
     expect(secrets).toMatch(
-      /^\s+import \[env-file\]\s+Store the deploy credentials/m,
+      /^\s+import \[options\] \[env-file\]\s+Store the deploy credentials/m,
     );
+    expect(help("secrets", "import")).toContain("--replace");
     for (const removed of ["list", "env", "token"]) {
       expect(secrets).not.toMatch(new RegExp(`^\\s+${removed}\\b`, "m"));
     }
