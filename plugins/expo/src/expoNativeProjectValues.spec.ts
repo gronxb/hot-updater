@@ -110,6 +110,21 @@ describe("getExpoNativeProjectValues", () => {
     });
   });
 
+  it("reports the trust-anchor file the config plugin embeds", async () => {
+    const cwd = await createProject({
+      version: "2.0.0",
+      plugins: [
+        ["@hot-updater/expo", { publicKeyPath: "./keys/public-key.pem" }],
+      ],
+    });
+
+    await expect(getExpoNativeProjectValues(cwd, "ios")).resolves.toEqual({
+      appVersion: "2.0.0",
+      channel: "production",
+      publicKeyPath: "./keys/public-key.pem",
+    });
+  });
+
   it("leaves the channel to the native project without the config plugin", async () => {
     const cwd = await createProject({ version: "2.0.0" });
 

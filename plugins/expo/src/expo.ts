@@ -53,13 +53,18 @@ const getHotUpdaterExpoPluginProps = (
 /**
  * What `expo prebuild` would write into a platform's native project, from
  * the Expo config and with the project's own config plugins, without
- * writing it: the version Expo's version plugin writes, and the channel the
- * `@hot-updater/expo` config plugin writes when the config lists it.
+ * writing it: the version Expo's version plugin writes, and the channel and
+ * the trust-anchor file the `@hot-updater/expo` config plugin writes when the
+ * config lists it.
  */
 export const getExpoNativeProjectValues = async (
   cwd: string,
   platform: Platform,
-): Promise<{ appVersion?: string; channel?: string }> => {
+): Promise<{
+  appVersion?: string;
+  channel?: string;
+  publicKeyPath?: string;
+}> => {
   const { exp } = await getConfig(cwd, {
     skipSDKVersionRequirement: true,
   });
@@ -71,13 +76,13 @@ export const getExpoNativeProjectValues = async (
   const listsPlugin = (exp.plugins ?? []).some((plugin) =>
     isHotUpdaterExpoPlugin(Array.isArray(plugin) ? plugin[0] : plugin),
   );
+  const props = getHotUpdaterExpoPluginProps(exp.plugins);
+  const publicKeyPath = props?.publicKeyPath;
   return {
     ...(appVersion ? { appVersion } : {}),
-    ...(listsPlugin
-      ? {
-          channel:
-            getHotUpdaterExpoPluginProps(exp.plugins)?.channel || "production",
-        }
+    ...(listsPlugin ? { channel: props?.channel || "production" } : {}),
+    ...(typeof publicKeyPath === "string" && publicKeyPath.trim()
+      ? { publicKeyPath }
       : {}),
   };
 };

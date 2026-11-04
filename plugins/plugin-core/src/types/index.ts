@@ -130,6 +130,11 @@ export interface BuildAdapter {
       readonly appVersion?: string;
       /** The channel the native build would embed. */
       readonly channel?: string;
+      /**
+       * The trust-anchor file the prebuild embeds as the bundle signing
+       * public key, such as the Expo config plugin's `publicKeyPath`.
+       */
+      readonly publicKeyPath?: string;
     }>;
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;

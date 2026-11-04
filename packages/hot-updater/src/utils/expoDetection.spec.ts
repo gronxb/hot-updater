@@ -74,13 +74,18 @@ describe("warnIfExpoCNG", () => {
   };
   // A build adapter that reads the Expo config, as @hot-updater/expo does:
   // a channel only when the config lists the config plugin.
-  const configListing = (listsPlugin: boolean) => ({
+  const configListing = (listsPlugin: boolean, publicKeyPath?: string) => ({
     build: async () => ({
       name: "expo",
       build: vi.fn(),
       nativeBuild: {
         getNativeProjectValues: async () =>
-          listsPlugin ? { channel: "production" } : {},
+          listsPlugin
+            ? {
+                channel: "production",
+                ...(publicKeyPath === undefined ? {} : { publicKeyPath }),
+              }
+            : {},
       },
     }),
   });
@@ -123,5 +128,47 @@ describe("warnIfExpoCNG", () => {
     expect(output).toContain(
       '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
     );
+  });
+
+  describe("before keys export-public writes the key into the native files", () => {
+    const keyWarning =
+      "Expo CNG project: npx expo prebuild removes this key. Export it with --output and set publicKeyPath in the @hot-updater/expo plugin:";
+    const keySnippet = [
+      '│  "plugins": [["@hot-updater/expo", {',
+      '│    "channel": "production",',
+      '│    "publicKeyPath": "./keys/public-key.pem"',
+      "│  }]]",
+    ].join("\n");
+
+    it.each([
+      ["doesn't list the config plugin", configListing(false)],
+      ["lists it without publicKeyPath", configListing(true)],
+    ])(
+      "warns that prebuild removes the key when the Expo config %s",
+      async (_, config) => {
+        const cwd = await createCngProject();
+
+        const output = await printed(() =>
+          warnIfExpoCNG({ cwd, config, publicKey: true }),
+        );
+
+        expect(output.replace(/\n│ {2}/g, " ")).toContain(keyWarning);
+        expect(output).toContain(keySnippet);
+      },
+    );
+
+    it("prints nothing when the config plugin sets publicKeyPath", async () => {
+      const cwd = await createCngProject();
+
+      const output = await printed(() =>
+        warnIfExpoCNG({
+          cwd,
+          config: configListing(true, "./keys/public-key.pem"),
+          publicKey: true,
+        }),
+      );
+
+      expect(output).toBe("");
+    });
   });
 });
