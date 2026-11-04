@@ -24,6 +24,7 @@ import {
   type ImportInfo,
   type ProviderConfig,
   renderImportStatements,
+  type UpdateStrategy,
 } from "./ConfigBuilder";
 import { p } from "./prompts";
 
@@ -46,12 +47,14 @@ export type CreateHotUpdaterConfigScaffoldOptions = {
   plugins: ProviderConfig;
   extraImports?: ImportInfo[];
   helperStatements?: ManagedHelperStatement[];
-  updateStrategy?: "appVersion" | "fingerprint";
+  /** The strategy the config sets: `fingerprint` unless one is chosen. */
+  updateStrategy?: UpdateStrategy;
 };
 
 export type CreateHotUpdaterConfigScaffoldFromBuilderOptions = {
   helperStatements?: ManagedHelperStatement[];
-  updateStrategy?: "appVersion" | "fingerprint";
+  /** The strategy the config sets: `fingerprint` unless one is chosen. */
+  updateStrategy?: UpdateStrategy;
 };
 
 export type HotUpdaterConfigScaffold = {
@@ -1411,7 +1414,7 @@ export const createHotUpdaterConfigScaffold = ({
   plugins,
   extraImports = [],
   helperStatements = [],
-  updateStrategy = "appVersion",
+  updateStrategy = "fingerprint",
 }: CreateHotUpdaterConfigScaffoldOptions): HotUpdaterConfigScaffold => {
   const intermediateCode = helperStatements
     .map((statement) => statement.code.trim())
@@ -1442,19 +1445,12 @@ export const createHotUpdaterConfigScaffoldFromBuilder = (
   builder: ConfigBuilder,
   {
     helperStatements = [],
-    updateStrategy = "appVersion",
+    updateStrategy = "fingerprint",
   }: CreateHotUpdaterConfigScaffoldFromBuilderOptions = {},
 ): HotUpdaterConfigScaffold => {
-  const scaffold = builder.getScaffold();
-  const strategyText =
-    updateStrategy === "appVersion"
-      ? scaffold.text
-      : scaffold.text.replace(
-          'updateStrategy: "appVersion"',
-          `updateStrategy: "${updateStrategy}"`,
-        );
+  const scaffold = builder.setUpdateStrategy(updateStrategy).getScaffold();
   return {
-    text: strategyText,
+    text: scaffold.text,
     imports: scaffold.imports,
     build: {
       initializer: scaffold.buildConfigString,
@@ -1505,6 +1501,53 @@ export const configSetsTeamSecrets = async (cwd: string): Promise<boolean> => {
   if (!config) return true;
   const secrets = findAnyProperty(config.objectExpression, "secrets");
   return secrets !== null && getCallCallee(secrets.value) !== "localSecrets";
+};
+
+/**
+ * The `updateStrategy` a config's text sets: its string, or `appVersion`,
+ * loadConfig's default, when the config sets none. Null when the text
+ * doesn't say: a value that isn't a string literal (`as const` and
+ * `satisfies` aside), a getter, a key written twice, a spread or computed key
+ * after it (or anywhere, without one) that could set it at load, or a config
+ * whose shape it can't read.
+ */
+export const readConfigUpdateStrategy = (
+  text: string,
+): UpdateStrategy | null => {
+  const source = parseConfigSource(text);
+  const config = source && findDefineConfigObject(source);
+  if (!config) return null;
+  const { properties } = config.objectExpression;
+  const isDynamic = (property: ObjectPropertyKind) =>
+    property.type === "SpreadElement" || property.computed;
+  const named = properties.filter(
+    (property) => getObjectPropertyName(property) === "updateStrategy",
+  );
+  const [property] = named;
+  if (property === undefined) {
+    return properties.some(isDynamic) ? null : "appVersion";
+  }
+  if (
+    named.length > 1 ||
+    property.type !== "Property" ||
+    property.kind !== "init" ||
+    property.method ||
+    properties.slice(properties.indexOf(property) + 1).some(isDynamic)
+  ) {
+    return null;
+  }
+  let value = property.value;
+  while (
+    value.type === "TSAsExpression" ||
+    value.type === "TSSatisfiesExpression" ||
+    value.type === "ParenthesizedExpression"
+  ) {
+    value = value.expression;
+  }
+  return value.type === "Literal" &&
+    (value.value === "appVersion" || value.value === "fingerprint")
+    ? value.value
+    : null;
 };
 
 export const writeHotUpdaterConfig = async (

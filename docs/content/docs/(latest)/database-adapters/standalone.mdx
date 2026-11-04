@@ -50,7 +50,7 @@ export default defineConfig({
     }, // [!code ++]
   }), // [!code ++]
   plugins: [insights(), apiKeys()], // The plugins the server runs // [!code ++]
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
 });
 ```
 

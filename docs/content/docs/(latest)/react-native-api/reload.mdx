@@ -16,7 +16,7 @@ import { hotUpdater } from "./hotUpdater";
 
 async function syncUpdate() {
   const updateInfo = await hotUpdater.checkForUpdate({
-    updateStrategy: "appVersion",
+    updateStrategy: "fingerprint",
   });
 
   if (!updateInfo) return;

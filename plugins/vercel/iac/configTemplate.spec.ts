@@ -34,7 +34,7 @@ describe("Vercel config scaffold", () => {
           }),
           plugins: [apiKeys(), insights(), remoteConfig()],
           secrets: localSecrets(),
-          updateStrategy: "appVersion", // or "fingerprint"
+          updateStrategy: "fingerprint", // or "appVersion"
         });"
       `);
   });

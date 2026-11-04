@@ -109,12 +109,16 @@ export type ConfigBuilderScaffold = {
  * Renders the hot-updater.config.ts init writes: the build, the server's
  * storage, database, and plugins, and the deploy settings.
  */
+/** How an app finds its updates: by native fingerprint, or by app version. */
+export type UpdateStrategy = "appVersion" | "fingerprint";
+
 export class ConfigBuilder {
   private buildType: BuildType | null = null;
   private storageInfo: ProviderConfig | null = null;
   private databaseInfo: ProviderConfig | null = null;
   private pluginsInfo: ProviderConfig | null = null;
   private intermediateCode = "";
+  private updateStrategy: UpdateStrategy = "fingerprint";
   private readonly imports: ImportInfo[] = [
     { pkg: "hot-updater", named: ["defineConfig", "localSecrets"] },
     { pkg: "node:fs", named: ["existsSync"] },
@@ -172,6 +176,15 @@ export class ConfigBuilder {
     return this;
   }
 
+  /**
+   * Sets the config's `updateStrategy`. A new project gets `fingerprint`;
+   * `appVersion` is the alternative the config's comment names.
+   */
+  setUpdateStrategy(updateStrategy: UpdateStrategy): this {
+    this.updateStrategy = updateStrategy;
+    return this;
+  }
+
   /** Sets the code between the environment loading and the config, such as a credentials helper. */
   setIntermediateCode(code: string): this {
     this.intermediateCode = code.trim();
@@ -204,7 +217,9 @@ ${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default def
   database: ${this.databaseInfo.configString},
   ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
   secrets: localSecrets(),
-  updateStrategy: "appVersion", // or "fingerprint"
+  updateStrategy: "${this.updateStrategy}", // or "${
+    this.updateStrategy === "fingerprint" ? "appVersion" : "fingerprint"
+  }"
 });
 `.trim();
 

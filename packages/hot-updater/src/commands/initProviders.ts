@@ -4,6 +4,7 @@ import {
   type InitProviderDefinition,
   InitError,
   type RunInitOptions,
+  type RunInitResult,
 } from "@hot-updater/cli-tools";
 
 import { packageJsonData } from "../packageJson";
@@ -11,7 +12,13 @@ import { packageJsonData } from "../packageJson";
 /** What a provider package's `./init` entry exports. */
 export type InitProviderModule = {
   readonly initProvider: InitProviderDefinition;
-  readonly runInit: (options: RunInitOptions) => Promise<void>;
+  /**
+   * Legacy: a provider package from before init's shared closing resolves
+   * `undefined`, having printed its own next steps and "Done! 🎉".
+   */
+  readonly runInit: (
+    options: RunInitOptions,
+  ) => Promise<RunInitResult | undefined>;
 };
 
 /** A value init saved in `.env.hotupdater`, or the environment's. */

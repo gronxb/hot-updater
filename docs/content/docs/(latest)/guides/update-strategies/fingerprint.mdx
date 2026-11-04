@@ -86,8 +86,13 @@ files doesn't.
 
 ### Enable the Fingerprint Strategy
 
-App Version is the default strategy. If you explicitly configured it, replace
-that setting with `fingerprint`:
+New projects use Fingerprint: `init` writes `updateStrategy: "fingerprint"`
+and, for a project without one, `fingerprint.json`. If it can't compute the
+fingerprint, it names `npx hot-updater fingerprint create` as the next step.
+
+A config that sets no `updateStrategy`, or sets `appVersion`, uses
+[App Version](/docs/guides/update-strategies/app-version). To switch it, set
+`fingerprint`:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -97,6 +102,11 @@ export default defineConfig({
   updateStrategy: "fingerprint", // [!code ++]
 });
 ```
+
+Then run `npx hot-updater fingerprint create`, commit `fingerprint.json`, and
+release new native builds. Builds made before the switch embed no fingerprint
+and keep checking by app version, so they receive no update deployed by
+fingerprint.
 
 <a id="include-additional-files-optional" />
 <a id="include-app-owned-native-inputs" />

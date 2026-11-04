@@ -10,8 +10,10 @@ import {
   type ProviderConfig,
 } from "./ConfigBuilder";
 import {
+  createHotUpdaterConfigScaffold,
   createHotUpdaterConfigScaffoldFromBuilder,
   type ManagedHelperStatement,
+  readConfigUpdateStrategy,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
   addSigningSecretToConfigText,
@@ -330,7 +332,9 @@ export default defineConfig({
     expect(updatedConfig).toContain(
       'import { defineConfig, localSecrets } from "hot-updater";',
     );
-    expect(updatedConfig).not.toContain('updateStrategy: "appVersion"');
+    // An existing config keeps its strategy: without one, the implicit
+    // appVersion, so a re-init never retargets apps already shipped.
+    expect(updatedConfig).not.toContain("updateStrategy");
   });
 
   it("replaces provider-managed AWS sections when switching to Supabase and keeps unrelated fields", async () => {
@@ -423,7 +427,7 @@ export default defineConfig({
     await writeHotUpdaterConfig(scaffold, configPath);
     const added = await fs.readFile(configPath, "utf-8");
     expect(added).toContain(
-      '  updateStrategy: "appVersion", // or "fingerprint"\n  plugins: [apiKeys(), insights(), remoteConfig()],\n});',
+      '  updateStrategy: "fingerprint", // or "appVersion"\n  plugins: [apiKeys(), insights(), remoteConfig()],\n});',
     );
     expect(added).toContain(
       'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
@@ -439,7 +443,7 @@ export default defineConfig({
     await writeHotUpdaterConfig(scaffold, configPath);
     const replaced = await fs.readFile(configPath, "utf-8");
     expect(replaced).toContain(
-      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
+      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  secrets: localSecrets(),\n  updateStrategy: "fingerprint", // or "appVersion"\n});',
     );
     expect(replaced).not.toContain("notes()");
   });
@@ -1144,6 +1148,132 @@ export default defineConfig({
     expect(updatedConfig).toContain(
       'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
+  });
+});
+
+describe("updateStrategy of a new project", () => {
+  const supabase = {
+    storage: {
+      imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
+      configString: "supabaseStorage({})",
+    },
+    database: {
+      imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
+      configString: "supabaseDatabase({})",
+    },
+    plugins: { imports: [], configString: "[]" },
+  } satisfies Record<string, ProviderConfig>;
+
+  it("writes fingerprint by default, naming appVersion as the alternative", () => {
+    for (const scaffold of [
+      createHotUpdaterConfigScaffold({ build: "bare", ...supabase }),
+      createSupabaseScaffold("expo"),
+    ]) {
+      expect(scaffold.text).toContain(
+        '  updateStrategy: "fingerprint", // or "appVersion"\n',
+      );
+      expect(scaffold.updateStrategy).toBe('"fingerprint"');
+      expect(readConfigUpdateStrategy(scaffold.text)).toBe("fingerprint");
+    }
+  });
+
+  it("writes appVersion when chosen, naming fingerprint as the alternative", () => {
+    for (const scaffold of [
+      createHotUpdaterConfigScaffold({
+        build: "bare",
+        ...supabase,
+        updateStrategy: "appVersion",
+      }),
+      createHotUpdaterConfigScaffoldFromBuilder(
+        new ConfigBuilder()
+          .setBuildType("bare")
+          .setStorage(supabase.storage)
+          .setDatabase(supabase.database)
+          .setPlugins(supabase.plugins),
+        { updateStrategy: "appVersion" },
+      ),
+    ]) {
+      expect(scaffold.text).toContain(
+        '  updateStrategy: "appVersion", // or "fingerprint"\n',
+      );
+      expect(scaffold.text).not.toContain('updateStrategy: "fingerprint"');
+      expect(scaffold.updateStrategy).toBe('"appVersion"');
+      expect(readConfigUpdateStrategy(scaffold.text)).toBe("appVersion");
+    }
+  });
+});
+
+describe("readConfigUpdateStrategy", () => {
+  const config = (property: string) =>
+    [
+      'import { defineConfig } from "hot-updater";',
+      "",
+      "export default defineConfig({",
+      "  build: bare(),",
+      property,
+      "});",
+      "",
+    ].join("\n");
+
+  it("reads the strategy a config sets", () => {
+    expect(
+      readConfigUpdateStrategy(config('  updateStrategy: "fingerprint",')),
+    ).toBe("fingerprint");
+    expect(
+      readConfigUpdateStrategy(config("  updateStrategy: 'appVersion',")),
+    ).toBe("appVersion");
+  });
+
+  it("reads appVersion, loadConfig's default, from a config without one", () => {
+    expect(readConfigUpdateStrategy(config(""))).toBe("appVersion");
+  });
+
+  it("reads a literal written with as const or satisfies", () => {
+    expect(
+      readConfigUpdateStrategy(
+        config('  updateStrategy: "fingerprint" as const,'),
+      ),
+    ).toBe("fingerprint");
+  });
+
+  it.each([
+    ["a spread after it", '  updateStrategy: "fingerprint",\n  ...settings,'],
+    [
+      "a computed key after it",
+      '  updateStrategy: "fingerprint",\n  [key]: "appVersion",',
+    ],
+    [
+      "a later duplicate key",
+      '  updateStrategy: "fingerprint",\n  updateStrategy: "appVersion",',
+    ],
+    ["a template literal", "  updateStrategy: `fingerprint`,"],
+    ["a variable", "  updateStrategy,"],
+    ["a getter", '  get updateStrategy() { return "fingerprint"; },'],
+    ["an unknown string", '  updateStrategy: "nightly",'],
+  ])("reads nothing when %s could set what the config loads", (_, body) => {
+    expect(readConfigUpdateStrategy(config(body))).toBeNull();
+  });
+
+  it("reads nothing from a config without the property that a computed key or spread could set", () => {
+    expect(readConfigUpdateStrategy(config("  [key]: value,"))).toBeNull();
+    expect(readConfigUpdateStrategy(config("  ...settings,"))).toBeNull();
+  });
+
+  it("keeps the literal when a spread or computed key comes before it", () => {
+    expect(
+      readConfigUpdateStrategy(
+        config('  ...settings,\n  [key]: 1,\n  updateStrategy: "fingerprint",'),
+      ),
+    ).toBe("fingerprint");
+  });
+
+  it("reads nothing from a strategy it can't evaluate, or a config it can't read", () => {
+    expect(
+      readConfigUpdateStrategy(
+        config("  updateStrategy: process.env.STRATEGY as never,"),
+      ),
+    ).toBeNull();
+    expect(readConfigUpdateStrategy("export default load();")).toBeNull();
   });
 });
 

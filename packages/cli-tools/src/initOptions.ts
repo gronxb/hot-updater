@@ -11,6 +11,17 @@ export type RunInitOptions = {
   readonly secretsEnv?: Readonly<Record<string, string>>;
 };
 
+/**
+ * What a provider's init leaves to init's closing, which runs once the
+ * provider is done and every step of init has printed: its `nextSteps`, each
+ * printed as `Next step: <step>`, then "Done! 🎉". Null when the provider
+ * stopped before setting the project up, as Firebase does after creating a
+ * project, and printed what to do itself.
+ */
+export type RunInitResult = {
+  readonly nextSteps: readonly string[];
+} | null;
+
 export class InitError extends Error {
   readonly name: string = "InitError";
 }

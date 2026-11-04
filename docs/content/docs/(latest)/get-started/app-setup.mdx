@@ -65,7 +65,7 @@ export default function App() {
 
     try {
       const update = await hotUpdater.checkForUpdate({
-        updateStrategy: "appVersion",
+        updateStrategy: "fingerprint",
       });
 
       if (!update) {
@@ -121,14 +121,16 @@ and required updates. For background downloads or a separate restart prompt,
 see [Control update timing](/docs/guides/custom-update). To check when the app
 starts instead, with an optional loading screen, wrap the root with
 [`hotUpdater.wrap`](/docs/react-native-api/wrap):
-`export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App)`.
+`export default hotUpdater.wrap({ updateStrategy: "fingerprint" })(App)`.
 
 Replace the URL and client-key placeholders using your verified provider setup.
 Keep any provider base path; the SDK appends the catalog and artifact routes.
 Use the same `updateStrategy` in `checkForUpdate` and `hot-updater.config.ts`.
-`appVersion` is the default; choose
-[fingerprint](/docs/guides/update-strategies/fingerprint) when you want to track
-native compatibility inputs.
+New projects use [`fingerprint`](/docs/guides/update-strategies/fingerprint),
+which `init` writes: an update reaches only builds with the same native
+interface. Choose [`appVersion`](/docs/guides/update-strategies/app-version)
+when you'd rather target store versions yourself with `deploy -t`. A config
+that sets no `updateStrategy` uses `appVersion`.
 
 The client key is intended for the app. Provider tokens, service-role keys,
 admin bearer tokens and signing private keys stay in the deployment environment
@@ -626,10 +628,11 @@ If this app uses [bundle signing](/docs/guides/bundle-signing), embed the matchi
 public key before building. Signing is opt-in; server provisioning alone does
 not enable it. Preserve an existing signing key and its public key.
 
-For `appVersion`, record the native app version that the OTA will target. For
-`fingerprint`, run `fingerprint create` and commit `fingerprint.json` before the
-native build, which embeds the fingerprint, as the
+For `fingerprint`, commit the `fingerprint.json` init wrote, or run
+`fingerprint create` if it named that as the next step, before the native
+build, which embeds the fingerprint, as the
 [fingerprint workflow](/docs/guides/update-strategies/fingerprint) describes.
+For `appVersion`, record the native app version that the OTA will target.
 
 ## Verify the integration
 

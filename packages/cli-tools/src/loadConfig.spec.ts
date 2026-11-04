@@ -573,6 +573,20 @@ describe("loadConfig", () => {
     },
   );
 
+  it("keeps appVersion for a config that sets no updateStrategy, though init writes fingerprint", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      ["export default {", "  cacheDir: 'cache',", "};", ""].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.cacheDir).toBe("cache");
+    expect(config.updateStrategy).toBe("appVersion");
+  });
+
   it("preserves legacy merge semantics for arrays in user config", async () => {
     await writeProjectFile(
       projectRoot,

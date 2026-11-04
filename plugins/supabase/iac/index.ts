@@ -19,6 +19,7 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   resolvePackageVersion,
   transformEnv,
   writeHotUpdaterFiles,
@@ -924,7 +925,7 @@ const runInitWithoutCliMetadata = async ({
   build,
   envFile,
   secretsEnv,
-}: RunInitOptions) => {
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(
     process.cwd(),
@@ -1170,15 +1171,16 @@ const runInitWithoutCliMetadata = async ({
   });
   reportSupabaseOriginCatalogReady();
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
-export const runInit = (options: RunInitOptions): Promise<void> =>
+export const runInit = (options: RunInitOptions): Promise<RunInitResult> =>
   withSupabaseCliMetadataCleanup(process.cwd(), () =>
     runInitWithoutCliMetadata(options),
   );

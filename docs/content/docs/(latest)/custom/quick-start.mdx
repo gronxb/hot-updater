@@ -255,7 +255,7 @@ export default defineConfig({
   }),
   plugins: [insights(), apiKeys()],
   secrets: localSecrets(), // keys from apple login and secrets put
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
 });
 ```
 

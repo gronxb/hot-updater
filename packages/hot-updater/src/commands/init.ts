@@ -6,6 +6,7 @@ import {
   HotUpdateDirUtil,
   InitError,
   makeEnv,
+  type RunInitResult,
   MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
@@ -20,6 +21,7 @@ import {
 } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 
+import { prepareInitFingerprint } from "./initFingerprint";
 import {
   assertInstalledInitProvider,
   INIT_BUILD_ENV_KEY,
@@ -234,6 +236,7 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
+  let result: RunInitResult | undefined;
   try {
     const { initProvider, runInit } = await loadInitProvider(provider);
     const cwd = process.cwd();
@@ -259,7 +262,7 @@ export const init = async (options: InitOptions = {}) => {
         throw new MissingInitInputsError([...new Set(missingInputs)]);
       }
     }
-    await runInit({
+    result = await runInit({
       build: buildAdapterPackage.name,
       envFile: options.envFile,
       ...(team === undefined ? {} : { secretsEnv: team.secretsEnv }),
@@ -271,4 +274,25 @@ export const init = async (options: InitOptions = {}) => {
     }
     throw error;
   }
+
+  if (result !== null) await closeInit(result);
+};
+
+/**
+ * Init's closing, once the provider's init set the project up: the
+ * fingerprint.json step, then every next step, the provider's first, then
+ * "Done! 🎉", so nothing prints after it. `undefined` is a provider package
+ * from before this closing, which printed its own next steps and Done: the
+ * fingerprint.json step still runs and prints the step it leaves, without a
+ * second Done.
+ */
+export const closeInit = async (
+  result: NonNullable<RunInitResult> | undefined,
+): Promise<void> => {
+  const fingerprintSteps = await prepareInitFingerprint();
+  const steps = [...(result?.nextSteps ?? []), ...fingerprintSteps];
+  for (const step of steps) {
+    p.log.message(`Next step: ${step}`);
+  }
+  if (result !== undefined) p.log.success("Done! 🎉");
 };
