@@ -367,6 +367,23 @@ describe("keysExportPublic", () => {
       expect(mocks.androidSet).not.toHaveBeenCalled();
     });
 
+    it("says the publicKeyPath file holds another key when prebuild can't read it, as with escaped newlines", async () => {
+      // The signing key itself, with `\n` escapes prebuild's reader refuses.
+      const exit = await setUp("./keys/public-key.pem", ({ publicKey }) =>
+        publicKey.trim().replaceAll("\n", "\\n"),
+      );
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mocks.logError.mock.calls).toEqual([
+        [
+          `./keys/public-key.pem holds a different key than the signing key, so prebuild would embed a key that rejects new bundles. Delete it, then write it:\n${exportCommand}`,
+        ],
+      ]);
+      expect(mocks.logSuccess).not.toHaveBeenCalled();
+    });
+
     it("leaves the next step to the publicKeyPath warning, and fails", async () => {
       const exit = await setUp(null);
 

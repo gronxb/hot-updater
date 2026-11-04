@@ -8,6 +8,7 @@ import {
   getCwd,
   loadConfig,
   p,
+  readBundleSigningPublicKeyFile,
   readBundleSigningState,
 } from "@hot-updater/cli-tools";
 
@@ -65,23 +66,25 @@ const getTrustAnchorChange = (
 };
 
 /**
- * Whether the trust-anchor file at `file` holds `publicKey`, compared as a
- * key, whatever its PEM whitespace: `"missing"` without the file, and
- * `"different"` for another key or one that can't be read.
+ * Whether the Expo plugin's `publicKeyPath` file, relative to `cwd`, holds
+ * `publicKey`, read as Expo prebuild reads it (`readBundleSigningPublicKeyFile`)
+ * and compared as a key: `"missing"` without the file, and `"different"` for
+ * another key or one prebuild can't read.
  */
 const readTrustAnchorFile = async (
-  file: string,
+  cwd: string,
+  publicKeyPath: string,
   publicKey: ReturnType<typeof getPublicKeyIdentity>,
 ): Promise<"same" | "missing" | "different"> => {
-  let text: string;
   try {
-    text = await fs.readFile(file, "utf8");
+    await fs.access(path.resolve(cwd, publicKeyPath));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
     throw error;
   }
   try {
-    return getPublicKeyIdentity(text).der.equals(publicKey.der)
+    const pem = await readBundleSigningPublicKeyFile(publicKeyPath, { cwd });
+    return getPublicKeyIdentity(pem).der.equals(publicKey.der)
       ? "same"
       : "different";
   } catch {
@@ -293,7 +296,8 @@ export const keysExportPublic = async (
       if (expoCng?.publicKeyPath) {
         const { publicKeyPath } = expoCng;
         const state = await readTrustAnchorFile(
-          path.resolve(cwd, publicKeyPath),
+          cwd,
+          publicKeyPath,
           getPublicKeyIdentity(publicKeyPEM),
         );
         if (state === "same") {
