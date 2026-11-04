@@ -64,6 +64,31 @@ const getTrustAnchorChange = (
   }
 };
 
+/**
+ * Whether the trust-anchor file at `file` holds `publicKey`, compared as a
+ * key, whatever its PEM whitespace: `"missing"` without the file, and
+ * `"different"` for another key or one that can't be read.
+ */
+const readTrustAnchorFile = async (
+  file: string,
+  publicKey: ReturnType<typeof getPublicKeyIdentity>,
+): Promise<"same" | "missing" | "different"> => {
+  let text: string;
+  try {
+    text = await fs.readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw error;
+  }
+  try {
+    return getPublicKeyIdentity(text).der.equals(publicKey.der)
+      ? "same"
+      : "different";
+  } catch {
+    return "different";
+  }
+};
+
 export interface KeysExportPublicOptions {
   output?: string;
   printOnly?: boolean;
@@ -266,8 +291,28 @@ export const keysExportPublic = async (
       // Expo CNG without native folders: prebuild embeds the plugin's
       // publicKeyPath, and the warning above says how to set it.
       if (expoCng?.publicKeyPath) {
-        p.log.success(`npx expo prebuild embeds ${expoCng.publicKeyPath}.`);
-        return;
+        const { publicKeyPath } = expoCng;
+        const state = await readTrustAnchorFile(
+          path.resolve(cwd, publicKeyPath),
+          getPublicKeyIdentity(publicKeyPEM),
+        );
+        if (state === "same") {
+          p.log.success(`npx expo prebuild embeds ${publicKeyPath}.`);
+          return;
+        }
+        const writeIt = `npx hot-updater keys export-public --output ${publicKeyPath}`;
+        p.log.error(
+          state === "missing"
+            ? ui.withCommand(
+                `${publicKeyPath} doesn't exist. Write it:`,
+                writeIt,
+              )
+            : ui.withCommand(
+                `${publicKeyPath} holds a different key than the signing key, so prebuild would embed a key that rejects new bundles. Delete it, then write it:`,
+                writeIt,
+              ),
+        );
+        return process.exit(1);
       }
       if (expoCng) return process.exit(1);
       p.log.error("No native configuration files found.");
