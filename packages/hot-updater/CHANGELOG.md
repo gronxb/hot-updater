@@ -1,5 +1,23 @@
 # hot-updater
 
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- af5bc7a: `hot-updater keys export-public` in an Expo CNG project without native folders says one thing.
+  - When the `@hot-updater/expo` plugin's `publicKeyPath` file holds the signing key, the command says `npx expo prebuild` embeds that file and succeeds.
+  - When the file is missing, or holds another key, the command says so with the `keys export-public --output <publicKeyPath>` command that writes it, and fails.
+  - Without `publicKeyPath`, the command prints only the `publicKeyPath` warning and fails, without `No native configuration files found.` or the `--print-only` tip.
+
+- @hot-updater/android-helper@1.2.0-rc.21
+  - @hot-updater/apple-helper@1.2.0-rc.21
+  - @hot-updater/bsdiff@1.2.0-rc.21
+  - @hot-updater/cli-tools@1.2.0-rc.21
+  - @hot-updater/console@1.2.0-rc.21
+  - @hot-updater/protocol@1.2.0-rc.21
+  - @hot-updater/server@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+
 ## 1.2.0-rc.20
 
 ### Patch Changes
