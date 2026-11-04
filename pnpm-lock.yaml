@@ -221,9 +221,9 @@ importers:
       '@vercel/analytics':
         specifier: ^2.0.1
         version: 2.0.1(next@16.2.9(@babel/core@7.26.0)(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
-      '@xterm/xterm':
-        specifier: ^5.5.0
-        version: 5.5.0
+      '@wterm/dom':
+        specifier: ^0.5.8
+        version: 0.5.8
       arktype:
         specifier: ^2.1.27
         version: 2.2.0
@@ -10903,6 +10903,12 @@ packages:
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
 
+  '@wterm/core@0.5.8':
+    resolution: {integrity: sha512-lOzFrNmrIbh+HEkyp+Ewa/HFZZOtiYPSedTyp8stjLA6zE0saGJWZF0vjc1e2892/s3Z7My6b9WXcPapq8ESww==}
+
+  '@wterm/dom@0.5.8':
+    resolution: {integrity: sha512-BPrn8bN3jEbVh7lLDWshjX5CNIw/gsKorMbCA0bBiO1ccXvJcqIZTv9mtSi++BNn73CtfY/kyrvm69VVWG+1vg==}
+
   '@xmldom/xmldom@0.7.13':
     resolution: {integrity: sha512-lm2GW5PkosIzccsaZIz7tp8cPADSIlIHWDFTR1N0SzfinhhYgeIQjFMz4rYzanCScr3DqQLeomUDArp6MWKm+g==}
     engines: {node: '>=10.0.0'}
@@ -10917,9 +10923,6 @@ packages:
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
     deprecated: this version has critical issues, please update to the latest version
-
-  '@xterm/xterm@5.5.0':
-    resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -32476,13 +32479,17 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
+  '@wterm/core@0.5.8': {}
+
+  '@wterm/dom@0.5.8':
+    dependencies:
+      '@wterm/core': 0.5.8
+
   '@xmldom/xmldom@0.7.13': {}
 
   '@xmldom/xmldom@0.8.13': {}
 
   '@xmldom/xmldom@0.9.10': {}
-
-  '@xterm/xterm@5.5.0': {}
 
   '@xtuc/ieee754@1.2.0': {}
 

@@ -1,5 +1,3 @@
-import type { Terminal } from "@xterm/xterm";
-
 import {
   blue,
   ClackRenderer,
@@ -9,7 +7,7 @@ import {
   magenta,
   yellow,
 } from "./clack-renderer";
-import type { DemoConfig } from "./types";
+import type { DemoConfig, DemoTerminal } from "./types";
 
 const DEMO_CONFIG: DemoConfig = {
   platform: "ios",
@@ -25,12 +23,10 @@ const DEMO_CONFIG: DemoConfig = {
 const DEMO_UPDATE_ID = "01a0586e-a286-7a74-a959-6d2c770b8793";
 
 export async function runDeployDemo(
-  terminal: Terminal,
+  terminal: DemoTerminal,
   signal?: AbortSignal,
 ): Promise<void> {
   const clack = new ClackRenderer(terminal, signal);
-  terminal.clear();
-
   await clack.typeText(
     `$ npx hot-updater deploy -p ${DEMO_CONFIG.platform}`,
     "\x1b[38;5;208m",
@@ -65,5 +61,5 @@ export async function runDeployDemo(
       ? `   ${gray("ID:")} ${yellow(DEMO_UPDATE_ID)}`
       : `   ${gray("ID:")}\n${yellow(DEMO_UPDATE_ID)}`;
   clack.outro(`${green("Deployment successful")}\n${id}`);
-  await clack.finish();
+  clack.finish();
 }
