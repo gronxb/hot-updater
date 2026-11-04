@@ -1,7 +1,12 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type ConfigResponse,
+  getCwd,
+  loadConfig,
+  p,
+} from "@hot-updater/cli-tools";
 
 /**
  * The Expo config file of a project that uses Expo CNG (Continuous Native
@@ -65,19 +70,80 @@ export function isExpo(projectPath = getCwd()): boolean {
 }
 
 /**
- * Shows warning if the project is Expo CNG.
- * Call this once at the start of commands that use native parsers.
+ * What the Expo config sets through the `@hot-updater/expo` config plugin, as
+ * the build adapter reads the config: its prebuild writes a channel only when
+ * the config lists the plugin, and a trust-anchor file only when the plugin
+ * sets `publicKeyPath`. Null when the adapter can't say.
  */
-export function warnIfExpoCNG(): void {
-  if (!isExpoCNG()) {
+const readExpoPlugin = async (
+  cwd: string,
+  config: Pick<ConfigResponse, "build">,
+): Promise<{ listed: boolean; publicKeyPath: boolean } | null> => {
+  try {
+    const adapter = await config.build({ cwd });
+    const values = await adapter.nativeBuild?.getNativeProjectValues?.({
+      platform: "ios",
+    });
+    return values === undefined
+      ? null
+      : {
+          listed: values.channel !== undefined,
+          publicKeyPath: values.publicKeyPath !== undefined,
+        };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Warns an Expo CNG project whose Expo config doesn't list the
+ * `@hot-updater/expo` config plugin, which `npx expo prebuild` needs to keep
+ * Hot Updater's native setup. With `publicKey`, before a command writes the
+ * signing public key into the native files, it warns as well when the plugin
+ * sets no `publicKeyPath`: prebuild then removes that key. Call this once at
+ * the start of commands that use native parsers.
+ */
+export async function warnIfExpoCNG({
+  cwd = getCwd(),
+  config,
+  publicKey = false,
+}: {
+  cwd?: string;
+  config?: Pick<ConfigResponse, "build">;
+  publicKey?: boolean;
+} = {}): Promise<void> {
+  if (!isExpoCNG(cwd)) {
     return;
   }
+  const plugin = await readExpoPlugin(cwd, config ?? (await loadConfig(null)));
+
+  // Each entry prints on its own line: a warning reads a JSON value in it as
+  // a provider's error body and prints only the strings inside.
+  if (publicKey) {
+    if (plugin?.listed && plugin.publicKeyPath) return;
+    p.log.warn(
+      "Expo CNG project: npx expo prebuild removes this key. Export it with --output and set publicKeyPath in the @hot-updater/expo plugin:",
+    );
+    // Short lines: messages wrap at the terminal's width.
+    p.log.message(
+      [
+        '"plugins": [["@hot-updater/expo", {',
+        '  "channel": "production",',
+        '  "publicKeyPath": "./keys/public-key.pem"',
+        "}]]",
+      ].join("\n"),
+    );
+    return;
+  }
+  if (plugin?.listed) return;
 
   p.log.warn(
     [
       "Expo CNG project: npx expo prebuild regenerates the native files.",
       "Configure the @hot-updater/expo plugin in app.json or app.config.*:",
-      '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
     ].join("\n"),
+  );
+  p.log.message(
+    '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
   );
 }

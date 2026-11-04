@@ -54,7 +54,9 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
 
 /**
  * Writes fingerprint.json, which native builds read to embed each platform's
- * hash. With `platform`, only that platform's fingerprint is replaced.
+ * hash, unless it already records the new fingerprint; `written` says
+ * whether it did. With `platform`, only that platform's fingerprint is
+ * replaced.
  */
 export const createAndInjectFingerprintFiles = async ({
   platform,
@@ -65,7 +67,7 @@ export const createAndInjectFingerprintFiles = async ({
   const newFingerprint = await generateFingerprints();
 
   // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
-  await writeFingerprintJsonIfChanged(
+  const written = await writeFingerprintJsonIfChanged(
     getCwd(),
     !localFingerprint || !platform
       ? newFingerprint
@@ -77,7 +79,7 @@ export const createAndInjectFingerprintFiles = async ({
         },
   );
 
-  return { fingerprint: newFingerprint };
+  return { fingerprint: newFingerprint, written };
 };
 
 /**
