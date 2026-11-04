@@ -1,5 +1,14 @@
 # @hot-updater/bare
 
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [a8da20c]
+- Updated dependencies [e9edd9f]
+  - @hot-updater/cli-tools@1.2.0-rc.17
+  - @hot-updater/plugin-core@1.2.0-rc.17
+
 ## 1.2.0-rc.16
 
 ### Patch Changes
