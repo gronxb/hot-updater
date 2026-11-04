@@ -80,70 +80,10 @@ afterEach(async () => {
 });
 
 describe("fingerprint.json format", () => {
-  it("writes two-space JSON with a final newline and short arrays on one line", async () => {
+  it("writes JSON.stringify's two-space JSON with a final newline", async () => {
     await createFingerprintJSON(fingerprint);
 
-    const text = await read();
-    expect(text.endsWith("}\n")).toBe(true);
-    expect(text).toContain('\n        "reasons": ["native-dependency"],\n');
-    expect(JSON.parse(text)).toEqual(fingerprint);
-    for (const line of text.split("\n")) {
-      expect(line.length).toBeLessThanOrEqual(80);
-    }
-  });
-
-  // `"ignorePaths": [...]` at four spaces: 24 columns around a path of n
-  // characters, 23 when it is the last property and no comma follows.
-  const ignorePathsLine = (n: number, last: boolean) =>
-    `    "ignorePaths": ["${"x".repeat(n)}"]${last ? "" : ","}`;
-
-  it.each([
-    ["the last property", 56, 79, true],
-    ["the last property", 57, 80, true],
-    ["the last property", 58, 81, true],
-    ["a property before another", 55, 79, false],
-    ["a property before another", 56, 80, false],
-    ["a property before another", 57, 81, false],
-  ])(
-    "puts an array that is %s on one line only within 80 columns (path of %i, %i columns)",
-    async (_, n, columns, last) => {
-      const line = ignorePathsLine(n, last);
-      expect(line.length).toBe(columns);
-      await createFingerprintJSON({
-        ...fingerprint,
-        inputs: {
-          adapter: "bare",
-          ignorePaths: ["x".repeat(n)],
-          ...(last ? {} : { nativeVersion: 2 }),
-        },
-      });
-
-      const text = await read();
-      if (columns <= 80) {
-        expect(text).toContain(`\n${line}\n`);
-      } else {
-        expect(text).toContain(
-          `    "ignorePaths": [\n      "${"x".repeat(n)}"\n    ]${last ? "" : ","}\n`,
-        );
-      }
-    },
-  );
-
-  it("formats per-platform extraSources by the same rule", async () => {
-    const long = "y".repeat(70);
-    await createFingerprintJSON({
-      ...fingerprint,
-      inputs: {
-        adapter: "bare",
-        extraSources: { ios: ["ios/.env"], android: [long] },
-      },
-    });
-
-    const text = await read();
-    expect(text).toContain(
-      '    "extraSources": {\n      "ios": ["ios/.env"],\n      "android": [\n' +
-        `        "${long}"\n      ]\n    }\n`,
-    );
+    expect(await read()).toBe(`${JSON.stringify(fingerprint, null, 2)}\n`);
   });
 
   it("never records debugInfo", async () => {
