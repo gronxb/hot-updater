@@ -169,9 +169,9 @@ describe("init with a team secrets store", () => {
     });
     expect(mocks.warn).toHaveBeenCalledWith(
       [
-        "The teamStore secrets adapter holds other values for:",
+        "The teamStore secrets adapter holds another value for:",
         "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-        ".env.hotupdater keeps them. Back the stored ones up, then run:",
+        ".env.hotupdater keeps it. Back the stored one up, then run:",
         "npx hot-updater secrets import --replace",
       ].join("\n"),
     );

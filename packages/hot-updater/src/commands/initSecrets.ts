@@ -102,9 +102,17 @@ export const storeInitTeamSecrets = async (
     if (error instanceof StoredSecretsConflictError) {
       p.log.warn(
         [
-          `The ${team.adapter.name} secrets adapter holds other values for:`,
-          ...error.names,
-          ".env.hotupdater keeps them. Back the stored ones up, then run:",
+          ...(error.names.length === 1
+            ? [
+                `The ${team.adapter.name} secrets adapter holds another value for:`,
+                ...error.names,
+                ".env.hotupdater keeps it. Back the stored one up, then run:",
+              ]
+            : [
+                `The ${team.adapter.name} secrets adapter holds other values for:`,
+                ...error.names,
+                ".env.hotupdater keeps them. Back the stored ones up, then run:",
+              ]),
           "npx hot-updater secrets import --replace",
         ].join("\n"),
       );

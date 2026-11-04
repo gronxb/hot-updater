@@ -89,8 +89,10 @@ deployment.
 
 ## Verify the scaffold
 
-Use the same CLI version that extracted the files. These scopes work in a
-server-only directory without a React Native app or Hot Updater app config:
+A later CLI of the same server release checks the files too: doctor accepts a
+scaffold whose deployment files differ from its templates only in their
+versions. These scopes work in a server-only directory without a React Native
+app or Hot Updater app config:
 
 ```bash
 npx hot-updater doctor --scope scaffold --infra-dir ./server --json
