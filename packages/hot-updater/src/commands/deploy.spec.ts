@@ -774,47 +774,6 @@ describe("deploy rollout wiring", () => {
     expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
   });
 
-  it("refuses a folder without hot-updater.config.ts, as a monorepo's root, before it connects or builds", async () => {
-    // loadConfig's defaults, without a config file: no adapters.
-    mockCli.loadConfig.mockResolvedValue({
-      build: () => {
-        throw new Error("build adapter is required");
-      },
-      fingerprint: {},
-      patch: { enabled: true, maxBaseBundles: 3 },
-      updateStrategy: "appVersion",
-    });
-    vi.mocked(fs.existsSync).mockImplementation(
-      (file) => !String(file).includes("hot-updater.config."),
-    );
-    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
-      throw new Error("process.exit");
-    });
-
-    try {
-      await expect(
-        deploy({
-          channel: "production",
-          forceUpdate: false,
-          interactive: false,
-          platform: "ios",
-          targetAppVersion: "1.0.x",
-        }),
-      ).rejects.toThrow("process.exit");
-
-      expect(exit).toHaveBeenCalledWith(1);
-      expect(mockCli.p.log.error.mock.calls).toEqual([
-        [
-          "No hot-updater.config.ts in this folder. Run this in your app's folder, the one that holds it.",
-        ],
-      ]);
-      expect(mockCli.p.log.warn).not.toHaveBeenCalled();
-      expect(mockLoadServer).not.toHaveBeenCalled();
-    } finally {
-      exit.mockRestore();
-    }
-  });
-
   it("refuses a signing adapter before it connects or builds, never deploying unsigned", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,

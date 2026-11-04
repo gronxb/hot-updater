@@ -101,7 +101,6 @@ describe("withHotUpdater - Test Cases", () => {
       tempDirs.push(dir);
       const { publicKey } = createKeyPair();
       await writeFile(path.join(dir, "public-key.pem"), publicKey);
-      vi.spyOn(cliTools, "getCwd").mockReturnValue(dir);
       vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
         updateStrategy: "appVersion",
       } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
@@ -155,7 +154,6 @@ describe("withHotUpdater - Test Cases", () => {
       const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mod-"));
       tempDirs.push(dir);
       await writeFile(path.join(dir, "fingerprint.json"), "{}");
-      vi.spyOn(cliTools, "getCwd").mockReturnValue(dir);
       vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
         updateStrategy: "appVersion",
       } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
@@ -192,55 +190,6 @@ describe("withHotUpdater - Test Cases", () => {
       ).rejects.toThrow();
       // Prebuild loads the config without credentials.
       expect(vi.mocked(cliTools.loadConfig).mock.calls).toEqual([[null]]);
-    });
-
-    it("refuses a prebuild run from another folder, and keeps the project's fingerprint.json", async () => {
-      const root = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mono-"));
-      tempDirs.push(root);
-      const dir = path.join(root, "apps", "expo");
-      await mkdir(dir, { recursive: true });
-      await writeFile(path.join(dir, "fingerprint.json"), "{}");
-      // The CLI's folder, a monorepo's root without hot-updater.config.ts,
-      // where its config falls back to the appVersion strategy.
-      vi.spyOn(cliTools, "getCwd").mockReturnValue(root);
-      vi.spyOn(process, "cwd").mockReturnValue(root);
-      vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
-        updateStrategy: "appVersion",
-      } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
-
-      const config = withHotUpdater(
-        {
-          _internal: { projectRoot: dir },
-          name: "Hot Updater Test",
-          slug: "hot-updater-test",
-        },
-        {},
-      );
-      const manifestMod = config.mods?.android?.manifest;
-      if (!manifestMod) {
-        throw new Error("AndroidManifest mod was not registered");
-      }
-      await expect(
-        manifestMod({
-          ...config,
-          modRawConfig: config,
-          modRequest: {
-            introspect: true,
-            modName: "manifest",
-            platform: "android",
-            platformProjectRoot: path.join(dir, "android"),
-            projectRoot: dir,
-          },
-          modResults: {
-            manifest: { $: {}, application: [{}] },
-          } as Parameters<typeof manifestMod>[0]["modResults"],
-        }),
-      ).rejects.toThrow(
-        "Hot Updater reads hot-updater.config.ts from the current folder, not the Expo project. Run prebuild there:\ncd apps/expo",
-      );
-      await expect(
-        access(path.join(dir, "fingerprint.json")),
-      ).resolves.toBeUndefined();
     });
 
     it("RN 0.82+ Kotlin: input -> output", () => {

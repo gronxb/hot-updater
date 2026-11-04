@@ -118,26 +118,6 @@ export const getPublicKeyFromConfig = async (
   }
 };
 
-/**
- * Refuses a prebuild of an Expo project other than the folder the CLI reads
- * hot-updater.config.ts from, as `npx expo prebuild apps/app` run from a
- * monorepo's root: its fingerprint.json would be written, or deleted, by
- * another folder's config, and the native build reads the project's.
- */
-const assertAppRoot = async (projectRoot: string) => {
-  const real = (dir: string) => fs.realpath(dir).catch(() => path.resolve(dir));
-  const { getCwd } = await loadCliTools();
-  const [appRoot, expoRoot] = await Promise.all([
-    real(getCwd()),
-    real(projectRoot),
-  ]);
-  if (appRoot !== expoRoot) {
-    throw new Error(
-      `Hot Updater reads hot-updater.config.ts from the current folder, not the Expo project. Run prebuild there:\ncd ${path.relative(process.cwd(), projectRoot) || "."}`,
-    );
-  }
-};
-
 // Type definitions
 type HotUpdaterConfig = {
   channel?: string;
@@ -206,7 +186,6 @@ const withHotUpdaterConfigAsync =
     // platform's fingerprint. Under appVersion a fingerprint.json left from
     // the fingerprint strategy would still be embedded, so it goes.
     const writeFingerprintJson = async (projectRoot: string) => {
-      await assertAppRoot(projectRoot);
       const hotUpdaterConfig = await getHotUpdaterConfig();
       if (hotUpdaterConfig.updateStrategy !== "appVersion") {
         await getFingerprint(props.publicKeyPath);
