@@ -1228,6 +1228,45 @@ describe("readConfigUpdateStrategy", () => {
     expect(readConfigUpdateStrategy(config(""))).toBe("appVersion");
   });
 
+  it("reads a literal written with as const or satisfies", () => {
+    expect(
+      readConfigUpdateStrategy(
+        config('  updateStrategy: "fingerprint" as const,'),
+      ),
+    ).toBe("fingerprint");
+  });
+
+  it.each([
+    ["a spread after it", '  updateStrategy: "fingerprint",\n  ...settings,'],
+    [
+      "a computed key after it",
+      '  updateStrategy: "fingerprint",\n  [key]: "appVersion",',
+    ],
+    [
+      "a later duplicate key",
+      '  updateStrategy: "fingerprint",\n  updateStrategy: "appVersion",',
+    ],
+    ["a template literal", "  updateStrategy: `fingerprint`,"],
+    ["a variable", "  updateStrategy,"],
+    ["a getter", '  get updateStrategy() { return "fingerprint"; },'],
+    ["an unknown string", '  updateStrategy: "nightly",'],
+  ])("reads nothing when %s could set what the config loads", (_, body) => {
+    expect(readConfigUpdateStrategy(config(body))).toBeNull();
+  });
+
+  it("reads nothing from a config without the property that a computed key or spread could set", () => {
+    expect(readConfigUpdateStrategy(config("  [key]: value,"))).toBeNull();
+    expect(readConfigUpdateStrategy(config("  ...settings,"))).toBeNull();
+  });
+
+  it("keeps the literal when a spread or computed key comes before it", () => {
+    expect(
+      readConfigUpdateStrategy(
+        config('  ...settings,\n  [key]: 1,\n  updateStrategy: "fingerprint",'),
+      ),
+    ).toBe("fingerprint");
+  });
+
   it("reads nothing from a strategy it can't evaluate, or a config it can't read", () => {
     expect(
       readConfigUpdateStrategy(

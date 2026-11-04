@@ -12,7 +12,13 @@ import { packageJsonData } from "../packageJson";
 /** What a provider package's `./init` entry exports. */
 export type InitProviderModule = {
   readonly initProvider: InitProviderDefinition;
-  readonly runInit: (options: RunInitOptions) => Promise<RunInitResult>;
+  /**
+   * Legacy: a provider package from before init's shared closing resolves
+   * `undefined`, having printed its own next steps and "Done! 🎉".
+   */
+  readonly runInit: (
+    options: RunInitOptions,
+  ) => Promise<RunInitResult | undefined>;
 };
 
 /** A value init saved in `.env.hotupdater`, or the environment's. */

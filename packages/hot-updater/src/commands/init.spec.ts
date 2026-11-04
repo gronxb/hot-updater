@@ -432,6 +432,29 @@ describe("init choices", () => {
     ]);
   });
 
+  it("still writes fingerprint.json after a provider on the previous contract, which closed itself", async () => {
+    // Given: a provider package from before init's shared closing, which
+    // printed its own next step and Done and returns nothing
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    mocks.runAwsInit.mockResolvedValue(undefined);
+    mocks.prepareInitFingerprint.mockResolvedValue([
+      "npx hot-updater fingerprint create",
+    ]);
+
+    // When
+    await expect(
+      init({ build: "bare", provider: "aws" }),
+    ).resolves.toBeUndefined();
+
+    // Then: the step the fingerprint left, and no second Done
+    expect(mocks.prepareInitFingerprint).toHaveBeenCalledOnce();
+    expect(mocks.logMessage.mock.calls).toEqual([
+      ["Next step: npx hot-updater fingerprint create"],
+    ]);
+    expect(mocks.logSuccess).not.toHaveBeenCalledWith("Done! 🎉");
+    expect(process.exitCode).toBeUndefined();
+  });
+
   it("closes nothing when the provider stopped before setting the project up", async () => {
     // Given: Firebase stops once it creates a project
     mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });

@@ -1506,8 +1506,10 @@ export const configSetsTeamSecrets = async (cwd: string): Promise<boolean> => {
 /**
  * The `updateStrategy` a config's text sets: its string, or `appVersion`,
  * loadConfig's default, when the config sets none. Null when the text
- * doesn't say, as for a value computed at load or a config whose shape it
- * can't read.
+ * doesn't say: a value that isn't a string literal (`as const` and
+ * `satisfies` aside), a getter, a key written twice, a spread or computed key
+ * after it (or anywhere, without one) that could set it at load, or a config
+ * whose shape it can't read.
  */
 export const readConfigUpdateStrategy = (
   text: string,
@@ -1515,16 +1517,33 @@ export const readConfigUpdateStrategy = (
   const source = parseConfigSource(text);
   const config = source && findDefineConfigObject(source);
   if (!config) return null;
-  const property = findAnyProperty(config.objectExpression, "updateStrategy");
-  if (property === null) {
-    // A spread may set it.
-    return config.objectExpression.properties.some(
-      (candidate) => candidate.type === "SpreadElement",
-    )
-      ? null
-      : "appVersion";
+  const { properties } = config.objectExpression;
+  const isDynamic = (property: ObjectPropertyKind) =>
+    property.type === "SpreadElement" || property.computed;
+  const named = properties.filter(
+    (property) => getObjectPropertyName(property) === "updateStrategy",
+  );
+  const [property] = named;
+  if (property === undefined) {
+    return properties.some(isDynamic) ? null : "appVersion";
   }
-  const { value } = property;
+  if (
+    named.length > 1 ||
+    property.type !== "Property" ||
+    property.kind !== "init" ||
+    property.method ||
+    properties.slice(properties.indexOf(property) + 1).some(isDynamic)
+  ) {
+    return null;
+  }
+  let value = property.value;
+  while (
+    value.type === "TSAsExpression" ||
+    value.type === "TSSatisfiesExpression" ||
+    value.type === "ParenthesizedExpression"
+  ) {
+    value = value.expression;
+  }
   return value.type === "Literal" &&
     (value.value === "appVersion" || value.value === "fingerprint")
     ? value.value

@@ -236,7 +236,7 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  let result: RunInitResult;
+  let result: RunInitResult | undefined;
   try {
     const { initProvider, runInit } = await loadInitProvider(provider);
     const cwd = process.cwd();
@@ -281,14 +281,18 @@ export const init = async (options: InitOptions = {}) => {
 /**
  * Init's closing, once the provider's init set the project up: the
  * fingerprint.json step, then every next step, the provider's first, then
- * "Done! 🎉", so nothing prints after it.
+ * "Done! 🎉", so nothing prints after it. `undefined` is a provider package
+ * from before this closing, which printed its own next steps and Done: the
+ * fingerprint.json step still runs and prints the step it leaves, without a
+ * second Done.
  */
-export const closeInit = async ({
-  nextSteps,
-}: NonNullable<RunInitResult>): Promise<void> => {
-  const steps = [...nextSteps, ...(await prepareInitFingerprint())];
+export const closeInit = async (
+  result: NonNullable<RunInitResult> | undefined,
+): Promise<void> => {
+  const fingerprintSteps = await prepareInitFingerprint();
+  const steps = [...(result?.nextSteps ?? []), ...fingerprintSteps];
   for (const step of steps) {
     p.log.message(`Next step: ${step}`);
   }
-  p.log.success("Done! 🎉");
+  if (result !== undefined) p.log.success("Done! 🎉");
 };
