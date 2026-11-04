@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- 65efc2e: A rewritten `fingerprint.json` keeps the file's indentation and line endings: tabs or the number of spaces, CRLF or LF, and whether it ends with a newline. A new file, or one that isn't valid JSON, gets two-space JSON with a final newline.
+- @hot-updater/android-helper@1.2.0-rc.19
+  - @hot-updater/apple-helper@1.2.0-rc.19
+  - @hot-updater/bsdiff@1.2.0-rc.19
+  - @hot-updater/cli-tools@1.2.0-rc.19
+  - @hot-updater/console@1.2.0-rc.19
+  - @hot-updater/protocol@1.2.0-rc.19
+  - @hot-updater/server@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+
 ## 1.2.0-rc.18
 
 ### Patch Changes
