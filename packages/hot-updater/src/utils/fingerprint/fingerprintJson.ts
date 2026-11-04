@@ -60,12 +60,45 @@ const stableStringify = (value: Json): string => {
   return JSON.stringify(value);
 };
 
+/** How a fingerprint.json is laid out: what a rewrite keeps. */
+interface FileStyle {
+  indent: string;
+  eol: string;
+  finalNewline: boolean;
+}
+
+/** What a new fingerprint.json gets: JSON.stringify's two spaces, a final newline. */
+const DEFAULT_STYLE: FileStyle = {
+  indent: "  ",
+  eol: "\n",
+  finalNewline: true,
+};
+
+/**
+ * The style of an existing file, as npm keeps package.json's: the first
+ * indented line's indentation, two spaces when there is none or it mixes
+ * tabs and spaces, its line endings, and whether it ends with one.
+ */
+const detectStyle = (text: string): FileStyle => {
+  const indent = /\n([ \t]+)\S/.exec(text)?.[1];
+  return {
+    indent: indent && /^( +|\t+)$/.test(indent) ? indent : DEFAULT_STYLE.indent,
+    eol: text.includes("\r\n") ? "\r\n" : "\n",
+    finalNewline: text.endsWith("\n"),
+  };
+};
+
+const format = (value: Json, { indent, eol, finalNewline }: FileStyle) =>
+  JSON.stringify(value, null, indent).replace(/\n/g, eol) +
+  (finalNewline ? eol : "");
+
 /**
  * Writes `fingerprint` to `<cwd>/fingerprint.json` unless the file already
- * records the same data, however it is formatted: formatting is left to the
- * project's formatter, and builds and prebuilds don't rewrite an equal file.
- * A file that can't be read as a fingerprint.json, such as one with merge
- * conflict markers, is replaced. Returns whether it wrote.
+ * records the same data, however it is formatted, so builds and prebuilds
+ * don't rewrite an equal file. A rewrite keeps the file's indentation, line
+ * endings, and final newline; a new file, or one that can't be read as a
+ * fingerprint.json, such as one with merge conflict markers, gets two-space
+ * JSON with a final newline. Returns whether it wrote.
  */
 export const writeFingerprintJsonIfChanged = async (
   cwd: string,
@@ -75,17 +108,20 @@ export const writeFingerprintJsonIfChanged = async (
   // As JSON.stringify writes them: binary contents, undefined fields.
   const next = recordFile(JSON.parse(JSON.stringify(fingerprint)) as Json);
   const existing = await fs.promises.readFile(file, "utf8").catch(() => null);
+  let style = DEFAULT_STYLE;
   if (existing !== null) {
-    let same = false;
     try {
-      same =
+      if (
         stableStringify(recordFile(JSON.parse(existing) as Json)) ===
-        stableStringify(next);
+        stableStringify(next)
+      ) {
+        return false;
+      }
+      style = detectStyle(existing);
     } catch {
-      // Not a fingerprint.json: replace it.
+      // Not a fingerprint.json: replace it in the default style.
     }
-    if (same) return false;
   }
-  await fs.promises.writeFile(file, `${JSON.stringify(next, null, 2)}\n`);
+  await fs.promises.writeFile(file, format(next, style));
   return true;
 };
