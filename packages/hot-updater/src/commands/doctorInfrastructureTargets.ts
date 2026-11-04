@@ -114,7 +114,7 @@ export function getRequiredUpdateTarget(
   return {
     ...target,
     acceptsPrerelease:
-      isPrerelease(hotUpdaterVersion) &&
+      isPrerelease(hotUpdaterVersion) === true &&
       releaseOf(hotUpdaterVersion) === target.version,
   };
 }
