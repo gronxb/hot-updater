@@ -106,6 +106,45 @@ describe("fingerprint.json format", () => {
   });
 });
 
+describe("rewriting fingerprint.json in the file's own style", () => {
+  const changed: FingerprintFile = {
+    ...fingerprint,
+    ios: { ...fingerprint.ios, hash: "ios-next" },
+  };
+  const before = {
+    ...fingerprint,
+    ios: { ...fingerprint.ios, hash: "ios-before" },
+  };
+
+  it.each([
+    ["tabs", "\t", "\n", true],
+    ["four spaces", "    ", "\n", true],
+    ["CRLF line endings", "  ", "\r\n", true],
+    ["no final newline", "  ", "\n", false],
+    ["tabs, CRLF, and no final newline", "\t", "\r\n", false],
+  ])("keeps %s on a change", async (_, indent, eol, finalNewline) => {
+    const style = (value: unknown) =>
+      JSON.stringify(value, null, indent).replace(/\n/g, eol) +
+      (finalNewline ? eol : "");
+    await fs.writeFile(fingerprintJson(), style(before));
+
+    await createFingerprintJSON(changed);
+
+    expect(await read()).toBe(style(changed));
+  });
+
+  it("writes the default style over a file that isn't a fingerprint.json", async () => {
+    await fs.writeFile(
+      fingerprintJson(),
+      "<<<<<<< HEAD\n\t{}\r\n=======\r\n\t{}\r\n>>>>>>> other",
+    );
+
+    await createFingerprintJSON(changed);
+
+    expect(await read()).toBe(`${JSON.stringify(changed, null, 2)}\n`);
+  });
+});
+
 describe("writing fingerprint.json only when its data changes", () => {
   it("leaves a file that records the same data as it was formatted", async () => {
     // As a formatter with tabs might leave it.
