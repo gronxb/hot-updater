@@ -1,4 +1,3 @@
-import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { coerce, isLess, isLessOrEqual, isPrerelease, normalize } from "verkit";
 
 import { INFRASTRUCTURE_UPDATES } from "./infrastructureUpdates";
@@ -9,7 +8,11 @@ export interface UpdateTarget {
 }
 
 export interface RequiredUpdateTarget extends UpdateTarget {
-  readonly minimumPrereleaseVersion?: string;
+  /**
+   * A prerelease CLI of the target's own release also accepts a prerelease
+   * server of it, whose schema and API are that release's.
+   */
+  readonly acceptsPrerelease?: boolean;
 }
 
 export const UPDATE_TARGETS = INFRASTRUCTURE_UPDATES;
@@ -36,6 +39,12 @@ const getLatestKnownTargetVersion = () => {
     label: "UPDATE_TARGETS",
     targets: UPDATE_TARGETS,
   }).version;
+};
+
+/** `major.minor.patch` of `version`, without its prerelease. */
+const releaseOf = (version: string): string | null => {
+  const core = coerce(version);
+  return core ? `${core.major}.${core.minor}.${core.patch}` : null;
 };
 
 const getRequiredTarget = ({
@@ -71,11 +80,7 @@ const getRequiredTarget = ({
 };
 
 export function getRequiredInfrastructureVersion(
-  hotUpdaterVersion: string = getTargetAt({
-    index: -1,
-    label: "UPDATE_TARGETS",
-    targets: UPDATE_TARGETS,
-  }).version,
+  hotUpdaterVersion: string = getLatestKnownTargetVersion(),
 ): string {
   return getRequiredUpdateTarget(hotUpdaterVersion).version;
 }
@@ -86,9 +91,13 @@ export function getRequiredServerVersion(
   return getRequiredUpdateTarget(hotUpdaterVersion).version;
 }
 
+/**
+ * The newest infrastructure update `hotUpdaterVersion` reaches: the release
+ * whose server schema and API this CLI needs. It is never the CLI's own
+ * version, so a release that changes only the CLI asks for no redeploy.
+ */
 export function getRequiredUpdateTarget(
   hotUpdaterVersion: string = getLatestKnownTargetVersion(),
-  bundledServerVersion: string = HOT_UPDATER_SERVER_VERSION,
 ): RequiredUpdateTarget {
   const target =
     getRequiredTarget({
@@ -100,29 +109,29 @@ export function getRequiredUpdateTarget(
       label: "UPDATE_TARGETS",
       targets: UPDATE_TARGETS,
     });
-  const serverCore = coerce(bundledServerVersion);
-  // A prerelease CLI must accept the runtime it ships for this generation.
-  // Keep the stable baseline for upgrade history and generation validation.
-  if (
-    isPrerelease(hotUpdaterVersion) &&
-    isPrerelease(bundledServerVersion) &&
-    serverCore &&
-    `${serverCore.major}.${serverCore.minor}.${serverCore.patch}` ===
-      target.version
-  ) {
-    return { ...target, minimumPrereleaseVersion: bundledServerVersion };
-  }
-  return target;
+  // A stable CLI keeps the stable baseline: a prerelease server of its
+  // target may predate the release's final schema.
+  return {
+    ...target,
+    acceptsPrerelease:
+      isPrerelease(hotUpdaterVersion) &&
+      releaseOf(hotUpdaterVersion) === target.version,
+  };
 }
 
 export function isInfrastructureUpdateRequired({
   serverVersion,
   requiredVersion = getRequiredInfrastructureVersion(),
+  acceptsPrerelease = false,
 }: {
   serverVersion: string;
   requiredVersion?: string;
+  /** Compare only the server's `major.minor.patch`. */
+  acceptsPrerelease?: boolean;
 }): boolean {
-  const normalizedServerVersion = normalize(serverVersion);
+  const normalizedServerVersion = normalize(
+    acceptsPrerelease ? (releaseOf(serverVersion) ?? "") : serverVersion,
+  );
   const normalizedRequiredVersion = normalize(requiredVersion);
 
   if (!normalizedServerVersion || !normalizedRequiredVersion) {

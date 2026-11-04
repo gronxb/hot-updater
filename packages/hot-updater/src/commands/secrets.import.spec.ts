@@ -122,10 +122,29 @@ describe("hot-updater secrets import", () => {
     ).toBe(ENV_FILE);
   });
 
-  it("writes no new version of a value the adapter already holds, and still lists it", async () => {
+  it("says a second import of the same file stored nothing, and writes no new version", async () => {
+    const { store } = teamStore();
+    configure(store, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
+    await handleSecretsImport();
+    vi.clearAllMocks();
+
+    await handleSecretsImport();
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set).not.toHaveBeenCalled();
+    expect(log.success).toHaveBeenCalledOnce();
+    expect(log.success).toHaveBeenCalledWith(
+      [
+        "Already stored in the teamStore secrets adapter",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        "HOT_UPDATER_API_KEY",
+      ].join("\n"),
+    );
+  });
+
+  it("names what it stored apart from what the adapter already held", async () => {
     const { store, held } = teamStore();
     held.set("HOT_UPDATER_CLOUDFLARE_API_TOKEN", "api-token");
-    held.set("HOT_UPDATER_API_KEY", "old-api-key");
     configure(store, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
 
     await handleSecretsImport();
@@ -134,13 +153,69 @@ describe("hot-updater secrets import", () => {
     expect(store.set.mock.calls.map(([name]) => name)).toEqual([
       "HOT_UPDATER_API_KEY",
     ]);
-    expect(held.get("HOT_UPDATER_API_KEY")).toBe("app-api-key");
-    expect(log.success).toHaveBeenCalledWith(
+    expect(log.success.mock.calls).toEqual([
       [
-        "Stored in the teamStore secrets adapter",
+        ["Stored in the teamStore secrets adapter", "HOT_UPDATER_API_KEY"].join(
+          "\n",
+        ),
+      ],
+      [
+        [
+          "Already stored in the teamStore secrets adapter",
+          "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        ].join("\n"),
+      ],
+    ]);
+  });
+
+  it("refuses another value the adapter holds, writes nothing, and names each such name, never a value", async () => {
+    const { store, held } = teamStore();
+    held.set("HOT_UPDATER_CLOUDFLARE_API_TOKEN", "old-api-token");
+    held.set("HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID", "access-key");
+    held.set("HOT_UPDATER_API_KEY", "old-app-api-key");
+    configure(store, [
+      "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+      "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID",
+      "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+    ]);
+
+    await handleSecretsImport();
+
+    expect(store.set).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(Object.fromEntries(held)).toEqual({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "old-api-token",
+      HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key",
+      HOT_UPDATER_API_KEY: "old-app-api-key",
+    });
+    expect(log.error).toHaveBeenCalledWith(
+      [
+        "The teamStore secrets adapter holds other values for:",
         "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
         "HOT_UPDATER_API_KEY",
+        "Back them up, then run the same command with --replace.",
       ].join("\n"),
+    );
+    expect(log.success).not.toHaveBeenCalled();
+  });
+
+  it("with --replace, overwrites another value the adapter holds", async () => {
+    const { store, held } = teamStore();
+    held.set("HOT_UPDATER_CLOUDFLARE_API_TOKEN", "api-token");
+    held.set("HOT_UPDATER_API_KEY", "old-app-api-key");
+    configure(store, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
+
+    await handleSecretsImport(undefined, { replace: true });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(store.set.mock.calls.map(([name]) => name)).toEqual([
+      "HOT_UPDATER_API_KEY",
+    ]);
+    expect(held.get("HOT_UPDATER_API_KEY")).toBe("app-api-key");
+    expect(log.success).toHaveBeenCalledWith(
+      ["Stored in the teamStore secrets adapter", "HOT_UPDATER_API_KEY"].join(
+        "\n",
+      ),
     );
   });
 

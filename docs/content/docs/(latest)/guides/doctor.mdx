@@ -524,9 +524,11 @@ doctor after installation.
 
 ## Update Outdated Infrastructure
 
-With `--server-base-url`, doctor reads the server's `/version`. If the server
-is older than the release this CLI needs, it prints the required version, why,
-and the command that upgrades it:
+With `--server-base-url`, doctor reads the server's `/version`. The required
+version is the last release that changed the server's schema or API, not the
+CLI's own version: a release that changes only the CLI needs no redeploy. If
+the server is older than that release, doctor prints the required version,
+why, and the command that upgrades it:
 
 ```txt
 ■  Infrastructure update required: 1.2.0+

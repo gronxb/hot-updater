@@ -402,15 +402,15 @@ describe("infrastructure version helpers", () => {
 
   it.each([
     ["1.0.0-beta.2", false],
-    ["1.0.0-beta.1", true],
+    ["1.0.0-beta.1", false],
+    ["1.0.0-rc.9", false],
     ["1.0.0", false],
+    ["0.99.0-beta.2", true],
+    ["0.36.0", true],
   ])(
-    "checks server %s against the runtime a prerelease CLI ships",
+    "checks server %s against the target a prerelease CLI needs, not the CLI's own version",
     async (serverVersion, needsUpdate) => {
-      const requiredTarget = getRequiredUpdateTarget(
-        "1.0.0-beta.4",
-        "1.0.0-beta.2",
-      );
+      const requiredTarget = getRequiredUpdateTarget("1.0.0-beta.4");
       expect(requiredTarget.version).toBe("1.0.0");
       const status = await checkInfrastructureStatus({
         serverBaseUrl: "https://updates.example.com",
@@ -423,7 +423,7 @@ describe("infrastructure version helpers", () => {
         ),
       });
       expect(status).toMatchObject({
-        requiredVersion: "1.0.0-beta.2",
+        requiredVersion: "1.0.0",
         needsUpdate,
       });
       expect(status.upgradeBlocked).toBeUndefined();
@@ -431,7 +431,7 @@ describe("infrastructure version helpers", () => {
   );
 
   it("does not relax a stable CLI's requirement for a prerelease server", async () => {
-    const requiredTarget = getRequiredUpdateTarget("1.0.0", "1.0.0-beta.2");
+    const requiredTarget = getRequiredUpdateTarget("1.0.0");
     const status = await checkInfrastructureStatus({
       serverBaseUrl: "https://updates.example.com",
       requiredTarget,
@@ -448,16 +448,25 @@ describe("infrastructure version helpers", () => {
     });
   });
 
-  it("does not relax the baseline for a different server core version", () => {
-    expect(
-      getRequiredUpdateTarget("1.0.0-beta.4", "0.99.0-beta.2"),
-    ).not.toHaveProperty("minimumPrereleaseVersion");
+  it("relaxes the target only for a prerelease of that target's release", () => {
+    expect(getRequiredUpdateTarget("1.2.0-rc.15")).toMatchObject({
+      version: "1.2.0",
+      acceptsPrerelease: true,
+    });
+    expect(getRequiredUpdateTarget("1.2.1-rc.0")).toMatchObject({
+      version: "1.2.0",
+      acceptsPrerelease: false,
+    });
+    expect(getRequiredUpdateTarget("1.2.1")).toMatchObject({
+      version: "1.2.0",
+      acceptsPrerelease: false,
+    });
   });
 
-  it("still blocks a missing generation marker on the runtime a prerelease CLI ships", async () => {
+  it("still blocks a missing generation marker on a prerelease CLI's target", async () => {
     const status = await checkInfrastructureStatus({
       serverBaseUrl: "https://updates.example.com",
-      requiredTarget: getRequiredUpdateTarget("1.0.0-beta.4", "1.0.0-beta.2"),
+      requiredTarget: getRequiredUpdateTarget("1.0.0-beta.4"),
       fetchImpl: vi
         .fn<typeof fetch>()
         .mockResolvedValue(Response.json({ version: "1.0.0-beta.2" })),

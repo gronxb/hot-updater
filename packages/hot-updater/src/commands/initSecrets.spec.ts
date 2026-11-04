@@ -116,19 +116,99 @@ describe("init with a team secrets store", () => {
     expect(adapter.get).toHaveBeenCalledTimes(3);
     // and .env.hotupdater keeps what init wrote, which the app's build reads
     expect(await envFile()).toContain("HOT_UPDATER_API_KEY=stored-app-key");
-    expect(mocks.success).toHaveBeenCalledWith(
+    expect(mocks.success.mock.calls).toEqual([
       [
-        "Stored in the teamStore secrets adapter:",
-        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-        "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
-        "HOT_UPDATER_API_KEY",
-      ].join("\n"),
-    );
+        [
+          "Stored in the teamStore secrets adapter:",
+          "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+        ].join("\n"),
+      ],
+      [
+        [
+          "Already stored in the teamStore secrets adapter:",
+          "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+          "HOT_UPDATER_API_KEY",
+        ].join("\n"),
+      ],
+    ]);
     expect(mocks.info).toHaveBeenCalledWith(
       [
         ".env.hotupdater still sets them, overriding the adapter here.",
         "Delete those lines to read them from the adapter.",
       ].join("\n"),
+    );
+  });
+
+  it("stores nothing over another value the store holds, and names each with the command that replaces them", async () => {
+    // Given: the store holds a token, and this run's env file another one
+    const { adapter, values } = teamStore({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "stored-token",
+      HOT_UPDATER_API_KEY: "stored-app-key",
+    });
+    mocks.loadTeamSecrets.mockResolvedValue(adapter);
+    const team = await openInitTeamSecrets({
+      provider: PROVIDER,
+      env: { HOT_UPDATER_CLOUDFLARE_API_TOKEN: "local-token" },
+      cwd: directory,
+    });
+    await makeEnv({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "local-token",
+      HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "new-access-key",
+      HOT_UPDATER_API_KEY: "stored-app-key",
+    });
+
+    // When
+    await storeInitTeamSecrets(team!, directory);
+
+    // Then: nothing is written, and init warns rather than fails: the
+    // deployment is set up, and .env.hotupdater keeps every value
+    expect(adapter.set).not.toHaveBeenCalled();
+    expect(Object.fromEntries(values)).toEqual({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "stored-token",
+      HOT_UPDATER_API_KEY: "stored-app-key",
+    });
+    expect(mocks.warn).toHaveBeenCalledWith(
+      [
+        "The teamStore secrets adapter holds other values for:",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        ".env.hotupdater keeps them. Back the stored ones up, then run:",
+        "npx hot-updater secrets import --replace",
+      ].join("\n"),
+    );
+    expect(mocks.success).not.toHaveBeenCalled();
+    expect(await envFile()).toContain(
+      "HOT_UPDATER_CLOUDFLARE_API_TOKEN=local-token",
+    );
+  });
+
+  it("says what it stored apart from what the store already held", async () => {
+    const { adapter } = teamStore({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "stored-token",
+      HOT_UPDATER_API_KEY: "stored-app-key",
+    });
+    mocks.loadTeamSecrets.mockResolvedValue(adapter);
+    const team = await openInitTeamSecrets({
+      provider: PROVIDER,
+      env: {},
+      cwd: directory,
+    });
+    await makeEnv({
+      HOT_UPDATER_CLOUDFLARE_API_TOKEN: "stored-token",
+      HOT_UPDATER_API_KEY: "stored-app-key",
+    });
+
+    await storeInitTeamSecrets(team!, directory);
+
+    expect(adapter.set).not.toHaveBeenCalled();
+    expect(mocks.success).toHaveBeenCalledWith(
+      [
+        "Already stored in the teamStore secrets adapter:",
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        "HOT_UPDATER_API_KEY",
+      ].join("\n"),
+    );
+    expect(mocks.success).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^Stored in/u),
     );
   });
 

@@ -621,11 +621,17 @@ secretsCommand
     "Store the deploy credentials an env file sets in the team secrets adapter",
   )
   .argument("[env-file]", "the env file to read (default: .env.hotupdater)")
+  .option(
+    "--replace",
+    "overwrite another value stored as a name, which may be its only copy",
+  )
   .addHelpText(
     "after",
-    "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter.",
+    "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter. A value the adapter holds is not written again; another value it holds stops the import, writing nothing, unless --replace.",
   )
-  .action((envFile?: string) => handleSecretsImport(envFile));
+  .action((envFile: string | undefined, options: { replace?: boolean }) =>
+    handleSecretsImport(envFile, { replace: options.replace === true }),
+  );
 
 secretsCommand
   .command("pull")

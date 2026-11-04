@@ -72,22 +72,57 @@ export const readMissingFromTeamSecrets = async (
   return values;
 };
 
+/** What `storeEnvFileSecrets` did with each name the file sets. */
+export interface StoredEnvFileSecrets {
+  /** Written, then read back. */
+  readonly stored: readonly string[];
+  /** Already held with the file's value, so not written again. */
+  readonly unchanged: readonly string[];
+}
+
+/**
+ * The adapter holds another value for each of `names` than the env file
+ * sets. Nothing was written: the stored value may be its only copy. Only
+ * the names are carried, never a value.
+ */
+export class StoredSecretsConflictError extends Error {
+  readonly names: readonly string[];
+
+  constructor(adapter: string, names: readonly string[]) {
+    super(
+      `The ${adapter} secrets adapter holds other values for ${list(names)}.`,
+    );
+    this.name = "StoredSecretsConflictError";
+    this.names = names;
+  }
+}
+
 /**
  * Stores each of `names` that `envFile`, `.env.hotupdater` by default,
  * holds through `secrets`, then reads them back in one call. Only the file
  * is read, never the environment. The file is left as it is. A value the
  * adapter already holds is not written again: a store that keeps versions
  * would gain a copy, and one that keeps a single previous version would
- * lose the real one. Returns the names the adapter holds the file's value
- * for, in the order of `names`; throws when it reads back another value.
+ * lose the real one. Another value it holds may be its only copy: unless
+ * `replace`, any such name throws `StoredSecretsConflictError` before
+ * anything is written. Returns the names written and the names already
+ * held, each in the order of `names`; throws when it reads back another
+ * value.
  */
 export const storeEnvFileSecrets = async (
   secrets: SecretsAdapter,
   names: readonly string[],
   cwd: string,
-  /** An env file to read instead of `.env.hotupdater`, relative to `cwd`. */
-  envFile?: string,
-): Promise<readonly string[]> => {
+  {
+    envFile,
+    replace = false,
+  }: {
+    /** An env file to read instead of `.env.hotupdater`, relative to `cwd`. */
+    readonly envFile?: string;
+    /** Overwrite another value the adapter holds. */
+    readonly replace?: boolean;
+  } = {},
+): Promise<StoredEnvFileSecrets> => {
   const file =
     envFile === undefined
       ? await readLoadedHotUpdaterEnv(cwd)
@@ -100,22 +135,31 @@ export const storeEnvFileSecrets = async (
       : undefined;
     if (value) values.set(name, value);
   }
-  if (values.size === 0) return [];
-  const stored = [...values.keys()];
+  if (values.size === 0) return { stored: [], unchanged: [] };
   for (const value of values.values()) {
     // Masked before it is sent or compared, so no failure can print it.
     registerSecretValue(value);
   }
-  const before = await readSecrets(secrets, stored, cwd);
+  const before = await readSecrets(secrets, [...values.keys()], cwd);
   const written: string[] = [];
+  const unchanged: string[] = [];
+  const conflicts: string[] = [];
   for (const [name, value] of values) {
     const held = Object.hasOwn(before, name) ? before[name] : undefined;
     if (typeof held === "string") registerSecretValue(held);
-    if (held === value) continue;
-    await secrets.set(name, value, { cwd });
-    written.push(name);
+    if (held === value) unchanged.push(name);
+    else {
+      written.push(name);
+      if (typeof held === "string") conflicts.push(name);
+    }
   }
-  if (written.length === 0) return stored;
+  if (conflicts.length > 0 && !replace) {
+    throw new StoredSecretsConflictError(secrets.name, conflicts);
+  }
+  for (const name of written) {
+    await secrets.set(name, values.get(name)!, { cwd });
+  }
+  if (written.length === 0) return { stored: [], unchanged };
   const read = await secrets.get(written, { cwd });
   const unread = written.filter(
     (name) =>
@@ -126,7 +170,7 @@ export const storeEnvFileSecrets = async (
       `The ${secrets.name} secrets adapter did not read back ${list(unread)} (${unread.map((name) => describeSecret(secrets, name)).join("; ")}).`,
     );
   }
-  return stored;
+  return { stored: written, unchanged };
 };
 
 const list = (names: readonly string[]) =>

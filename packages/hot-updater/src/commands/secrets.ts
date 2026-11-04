@@ -23,6 +23,7 @@ import {
   readSecretWithSource,
   registerCredentialValue,
   secretVariableName,
+  StoredSecretsConflictError,
   storeEnvFileSecrets,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
@@ -658,10 +659,16 @@ const DEFAULT_IMPORT_FILE = ".env.hotupdater";
  * reads for its adapters with `secret()`, and the app's API key, from `envFile`,
  * `.env.hotupdater` by default, through the config's team `secrets`
  * adapter, and reads them back. Only the file is read, never the
- * environment. It deletes nothing: where the file is loaded, its lines go
- * on overriding the adapter.
+ * environment. A value the adapter already holds is reported, not written
+ * again. Another value it holds may be its only copy, as with `secrets put`:
+ * unless `replace`, any such name stops the import before anything is
+ * written, naming each. It deletes nothing: where the file is loaded, its
+ * lines go on overriding the adapter.
  */
-export const handleSecretsImport = async (envFile?: string): Promise<void> => {
+export const handleSecretsImport = async (
+  envFile?: string,
+  { replace = false }: { readonly replace?: boolean } = {},
+): Promise<void> => {
   printBanner();
   await reportFailure(async () => {
     const config = await loadConfig(null);
@@ -678,13 +685,39 @@ export const handleSecretsImport = async (envFile?: string): Promise<void> => {
       ...getDeploySecretNames(config),
       MANAGED_CLIENT_CREDENTIAL_ENV,
     ];
-    const stored = await storeEnvFileSecrets(adapter, names, getCwd(), envFile);
-    if (stored.length === 0) {
+    let result: Awaited<ReturnType<typeof storeEnvFileSecrets>>;
+    try {
+      result = await storeEnvFileSecrets(adapter, names, getCwd(), {
+        envFile,
+        replace,
+      });
+    } catch (error) {
+      if (!(error instanceof StoredSecretsConflictError)) throw error;
+      throw new Error(
+        [
+          `The ${adapter.name} secrets adapter holds other values for:`,
+          ...error.names,
+          "Back them up, then run the same command with --replace.",
+        ].join("\n"),
+      );
+    }
+    const { stored, unchanged } = result;
+    if (stored.length === 0 && unchanged.length === 0) {
       throw new Error([`${file} sets none of these:`, ...names].join("\n"));
     }
-    p.log.success(
-      ui.block(`Stored in the ${adapter.name} secrets adapter`, stored),
-    );
+    if (stored.length > 0) {
+      p.log.success(
+        ui.block(`Stored in the ${adapter.name} secrets adapter`, stored),
+      );
+    }
+    if (unchanged.length > 0) {
+      p.log.success(
+        ui.block(
+          `Already stored in the ${adapter.name} secrets adapter`,
+          unchanged,
+        ),
+      );
+    }
     p.log.info(
       [
         `${file} still sets them where it is loaded, over the adapter.`,

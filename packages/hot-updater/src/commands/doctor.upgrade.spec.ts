@@ -42,27 +42,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiKeys, insights, remoteConfig } from "../plugins";
 import { doctor, handleDoctor } from "./doctor";
+import { INFRASTRUCTURE_UPDATES } from "./infrastructureUpdates";
 import {
   INIT_PROVIDER_PACKAGES,
   type InitProvider,
   initReplayCommand,
 } from "./initProviders";
 
-/** The CLI's version and the server package it bundles: 1.2.0's, or its release candidate's. */
-const versions = vi.hoisted(() => ({ cli: "1.2.0", server: "1.2.0" }));
+/** The CLI's version: 1.2.0's, a release candidate's, or a patch's. */
+const versions = vi.hoisted(() => ({ cli: "1.2.0" }));
 
 vi.mock("../packageJson", () => ({
   packageJsonData: {
     get version() {
       return versions.cli;
     },
-  },
-}));
-
-vi.mock("@hot-updater/server", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/server")>()),
-  get HOT_UPDATER_SERVER_VERSION() {
-    return versions.server;
   },
 }));
 
@@ -397,7 +391,6 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     vi.clearAllMocks();
     deployed = "1.1.3";
     versions.cli = "1.2.0";
-    versions.server = "1.2.0";
     cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-upgrade-"));
   });
 
@@ -574,10 +567,10 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     );
   });
 
-  it("accepts the server of a release candidate's CLI at that release candidate", async () => {
-    versions.cli = "1.2.0-rc.1";
-    versions.server = "1.2.0-rc.1";
-    deployed = "1.2.0-rc.1";
+  it("passes a release candidate's CLI against an earlier release candidate's server of the same schema, and fails a server without it", async () => {
+    // A CLI-only release candidate: the deployed server has its schema.
+    versions.cli = "1.2.0-rc.15";
+    deployed = "1.2.0-rc.14";
     const adapter = createMemoryAdapter();
     await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
     await project(
@@ -588,7 +581,11 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
     await expect(run()).resolves.toMatchObject({
       success: true,
       details: {
-        infrastructure: { requiredVersion: "1.2.0-rc.1", needsUpdate: false },
+        infrastructure: {
+          serverVersion: "1.2.0-rc.14",
+          requiredVersion: "1.2.0",
+          needsUpdate: false,
+        },
       },
     });
     deployed = "1.1.3";
@@ -596,9 +593,31 @@ describe("doctor on a 1.1.3 deployment upgraded to 1.2.0", () => {
       success: false,
       details: {
         infrastructure: {
+          requiredVersion: "1.2.0",
           needsUpdate: true,
+          updateReason: INFRASTRUCTURE_UPDATES.find(
+            ({ version }) => version === "1.2.0",
+          )!.note,
           remediation: { commands: [initReplayCommand("aws")] },
         },
+      },
+    });
+  });
+
+  it("passes a patch CLI against the server of the release whose schema it needs", async () => {
+    versions.cli = "1.2.1";
+    deployed = "1.2.0";
+    const adapter = createMemoryAdapter();
+    await migrateCoreSchema(adapter, "dynamoDB", managedPlugins());
+    await project(
+      marked(createEngineDatabase({ name: "dynamoDB", adapter }), "aws"),
+      "aws",
+    );
+
+    await expect(run()).resolves.toMatchObject({
+      success: true,
+      details: {
+        infrastructure: { requiredVersion: "1.2.0", needsUpdate: false },
       },
     });
   });
