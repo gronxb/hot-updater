@@ -100,7 +100,7 @@ export function LandingHero() {
                 </span>
               </div>
 
-              {/* XTerm Terminal */}
+              {/* Terminal */}
               <div className="p-2 sm:p-4 min-h-[300px] sm:min-h-[392px]">
                 <TerminalEmulator onReady={runDeployDemo} />
               </div>
