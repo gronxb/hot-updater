@@ -15,7 +15,6 @@ import {
   createAndInjectFingerprintFiles,
   describeFingerprintEngineChange,
   ensureFingerprintConfig,
-  type FingerprintResult,
   getFingerprintEngineChange,
   isFingerprintEquals,
   readLocalFingerprint,
@@ -26,29 +25,12 @@ import {
 } from "@/utils/fingerprint/diff";
 
 import { ui } from "../utils/cli-ui";
-import { readCommittedFile } from "../utils/git";
 import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 import { FINGERPRINT_JSON_COMMIT_HINT } from "./initFingerprint";
 
 const exitWithFingerprintError = (error: unknown): never => {
   reportUnexpectedError(error);
   process.exit(1);
-};
-
-/** The fingerprint a fingerprint.json's text records, or null when it records none. */
-const parseFingerprintJson = (
-  text: string | null,
-): {
-  ios: FingerprintResult | null;
-  android: FingerprintResult | null;
-} | null => {
-  if (text === null) return null;
-  try {
-    const value = JSON.parse(text);
-    return value && typeof value === "object" ? value : null;
-  } catch {
-    return null;
-  }
 };
 
 export const handleCreateFingerprint = async () => {
@@ -61,7 +43,7 @@ export const handleCreateFingerprint = async () => {
   s.start("Creating fingerprint.json");
   const cwd = getCwd();
   let before: string | null = null;
-  let localFingerprint: ReturnType<typeof parseFingerprintJson> = null;
+  let localFingerprint: Awaited<ReturnType<typeof readLocalFingerprint>> = null;
 
   try {
     before = await fs.promises
@@ -86,27 +68,19 @@ export const handleCreateFingerprint = async () => {
     return;
   }
 
-  // An unreadable file, as a merge conflict leaves, is compared with the
-  // last state that can be read: the committed one, if any.
-  const unreadable = localFingerprint === null;
-  const previous = unreadable
-    ? parseFingerprintJson(
-        readCommittedFile({ cwd, filePath: "fingerprint.json" }),
-      )
-    : localFingerprint;
-
+  // An unreadable file, as a merge conflict leaves, has no fingerprint to
+  // compare with.
+  const previous = localFingerprint;
   if (!previous) {
     s.stop("Rewrote fingerprint.json, which wasn't valid JSON.");
     return;
   }
   if (isFingerprintEquals(previous, result.fingerprint)) {
     s.stop(
-      unreadable
-        ? "Rewrote fingerprint.json, which wasn't valid JSON. The fingerprint matches the committed one."
-        : ui.line([
-            ui.path("fingerprint.json"),
-            "updated. The fingerprint is unchanged, so builds you shipped keep receiving updates.",
-          ]),
+      ui.line([
+        ui.path("fingerprint.json"),
+        "updated. The fingerprint is unchanged, so builds you shipped keep receiving updates.",
+      ]),
     );
     return;
   }

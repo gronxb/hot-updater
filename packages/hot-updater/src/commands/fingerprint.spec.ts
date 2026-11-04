@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -141,19 +140,6 @@ describe("fingerprint create", () => {
     JSON.stringify(fingerprint("other")),
     ">>>>>>> other",
   ].join("\n");
-  const git = (...args: string[]) =>
-    execFileSync(
-      "git",
-      ["-c", "user.email=a@b", "-c", "user.name=t", ...args],
-      { cwd: mocks.cwd, stdio: "ignore" },
-    );
-  const commit = async (text: string) => {
-    git("init", "-q");
-    await writeFingerprintJson(text);
-    git("add", "fingerprint.json");
-    git("commit", "-q", "-m", "fingerprint");
-  };
-
   it("says only that fingerprint.json is up to date when it wrote nothing", async () => {
     await writeFingerprintJson(JSON.stringify(fingerprint("next")));
 
@@ -165,7 +151,7 @@ describe("fingerprint create", () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
-  it("says it rewrote an unreadable fingerprint.json, without a rebuild, when the commit has none", async () => {
+  it("says only that it rewrote an unreadable fingerprint.json, without a rebuild", async () => {
     await writeFingerprintJson(conflicted);
 
     await handleCreateFingerprint();
@@ -176,31 +162,5 @@ describe("fingerprint create", () => {
     expect(lines(mocks.success)).toEqual([]);
     expect(mocks.warn).not.toHaveBeenCalled();
     expect(mocks.showFingerprintDiff).not.toHaveBeenCalled();
-  });
-
-  it("says the repaired fingerprint matches the committed one, without a rebuild", async () => {
-    await commit(JSON.stringify(fingerprint("next")));
-    await writeFingerprintJson(conflicted);
-
-    await handleCreateFingerprint();
-
-    expect(stops()).toEqual([
-      "Rewrote fingerprint.json, which wasn't valid JSON. The fingerprint matches the committed one.",
-    ]);
-    expect(mocks.warn).not.toHaveBeenCalled();
-    expect(mocks.showFingerprintDiff).not.toHaveBeenCalled();
-  });
-
-  it("asks for a rebuild when the repaired fingerprint differs from the committed one", async () => {
-    await commit(JSON.stringify(fingerprint("before")));
-    await writeFingerprintJson(conflicted);
-
-    await handleCreateFingerprint();
-
-    expect(stops()).toEqual(["fingerprint.json changed."]);
-    expect(mocks.warn).toHaveBeenCalledWith(
-      "Rebuild the native app to embed the new fingerprint.",
-    );
-    expect(mocks.showFingerprintDiff).toHaveBeenCalledTimes(2);
   });
 });
