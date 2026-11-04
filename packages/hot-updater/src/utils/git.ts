@@ -126,3 +126,23 @@ export const isFileUnignoredByGit = (file: string): boolean =>
     stdio: "ignore",
     timeout: 10_000,
   }).status === 1;
+
+/**
+ * `filePath`, relative to `cwd`, as the current commit has it, or null when
+ * it isn't committed or `cwd` isn't in a git repository: the last state of
+ * a file a merge conflict or an edit left unreadable.
+ */
+export const readCommittedFile = ({
+  cwd,
+  filePath,
+}: {
+  cwd: string;
+  filePath: string;
+}): string | null => {
+  const result = spawnSync("git", ["show", `HEAD:./${filePath}`], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  return result.status === 0 ? result.stdout : null;
+};

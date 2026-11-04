@@ -250,7 +250,7 @@ export const keysExportPublic = async (
       return;
     }
 
-    warnIfExpoCNG();
+    await warnIfExpoCNG({ config });
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];

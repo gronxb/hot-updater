@@ -1,7 +1,12 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type ConfigResponse,
+  getCwd,
+  loadConfig,
+  p,
+} from "@hot-updater/cli-tools";
 
 /**
  * The Expo config file of a project that uses Expo CNG (Continuous Native
@@ -65,11 +70,42 @@ export function isExpo(projectPath = getCwd()): boolean {
 }
 
 /**
- * Shows warning if the project is Expo CNG.
- * Call this once at the start of commands that use native parsers.
+ * Whether the Expo config lists the `@hot-updater/expo` config plugin, as the
+ * build adapter reads the config: its prebuild writes a channel only then.
+ * Null when the adapter can't say.
  */
-export function warnIfExpoCNG(): void {
-  if (!isExpoCNG()) {
+const listsHotUpdaterPlugin = async (
+  cwd: string,
+  config: Pick<ConfigResponse, "build">,
+): Promise<boolean | null> => {
+  try {
+    const adapter = await config.build({ cwd });
+    const values = await adapter.nativeBuild?.getNativeProjectValues?.({
+      platform: "ios",
+    });
+    return values === undefined ? null : values.channel !== undefined;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Warns an Expo CNG project whose Expo config doesn't list the
+ * `@hot-updater/expo` config plugin, which `npx expo prebuild` needs to keep
+ * Hot Updater's native setup. Call this once at the start of commands that
+ * use native parsers.
+ */
+export async function warnIfExpoCNG({
+  cwd = getCwd(),
+  config,
+}: {
+  cwd?: string;
+  config?: Pick<ConfigResponse, "build">;
+} = {}): Promise<void> {
+  if (!isExpoCNG(cwd)) {
+    return;
+  }
+  if (await listsHotUpdaterPlugin(cwd, config ?? (await loadConfig(null)))) {
     return;
   }
 
@@ -77,7 +113,11 @@ export function warnIfExpoCNG(): void {
     [
       "Expo CNG project: npx expo prebuild regenerates the native files.",
       "Configure the @hot-updater/expo plugin in app.json or app.config.*:",
-      '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
     ].join("\n"),
+  );
+  // Its own line: a warning reads a JSON value in it as a provider's
+  // error body and prints only the strings inside.
+  p.log.message(
+    '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
   );
 }

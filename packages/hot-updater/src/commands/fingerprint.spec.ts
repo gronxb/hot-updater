@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -46,12 +47,16 @@ vi.mock("@/utils/fingerprint", () => ({
     a: { ios?: { hash: string }; android?: { hash: string } } | null,
     b: { ios?: { hash: string }; android?: { hash: string } } | null,
   ) => a?.ios?.hash === b?.ios?.hash && a?.android?.hash === b?.android?.hash,
-  readLocalFingerprint: async () =>
-    JSON.parse(
-      await fs
-        .readFile(path.join(mocks.cwd, "fingerprint.json"), "utf8")
-        .catch(() => "null"),
-    ),
+  // As the real one reads it: null when missing or unreadable.
+  readLocalFingerprint: async () => {
+    try {
+      return JSON.parse(
+        await fs.readFile(path.join(mocks.cwd, "fingerprint.json"), "utf8"),
+      );
+    } catch {
+      return null;
+    }
+  },
 }));
 
 vi.mock("@/utils/fingerprint/diff", () => ({
@@ -73,13 +78,21 @@ describe("fingerprint create", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mocks.cwd = await fs.mkdtemp(path.join(os.tmpdir(), "fingerprint-create-"));
+    // As the writer does: only a change in the recorded data writes.
     mocks.createAndInjectFingerprintFiles.mockImplementation(async () => {
       const next = fingerprint("next");
-      await fs.writeFile(
-        path.join(mocks.cwd, "fingerprint.json"),
-        JSON.stringify(next),
-      );
-      return { fingerprint: next };
+      const file = path.join(mocks.cwd, "fingerprint.json");
+      const before = await fs.readFile(file, "utf8").catch(() => null);
+      let same = false;
+      try {
+        same =
+          before !== null &&
+          JSON.stringify(JSON.parse(before)) === JSON.stringify(next);
+      } catch {
+        // Unreadable: rewritten.
+      }
+      if (!same) await fs.writeFile(file, JSON.stringify(next));
+      return { fingerprint: next, written: !same };
     });
   });
 
@@ -107,7 +120,8 @@ describe("fingerprint create", () => {
 
     await handleCreateFingerprint();
 
-    expect(lines(mocks.success)).toEqual(["fingerprint.json changed."]);
+    expect(lines(mocks.spinner.stop)).toEqual(["fingerprint.json changed."]);
+    expect(lines(mocks.success)).toEqual([]);
     expect(mocks.warn).toHaveBeenCalledWith(
       "Rebuild the native app to embed the new fingerprint.",
     );
@@ -115,5 +129,78 @@ describe("fingerprint create", () => {
     expect(lines(mocks.info)).not.toContain(
       "Commit fingerprint.json. Native builds embed its fingerprint, and deploy targets it.",
     );
+  });
+
+  const stops = () => lines(mocks.spinner.stop);
+  const writeFingerprintJson = (text: string) =>
+    fs.writeFile(path.join(mocks.cwd, "fingerprint.json"), text);
+  const conflicted = [
+    "<<<<<<< HEAD",
+    JSON.stringify(fingerprint("next")),
+    "=======",
+    JSON.stringify(fingerprint("other")),
+    ">>>>>>> other",
+  ].join("\n");
+  const git = (...args: string[]) =>
+    execFileSync(
+      "git",
+      ["-c", "user.email=a@b", "-c", "user.name=t", ...args],
+      { cwd: mocks.cwd, stdio: "ignore" },
+    );
+  const commit = async (text: string) => {
+    git("init", "-q");
+    await writeFingerprintJson(text);
+    git("add", "fingerprint.json");
+    git("commit", "-q", "-m", "fingerprint");
+  };
+
+  it("says only that fingerprint.json is up to date when it wrote nothing", async () => {
+    await writeFingerprintJson(JSON.stringify(fingerprint("next")));
+
+    await handleCreateFingerprint();
+
+    expect(stops()).toEqual(["fingerprint.json is up to date."]);
+    expect(lines(mocks.success)).toEqual([]);
+    expect(lines(mocks.info)).toEqual([]);
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it("says it rewrote an unreadable fingerprint.json, without a rebuild, when the commit has none", async () => {
+    await writeFingerprintJson(conflicted);
+
+    await handleCreateFingerprint();
+
+    expect(stops()).toEqual([
+      "Rewrote fingerprint.json, which wasn't valid JSON.",
+    ]);
+    expect(lines(mocks.success)).toEqual([]);
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.showFingerprintDiff).not.toHaveBeenCalled();
+  });
+
+  it("says the repaired fingerprint matches the committed one, without a rebuild", async () => {
+    await commit(JSON.stringify(fingerprint("next")));
+    await writeFingerprintJson(conflicted);
+
+    await handleCreateFingerprint();
+
+    expect(stops()).toEqual([
+      "Rewrote fingerprint.json, which wasn't valid JSON. The fingerprint matches the committed one.",
+    ]);
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(mocks.showFingerprintDiff).not.toHaveBeenCalled();
+  });
+
+  it("asks for a rebuild when the repaired fingerprint differs from the committed one", async () => {
+    await commit(JSON.stringify(fingerprint("before")));
+    await writeFingerprintJson(conflicted);
+
+    await handleCreateFingerprint();
+
+    expect(stops()).toEqual(["fingerprint.json changed."]);
+    expect(mocks.warn).toHaveBeenCalledWith(
+      "Rebuild the native app to embed the new fingerprint.",
+    );
+    expect(mocks.showFingerprintDiff).toHaveBeenCalledTimes(2);
   });
 });

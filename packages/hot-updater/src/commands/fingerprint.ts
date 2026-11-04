@@ -26,6 +26,7 @@ import {
 } from "@/utils/fingerprint/diff";
 
 import { ui } from "../utils/cli-ui";
+import { readCommittedFile } from "../utils/git";
 import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 import { FINGERPRINT_JSON_COMMIT_HINT } from "./initFingerprint";
 
@@ -34,94 +35,116 @@ const exitWithFingerprintError = (error: unknown): never => {
   process.exit(1);
 };
 
+/** The fingerprint a fingerprint.json's text records, or null when it records none. */
+const parseFingerprintJson = (
+  text: string | null,
+): {
+  ios: FingerprintResult | null;
+  android: FingerprintResult | null;
+} | null => {
+  if (text === null) return null;
+  try {
+    const value = JSON.parse(text);
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+};
+
 export const handleCreateFingerprint = async () => {
-  warnIfExpoCNG();
-  let diffChanged = false;
-  let localFingerprint: {
-    ios: FingerprintResult | null;
-    android: FingerprintResult | null;
-  } | null = null;
+  await warnIfExpoCNG();
   let result: Awaited<
     ReturnType<typeof createAndInjectFingerprintFiles>
   > | null = null;
 
   const s = p.spinner();
   s.start("Creating fingerprint.json");
-  // The file can change while the hashes stay the same, as when it records
-  // the engine that computed them.
-  const fingerprintJsonPath = path.join(getCwd(), "fingerprint.json");
-  const readFingerprintJson = () =>
-    fs.promises.readFile(fingerprintJsonPath, "utf8").catch(() => null);
-  let fileChanged = false;
-  let created = false;
+  const cwd = getCwd();
+  let before: string | null = null;
+  let localFingerprint: ReturnType<typeof parseFingerprintJson> = null;
 
   try {
-    const before = await readFingerprintJson();
-    created = before === null;
+    before = await fs.promises
+      .readFile(path.join(cwd, "fingerprint.json"), "utf8")
+      .catch(() => null);
     localFingerprint = await readLocalFingerprint();
     result = await createAndInjectFingerprintFiles();
-    fileChanged = (await readFingerprintJson()) !== before;
-
-    if (!isFingerprintEquals(localFingerprint, result.fingerprint)) {
-      diffChanged = true;
-    }
-    s.stop("Created fingerprint.json");
   } catch (error) {
     s.error("Creating fingerprint.json failed");
     exitWithFingerprintError(error);
   }
+  if (!result) return;
 
-  if (created) {
+  if (before === null) {
+    s.stop("Created fingerprint.json");
     // A first fingerprint.json changes nothing a build embedded.
     p.log.info(FINGERPRINT_JSON_COMMIT_HINT);
-  } else if (diffChanged && result) {
-    p.log.success(ui.line([ui.path("fingerprint.json"), "changed."]));
-    p.log.warn("Rebuild the native app to embed the new fingerprint.");
+    return;
+  }
+  if (!result.written) {
+    s.stop(ui.line([ui.path("fingerprint.json"), "is up to date."]));
+    return;
+  }
 
-    // Show what changed
-    if (localFingerprint && result.fingerprint) {
-      const fingerprintConfig = await ensureFingerprintConfig();
+  // An unreadable file, as a merge conflict leaves, is compared with the
+  // last state that can be read: the committed one, if any.
+  const unreadable = localFingerprint === null;
+  const previous = unreadable
+    ? parseFingerprintJson(
+        readCommittedFile({ cwd, filePath: "fingerprint.json" }),
+      )
+    : localFingerprint;
 
-      for (const [platform, label] of [
-        ["ios", "iOS"],
-        ["android", "Android"],
-      ] as const) {
-        const before = localFingerprint[platform];
-        const after = result.fingerprint[platform];
-        if (!before || before.hash === after.hash) continue;
-        const engineChange = getFingerprintEngineChange(before, after);
-        if (engineChange) {
-          const { message, resolution } = describeFingerprintEngineChange(
-            engineChange,
-            label,
-            true,
-          );
-          p.log.warn(message);
-          p.log.info(resolution);
-          continue;
-        }
-        try {
-          showFingerprintDiff(
-            await getFingerprintDiff(before, {
-              platform,
-              ...fingerprintConfig,
-            }),
-            label,
-          );
-        } catch {
-          p.log.warn(`Could not generate the ${label} fingerprint diff`);
-        }
-      }
-    }
-  } else if (fileChanged) {
-    p.log.success(
-      ui.line([
-        ui.path("fingerprint.json"),
-        "updated. The fingerprint is unchanged, so builds you shipped keep receiving updates.",
-      ]),
+  if (!previous) {
+    s.stop("Rewrote fingerprint.json, which wasn't valid JSON.");
+    return;
+  }
+  if (isFingerprintEquals(previous, result.fingerprint)) {
+    s.stop(
+      unreadable
+        ? "Rewrote fingerprint.json, which wasn't valid JSON. The fingerprint matches the committed one."
+        : ui.line([
+            ui.path("fingerprint.json"),
+            "updated. The fingerprint is unchanged, so builds you shipped keep receiving updates.",
+          ]),
     );
-  } else {
-    p.log.success(ui.line([ui.path("fingerprint.json"), "is up to date."]));
+    return;
+  }
+
+  s.stop(ui.line([ui.path("fingerprint.json"), "changed."]));
+  p.log.warn("Rebuild the native app to embed the new fingerprint.");
+
+  // Show what changed
+  const fingerprintConfig = await ensureFingerprintConfig();
+  for (const [platform, label] of [
+    ["ios", "iOS"],
+    ["android", "Android"],
+  ] as const) {
+    const previousPlatform = previous[platform];
+    const after = result.fingerprint[platform];
+    if (!previousPlatform || previousPlatform.hash === after.hash) continue;
+    const engineChange = getFingerprintEngineChange(previousPlatform, after);
+    if (engineChange) {
+      const { message, resolution } = describeFingerprintEngineChange(
+        engineChange,
+        label,
+        true,
+      );
+      p.log.warn(message);
+      p.log.info(resolution);
+      continue;
+    }
+    try {
+      showFingerprintDiff(
+        await getFingerprintDiff(previousPlatform, {
+          platform,
+          ...fingerprintConfig,
+        }),
+        label,
+      );
+    } catch {
+      p.log.warn(`Could not generate the ${label} fingerprint diff`);
+    }
   }
 };
 
