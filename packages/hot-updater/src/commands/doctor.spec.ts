@@ -2522,6 +2522,97 @@ describe("doctor", () => {
     }
   });
 
+  describe("a fingerprint project without native folders, as Expo CNG", () => {
+    const setUp = async (nativeBuild?: Record<string, unknown>) => {
+      const cwd = await createTempProject();
+      tempProjects.push(cwd);
+      mockGetCwd.mockReturnValue(cwd);
+      mockReadPackageUp.mockResolvedValue({
+        packageJson: {
+          dependencies: {
+            "hot-updater": "0.31.0",
+            "@hot-updater/react-native": "0.31.0",
+          },
+        },
+        path: path.join(cwd, "package.json"),
+      });
+      mockLoadConfig.mockResolvedValue(
+        createConfig({
+          updateStrategy: "fingerprint",
+          build: async () => ({
+            build: vi.fn(),
+            name: "expo",
+            ...(nativeBuild === undefined ? {} : { nativeBuild }),
+          }),
+        }),
+      );
+      return cwd;
+    };
+    const missing = expect.objectContaining({
+      type: "error",
+      code: "MISSING_FINGERPRINT_JSON",
+      resolution: "Run `npx hot-updater fingerprint create`.",
+      commands: ["npx hot-updater fingerprint create"],
+    });
+
+    it.each([
+      ["with a signing hook", { getBundleSigningPublicKey: async () => null }],
+      ["without a signing hook", undefined],
+    ])("reports a missing fingerprint.json %s", async (_, nativeBuild) => {
+      await setUp(nativeBuild);
+
+      const result = await doctor();
+
+      expect(result).not.toBe(true);
+      if (result !== true) {
+        expect(result.success).toBe(false);
+        expect(result.details?.native?.updateStrategy).toBe("fingerprint");
+        expect(result.details?.native?.issues).toEqual([missing]);
+      }
+    });
+
+    it.each([
+      ["with a signing hook", { getBundleSigningPublicKey: async () => null }],
+      ["without a signing hook", undefined],
+    ])(
+      "compares fingerprint.json with the project's fingerprint %s",
+      async (_, nativeBuild) => {
+        const cwd = await setUp(nativeBuild);
+        await writeFile(
+          path.join(cwd, "fingerprint.json"),
+          JSON.stringify({
+            ios: { hash: "ios-fingerprint", sources: [] },
+            android: { hash: "android-fingerprint", sources: [] },
+          }),
+        );
+        const stale = {
+          type: "error" as const,
+          platform: "ios" as const,
+          code: "FINGERPRINT_JSON_STALE" as const,
+          message:
+            "The iOS fingerprint changed since fingerprint.json was created.",
+          resolution:
+            "Run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+          commands: ["npx hot-updater fingerprint create"],
+          paths: ["fingerprint.json"],
+        };
+        mockCheckFingerprintJson.mockResolvedValueOnce([stale]);
+
+        const result = await doctor();
+
+        expect(result).toMatchObject({
+          success: false,
+          details: {
+            native: {
+              fingerprintJsonPath: "fingerprint.json",
+              issues: [stale],
+            },
+          },
+        });
+      },
+    );
+  });
+
   it("reports a leftover fingerprint.json without native folders or a signing hook", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
