@@ -83,6 +83,7 @@ vi.mock("../utils/expoDetection", () => ({
 import { secret } from "@hot-updater/cli-tools";
 
 import { infisical } from "../infisical";
+import { warnIfExpoCNG } from "../utils/expoDetection";
 import { keysExportPublic, keysRemove } from "./keys";
 
 const setStdinTTY = (isTTY: boolean | undefined) =>
@@ -290,6 +291,46 @@ describe("keysExportPublic", () => {
       expect.stringContaining(reason),
     );
     expect(mocks.androidSet).not.toHaveBeenCalled();
+  });
+
+  describe("in an Expo CNG project without native folders", () => {
+    const setUp = async (publicKeyPath: string | null) => {
+      const cwd = await createProject();
+      await configureProject(cwd, createKeyPair());
+      mocks.androidExists.mockResolvedValue(false);
+      mocks.iosExists.mockResolvedValue(false);
+      // What the Expo CNG check found: the plugin's publicKeyPath, or none.
+      vi.mocked(warnIfExpoCNG).mockResolvedValue({ publicKeyPath });
+      return vi
+        .spyOn(process, "exit")
+        .mockImplementation(() => undefined as never);
+    };
+
+    it("says prebuild embeds the plugin's publicKeyPath, and succeeds", async () => {
+      const exit = await setUp("./keys/public-key.pem");
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).not.toHaveBeenCalled();
+      expect(mocks.logSuccess.mock.calls).toEqual([
+        ["npx expo prebuild embeds ./keys/public-key.pem."],
+      ]);
+      expect(mocks.logError).not.toHaveBeenCalled();
+      expect(mocks.logInfo).not.toHaveBeenCalled();
+      expect(mocks.androidSet).not.toHaveBeenCalled();
+    });
+
+    it("leaves the next step to the publicKeyPath warning, and fails", async () => {
+      const exit = await setUp(null);
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mocks.logError).not.toHaveBeenCalled();
+      expect(mocks.logInfo).not.toHaveBeenCalled();
+      expect(mocks.logSuccess).not.toHaveBeenCalled();
+      expect(mocks.androidSet).not.toHaveBeenCalled();
+    });
   });
 
   it("writes an Expo trust-anchor file without touching native files", async () => {

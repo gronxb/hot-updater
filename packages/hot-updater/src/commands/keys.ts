@@ -250,7 +250,7 @@ export const keysExportPublic = async (
       return;
     }
 
-    await warnIfExpoCNG({ config, publicKey: true });
+    const expoCng = await warnIfExpoCNG({ config, publicKey: true });
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];
@@ -263,6 +263,13 @@ export const keysExportPublic = async (
     const iosExists = await iosParser.exists();
 
     if (!androidExists && !iosExists) {
+      // Expo CNG without native folders: prebuild embeds the plugin's
+      // publicKeyPath, and the warning above says how to set it.
+      if (expoCng?.publicKeyPath) {
+        p.log.success(`npx expo prebuild embeds ${expoCng.publicKeyPath}.`);
+        return;
+      }
+      if (expoCng) return process.exit(1);
       p.log.error("No native configuration files found.");
       p.log.info(
         "Tip: Use --print-only to display the key for manual configuration.",
