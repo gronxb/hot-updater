@@ -616,7 +616,8 @@ export type ConfigInput = {
      */
     nativeVersion?: string | number;
     /**
-     * When debug mode is enabled, more detailed information will be exposed in fingerprint.json.
+     * Passed to the build adapter's fingerprint, which may use it for its own
+     * diagnostics. fingerprint.json never records them.
      */
     debug?: boolean;
   };

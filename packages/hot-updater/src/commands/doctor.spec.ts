@@ -2548,6 +2548,15 @@ describe("doctor", () => {
       );
       return cwd;
     };
+    const invalid = {
+      type: "error",
+      platform: "project",
+      code: "INVALID_FINGERPRINT_JSON",
+      message: "fingerprint.json isn't valid JSON.",
+      resolution: "Run `npx hot-updater fingerprint create`.",
+      commands: ["npx hot-updater fingerprint create"],
+      paths: ["fingerprint.json"],
+    };
     const missing = expect.objectContaining({
       type: "error",
       code: "MISSING_FINGERPRINT_JSON",
@@ -2570,6 +2579,28 @@ describe("doctor", () => {
         expect(result.details?.native?.issues).toEqual([missing]);
       }
     });
+
+    it.each([
+      ["with a signing hook", { getBundleSigningPublicKey: async () => null }],
+      ["without a signing hook", undefined],
+    ])(
+      "reports a fingerprint.json that isn't JSON %s",
+      async (_, nativeBuild) => {
+        const cwd = await setUp(nativeBuild);
+        await writeFile(
+          path.join(cwd, "fingerprint.json"),
+          "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> other\n",
+        );
+
+        const result = await doctor();
+
+        expect(result).not.toBe(true);
+        if (result !== true) {
+          expect(result.success).toBe(false);
+          expect(result.details?.native?.issues).toEqual([invalid]);
+        }
+      },
+    );
 
     it.each([
       ["with a signing hook", { getBundleSigningPublicKey: async () => null }],
@@ -2848,6 +2879,75 @@ describe("doctor", () => {
       expect(result.success).toBe(false);
       expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
         ["MISSING_FINGERPRINT_JSON"],
+      );
+      expect(
+        result.details?.native?.issues.map((issue) => issue.resolution),
+      ).toContain("Run `npx hot-updater fingerprint create`.");
+      expect(
+        result.details?.native?.issues.flatMap((issue) => issue.commands ?? []),
+      ).toEqual(expect.arrayContaining(["npx hot-updater fingerprint create"]));
+    }
+  });
+
+  it("reports a fingerprint.json that isn't JSON in a project with native folders", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy: "fingerprint",
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+          },
+        },
+      }),
+    );
+
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_CHANNEL</key>\n<string>production</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeAndroidManifest(
+      cwd,
+      '    <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    await writeFile(
+      path.join(cwd, "fingerprint.json"),
+      "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> other\n",
+    );
+
+    const result = await doctor();
+
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.success).toBe(false);
+      expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
+        ["INVALID_FINGERPRINT_JSON"],
       );
       expect(
         result.details?.native?.issues.map((issue) => issue.resolution),

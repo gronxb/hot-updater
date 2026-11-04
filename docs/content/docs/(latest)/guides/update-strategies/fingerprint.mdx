@@ -232,6 +232,11 @@ Example `fingerprint.json` (sources shortened):
 }
 ```
 
+Commands rewrite `fingerprint.json` only when the data it records changes, so
+your formatter can format it and an equal file is never rewritten. When two
+branches change native inputs, `fingerprint.json` conflicts on each platform's
+`hash`: resolve the package files, then run `npx hot-updater fingerprint create`.
+
 **Step 2: Build and Submit**
 
 Build your app and submit it to the App Store. The build embeds its

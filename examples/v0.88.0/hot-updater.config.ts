@@ -44,7 +44,6 @@ export default defineConfig({
     supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  fingerprint: { debug: true },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: {
     enabled: true,

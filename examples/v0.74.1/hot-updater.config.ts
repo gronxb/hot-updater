@@ -40,9 +40,6 @@ export default defineConfig({
   }),
   // The plugins its server, examples-server/hono-mongodb, runs.
   plugins: [insights()],
-  fingerprint: {
-    debug: true,
-  },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: {
     enabled: true,

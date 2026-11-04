@@ -22,9 +22,6 @@ export default defineConfig({
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion",
-  fingerprint: {
-    debug: true,
-  },
   // Bundle signing is enabled for this example.
   // Run: npx hot-updater secrets issue bundle-signing-key
   signing: secret("bundle-signing-key"),
