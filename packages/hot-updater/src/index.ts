@@ -627,7 +627,13 @@ secretsCommand
   )
   .addHelpText(
     "after",
-    "\nIt reads only the file, reads each value back, and deletes nothing: where the file is loaded, its lines still override the adapter. A value the adapter holds is not written again; another value it holds stops the import, writing nothing, unless --replace.",
+    [
+      "",
+      "It reads only the file, reads each value back, and deletes nothing:",
+      "where the file is loaded, its lines still override the adapter.",
+      "A value the adapter holds is not written again. Another value it holds",
+      "stops the import, writing nothing, unless --replace.",
+    ].join("\n"),
   )
   .action((envFile: string | undefined, options: { replace?: boolean }) =>
     handleSecretsImport(envFile, { replace: options.replace === true }),
