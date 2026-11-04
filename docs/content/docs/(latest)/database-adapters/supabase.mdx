@@ -168,6 +168,6 @@ export default defineConfig({
     supabaseServiceRoleKey: secret("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"),
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  updateStrategy: "appVersion", // or "fingerprint"
+  updateStrategy: "fingerprint", // or "appVersion"
 });
 ```

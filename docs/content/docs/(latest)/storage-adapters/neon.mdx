@@ -69,7 +69,7 @@ import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
   secrets: localSecrets(),
   storage: neonStorage({ // [!code ++]
     endpoint: "https://br-xxx.storage.c-5.us-east-2.aws.neon.tech", // [!code ++]

@@ -20,6 +20,7 @@ import {
 } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 
+import { prepareInitFingerprint } from "./initFingerprint";
 import {
   assertInstalledInitProvider,
   INIT_BUILD_ENV_KEY,
@@ -271,4 +272,6 @@ export const init = async (options: InitOptions = {}) => {
     }
     throw error;
   }
+
+  await prepareInitFingerprint();
 };

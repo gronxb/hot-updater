@@ -103,24 +103,24 @@ Publish to the same platform, test channel and compatibility target as the
 installed app. These examples use iOS and version `1.0.0`; substitute your
 actual values. For Android, use `-p android`.
 
-<Tabs items={["App version", "Fingerprint"]}>
+<Tabs items={["Fingerprint", "App version"]}>
+  <Tab value="Fingerprint">
+
+With `updateStrategy: "fingerprint"`, which `init` writes, deploy with the
+project's existing fingerprint. Do not recreate the fingerprint between the
+native build and this update.
+
+```sh
+npx hot-updater deploy -p ios -c ota-test
+```
+
+  </Tab>
   <Tab value="App version">
 
 Use the native app version of the Release build you just installed:
 
 ```sh
 npx hot-updater deploy -p ios -c ota-test -t 1.0.0
-```
-
-  </Tab>
-  <Tab value="Fingerprint">
-
-For a project configured to use fingerprint matching, deploy with its existing
-fingerprint. Do not recreate the fingerprint between the native build and this
-update.
-
-```sh
-npx hot-updater deploy -p ios -c ota-test
 ```
 
   </Tab>

@@ -67,7 +67,7 @@ export default defineConfig({
       Authorization: async () => `Bearer ${await storageToken()}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
 });
 ```
 

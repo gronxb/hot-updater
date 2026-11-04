@@ -129,7 +129,10 @@ command or generated files alone do not prove that a remote step is complete.
    config: merge its storage, database, and plugins, which are the deployed
    server's, so the CLI and console agree with the server. Import built-in
    plugin factories from `hot-updater/plugins` and list the matching calls in
-   `plugins`. Keep custom settings and the existing update strategy. Never
+   `plugins`. Keep custom settings and the existing update strategy. An app
+   without a config takes the scaffold's `updateStrategy: "fingerprint"`: run
+   `hot-updater fingerprint create` in the app and commit `fingerprint.json`,
+   which its native builds embed and deploy targets. Never
    copy app/hotUpdater.ts into the app or add `server` to its config: the config
    names no server code. Read ENVIRONMENT.md and fill only the applicable env.example
    settings in a local ignored .env.hotupdater, which the config loads
@@ -316,9 +319,9 @@ separate validation result.
     Without its client plugins, the app sends the server's plugins nothing.
 <!-- end -->
     Show the check with the app's actual strategy, for example
-    `export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App);`
+    `export default hotUpdater.wrap({ updateStrategy: "fingerprint" })(App);`
     around the app's root, or
-    `hotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })` in the
+    `hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` in the
     app's own update flow. Preserve existing initialization options and
     plugins, and keep a single init call.
     Include this handoff for infrastructure-only setup too, with app integration

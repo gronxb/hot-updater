@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   loadTeamSecrets: vi.fn(),
   logError: vi.fn(),
   makeEnv: vi.fn(),
+  prepareInitFingerprint: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
   runSupabaseInit: vi.fn(),
@@ -47,6 +48,10 @@ vi.mock("@/utils/git", () => ({
   isProjectFileTracked: mocks.isProjectFileTracked,
 }));
 
+vi.mock("./initFingerprint", () => ({
+  prepareInitFingerprint: mocks.prepareInitFingerprint,
+}));
+
 vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
@@ -81,6 +86,7 @@ describe("init choices", () => {
     mocks.runAwsInit.mockResolvedValue(undefined);
     mocks.runSupabaseInit.mockResolvedValue(undefined);
     mocks.loadTeamSecrets.mockResolvedValue(undefined);
+    mocks.prepareInitFingerprint.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -135,6 +141,12 @@ describe("init choices", () => {
       build: "bare",
       envFile: undefined,
     });
+    // Once the provider wrote the config, a fingerprint project gets its
+    // fingerprint.json.
+    expect(mocks.prepareInitFingerprint).toHaveBeenCalledOnce();
+    expect(mocks.runAwsInit.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.prepareInitFingerprint.mock.invocationCallOrder[0] ?? -Infinity,
+    );
   });
 
   it("collects missing build and provider in one prompt group", async () => {
@@ -380,5 +392,6 @@ describe("init choices", () => {
     // Then
     expect(mocks.logError).toHaveBeenCalledWith(providerError.message);
     expect(process.exitCode).toBe(1);
+    expect(mocks.prepareInitFingerprint).not.toHaveBeenCalled();
   });
 });

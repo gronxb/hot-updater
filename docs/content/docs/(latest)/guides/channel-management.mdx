@@ -250,7 +250,7 @@ export default function App() {
 ```
 
 `init` configures the client without checking for updates. Call
-`hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` when your app is
+`hotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })` when your app is
 ready, then download and apply through the
 [custom update flow](/docs/guides/custom-update).
 

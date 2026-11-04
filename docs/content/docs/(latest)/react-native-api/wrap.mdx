@@ -27,7 +27,7 @@ function App() {
 export default App; // [!code --]
 export default hotUpdater.wrap({
   // [!code ++:3]
-  updateStrategy: "appVersion", // or "fingerprint"
+  updateStrategy: "fingerprint", // or "appVersion"
 })(App);
 ```
 
@@ -95,7 +95,7 @@ function App() {
 }
 
 export default hotUpdater.wrap({
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
   fallbackComponent: (
     { progress, status, message }, // [!code ++:28]
   ) => (
@@ -144,7 +144,7 @@ does.
 
 ```tsx title="App.tsx"
 export default hotUpdater.wrap({
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
   reloadOnForceUpdate: false, // Keep the current session running // [!code ++]
 })(App);
 ```
@@ -172,7 +172,7 @@ Callback arguments:
 
 ```tsx title="App.tsx"
 export default hotUpdater.wrap({
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
   onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
     // [!code ++:3]
     console.log(

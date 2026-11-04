@@ -422,7 +422,7 @@ it("sends the running bundle and the last update failure", async () => {
     channel: "production",
     bundleId,
     releaseId: null,
-    updateStrategy: "appVersion",
+    updateStrategy: "fingerprint",
     cause: new Error("Forbidden"),
   });
   await runtime.settled();

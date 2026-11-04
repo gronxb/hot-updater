@@ -213,7 +213,7 @@ export default defineConfig({
     credential,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
-  updateStrategy: "appVersion",
+  updateStrategy: "fingerprint",
 });
 ```
 

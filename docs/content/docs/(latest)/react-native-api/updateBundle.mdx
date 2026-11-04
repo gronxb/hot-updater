@@ -21,7 +21,7 @@ export const hotUpdater = HotUpdater.init({
 
 async function stageAppUpdate() {
   const updateInfo = await hotUpdater.checkForUpdate({
-    updateStrategy: "appVersion",
+    updateStrategy: "fingerprint",
   });
 
   if (!updateInfo) return;

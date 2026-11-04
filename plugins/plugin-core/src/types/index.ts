@@ -580,6 +580,9 @@ export type ConfigInput = {
    * If `appVersion`, the bundle will be updated if the target app version is valid.
    * @docs https://hot-updater.dev/docs/guides/update-strategies/app-version
    *
+   * `hot-updater init` writes `fingerprint` for a new project; a config that
+   * sets none keeps `appVersion`, so upgrading never retargets shipped apps.
+   *
    * @default "appVersion"
    */
   updateStrategy: "fingerprint" | "appVersion";
