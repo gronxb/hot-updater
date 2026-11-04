@@ -1,26 +1,14 @@
-import type { Terminal } from "@xterm/xterm";
-
-export interface TerminalConfig {
-  cursorBlink?: boolean;
-  fontSize?: number;
-  fontFamily?: string;
-  theme?: {
-    background?: string;
-    foreground?: string;
-    cursor?: string;
-    selectionBackground?: string;
-  };
-  rows?: number;
-  cols?: number;
+/** The part of the terminal a scripted demo drives. */
+export interface DemoTerminal {
+  readonly cols: number;
+  write(data: string): void;
 }
 
 export interface TerminalEmulatorProps {
-  config?: TerminalConfig;
-  onReady?: (terminal: Terminal, signal: AbortSignal) => void | Promise<void>;
-}
-
-export interface ClackRendererProps {
-  terminal: Terminal;
+  onReady?: (
+    terminal: DemoTerminal,
+    signal: AbortSignal,
+  ) => void | Promise<void>;
 }
 
 export interface DemoConfig {
