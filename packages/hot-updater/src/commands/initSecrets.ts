@@ -6,6 +6,7 @@ import {
   MANAGED_CLIENT_CREDENTIAL_ENV,
   p,
   readMissingFromTeamSecrets,
+  StoredSecretsConflictError,
   storeEnvFileSecrets,
 } from "@hot-updater/cli-tools";
 import type { SecretsAdapter } from "@hot-updater/plugin-core";
@@ -84,25 +85,52 @@ export const openInitTeamSecrets = async ({
  * `HOT_UPDATER_API_KEY` from the file, and its lines override the adapter
  * on this machine. A failure leaves everything as init wrote it, and says
  * why, such as a store that does not read back what it was given.
+ *
+ * Another value the adapter holds may be its only copy, as `secrets import`
+ * refuses it: nothing is written, and init warns with the names and
+ * `secrets import --replace` rather than asking. The deployment is set up
+ * by then, both values are kept, and init runs without a terminal too.
  */
 export const storeInitTeamSecrets = async (
   team: InitTeamSecrets,
   cwd: string,
 ): Promise<void> => {
-  let stored: readonly string[];
+  let result: Awaited<ReturnType<typeof storeEnvFileSecrets>>;
   try {
-    stored = await storeEnvFileSecrets(team.adapter, team.names, cwd);
+    result = await storeEnvFileSecrets(team.adapter, team.names, cwd);
   } catch (error) {
+    if (error instanceof StoredSecretsConflictError) {
+      p.log.warn(
+        [
+          `The ${team.adapter.name} secrets adapter holds other values for:`,
+          ...error.names,
+          ".env.hotupdater keeps them. Back the stored ones up, then run:",
+          "npx hot-updater secrets import --replace",
+        ].join("\n"),
+      );
+      return;
+    }
     p.log.warn(`${message(error)}\n.env.hotupdater keeps them.`);
     return;
   }
-  if (stored.length === 0) return;
+  const { stored, unchanged } = result;
+  if (stored.length === 0 && unchanged.length === 0) return;
   // One name a line: credential names are long.
-  p.log.success(
-    [`Stored in the ${team.adapter.name} secrets adapter:`, ...stored].join(
-      "\n",
-    ),
-  );
+  if (stored.length > 0) {
+    p.log.success(
+      [`Stored in the ${team.adapter.name} secrets adapter:`, ...stored].join(
+        "\n",
+      ),
+    );
+  }
+  if (unchanged.length > 0) {
+    p.log.success(
+      [
+        `Already stored in the ${team.adapter.name} secrets adapter:`,
+        ...unchanged,
+      ].join("\n"),
+    );
+  }
   p.log.info(
     [
       ".env.hotupdater still sets them, overriding the adapter here.",

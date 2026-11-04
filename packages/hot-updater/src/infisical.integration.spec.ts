@@ -402,7 +402,10 @@ describe("infisical() on a self-hosted Infisical", () => {
           ["CLOUDFLARE_API_TOKEN", "HOT_UPDATER_API_KEY"],
           project,
         ),
-      ).resolves.toEqual(["CLOUDFLARE_API_TOKEN", "HOT_UPDATER_API_KEY"]);
+      ).resolves.toEqual({
+        stored: ["CLOUDFLARE_API_TOKEN", "HOT_UPDATER_API_KEY"],
+        unchanged: [],
+      });
 
       expect(await oracle("HOT_UPDATER_API_KEY")).toBe("hu_live_example");
       expect(await oracle("CLOUDFLARE_API_TOKEN")).toBe("cf-token-example");
