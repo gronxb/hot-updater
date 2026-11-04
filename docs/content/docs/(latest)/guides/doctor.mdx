@@ -86,9 +86,13 @@ Supabase Function authentication configuration, AWS catalog/artifact/version
 routes and API-key cache separation, Firebase project/functions selection, the
 Vercel rewrite to the supplied Function, and Azure's Function package and route
 prefix.
-Use the CLI version that generated the scaffold. An older scaffold requires its
-matching CLI or a fresh upgrade scaffold; editing its version fields is not an
-upgrade.
+A scaffold another CLI version generated passes when its deployment files differ
+from this CLI's templates only in their version strings and its server is the
+release whose schema and API this CLI needs, so a CLI-only release asks for no
+redeploy. A scaffold whose server is older, or whose deployment files differ
+otherwise, is blocked with the files that differ and the command that generates
+an upgrade scaffold. Doctor compares the manifest's original file hashes with
+this CLI's templates, so editing its version fields is not an upgrade.
 
 A newly extracted scaffold normally fails until resource placeholders are filled.
 Doctor preserves custom settings and does not demand unchanged template hashes.

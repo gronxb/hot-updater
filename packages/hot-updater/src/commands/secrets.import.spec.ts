@@ -199,6 +199,24 @@ describe("hot-updater secrets import", () => {
     expect(log.success).not.toHaveBeenCalled();
   });
 
+  it("words the refusal for one name in the singular", async () => {
+    const { store, held } = teamStore();
+    held.set("HOT_UPDATER_API_KEY", "old-app-api-key");
+    configure(store, []);
+
+    await handleSecretsImport();
+
+    expect(store.set).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      [
+        "The teamStore secrets adapter holds another value for:",
+        "HOT_UPDATER_API_KEY",
+        "Back it up, then run the same command with --replace.",
+      ].join("\n"),
+    );
+  });
+
   it("with --replace, overwrites another value the adapter holds", async () => {
     const { store, held } = teamStore();
     held.set("HOT_UPDATER_CLOUDFLARE_API_TOKEN", "api-token");

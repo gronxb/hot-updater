@@ -694,11 +694,18 @@ export const handleSecretsImport = async (
     } catch (error) {
       if (!(error instanceof StoredSecretsConflictError)) throw error;
       throw new Error(
-        [
-          `The ${adapter.name} secrets adapter holds other values for:`,
-          ...error.names,
-          "Back them up, then run the same command with --replace.",
-        ].join("\n"),
+        (error.names.length === 1
+          ? [
+              `The ${adapter.name} secrets adapter holds another value for:`,
+              ...error.names,
+              "Back it up, then run the same command with --replace.",
+            ]
+          : [
+              `The ${adapter.name} secrets adapter holds other values for:`,
+              ...error.names,
+              "Back them up, then run the same command with --replace.",
+            ]
+        ).join("\n"),
       );
     }
     const { stored, unchanged } = result;

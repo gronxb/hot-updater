@@ -123,6 +123,17 @@ describe("storeEnvFileSecrets", () => {
     });
   });
 
+  it("names one conflicting name in the singular", async () => {
+    await writeEnvFile("HOT_UPDATER_API_KEY=new-app-api-key\n");
+    const { adapter } = teamStore({ HOT_UPDATER_API_KEY: "old-app-api-key" });
+
+    await expect(
+      storeEnvFileSecrets(adapter, ["HOT_UPDATER_API_KEY"], directory),
+    ).rejects.toThrow(
+      "The teamStore secrets adapter holds another value for HOT_UPDATER_API_KEY.",
+    );
+  });
+
   it("with replace, writes another value the adapter holds, but no new version of the same one, and reads back only what it wrote", async () => {
     await writeEnvFile(
       [

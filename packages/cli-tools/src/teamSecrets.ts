@@ -90,7 +90,7 @@ export class StoredSecretsConflictError extends Error {
 
   constructor(adapter: string, names: readonly string[]) {
     super(
-      `The ${adapter} secrets adapter holds other values for ${list(names)}.`,
+      `The ${adapter} secrets adapter holds ${names.length === 1 ? "another value" : "other values"} for ${list(names)}.`,
     );
     this.name = "StoredSecretsConflictError";
     this.names = names;
