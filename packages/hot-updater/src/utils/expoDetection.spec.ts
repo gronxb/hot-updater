@@ -89,7 +89,7 @@ describe("warnIfExpoCNG", () => {
       },
     }),
   });
-  const printed = async (run: () => Promise<void>) => {
+  const printed = async (run: () => Promise<unknown>) => {
     let output = "";
     const write = vi
       .spyOn(process.stdout, "write")

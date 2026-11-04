@@ -83,6 +83,7 @@ vi.mock("../utils/expoDetection", () => ({
 import { secret } from "@hot-updater/cli-tools";
 
 import { infisical } from "../infisical";
+import { warnIfExpoCNG } from "../utils/expoDetection";
 import { keysExportPublic, keysRemove } from "./keys";
 
 const setStdinTTY = (isTTY: boolean | undefined) =>
@@ -290,6 +291,110 @@ describe("keysExportPublic", () => {
       expect.stringContaining(reason),
     );
     expect(mocks.androidSet).not.toHaveBeenCalled();
+  });
+
+  describe("in an Expo CNG project without native folders", () => {
+    const setUp = async (
+      publicKeyPath: string | null,
+      trustAnchor?: (keyPair: ReturnType<typeof createKeyPair>) => string,
+    ) => {
+      const keyPair = createKeyPair();
+      const cwd = await createProject();
+      await configureProject(cwd, keyPair);
+      if (publicKeyPath !== null && trustAnchor) {
+        const file = path.join(cwd, publicKeyPath);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, trustAnchor(keyPair));
+      }
+      mocks.androidExists.mockResolvedValue(false);
+      mocks.iosExists.mockResolvedValue(false);
+      // What the Expo CNG check found: the plugin's publicKeyPath, or none.
+      vi.mocked(warnIfExpoCNG).mockResolvedValue({ publicKeyPath });
+      return vi
+        .spyOn(process, "exit")
+        .mockImplementation(() => undefined as never);
+    };
+    const exportCommand =
+      "npx hot-updater keys export-public --output ./keys/public-key.pem";
+
+    it("says prebuild embeds the plugin's publicKeyPath, and succeeds, when it holds the signing key", async () => {
+      // The same key in other PEM whitespace.
+      const exit = await setUp(
+        "./keys/public-key.pem",
+        ({ publicKey }) =>
+          `\n${publicKey.trim().replaceAll("\n", "\r\n")}\r\n\n`,
+      );
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).not.toHaveBeenCalled();
+      expect(mocks.logSuccess.mock.calls).toEqual([
+        ["npx expo prebuild embeds ./keys/public-key.pem."],
+      ]);
+      expect(mocks.logError).not.toHaveBeenCalled();
+      expect(mocks.logInfo).not.toHaveBeenCalled();
+      expect(mocks.androidSet).not.toHaveBeenCalled();
+    });
+
+    it("says the publicKeyPath file doesn't exist, with the command that writes it, and fails", async () => {
+      const exit = await setUp("./keys/public-key.pem");
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mocks.logError.mock.calls).toEqual([
+        [`./keys/public-key.pem doesn't exist. Write it:\n${exportCommand}`],
+      ]);
+      expect(mocks.logSuccess).not.toHaveBeenCalled();
+      expect(mocks.androidSet).not.toHaveBeenCalled();
+    });
+
+    it("says the publicKeyPath file holds another key, with the command that writes it, and fails", async () => {
+      const exit = await setUp(
+        "./keys/public-key.pem",
+        () => createKeyPair().publicKey,
+      );
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mocks.logError.mock.calls).toEqual([
+        [
+          `./keys/public-key.pem holds a different key than the signing key, so prebuild would embed a key that rejects new bundles. Delete it, then write it:\n${exportCommand}`,
+        ],
+      ]);
+      expect(mocks.logSuccess).not.toHaveBeenCalled();
+      expect(mocks.androidSet).not.toHaveBeenCalled();
+    });
+
+    it("says the publicKeyPath file holds another key when prebuild can't read it, as with escaped newlines", async () => {
+      // The signing key itself, with `\n` escapes prebuild's reader refuses.
+      const exit = await setUp("./keys/public-key.pem", ({ publicKey }) =>
+        publicKey.trim().replaceAll("\n", "\\n"),
+      );
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mocks.logError.mock.calls).toEqual([
+        [
+          `./keys/public-key.pem holds a different key than the signing key, so prebuild would embed a key that rejects new bundles. Delete it, then write it:\n${exportCommand}`,
+        ],
+      ]);
+      expect(mocks.logSuccess).not.toHaveBeenCalled();
+    });
+
+    it("leaves the next step to the publicKeyPath warning, and fails", async () => {
+      const exit = await setUp(null);
+
+      await keysExportPublic({ yes: true });
+
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mocks.logError).not.toHaveBeenCalled();
+      expect(mocks.logInfo).not.toHaveBeenCalled();
+      expect(mocks.logSuccess).not.toHaveBeenCalled();
+      expect(mocks.androidSet).not.toHaveBeenCalled();
+    });
   });
 
   it("writes an Expo trust-anchor file without touching native files", async () => {

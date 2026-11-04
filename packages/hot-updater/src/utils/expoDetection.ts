@@ -78,7 +78,7 @@ export function isExpo(projectPath = getCwd()): boolean {
 const readExpoPlugin = async (
   cwd: string,
   config: Pick<ConfigResponse, "build">,
-): Promise<{ listed: boolean; publicKeyPath: boolean } | null> => {
+): Promise<{ listed: boolean; publicKeyPath: string | null } | null> => {
   try {
     const adapter = await config.build({ cwd });
     const values = await adapter.nativeBuild?.getNativeProjectValues?.({
@@ -88,7 +88,7 @@ const readExpoPlugin = async (
       ? null
       : {
           listed: values.channel !== undefined,
-          publicKeyPath: values.publicKeyPath !== undefined,
+          publicKeyPath: values.publicKeyPath ?? null,
         };
   } catch {
     return null;
@@ -101,7 +101,8 @@ const readExpoPlugin = async (
  * Hot Updater's native setup. With `publicKey`, before a command writes the
  * signing public key into the native files, it warns as well when the plugin
  * sets no `publicKeyPath`: prebuild then removes that key. Call this once at
- * the start of commands that use native parsers.
+ * the start of commands that use native parsers. Returns null outside an Expo
+ * CNG project, else the `publicKeyPath` the plugin sets, if any.
  */
 export async function warnIfExpoCNG({
   cwd = getCwd(),
@@ -111,16 +112,17 @@ export async function warnIfExpoCNG({
   cwd?: string;
   config?: Pick<ConfigResponse, "build">;
   publicKey?: boolean;
-} = {}): Promise<void> {
+} = {}): Promise<{ publicKeyPath: string | null } | null> {
   if (!isExpoCNG(cwd)) {
-    return;
+    return null;
   }
   const plugin = await readExpoPlugin(cwd, config ?? (await loadConfig(null)));
 
   // Each entry prints on its own line: a warning reads a JSON value in it as
   // a provider's error body and prints only the strings inside.
   if (publicKey) {
-    if (plugin?.listed && plugin.publicKeyPath) return;
+    const publicKeyPath = plugin?.listed ? plugin.publicKeyPath : null;
+    if (publicKeyPath) return { publicKeyPath };
     p.log.warn(
       "Expo CNG project: npx expo prebuild removes this key. Export it with --output and set publicKeyPath in the @hot-updater/expo plugin:",
     );
@@ -133,9 +135,10 @@ export async function warnIfExpoCNG({
         "}]]",
       ].join("\n"),
     );
-    return;
+    return { publicKeyPath: null };
   }
-  if (plugin?.listed) return;
+  const status = { publicKeyPath: plugin?.publicKeyPath ?? null };
+  if (plugin?.listed) return status;
 
   p.log.warn(
     [
@@ -146,4 +149,5 @@ export async function warnIfExpoCNG({
   p.log.message(
     '"plugins": [["@hot-updater/expo", { "channel": "production" }]]',
   );
+  return status;
 }
