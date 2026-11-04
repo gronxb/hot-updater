@@ -1,5 +1,15 @@
 # @hot-updater/console
 
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.2.0-rc.21
+  - @hot-updater/cli-tools@1.2.0-rc.21
+  - @hot-updater/protocol@1.2.0-rc.21
+  - @hot-updater/server@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+
 ## 1.2.0-rc.20
 
 ### Patch Changes
