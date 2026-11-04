@@ -1,5 +1,14 @@
 # @hot-updater/sentry-plugin
 
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [effac38]
+  - @hot-updater/cli-tools@1.2.0-rc.15
+  - @hot-updater/protocol@1.2.0-rc.15
+  - @hot-updater/plugin-core@1.2.0-rc.15
+
 ## 1.2.0-rc.14
 
 ### Patch Changes
