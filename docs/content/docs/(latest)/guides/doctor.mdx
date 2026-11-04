@@ -153,7 +153,8 @@ directories exist, `doctor` checks:
 An Expo project below SDK 55 fails with `EXPO_SDK_UNSUPPORTED`, with or without
 native directories. The `fingerprint.json` checks run without native
 directories too, as in an Expo project that generates them at prebuild:
-without the file, `doctor` fails with `MISSING_FINGERPRINT_JSON`.
+without the file, `doctor` fails with `MISSING_FINGERPRINT_JSON`, and with
+`INVALID_FINGERPRINT_JSON` when the file isn't JSON, as after a merge conflict.
 
 The native status also shows each platform's app version, the version the
 native project builds (`appVersion` in `details.native.ios` and
@@ -244,7 +245,7 @@ Doctor writes nothing. Each issue's `resolution` says what resolves it, and
 | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SCHEMA_MIGRATION_PENDING`, on a deployment `hot-updater init` created                | `npx hot-updater init --provider <provider> --from-env-file .env.hotupdater`: it migrates the database and redeploys the server back to back. See [Check the database schema](#check-the-database-schema)                         |
 | `SCHEMA_MIGRATION_PENDING`, on a server of your own                                   | `npx hot-updater db migrate <server file>` in the server's project; for Drizzle, Prisma, D1, and Supabase, `npx hot-updater db generate <server file>` and the database's tooling first                                         |
-| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | `npx hot-updater fingerprint create`, then rebuild the app when the fingerprint changed                                                                                                                                           |
+| `MISSING_FINGERPRINT_JSON`, `INVALID_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | `npx hot-updater fingerprint create`, then rebuild the app when the fingerprint changed                                                                                                                                           |
 | `FINGERPRINT_JSON_UNUSED`                                                             | Delete `fingerprint.json`, then rebuild the apps, or set `updateStrategy` to `"fingerprint"`                                                                                                                                      |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH`                                           | `npx hot-updater keys export-public`, then rebuild and release the app. Apps already installed keep the previous key and reject bundles signed with the configured one                                                           |
 | `FINGERPRINT_ENGINE_CHANGED`                                                          | Your choice: go back to the engine `fingerprint.json` records to keep updating the apps you shipped, or run `fingerprint create` and rebuild them                                                                                |

@@ -6,6 +6,8 @@ import type {
   NativeFingerprintSource,
 } from "@hot-updater/plugin-core";
 
+import { hasConfigFile, NO_CONFIG_FILE_MESSAGE } from "../configFile";
+
 export const appendFingerprintExtraSources = (
   extraSources: FingerprintExtraSources | undefined,
   additions: readonly string[],
@@ -32,7 +34,9 @@ export const ensureFingerprintConfig = async (
   const config = await loadConfig(null);
   if (config.updateStrategy === "appVersion") {
     p.log.error(
-      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+      hasConfigFile(getCwd())
+        ? "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy."
+        : NO_CONFIG_FILE_MESSAGE,
     );
     process.exit(1);
   }

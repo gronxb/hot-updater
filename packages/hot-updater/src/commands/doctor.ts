@@ -350,16 +350,25 @@ const readNativeAppVersion = async (
   }
 };
 
+/**
+ * fingerprint.json as doctor reads it: its value, `"invalid"` when its text
+ * isn't JSON, as after a merge conflict, or null when it can't be read.
+ */
 const readLocalFingerprintFile = async (cwd: string) => {
   const fingerprintJsonPath = path.join(cwd, "fingerprint.json");
+  let content: string;
   try {
-    const content = await fs.promises.readFile(fingerprintJsonPath, "utf-8");
+    content = await fs.promises.readFile(fingerprintJsonPath, "utf-8");
+  } catch {
+    return null;
+  }
+  try {
     return {
       path: "fingerprint.json",
       value: JSON.parse(content) as LocalFingerprint,
     };
   } catch {
-    return null;
+    return "invalid" as const;
   }
 };
 
@@ -643,6 +652,7 @@ const checkSigning = (config: ConfigResponse): SigningStatus | undefined => {
 /**
  * fingerprint.json's checks for a fingerprint project, with or without
  * native folders (Expo CNG has none): MISSING_FINGERPRINT_JSON without it,
+ * INVALID_FINGERPRINT_JSON when it isn't JSON,
  * which deploy refuses and native builds embed no fingerprint without, else
  * its comparison with the project's fingerprint. Nothing for appVersion.
  */
@@ -653,6 +663,21 @@ async function checkProjectFingerprint(
 ): Promise<{ fingerprintJsonPath?: string; issues: NativeCheckIssue[] }> {
   if (updateStrategy !== "fingerprint") return { issues: [] };
   const localFingerprint = await readLocalFingerprintFile(cwd);
+  if (localFingerprint === "invalid") {
+    return {
+      issues: [
+        {
+          type: "error",
+          platform: "project",
+          code: "INVALID_FINGERPRINT_JSON",
+          message: "fingerprint.json isn't valid JSON.",
+          resolution: "Run `npx hot-updater fingerprint create`.",
+          commands: [...FINGERPRINT_RECOVERY_COMMANDS],
+          paths: ["fingerprint.json"],
+        },
+      ],
+    };
+  }
   if (!localFingerprint) {
     return {
       issues: [

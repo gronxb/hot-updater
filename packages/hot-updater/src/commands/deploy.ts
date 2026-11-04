@@ -77,6 +77,7 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { ui } from "../utils/cli-ui";
+import { hasConfigFile, NO_CONFIG_FILE_MESSAGE } from "../utils/configFile";
 import {
   MANIFEST_ASSET_UPLOAD_CONCURRENCY,
   prepareContentAddressedAssetUploadTargets,
@@ -1218,6 +1219,16 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {
     return;
+  }
+  // Without a config file in the folder, as at a monorepo's root, the
+  // config is the defaults, with no adapters to deploy through.
+  if (
+    !firstPlatformConfig.config.database &&
+    !firstPlatformConfig.config.storage &&
+    !hasConfigFile(getCwd())
+  ) {
+    p.log.error(NO_CONFIG_FILE_MESSAGE);
+    return process.exit(1);
   }
   const signingStates = platformConfigs.map(({ config }) =>
     readBundleSigningState(config.signing),

@@ -1,4 +1,8 @@
-import { loadConfig } from "@hot-updater/cli-tools";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,6 +15,7 @@ import {
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  getCwd: vi.fn(),
   loadConfig: vi.fn(),
 }));
 
@@ -25,6 +30,42 @@ describe("ensureFingerprintConfig", () => {
     await ensureFingerprintConfig([]);
 
     expect(vi.mocked(loadConfig).mock.calls).toEqual([[null]]);
+  });
+
+  it.each([
+    [
+      "names a folder without hot-updater.config.ts, as a monorepo's root",
+      false,
+      "No hot-updater.config.ts in this folder. Run this in your app's folder, the one that holds it.",
+    ],
+    [
+      "names the appVersion strategy hot-updater.config.ts sets",
+      true,
+      "The updateStrategy in hot-updater.config.ts is set to 'appVersion'. This command only works with 'fingerprint' strategy.",
+    ],
+  ])("%s", async (_, withConfig, message) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-fp-cwd-"));
+    if (withConfig) {
+      await fs.writeFile(path.join(dir, "hot-updater.config.ts"), "");
+    }
+    vi.mocked(getCwd).mockReturnValue(dir);
+    // As loadConfig resolves without a config file: the defaults.
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "appVersion",
+    } as never);
+    const error = vi.spyOn(p.log, "error").mockImplementation(() => {});
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit");
+    }) as never);
+
+    try {
+      await expect(ensureFingerprintConfig([])).rejects.toThrow("exit");
+      expect(error.mock.calls).toEqual([[message]]);
+    } finally {
+      error.mockRestore();
+      exit.mockRestore();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

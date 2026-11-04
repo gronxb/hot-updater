@@ -57,7 +57,6 @@ export default defineConfig({
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   fingerprint: {
-    debug: true,
     // The brownfield framework and library module this example packages
     // itself as, as the brownfield guide adds them.
     extraSources: {
