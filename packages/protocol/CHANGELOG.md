@@ -1,5 +1,7 @@
 # @hot-updater/protocol
 
+## 1.2.0-rc.20
+
 ## 1.2.0-rc.19
 
 ## 1.2.0-rc.18
