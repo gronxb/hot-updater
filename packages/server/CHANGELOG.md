@@ -1,5 +1,16 @@
 # @hot-updater/server
 
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/plugin-api-keys@1.2.0-rc.20
+  - @hot-updater/plugin-insights@1.2.0-rc.20
+  - @hot-updater/plugin-remote-config@1.2.0-rc.20
+  - @hot-updater/protocol@1.2.0-rc.20
+
 ## 1.2.0-rc.19
 
 ### Patch Changes

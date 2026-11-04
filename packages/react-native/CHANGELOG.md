@@ -1,5 +1,13 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- @hot-updater/plugin-insights@1.2.0-rc.20
+  - @hot-updater/plugin-remote-config@1.2.0-rc.20
+  - @hot-updater/protocol@1.2.0-rc.20
+
 ## 1.2.0-rc.19
 
 ### Patch Changes

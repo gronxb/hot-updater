@@ -1,5 +1,13 @@
 # @hot-updater/bare
 
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/cli-tools@1.2.0-rc.20
+
 ## 1.2.0-rc.19
 
 ### Patch Changes
