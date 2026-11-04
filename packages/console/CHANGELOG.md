@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [29bc1e6]
+  - @hot-updater/cli-tools@1.2.0-rc.16
+  - @hot-updater/bsdiff@1.2.0-rc.16
+  - @hot-updater/protocol@1.2.0-rc.16
+  - @hot-updater/server@1.2.0-rc.16
+  - @hot-updater/plugin-core@1.2.0-rc.16
+
 ## 1.2.0-rc.15
 
 ### Patch Changes

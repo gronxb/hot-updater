@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 1.2.0-rc.16
+
 ## 1.2.0-rc.15
 
 ## 1.2.0-rc.14
