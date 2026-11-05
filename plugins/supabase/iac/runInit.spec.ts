@@ -228,7 +228,7 @@ describe("Supabase init", () => {
     // Supabase CLI 3.0 fails an unattended `functions deploy` without `--yes`.
     const commands = mocks.execa.mock.calls
       .filter(([command]) => command === "npx")
-      .map(([, args]: [string, readonly string[]]) => args.slice(0, 4));
+      .map(([, args]) => (args as readonly string[]).slice(0, 4));
     expect(commands).toEqual([
       ["-y", "supabase@2.122.1", "projects", "list"],
       ["-y", "supabase@2.122.1", "projects", "api-keys"],
