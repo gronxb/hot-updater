@@ -44,7 +44,9 @@ export const ensureInstallPackages = async (
       enabled: dependenciesToInstall.length > 0,
       title: "Installing dependencies",
       task: async (message) => {
-        message(`Installing ${dependenciesToInstall.join(", ")}...`);
+        message(
+          `Installing ${dependenciesToInstall.join(", ")} with ${packageManager}...`,
+        );
         try {
           const result = await execa(packageManager, [
             packageManager === "yarn" ? "add" : "install",
@@ -71,7 +73,9 @@ export const ensureInstallPackages = async (
       enabled: devDependenciesToInstall.length > 0,
       title: "Installing dev dependencies",
       task: async (message) => {
-        message(`Installing ${devDependenciesToInstall.join(", ")}...`);
+        message(
+          `Installing ${devDependenciesToInstall.join(", ")} with ${packageManager}...`,
+        );
         try {
           const result = await execa(packageManager, [
             packageManager === "yarn" ? "add" : "install",

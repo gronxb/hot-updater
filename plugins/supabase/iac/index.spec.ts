@@ -530,7 +530,7 @@ describe("Supabase project readiness", () => {
       "npx",
       [
         "-y",
-        "supabase",
+        "supabase@2.122.1",
         "projects",
         "api-keys",
         "--project-ref",
@@ -647,7 +647,8 @@ describe("Supabase CLI authentication", () => {
       expect(mockExeca).toHaveBeenCalledWith(
         "npx",
         [
-          "supabase",
+          "-y",
+          "supabase@2.122.1",
           "link",
           "--project-ref",
           "project-ref",
@@ -663,7 +664,9 @@ describe("Supabase CLI authentication", () => {
     }
   });
 
-  it("syncs remote migration history before pushing v1 migrations", async () => {
+  // Supabase CLI 3.0 sends `db push` and `migration fetch` without a target
+  // to the local stack, so init runs the pinned 2.x CLI on the linked project.
+  it("syncs remote migration history before pushing v1 migrations to the linked project", async () => {
     const workdir = "/tmp/hot-updater-supabase-push";
     mockExeca.mockResolvedValue({ stdout: "" });
 
@@ -673,7 +676,8 @@ describe("Supabase CLI authentication", () => {
       1,
       "npx",
       [
-        "supabase",
+        "-y",
+        "supabase@2.122.1",
         "migration",
         "fetch",
         "--linked",
@@ -689,10 +693,12 @@ describe("Supabase CLI authentication", () => {
       2,
       "npx",
       [
-        "supabase",
+        "-y",
+        "supabase@2.122.1",
         "db",
         "push",
         "--include-all",
+        "--linked",
         "--yes",
         "--workdir",
         workdir,
@@ -738,10 +744,12 @@ describe("Supabase empty migration history", () => {
 
       expect(mockExeca).toHaveBeenCalledTimes(2);
       expect(mockExeca.mock.calls[1]?.[1]).toEqual([
-        "supabase",
+        "-y",
+        "supabase@2.122.1",
         "db",
         "push",
         "--include-all",
+        "--linked",
         "--yes",
         "--workdir",
         "/tmp/hot-updater-supabase-push",
@@ -864,10 +872,12 @@ describe("Supabase database password failures", () => {
       2,
       "npx",
       [
-        "supabase",
+        "-y",
+        "supabase@2.122.1",
         "db",
         "push",
         "--include-all",
+        "--linked",
         "--yes",
         "--workdir",
         "/tmp/hot-updater-supabase-push",
@@ -911,7 +921,8 @@ describe("Supabase database password failures", () => {
       expect(mockExeca).toHaveBeenCalledWith(
         "npx",
         [
-          "supabase",
+          "-y",
+          "supabase@2.122.1",
           "link",
           "--project-ref",
           "project-ref",
@@ -995,10 +1006,12 @@ describe("Supabase database password failures", () => {
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
       [
-        "supabase",
+        "-y",
+        "supabase@2.122.1",
         "db",
         "push",
         "--include-all",
+        "--linked",
         "--yes",
         "--workdir",
         "/tmp/hot-updater-supabase-push",
