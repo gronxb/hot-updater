@@ -179,6 +179,9 @@ const channels = defineTable(
  * and null on every other: deploys patch from it over the scope's newest build.
  * It is never false, so `byStoreBuild` holds one entry per scope at most, on
  * every store, and an unmarked row, older than the column or not, holds none.
+ * `sandbox` is true on a sandbox build, set when it registers and never
+ * changed, and null on every other; like `store_build` it is never false, so
+ * a row older than the column reads as no sandbox build.
  */
 const nativeBuilds = defineTable(
   {
@@ -208,6 +211,7 @@ const nativeBuilds = defineTable(
     submitted_at_ms: { type: "integer", required: false },
     submitted_version: { type: "string", maxLength: 255, required: false },
     store_build: { type: "boolean", required: false },
+    sandbox: { type: "boolean", required: false },
   },
   {
     key: ["id"],

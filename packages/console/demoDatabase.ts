@@ -690,6 +690,8 @@ type DemoNativeBuild = {
   readonly minBundleId: string;
   readonly kind: "apk" | "aab" | "ipa" | "app";
   readonly gitCommitHash: string | null;
+  /** A sandbox scheme's build, on its reserved `sandbox-*` channel. */
+  readonly sandbox?: true;
   /** The demo bundles that patch from this build's built-in bundle. */
   readonly patchTargets?: readonly DemoDeployment[];
 };
@@ -813,6 +815,38 @@ const demoNativeBuilds: DemoNativeBuild[] = [
     kind: "ipa",
     gitCommitHash: "7f3c2d18",
   },
+  // A sandbox scheme's builds, which pull request previews open: an APK, and
+  // an IPA on TestFlight's internal track.
+  {
+    n: 30,
+    platform: "android",
+    channel: "sandbox-release",
+    target: { fingerprint: "fp-android-sandbox" },
+    minBundleId: "019f6300-00b0-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "5a6b7c8d",
+    sandbox: true,
+  },
+  {
+    n: 31,
+    platform: "ios",
+    channel: "sandbox-release",
+    target: { fingerprint: "fp-ios-sandbox" },
+    minBundleId: "019f6300-00b1-7000-8000-000000000000",
+    kind: "ipa",
+    gitCommitHash: "5a6b7c8d",
+    sandbox: true,
+  },
+  // A build on a long feature channel.
+  {
+    n: 32,
+    platform: "android",
+    channel: "feature-checkout-redesign-with-saved-payment-methods",
+    target: { fingerprint: "fp-android-checkout" },
+    minBundleId: "019f6300-00b2-7000-8000-000000000000",
+    kind: "apk",
+    gitCommitHash: "9e8d7c6b",
+  },
 ];
 for (const build of demoNativeBuilds) {
   const id = nativeBuildId(build.n);
@@ -836,6 +870,7 @@ for (const build of demoNativeBuilds) {
         ? null
         : `nbk1:${toSeedHash("build-key", `${build.n}`)}`,
     buildNumber: String(100 + build.n),
+    ...(build.sandbox ? { sandbox: true as const } : {}),
     artifact: {
       kind: build.kind,
       storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,
@@ -883,6 +918,10 @@ await core.recordNativeBuildSubmission(nativeBuildId(22), {
 await core.recordNativeBuildSubmission(nativeBuildId(29), {
   destination: "testflight",
   version: "1.0.0 (129)",
+});
+await core.recordNativeBuildSubmission(nativeBuildId(31), {
+  destination: "testflight",
+  version: "1.0.0 (131)",
 });
 
 // What the store sells of the production IPA's scope.

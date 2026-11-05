@@ -113,6 +113,12 @@ export type NativeBuildRegistration = NativeBuildScope & {
    * `versionCode`, or null (or left out) when it can't be read.
    */
   readonly buildNumber?: string | null;
+  /**
+   * True for a sandbox build, null (or left out) for any other. It must agree
+   * with the channel: a sandbox build registers on a reserved `sandbox-*`
+   * channel, and only a sandbox build does.
+   */
+  readonly sandbox?: true | null;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;

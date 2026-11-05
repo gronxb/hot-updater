@@ -31,6 +31,8 @@ export interface ImportableNativeBuild {
   readonly appVersion: string | null;
   /** The built-in bundle's entry in the archive. */
   readonly builtInBundlePath: string;
+  /** Whether the artifact holds the sandbox layer: a sandbox build. */
+  readonly sandbox: boolean;
 }
 
 export type NativeArtifactCheck = (
@@ -242,6 +244,7 @@ export const checkNativeArtifact = (
       fingerprintHash,
       appVersion,
       builtInBundlePath: info.builtInBundle!.path,
+      sandbox: info.sandbox.code,
     },
   };
 };

@@ -21,10 +21,8 @@ import {
   type NativeBuildScope,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { decodeChannelKey } from "@hot-updater/protocol";
 import {
   blobSource,
-  isSandboxChannel,
   readNativeArtifact,
 } from "@hot-updater/protocol/native-artifact";
 
@@ -186,7 +184,7 @@ export const handleNativeBuildFind = async (
         ui.kv("Platform", ui.platform(scope.platform)),
         ui.kv("Channel", ui.channel(scope.channel)),
         target,
-        ui.kv("Kind", nativeBuild.artifact_kind),
+        ui.kv("Kind", kindOf(nativeBuild)),
         ui.kv("Min bundle ID", ui.id(nativeBuild.min_bundle_id)),
         ui.kv("Created", formatUtc(nativeBuild.created_at_ms)),
         store !== null &&
@@ -203,6 +201,12 @@ export const handleNativeBuildFind = async (
     process.exit(1);
   }
 };
+
+/** The build's artifact kind, `apk · sandbox` for a sandbox build. */
+const kindOf = (build: Pick<NativeBuildRow, "artifact_kind" | "sandbox">) =>
+  build.sandbox === true
+    ? `${build.artifact_kind} · sandbox`
+    : build.artifact_kind;
 
 /** `2026-10-27 04:02 UTC`. */
 const formatUtc = (ms: number) =>
@@ -397,7 +401,7 @@ export const handleNativeBuildDownload = async (
       p.log.success(
         ui.block("Native build downloaded", [
           ui.kv("ID", ui.id(id)),
-          ui.kv("Kind", build.artifact_kind),
+          ui.kv("Kind", kindOf(build)),
           ui.kv("Size", formatBytes(byteSize)),
           ui.kv("File", ui.path(ui.fitPath(file))),
         ]),
@@ -570,7 +574,7 @@ export const handleNativeBuildDelete = async (
             build.fingerprint_hash === null
               ? ui.kv("App version", ui.version(build.app_version))
               : ui.kv("Fingerprint", ui.id(build.fingerprint_hash)),
-            ui.kv("Kind", build.artifact_kind),
+            ui.kv("Kind", kindOf(build)),
             ui.kv("Size", formatBytes(build.byte_size)),
             ui.kv("Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))),
             build.store_build === true &&
@@ -647,15 +651,12 @@ export const handleNativeBuildDelete = async (
 /** Why `native-build mark` refused a build, for its `--json` output. */
 class MarkRefusal extends Error {
   constructor(
-    readonly reason: "not_found" | "sandbox_channel",
+    readonly reason: "not_found" | "sandbox_build",
     override readonly cause: unknown,
   ) {
     super(cause instanceof Error ? cause.message : String(cause));
   }
 }
-
-const channelNameOf = (build: Pick<NativeBuildRow, "channel_id">) =>
-  decodeChannelKey(build.channel_id.slice("channel:".length));
 
 /**
  * Marks a build as what the store sells, or clears its mark. A new mark
@@ -683,8 +684,8 @@ export const handleNativeBuildMark = async (
         const build = options.json
           ? await server.core.getNativeBuild(id).catch(() => null)
           : null;
-        if (build !== null && isSandboxChannel(channelNameOf(build))) {
-          throw new MarkRefusal("sandbox_channel", error);
+        if (build?.sandbox === true) {
+          throw new MarkRefusal("sandbox_build", error);
         }
         throw error;
       }

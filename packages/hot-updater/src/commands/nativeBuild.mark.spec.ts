@@ -319,8 +319,8 @@ describe("handleNativeBuildMark", () => {
     });
   });
 
-  it("refuses a sandbox channel's build in a line or two", async () => {
-    await register(6, { channel: "sandbox-release" });
+  it("refuses a sandbox build in a line or two", async () => {
+    await register(6, { channel: "sandbox-release", sandbox: true });
 
     await expect(mark(buildId(6))).rejects.toThrow("process.exit");
 
@@ -365,8 +365,8 @@ describe("handleNativeBuildMark", () => {
     });
   });
 
-  it("prints JSON for a sandbox channel's build it refuses", async () => {
-    await register(6, { channel: "sandbox-release" });
+  it("prints JSON for a sandbox build it refuses", async () => {
+    await register(6, { channel: "sandbox-release", sandbox: true });
 
     await expect(mark(buildId(6), { json: true })).rejects.toThrow(
       "process.exit",
@@ -375,7 +375,7 @@ describe("handleNativeBuildMark", () => {
     expect(output()).toEqual({
       id: buildId(6),
       marked: false,
-      reason: "sandbox_channel",
+      reason: "sandbox_build",
     });
     expect(String(vi.mocked(console.error).mock.calls[0]?.[0])).toContain(
       "sandbox",

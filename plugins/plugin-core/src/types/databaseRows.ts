@@ -126,4 +126,10 @@ export interface NativeBuildRow {
    * over the scope's newest build; null on every other. A scope has one.
    */
   readonly store_build: true | null;
+  /**
+   * True on a sandbox build, one built from a scheme with `sandbox: true` or
+   * imported with the sandbox layer; null on every other. Set when the build
+   * registers and never changed. A sandbox build is never the store build.
+   */
+  readonly sandbox: true | null;
 }

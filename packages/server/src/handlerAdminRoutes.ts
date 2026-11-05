@@ -313,6 +313,9 @@ const isNativeBuildRegistration = (
   isTextOrNull(value.gitCommitHash) &&
   isTextOrNull(value.buildKey) &&
   (value.buildNumber === undefined || isTextOrNull(value.buildNumber)) &&
+  (value.sandbox === undefined ||
+    value.sandbox === null ||
+    value.sandbox === true) &&
   isRecord(value.artifact) &&
   typeof value.artifact.kind === "string" &&
   NATIVE_BUILD_ARTIFACT_KINDS.has(value.artifact.kind) &&

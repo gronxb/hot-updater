@@ -127,6 +127,7 @@ export const native_builds = sqliteTable("native_builds", {
   "submitted_at_ms": column("INTEGER")("submitted_at_ms"),
   "submitted_version": column("TEXT")("submitted_version"),
   "store_build": column("INTEGER")("store_build"),
+  "sandbox": column("INTEGER")("sandbox"),
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),

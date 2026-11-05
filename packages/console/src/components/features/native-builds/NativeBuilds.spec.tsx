@@ -98,6 +98,7 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   submitted_at_ms: null,
   submitted_version: null,
   store_build: null,
+  sandbox: null,
   ...overrides,
 });
 
@@ -165,6 +166,57 @@ describe("NativeBuildsTable", () => {
     );
 
     expect(screen.getAllByText("Store build")).toHaveLength(1);
+  });
+
+  it("tags a sandbox build beside its kind, from its record and not its channel", () => {
+    render(
+      <NativeBuildsTable
+        builds={builds([
+          build({ sandbox: true, submitted_to: "play-internal" }),
+          build({
+            id: id(3),
+            channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
+          }),
+        ])}
+        channel={undefined}
+        onChannel={vi.fn()}
+        paged={false}
+      />,
+    );
+
+    expect(screen.getAllByText("Sandbox")).toHaveLength(1);
+    const [tagged, untagged] = screen.getAllByRole("row").slice(1);
+    expect(cellText(tagged!, "Artifact")).toBe("APKSandbox");
+    expect(cellText(tagged!, "Store")).not.toContain("Sandbox");
+    expect(cellText(untagged!, "Artifact")).toBe("APK");
+  });
+
+  it("tags a sandbox build's card beside its kind, before its channel", () => {
+    const width = window.innerWidth;
+    window.innerWidth = 390;
+    try {
+      render(
+        <NativeBuildsTable
+          builds={builds([
+            build({ sandbox: true }),
+            build({
+              id: id(3),
+              channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
+            }),
+          ])}
+          channel={undefined}
+          onChannel={vi.fn()}
+          paged={false}
+        />,
+      );
+
+      const [tagged, untagged] = screen.getAllByRole("article");
+      const primary = tagged!.firstElementChild as HTMLElement;
+      expect(primary.textContent).toMatch(/^APKSandboxpr-130/);
+      expect(within(untagged!).queryByText("Sandbox")).toBeNull();
+    } finally {
+      window.innerWidth = width;
+    }
   });
 
   it.each([
@@ -1223,7 +1275,18 @@ describe("BuiltInBundleCard", () => {
     );
   });
 
-  it("offers no mark on a sandbox channel's build", () => {
+  it("offers no mark on a sandbox build, by its record and not its channel", () => {
+    render(
+      <BuiltInBundleCard
+        detail={detail({ build: build({ sandbox: true }) })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Mark as store build" }),
+    ).toBeNull();
+    cleanup();
+
     render(
       <BuiltInBundleCard
         detail={detail({
@@ -1234,10 +1297,9 @@ describe("BuiltInBundleCard", () => {
         })}
       />,
     );
-
     expect(
-      screen.queryByRole("button", { name: "Mark as store build" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Mark as store build" }),
+    ).toBeTruthy();
   });
 });
 

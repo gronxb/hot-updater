@@ -54,6 +54,7 @@ import type { NativeBuildListResult } from "@/lib/server/nativeBuilds";
 
 import { CopyableText } from "./CopyableText";
 import { IMPORT_COMMAND, IMPORT_GUIDE_URL } from "./ImportBuild";
+import { SandboxBadge } from "./SandboxBadge";
 import { isSubmitted, StoreSubmissionBadge } from "./StoreSubmission";
 
 export const NATIVE_BUILD_GUIDE_URL =
@@ -174,6 +175,34 @@ function BuildLink({ build }: { readonly build: NativeBuildRow }) {
   );
 }
 
+/**
+ * What the build is, its artifact kind and whether it is a sandbox build, kept
+ * together so the tag never wraps away from the kind it qualifies: stacked in
+ * a table cell, as the Store column stacks its mark, and on one line on a card.
+ */
+function BuildIdentity({
+  build,
+  stacked = false,
+}: {
+  readonly build: NativeBuildRow;
+  readonly stacked?: boolean;
+}) {
+  if (stacked) {
+    return (
+      <span className="flex flex-col items-start gap-1">
+        <BuildLink build={build} />
+        <SandboxBadge build={build} />
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <BuildLink build={build} />
+      <SandboxBadge build={build} />
+    </span>
+  );
+}
+
 /** The channel the build embeds; a click lists that channel's builds. */
 function ChannelFilterButton({
   channel,
@@ -185,11 +214,13 @@ function ChannelFilterButton({
   return (
     <button
       aria-label={`Show the builds that embed ${channel}`}
-      className="relative rounded-md text-left after:absolute after:inset-x-0 after:-inset-y-[11px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
+      className="relative flex max-w-full min-w-0 rounded-md text-left after:absolute after:inset-x-0 after:-inset-y-[11px] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:after:hidden"
       onClick={() => onChannel(channel)}
+      title={channel}
       type="button"
     >
-      <ChannelBadge channel={channel} className="whitespace-nowrap" />
+      {/* A long channel ends in an ellipsis; its tooltip and label name it. */}
+      <ChannelBadge channel={channel} className="block max-w-40 truncate" />
     </button>
   );
 }
@@ -275,7 +306,7 @@ function BuildRow({
       }
     >
       <TableCell>
-        <BuildLink build={build} />
+        <BuildIdentity build={build} stacked />
       </TableCell>
       <TableCell>
         <ChannelFilterButton channel={channel} onChannel={onChannel} />
@@ -339,12 +370,13 @@ function BuildCard({
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+        {/* A channel that wraps keeps its 44 px tap area clear of the kind's. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-6">
           <PlatformIcon
             className="size-4 shrink-0 text-muted-foreground"
             platform={build.platform}
           />
-          <BuildLink build={build} />
+          <BuildIdentity build={build} />
           <ChannelFilterButton channel={channel} onChannel={onChannel} />
         </div>
         <DownloadButton build={build} />
@@ -366,7 +398,7 @@ function BuildCard({
         <span aria-hidden="true">·</span>
         <RelativeTime ms={createdAt(build)} />
       </p>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 text-xs">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-6 text-xs">
         <span className="flex items-center">
           <span className="sr-only">Target </span>
           <TargetDisplay

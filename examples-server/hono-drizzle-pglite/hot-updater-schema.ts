@@ -127,6 +127,7 @@ export const native_builds = pgTable("native_builds", {
   "submitted_at_ms": column("bigint")("submitted_at_ms"),
   "submitted_version": column("varchar(255) COLLATE \"C\"")("submitted_version"),
   "store_build": column("boolean")("store_build"),
+  "sandbox": column("boolean")("sandbox"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),

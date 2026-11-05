@@ -525,6 +525,87 @@ export const setupCoreAdminTestSuite = (options: {
       ).toBeNull();
     });
 
+    it("records a sandbox build, and refuses one that disagrees with its channel", async () => {
+      const sandboxChannel = `sandbox-${namespace}`;
+      const channel = `plain-${namespace}`;
+      const post = (suffix: string, body: Record<string, unknown>) => {
+        const builtIn = bundleRow(suffix);
+        return admin(
+          "/native-builds",
+          jsonRequest("POST", {
+            id: bundleRow(`8${suffix}`).id,
+            platform: "ios",
+            fingerprintHash: "sandbox-fingerprint",
+            appVersion: null,
+            minBundleId: builtIn.id,
+            gitCommitHash: null,
+            buildKey: null,
+            artifact: {
+              kind: "ipa",
+              storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
+              byteSize: 1_000,
+            },
+            embeddedBundle: {
+              manifestStorageUri: builtIn.manifest_storage_uri,
+              manifestFileHash: builtIn.manifest_file_hash,
+              assetBaseStorageUri: builtIn.asset_base_storage_uri,
+            },
+            ...body,
+          }),
+        );
+      };
+      const refusal = async (suffix: string, body: Record<string, unknown>) => {
+        const response = await post(suffix, body);
+        await response.text();
+        return response.status;
+      };
+
+      expect(await refusal("74", { channel, sandbox: true })).toBe(400);
+      expect(await refusal("74", { channel: sandboxChannel })).toBe(400);
+      expect(
+        await refusal("74", { channel: sandboxChannel, sandbox: null }),
+      ).toBe(400);
+      expect(
+        await refusal("74", { channel: sandboxChannel, sandbox: "yes" }),
+      ).toBe(400);
+      expect(await refusal("74", { channel, sandbox: false })).toBe(400);
+
+      const tagged = await post("72", {
+        channel: sandboxChannel,
+        sandbox: true,
+      });
+      expect(tagged.status).toBe(201);
+      const sandboxBuild = ((await tagged.json()) as { data: NativeBuildRow })
+        .data;
+      const plain = await post("73", { channel });
+      expect(plain.status).toBe(201);
+      const plainBuild = ((await plain.json()) as { data: NativeBuildRow })
+        .data;
+
+      expect(sandboxBuild.sandbox).toBe(true);
+      expect(plainBuild.sandbox).toBeNull();
+      expect(
+        (await adminJson(`/native-builds/${sandboxBuild.id}`)).data,
+      ).toEqual(sandboxBuild);
+      expect((await adminJson(`/native-builds/${plainBuild.id}`)).data).toEqual(
+        plainBuild,
+      );
+      expect(
+        (
+          await adminJson(
+            `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint`,
+          )
+        ).data,
+      ).toEqual(sandboxBuild);
+
+      const marked = await admin(
+        `/native-builds/${sandboxBuild.id}/store-build`,
+        jsonRequest("POST", { storeBuild: true }),
+      );
+      expect(marked.status).toBe(400);
+      await marked.text();
+    });
+
     it("lists the patches that start from a bundle", async () => {
       const base = bundleRow("50");
       const target = bundleRow("51");

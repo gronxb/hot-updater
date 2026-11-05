@@ -1,4 +1,5 @@
 import {
+  createEngine,
   createMemoryAdapter,
   type DatabaseAdapter,
   DatabaseConstraintError,
@@ -15,6 +16,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
+import { createCoreApi } from "./api";
 import { createInProcessCoreApi } from "./inProcess.testFixtures";
 import { NativeBuildInputError } from "./nativeBuilds";
 
@@ -61,7 +63,87 @@ const setup = () => {
   });
 };
 
+/** Core's API over an engine the spec also writes rows through directly. */
+const setupWithDb = () => {
+  let clock = 1_000;
+  const db = createEngine({
+    name: "in-process",
+    adapter: createMemoryAdapter(),
+  }).core;
+  const core = createCoreApi(
+    db,
+    { resolveFileUrl: async () => null },
+    { now: () => (clock += 1) },
+  );
+  return { core, db };
+};
+
+const setRow = (
+  db: ReturnType<typeof setupWithDb>["db"],
+  id: string,
+  set: Record<string, unknown>,
+) =>
+  db.transaction(async (tx) => {
+    const row = await tx.findOne("native_builds", { id });
+    if (row === null) throw new Error(`no native build ${id}`);
+    tx.update("native_builds", row, set as never);
+  });
+
 describe("the native build registry", () => {
+  it("records a sandbox build, and no other", async () => {
+    const core = setup();
+    const sandboxBuild = await core.registerNativeBuild(
+      registration(1, { channel: "sandbox-release", sandbox: true }),
+    );
+    const plain = await core.registerNativeBuild(registration(2));
+
+    expect(sandboxBuild.sandbox).toBe(true);
+    expect(plain.sandbox).toBeNull();
+    expect(await core.getNativeBuild(buildId(1))).toEqual(sandboxBuild);
+    expect(await core.getNativeBuild(buildId(2))).toEqual(plain);
+    expect(
+      await core.findNativeBuild({
+        platform: "ios",
+        channel: "sandbox-release",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      }),
+    ).toEqual(sandboxBuild);
+  });
+
+  it.each([
+    [
+      "a sandbox build off a sandbox-* channel",
+      { channel: "production", sandbox: true },
+      "a sandbox build registers on a sandbox-* channel, not production",
+    ],
+    [
+      "a build without the record on a sandbox-* channel",
+      { channel: "sandbox-release" },
+      "channel sandbox-release is reserved for sandbox builds",
+    ],
+    [
+      "a null record on a sandbox-* channel",
+      { channel: "sandbox-release", sandbox: null },
+      "channel sandbox-release is reserved for sandbox builds",
+    ],
+    [
+      "a record other than true or null",
+      { channel: "production", sandbox: false },
+      "sandbox must be true or null",
+    ],
+  ] as const)("refuses %s", async (_, overrides, message) => {
+    const core = setup();
+    await expect(
+      core.registerNativeBuild(
+        registration(1, overrides as Partial<NativeBuildRegistration>),
+      ),
+    ).rejects.toThrow(
+      new NativeBuildInputError(`Invalid native build: ${message}.`),
+    );
+    expect(await core.getNativeBuild(buildId(1))).toBeNull();
+  });
+
   it("finds the newest build of a platform, channel, and fingerprint", async () => {
     const core = setup();
     await core.registerNativeBuild(registration(1));
@@ -739,10 +821,10 @@ describe("the store build mark", () => {
     expect(await marksIn(core)).toEqual([buildId(2)]);
   });
 
-  it("refuses a sandbox channel's build, and answers null for an unknown one", async () => {
+  it("refuses a sandbox build, and answers null for an unknown one", async () => {
     const core = setup();
     await core.registerNativeBuild(
-      registration(1, { channel: "sandbox-release" }),
+      registration(1, { channel: "sandbox-release", sandbox: true }),
     );
 
     await expect(
@@ -756,6 +838,44 @@ describe("the store build mark", () => {
     expect(
       await core.markNativeBuild(buildId(9), { storeBuild: true }),
     ).toBeNull();
+  });
+
+  it("refuses a build by its sandbox record, not by its channel", async () => {
+    const { core, db } = setupWithDb();
+    await core.registerNativeBuild(registration(1, { channel: "pr-130" }));
+    await core.registerNativeBuild(
+      registration(2, { channel: "sandbox-release", sandbox: true }),
+    );
+    // Rows no registration writes: a sandbox build on another channel, and a
+    // build on a sandbox channel with no record.
+    await setRow(db, buildId(1), { sandbox: true });
+    await setRow(db, buildId(2), { sandbox: null });
+
+    await expect(
+      core.markNativeBuild(buildId(1), { storeBuild: true }),
+    ).rejects.toThrow("A sandbox build can't be the store build.");
+    await expect(
+      core.markNativeBuild(buildId(2), { storeBuild: true }),
+    ).resolves.toMatchObject({
+      nativeBuild: { id: buildId(2), store_build: true, sandbox: null },
+    });
+  });
+
+  it("keeps a sandbox build's record through its submission", async () => {
+    const core = setup();
+    await core.registerNativeBuild(
+      registration(1, { channel: "sandbox-release", sandbox: true }),
+    );
+    await expect(
+      core.recordNativeBuildSubmission(buildId(1), {
+        destination: "testflight",
+        version: "1.0.0 (1)",
+      }),
+    ).resolves.toMatchObject({ sandbox: true, submitted_to: "testflight" });
+    expect(await core.getNativeBuild(buildId(1))).toMatchObject({
+      sandbox: true,
+      submitted_to: "testflight",
+    });
   });
 
   it("drops the mark with a deleted build, and the scope can be marked again", async () => {

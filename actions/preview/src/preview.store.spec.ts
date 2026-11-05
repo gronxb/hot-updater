@@ -46,6 +46,7 @@ const store = (state: string, reusable = true) => ({
  */
 const fakeCli = ({
   channel = "sandbox-sandbox",
+  sandboxScheme = true,
   found = null as ReturnType<typeof row> | null,
   foundStore = null as ReturnType<typeof store> | null,
   submission = {
@@ -73,6 +74,9 @@ const fakeCli = ({
           nativeBuild: found,
           downloadUrl: found && "https://storage.example.com/App.ipa",
           ...(args.includes("--store-status") ? { store: foundStore } : {}),
+          ...(sandboxScheme
+            ? { sandbox: { appId: "com.example.app", otherBuilds: false } }
+            : {}),
         }),
       };
     }
@@ -255,12 +259,23 @@ describe("a preview with ios-submit", () => {
   });
 
   it("refuses a normal scheme before it builds or deploys anything", async () => {
-    const fake = fakeCli({ channel: "pr-12" });
+    const fake = fakeCli({ channel: "pr-12", sandboxScheme: false });
     await expect(run(fake)).rejects.toThrow(
       "ios-submit takes a sandbox scheme, and sandbox isn't one.\nSet sandbox: true on it, or remove ios-submit.",
     );
     expect(fake.calls.some(([, sub]) => sub === "ios")).toBe(false);
     expect(fake.calls.some(([command]) => command === "deploy")).toBe(false);
+  });
+
+  it("tells a sandbox scheme by what find says of the scheme, not by the channel", async () => {
+    const sandbox = fakeCli({ channel: "pr-12" });
+    await run(sandbox);
+    expect(sandbox.calls.some(([, sub]) => sub === "ios")).toBe(true);
+
+    const normal = fakeCli({ sandboxScheme: false });
+    await expect(run(normal)).rejects.toThrow(
+      "ios-submit takes a sandbox scheme, and sandbox isn't one.",
+    );
   });
 
   it("fails when the build embeds another channel", async () => {
@@ -436,7 +451,11 @@ describe("parseInputs", () => {
 
 describe("a preview with no store input", () => {
   it("sets no store output and adds nothing to the previews output", async () => {
-    const fake = fakeCli({ channel: "pr-12", builtChannel: "pr-12" });
+    const fake = fakeCli({
+      channel: "pr-12",
+      builtChannel: "pr-12",
+      sandboxScheme: false,
+    });
     const harness = deps(fake.cli);
     await runAction(
       harness.deps,

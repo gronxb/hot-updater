@@ -9,7 +9,6 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createReleaseCatalogScopeKey,
-  decodeChannelKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
@@ -59,16 +58,15 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   submitted_at_ms: (row.submitted_at_ms ?? null) as number | null,
   submitted_version: (row.submitted_version ?? null) as string | null,
   store_build: row.store_build === true ? true : null,
+  sandbox: row.sandbox === true ? true : null,
 });
 
 /**
- * The channels only sandbox builds register on, which no store sells: the
- * registry's convention, as `@hot-updater/protocol/native-artifact` checks it
- * for a build's artifact.
+ * The channels only sandbox builds register on: a registration's `sandbox`
+ * must agree with it. The registry's convention, as
+ * `@hot-updater/protocol/native-artifact` checks it for a build's artifact.
  */
 const SANDBOX_CHANNEL_PREFIX = "sandbox-";
-
-const CHANNEL_ID_PREFIX = "channel:";
 
 /**
  * How many older builds of a scope one read takes, looking for one older than
@@ -147,6 +145,7 @@ const problemOf = ({
   gitCommitHash,
   buildKey,
   buildNumber,
+  sandbox,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -158,6 +157,16 @@ const problemOf = ({
     return "platform must be ios or android";
   }
   if (channel.trim().length === 0) return "channel is required";
+  if (sandbox !== undefined && sandbox !== null && sandbox !== true) {
+    return "sandbox must be true or null";
+  }
+  const reserved = channel.startsWith(SANDBOX_CHANNEL_PREFIX);
+  if (sandbox === true && !reserved) {
+    return `a sandbox build registers on a ${SANDBOX_CHANNEL_PREFIX}* channel, not ${channel}`;
+  }
+  if (sandbox !== true && reserved) {
+    return `channel ${channel} is reserved for sandbox builds`;
+  }
   if (
     gitCommitHash !== null &&
     gitCommitHash.length > GIT_COMMIT_HASH_MAX_LENGTH
@@ -230,6 +239,7 @@ export const createNativeBuildApi = (
       submitted_at_ms: null,
       submitted_version: null,
       store_build: null,
+      sandbox: registration.sandbox === true ? true : null,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.
@@ -382,13 +392,11 @@ export const createNativeBuildApi = (
               previous: null,
             };
           }
-          if (
-            decodeChannelKey(
-              build.channel_id.slice(CHANNEL_ID_PREFIX.length),
-            ).startsWith(SANDBOX_CHANNEL_PREFIX)
-          ) {
+          // No store sells a sandbox build: its record says so, whatever
+          // its channel.
+          if (build.sandbox === true) {
             throw new NativeBuildInputError(
-              "A build on a sandbox channel can't be the store build.",
+              "A sandbox build can't be the store build.",
             );
           }
           if (build.store_build !== null) {
