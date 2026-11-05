@@ -1,5 +1,11 @@
 # @hot-updater/storage-s3
 
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.2.0-rc.23
+
 ## 1.2.0-rc.22
 
 ### Patch Changes
