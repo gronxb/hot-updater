@@ -191,7 +191,7 @@ describe("NativeBuildsTable", () => {
     expect(cellText(untagged!, "Artifact")).toBe("APK");
   });
 
-  it("tags a sandbox build's card beside its kind, before its channel", () => {
+  it("tags a sandbox build's card beside its kind, on the line with its download", () => {
     const width = window.innerWidth;
     window.innerWidth = 390;
     try {
@@ -211,8 +211,9 @@ describe("NativeBuildsTable", () => {
       );
 
       const [tagged, untagged] = screen.getAllByRole("article");
-      const primary = tagged!.firstElementChild as HTMLElement;
-      expect(primary.textContent).toMatch(/^APKSandboxpr-130/);
+      const [header, channel] = [...tagged!.children];
+      expect(header!.textContent).toBe("APKSandboxDownload");
+      expect(channel!.textContent).toBe("pr-130");
       expect(within(untagged!).queryByText("Sandbox")).toBeNull();
     } finally {
       window.innerWidth = width;
@@ -371,7 +372,7 @@ describe("NativeBuildsTable", () => {
     ).toBeNull();
   });
 
-  it("shows each build as a compact card at 390 px: what and where, then when, then target and build key, then store", () => {
+  it("shows each build as a compact card at 390 px: what and its download, then where, then when, then target and build key, then store", () => {
     const width = window.innerWidth;
     window.innerWidth = 390;
     try {
@@ -396,14 +397,14 @@ describe("NativeBuildsTable", () => {
       const card = screen.getByRole("article");
       // No label-value boxes: lines of values, a few cards to a screen.
       expect(card.querySelector("dl")).toBeNull();
-      const [primary, meta, hashes, store] = [...card.children];
+      const [primary, where, meta, hashes, store] = [...card.children];
       expect(
         within(primary as HTMLElement).getByRole("link", {
           name: "Android APK",
         }).textContent,
       ).toBe("APK");
       expect(
-        within(primary as HTMLElement).getByRole("button", {
+        within(where as HTMLElement).getByRole("button", {
           name: "Show the builds that embed pr-130",
         }),
       ).toBeTruthy();
@@ -442,7 +443,8 @@ describe("NativeBuildsTable", () => {
         />,
       );
       const card = screen.getByRole("article");
-      expect(card.children).toHaveLength(3);
+      // What and its download, where, when, and the target: no store line.
+      expect(card.children).toHaveLength(4);
       expect(card.textContent).not.toContain("Build key");
     } finally {
       window.innerWidth = width;

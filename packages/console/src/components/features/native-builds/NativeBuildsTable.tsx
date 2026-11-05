@@ -178,7 +178,8 @@ function BuildLink({ build }: { readonly build: NativeBuildRow }) {
 /**
  * What the build is, its artifact kind and whether it is a sandbox build, kept
  * together so the tag never wraps away from the kind it qualifies: stacked in
- * a table cell, as the Store column stacks its mark, and on one line on a card.
+ * a table cell, as the Store column stacks its mark, and beside the kind on a
+ * card, under it only when a narrow card has no room.
  */
 function BuildIdentity({
   build,
@@ -196,7 +197,7 @@ function BuildIdentity({
     );
   }
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5">
+    <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
       <BuildLink build={build} />
       <SandboxBadge build={build} />
     </span>
@@ -220,7 +221,7 @@ function ChannelFilterButton({
       type="button"
     >
       {/* A long channel ends in an ellipsis; its tooltip and label name it. */}
-      <ChannelBadge channel={channel} className="block max-w-40 truncate" />
+      <ChannelBadge channel={channel} className="block max-w-32 truncate" />
     </button>
   );
 }
@@ -369,17 +370,19 @@ function BuildCard({
           }),
       )}
     >
+      {/* What the build is and its download on one line, its channel under it. */}
       <div className="flex items-center justify-between gap-3">
-        {/* A channel that wraps keeps its 44 px tap area clear of the kind's. */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-6">
+        <div className="flex min-w-0 items-center gap-x-2.5">
           <PlatformIcon
             className="size-4 shrink-0 text-muted-foreground"
             platform={build.platform}
           />
           <BuildIdentity build={build} />
-          <ChannelFilterButton channel={channel} onChannel={onChannel} />
         </div>
         <DownloadButton build={build} />
+      </div>
+      <div className="flex min-w-0">
+        <ChannelFilterButton channel={channel} onChannel={onChannel} />
       </div>
       <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
         <span className="sr-only">{platformLabel(build.platform)}</span>
@@ -511,7 +514,8 @@ export function NativeBuildsTable({
           <DataTable
             aria-busy={builds.isPlaceholderData}
             aria-label="Native builds"
-            className="aria-busy:opacity-60"
+            // Ten columns fit 1440 px with 6 px between a cell and its border.
+            className="aria-busy:opacity-60 [&_td]:px-1.5 [&_th]:px-1.5"
             header={
               <>
                 <TableHead>Artifact</TableHead>
