@@ -36,10 +36,11 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     the project ID in config.toml. Preserve original migration filenames.
     With local CLI access, use private session/environment credentials and run
     these commands from the scaffold root, one at a time:
-    `npx supabase link --project-ref <project-id>`;
-    `npx supabase migration fetch --linked --yes`;
+    `npx -y supabase@2.122.1 link --project-ref <project-id>`;
+    `npx -y supabase@2.122.1 migration fetch --linked --yes`;
     inspect the synchronized history and pending supplied SQL, then
-    `npx supabase db push --include-all --yes`.
+    `npx -y supabase@2.122.1 db push --include-all --linked --yes`.
+    Keep this CLI version: Supabase CLI 3 changed these commands' defaults.
     MCP migration operations must preserve the same names/history and SQL.
   - Verify/record: supplied migrations are applied, expected tables/schema version
     exist, and the API schema cache can access them. Record applied filenames.
@@ -76,7 +77,7 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     vendored files along with index.ts. Keep verify_jwt=false: the function
     authenticates client requests itself.
     From the scaffold root:
-    `npx supabase functions deploy hot-updater-v1 --project-ref <project-id> --no-verify-jwt`.
+    `npx -y supabase@2.122.1 functions deploy hot-updater-v1 --project-ref <project-id> --no-verify-jwt`.
   - Verify/record: the active function uses the complete bundle and has runtime
     SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY. Save functionName and baseUrl as
     https://<project-id>.supabase.co/functions/v1/hot-updater-v1.

@@ -622,7 +622,11 @@ export const runInit = async ({
         JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
       )
     : applicationDefault();
-  const existingApps = new Set(getApps());
+  // Loading hot-updater.config.ts for its secrets adapter ran the config's
+  // adapters, which bound the default app to the config's project and
+  // credential, in an environment init has restored since. The database
+  // takes the default app when one exists, so init's runs on its own.
+  await Promise.all(getApps().map((app) => deleteApp(app)));
   const databaseConfig = {
     credential,
     databaseId: initializeVariable.databaseId,
@@ -649,11 +653,7 @@ export const runInit = async ({
     }
   } finally {
     await database.dispose?.();
-    await Promise.all(
-      getApps()
-        .filter((app) => !existingApps.has(app))
-        .map((app) => deleteApp(app)),
-    );
+    await Promise.all(getApps().map((app) => deleteApp(app)));
   }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 

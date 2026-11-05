@@ -1,5 +1,6 @@
 import { execa } from "execa";
 
+import { SUPABASE_CLI } from "./supabaseCliPackage";
 import type {
   SupabaseManagementApi,
   SupabaseOrganization,
@@ -17,7 +18,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const runSupabaseCli = async (args: readonly string[]): Promise<unknown> => {
-  const result = await execa("npx", ["-y", "supabase", ...args], {
+  const result = await execa("npx", ["-y", SUPABASE_CLI, ...args], {
     env: undefined,
   });
   const body: unknown = JSON.parse(result.stdout);
@@ -65,7 +66,7 @@ export const supabaseCliManagementApi = (): SupabaseManagementApi => ({
       "npx",
       [
         "-y",
-        "supabase",
+        SUPABASE_CLI,
         "projects",
         "create",
         name,
