@@ -5,6 +5,7 @@ import { p, transformTemplate } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
 import { getSupabaseCliEnv } from "./supabaseAuthentication";
+import { SUPABASE_CLI } from "./supabaseCliPackage";
 
 const SUPABASE_CONFIG_TEMPLATE = `
 project_id = "%%projectId%%"
@@ -112,7 +113,15 @@ export const linkSupabase = async (
 
     await execa(
       "npx",
-      ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
+      [
+        "-y",
+        SUPABASE_CLI,
+        "link",
+        "--project-ref",
+        projectId,
+        "--workdir",
+        workdir,
+      ],
       {
         cwd: workdir,
         env: getSupabaseCommandEnv(accessToken, dbPassword),
@@ -138,7 +147,8 @@ export const pushDB = async (
     await execa(
       "npx",
       [
-        "supabase",
+        "-y",
+        SUPABASE_CLI,
         "migration",
         "fetch",
         "--linked",
@@ -169,10 +179,12 @@ export const pushDB = async (
     const dbPush = await execa(
       "npx",
       [
-        "supabase",
+        "-y",
+        SUPABASE_CLI,
         "db",
         "push",
         "--include-all",
+        "--linked",
         "--yes",
         "--workdir",
         workdir,
