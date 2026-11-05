@@ -55,8 +55,7 @@ export const supabaseCliManagementApi = (): SupabaseManagementApi => ({
       await runSupabaseCli([
         "functions",
         "list",
-        "--project-ref",
-        projectId,
+        `--remote=${projectId}`,
         "--output",
         "json",
       ]),
@@ -74,6 +73,9 @@ export const supabaseCliManagementApi = (): SupabaseManagementApi => ({
         organizationSlug,
         "--region",
         region,
+        // The user chose to create it. The CLI still asks for the database
+        // password on its terminal.
+        "--yes",
         "--agent",
         "no",
       ],

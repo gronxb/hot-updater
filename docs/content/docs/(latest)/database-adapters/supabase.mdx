@@ -25,10 +25,11 @@ tables or RPC function, and `hot-updater db migrate` does not run for
 Supabase. To prepare a project yourself, copy the numbered migration files
 from the installed `@hot-updater/supabase` package's `supabase/migrations`
 directory into your project's `supabase/migrations` directory, then apply them
-with the Supabase CLI linked to that project:
+with Supabase CLI 3 linked to that project. `--remote` targets the linked
+project; without it, the CLI pushes to a local stack:
 
 ```bash
-npx supabase db push --linked
+npx supabase db push --remote
 ```
 
 The migration creates the tables of core and of the managed Edge Function's
@@ -42,7 +43,7 @@ An Edge Function that runs other
 also needs their tables, and the apply function must be allowed to reach them.
 `hot-updater db generate` writes a migration that does both to
 `supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
-`npx supabase db push --linked`. It reads a Node module that passes the function's
+`npx supabase db push --remote`. It reads a Node module that passes the function's
 `plugins` to `createHotUpdater` with `supabaseDatabase` from
 `@hot-updater/supabase`.
 

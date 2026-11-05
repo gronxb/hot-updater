@@ -220,19 +220,39 @@ describe("Supabase init", () => {
     await expect(fs.access(path.join(root, ".hot-updater"))).rejects.toThrow();
   });
 
-  it("runs every Supabase CLI command with the pinned CLI", async () => {
+  it("runs every Supabase CLI command with the pinned CLI on the selected project", async () => {
     root = await project();
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    // Supabase CLI 3.0 fails an unattended `functions deploy` without `--yes`.
+    // Supabase CLI 3 deprecates `--project-ref` for `--remote=<ref>`, and
+    // fails an unattended `functions deploy` without `--yes`.
     const commands = mocks.execa.mock.calls
       .filter(([command]) => command === "npx")
-      .map(([, args]) => (args as readonly string[]).slice(0, 4));
+      .map(([, args]) => args);
     expect(commands).toEqual([
-      ["-y", "supabase@2.122.1", "projects", "list"],
-      ["-y", "supabase@2.122.1", "projects", "api-keys"],
-      ["-y", "supabase@2.122.1", "functions", "deploy"],
+      ["-y", "supabase@3.0.0", "projects", "list", "--output", "json"],
+      [
+        "-y",
+        "supabase@3.0.0",
+        "projects",
+        "api-keys",
+        "--remote=project-ref",
+        "--output",
+        "json",
+      ],
+      [
+        "-y",
+        "supabase@3.0.0",
+        "functions",
+        "deploy",
+        "hot-updater-v1",
+        "--remote=project-ref",
+        "--no-verify-jwt",
+        "--yes",
+        "--workdir",
+        expect.any(String),
+      ],
     ]);
   });
 
