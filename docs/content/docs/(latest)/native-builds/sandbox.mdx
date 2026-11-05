@@ -75,7 +75,7 @@ device. [A separate app](#a-separate-app-on-ios) installs beside it.
 
 The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
 `sandbox-*` channel, and a sandbox build can't register on any other. The
-registry records the build as a sandbox build (`sandbox` on its row, which
+registry records the build as a sandbox build (`is_sandbox` on its row, which
 `native-build import` reads from the artifact), so the Console tags it
 **Sandbox** and `native-build find` prints it beside its kind.
 `native-build find --scheme <scheme>` looks on that channel by itself, and with

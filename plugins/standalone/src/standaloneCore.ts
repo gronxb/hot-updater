@@ -313,7 +313,7 @@ export const createStandaloneCoreApi = (
         requiredRoute: "native build",
       });
       if (buildKey !== undefined && row?.build_key !== buildKey) return null;
-      if (options?.storeBuild && row?.store_build !== true) return null;
+      if (options?.storeBuild && row?.is_store_build !== true) return null;
       return row;
     },
     // A server without the native build routes holds no native builds: its

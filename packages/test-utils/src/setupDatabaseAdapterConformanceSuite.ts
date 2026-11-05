@@ -60,6 +60,14 @@ export const conformanceItems: PhysicalTable = {
     },
     { name: "payload", type: "json", nullable: true },
     { name: "note", type: "string", nullable: true },
+    /** A unique slot only some rows hold, as long as a scope key. */
+    {
+      name: "slot",
+      type: "string",
+      nullable: true,
+      maxLength: 2048,
+      ascii: true,
+    },
     { name: "_v", type: "integer", nullable: false },
   ],
   key: ["id"],
@@ -69,6 +77,7 @@ export const conformanceItems: PhysicalTable = {
     { name: "byGroupFlag", eq: ["grp", "flag"], sort: ["score"] },
     { name: "byLabel", eq: ["label"], sort: [], unique: true },
     { name: "byTag", eq: ["tags"], sort: ["score"] },
+    { name: "bySlot", eq: ["slot"], sort: [], unique: true },
   ],
 };
 
@@ -130,6 +139,7 @@ const item = (id: string, values: Partial<StoredRow> = {}): StoredRow => ({
   tags: null,
   payload: null,
   note: null,
+  slot: null,
   _v: 0,
   ...values,
 });
@@ -454,6 +464,43 @@ export const setupDatabaseAdapterConformanceSuite = (
       expect(
         ids(await query(adapter, { index: "byLabel", eq: ["L"] })),
       ).toEqual(["f"]);
+    });
+
+    it("moves a unique slot between rows in one write, and holds a long ASCII value", async () => {
+      const adapter = await setup();
+      const slot = `s:${"a".repeat(2046)}`;
+      // Any number of rows hold no slot.
+      await ok(adapter, [
+        insert(item("a", { slot })),
+        insert(item("b")),
+        insert(item("c")),
+      ]);
+      expect(await adapter.write([insert(item("d", { slot }))])).toEqual({
+        ok: false,
+        failedOp: 0,
+      });
+      const patch = (
+        id: string,
+        from: string | null,
+        to: string | null,
+      ): WriteOp => ({
+        type: "patch",
+        table: conformanceItems,
+        key: [id],
+        set: { slot: to },
+        guard: { v: 0 },
+        previous: item(id, { slot: from }),
+      });
+      // Taking a held slot fails; freeing it first in the same write moves it.
+      expect(await adapter.write([patch("b", null, slot)])).toEqual({
+        ok: false,
+        failedOp: 0,
+      });
+      await ok(adapter, [patch("a", slot, null), patch("b", null, slot)]);
+      expect(
+        ids(await query(adapter, { index: "bySlot", eq: [slot] })),
+      ).toEqual(["b"]);
+      expect(await one(adapter, "a")).toMatchObject({ slot: null });
     });
 
     it("orders strings by UTF-8 bytes and numbers numerically", async () => {

@@ -54,6 +54,10 @@ export interface DerivedDefinition<
   readonly type: TType;
   /** Up to 16 values; the row is indexed once per value. */
   readonly multi?: true;
+  /** Strings: the maximum length; unbounded text when absent. */
+  readonly maxLength?: number;
+  /** Strings: ASCII only, so a long key fits MySQL's 3,072-byte index limit. */
+  readonly ascii?: true;
   /** Null, or an empty list, leaves the row out of indexes on this field. */
   compute(row: TRow): FieldValue<TType> | null | readonly FieldValue<TType>[];
 }

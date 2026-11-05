@@ -15,7 +15,7 @@ import { parseJsonOutput } from "./cli.mjs";
  * @property {string | null} [build_key] Null for a build registered from elsewhere.
  * @property {string | null} [submitted_to] The store track that took the build.
  * @property {string} [min_bundle_id] The oldest bundle ID the build runs.
- * @property {true | null} [sandbox] Whether the build is a sandbox build, as registered.
+ * @property {boolean} [is_sandbox] Whether the build is a sandbox build, as registered.
  *
  * @typedef {object} StoreStatus What a store says of a build a run submitted.
  * @property {"testflight" | "play-internal"} destination
@@ -35,7 +35,7 @@ import { parseJsonOutput } from "./cli.mjs";
  *   `store`, with `storeStatus`, what the store says of a submitted build, and
  *   `sandbox`, only for a sandbox scheme, the app ID its links derive from and,
  *   when no build matched, whether builds with other native code exist. The
- *   build's own record is `nativeBuild.sandbox`.
+ *   build's own record is `nativeBuild.is_sandbox`.
  *
  * @typedef {object} ShellDeps
  * @property {import("./cli.mjs").Cli} cli

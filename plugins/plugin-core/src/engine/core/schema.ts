@@ -175,13 +175,15 @@ const channels = defineTable(
  * or `versionCode`. `submitted_to`, `submitted_at_ms` and
  * `submitted_version` record the store track a build went to, when, and
  * the store's label of the build; they stay null for a build no store took.
- * `store_build` is true on the build a person or a job says the store sells,
- * and null on every other: deploys patch from it over the scope's newest build.
- * It is never false, so `byStoreBuild` holds one entry per scope at most, on
- * every store, and an unmarked row, older than the column or not, holds none.
- * `sandbox` is true on a sandbox build, set when it registers and never
- * changed, and null on every other; like `store_build` it is never false, so
- * a row older than the column reads as no sandbox build.
+ * `is_store_build` is true on the build a person or a job says the store
+ * sells, and false on every other: deploys patch from it over the scope's
+ * newest build. The engine copies the scope key into `store_build_scope_key`
+ * for that build alone, so `byStoreBuild` holds one entry per scope at most,
+ * on every store, while any number of a scope's builds hold none.
+ * `is_sandbox` is true on a sandbox build, set when it registers and never
+ * changed. Boolean columns follow one rule: `is_*` for a fact about the row or
+ * `should_*` for an instruction to the client, never null; a unique index over
+ * the rows where one is true keys a derived slot, not the boolean.
  */
 const nativeBuilds = defineTable(
   {
@@ -210,19 +212,24 @@ const nativeBuilds = defineTable(
     submitted_to: { type: "string", maxLength: 16, required: false },
     submitted_at_ms: { type: "integer", required: false },
     submitted_version: { type: "string", maxLength: 255, required: false },
-    store_build: { type: "boolean", required: false },
-    sandbox: { type: "boolean", required: false },
+    is_store_build: { type: "boolean" },
+    is_sandbox: { type: "boolean" },
   },
   {
     key: ["id"],
+    derived: {
+      /** The scope this build is the store build of; null on every other. */
+      store_build_scope_key: {
+        type: "string",
+        maxLength: 2048,
+        ascii: true,
+        compute: (row) => (row.is_store_build ? row.scope_key : null),
+      },
+    },
     indexes: {
       byScope: { eq: ["scope_key"], sort: ["id"] },
       byBuildKey: { eq: ["scope_key", "build_key"], sort: ["id"] },
-      byStoreBuild: {
-        eq: ["scope_key", "store_build"],
-        sort: [],
-        unique: true,
-      },
+      byStoreBuild: { eq: ["store_build_scope_key"], sort: [], unique: true },
       // Rooted at the channel, so deleting a channel reads its builds under
       // the channel row a registration bumps.
       byChannel: {

@@ -231,7 +231,7 @@ function ChannelFilterButton({
  * build with both stays one badge wide.
  */
 function StoreCell({ build }: { readonly build: NativeBuildRow }) {
-  if (!isSubmitted(build) && build.store_build !== true) return <NoValue />;
+  if (!isSubmitted(build) && !build.is_store_build) return <NoValue />;
   return (
     <StoreBadges build={build} className="flex flex-col items-start gap-1" />
   );
@@ -248,7 +248,7 @@ function StoreBadges({
   return (
     <span className={className}>
       <StoreSubmissionBadge build={build} />
-      {build.store_build === true ? (
+      {build.is_store_build ? (
         <Badge variant="secondary">Store build</Badge>
       ) : null}
     </span>
@@ -357,7 +357,7 @@ function BuildCard({
 }) {
   const navigate = useNavigate();
   const channel = nativeBuildChannel(build);
-  const stored = isSubmitted(build) || build.store_build === true;
+  const stored = isSubmitted(build) || build.is_store_build;
   return (
     <DataCard
       aria-label={`Native build ${buildTitle(build)} ${build.id}`}

@@ -39,8 +39,8 @@ function StoreBuildAction({ detail }: { readonly detail: NativeBuildDetail }) {
   const { build } = detail;
   const mark = useMarkNativeBuildMutation();
   // No store sells a sandbox build, so core refuses the mark.
-  if (build.sandbox === true) return null;
-  const storeBuild = build.store_build !== true;
+  if (build.is_sandbox) return null;
+  const storeBuild = !build.is_store_build;
   return (
     <Button
       className="min-h-11 shrink-0 sm:min-h-8"

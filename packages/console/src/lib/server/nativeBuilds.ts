@@ -173,7 +173,7 @@ export async function getNativeBuildDetail(
     await Promise.all([
       core.getBundle(build.min_bundle_id),
       core.findNativeBuild(scope),
-      build.store_build === true
+      build.is_store_build
         ? build
         : core.findNativeBuild(scope, { storeBuild: true }),
       core.getReleaseCatalogRow(catalogScopeKey),

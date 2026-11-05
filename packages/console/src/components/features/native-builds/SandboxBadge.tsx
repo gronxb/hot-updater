@@ -9,9 +9,7 @@ import { Badge } from "@/components/ui/badge";
 export function SandboxBadge({
   build,
 }: {
-  readonly build: Pick<NativeBuildRow, "sandbox">;
+  readonly build: Pick<NativeBuildRow, "is_sandbox">;
 }) {
-  return build.sandbox === true ? (
-    <Badge variant="secondary">Sandbox</Badge>
-  ) : null;
+  return build.is_sandbox ? <Badge variant="secondary">Sandbox</Badge> : null;
 }

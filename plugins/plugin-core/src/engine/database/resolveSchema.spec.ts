@@ -140,6 +140,80 @@ describe("resolveSchema", () => {
   });
 });
 
+describe("a derived string with a bound", () => {
+  const slots = defineTable(
+    {
+      id: { type: "string", maxLength: 36 },
+      scope_key: { type: "string", maxLength: 2048, ascii: true },
+      held: { type: "boolean" },
+    },
+    {
+      key: ["id"],
+      derived: {
+        held_scope_key: {
+          type: "string",
+          maxLength: 2048,
+          ascii: true,
+          compute: (row) => (row.held ? row.scope_key : null),
+        },
+      },
+      indexes: {
+        byHeldScope: { eq: ["held_scope_key"], sort: [], unique: true },
+      },
+    },
+  );
+
+  it("keeps its maxLength and ascii on the column", () => {
+    const table = resolveSchema([{ id: "core", schema: { slots } }]).models.get(
+      "slots",
+    )!.table;
+    expect(table.columns.find(({ name }) => name === "held_scope_key")).toEqual(
+      {
+        name: "held_scope_key",
+        type: "string",
+        nullable: true,
+        maxLength: 2048,
+        ascii: true,
+      },
+    );
+  });
+
+  it("refuses a bound on a derived field that isn't a string", () => {
+    let message = "";
+    try {
+      validateSchema([
+        {
+          id: "core",
+          schema: {
+            rows: defineTable(
+              { id: { type: "string" }, at: { type: "integer" } },
+              {
+                key: ["id"],
+                derived: {
+                  day: {
+                    type: "integer",
+                    maxLength: 8,
+                    ascii: true,
+                    compute: (row) => row.at,
+                  },
+                },
+              },
+            ),
+          },
+        },
+      ]);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain(
+      'core.rows: field "day" has an invalid maxLength',
+    );
+    expect(message).toContain(
+      'core.rows: field "day" is ascii but not a string',
+    );
+  });
+});
+
 describe("validateSchema", () => {
   const problems = (schema: ModuleSchema) => {
     try {

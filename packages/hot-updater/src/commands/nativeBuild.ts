@@ -203,10 +203,8 @@ export const handleNativeBuildFind = async (
 };
 
 /** The build's artifact kind, `apk · sandbox` for a sandbox build. */
-const kindOf = (build: Pick<NativeBuildRow, "artifact_kind" | "sandbox">) =>
-  build.sandbox === true
-    ? `${build.artifact_kind} · sandbox`
-    : build.artifact_kind;
+const kindOf = (build: Pick<NativeBuildRow, "artifact_kind" | "is_sandbox">) =>
+  build.is_sandbox ? `${build.artifact_kind} · sandbox` : build.artifact_kind;
 
 /** `2026-10-27 04:02 UTC`. */
 const formatUtc = (ms: number) =>
@@ -577,7 +575,7 @@ export const handleNativeBuildDelete = async (
             ui.kv("Kind", kindOf(build)),
             ui.kv("Size", formatBytes(build.byte_size)),
             ui.kv("Artifact", ui.path(ui.fitPath(build.artifact_storage_uri))),
-            build.store_build === true &&
+            build.is_store_build &&
               "This is the scope's store build; deploys go back to the newest build.",
           ]),
         );
@@ -684,7 +682,7 @@ export const handleNativeBuildMark = async (
         const build = options.json
           ? await server.core.getNativeBuild(id).catch(() => null)
           : null;
-        if (build?.sandbox === true) {
+        if (build?.is_sandbox) {
           throw new MarkRefusal("sandbox_build", error);
         }
         throw error;

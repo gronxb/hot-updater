@@ -7773,7 +7773,7 @@ async function markNativeBuildFixture(input: { id: string }) {
     },
   );
   const { nativeBuild } = parseNativeBuildMarkOutput(output);
-  if (nativeBuild?.id !== input.id || nativeBuild.store_build !== true) {
+  if (nativeBuild?.id !== input.id || !nativeBuild.is_store_build) {
     throw new Error(
       `hot-updater native-build mark didn't mark ${input.id}. See ${path.relative(REPO_DIR, logPath)}`,
     );

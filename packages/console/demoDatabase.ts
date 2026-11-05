@@ -870,7 +870,7 @@ for (const build of demoNativeBuilds) {
         ? null
         : `nbk1:${toSeedHash("build-key", `${build.n}`)}`,
     buildNumber: String(100 + build.n),
-    ...(build.sandbox ? { sandbox: true as const } : {}),
+    isSandbox: build.sandbox === true,
     artifact: {
       kind: build.kind,
       storageUri: `storage://my-app/native-builds/${build.platform}/${id}/${file}`,

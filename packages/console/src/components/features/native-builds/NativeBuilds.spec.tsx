@@ -97,8 +97,8 @@ const build = (overrides: Partial<NativeBuildRow> = {}): NativeBuildRow => ({
   submitted_to: null,
   submitted_at_ms: null,
   submitted_version: null,
-  store_build: null,
-  sandbox: null,
+  is_store_build: false,
+  is_sandbox: false,
   ...overrides,
 });
 
@@ -158,7 +158,7 @@ describe("NativeBuildsTable", () => {
   it("badges the marked build, from its row", () => {
     render(
       <NativeBuildsTable
-        builds={builds([build({ store_build: true }), build({ id: id(3) })])}
+        builds={builds([build({ is_store_build: true }), build({ id: id(3) })])}
         channel={undefined}
         onChannel={vi.fn()}
         paged={false}
@@ -172,7 +172,7 @@ describe("NativeBuildsTable", () => {
     render(
       <NativeBuildsTable
         builds={builds([
-          build({ sandbox: true, submitted_to: "play-internal" }),
+          build({ is_sandbox: true, submitted_to: "play-internal" }),
           build({
             id: id(3),
             channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
@@ -198,7 +198,7 @@ describe("NativeBuildsTable", () => {
       render(
         <NativeBuildsTable
           builds={builds([
-            build({ sandbox: true }),
+            build({ is_sandbox: true }),
             build({
               id: id(3),
               channel_id: `channel:${encodeChannelKey("sandbox-release")}`,
@@ -382,7 +382,7 @@ describe("NativeBuildsTable", () => {
         submitted_to: "play-internal",
         submitted_at_ms: Date.now(),
         submitted_version: "1.3.0 (66)",
-        store_build: true,
+        is_store_build: true,
       });
       render(
         <NativeBuildsTable
@@ -1184,7 +1184,7 @@ describe("BuiltInBundleCard", () => {
     const store = build({
       id: id(9),
       min_bundle_id: id(10),
-      store_build: true,
+      is_store_build: true,
     });
     render(<BuiltInBundleCard detail={detail({ storeBuildInScope: store })} />);
 
@@ -1204,7 +1204,7 @@ describe("BuiltInBundleCard", () => {
       app_version: "1.7.0",
       build_number: "66",
       min_bundle_id: id(10),
-      store_build: true,
+      is_store_build: true,
     });
     const newer = build({
       id: id(11),
@@ -1236,7 +1236,7 @@ describe("BuiltInBundleCard", () => {
       submitted_version: "1.7.0 (66)",
       platform: "ios",
       artifact_kind: "ipa",
-      store_build: true,
+      is_store_build: true,
     });
     render(<BuiltInBundleCard detail={detail({ storeBuildInScope: store })} />);
 
@@ -1258,7 +1258,7 @@ describe("BuiltInBundleCard", () => {
   });
 
   it("says a marked build is the base, and clears it in one press", () => {
-    const store = build({ store_build: true });
+    const store = build({ is_store_build: true });
     render(
       <BuiltInBundleCard
         detail={detail({ build: store, storeBuildInScope: store })}
@@ -1280,7 +1280,7 @@ describe("BuiltInBundleCard", () => {
   it("offers no mark on a sandbox build, by its record and not its channel", () => {
     render(
       <BuiltInBundleCard
-        detail={detail({ build: build({ sandbox: true }) })}
+        detail={detail({ build: build({ is_sandbox: true }) })}
       />,
     );
 
@@ -1317,7 +1317,7 @@ describe("ServedNowCard", () => {
   });
 
   it("gives a marked build the command for a newest OTA with no patch from it", () => {
-    const store = build({ store_build: true });
+    const store = build({ is_store_build: true });
     render(
       <ServedNowCard
         detail={detail({
@@ -1338,7 +1338,7 @@ describe("ServedNowCard", () => {
 
   it("asks for the first OTA's patch past a newer release no install gets, quoted for the shell", () => {
     const store = build({
-      store_build: true,
+      is_store_build: true,
       channel_id: `channel:${encodeChannelKey("qa team;x")}`,
     });
     render(
@@ -1364,7 +1364,7 @@ describe("ServedNowCard", () => {
   });
 
   it("asks for no patch when the newest OTA has one, or the build isn't marked", () => {
-    const store = build({ store_build: true });
+    const store = build({ is_store_build: true });
     render(
       <>
         <ServedNowCard

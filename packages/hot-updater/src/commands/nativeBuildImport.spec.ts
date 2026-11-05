@@ -177,7 +177,8 @@ describe("native-build import", () => {
       // Built elsewhere: no commit of this checkout, and no build key.
       git_commit_hash: null,
       build_key: null,
-      sandbox: null,
+      is_sandbox: false,
+      is_store_build: false,
     });
     await expect(
       harness.core.findNativeBuild({
@@ -332,10 +333,10 @@ describe("native-build import", () => {
 
       expect(process.exitCode).toBeUndefined();
       const { nativeBuild } = printedJson(stdout);
-      expect(nativeBuild).toMatchObject({ sandbox: true });
+      expect(nativeBuild).toMatchObject({ is_sandbox: true });
       await expect(
         harness.core.getNativeBuild(nativeBuild.id),
-      ).resolves.toMatchObject({ sandbox: true });
+      ).resolves.toMatchObject({ is_sandbox: true });
     });
 
     it("refuses a sandbox build on another channel", async () => {

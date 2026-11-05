@@ -122,14 +122,14 @@ export interface NativeBuildRow {
    */
   readonly submitted_version: string | null;
   /**
-   * True on the build marked as what the store sells, which deploys patch from
-   * over the scope's newest build; null on every other. A scope has one.
+   * Whether the build is marked as what the store sells, which deploys patch
+   * from over the scope's newest build. A scope has one at most.
    */
-  readonly store_build: true | null;
+  readonly is_store_build: boolean;
   /**
-   * True on a sandbox build, one built from a scheme with `sandbox: true` or
-   * imported with the sandbox layer; null on every other. Set when the build
+   * Whether the build is a sandbox build, one built from a scheme with
+   * `sandbox: true` or imported with the sandbox layer. Set when the build
    * registers and never changed. A sandbox build is never the store build.
    */
-  readonly sandbox: true | null;
+  readonly is_sandbox: boolean;
 }

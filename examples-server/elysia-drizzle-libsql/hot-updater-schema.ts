@@ -126,14 +126,15 @@ export const native_builds = sqliteTable("native_builds", {
   "submitted_to": column("TEXT")("submitted_to"),
   "submitted_at_ms": column("INTEGER")("submitted_at_ms"),
   "submitted_version": column("TEXT")("submitted_version"),
-  "store_build": column("INTEGER")("store_build"),
-  "sandbox": column("INTEGER")("sandbox"),
+  "is_store_build": column("INTEGER")("is_store_build").notNull(),
+  "is_sandbox": column("INTEGER")("is_sandbox").notNull(),
+  "store_build_scope_key": column("TEXT")("store_build_scope_key"),
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
   index("native_builds_byScope").on(table["scope_key"], table["id"]),
   index("native_builds_byBuildKey").on(table["scope_key"], table["build_key"], table["id"]),
-  uniqueIndex("native_builds_byStoreBuild").on(table["scope_key"], table["store_build"]),
+  uniqueIndex("native_builds_byStoreBuild").on(table["store_build_scope_key"]),
   index("native_builds_byChannel").on(table["channel_id"], table["id"]),
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);

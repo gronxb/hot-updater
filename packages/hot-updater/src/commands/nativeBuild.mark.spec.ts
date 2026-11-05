@@ -148,7 +148,7 @@ describe("handleNativeBuildMark", () => {
 
     await expect(
       databaseHarness.core.getNativeBuild(buildId(6)),
-    ).resolves.toMatchObject({ store_build: true });
+    ).resolves.toMatchObject({ is_store_build: true });
     expect(lines("success")).toEqual([
       expect.stringMatching(/iOS 1\.7\.0 \(66\) is the store build/),
     ]);
@@ -167,7 +167,7 @@ describe("handleNativeBuildMark", () => {
     expect(lines("success")[0]).toMatch(/Replaces iOS 1\.7\.0 \(62\)/);
     await expect(
       databaseHarness.core.getNativeBuild(buildId(2)),
-    ).resolves.toMatchObject({ store_build: null });
+    ).resolves.toMatchObject({ is_store_build: false });
   });
 
   const command = (bundleId: string, channel = CHANNEL) =>
@@ -273,7 +273,7 @@ describe("handleNativeBuildMark", () => {
     expect(lines("warn")).toEqual([]);
     await expect(
       databaseHarness.core.getNativeBuild(buildId(6)),
-    ).resolves.toMatchObject({ store_build: true });
+    ).resolves.toMatchObject({ is_store_build: true });
   });
 
   it("clears the mark and names nothing", async () => {
@@ -286,7 +286,7 @@ describe("handleNativeBuildMark", () => {
 
     await expect(
       databaseHarness.core.getNativeBuild(buildId(6)),
-    ).resolves.toMatchObject({ store_build: null });
+    ).resolves.toMatchObject({ is_store_build: false });
     expect(lines("success")).toEqual([
       expect.stringMatching(/iOS 1\.7\.0 \(66\) isn't the store build/),
     ]);
@@ -313,14 +313,14 @@ describe("handleNativeBuildMark", () => {
     await mark(buildId(6), { json: true });
 
     expect(output()).toMatchObject({
-      nativeBuild: { id: buildId(6), store_build: true },
-      previous: { id: buildId(2), store_build: null },
+      nativeBuild: { id: buildId(6), is_store_build: true },
+      previous: { id: buildId(2), is_store_build: false },
       missingPatch: { bundleId: otaId(1), command: command(otaId(1)) },
     });
   });
 
   it("refuses a sandbox build in a line or two", async () => {
-    await register(6, { channel: "sandbox-release", sandbox: true });
+    await register(6, { channel: "sandbox-release", isSandbox: true });
 
     await expect(mark(buildId(6))).rejects.toThrow("process.exit");
 
@@ -328,7 +328,7 @@ describe("handleNativeBuildMark", () => {
     expect(lines("error")[0]!.split("\n").length).toBeLessThanOrEqual(2);
     await expect(
       databaseHarness.core.getNativeBuild(buildId(6)),
-    ).resolves.toMatchObject({ store_build: null });
+    ).resolves.toMatchObject({ is_store_build: false });
   });
 
   it("names the next step for a build that isn't registered", async () => {
@@ -366,7 +366,7 @@ describe("handleNativeBuildMark", () => {
   });
 
   it("prints JSON for a sandbox build it refuses", async () => {
-    await register(6, { channel: "sandbox-release", sandbox: true });
+    await register(6, { channel: "sandbox-release", isSandbox: true });
 
     await expect(mark(buildId(6), { json: true })).rejects.toThrow(
       "process.exit",

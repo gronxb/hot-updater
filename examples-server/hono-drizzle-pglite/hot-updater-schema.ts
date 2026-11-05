@@ -126,14 +126,15 @@ export const native_builds = pgTable("native_builds", {
   "submitted_to": column("varchar(16) COLLATE \"C\"")("submitted_to"),
   "submitted_at_ms": column("bigint")("submitted_at_ms"),
   "submitted_version": column("varchar(255) COLLATE \"C\"")("submitted_version"),
-  "store_build": column("boolean")("store_build"),
-  "sandbox": column("boolean")("sandbox"),
+  "is_store_build": column("boolean")("is_store_build").notNull(),
+  "is_sandbox": column("boolean")("is_sandbox").notNull(),
+  "store_build_scope_key": column("varchar(2048) COLLATE \"C\"")("store_build_scope_key"),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
   index("native_builds_byScope").on(table["scope_key"], table["id"]),
   index("native_builds_byBuildKey").on(table["scope_key"], table["build_key"], table["id"]),
-  uniqueIndex("native_builds_byStoreBuild").on(table["scope_key"], table["store_build"]),
+  uniqueIndex("native_builds_byStoreBuild").on(table["store_build_scope_key"]),
   index("native_builds_byChannel").on(table["channel_id"], table["id"]),
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);

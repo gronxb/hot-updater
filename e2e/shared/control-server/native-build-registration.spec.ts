@@ -87,7 +87,7 @@ describe("the installed E2E app's native build", () => {
 
 describe("the store build mark", () => {
   it("reads the JSON line native-build mark --json ends its output with", () => {
-    const nativeBuild = { id: "build", store_build: true };
+    const nativeBuild = { id: "build", is_store_build: true };
     expect(
       parseNativeBuildMarkOutput(
         ["◆  warning", JSON.stringify({ nativeBuild, previous: null }), ""].join(

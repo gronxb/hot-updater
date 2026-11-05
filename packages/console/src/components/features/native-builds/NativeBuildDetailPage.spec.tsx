@@ -48,8 +48,8 @@ const build = (overrides: Partial<NativeBuildRow>): NativeBuildRow => ({
   submitted_to: null,
   submitted_at_ms: null,
   submitted_version: null,
-  store_build: null,
-  sandbox: null,
+  is_store_build: false,
+  is_sandbox: false,
   ...overrides,
 });
 
@@ -79,7 +79,7 @@ const show = (row: NativeBuildRow, channel: string) => {
 
 describe("NativeBuildDetailPage", () => {
   it("tags a sandbox build in its title, beside its kind and before its channel", () => {
-    const title = show(build({ sandbox: true }), "pr-130");
+    const title = show(build({ is_sandbox: true }), "pr-130");
     expect(title.textContent).toMatch(/^iOS IPA\s*Sandbox\s*·\s*pr-130/);
   });
 

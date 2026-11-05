@@ -333,8 +333,7 @@ export const registerNativeBuild = async (
           : gitCommitHash,
       buildKey,
       buildNumber: build.buildNumber ?? null,
-      // Sent only for a sandbox build, so another build's body is as before.
-      ...(sandbox ? { sandbox: true as const } : {}),
+      isSandbox: sandbox,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,

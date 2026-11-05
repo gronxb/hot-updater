@@ -17,6 +17,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import type { PhysicalTable } from "../../../database/adapter";
 import { coreSchema } from "../../db/coreDatabase";
+import { resolveSchema } from "../resolveSchema";
+import { defineTable } from "../schema";
 import {
   createSqlAdapter,
   type SqlExecutor,
@@ -145,6 +147,41 @@ describe("sql core", () => {
     );
     expect(() => createTableStatements("mysql", [catalogs(false)])).toThrow(
       "catalogs key needs 8192 bytes on MySQL, over its 3072",
+    );
+    // A derived column keeps its bound: a slot holding a scope key fits.
+    const slots = resolveSchema([
+      {
+        id: "core",
+        schema: {
+          slots: defineTable(
+            {
+              id: { type: "string", maxLength: 36 },
+              scope_key: { type: "string", maxLength: 2048, ascii: true },
+              held: { type: "boolean" },
+            },
+            {
+              key: ["id"],
+              derived: {
+                held_scope_key: {
+                  type: "string",
+                  maxLength: 2048,
+                  ascii: true,
+                  compute: (row) => (row.held ? row.scope_key : null),
+                },
+              },
+              indexes: {
+                byHeldScope: { eq: ["held_scope_key"], sort: [], unique: true },
+              },
+            },
+          ),
+        },
+      },
+    ]).tables;
+    expect(createTableStatements("mysql", slots)[0]).toContain(
+      "`held_scope_key` varchar(2048) CHARACTER SET ascii COLLATE ascii_bin,",
+    );
+    expect(createTableStatements("postgresql", slots)[0]).toContain(
+      '"held_scope_key" varchar(2048) COLLATE "C",',
     );
     // every core table fits; the plugins' tables are checked beside them
     expect(() =>
