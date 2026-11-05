@@ -51,7 +51,7 @@ class HotUpdaterSandboxDevTest {
             HotUpdaterSandboxDevFetcher.assetTarget(session, "raw", "/assets/../../x", "logo", "png").canonicalFile,
         )
         assertEquals(
-            File(session, "raw/unstable_path_____bundlestore_metadata.json").canonicalFile,
+            File(session, "raw/unstable_path2f2f2f2f2fbundlestore_metadata.json").canonicalFile,
             HotUpdaterSandboxDevFetcher
                 .assetTarget(session, "raw", "/assets/?unstable_path=./../../../../bundle-store", "metadata", "json")
                 .canonicalFile,
@@ -74,14 +74,16 @@ class HotUpdaterSandboxDevTest {
     @Test
     fun `an asset Metro serves from outside the project root takes the name React Native reads`() {
         val session = File(folder.root, "dev/sessions/one")
-        // In a workspace, Metro lists every dependency's asset with `../` in
-        // `unstable_path`, as for expo-router's in an app at apps/mobile. The names
-        // are what React Native's getAndroidResourceIdentifier
-        // (@react-native/asset-utils src/AndroidPathUtils.js) gives these assets.
+        // Expo serves every asset through `unstable_path`, and in a workspace each
+        // dependency's with `../`, as for expo-router's in an app at apps/mobile.
+        // The list has Metro's raw path; the bundle has it URL-encoded by Expo's
+        // getAssets.js. The names are what React Native's
+        // getAndroidResourceIdentifier (@react-native/asset-utils
+        // src/AndroidPathUtils.js) gives the bundle's encoded location.
         assertEquals(
             File(
                 session,
-                "drawable-mdpi/unstable_path___node_modules_exporouter_assets_reactnavigation_elements_backiconmask.png",
+                "drawable-mdpi/unstable_path2f2f2fnode_modules2fexporouter2fassets2freactnavigation2felements_backiconmask.png",
             ).canonicalFile,
             HotUpdaterSandboxDevFetcher
                 .assetTarget(
@@ -93,10 +95,21 @@ class HotUpdaterSandboxDevTest {
                 ).canonicalFile,
         )
         assertEquals(
-            File(session, "drawable-mdpi/unstable_path_assets_images_logoglow.png").canonicalFile,
+            File(session, "drawable-mdpi/unstable_path2fassets2fimages_logoglow.png").canonicalFile,
             HotUpdaterSandboxDevFetcher
                 .assetTarget(session, "drawable-mdpi", "/assets/?unstable_path=./assets/images", "logo-glow", "png")
                 .canonicalFile,
+        )
+        assertEquals(
+            File(session, "raw/unstable_path2fassets2ffonts_geistmonoregular.ttf").canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(session, "raw", "/assets/?unstable_path=./assets/fonts", "GeistMono-Regular", "ttf")
+                .canonicalFile,
+        )
+        // encodeURIComponent, not form encoding: a space is %20 and a plus %2B.
+        assertEquals(
+            "unstable_path2fa20b2fc2bd_logo",
+            HotUpdaterSandboxDevFetcher.resourceName("/assets/?unstable_path=./a b/c+d", "logo"),
         )
     }
 

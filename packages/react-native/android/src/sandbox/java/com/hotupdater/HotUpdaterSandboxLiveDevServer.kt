@@ -209,7 +209,7 @@ internal class HotUpdaterSandboxDevFetcher(
          * it there. The server names it, so anything that could leave the session is
          * refused before a directory or a file is made. The location may hold `..`:
          * Metro lists every asset outside the project root with `../` in
-         * `unstable_path`, and [resourceName] flattens it into one file name.
+         * `unstable_path`, and [resourceName] flattens the location into one file name.
          */
         fun assetTarget(
             session: File,
@@ -231,11 +231,39 @@ internal class HotUpdaterSandboxDevFetcher(
             return target
         }
 
+        private val PATH_QUERY = Regex("\\?(?:export_path|unstable_path)=(.+)")
+
+        /**
+         * The location as the bundle has it. The asset list has Metro's raw path, and
+         * Expo's transform worker URL-encodes an `unstable_path` or `export_path` in
+         * the bundle (`@expo/metro-config` getAssets.js), which React Native names
+         * the resource from.
+         */
+        private fun bundleLocation(location: String): String {
+            val path = PATH_QUERY.find(location)?.groups?.get(1) ?: return location
+            return location.substring(0, path.range.first) + encodeURIComponent(path.value) +
+                location.substring(path.range.last + 1)
+        }
+
+        private fun encodeURIComponent(value: String): String {
+            val hex = "0123456789ABCDEF"
+            val encoded = StringBuilder()
+            for (byte in value.toByteArray(Charsets.UTF_8)) {
+                val char = byte.toInt() and 0xFF
+                if (char.toChar().let { (it in 'A'..'Z') || (it in 'a'..'z') || (it in '0'..'9') || it in "-_.!~*'()" }) {
+                    encoded.append(char.toChar())
+                } else {
+                    encoded.append('%').append(hex[char shr 4]).append(hex[char and 0xF])
+                }
+            }
+            return encoded.toString()
+        }
+
         fun resourceName(
             location: String,
             name: String,
         ): String =
-            "${location.removePrefix("/")}/$name"
+            "${bundleLocation(location).removePrefix("/")}/$name"
                 .lowercase()
                 .replace('/', '_')
                 .replace(Regex("[^a-z0-9_]"), "")
