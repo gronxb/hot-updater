@@ -1,5 +1,16 @@
 # @hot-updater/cloudflare
 
+## 1.1.8
+
+### Patch Changes
+
+- Updated dependencies [c6abcd6]
+  - @hot-updater/cli-tools@1.1.8
+  - @hot-updater/protocol@1.1.8
+  - @hot-updater/server@1.1.8
+  - @hot-updater/plugin-core@1.1.8
+  - @hot-updater/storage-s3@1.1.8
+
 ## 1.1.7
 
 ### Patch Changes
