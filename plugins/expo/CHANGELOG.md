@@ -1,5 +1,15 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - hot-updater@1.2.0-rc.22
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/cli-tools@1.2.0-rc.22
+  - @hot-updater/bare@1.2.0-rc.22
+
 ## 1.2.0-rc.21
 
 ### Patch Changes
