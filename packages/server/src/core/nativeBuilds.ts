@@ -9,7 +9,6 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createReleaseCatalogScopeKey,
-  decodeChannelKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
@@ -58,17 +57,17 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   submitted_to: (row.submitted_to ?? null) as NativeBuildRow["submitted_to"],
   submitted_at_ms: (row.submitted_at_ms ?? null) as number | null,
   submitted_version: (row.submitted_version ?? null) as string | null,
-  store_build: row.store_build === true ? true : null,
+  // A key-value or document row written before a boolean column lacks it.
+  is_store_build: row.is_store_build === true,
+  is_sandbox: row.is_sandbox === true,
 });
 
 /**
- * The channels only sandbox builds register on, which no store sells: the
- * registry's convention, as `@hot-updater/protocol/native-artifact` checks it
- * for a build's artifact.
+ * The channels only sandbox builds register on: a registration's `sandbox`
+ * must agree with it. The registry's convention, as
+ * `@hot-updater/protocol/native-artifact` checks it for a build's artifact.
  */
 const SANDBOX_CHANNEL_PREFIX = "sandbox-";
-
-const CHANNEL_ID_PREFIX = "channel:";
 
 /**
  * How many older builds of a scope one read takes, looking for one older than
@@ -147,6 +146,7 @@ const problemOf = ({
   gitCommitHash,
   buildKey,
   buildNumber,
+  isSandbox,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -158,6 +158,16 @@ const problemOf = ({
     return "platform must be ios or android";
   }
   if (channel.trim().length === 0) return "channel is required";
+  if (isSandbox !== undefined && typeof isSandbox !== "boolean") {
+    return "isSandbox must be true or false";
+  }
+  const reserved = channel.startsWith(SANDBOX_CHANNEL_PREFIX);
+  if (isSandbox === true && !reserved) {
+    return `a sandbox build registers on a ${SANDBOX_CHANNEL_PREFIX}* channel, not ${channel}`;
+  }
+  if (isSandbox !== true && reserved) {
+    return `channel ${channel} is reserved for sandbox builds`;
+  }
   if (
     gitCommitHash !== null &&
     gitCommitHash.length > GIT_COMMIT_HASH_MAX_LENGTH
@@ -229,7 +239,8 @@ export const createNativeBuildApi = (
       submitted_to: null,
       submitted_at_ms: null,
       submitted_version: null,
-      store_build: null,
+      is_store_build: false,
+      is_sandbox: registration.isSandbox === true,
     };
     // A channel deleted between ensuring it and the write refuses the write
     // through `byChannel`'s root, so it runs again and ensures it anew.
@@ -284,8 +295,7 @@ export const createNativeBuildApi = (
     }
     if (options?.storeBuild) {
       const marked = await db.findOne("native_builds", {
-        scope_key: scopeKey,
-        store_build: true,
+        store_build_scope_key: scopeKey,
       });
       return marked === null ? null : pick(marked);
     }
@@ -361,8 +371,10 @@ export const createNativeBuildApi = (
     });
   },
 
-  // The mark is one value of a unique index, so a store holds one per scope
-  // whatever races it, and moving it frees and takes the value in one write. A
+  // The mark is `is_store_build`, and the engine derives the scope's one value
+  // of a unique index from it, `store_build_scope_key`, so a store holds one
+  // per scope whatever races it, and moving it frees and takes the value in
+  // one write. A
   // holder this run read is guarded, so a mark that moved it reruns the write
   // through the engine. A scope with no holder has nothing to guard: two first
   // marks meet at the index, and the loser runs again, finding the winner.
@@ -374,40 +386,39 @@ export const createNativeBuildApi = (
           if (row === null) return null;
           const build = pick(row);
           if (!storeBuild) {
-            if (build.store_build !== null) {
-              tx.update("native_builds", row, { store_build: null });
+            if (build.is_store_build) {
+              tx.update("native_builds", row, { is_store_build: false });
             }
             return {
-              nativeBuild: { ...build, store_build: null },
+              nativeBuild: { ...build, is_store_build: false },
               previous: null,
             };
           }
-          if (
-            decodeChannelKey(
-              build.channel_id.slice(CHANNEL_ID_PREFIX.length),
-            ).startsWith(SANDBOX_CHANNEL_PREFIX)
-          ) {
+          // No store sells a sandbox build: its record says so, whatever
+          // its channel.
+          if (build.is_sandbox) {
             throw new NativeBuildInputError(
-              "A build on a sandbox channel can't be the store build.",
+              "A sandbox build can't be the store build.",
             );
           }
-          if (build.store_build !== null) {
+          if (build.is_store_build) {
             return { nativeBuild: build, previous: null };
           }
           const holder = await tx.findOne("native_builds", {
-            scope_key: build.scope_key,
-            store_build: true,
+            store_build_scope_key: build.scope_key,
           });
           // First, so a store that checks a unique index per statement finds
           // the value free.
           if (holder !== null) {
-            tx.update("native_builds", holder, { store_build: null });
+            tx.update("native_builds", holder, { is_store_build: false });
           }
-          tx.update("native_builds", row, { store_build: true });
+          tx.update("native_builds", row, { is_store_build: true });
           return {
-            nativeBuild: { ...build, store_build: true as const },
+            nativeBuild: { ...build, is_store_build: true },
             previous:
-              holder === null ? null : { ...pick(holder), store_build: null },
+              holder === null
+                ? null
+                : { ...pick(holder), is_store_build: false },
           };
         });
       } catch (error) {

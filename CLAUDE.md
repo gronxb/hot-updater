@@ -224,6 +224,7 @@ pnpm build && pnpm test:type && pnpm lint && pnpm test
 - Uses `oxfmt` and `oxlint` for formatting and linting (see `.oxfmtrc.json` and `.oxlintrc.json`)
 - 2-space indentation, 80 character line width
 - Semicolons required, arrow parentheses always
+- Boolean columns are `is_<state>` (a fact about the row) or `should_<verb>` (an instruction to the client), NOT NULL, `true` or `false`, never null. A unique index over the rows where one is true keys a derived slot column that is null on every other row, never a nullable boolean (see `native_builds.store_build_scope_key`). Released `releases.enabled` keeps its name.
 
 ### Testing
 

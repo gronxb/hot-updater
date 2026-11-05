@@ -147,7 +147,7 @@ export function parseNativeBuildImportOutput(
 }
 
 interface NativeBuildMarkOutput {
-  nativeBuild: { id: string; store_build: boolean | null } | null;
+  nativeBuild: { id: string; is_store_build: boolean } | null;
 }
 
 /** The JSON line `native-build mark --json` ends its output with. */

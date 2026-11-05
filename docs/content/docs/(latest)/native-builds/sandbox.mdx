@@ -74,15 +74,18 @@ On iOS, with the same bundle ID, the sandbox build replaces the store app on a
 device. [A separate app](#a-separate-app-on-ios) installs beside it.
 
 The channel `sandbox-<scheme>` is reserved. A normal build can't register on a
-`sandbox-*` channel, and a sandbox build can't register on any other.
+`sandbox-*` channel, and a sandbox build can't register on any other. The
+registry records the build as a sandbox build (`is_sandbox` on its row, which
+`native-build import` reads from the artifact), so the Console tags it
+**Sandbox** and `native-build find` prints it beside its kind.
 `native-build find --scheme <scheme>` looks on that channel by itself, and with
 `--json` adds `sandbox`: the `appId` its links derive from, and `otherBuilds`,
 whether the platform has builds there with other native code when none matched.
 
 A build on a `sandbox-*` channel is in another scope than your store build, so
 testing builds on a sandbox scheme don't touch the base a store install's first
-OTA [patches from](/docs/guides/native-build#mark-the-store-build). It can't be
-marked as the store build either.
+OTA [patches from](/docs/guides/native-build#mark-the-store-build). A sandbox
+build can't be marked as the store build either.
 
 ## What runs first
 

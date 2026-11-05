@@ -36,11 +36,11 @@ function Row({
 
 /** Marks or clears the build where the card says what the mark does. */
 function StoreBuildAction({ detail }: { readonly detail: NativeBuildDetail }) {
-  const { build, channel } = detail;
+  const { build } = detail;
   const mark = useMarkNativeBuildMutation();
-  // No store sells a sandbox channel's build, so core refuses the mark.
-  if (channel.startsWith("sandbox-")) return null;
-  const storeBuild = build.store_build !== true;
+  // No store sells a sandbox build, so core refuses the mark.
+  if (build.is_sandbox) return null;
+  const storeBuild = !build.is_store_build;
   return (
     <Button
       className="min-h-11 shrink-0 sm:min-h-8"

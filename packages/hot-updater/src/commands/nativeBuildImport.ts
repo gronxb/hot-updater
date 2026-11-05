@@ -120,7 +120,7 @@ const describeArtifact = (
   return ui.block("Native build artifact", [
     ui.kv("File", ui.path(ui.fitPath(file, ARTIFACT_PATH_WIDTH))),
     ui.kv("Platform", ui.platform(info.platform)),
-    ui.kv("Kind", info.kind),
+    ui.kv("Kind", info.sandbox.code ? `${info.kind} · sandbox` : info.kind),
     ui.kv("Size", formatBytes(byteSize)),
     ui.kv("App", info.appId ?? ui.muted("none")),
     ui.kv("App version", ui.version(text(info.appVersion) ?? "none")),
@@ -395,6 +395,8 @@ export const handleNativeBuildImport = async (
         },
         {
           buildKey: null,
+          // The artifact's sandbox layer, checked against the channel.
+          sandbox: build.sandbox,
           // Built elsewhere, so this checkout's commit is not its own.
           gitCommitHash: null,
           writeBuiltInBundle: (outputPath) =>

@@ -29,7 +29,8 @@ const SANDBOX_URL_SCHEME_PREFIX = "hu-sandbox-";
 
 /**
  * The channel a scheme's sandbox build registers on. `sandbox-*` is reserved:
- * it is how the registry tells a sandbox build, with no column of its own.
+ * only a sandbox build registers there, and the registry records `sandbox` on
+ * it.
  */
 export const sandboxChannelOf = (scheme: string): string =>
   `${SANDBOX_CHANNEL_PREFIX}${scheme}`;

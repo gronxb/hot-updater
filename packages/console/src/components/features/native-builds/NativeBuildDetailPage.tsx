@@ -29,6 +29,7 @@ import {
 import { BuiltInBundleCard } from "./BuiltInBundleCard";
 import { InstallCard } from "./InstallCard";
 import { PatchesCard } from "./PatchesCard";
+import { SandboxBadge } from "./SandboxBadge";
 import { ServedNowCard } from "./ServedNowCard";
 
 export interface NativeBuildDetailSearch {
@@ -84,13 +85,19 @@ export function NativeBuildDetailPage({
               className="size-3.5 shrink-0 text-muted-foreground"
               platform={detail.build.platform}
             />
-            <span className="min-w-0 [overflow-wrap:anywhere]">
-              {/* The icon names the platform; screen readers hear it. */}
-              <span className="sr-only">
-                {platformLabel(detail.build.platform)}{" "}
+            {/* What the build is, then its channel: each wraps whole. */}
+            <span className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                {/* The icon names the platform; screen readers hear it. */}
+                <span className="sr-only">
+                  {platformLabel(detail.build.platform)}{" "}
+                </span>
+                {nativeBuildArtifacts[detail.build.artifact_kind].label}
+                <SandboxBadge build={detail.build} />
               </span>
-              {nativeBuildArtifacts[detail.build.artifact_kind].label} ·{" "}
-              <span translate="no">{detail.channel}</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                · <span translate="no">{detail.channel}</span>
+              </span>
             </span>
             <span className="hidden text-xs font-normal text-muted-foreground tabular-nums sm:inline">
               {formatByteSize(detail.build.byte_size)}

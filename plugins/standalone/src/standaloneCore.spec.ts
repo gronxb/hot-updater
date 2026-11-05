@@ -189,7 +189,7 @@ describe("createStandaloneCoreApi", () => {
         http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
           queries.push(new URL(request.url).search);
           return HttpResponse.json({
-            data: { id: "build-1", store_build: true },
+            data: { id: "build-1", is_store_build: true },
           });
         }),
         http.post(

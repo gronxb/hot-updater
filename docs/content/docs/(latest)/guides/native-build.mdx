@@ -259,7 +259,8 @@ caps the artifact size.
 The Console's **Native builds** page lists the tracked builds, newest first,
 in a table like the Bundles page's, one kind of value per column:
 
-- **Artifact**: the build's kind, such as `IPA`, which opens its page.
+- **Artifact**: the build's kind, such as `IPA`, which opens its page, tagged
+  **Sandbox** for a [sandbox build](/docs/native-builds/sandbox).
 - **Channel** and **Platform**.
 - **Build**: the build number the artifact reports.
 - **Target**: what its OTAs target, as the Bundles page's Target column shows
@@ -773,13 +774,13 @@ npx hot-updater native-build mark <build id> --clear
 ```
 
 Both succeed when run again, so a CI job can retry them. Add `--json` to print
-`nativeBuild`, `previous`, and `missingPatch`, the OTA and the command, or null. A build on a `sandbox-*` channel can't be
+`nativeBuild`, `previous`, and `missingPatch`, the OTA and the command, or null. A sandbox build can't be
 marked, since no store sells it. Deleting a marked build deletes its mark, and
 deploys go back to the newest build.
 
 When it refuses the build, the command exits with code 1, and `--json` prints
 `{ "id", "marked": false, "reason" }` (`"cleared"` with `--clear`). `reason` is
-`not_found` for an ID no build has, or `sandbox_channel`.
+`not_found` for an ID no build has, or `sandbox_build`.
 
 A release job keeps the build's ID, then marks it when the release is live:
 

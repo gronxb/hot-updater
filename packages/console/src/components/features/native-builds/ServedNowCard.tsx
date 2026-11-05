@@ -98,7 +98,7 @@ export function ServedNowCard({
       rolloutCohortCount > 0 || targetCohorts.length > 0,
   )?.bundleId;
   const missingPatch =
-    build.store_build === true &&
+    build.is_store_build &&
     firstOta !== undefined &&
     firstOta !== null &&
     firstDownloadOf(patches, firstOta).kind === "full"

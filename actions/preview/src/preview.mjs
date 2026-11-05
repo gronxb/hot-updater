@@ -267,7 +267,8 @@ const findOrSubmitStoreBuild = async (
     scheme,
     storeStatus: group === null,
   });
-  if (found.channel !== sandboxChannel) {
+  // `find` describes a sandbox scheme's builds with `sandbox`, and only its.
+  if (found.sandbox === undefined) {
     throw new Error(
       `${platform}-submit takes a sandbox scheme, and ${scheme} isn't one.\nSet sandbox: true on it, or remove ${platform}-submit.`,
     );
@@ -453,7 +454,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
   // for what the project embeds, which `channel set` made the pull request's.
   const found = await findNativeBuild(deps, { platform, scheme });
   const fallback = inputs.fallbackSchemes[platform];
-  if (found.channel !== `sandbox-${scheme}`) {
+  if (found.sandbox === undefined) {
     if (fallback !== undefined) {
       throw new Error(
         `${platform}-fallback-scheme goes with a sandbox scheme, and ${scheme} isn't one.\nSet sandbox: true on it, or remove ${platform}-fallback-scheme.`,

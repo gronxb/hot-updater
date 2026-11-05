@@ -220,6 +220,8 @@ import {
 } from "@hot-updater/apple-helper";
 import { p, secret } from "@hot-updater/cli-tools";
 
+import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
+
 import { assertBuiltArtifact } from "../utils/native/sandbox";
 import { handleNativeBuildCreate } from "./buildNative";
 
@@ -281,6 +283,10 @@ describe("native-build of a sandbox scheme", () => {
         channel: "sandbox-release",
         fingerprintHash: "fp",
       }),
+    );
+    expect(registerNativeBuild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sandbox: true }),
     );
   });
 
@@ -554,6 +560,10 @@ describe("native-build of a normal scheme", () => {
     expect(events).toContain("read state");
     expect(events).toContain("check artifact");
     expect(assertBuiltArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ sandbox: false }),
+    );
+    expect(registerNativeBuild).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ sandbox: false }),
     );
   });

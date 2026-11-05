@@ -349,6 +349,7 @@ describe("checkNativeArtifact", () => {
         fingerprintHash: FINGERPRINT,
         appVersion: null,
         builtInBundlePath: "base/assets/index.android.bundle",
+        sandbox: false,
       },
     });
     const byVersion = checkNativeArtifact(info({ channel: null }), {
@@ -532,6 +533,19 @@ describe("the sandbox layer", () => {
         updateStrategy: "fingerprint",
       }),
     ).toMatchObject({ ok: true, build: { channel: "beta" } });
+  });
+
+  it("says whether the build it registers is a sandbox build", async () => {
+    expect(
+      checkNativeArtifact(await read(sandboxApk(), "app.apk"), {
+        updateStrategy: "fingerprint",
+      }),
+    ).toMatchObject({ ok: true, build: { sandbox: true } });
+    expect(
+      checkNativeArtifact(await read(apk(), "app.apk"), {
+        updateStrategy: "fingerprint",
+      }),
+    ).toMatchObject({ ok: true, build: { sandbox: false } });
   });
 
   it("refuses a sandbox build on another channel, and a normal build on a reserved one", async () => {

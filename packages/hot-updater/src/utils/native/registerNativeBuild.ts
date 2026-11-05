@@ -198,10 +198,16 @@ export const registerNativeBuild = async (
     Omit<NativeBuildResult, "scheme" | keyof NativeBuildTarget>,
   {
     buildKey,
+    sandbox,
     gitCommitHash,
     writeBuiltInBundle,
   }: {
     readonly buildKey: string | null;
+    /**
+     * Whether the artifact is a sandbox build, which the caller has checked
+     * against the artifact: the registry records it.
+     */
+    readonly sandbox: boolean;
     /**
      * The commit the build was made from: this checkout's latest by
      * default, and null for a build imported from elsewhere.
@@ -327,6 +333,7 @@ export const registerNativeBuild = async (
           : gitCommitHash,
       buildKey,
       buildNumber: build.buildNumber ?? null,
+      isSandbox: sandbox,
       artifact: {
         kind: build.artifactKind,
         storageUri: artifactUpload.storageUri,

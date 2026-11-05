@@ -113,6 +113,12 @@ export type NativeBuildRegistration = NativeBuildScope & {
    * `versionCode`, or null (or left out) when it can't be read.
    */
   readonly buildNumber?: string | null;
+  /**
+   * Whether the artifact is a sandbox build; left out, it isn't. It must agree
+   * with the channel: a sandbox build registers on a reserved `sandbox-*`
+   * channel, and only a sandbox build does.
+   */
+  readonly isSandbox?: boolean;
   readonly artifact: {
     readonly kind: NativeBuildArtifactKind;
     readonly storageUri: string;
@@ -281,7 +287,7 @@ export interface HotUpdaterCoreApi {
   /**
    * Marks a build as what the store sells, replacing its scope's mark in one
    * write, or clears the mark it holds. Running it again changes nothing. Null
-   * for an unknown ID. A sandbox channel's build can't be marked.
+   * for an unknown ID. A sandbox build can't be marked.
    */
   markNativeBuild(
     id: string,

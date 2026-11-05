@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import {
   createStorageAdapter,
@@ -47,7 +48,7 @@ const register = (
   suffix: string,
   scope: Pick<
     NativeBuildRegistration,
-    "platform" | "channel" | "fingerprintHash" | "appVersion"
+    "platform" | "channel" | "fingerprintHash" | "appVersion" | "isSandbox"
   >,
 ) =>
   databaseHarness.core.registerNativeBuild({
@@ -132,6 +133,7 @@ describe("handleNativeBuildFind", () => {
       platform,
       channel: "sandbox-sandbox",
       appVersion: null,
+      isSandbox: true as const,
     });
 
     beforeEach(() => {
@@ -249,7 +251,23 @@ describe("handleNativeBuildFind", () => {
       const found = await find("android");
 
       expect(found.nativeBuild?.fingerprint_hash).toBe("fingerprint-a");
+      expect(found.nativeBuild?.is_sandbox).toBe(true);
       expect(found.sandbox.otherBuilds).toBe(false);
+    });
+
+    it("tags the build it finds as a sandbox build in its text", async () => {
+      await register("1", {
+        ...sandboxScope("android"),
+        fingerprintHash: "fingerprint-a",
+      });
+      const { handleNativeBuildFind } = await import("./nativeBuild");
+
+      await handleNativeBuildFind({ platform: "android", scheme: "sandbox" });
+
+      const printed = stripVTControlCharacters(
+        String(log.success.mock.calls.at(-1)?.[0]),
+      );
+      expect(printed).toMatch(/Kind\s+apk · sandbox/);
     });
 
     it("adds nothing for a scheme that isn't a sandbox's", async () => {
@@ -758,7 +776,11 @@ describe("handleNativeBuildFind", () => {
         fingerprintHash: "fingerprint-a",
         appVersion: null,
       } as const;
-      await register("1", { ...scope, channel: "sandbox-beta" });
+      await register("1", {
+        ...scope,
+        channel: "sandbox-beta",
+        isSandbox: true,
+      });
       await register("2", { ...scope, channel: "preview" });
 
       await find({

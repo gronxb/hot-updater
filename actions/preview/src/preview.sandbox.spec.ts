@@ -58,6 +58,7 @@ const fakeCli = ({
   fingerprintHash = FINGERPRINT,
   builds = [] as Build[],
   builtChannel = undefined as string | undefined,
+  reportedChannel = undefined as string | undefined,
   storeRow = undefined as Record<string, unknown> | undefined,
 } = {}) => {
   const calls: string[] = [];
@@ -92,7 +93,7 @@ const fakeCli = ({
         code: 0,
         stdout: JSON.stringify({
           platform,
-          channel: scope,
+          channel: reportedChannel ?? scope,
           fingerprintHash,
           appVersion: null,
           nativeBuild: storeRow ?? (found && row(found)),
@@ -387,6 +388,17 @@ describe("a sandbox build that has the fingerprint", () => {
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -s sandbox --json",
     ]);
+  });
+
+  it("tells the sandbox scheme by what find says of it, not by the channel", async () => {
+    const fake = fakeCli({
+      builds: [sandboxBuild()],
+      reportedChannel: "sandbox-renamed",
+    });
+
+    const { outputs } = await run(fake);
+
+    expect(outputs["android-sandbox-link"]).toBe(LINK);
   });
 
   it("comments the install link and the deep link's QR code", async () => {

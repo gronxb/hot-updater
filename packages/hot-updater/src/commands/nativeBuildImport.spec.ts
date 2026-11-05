@@ -177,6 +177,8 @@ describe("native-build import", () => {
       // Built elsewhere: no commit of this checkout, and no build key.
       git_commit_hash: null,
       build_key: null,
+      is_sandbox: false,
+      is_store_build: false,
     });
     await expect(
       harness.core.findNativeBuild({
@@ -325,9 +327,16 @@ describe("native-build import", () => {
         "base/dex/classes.dex": fixture("sandbox.dex"),
       });
 
-    it("registers a sandbox build on its reserved channel", async () => {
+    it("registers a sandbox build on its reserved channel, recorded as one", async () => {
       const file = await writeArtifact(dir, "sandbox.aab", sandboxAab());
-      expect(await refused(file)).toEqual([]);
+      await handleNativeBuildImport(file, { json: true });
+
+      expect(process.exitCode).toBeUndefined();
+      const { nativeBuild } = printedJson(stdout);
+      expect(nativeBuild).toMatchObject({ is_sandbox: true });
+      await expect(
+        harness.core.getNativeBuild(nativeBuild.id),
+      ).resolves.toMatchObject({ is_sandbox: true });
     });
 
     it("refuses a sandbox build on another channel", async () => {

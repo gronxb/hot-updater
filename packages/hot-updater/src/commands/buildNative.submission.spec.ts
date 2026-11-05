@@ -297,6 +297,7 @@ const trackSubmitted = async (
     await import("@/utils/native/registerNativeBuild");
   const row = (await registerNativeBuild(buildResult() as never, {
     buildKey: null,
+    sandbox: false,
   })) as NativeBuildRow;
   return (await databaseHarness.core.recordNativeBuildSubmission(row.id, {
     destination,

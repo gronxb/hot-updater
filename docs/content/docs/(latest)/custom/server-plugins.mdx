@@ -156,7 +156,10 @@ update, stored as a column, and indexed like any field; it cannot be written
 directly. With `multi: true`, `compute` returns up to 16 values and the row is
 indexed once per value; such a field can appear in `eq` only, once per index.
 Null, or an empty list, leaves the row out of indexes on that field. Insights
-uses a multi-valued `bundle_ref` for its bundle filters.
+uses a multi-valued `bundle_ref` for its bundle filters. A derived string takes
+`maxLength` and `ascii` like a declared one. A unique index over the rows where
+a boolean is true keys a derived field that is null on every other row, not the
+boolean itself.
 
 A reference targets a single-key table of the same plugin, and the field has
 that key's type. `onDelete` decides what deleting the parent does:

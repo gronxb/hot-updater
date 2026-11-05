@@ -626,7 +626,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (build) =>
       expect(build).toMatchObject({
         min_bundle_id: createBundleFixture("011").id,
-        store_build: true,
+        is_store_build: true,
       }),
   }),
   budget({
@@ -991,7 +991,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       expect(result).toMatchObject({
         nativeBuild: {
           min_bundle_id: createBundleFixture("012").id,
-          store_build: true,
+          is_store_build: true,
         },
         previous: { min_bundle_id: createBundleFixture("011").id },
       }),

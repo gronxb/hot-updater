@@ -421,20 +421,20 @@ export const setupCoreAdminTestSuite = (options: {
       const older = await register("64", "store-fingerprint");
       const newer = await register("65", "store-fingerprint");
       const otherScope = await register("66", "store-fingerprint-b");
-      expect(older.store_build).toBeNull();
+      expect(older.is_store_build).toBe(false);
       expect((await adminJson(markRead("store-fingerprint"))).data).toBeNull();
 
       const marked = await mark(older.id, true);
       expect(marked.status).toBe(200);
       expect(await marked.json()).toMatchObject({
         data: {
-          nativeBuild: { id: older.id, store_build: true },
+          nativeBuild: { id: older.id, is_store_build: true },
           previous: null,
         },
       });
       expect((await adminJson(markRead("store-fingerprint"))).data).toEqual({
         ...older,
-        store_build: true,
+        is_store_build: true,
       });
       // The newest build is still the newest, and a mark stays in its scope.
       expect(
@@ -453,8 +453,8 @@ export const setupCoreAdminTestSuite = (options: {
       const replaced = await mark(newer.id, true);
       expect(await replaced.json()).toMatchObject({
         data: {
-          nativeBuild: { id: newer.id, store_build: true },
-          previous: { id: older.id, store_build: null },
+          nativeBuild: { id: newer.id, is_store_build: true },
+          previous: { id: older.id, is_store_build: false },
         },
       });
       expect((await adminJson(`/native-builds/${older.id}`)).data).toEqual(
@@ -462,7 +462,7 @@ export const setupCoreAdminTestSuite = (options: {
       );
       expect((await adminJson(markRead("store-fingerprint"))).data).toEqual({
         ...newer,
-        store_build: true,
+        is_store_build: true,
       });
 
       // Racing marks leave one, whichever store runs them, and every one of
@@ -475,9 +475,9 @@ export const setupCoreAdminTestSuite = (options: {
         const results = (await Promise.all(
           responses.map((response) => response.json()),
         )) as { data: { nativeBuild: NativeBuildRow } }[];
-        expect(results.map(({ data }) => data.nativeBuild.store_build)).toEqual(
-          ids.map(() => true),
-        );
+        expect(
+          results.map(({ data }) => data.nativeBuild.is_store_build),
+        ).toEqual(ids.map(() => true));
         const holders = (
           await Promise.all(
             [older, newer].map(
@@ -489,7 +489,7 @@ export const setupCoreAdminTestSuite = (options: {
                 ).data,
             ),
           )
-        ).filter(({ store_build }) => store_build === true);
+        ).filter(({ is_store_build }) => is_store_build);
         expect(holders).toHaveLength(1);
         expect(ids).toContain(holders[0]!.id);
       };
@@ -523,6 +523,95 @@ export const setupCoreAdminTestSuite = (options: {
       expect(
         (await adminJson(markRead("store-fingerprint-b"))).data,
       ).toBeNull();
+    });
+
+    it("records a sandbox build, and refuses one that disagrees with its channel", async () => {
+      const sandboxChannel = `sandbox-${namespace}`;
+      const channel = `plain-${namespace}`;
+      const post = (suffix: string, body: Record<string, unknown>) => {
+        const builtIn = bundleRow(suffix);
+        return admin(
+          "/native-builds",
+          jsonRequest("POST", {
+            id: bundleRow(`8${suffix}`).id,
+            platform: "ios",
+            fingerprintHash: "sandbox-fingerprint",
+            appVersion: null,
+            minBundleId: builtIn.id,
+            gitCommitHash: null,
+            buildKey: null,
+            artifact: {
+              kind: "ipa",
+              storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
+              byteSize: 1_000,
+            },
+            embeddedBundle: {
+              manifestStorageUri: builtIn.manifest_storage_uri,
+              manifestFileHash: builtIn.manifest_file_hash,
+              assetBaseStorageUri: builtIn.asset_base_storage_uri,
+            },
+            ...body,
+          }),
+        );
+      };
+      const refusal = async (suffix: string, body: Record<string, unknown>) => {
+        const response = await post(suffix, body);
+        await response.text();
+        return response.status;
+      };
+
+      expect(await refusal("74", { channel, isSandbox: true })).toBe(400);
+      expect(await refusal("74", { channel: sandboxChannel })).toBe(400);
+      expect(
+        await refusal("74", { channel: sandboxChannel, isSandbox: false }),
+      ).toBe(400);
+      expect(
+        await refusal("74", { channel: sandboxChannel, isSandbox: null }),
+      ).toBe(400);
+      expect(
+        await refusal("74", { channel: sandboxChannel, isSandbox: "yes" }),
+      ).toBe(400);
+
+      const tagged = await post("72", {
+        channel: sandboxChannel,
+        isSandbox: true,
+      });
+      expect(tagged.status).toBe(201);
+      const sandboxBuild = ((await tagged.json()) as { data: NativeBuildRow })
+        .data;
+      const plain = await post("73", { channel, isSandbox: false });
+      expect(plain.status).toBe(201);
+      const plainBuild = ((await plain.json()) as { data: NativeBuildRow })
+        .data;
+
+      expect(sandboxBuild).toMatchObject({
+        is_sandbox: true,
+        is_store_build: false,
+      });
+      expect(plainBuild).toMatchObject({
+        is_sandbox: false,
+        is_store_build: false,
+      });
+      expect(
+        (await adminJson(`/native-builds/${sandboxBuild.id}`)).data,
+      ).toEqual(sandboxBuild);
+      expect((await adminJson(`/native-builds/${plainBuild.id}`)).data).toEqual(
+        plainBuild,
+      );
+      expect(
+        (
+          await adminJson(
+            `/native-builds/latest?platform=ios&channel=${encodeURIComponent(sandboxChannel)}&fingerprintHash=sandbox-fingerprint`,
+          )
+        ).data,
+      ).toEqual(sandboxBuild);
+
+      const marked = await admin(
+        `/native-builds/${sandboxBuild.id}/store-build`,
+        jsonRequest("POST", { storeBuild: true }),
+      );
+      expect(marked.status).toBe(400);
+      await marked.text();
     });
 
     it("lists the patches that start from a bundle", async () => {
