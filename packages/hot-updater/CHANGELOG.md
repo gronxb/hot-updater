@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.1.8
+
+### Patch Changes
+
+- Updated dependencies [c6abcd6]
+  - @hot-updater/cli-tools@1.1.8
+  - @hot-updater/android-helper@1.1.8
+  - @hot-updater/apple-helper@1.1.8
+  - @hot-updater/bsdiff@1.1.8
+  - @hot-updater/console@1.1.8
+  - @hot-updater/protocol@1.1.8
+  - @hot-updater/server@1.1.8
+  - @hot-updater/plugin-core@1.1.8
+
 ## 1.1.7
 
 ### Patch Changes

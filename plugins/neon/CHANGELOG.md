@@ -1,5 +1,13 @@
 # @hot-updater/neon
 
+## 1.1.8
+
+### Patch Changes
+
+- @hot-updater/plugin-core@1.1.8
+  - @hot-updater/postgres@1.1.8
+  - @hot-updater/storage-s3@1.1.8
+
 ## 1.1.7
 
 ### Patch Changes
