@@ -207,7 +207,9 @@ internal class HotUpdaterSandboxDevFetcher(
         /**
          * Where an asset the server lists goes in the session, as React Native reads
          * it there. The server names it, so anything that could leave the session is
-         * refused before a directory or a file is made.
+         * refused before a directory or a file is made. The location may hold `..`:
+         * Metro lists every asset outside the project root with `../` in
+         * `unstable_path`, and [resourceName] flattens it into one file name.
          */
         fun assetTarget(
             session: File,
@@ -221,7 +223,7 @@ internal class HotUpdaterSandboxDevFetcher(
             fun refuse(): Nothing = throw IOException("The dev server listed an asset this build won't write, $listed")
             if (!ASSET_TYPE.matches(type)) refuse()
             if (name.isEmpty() || name.contains('/') || name.contains('\\') || name.contains("..")) refuse()
-            if (!location.startsWith("/") || location.split('/', '?', '&', '=').any { it == ".." }) refuse()
+            if (!location.startsWith("/")) refuse()
             val base = resourceName(location, name)
             if (base.isEmpty()) refuse()
             val target = File(session, "$folder/$base.$type")

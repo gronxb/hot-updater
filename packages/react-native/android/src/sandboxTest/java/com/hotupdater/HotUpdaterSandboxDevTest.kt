@@ -34,8 +34,28 @@ class HotUpdaterSandboxDevTest {
         assertTrue(refused { target(session, "raw", "/assets", "logo", "png/../../x") })
         assertTrue(refused { target(session, "raw", "/assets", "logo", "") })
         assertTrue(refused { target(session, "raw", "/assets", "../logo", "png") })
-        assertTrue(refused { target(session, "raw", "/assets/../../x", "logo", "png") })
+        assertTrue(refused { target(session, "raw", "/assets", "..", "png") })
+        assertTrue(refused { target(session, "raw", "/assets", "a\\..\\..\\x", "png") })
+        assertTrue(refused { target(session, "raw", "assets/../../x", "logo", "png") })
+        assertTrue(refused { target(session, "raw", "/assets/?unstable_path=./../..", "", "png") })
         assertFalse(File(folder.root, "dev").exists())
+    }
+
+    @Test
+    fun `a location with dot segments flattens into one name inside the session`() {
+        val session = File(folder.root, "dev/sessions/one")
+        // `..` in a location never reaches the file system: the name keeps only
+        // [a-z0-9_], as React Native's getAndroidResourceIdentifier names it.
+        assertEquals(
+            File(session, "raw/__x_logo.png").canonicalFile,
+            HotUpdaterSandboxDevFetcher.assetTarget(session, "raw", "/assets/../../x", "logo", "png").canonicalFile,
+        )
+        assertEquals(
+            File(session, "raw/unstable_path_____bundlestore_metadata.json").canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(session, "raw", "/assets/?unstable_path=./../../../../bundle-store", "metadata", "json")
+                .canonicalFile,
+        )
     }
 
     @Test
@@ -48,6 +68,35 @@ class HotUpdaterSandboxDevTest {
         assertEquals(
             File(session, "raw/font.ttf").canonicalFile,
             HotUpdaterSandboxDevFetcher.assetTarget(session, "raw", "/assets", "font", "ttf").canonicalFile,
+        )
+    }
+
+    @Test
+    fun `an asset Metro serves from outside the project root takes the name React Native reads`() {
+        val session = File(folder.root, "dev/sessions/one")
+        // In a workspace, Metro lists every dependency's asset with `../` in
+        // `unstable_path`, as for expo-router's in an app at apps/mobile. The names
+        // are what React Native's getAndroidResourceIdentifier
+        // (@react-native/asset-utils src/AndroidPathUtils.js) gives these assets.
+        assertEquals(
+            File(
+                session,
+                "drawable-mdpi/unstable_path___node_modules_exporouter_assets_reactnavigation_elements_backiconmask.png",
+            ).canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(
+                    session,
+                    "drawable-mdpi",
+                    "/assets/?unstable_path=./../../node_modules/expo-router/assets/react-navigation/elements",
+                    "back-icon-mask",
+                    "png",
+                ).canonicalFile,
+        )
+        assertEquals(
+            File(session, "drawable-mdpi/unstable_path_assets_images_logoglow.png").canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(session, "drawable-mdpi", "/assets/?unstable_path=./assets/images", "logo-glow", "png")
+                .canonicalFile,
         )
     }
 
