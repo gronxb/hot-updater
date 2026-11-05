@@ -742,6 +742,10 @@ export const handleNativeBuildMark = async (
         }),
       );
     }
-    failCommand(error.cause, options.json);
+    // Laid out one idea per line, so its command line is highlighted whole.
+    const message = ui.prose(error.message);
+    if (options.json) console.error(message);
+    else p.log.error(message);
+    process.exit(1);
   }
 };
