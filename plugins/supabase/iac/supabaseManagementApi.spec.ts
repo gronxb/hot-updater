@@ -59,7 +59,7 @@ describe("supabaseManagementApi", () => {
     ]);
     expect(mocks.execa).toHaveBeenCalledWith(
       "npx",
-      ["-y", "supabase", "orgs", "list", "--output", "json"],
+      ["-y", "supabase@2.122.1", "orgs", "list", "--output", "json"],
       { env: undefined },
     );
   });
@@ -93,7 +93,7 @@ describe("supabaseManagementApi", () => {
       "npx",
       [
         "-y",
-        "supabase",
+        "supabase@2.122.1",
         "projects",
         "create",
         "Hot Updater",
@@ -111,7 +111,7 @@ describe("supabaseManagementApi", () => {
     expect(mocks.execa).toHaveBeenNthCalledWith(
       2,
       "npx",
-      ["-y", "supabase", "projects", "list", "--output", "json"],
+      ["-y", "supabase@2.122.1", "projects", "list", "--output", "json"],
       { env: undefined },
     );
   });
@@ -133,7 +133,7 @@ describe("supabaseManagementApi", () => {
     ).resolves.toBe("COMING_UP");
     expect(mocks.execa).toHaveBeenCalledWith(
       "npx",
-      ["-y", "supabase", "projects", "list", "--output", "json"],
+      ["-y", "supabase@2.122.1", "projects", "list", "--output", "json"],
       { env: undefined },
     );
   });
@@ -150,7 +150,7 @@ describe("supabaseManagementApi", () => {
       "npx",
       [
         "-y",
-        "supabase",
+        "supabase@2.122.1",
         "functions",
         "list",
         "--project-ref",

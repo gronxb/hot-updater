@@ -2,6 +2,7 @@ import { link, p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import { initProvider as SUPABASE_INIT_PROVIDER } from "./init/index";
+import { SUPABASE_CLI } from "./supabaseCliPackage";
 
 const SUPABASE_AUTH_METHOD = {
   accessToken: "access-token",
@@ -29,7 +30,16 @@ const openBrowser = async (url: string): Promise<void> => {
 export const hasValidSupabaseCliLogin = async (): Promise<boolean> => {
   const result = await execa(
     "npx",
-    ["-y", "supabase", "projects", "list", "--output", "json", "--agent", "no"],
+    [
+      "-y",
+      SUPABASE_CLI,
+      "projects",
+      "list",
+      "--output",
+      "json",
+      "--agent",
+      "no",
+    ],
     { reject: false },
   );
   return result.exitCode === 0;
@@ -74,7 +84,7 @@ export const inputSupabaseAccessToken = async (
     }
     const loginProcess = execa(
       "npx",
-      ["-y", "supabase", "login", "--no-browser", "--agent", "no"],
+      ["-y", SUPABASE_CLI, "login", "--no-browser", "--agent", "no"],
       {
         stdin: "inherit",
         stderr: "inherit",

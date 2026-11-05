@@ -43,6 +43,7 @@ import {
   linkSupabase,
   pushDB,
 } from "./supabaseCli";
+import { SUPABASE_CLI } from "./supabaseCliPackage";
 import {
   assertSupabaseFunctionCanInitialize,
   assertSupabaseInfrastructureCanInitialize,
@@ -423,7 +424,7 @@ export const selectProject = async (
   try {
     const listProjects = await execa(
       "npx",
-      ["-y", "supabase", "projects", "list", "--output", "json"],
+      ["-y", SUPABASE_CLI, "projects", "list", "--output", "json"],
       {
         env: accessToken
           ? {
@@ -723,7 +724,8 @@ const deployEdgeFunction = async (
           const dbPush = await execa(
             "npx",
             [
-              "supabase",
+              "-y",
+              SUPABASE_CLI,
               "functions",
               "deploy",
               functionName,
@@ -833,7 +835,7 @@ export const getSupabaseProjectAccess = async ({
       "npx",
       [
         "-y",
-        "supabase",
+        SUPABASE_CLI,
         "projects",
         "api-keys",
         "--project-ref",

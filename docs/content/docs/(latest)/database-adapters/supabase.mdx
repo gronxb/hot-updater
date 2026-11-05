@@ -29,7 +29,7 @@ project's `supabase/migrations` directory, then apply it with the Supabase CLI
 linked to that project:
 
 ```bash
-npx supabase db push
+npx supabase db push --linked
 ```
 
 The migration creates the tables of core and of the managed Edge Function's
@@ -43,7 +43,7 @@ An Edge Function that runs other
 also needs their tables, and the apply function must be allowed to reach them.
 `hot-updater db generate` writes a migration that does both to
 `supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
-`npx supabase db push`. It reads a Node module that passes the function's
+`npx supabase db push --linked`. It reads a Node module that passes the function's
 `plugins` to `createHotUpdater` with `supabaseDatabase` from
 `@hot-updater/supabase`.
 
