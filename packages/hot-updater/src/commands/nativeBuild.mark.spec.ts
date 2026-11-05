@@ -319,13 +319,17 @@ describe("handleNativeBuildMark", () => {
     });
   });
 
-  it("refuses a sandbox build in a line or two", async () => {
+  it("refuses a sandbox build with one next step, its command on its own line", async () => {
     await register(6, { channel: "sandbox-release", isSandbox: true });
 
     await expect(mark(buildId(6))).rejects.toThrow("process.exit");
 
     expect(log.error).toHaveBeenCalledOnce();
-    expect(lines("error")[0]!.split("\n").length).toBeLessThanOrEqual(2);
+    expect(lines("error")[0]?.split("\n")).toEqual([
+      "A sandbox build can't be the store build.",
+      "Mark a build of a scheme without sandbox: true. Find one:",
+      "npx hot-updater native-build find -p ios -s <scheme>",
+    ]);
     await expect(
       databaseHarness.core.getNativeBuild(buildId(6)),
     ).resolves.toMatchObject({ is_store_build: false });

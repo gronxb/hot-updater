@@ -679,11 +679,20 @@ export const handleNativeBuildMark = async (
       } catch (error) {
         // Core's refusal has no public class, and a standalone server sends
         // it as a 400, so the build, read only on this path, tells it.
-        const build = options.json
-          ? await server.core.getNativeBuild(id).catch(() => null)
-          : null;
+        const build = await server.core.getNativeBuild(id).catch(() => null);
         if (build?.is_sandbox) {
-          throw new MarkRefusal("sandbox_build", error);
+          const message =
+            error instanceof Error ? error.message : String(error);
+          throw new MarkRefusal(
+            "sandbox_build",
+            new Error(
+              [
+                message,
+                "Mark a build of a scheme without sandbox: true. Find one:",
+                `npx hot-updater native-build find -p ${build.platform} -s <scheme>`,
+              ].join("\n"),
+            ),
+          );
         }
         throw error;
       }

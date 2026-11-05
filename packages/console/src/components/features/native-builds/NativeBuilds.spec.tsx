@@ -835,6 +835,20 @@ describe("InstallCard", () => {
     expect(copy).not.toMatch(CHANNEL_LINK_TEXT);
   });
 
+  it("tells a sandbox APK's installer it installs beside a Play copy, not to build a sandbox", () => {
+    const { container } = render(
+      <InstallCard build={build({ is_sandbox: true })} />,
+    );
+    const copy = container.textContent;
+
+    expect(copy).toContain('"Install unknown apps" permission');
+    expect(copy).toContain("Its .sandbox ID installs it beside a Play copy.");
+    expect(copy).not.toMatch(/sandbox: true|Uninstall that copy/);
+    expect(
+      screen.getByText(`npx hot-updater native-build install ${id(1)}`),
+    ).toBeTruthy();
+  });
+
   it.each(["aab", "ipa", "app"] as const)(
     "leaves Android's install notes off an %s",
     (kind) => {
