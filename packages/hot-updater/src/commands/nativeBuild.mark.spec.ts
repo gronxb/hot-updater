@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import {
   type Bundle,
   createStorageAdapter,
@@ -325,7 +327,9 @@ describe("handleNativeBuildMark", () => {
     await expect(mark(buildId(6))).rejects.toThrow("process.exit");
 
     expect(log.error).toHaveBeenCalledOnce();
-    expect(lines("error")[0]?.split("\n")).toEqual([
+    expect(
+      stripVTControlCharacters(lines("error")[0] ?? "").split("\n"),
+    ).toEqual([
       "A sandbox build can't be the store build.",
       "Mark a build of a scheme without sandbox: true. Find one:",
       "npx hot-updater native-build find -p ios -s <scheme>",
