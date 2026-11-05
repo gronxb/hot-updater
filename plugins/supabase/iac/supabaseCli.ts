@@ -119,15 +119,7 @@ const runSupabaseLink = async (
   );
   await execa(
     "npx",
-    [
-      "-y",
-      SUPABASE_CLI,
-      "link",
-      "--project-ref",
-      projectId,
-      "--workdir",
-      workdir,
-    ],
+    ["-y", SUPABASE_CLI, "link", projectId, "--workdir", workdir],
     {
       cwd: workdir,
       env: getSupabaseCommandEnv(accessToken, dbPassword),
@@ -181,7 +173,7 @@ const runSupabasePush = async (
       SUPABASE_CLI,
       "migration",
       "fetch",
-      "--linked",
+      "--remote",
       "--yes",
       "--workdir",
       workdir,
@@ -214,7 +206,7 @@ const runSupabasePush = async (
       "db",
       "push",
       "--include-all",
-      "--linked",
+      "--remote",
       "--yes",
       "--workdir",
       workdir,

@@ -530,11 +530,10 @@ describe("Supabase project readiness", () => {
       "npx",
       [
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "projects",
         "api-keys",
-        "--project-ref",
-        "project-ref",
+        "--remote=project-ref",
         "--output",
         "json",
       ],
@@ -646,15 +645,7 @@ describe("Supabase CLI authentication", () => {
 
       expect(mockExeca).toHaveBeenCalledWith(
         "npx",
-        [
-          "-y",
-          "supabase@2.122.1",
-          "link",
-          "--project-ref",
-          "project-ref",
-          "--workdir",
-          workdir,
-        ],
+        ["-y", "supabase@3.0.0", "link", "project-ref", "--workdir", workdir],
         expect.objectContaining({
           env: undefined,
         }),
@@ -664,8 +655,8 @@ describe("Supabase CLI authentication", () => {
     }
   });
 
-  // Supabase CLI 3.0 sends `db push` and `migration fetch` without a target
-  // to the local stack, so init runs the pinned 2.x CLI on the linked project.
+  // Supabase CLI 3 sends `db push` and `migration fetch` without a target to
+  // the local stack, so init passes `--remote` for the linked project.
   it("syncs remote migration history before pushing v1 migrations to the linked project", async () => {
     const workdir = "/tmp/hot-updater-supabase-push";
     mockExeca.mockResolvedValue({ stdout: "" });
@@ -677,10 +668,10 @@ describe("Supabase CLI authentication", () => {
       "npx",
       [
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "migration",
         "fetch",
-        "--linked",
+        "--remote",
         "--yes",
         "--workdir",
         workdir,
@@ -694,11 +685,11 @@ describe("Supabase CLI authentication", () => {
       "npx",
       [
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "db",
         "push",
         "--include-all",
-        "--linked",
+        "--remote",
         "--yes",
         "--workdir",
         workdir,
@@ -724,8 +715,9 @@ describe("Supabase empty migration history", () => {
   it.each(["stderr", "stdout"])(
     "pushes initial migrations when the missing history error is reported on %s",
     async (stream) => {
+      // Supabase CLI 3's error for a project with no migration history table.
       const message =
-        'ERROR: relation "supabase_migrations.schema_migrations" does not exist (SQLSTATE 42P01)';
+        'failed to read migration table: relation "supabase_migrations.schema_migrations" does not exist';
       const error = await createExecaError(
         ["node", "-e", "process.exit(1)"],
         stream === "stderr" ? message : "",
@@ -745,11 +737,11 @@ describe("Supabase empty migration history", () => {
       expect(mockExeca).toHaveBeenCalledTimes(2);
       expect(mockExeca.mock.calls[1]?.[1]).toEqual([
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "db",
         "push",
         "--include-all",
-        "--linked",
+        "--remote",
         "--yes",
         "--workdir",
         "/tmp/hot-updater-supabase-push",
@@ -873,11 +865,11 @@ describe("Supabase database password failures", () => {
       "npx",
       [
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "db",
         "push",
         "--include-all",
-        "--linked",
+        "--remote",
         "--yes",
         "--workdir",
         "/tmp/hot-updater-supabase-push",
@@ -920,15 +912,7 @@ describe("Supabase database password failures", () => {
       expect(output).not.toContain("--password");
       expect(mockExeca).toHaveBeenCalledWith(
         "npx",
-        [
-          "-y",
-          "supabase@2.122.1",
-          "link",
-          "--project-ref",
-          "project-ref",
-          "--workdir",
-          workdir,
-        ],
+        ["-y", "supabase@3.0.0", "link", "project-ref", "--workdir", workdir],
         expect.objectContaining({
           env: {
             SUPABASE_ACCESS_TOKEN: "test-access-token",
@@ -1007,11 +991,11 @@ describe("Supabase database password failures", () => {
       "npx",
       [
         "-y",
-        "supabase@2.122.1",
+        "supabase@3.0.0",
         "db",
         "push",
         "--include-all",
-        "--linked",
+        "--remote",
         "--yes",
         "--workdir",
         "/tmp/hot-updater-supabase-push",
