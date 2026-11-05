@@ -34,8 +34,28 @@ class HotUpdaterSandboxDevTest {
         assertTrue(refused { target(session, "raw", "/assets", "logo", "png/../../x") })
         assertTrue(refused { target(session, "raw", "/assets", "logo", "") })
         assertTrue(refused { target(session, "raw", "/assets", "../logo", "png") })
-        assertTrue(refused { target(session, "raw", "/assets/../../x", "logo", "png") })
+        assertTrue(refused { target(session, "raw", "/assets", "..", "png") })
+        assertTrue(refused { target(session, "raw", "/assets", "a\\..\\..\\x", "png") })
+        assertTrue(refused { target(session, "raw", "assets/../../x", "logo", "png") })
+        assertTrue(refused { target(session, "raw", "/assets/?unstable_path=./../..", "", "png") })
         assertFalse(File(folder.root, "dev").exists())
+    }
+
+    @Test
+    fun `a location with dot segments flattens into one name inside the session`() {
+        val session = File(folder.root, "dev/sessions/one")
+        // `..` in a location never reaches the file system: the name keeps only
+        // [a-z0-9_], as React Native's getAndroidResourceIdentifier names it.
+        assertEquals(
+            File(session, "raw/__x_logo.png").canonicalFile,
+            HotUpdaterSandboxDevFetcher.assetTarget(session, "raw", "/assets/../../x", "logo", "png").canonicalFile,
+        )
+        assertEquals(
+            File(session, "raw/unstable_path2f2f2f2f2fbundlestore_metadata.json").canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(session, "raw", "/assets/?unstable_path=./../../../../bundle-store", "metadata", "json")
+                .canonicalFile,
+        )
     }
 
     @Test
@@ -48,6 +68,48 @@ class HotUpdaterSandboxDevTest {
         assertEquals(
             File(session, "raw/font.ttf").canonicalFile,
             HotUpdaterSandboxDevFetcher.assetTarget(session, "raw", "/assets", "font", "ttf").canonicalFile,
+        )
+    }
+
+    @Test
+    fun `an asset Metro serves from outside the project root takes the name React Native reads`() {
+        val session = File(folder.root, "dev/sessions/one")
+        // Expo serves every asset through `unstable_path`, and in a workspace each
+        // dependency's with `../`, as for expo-router's in an app at apps/mobile.
+        // The list has Metro's raw path; the bundle has it URL-encoded by Expo's
+        // getAssets.js. The names are what React Native's
+        // getAndroidResourceIdentifier (@react-native/asset-utils
+        // src/AndroidPathUtils.js) gives the bundle's encoded location.
+        assertEquals(
+            File(
+                session,
+                "drawable-mdpi/unstable_path2f2f2fnode_modules2fexporouter2fassets2freactnavigation2felements_backiconmask.png",
+            ).canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(
+                    session,
+                    "drawable-mdpi",
+                    "/assets/?unstable_path=./../../node_modules/expo-router/assets/react-navigation/elements",
+                    "back-icon-mask",
+                    "png",
+                ).canonicalFile,
+        )
+        assertEquals(
+            File(session, "drawable-mdpi/unstable_path2fassets2fimages_logoglow.png").canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(session, "drawable-mdpi", "/assets/?unstable_path=./assets/images", "logo-glow", "png")
+                .canonicalFile,
+        )
+        assertEquals(
+            File(session, "raw/unstable_path2fassets2ffonts_geistmonoregular.ttf").canonicalFile,
+            HotUpdaterSandboxDevFetcher
+                .assetTarget(session, "raw", "/assets/?unstable_path=./assets/fonts", "GeistMono-Regular", "ttf")
+                .canonicalFile,
+        )
+        // encodeURIComponent, not form encoding: a space is %20 and a plus %2B.
+        assertEquals(
+            "unstable_path2fa20b2fc2bd_logo",
+            HotUpdaterSandboxDevFetcher.resourceName("/assets/?unstable_path=./a b/c+d", "logo"),
         )
     }
 
