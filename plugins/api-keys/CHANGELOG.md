@@ -1,5 +1,7 @@
 # @hot-updater/plugin-api-keys
 
+## 1.2.0-rc.23
+
 ## 1.2.0-rc.22
 
 ## 1.2.0-rc.21

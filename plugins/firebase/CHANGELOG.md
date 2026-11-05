@@ -1,5 +1,14 @@
 # @hot-updater/firebase
 
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.23
+  - @hot-updater/protocol@1.2.0-rc.23
+  - @hot-updater/server@1.2.0-rc.23
+  - @hot-updater/plugin-core@1.2.0-rc.23
+
 ## 1.2.0-rc.22
 
 ### Patch Changes
