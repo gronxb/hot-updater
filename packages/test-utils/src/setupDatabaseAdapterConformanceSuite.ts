@@ -468,7 +468,8 @@ export const setupDatabaseAdapterConformanceSuite = (
 
     it("moves a unique slot between rows in one write, and holds a long ASCII value", async () => {
       const adapter = await setup();
-      const slot = `s:${"a".repeat(2046)}`;
+      // Past varchar(255), within every key-value store's key limit.
+      const slot = `s:${"a".repeat(998)}`;
       // Any number of rows hold no slot.
       await ok(adapter, [
         insert(item("a", { slot })),
