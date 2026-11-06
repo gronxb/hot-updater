@@ -46,8 +46,8 @@ const plural = (count: number, noun: string) =>
 
 /**
  * Reads the phase of an `xcodebuild` build, archive, or export from its raw
- * output: `Compiling React-Core · 412 files`, `Linking CodexRelay`,
- * `Signing CodexRelay`, `Bundling JavaScript`, with the target each
+ * output: `Compiling React-Core · 412 files`, `Linking ExampleApp`,
+ * `Signing ExampleApp`, `Bundling JavaScript`, with the target each
  * action's line names.
  */
 export const createXcodebuildPhaseReader = (): BuildPhaseReader => {

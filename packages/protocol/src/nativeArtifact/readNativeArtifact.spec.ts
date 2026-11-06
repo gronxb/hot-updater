@@ -734,8 +734,8 @@ describe("the sandbox layer", () => {
     expect(isSandboxChannel("sandbox-release")).toBe(true);
     expect(isSandboxChannel("sandboxes")).toBe(false);
     expect(isSandboxChannel("production")).toBe(false);
-    expect(sandboxUrlSchemeOf("com.GronStudio.codex_relay")).toBe(
-      "hu-sandbox-com-gronstudio-codex-relay",
+    expect(sandboxUrlSchemeOf("com.Example.example_app")).toBe(
+      "hu-sandbox-com-example-example-app",
     );
   });
 });

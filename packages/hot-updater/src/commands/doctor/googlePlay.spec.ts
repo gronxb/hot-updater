@@ -156,11 +156,11 @@ describe("doctor's Google Play check", () => {
     const { text } = formatGooglePlayStatus({
       packages: [
         {
-          packageName: "com.gronstudio.codexrelay",
+          packageName: "com.examplecorp.sampleapp",
           access: { status: "denied", email: EMAIL },
         },
         {
-          packageName: "com.gronstudio.codexrelay.sandbox",
+          packageName: "com.examplecorp.sampleapp.sandbox",
           access: { status: "not-found", email: EMAIL },
         },
       ],
