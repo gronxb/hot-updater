@@ -87,13 +87,15 @@ export async function validateSigningConfig(
   ]);
 
   const usesExternalNativeConfig = Object.hasOwn(options, "nativePublicKey");
-  if (!iosExists && !androidExists && usesExternalNativeConfig) {
+  // A platform without native files reads the Expo app config, even when a
+  // build of the other platform generated its own native files.
+  if (usesExternalNativeConfig) {
     const externalResult = {
       value: options.nativePublicKey ?? null,
       paths: ["Expo app config"],
     };
-    iosResult = externalResult;
-    androidResult = externalResult;
+    if (!iosExists) iosResult = externalResult;
+    if (!androidExists) androidResult = externalResult;
   }
 
   const issues: SigningConfigIssue[] = [];

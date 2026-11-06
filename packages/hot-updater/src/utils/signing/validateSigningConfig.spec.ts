@@ -212,8 +212,30 @@ describe("validateSigningConfig", () => {
     expect(result.isValid).toBe(true);
     expect(result.issues).toEqual([]);
     expect(result.nativePublicKeys).toEqual({
-      android: { exists: false, paths: [] },
+      android: { exists: false, paths: ["Expo app config"] },
       ios: { exists: true, paths: ["Info.plist"] },
+    });
+  });
+
+  it("reads the Expo trust anchor for a platform whose native files a build of the other platform left behind", async () => {
+    const publicKey = createPublicKey();
+    parser.android.get.mockResolvedValue({
+      paths: ["AndroidManifest.xml"],
+      value: publicKey,
+    });
+    parser.ios.exists.mockResolvedValue(false);
+
+    const result = await validateSigningConfig(createConfig(), {
+      expectedPublicKey: publicKey,
+      nativePublicKey: publicKey,
+      platform: "ios",
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(result.nativePublicKeys).toEqual({
+      android: { exists: true, paths: ["AndroidManifest.xml"] },
+      ios: { exists: true, paths: ["Expo app config"] },
     });
   });
 
