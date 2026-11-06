@@ -37,12 +37,12 @@ describe("createXcodebuildPhaseReader", () => {
       "Precompiling modules · 2",
       "Precompiling modules · 3",
       "Linking expo-dev-menu-interface",
-      "Linking CodexRelay",
+      "Linking ExampleApp",
       "Bundling JavaScript",
-      "Generating dSYM CodexRelay",
-      "Copying CodexRelay",
-      "Signing CodexRelay",
-      "Validating CodexRelay",
+      "Generating dSYM ExampleApp",
+      "Copying ExampleApp",
+      "Signing ExampleApp",
+      "Validating ExampleApp",
     ]);
   });
 

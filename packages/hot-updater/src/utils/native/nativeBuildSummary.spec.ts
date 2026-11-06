@@ -23,7 +23,7 @@ const ipa: NativeBuildResult = {
   channel: "production",
   fingerprintHash: null,
   appVersion: "1.7.0",
-  artifactPath: "/project/.hot-updater/build/ios/release/export/CodexRelay.ipa",
+  artifactPath: "/project/.hot-updater/build/ios/release/export/ExampleApp.ipa",
   artifactKind: "ipa",
   buildNumber: "42",
 };
@@ -48,7 +48,7 @@ describe("formatNativeBuildSummary", () => {
     expect(summary({}).split("\n")).toEqual([
       "iOS release 1.7.0 (42) built in 8m30s",
       "IPA",
-      ".hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      ".hot-updater/build/ios/release/export/ExampleApp.ipa · 48.0 MB",
       "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
       "Channel        production",
       "Log            .hot-updater/log/10291132-ios-release-build.log",
@@ -66,7 +66,7 @@ describe("formatNativeBuildSummary", () => {
     ).toEqual([
       "iOS release 1.7.0 (42) reused in 4.1s",
       "IPA",
-      ".hot-updater/build/ios/release/export/CodexRelay.ipa · 48.0 MB",
+      ".hot-updater/build/ios/release/export/ExampleApp.ipa · 48.0 MB",
       "Min bundle ID  019a2f0c-1d2e-7000-8000-0000000000c1",
       "Channel        production",
       "Open           https://appstoreconnect.apple.com/apps/1/testflight/ios",
@@ -108,11 +108,11 @@ describe("formatNativeBuildSummary", () => {
     const text = summary({
       result: {
         ...ipa,
-        artifactPath: `/project/${"very-long-directory/".repeat(6)}CodexRelay.ipa`,
+        artifactPath: `/project/${"very-long-directory/".repeat(6)}ExampleApp.ipa`,
       },
     });
 
-    expect(text).toContain("…/CodexRelay.ipa · 48.0 MB");
+    expect(text).toContain("…/ExampleApp.ipa · 48.0 MB");
   });
 });
 

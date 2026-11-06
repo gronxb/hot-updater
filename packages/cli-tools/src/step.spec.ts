@@ -51,11 +51,11 @@ describe("formatDuration", () => {
 describe("withDuration", () => {
   it("puts the duration at the right edge of a 73-column line", () => {
     const line = stripVTControlCharacters(
-      withDuration("Archived CodexRelay", 401_000),
+      withDuration("Archived ExampleApp", 401_000),
     );
 
     expect(line).toHaveLength(73);
-    expect(line).toMatch(/^Archived CodexRelay {2,}6m41s$/);
+    expect(line).toMatch(/^Archived ExampleApp {2,}6m41s$/);
   });
 
   it("cuts a message that would make the line wider", () => {
@@ -95,16 +95,16 @@ describe("a step without a terminal, as in CI", () => {
   it("prints only its finished line, with its duration", async () => {
     const captured = captureOutput();
 
-    const step = startStep("Archiving CodexRelay", {
+    const step = startStep("Archiving ExampleApp", {
       output: captured.output,
     });
     step.update("Compiling React-Core · 412 files");
     expect(captured.lines()).toEqual([]);
-    step.succeed("Archived CodexRelay");
+    step.succeed("Archived ExampleApp");
 
     expect(captured.lines()).toEqual([
       "│",
-      expect.stringMatching(/^◇ {2}Archived CodexRelay {2,}\d+\.\ds$/),
+      expect.stringMatching(/^◇ {2}Archived ExampleApp {2,}\d+\.\ds$/),
     ]);
     // No spinner frames nor cursor moves.
     expect(captured.raw()).not.toContain("\u001B[?25l");
@@ -234,17 +234,17 @@ describe("a step at a terminal", () => {
   it("updates one live line in place, cut to the terminal's width, then ends as its line", () => {
     const captured = captureOutput({ tty: true, columns: 40 });
 
-    const step = startStep("Archiving CodexRelay", {
+    const step = startStep("Archiving ExampleApp", {
       output: captured.output,
     });
     step.update("Compiling React-Core · 412 files");
     vi.advanceTimersByTime(200);
     const live = captured.raw();
-    step.succeed("Archived CodexRelay");
+    step.succeed("Archived ExampleApp");
 
     // The spinner's frame, cut to fit 40 columns with its timer.
     expect(stripVTControlCharacters(live)).toContain(
-      "◒  Archiving CodexRelay · Com… [0s]",
+      "◒  Archiving ExampleApp · Com… [0s]",
     );
     // Each frame, drawn over the last, fits the terminal.
     const frames = stripVTControlCharacters(live)
@@ -259,6 +259,6 @@ describe("a step at a terminal", () => {
       stripVTControlCharacters(captured.raw())
         .split(/(?=◇)/u)
         .at(-1),
-    ).toMatch(/^◇ {2}Archived CodexRelay {2,}\d+\.\ds\n$/);
+    ).toMatch(/^◇ {2}Archived ExampleApp {2,}\d+\.\ds\n$/);
   });
 });

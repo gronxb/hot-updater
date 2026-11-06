@@ -530,12 +530,12 @@ describe("keysExportPublic without the signing key", () => {
       const lines = await exportWithAdapter(
         infisical({
           projectId: PROJECT,
-          environment: "production-codex-relay",
-          path: "/hot-updater/codex-relay/android/release",
+          environment: "production-example-app",
+          path: "/hot-updater/example-app/android/release",
         }),
       );
 
-      expect(lines.join("\n")).toContain("production-codex-relay");
+      expect(lines.join("\n")).toContain("production-example-app");
     });
   });
 });

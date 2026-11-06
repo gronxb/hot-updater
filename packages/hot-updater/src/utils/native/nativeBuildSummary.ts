@@ -44,7 +44,7 @@ export interface NativeBuildSummary {
  *
  * ```
  * iOS release 1.7.0 (42) built in 8m30s
- * IPA            .hot-updater/build/ios/release/CodexRelay.ipa · 48.0 MB
+ * IPA            .hot-updater/build/ios/release/ExampleApp.ipa · 48.0 MB
  * Min bundle ID  0199c2d4-…
  * Channel        production
  * Log            .hot-updater/log/10291132-ios-release-build.log
