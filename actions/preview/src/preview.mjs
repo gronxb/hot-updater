@@ -629,7 +629,7 @@ export const runPreview = async (deps, inputs, event) => {
       qrImages = await writeQrCodes(
         deps.github,
         event.number,
-        qrCodeValues(inputs.consoleUrl, previews),
+        qrCodeValues(previews),
       );
     } catch (error) {
       // The comment still gets its links; the run fails after it.

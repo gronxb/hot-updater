@@ -2,19 +2,20 @@ name: hot-updater preview
 description: >-
   Deploys a pull request's bundle to its own channel, builds a native build
   that embeds that channel, which Hot Updater tracks, only when the registry
-  has none for the project's fingerprint there, and comments the build's
-  download and its QR code, which it writes to the hot-updater-preview
-  branch. When the pull request closes, it deletes the channel with its
-  bundles and native builds, and the pull request's QR codes.
+  has none for the project's fingerprint there, and comments how to install
+  the build and, on a sandbox build, the QR code that opens the pull request,
+  which it writes to the hot-updater-preview branch. When the pull request
+  closes, it deletes the channel with its bundles and native builds, and the
+  pull request's QR codes.
 author: gronxb
 
 inputs:
   console-url:
     description: >-
-      The Console's URL, which the comment's download links and QR code
-      point at. The CLI reads its credentials through the config's
-      secrets adapter, the job's environment by default. A pull request from
-      a fork, which gets no secrets, is skipped.
+      The Console's URL, which the comment's install links point at. The CLI
+      reads its credentials through the config's secrets adapter, the job's
+      environment by default. A pull request from a fork, which gets no
+      secrets, is skipped.
     required: true
   platforms:
     description: The platforms to preview, comma-separated. iOS needs a macOS runner.
@@ -55,8 +56,8 @@ inputs:
     default: "true"
   comment:
     description: >-
-      Whether to write the pull request comment, and its QR codes to the
-      hot-updater-preview branch. Without it, the comment-body output has the
+      Whether to write the pull request comment, and its sandbox QR codes to
+      the hot-updater-preview branch. Without it, the comment-body output has the
       comment's links and no QR code.
     default: "true"
   mode:

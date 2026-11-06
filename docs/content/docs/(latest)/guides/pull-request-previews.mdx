@@ -1,6 +1,6 @@
 ---
 title: "Pull Request Previews"
-description: "Deploy each pull request's bundle with a GitHub Action, build a native build on the pull request's channel only when the native code changes, and comment its download and QR code."
+description: "Deploy each pull request's bundle with a GitHub Action, build a native build on the pull request's channel only when the native code changes, and comment how to install and open it."
 icon: GitPullRequest
 ---
 
@@ -17,11 +17,12 @@ pull request's bundle on its first launch, with no code in the app:
 2. When there is one, it deploys only the pull request's bundle to that
    channel. When there is none, as on the pull request's first run or after
    a native change, it builds one first, which Hot Updater tracks.
-3. It comments on the pull request: each platform's download and its page in
-   the Console's [Native builds](/docs/guides/native-build#native-builds-in-the-console)
-   tab, the bundle, and the QR code of an APK's download, which it writes to
-   the repository's `hot-updater-preview` branch. It edits the same comment
-   on every push, and never another author's.
+3. It comments on the pull request how to install each platform's build,
+   with its download and its page in the Console's
+   [Native builds](/docs/guides/native-build#native-builds-in-the-console)
+   tab. On a [sandbox build](#open-a-pull-request-in-a-sandbox-build), it adds
+   the QR code that opens this pull request. It edits the same comment on
+   every push, and never another author's.
 4. When the pull request closes, it deletes the channel with its bundles and
    its native builds, each with its artifact, and the pull request's QR codes.
 
@@ -37,8 +38,8 @@ Console's URL for the comment's links.
 ## Prepare the project
 
 - [Deploy the Console](/docs/guides/console-deployment): the comment's
-  links and QR code open it, on the internet or on a private network such as
-  a VPN. See [The comment](#the-comment).
+  install links open it, on the internet or on a private network such as a
+  VPN. See [The comment](#the-comment).
 - Read the deploy credentials with
   [`secret()`](/docs/concepts/secrets#adapter-credentials), as
   the config managed `init` writes does, and add their values to the
@@ -284,35 +285,37 @@ changed during the pull request. The comment says so. See
 
 ## The comment
 
-The comment has a row per platform: the build's **Download** and
-**Details** links in the Console, whether this run built it or reused it, the
-fingerprint or app version, and the bundle's ID. **Details** opens the build's
-page on the Console's
-[Native builds](/docs/guides/native-build#native-builds-in-the-console) tab,
-where an Android APK installs by its QR code and a Simulator app with its
-[`native-build install`](/docs/guides/native-build#install-a-build) command.
-**Download** fetches a fresh storage URL on
-each request, so it never expires; a phone without a Console session signs in
-first and comes back to the build.
+The comment says what a tester does, in order:
 
-Below it, an APK's QR code holds its **Download** link: a tester scans it
-with an Android phone, signs in to the Console, and installs the APK. A
-Simulator app installs with the
-[`native-build install`](/docs/guides/native-build#install-a-build) command
-under the table, run in your project, and an APK on an emulator with
-`adb install`. An `.ipa`'s QR code holds the build's page, where an iPhone
-[checks whether the `.ipa` includes it and installs it](/docs/native-builds/iphone-install).
-For testers without a registered device, upload it to TestFlight with
-`npx hot-updater testflight`.
+1. **Install the app.** Each platform has one line of links: an APK's
+   **Download APK**, an `.ipa`'s **Install on iPhone**, which
+   [checks whether the `.ipa` includes the iPhone and installs it](/docs/native-builds/iphone-install),
+   or the store's link and state for a
+   [store build](#install-through-testflight-or-google-play). **Details** opens
+   the build's page on the Console's
+   [Native builds](/docs/guides/native-build#native-builds-in-the-console) tab.
+   A pull request's own build opens its bundle on its first launch.
+2. **Scan to open this pull request.** Only a
+   [sandbox build](#open-a-pull-request-in-a-sandbox-build) has this step: its
+   QR code holds the sandbox link, the one QR code in the comment.
+
+The download links fetch a fresh storage URL on each request, so they never
+expire. A phone without a Console session signs in first, and a phone that
+opens a private Console's link has to be on its network. Native builds get
+links, not QR codes.
+
+Two collapsed sections follow. **Builds** lists each native build, whether
+this run built or reused it, its fingerprint or app version, and the bundle's
+ID. The other section shows how to install a Simulator app with
+[`native-build install`](/docs/guides/native-build#install-a-build), run in
+your project, and an APK on an emulator with `adb install`.
 
 ### Where the QR codes live
 
-The action draws each QR code itself and commits it to the repository's
-`hot-updater-preview` branch, at `pr-<number>/<hash>.png`, then shows it in
-the comment from GitHub. Anyone who can read the repository sees it, whatever
-network the Console is on, so a Console on a VPN or Tailscale gets the same
-comment as a public one. A phone that opens a private Console's link still has
-to be on its network.
+The action draws the sandbox link's QR code itself and commits it to the
+repository's `hot-updater-preview` branch, at `pr-<number>/<hash>.png`, then
+shows it in the comment from GitHub. Anyone who can read the repository sees
+it, whatever network the Console is on.
 
 - The branch has no history in common with your other branches. Each run
   writes only the pull request's own folder, and commits nothing when its QR
@@ -333,7 +336,7 @@ it out.
 
 | Input                  | Default                        | Description                                                                                                     |
 | ---------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `console-url`          |                                | The Console's URL, which the comment's download links and QR code point at                                      |
+| `console-url`          |                                | The Console's URL, which the comment's install links point at                                                   |
 | `platforms`            | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
 | `android-scheme`       |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                              |
 | `ios-scheme`           |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
@@ -343,7 +346,7 @@ it out.
 | `ios-testflight-group` |                                | With `ios-submit`, the internal TestFlight group to add the build to. A group that takes every build needs none |
 | `channel`              | `pr-<number>`                  | The pull request's channel, which its native builds embed and its bundles deploy to                             |
 | `credit`               | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                          |
-| `comment`              | `true`                         | Whether to write the comment, and its QR codes to the `hot-updater-preview` branch                              |
+| `comment`              | `true`                         | Whether to write the comment, and its sandbox QR codes to the `hot-updater-preview` branch                      |
 | `mode`                 | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
 | `working-directory`    | `.`                            | The app's directory, with `hot-updater.config.ts`                                                               |
 | `cli`                  | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                         |
@@ -355,7 +358,7 @@ it out.
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `comment-body`                             | The comment's Markdown                                                                                                                                                                                                                                          |
 | `previews`                                 | A JSON array of each platform's `platform`, `target`, `nativeBuild` (`id`, `artifactKind`, `fileName`), `built`, `bundleId`, `installUrl`, `downloadUrl`, with a store input, `store` (`destination`, `url`, `version`, `state`, `expiresAtMs`, `reusable`), on a sandbox build, `sandbox` (`appId`, `link`, `minBundleId`), and after a fallback, `fallbackScheme` |
-| `android-install-url`, `ios-install-url`   | What a person opens: the comment's **Download** link, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link                                                                                |
+| `android-install-url`, `ios-install-url`   | What a person opens: the comment's download link, for a Simulator app its `npx hot-updater native-build install <build id>` command, or with a store input, the store's link                                                                                |
 | `android-download-url`, `ios-download-url` | The storage's URL of the artifact, for a later step. Empty when the storage gives none, where `previews` has `null`                                                                                                                                             |
 | `android-sandbox-link`, `ios-sandbox-link` | On a sandbox build, the link the comment's QR code holds. Empty under the `appVersion` strategy |
 | `android-store-url`, `ios-store-url`       | With a store input, the store's link. Empty when the store couldn't be read                                                                                                                                                                                     |
@@ -372,7 +375,7 @@ so a step that runs after that lifetime gets an expired URL.
 
 ### Fetch the build in a later step
 
-**Download** asks for a Console session, which a later step doesn't have, so
+The comment's download link asks for a Console session, which a later step doesn't have, so
 fetch the build by its ID, which works on every storage, with the same deploy
 variables as the action:
 
@@ -434,11 +437,11 @@ requests with the same native code share it, and closing one leaves it in place.
 - **The fingerprint differs from every sandbox build.** With
   `android-fallback-scheme` or `ios-fallback-scheme`, a normal scheme, the action
   runs the usual preview with it: the pull request gets its own native build on its
-  channel, and a **Download** link with no sandbox QR code. Without one, the action
+  channel, listed after the sandbox steps, with no QR code. Without one, the action
   builds a new sandbox build, which testers install before they scan.
 
-The comment's row has the sandbox build's **Download** and **Details** links, and
-each platform has its own QR code, since each has its own fingerprint:
+The comment's first step links the sandbox build, and its second step has a QR
+code for each platform, since each has its own fingerprint:
 
 ```text
 hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=<hash>
@@ -515,8 +518,8 @@ same native code share it:
   90-day expiry, or a Google Play build a newer release replaced on the internal
   track, gets a new build.
 
-The comment's row shows the store's link and state, such as **processing**, in
-place of **Download**, and the comment has the
+The comment's install line shows the store's link and state, such as
+**processing**, in place of a download, and the comment has the
 [sandbox link and its QR code](#open-a-pull-request-in-a-sandbox-build). TestFlight's link opens the app in App Store Connect:
 internal testers install from the TestFlight app. Google Play's link is where a
 tester on the internal track opts in. A closed pull request deletes its channel,

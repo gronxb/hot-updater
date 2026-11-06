@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import { parseInputs, parseJsonOutput, runAction } from "./preview.mjs";
+import { writeQrCodes } from "./qrBranch.mjs";
 import { fakeGitHub } from "./testing/fakeGitHub";
 
 const event = {
@@ -280,7 +281,10 @@ describe("runAction preview", () => {
       },
     ]);
     expect(outputs["comment-body"]).toContain(
-      "[Download](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1) · built for this commit",
+      "- **Android**: [Download APK](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1)",
+    );
+    expect(outputs["comment-body"]).toContain(
+      "| Android | `build-1` · built for this commit |",
     );
   });
 
@@ -318,7 +322,10 @@ describe("runAction preview", () => {
       built: false,
     });
     expect(outputs["comment-body"]).toContain(
-      "[Download](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0) · reused",
+      "- **Android**: [Download APK](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0)",
+    );
+    expect(outputs["comment-body"]).toContain(
+      "| Android | `build-0` · reused |",
     );
   });
 
@@ -505,38 +512,7 @@ describe("runAction preview", () => {
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");
   });
 
-  it("writes the APK's QR code to the repository and shows it, whatever network the Console is on", async () => {
-    const fake = fakeCli();
-    const github = fakeGitHub();
-    const { deps: d, outputs } = deps(fake.cli, { github: github.github });
-    const console = "http://console.tailnet-1234.ts.net";
-    const download = `${console}/api/native-builds/build-1/download`;
-
-    await runAction(
-      d,
-      env({
-        INPUT_PLATFORMS: "android, ios",
-        INPUT_CONSOLE_URL: console,
-        INPUT_COMMENT: "true",
-      }),
-      event,
-    );
-
-    // Only the APK has a QR code: a simulator app installs on a computer.
-    expect(Object.keys(github.files()!).sort()).toEqual(
-      ["README.md", qrPath(download)].sort(),
-    );
-    const body = outputs["comment-body"]!;
-    expect(body).toContain(
-      `Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.\n\n<img src="https://github.com/octo/app/raw/hot-updater-preview/${qrPath(download)}" alt="QR code of the download of app-release.apk" width="180" height="180">`,
-    );
-    expect(body).not.toContain("_hot-updater/");
-    expect(body).toContain("adb install -r app-release.apk");
-    expect(body).toContain("npx hot-updater native-build install build-3");
-    expect(github.comment()).toBe(body);
-  });
-
-  it("writes an IPA's page QR code, never its file", async () => {
+  it("links native builds and writes no QR code of them, whatever network the Console is on", async () => {
     const fake = fakeCli({
       builds: [
         {
@@ -551,57 +527,38 @@ describe("runAction preview", () => {
     });
     const github = fakeGitHub();
     const { deps: d, outputs } = deps(fake.cli, { github: github.github });
+    const console = "http://console.tailnet-1234.ts.net";
 
     await runAction(
       d,
-      env({ INPUT_PLATFORMS: "ios", INPUT_COMMENT: "true" }),
+      env({
+        INPUT_PLATFORMS: "android, ios",
+        INPUT_CONSOLE_URL: console,
+        INPUT_COMMENT: "true",
+      }),
       event,
     );
 
-    const page = "https://console.example.com/native-builds/build-ipa";
-    expect(Object.keys(github.files()!)).toContain(qrPath(page));
+    expect(github.files()).toBeNull();
     const body = outputs["comment-body"]!;
-    expect(body).toContain("Scan with an iPhone");
     expect(body).toContain(
-      `<img src="https://github.com/octo/app/raw/hot-updater-preview/${qrPath(page)}" alt="QR code of the page of App.app.zip"`,
+      `- **Android**: [Download APK](${console}/api/native-builds/build-1/download) · [Details](${console}/native-builds/build-1)\n- **iOS**: [Install on iPhone](${console}/native-builds/build-ipa) · [Download IPA](${console}/api/native-builds/build-ipa/download) · registered devices only`,
     );
-  });
-
-  it("writes no QR code, and says nothing of scanning, without its comment", async () => {
-    const fake = fakeCli();
-    const github = fakeGitHub();
-    const { deps: d, outputs } = deps(fake.cli, { github: github.github });
-
-    await runAction(d, env(), event);
-
-    expect(github.calls).toEqual([]);
-    expect(outputs["comment-body"]).not.toContain("<img");
-    expect(outputs["comment-body"]).not.toContain("Scan");
-    expect(outputs["comment-body"]).toContain(
-      "[Download](https://console.example.com/api/native-builds/build-1/download)",
-    );
-  });
-
-  it("comments the links when GitHub refuses the QR codes, then fails with the permission they need", async () => {
-    const fake = fakeCli();
-    const github = fakeGitHub({ refuse: true });
-    const { deps: d, outputs } = deps(fake.cli, { github: github.github });
-
-    await expect(
-      runAction(d, env({ INPUT_COMMENT: "true" }), event),
-    ).rejects.toThrow(
-      'GitHub answered 403 to POST https://api.github.com/repos/octo/app/git/blobs: give the workflow "permissions: contents: write", and let it create the hot-updater-preview branch.',
-    );
-    const body = outputs["comment-body"]!;
-    expect(github.comment()).toBe(body);
     expect(body).not.toContain("<img");
     expect(body).not.toContain("Scan");
-    expect(body).toContain(
-      "[Download](https://console.example.com/api/native-builds/build-1/download)",
-    );
-    expect(outputs["android-install-url"]).toBe(
-      "https://console.example.com/api/native-builds/build-1/download",
-    );
+    expect(body).not.toContain("_hot-updater/");
+    expect(github.comment()).toBe(body);
+  });
+
+  it("removes a pull request's old QR codes once it has none", async () => {
+    const fake = fakeCli();
+    const github = fakeGitHub();
+    await writeQrCodes(github.github, 12, ["hu-sandbox-x://old"]);
+    const { deps: d } = deps(fake.cli, { github: github.github });
+
+    await runAction(d, env({ INPUT_COMMENT: "true" }), event);
+
+    expect(Object.keys(github.files()!)).toEqual(["README.md"]);
   });
 
   describe("install and download outputs", () => {
@@ -825,7 +782,8 @@ describe("runAction cleanup", () => {
     const github = fakeGitHub();
     const preview = deps(fakeCli().cli, { github: github.github });
     await runAction(preview.deps, env({ INPUT_COMMENT: "true" }), event);
-    expect(Object.keys(github.files()!)).toHaveLength(2);
+    await writeQrCodes(github.github, 12, ["hu-sandbox-x://pr-12"]);
+    await writeQrCodes(github.github, 13, ["hu-sandbox-x://pr-13"]);
     const { deps: d, outputs } = deps(fake.cli, { github: github.github });
 
     await runAction(d, env({ INPUT_COMMENT: "true" }), closed);
@@ -838,7 +796,10 @@ describe("runAction cleanup", () => {
     );
     expect(github.comments).toHaveLength(1);
     expect(github.comment()).toBe(outputs["comment-body"]);
-    expect(Object.keys(github.files()!)).toEqual(["README.md"]);
+    expect(Object.keys(github.files()!).sort()).toEqual([
+      "README.md",
+      qrPath("hu-sandbox-x://pr-13").replace("pr-12", "pr-13"),
+    ]);
   });
 
   it("needs no scheme, and comments nothing on a pull request it never previewed", async () => {

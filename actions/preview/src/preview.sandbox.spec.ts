@@ -279,14 +279,18 @@ describe("no sandbox scheme", () => {
       [
         COMMENT_MARKER,
         "### Preview on `pr-12`",
+        "**Install this pull request's build.** It opens this pull request on its first launch.",
+        `- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID})`,
         [
+          "<details>",
+          "<summary>Builds</summary>",
+          "",
           "| Platform | Native build | Fingerprint | Bundle |",
           "| --- | --- | --- | --- |",
-          `| Android | [Download](${CONSOLE}/api/native-builds/${BUILD_ID}/download) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · reused | \`${FINGERPRINT.slice(0, 12)}\` | \`019a0000-0000-7000-8000-0000000000f1\` |`,
+          `| Android | \`${BUILD_ID}\` · reused | \`${FINGERPRINT.slice(0, 12)}\` | \`019a0000-0000-7000-8000-0000000000f1\` |`,
+          "",
+          "</details>",
         ].join("\n"),
-        "This pull request's native builds embed the `pr-12` channel, so they open its bundle on their first launch.",
-        "Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.",
-        `<img src="${qrImage(DOWNLOAD)}" alt="QR code of the download of app-release.apk" width="180" height="180">`,
         [
           "<details>",
           "<summary>Install on an emulator or simulator</summary>",
@@ -309,7 +313,7 @@ describe("no sandbox scheme", () => {
       "previews",
     ]);
     expect(JSON.parse(outputs["previews"]!)[0]).not.toHaveProperty("sandbox");
-    expect(written).toEqual([qrPath(DOWNLOAD)]);
+    expect(written).toEqual([]);
   });
 
   it("runs the commands it ran, naming the channel only for the download", async () => {
@@ -391,10 +395,12 @@ describe("a sandbox build that has the fingerprint", () => {
     );
 
     expect(body).toContain(
-      `[Download](${CONSOLE}/api/native-builds/${BUILD_ID}/download)`,
+      `**1. Install the sandbox app** once. Pull requests with the same native code share it.\n\n- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID})`,
     );
-    expect(body).toContain("reused");
-    expect(body).toContain(`<img src="${QR}"`);
+    expect(body).toContain(
+      `**2. Scan to open this pull request** with the sandbox app.\n\n**Android**\n\n<img src="${QR}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${LINK}\``,
+    );
+    expect(body).toContain(`| Android | \`${BUILD_ID}\` · reused |`);
     expect(body).toContain(`\`${LINK}\``);
     expect(outputs["android-sandbox-link"]).toBe(LINK);
     expect(outputs["android-install-url"]).toBe(
@@ -424,14 +430,12 @@ describe("a sandbox build that has the fingerprint", () => {
     expect(body).not.toContain("embed the");
   });
 
-  it("says the bundle runs on the build, and to push again for a newer one", async () => {
+  it("adds no notice when the reused build runs the bundle", async () => {
     const { body } = await run(fakeCli({ builds: [sandboxBuild()] }));
 
-    expect(body).toContain(
-      "This pull request's bundle runs on the sandbox build above. A newer sandbox build won't run it: push again.",
-    );
     expect(body).not.toContain("is older than");
     expect(body).not.toContain("made a new sandbox build");
+    expect(body).not.toContain("runs on the sandbox build");
   });
 
   it("says when the build floors out the bundle", async () => {
@@ -441,9 +445,8 @@ describe("a sandbox build that has the fingerprint", () => {
     );
 
     expect(body).toContain(
-      `Bundle \`019a0000-0000-7000-8000-0000000000f1\` is older than sandbox build \`${BUILD_ID}\` accepts. Push again.`,
+      "Bundle `019a0000-0000-7000-8000-0000000000f1` is older than the sandbox build accepts: push again.",
     );
-    expect(body).not.toContain("bundle runs on the sandbox build");
   });
 
   it("keeps the link and says to open it, with no image, without its comment", async () => {
@@ -455,8 +458,43 @@ describe("a sandbox build that has the fingerprint", () => {
     expect(body).not.toContain("<img");
     expect(body).not.toContain("Scan");
     expect(body).toContain(
-      `On a phone that has the sandbox build, open the link to open this pull request. A sandbox build with other native code refuses it.\n\n**Android**\n\n\`${LINK}\``,
+      `**2. Open this pull request**: open the link on the phone with the sandbox app.\n\n**Android**\n\n\`${LINK}\``,
     );
+  });
+});
+
+describe("a token that can't write the QR code", () => {
+  it("comments the links, then fails with the permission the QR code needs", async () => {
+    const github = fakeGitHub({ refuse: true });
+    const outputs: Record<string, string> = {};
+
+    await expect(
+      runAction(
+        {
+          cli: fakeCli({ builds: [sandboxBuild()] }).cli,
+          buildLogs: vi.fn(() => []),
+          github: github.github,
+          setOutput: (name: string, value: string) => {
+            outputs[name] = value;
+          },
+          log: {
+            info: vi.fn(),
+            notice: vi.fn(),
+            group: <T>(_: string, body: () => Promise<T>) => body(),
+          },
+        } as never,
+        env(),
+        event,
+      ),
+    ).rejects.toThrow(
+      'GitHub answered 403 to POST https://api.github.com/repos/octo/app/git/blobs: give the workflow "permissions: contents: write", and let it create the hot-updater-preview branch.',
+    );
+    const body = outputs["comment-body"]!;
+    expect(github.comment()).toBe(body);
+    expect(body).not.toContain("<img");
+    expect(body).not.toContain("Scan");
+    expect(body).toContain(`\`${LINK}\``);
+    expect(outputs["android-sandbox-link"]).toBe(LINK);
   });
 });
 
@@ -468,11 +506,13 @@ describe("a sandbox .ipa with no store input", () => {
     const { body, written } = await run(fakeCli({ builds: [ipa] }), inputs);
 
     expect(body).toContain(`<img src="${QR}"`);
-    expect(body).toContain(`[Details](${CONSOLE}/native-builds/${BUILD_ID})`);
+    expect(body).toContain(
+      `- **iOS**: [Install on iPhone](${CONSOLE}/native-builds/${BUILD_ID}) · [Download IPA](${DOWNLOAD}) · registered devices only`,
+    );
     expect(written).toEqual([qrPath(LINK)]);
   });
 
-  it("leaves a normal .ipa's page QR code as it was", async () => {
+  it("links a normal .ipa's install page, with no QR code", async () => {
     const normal = { ...ipa, channel: "pr-12" };
 
     const { body } = await run(fakeCli({ builds: [normal] }), {
@@ -481,8 +521,9 @@ describe("a sandbox .ipa with no store input", () => {
     });
 
     expect(body).toContain(
-      `<img src="${qrImage(`${CONSOLE}/native-builds/${BUILD_ID}`)}"`,
+      `- **iOS**: [Install on iPhone](${CONSOLE}/native-builds/${BUILD_ID}) · `,
     );
+    expect(body).not.toContain("<img");
     expect(body).not.toContain("hu-sandbox-");
   });
 });
@@ -503,7 +544,7 @@ describe("no sandbox build at all", () => {
     expect(body).toContain(`<img src="${QR}"`);
     expect(outputs["android-sandbox-link"]).toBe(LINK);
     expect(body).toContain(
-      "This run made a new sandbox build, which other open pull requests' bundles may not run on. Push those pull requests again.",
+      "This run made a new sandbox build: push the other open pull requests again.",
     );
   });
 
@@ -549,15 +590,11 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
     expect(outputs).not.toHaveProperty("android-sandbox-link");
     // The existing flow, with its download QR code and its channel.
     const built = JSON.parse(outputs["previews"]!)[0].nativeBuild.id;
-    expect(written).toEqual([
-      qrPath(`${CONSOLE}/api/native-builds/${built}/download`),
-    ]);
+    expect(written).toEqual([]);
     expect(body).toContain(
-      "This pull request's native builds embed the `pr-12` channel",
+      `**Install this pull request's build.** It opens this pull request on its first launch.\n\n- **Android**: [Download APK](${CONSOLE}/api/native-builds/${built}/download)`,
     );
-    expect(body).toContain(
-      "Android: this pull request's native code differs from the sandbox builds', so it has its own native build and no sandbox QR code.",
-    );
+    expect(body).not.toContain("Scan");
     const [preview] = JSON.parse(outputs["previews"]!);
     expect(preview.fallbackScheme).toBe("releaseApk");
     expect(preview).not.toHaveProperty("sandbox");
@@ -599,7 +636,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
       "native-build android --scheme sandbox --json",
     );
     expect(outputs["android-sandbox-link"]).toBe(LINK);
-    expect(body).toContain("A sandbox build with other native code refuses");
+    expect(body).toContain("**2. Scan to open this pull request**");
     expect(body).toContain("This run made a new sandbox build");
   });
 });
@@ -627,8 +664,10 @@ describe("a store build", () => {
       "bundle list -c pr-12 -p android --limit 1 --json",
       "native-build find -p android -s sandbox --json",
     ]);
-    expect(body).toContain("Testers install the sandbox build from");
-    expect(body).toContain("[Google Play internal testing](");
+    expect(body).toContain(
+      "- **Android**: [Google Play internal testing](https://play.google.com/apps/testing/app) · `1.0 (2)` · ready to install · [Details](",
+    );
+    expect(body).not.toContain("TestFlight");
     expect(body).not.toContain("api/native-builds");
     expect(body).toContain(`<img src="${QR}"`);
     expect(outputs["android-sandbox-link"]).toBe(LINK);
@@ -693,7 +732,8 @@ describe("a project with no fingerprint", () => {
     expect(outputs["android-sandbox-link"]).toBe("");
     expect(written).toEqual([]);
     expect(body).not.toContain("Scan");
-    expect(body).toContain("A newer sandbox build won't run it");
+    // Without a link there's no second step to number.
+    expect(body).toContain("**Install the sandbox app** once.");
   });
 });
 
@@ -720,8 +760,10 @@ describe("a sandbox scheme beside a normal one", () => {
     expect(outputs["android-sandbox-link"]).toBe(LINK);
     expect(outputs).not.toHaveProperty("ios-sandbox-link");
     expect(body).toContain(`\`${LINK}\``);
-    // The iOS build embeds the channel, and the sentence is about it.
-    expect(body).toContain("native builds embed the `pr-12` channel");
+    // The iOS build embeds the channel: it needs no scan.
+    expect(body).toContain(
+      "**This pull request's own build** opens this pull request on its first launch.\n\n- **iOS Simulator**: ",
+    );
     expect(fake.calls).toContain(
       "native-build find -p ios -c pr-12 -s simulator --json",
     );

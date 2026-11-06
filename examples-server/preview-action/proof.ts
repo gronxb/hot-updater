@@ -153,8 +153,8 @@ const checkComment = async (
   expected: { buildId: string; built: boolean; releaseId: string },
 ) => {
   const consoleUrl = env("PROOF_CONSOLE_URL").replace(/\/+$/, "");
-  // The QR codes live on the repository's branch, which a run writes only
-  // for its comment: this job comments nothing, so it has no image to scan.
+  // A native build gets links only, and this job has no sandbox build, whose
+  // link is the comment's only QR code.
   check(
     !comment.includes("<img") && !comment.includes("Scan"),
     `the comment shows a QR code, which only the action's comment has:\n${comment}`,
@@ -163,11 +163,14 @@ const checkComment = async (
     !/hot-updater\/channel\/|openurl|am start/.test(comment),
     `the comment has a channel link:\n${comment}`,
   );
-  const link = `[Download](${consoleUrl}/api/native-builds/${expected.buildId}/download) · [Details](${consoleUrl}/native-builds/${expected.buildId}) · ${expected.built ? "built for this commit" : "reused"}`;
-  check(
-    comment.includes(link),
-    `the comment doesn't have ${link}:\n${comment}`,
-  );
+  const link = `- **Android**: [Download APK](${consoleUrl}/api/native-builds/${expected.buildId}/download) · [Details](${consoleUrl}/native-builds/${expected.buildId})`;
+  const row = `| Android | \`${expected.buildId}\` · ${expected.built ? "built for this commit" : "reused"} |`;
+  for (const line of [link, row]) {
+    check(
+      comment.includes(line),
+      `the comment doesn't have ${line}:\n${comment}`,
+    );
+  }
   check(
     comment.includes(`\`${expected.releaseId}\``),
     `the comment doesn't name bundle ${expected.releaseId}`,
