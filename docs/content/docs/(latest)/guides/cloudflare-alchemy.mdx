@@ -225,6 +225,14 @@ export default defineConfig({
 });
 ```
 
+With `fingerprint`, create `fingerprint.json` from your app's root and commit
+it. Init would write it for you; native builds embed it, and `deploy` targets
+it:
+
+```bash
+npx hot-updater fingerprint create
+```
+
 Create the app's client API key from your app's root, and save the value it prints as
 `HOT_UPDATER_API_KEY` in `.env.hotupdater`:
 
@@ -243,19 +251,27 @@ Run these from your app's root. Doctor checks the public `/version` route:
 
 ```bash
 npx hot-updater doctor --server-base-url <serverUrl>
-npx hot-updater deploy -p ios -t 1.0.0
+npx hot-updater deploy -p ios
 ```
 
+With `appVersion`, add `-t <targetAppVersion>`, such as `-t 1.0.0`, to the
+deploy. With `fingerprint`, deploy targets the hash in `fingerprint.json` and
+ignores `-t`.
+
 Ask the server for that target's catalog with the client key, where
-`cHJvZHVjdGlvbg` is the channel `production` in base64url. A `200` lists the
+`cHJvZHVjdGlvbg` is the channel `production` in base64url and
+`<fingerprintHash>` is `ios.hash` in `fingerprint.json`. A `200` lists the
 bundle you deployed under `releases`, and the same request without the key
 returns `401`:
 
 ```bash
 source .env.hotupdater
 curl -H "x-api-key: $HOT_UPDATER_API_KEY" \
-  <serverUrl>/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0
+  <serverUrl>/release-catalogs/fingerprint/ios/cHJvZHVjdGlvbg/<fingerprintHash>
 ```
+
+With `appVersion`, ask for
+`<serverUrl>/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0` instead.
 
 These checks don't prove that a device applies the update. Finish with
 [Test an OTA update](/docs/get-started/test-ota) on a Release build.
