@@ -98,7 +98,7 @@
 
   - **Build Adapter**: Support for bundlers like Metro, Expo, Rock
   - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage, Vercel Blob, Neon Object Storage, Azure Blob Storage
-  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1, Azure Cosmos DB
+  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Neon Postgres, Cloudflare D1, Azure Cosmos DB
 
   ### Configuration Example
 

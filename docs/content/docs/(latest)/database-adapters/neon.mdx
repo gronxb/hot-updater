@@ -1,0 +1,129 @@
+---
+title: "Neon Postgres"
+description: Keep Hot Updater's metadata in a Neon branch's Postgres, reached over HTTP from any runtime.
+icon: neon
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/neon --save-dev
+```
+
+For a deployed server, install the package as a runtime dependency instead
+of a development dependency.
+
+## Setup
+
+Write the branch's Postgres variables to `.env.hotupdater`, and add that file
+to `.gitignore`:
+
+```bash
+neon env pull --file .env.hotupdater -s postgres
+```
+
+The command writes `DATABASE_URL` for the branch's database. Pooled and direct
+connection strings both work.
+
+## Configuration
+
+```typescript
+interface NeonDatabaseConfig {
+  connectionString: string; // The branch's DATABASE_URL
+}
+```
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { existsSync } from "node:fs";
+
+import { neonDatabase } from "@hot-updater/neon"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  // ... build, storage, plugins, and updateStrategy
+  database: neonDatabase({ // [!code ++]
+    connectionString: process.env.DATABASE_URL!, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+To keep the bundles on the same branch, pair it with
+[`neonStorage`](/docs/storage-adapters/neon).
+
+## Schema
+
+`neonDatabase` doesn't create tables when it serves. Create them through your
+server file once:
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
+The migration creates core's tables, the tables of the server's
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables), and the
+`_hu_write` table that batch writes use, then writes the schema settings to
+`private_hot_updater_settings` last. The database answers 503 until those
+settings exist. Run the command again after you add a plugin. It doesn't drop
+the tables of a plugin you remove.
+
+## How Neon is used
+
+`neonDatabase` returns an engine database, `{ name, adapter }`, which
+`defineConfig` and `createHotUpdater` both accept. Its adapter is Hot
+Updater's shared SQL core for PostgreSQL, behind the schema settings check.
+
+It talks to Neon through the
+[serverless driver](https://neon.com/docs/serverless/serverless-driver)'s HTTP
+queries. Each read is one HTTPS request, with no connection to open, pool, or
+close. The same adapter runs in Node, Cloudflare Workers, Vercel Functions,
+Deno, and Bun.
+
+HTTP queries have no interactive transactions, so each write is one atomic
+batch in a single request. The batch first records each operation's guard in
+`_hu_write`, against the rows as they were before any change, then applies the
+changes only when no guard failed, and finally reads and removes the result.
+One write sends at most 1,000 operations.
+
+`@hot-updater/neon` also exports [`postgres`](/docs/database-adapters/postgres),
+which holds a `pg` pool of TCP connections. Both reach the same tables, so a
+long-running Node server can use `postgres` while the CLI and edge functions
+use `neonDatabase`.
+
+## Branches
+
+A child branch copies its parent's tables and settings rows. Point a preview
+or staging config at the child branch's `DATABASE_URL` to deploy there without
+touching the parent's release catalog.
+
+## Custom server usage
+
+Use `neonDatabase` with `createHotUpdater` for self-hosted servers:
+
+```typescript title="src/hotUpdater.ts"
+import { neonDatabase, neonStorage } from "@hot-updater/neon"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+
+export const hotUpdater = createHotUpdater({
+  database: neonDatabase({ // [!code ++]
+    connectionString: process.env.DATABASE_URL!, // [!code ++]
+  }), // [!code ++]
+  plugins: [apiKeys(), insights(), remoteConfig()],
+  storage: neonStorage({
+    endpoint: process.env.AWS_ENDPOINT_URL_S3!,
+    bucketName: "hot-updater-bundles",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    region: process.env.AWS_REGION,
+  }),
+  // ... other options
+});
+```
