@@ -6,16 +6,31 @@ import { COMMENT_MARKER } from "./comment.mjs";
  * @typedef {object} GitHubContext
  * @property {typeof fetch} fetch
  * @property {string} apiUrl `GITHUB_API_URL`, such as https://api.github.com.
+ * @property {string} serverUrl `GITHUB_SERVER_URL`, such as https://github.com.
  * @property {string} repository `owner/name`.
- * @property {string} token A token that may write pull request comments.
+ * @property {string} token A token that may write pull request comments and
+ *   the QR code branch.
  */
 
+/** What a token refused a comment needs. */
+const COMMENT_PERMISSION =
+  "give the workflow `permissions: pull-requests: write`. A pull request from a fork gets a read-only token.";
+
 /**
+ * A GitHub API request that throws on an error status other than `allow`'s,
+ * saying what `permission` the token needs when GitHub refuses it.
+ *
  * @param {GitHubContext} github
  * @param {string} url
  * @param {RequestInit} [init]
+ * @param {{ permission?: string, allow?: number[] }} [options]
  */
-const request = async (github, url, init = {}) => {
+export const request = async (
+  github,
+  url,
+  init = {},
+  { permission = COMMENT_PERMISSION, allow = [] } = {},
+) => {
   const response = await github.fetch(url, {
     ...init,
     headers: {
@@ -27,11 +42,11 @@ const request = async (github, url, init = {}) => {
         : { "content-type": "application/json" }),
     },
   });
-  if (!response.ok) {
+  if (!response.ok && !allow.includes(response.status)) {
     throw new Error(
       `GitHub answered ${response.status} to ${init.method ?? "GET"} ${url}${
         response.status === 403 || response.status === 404
-          ? ": give the workflow `permissions: pull-requests: write`. A pull request from a fork gets a read-only token."
+          ? `: ${permission}`
           : ""
       }\n${await response.text()}`,
     );

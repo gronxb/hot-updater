@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
   createPreviewLink,
   parsePreviewLink,
 } from "../../../packages/protocol/src/nativeArtifact/sandbox";
-import { COMMENT_MARKER, previewLink, previewQrLink } from "./comment.mjs";
+import { COMMENT_MARKER, previewLink } from "./comment.mjs";
 import { parseInputs, runAction } from "./preview.mjs";
+import { fakeGitHub } from "./testing/fakeGitHub";
 
 const CONSOLE = "https://console.example.com";
 const FINGERPRINT = "a".repeat(64);
@@ -27,7 +30,7 @@ const env = (overrides: Record<string, string> = {}) => ({
   INPUT_CONSOLE_URL: CONSOLE,
   INPUT_PLATFORMS: "android",
   INPUT_ANDROID_SCHEME: "sandbox",
-  INPUT_COMMENT: "false",
+  INPUT_COMMENT: "true",
   ...overrides,
 });
 
@@ -169,45 +172,26 @@ const fakeCli = ({
   return { cli, calls, builds };
 };
 
-/**
- * The Console, as `nativeBuildQr.ts` answers. What the sandbox route's image
- * holds comes from the protocol's own `createPreviewLink`, not the action's.
- */
-const consoleFetch = async (input: string | URL | Request) => {
-  const url = new URL(String(input));
-  const headers = new Headers();
-  if (url.pathname.endsWith("/preview-qr")) {
-    headers.set(
-      "x-hot-updater-preview-link",
-      createPreviewLink({
-        appId: url.searchParams.get("app")!,
-        channel: url.searchParams.get("channel")!,
-        fingerprintHash: url.searchParams.get("fingerprint")!,
-      }),
-    );
-  } else {
-    headers.set(
-      "x-hot-updater-download-url",
-      `${url.origin}/api/native-builds/${url.searchParams.get("build")}/download`,
-    );
-  }
-  return new Response(null, { status: 200, headers });
-};
+/** Where the action writes the QR code that holds `value`. */
+const qrPath = (value: string) =>
+  `pr-12/${createHash("sha256").update(value).digest("hex").slice(0, 16)}.png`;
+
+/** The comment's image of the QR code that holds `value`. */
+const qrImage = (value: string) =>
+  `https://github.com/octo/app/raw/hot-updater-preview/${qrPath(value)}`;
 
 const run = async (
   fake: ReturnType<typeof fakeCli>,
   overrides: Record<string, string> = {},
-  fetchImpl: unknown = consoleFetch,
 ) => {
   const outputs: Record<string, string> = {};
-  const fetchMock = vi.fn(fetchImpl as typeof fetch);
+  const github = fakeGitHub();
   const notice = vi.fn();
   const result = (await runAction(
     {
       cli: fake.cli,
       buildLogs: vi.fn(() => []),
-      fetch: fetchMock,
-      github: null,
+      github: github.github,
       setOutput: (name: string, value: string) => {
         outputs[name] = value;
       },
@@ -224,7 +208,10 @@ const run = async (
     body: result.body,
     outputs,
     notice,
-    fetched: fetchMock.mock.calls.map(([url]) => String(url)),
+    /** The paths of the QR code branch, without its README. */
+    written: Object.keys(github.files() ?? {}).filter(
+      (path) => path !== "README.md",
+    ),
   };
 };
 
@@ -236,11 +223,8 @@ const sandboxBuild = (fingerprintHash = FINGERPRINT): Build => ({
   kind: "apk",
 });
 
-const QR = previewQrLink(CONSOLE, {
-  appId: APP_ID,
-  channel: "pr-12",
-  fingerprintHash: FINGERPRINT,
-}).replaceAll("&", "&amp;");
+const QR = qrImage(LINK);
+const DOWNLOAD = `${CONSOLE}/api/native-builds/${BUILD_ID}/download`;
 
 describe("the link", () => {
   it.each([
@@ -289,7 +273,7 @@ describe("no sandbox scheme", () => {
   it("leaves the comment and the outputs as they were", async () => {
     const fake = fakeCli({ builds: [normalBuild] });
 
-    const { body, outputs, fetched } = await run(fake, normal);
+    const { body, outputs, written } = await run(fake, normal);
 
     expect(body).toBe(
       [
@@ -302,7 +286,7 @@ describe("no sandbox scheme", () => {
         ].join("\n"),
         "This pull request's native builds embed the `pr-12` channel, so they open its bundle on their first launch.",
         "Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.",
-        `<img src="${CONSOLE}/_hot-updater/native-builds/qr?build=${BUILD_ID}" alt="QR code of the download of app-release.apk" width="180" height="180">`,
+        `<img src="${qrImage(DOWNLOAD)}" alt="QR code of the download of app-release.apk" width="180" height="180">`,
         [
           "<details>",
           "<summary>Install on an emulator or simulator</summary>",
@@ -325,7 +309,7 @@ describe("no sandbox scheme", () => {
       "previews",
     ]);
     expect(JSON.parse(outputs["previews"]!)[0]).not.toHaveProperty("sandbox");
-    expect(fetched.some((url) => url.includes("preview-qr"))).toBe(false);
+    expect(written).toEqual([qrPath(DOWNLOAD)]);
   });
 
   it("runs the commands it ran, naming the channel only for the download", async () => {
@@ -402,7 +386,7 @@ describe("a sandbox build that has the fingerprint", () => {
   });
 
   it("comments the install link and the deep link's QR code", async () => {
-    const { body, outputs, fetched } = await run(
+    const { body, outputs, written } = await run(
       fakeCli({ builds: [sandboxBuild()] }),
     );
 
@@ -430,10 +414,7 @@ describe("a sandbox build that has the fingerprint", () => {
       fingerprintHash: FINGERPRINT,
     });
     // The QR code is the link's: never the download's.
-    expect(body).not.toContain("_hot-updater/native-builds/qr?");
-    expect(fetched.some((url) => url.includes("native-builds/qr?"))).toBe(
-      false,
-    );
+    expect(written).toEqual([qrPath(LINK)]);
   });
 
   it("claims nothing of a first launch or a dev server", async () => {
@@ -465,33 +446,17 @@ describe("a sandbox build that has the fingerprint", () => {
     expect(body).not.toContain("bundle runs on the sandbox build");
   });
 
-  it("keeps the link and drops the image when the Console can't serve it", async () => {
-    const down = async () => new Response(null, { status: 404 });
-    const { body, notice } = await run(
-      fakeCli({ builds: [sandboxBuild()] }),
-      {},
-      down,
-    );
+  it("keeps the link and says to open it, with no image, without its comment", async () => {
+    const { body, written } = await run(fakeCli({ builds: [sandboxBuild()] }), {
+      INPUT_COMMENT: "false",
+    });
 
+    expect(written).toEqual([]);
     expect(body).not.toContain("<img");
-    expect(body).toContain(`\`${LINK}\``);
-    expect(notice).toHaveBeenCalledWith(
-      expect.stringContaining("No QR code in the comment"),
+    expect(body).not.toContain("Scan");
+    expect(body).toContain(
+      `On a phone that has the sandbox build, open the link to open this pull request. A sandbox build with other native code refuses it.\n\n**Android**\n\n\`${LINK}\``,
     );
-  });
-
-  it("drops the image when the Console's QR code holds another link", async () => {
-    const wrong = async () =>
-      new Response(null, {
-        headers: { "x-hot-updater-preview-link": "hu-sandbox-other://x" },
-      });
-    const { body } = await run(
-      fakeCli({ builds: [sandboxBuild()] }),
-      {},
-      wrong,
-    );
-
-    expect(body).not.toContain("<img");
   });
 });
 
@@ -500,30 +465,24 @@ describe("a sandbox .ipa with no store input", () => {
   const inputs = { INPUT_PLATFORMS: "ios", INPUT_IOS_SCHEME: "sandbox" };
 
   it("shows the deep link's QR code, and keeps its page behind Details", async () => {
-    const { body, fetched } = await run(fakeCli({ builds: [ipa] }), inputs);
+    const { body, written } = await run(fakeCli({ builds: [ipa] }), inputs);
 
     expect(body).toContain(`<img src="${QR}"`);
     expect(body).toContain(`[Details](${CONSOLE}/native-builds/${BUILD_ID})`);
-    expect(body).not.toContain("target=page");
-    expect(fetched.some((url) => url.includes("target=page"))).toBe(false);
+    expect(written).toEqual([qrPath(LINK)]);
   });
 
   it("leaves a normal .ipa's page QR code as it was", async () => {
     const normal = { ...ipa, channel: "pr-12" };
-    const page = async (input: string | URL | Request) =>
-      new Response(null, {
-        headers: {
-          "x-hot-updater-download-url": `${CONSOLE}/native-builds/${new URL(String(input)).searchParams.get("build")}`,
-        },
-      });
 
-    const { body } = await run(
-      fakeCli({ builds: [normal] }),
-      { ...inputs, INPUT_IOS_SCHEME: "device" },
-      page,
+    const { body } = await run(fakeCli({ builds: [normal] }), {
+      ...inputs,
+      INPUT_IOS_SCHEME: "device",
+    });
+
+    expect(body).toContain(
+      `<img src="${qrImage(`${CONSOLE}/native-builds/${BUILD_ID}`)}"`,
     );
-
-    expect(body).toContain("target=page");
     expect(body).not.toContain("hu-sandbox-");
   });
 });
@@ -575,7 +534,7 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
   it("falls back to a native build on its channel, with no sandbox QR code", async () => {
     const fake = fakeCli({ builds: [sandboxBuild(OLD_FINGERPRINT)] });
 
-    const { body, outputs, fetched } = await run(fake, fallback);
+    const { body, outputs, written } = await run(fake, fallback);
 
     expect(fake.calls).toEqual([
       "channel set pr-12",
@@ -587,11 +546,12 @@ describe("a pull request whose fingerprint differs from the sandbox build", () =
       "native-build find -p android -c pr-12 -s releaseApk --json",
     ]);
     expect(body).not.toContain("hu-sandbox-");
-    expect(body).not.toContain("preview-qr");
-    expect(fetched.some((url) => url.includes("preview-qr"))).toBe(false);
     expect(outputs).not.toHaveProperty("android-sandbox-link");
     // The existing flow, with its download QR code and its channel.
-    expect(body).toContain("_hot-updater/native-builds/qr?build=");
+    const built = JSON.parse(outputs["previews"]!)[0].nativeBuild.id;
+    expect(written).toEqual([
+      qrPath(`${CONSOLE}/api/native-builds/${built}/download`),
+    ]);
     expect(body).toContain(
       "This pull request's native builds embed the `pr-12` channel",
     );
@@ -724,14 +684,15 @@ describe("a project with no fingerprint", () => {
         : cli(args),
     );
 
-    const { body, outputs, fetched } = await run({
+    const { body, outputs, written } = await run({
       ...fake,
       cli: bundles as never,
     });
 
     expect(body).not.toContain("hu-sandbox-");
     expect(outputs["android-sandbox-link"]).toBe("");
-    expect(fetched.some((url) => url.includes("preview-qr"))).toBe(false);
+    expect(written).toEqual([]);
+    expect(body).not.toContain("Scan");
     expect(body).toContain("A newer sandbox build won't run it");
   });
 });

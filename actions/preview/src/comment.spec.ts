@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   nativeBuildInstallUrl,
+  qrCodeValues,
   renderClosedComment,
   renderPreviewComment,
   shellQuote,
@@ -34,10 +35,13 @@ const ios = {
 const base = {
   consoleUrl: "https://console.example.com/",
   channel: "pr-12",
-  qrCodes: [] as string[],
   headSha: "0123456789abcdef",
   credit: true,
 };
+
+const APK_DOWNLOAD = `https://console.example.com/api/native-builds/${android.nativeBuild.id}/download`;
+const APK_QR =
+  "https://github.com/octo/app/raw/hot-updater-preview/pr-12/0123456789abcdef.png";
 
 const onStore = {
   destination: "testflight",
@@ -105,7 +109,6 @@ describe("renderPreviewComment with a store build", () => {
     const body = renderPreviewComment({
       ...base,
       previews: [android, ipaOnTestFlight],
-      qrCodes: [android.nativeBuild.id],
     });
     expect(body).toContain(
       "[Download](https://console.example.com/api/native-builds/019a0000-0000-7000-8000-00000000b001/download)",
@@ -135,7 +138,7 @@ describe("renderPreviewComment", () => {
       renderPreviewComment({
         ...base,
         previews: [android, ios],
-        qrCodes: [android.nativeBuild.id],
+        qrImages: { [APK_DOWNLOAD]: APK_QR },
       }),
     ).toBe(`<!-- hot-updater-preview -->
 
@@ -150,7 +153,7 @@ This pull request's native builds embed the \`pr-12\` channel, so they open its 
 
 Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.
 
-<img src="https://console.example.com/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-00000000b001" alt="QR code of the download of app-release.apk" width="180" height="180">
+<img src="${APK_QR}" alt="QR code of the download of app-release.apk" width="180" height="180">
 
 <details>
 <summary>Install on an emulator or simulator</summary>
@@ -198,7 +201,7 @@ adb install -r app-release.apk
     expect(body).not.toContain("native-build install");
   });
 
-  it("shows no QR code for a build the runner found no QR code of", () => {
+  it("shows no QR code for a build the action wrote no image of", () => {
     const body = renderPreviewComment({ ...base, previews: [android] });
 
     expect(body).not.toContain("<img");
@@ -213,15 +216,14 @@ adb install -r app-release.apk
       ...base,
       consoleUrl: "https://example.com/console",
       previews: [android],
-      qrCodes: [android.nativeBuild.id],
     });
 
     expect(body).toContain(
       "[Details](https://example.com/console/native-builds/019a0000-0000-7000-8000-00000000b001)",
     );
-    expect(body).toContain(
-      'src="https://example.com/console/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-00000000b001"',
-    );
+    expect(qrCodeValues("https://example.com/console", [android])).toEqual([
+      "https://example.com/console/api/native-builds/019a0000-0000-7000-8000-00000000b001/download",
+    ]);
   });
 
   it("points an IPA's testers to TestFlight, with no install command or QR code", () => {
@@ -253,11 +255,14 @@ adb install -r app-release.apk
     const body = renderPreviewComment({
       ...base,
       previews: [ipa],
-      qrCodes: [ipa.nativeBuild.id],
+      qrImages: {
+        [`https://console.example.com/native-builds/${ipa.nativeBuild.id}`]:
+          APK_QR,
+      },
     });
 
     expect(body).toContain(
-      `<img src="https://console.example.com/_hot-updater/native-builds/qr?build=${ipa.nativeBuild.id}&amp;target=page" alt="QR code of the page of App.ipa" width="180" height="180">`,
+      `<img src="${APK_QR}" alt="QR code of the page of App.ipa" width="180" height="180">`,
     );
     expect(body).toContain("Scan with an iPhone");
     expect(body).not.toContain("Scan with an Android");
@@ -326,7 +331,7 @@ adb install -r app-release.apk
     const body = renderPreviewComment({
       ...base,
       previews: [android, ios],
-      qrCodes: [android.nativeBuild.id],
+      qrImages: { [APK_DOWNLOAD]: APK_QR },
     });
 
     expect(body).not.toMatch(
@@ -426,5 +431,79 @@ describe("shellQuote", () => {
     ["it's", "'it'\\''s'"],
   ])("quotes %j as %j", (value, quoted) => {
     expect(shellQuote(value)).toBe(quoted);
+  });
+});
+
+const PRIVATE_CONSOLE = "http://console.tailnet-1234.ts.net";
+const SANDBOX_LINK =
+  "hu-sandbox-com-example-app://hot-updater/preview?channel=pr-12&fingerprint=8681de8b88a8db15b82606b4";
+const onSandbox = {
+  ...android,
+  sandbox: {
+    appId: "com.example.app",
+    link: SANDBOX_LINK,
+    minBundleId: null,
+  },
+} as const;
+const image = (name: string) =>
+  `https://github.com/octo/app/raw/hot-updater-preview/pr-12/${name}.png`;
+
+describe("the QR codes the action writes to the repository", () => {
+  it("lists what each QR code holds: a sandbox link, an APK's download, an IPA's page", () => {
+    const ipa = {
+      ...ios,
+      nativeBuild: {
+        ...ios.nativeBuild,
+        artifactKind: "ipa",
+        fileName: "App.ipa",
+      },
+    } as const;
+
+    expect(
+      qrCodeValues(PRIVATE_CONSOLE, [
+        onSandbox,
+        android,
+        ipa,
+        ios,
+        ipaOnTestFlight,
+      ]),
+    ).toEqual([
+      SANDBOX_LINK,
+      `${PRIVATE_CONSOLE}/api/native-builds/${android.nativeBuild.id}/download`,
+      `${PRIVATE_CONSOLE}/native-builds/${ipa.nativeBuild.id}`,
+    ]);
+  });
+
+  it("shows a private Console's QR codes from the repository's images", () => {
+    const download = `${PRIVATE_CONSOLE}/api/native-builds/${android.nativeBuild.id}/download`;
+    const body = renderPreviewComment({
+      ...base,
+      consoleUrl: PRIVATE_CONSOLE,
+      previews: [onSandbox, { ...android, platform: "android" }],
+      qrImages: { [SANDBOX_LINK]: image("link"), [download]: image("apk") },
+    });
+
+    expect(body).toContain(
+      `Scan with a phone that has the sandbox build to open this pull request. A sandbox build with other native code refuses the link.\n\n**Android**\n\n<img src="${image("link")}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${SANDBOX_LINK}\``,
+    );
+    expect(body).toContain(
+      `<img src="${image("apk")}" alt="QR code of the download of app-release.apk" width="180" height="180">`,
+    );
+    expect(body).not.toContain("_hot-updater/");
+  });
+
+  it("says to open the sandbox link, not to scan it, when there's no image", () => {
+    const body = renderPreviewComment({
+      ...base,
+      consoleUrl: PRIVATE_CONSOLE,
+      previews: [onSandbox],
+      qrImages: {},
+    });
+
+    expect(body).not.toContain("Scan");
+    expect(body).not.toContain("<img");
+    expect(body).toContain(
+      `On a phone that has the sandbox build, open the link to open this pull request. A sandbox build with other native code refuses it.\n\n**Android**\n\n\`${SANDBOX_LINK}\``,
+    );
   });
 });

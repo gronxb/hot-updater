@@ -61,6 +61,7 @@ const fakeGitHub = ({
     github: {
       fetch: fetch as unknown as typeof globalThis.fetch,
       apiUrl: "https://api.github.com",
+      serverUrl: "https://github.com",
       repository: "octo/app",
       token: "ghs_token",
     },
