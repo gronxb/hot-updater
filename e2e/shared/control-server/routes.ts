@@ -56,6 +56,7 @@ import {
   startWaitForAppExitJob,
   startWaitForCrashMarkerJob,
   startPatchReleaseJob,
+  startPrefetchUpdateArtifactJob,
   startMarkNativeBuildJob,
   startRegisterNativeBuildJob,
   startResetNativeBuildChannelJob,
@@ -738,6 +739,30 @@ app.post("/e2e/jobs/wait-for-app-exit", async (c) => {
   }
   return c.json({
     jobId: startWaitForAppExitJob({ bundleId: payload.bundleId }),
+  });
+});
+
+app.post("/e2e/jobs/prefetch-update-artifact", async (c) => {
+  const payload = (await c.req.json()) as {
+    currentBundleId?: unknown;
+    targetBundleId?: unknown;
+  };
+  if (
+    typeof payload.currentBundleId !== "string" ||
+    !payload.currentBundleId ||
+    typeof payload.targetBundleId !== "string" ||
+    !payload.targetBundleId
+  ) {
+    return c.json(
+      { error: "currentBundleId and targetBundleId are required" },
+      400,
+    );
+  }
+  return c.json({
+    jobId: startPrefetchUpdateArtifactJob({
+      currentBundleId: payload.currentBundleId,
+      targetBundleId: payload.targetBundleId,
+    }),
   });
 });
 

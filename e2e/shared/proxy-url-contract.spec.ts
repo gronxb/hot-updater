@@ -581,6 +581,165 @@ describe("E2E remote asset proxy URLs", () => {
     }
   });
 
+  it("serves a prefetched artifact, manifest, and interrupted archive without upstream requests", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-prefetch-proxy-url-"),
+    );
+    const baseUrl = "https://provider.example.com/hot-updater";
+    const artifactUrl = `${baseUrl}/artifacts/v2/target/from/current`;
+    const signedArchiveUrl =
+      "https://storage.example.com/bundles/bundle.tar.br?Signature=archive";
+    const manifestPath = "/storage/bundles/manifest.json?token=manifest";
+    const manifestBytes =
+      '{\n  "bundleId": "target",\n  "signature": "signed"\n}\n';
+    const fetchTargets: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url =
+        input instanceof Request
+          ? input.url
+          : input instanceof URL
+            ? input.toString()
+            : input;
+      fetchTargets.push(url);
+      if (url === artifactUrl) {
+        return Response.json({
+          archiveUrl: signedArchiveUrl,
+          artifactProtocolVersion: 2,
+          manifestFileHash: "manifest-hash",
+          manifestUrl: manifestPath,
+        });
+      }
+      if (url === `${baseUrl}${manifestPath}`) {
+        return new Response(manifestBytes, {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === signedArchiveUrl) {
+        return new Response("archive-bytes", {
+          headers: { "content-encoding": "br", "content-length": "999" },
+        });
+      }
+      return new Response("unexpected fetch target", { status: 500 });
+    });
+
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const controlRoutes = (await import("./control-server/routes.ts"))
+        .default;
+      const invalidPrefetch = await controlRoutes.request(
+        "/e2e/jobs/prefetch-update-artifact",
+        {
+          body: JSON.stringify({ targetBundleId: "target" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(invalidPrefetch.status).toBe(400);
+
+      controller.handleConfigureProxy({
+        archiveFailureMode: "interrupt",
+        archiveFailures: 1,
+        reset: true,
+      });
+      const prefetchResponse = await controlRoutes.request(
+        "/e2e/jobs/prefetch-update-artifact",
+        {
+          body: JSON.stringify({
+            currentBundleId: "current",
+            targetBundleId: "target",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      const { jobId } = (await prefetchResponse.json()) as { jobId: string };
+      await vi.waitFor(() => {
+        expect(controller.getJob(jobId)).toMatchObject({
+          result: { prefetchedResponses: 3 },
+          status: "succeeded",
+        });
+      });
+      expect(fetchTargets).toEqual([
+        artifactUrl,
+        `${baseUrl}${manifestPath}`,
+        signedArchiveUrl,
+      ]);
+
+      const payload = (await (
+        await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v2/target/from/current",
+          ),
+        )
+      ).json()) as { archiveUrl: string; manifestUrl: string };
+      const manifestResponse = await controller.handleProxyRemoteAssetRequest(
+        new Request(payload.manifestUrl),
+      );
+      expect(await manifestResponse.text()).toBe(manifestBytes);
+      const interruptedArchiveResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(payload.archiveUrl),
+        );
+      expect(interruptedArchiveResponse.headers.get("content-length")).toBe(
+        "13",
+      );
+      await expect(interruptedArchiveResponse.text()).rejects.toThrow(
+        "Injected E2E archive interruption",
+      );
+      const resumedArchiveResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(payload.archiveUrl, {
+            headers: {
+              "if-range": interruptedArchiveResponse.headers.get("etag")!,
+              range: "bytes=6-",
+            },
+          }),
+        );
+      expect(resumedArchiveResponse.status).toBe(206);
+      expect(await resumedArchiveResponse.text()).toBe("e-bytes");
+
+      // The app's requests reached no upstream.
+      expect(fetchTargets).toHaveLength(3);
+      expect(controller.handleProxyState()).toMatchObject({
+        prefetched: { responses: 3, served: 3 },
+        requestCounts: { artifact: 1 },
+      });
+      expect(
+        controller.handleAssertBundleArtifactTransfers({
+          archiveInterruptions: 1,
+          archiveRequests: 2,
+          archiveResumes: 1,
+          currentBundleId: "current",
+          fileRequests: 0,
+          patchRequests: 0,
+          targetBundleId: "target",
+        }),
+      ).toMatchObject({
+        archive: { bytes: 13, requests: 2 },
+        archiveInterruption: { bytes: 13, interruptions: 1, resumes: 1 },
+      });
+
+      controller.handleConfigureProxy({ reset: true });
+      expect(controller.handleProxyState().prefetched).toEqual({
+        responses: 0,
+        served: 0,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("expects exactly the assets two signed manifests differ in, whatever the server selects", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-changed-assets-"),
@@ -731,7 +890,9 @@ describe("E2E remote asset proxy URLs", () => {
       // The server also selects same.png, which no manifest changed. The
       // client downloads only the changed assets, so only the selection is
       // wrong.
-      await (await select("target-extra"))(changed);
+      await (
+        await select("target-extra")
+      )(changed);
       expect(() =>
         controller.handleAssertBundleArtifactTransfers({
           ...expectation,
