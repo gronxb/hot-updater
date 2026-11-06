@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.1.9
+
+### Patch Changes
+
+- ca32215: Keep what Android crash recovery reads by reflection from R8: `BridgelessReactContext`'s host, and `ReactRootViewTagGenerator` with its root view tag counter. In a minified release build of an app with named instances, R8 renamed them, so a named instance's fatal JavaScript error on the New Architecture skipped crash recovery, and a crash couldn't be attributed to the instance on screen. Apps need no ProGuard rules of their own: the library's consumer rules cover everything it reads by reflection.
+- @hot-updater/protocol@1.1.9
+  - @hot-updater/plugin-insights@1.1.9
+  - @hot-updater/plugin-remote-config@1.1.9
+
 ## 1.1.8
 
 ### Patch Changes
