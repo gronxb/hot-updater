@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
-import { COMMENT_MARKER } from "./comment.mjs";
 import { parseInputs, parseJsonOutput, runAction } from "./preview.mjs";
+import { writeQrCodes } from "./qrBranch.mjs";
+import { fakeGitHub } from "./testing/fakeGitHub";
 
 const event = {
   action: "synchronize",
@@ -33,23 +36,9 @@ type Build = {
 const artifactUri = (build: Build) =>
   `s3://bucket/native-builds/${build.platform}/${build.id}/${build.kind === "apk" ? "app-release.apk" : "App.app.zip"}`;
 
-/**
- * The Console's QR code route, as a public Console answers the runner: the
- * download URL under the Console's own address.
- */
-const consoleFetch = async (input: string | URL | Request) => {
-  const url = new URL(String(input));
-  const build = url.searchParams.get("build")!;
-  return new Response(null, {
-    status: 200,
-    headers: {
-      "x-hot-updater-download-url":
-        url.searchParams.get("target") === "page"
-          ? `${url.origin}/native-builds/${build}`
-          : `${url.origin}/api/native-builds/${build}/download`,
-    },
-  });
-};
+/** Where the action writes the QR code that holds `value`. */
+const qrPath = (value: string) =>
+  `pr-12/${createHash("sha256").update(value).digest("hex").slice(0, 16)}.png`;
 
 /**
  * The project's CLI over a registry and a channel's bundles, as the commands
@@ -228,8 +217,7 @@ const deps = (
   const value = {
     cli,
     buildLogs: vi.fn((_since: number): string[] => []),
-    fetch: vi.fn(consoleFetch) as unknown as typeof fetch,
-    github: null,
+    github: null as Parameters<typeof runAction>[0]["github"],
     setOutput: (name: string, output: string) => {
       outputs[name] = output;
     },
@@ -293,7 +281,10 @@ describe("runAction preview", () => {
       },
     ]);
     expect(outputs["comment-body"]).toContain(
-      "[Download](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1) · built for this commit",
+      "- **Android**: [Download APK](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1)",
+    );
+    expect(outputs["comment-body"]).toContain(
+      "| Android | `build-1` · built for this commit |",
     );
   });
 
@@ -331,7 +322,10 @@ describe("runAction preview", () => {
       built: false,
     });
     expect(outputs["comment-body"]).toContain(
-      "[Download](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0) · reused",
+      "- **Android**: [Download APK](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0)",
+    );
+    expect(outputs["comment-body"]).toContain(
+      "| Android | `build-0` · reused |",
     );
   });
 
@@ -518,30 +512,7 @@ describe("runAction preview", () => {
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");
   });
 
-  it("shows the Console's QR code of an APK's download, which the runner checked", async () => {
-    const fake = fakeCli();
-    const { deps: d, outputs } = deps(fake.cli);
-
-    await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
-
-    // Only the APK has a QR code: a simulator app installs on a computer.
-    expect(d.fetch).toHaveBeenCalledTimes(1);
-    expect(d.fetch).toHaveBeenCalledWith(
-      "https://console.example.com/_hot-updater/native-builds/qr?build=build-1",
-      { method: "HEAD" },
-    );
-    const body = outputs["comment-body"]!;
-    expect(body).toContain(
-      '<img src="https://console.example.com/_hot-updater/native-builds/qr?build=build-1"',
-    );
-    expect(body).not.toContain("qr?build=build-3");
-    expect(body).toContain("adb install -r app-release.apk");
-    expect(body).toContain("npx hot-updater native-build install build-3");
-    expect(body).not.toContain("xcrun simctl");
-    expect(d.log.notice).not.toHaveBeenCalled();
-  });
-
-  it("shows the Console's QR code of an IPA's page, which the runner checked holds no file", async () => {
+  it("links native builds and writes no QR code of them, whatever network the Console is on", async () => {
     const fake = fakeCli({
       builds: [
         {
@@ -554,97 +525,41 @@ describe("runAction preview", () => {
         },
       ],
     });
-    const { deps: d, outputs } = deps(fake.cli);
+    const github = fakeGitHub();
+    const { deps: d, outputs } = deps(fake.cli, { github: github.github });
+    const console = "http://console.tailnet-1234.ts.net";
 
-    await runAction(d, env({ INPUT_PLATFORMS: "ios" }), event);
-
-    expect(d.fetch).toHaveBeenCalledTimes(1);
-    expect(d.fetch).toHaveBeenCalledWith(
-      "https://console.example.com/_hot-updater/native-builds/qr?build=build-ipa&target=page",
-      { method: "HEAD" },
-    );
-    const body = outputs["comment-body"]!;
-    expect(body).toContain("Scan with an iPhone");
-    expect(body).toContain(
-      '<img src="https://console.example.com/_hot-updater/native-builds/qr?build=build-ipa&amp;target=page"',
-    );
-    expect(d.log.notice).not.toHaveBeenCalled();
-  });
-
-  it("shows no IPA QR code when the Console's holds its download, as one without target=page does", async () => {
-    const fake = fakeCli({
-      builds: [
-        {
-          id: "build-ipa",
-          platform: "ios",
-          channel: "pr-12",
-          fingerprintHash: "fp-a",
-          appVersion: null,
-          kind: "ipa",
-        },
-      ],
-    });
-    const { deps: d, outputs } = deps(fake.cli);
-    vi.mocked(d.fetch).mockResolvedValueOnce(
-      new Response(null, {
-        headers: {
-          "x-hot-updater-download-url":
-            "https://console.example.com/api/native-builds/build-ipa/download",
-        },
+    await runAction(
+      d,
+      env({
+        INPUT_PLATFORMS: "android, ios",
+        INPUT_CONSOLE_URL: console,
+        INPUT_COMMENT: "true",
       }),
+      event,
     );
 
-    await runAction(d, env({ INPUT_PLATFORMS: "ios" }), event);
-
-    expect(outputs["comment-body"]).not.toContain("<img");
-    expect(d.log.notice).toHaveBeenCalledWith(
-      "No QR code in the comment: the QR code at https://console.example.com/_hot-updater/native-builds/qr?build=build-ipa&target=page holds https://console.example.com/api/native-builds/build-ipa/download, not https://console.example.com/native-builds/build-ipa.",
+    expect(github.files()).toBeNull();
+    const body = outputs["comment-body"]!;
+    expect(body).toContain(
+      `- **Android**: [Download APK](${console}/api/native-builds/build-1/download) · [Details](${console}/native-builds/build-1)\n- **iOS**: [Install on iPhone](${console}/native-builds/build-ipa) · [Download IPA](${console}/api/native-builds/build-ipa/download) · registered devices only`,
     );
+    expect(body).not.toContain("<img");
+    expect(body).not.toContain("Scan");
+    expect(body).not.toContain("_hot-updater/");
+    expect(github.comment()).toBe(body);
   });
 
-  it.each([
-    [
-      "is unreachable",
-      async () => {
-        throw new TypeError("fetch failed");
-      },
-      "No QR code in the comment: the Console is unreachable from the runner (fetch failed).",
-    ],
-    [
-      "answers an error",
-      async () => new Response("", { status: 404 }),
-      "No QR code in the comment: the Console answered 404 to https://console.example.com/_hot-updater/native-builds/qr?build=build-1.",
-    ],
-    [
-      // A Console behind a proxy that sees another address than the runner.
-      "holds another address",
-      async () =>
-        new Response(null, {
-          headers: {
-            "x-hot-updater-download-url":
-              "http://10.0.0.2:3000/api/native-builds/build-1/download",
-          },
-        }),
-      "No QR code in the comment: the QR code at https://console.example.com/_hot-updater/native-builds/qr?build=build-1 holds http://10.0.0.2:3000/api/native-builds/build-1/download, not https://console.example.com/api/native-builds/build-1/download.",
-    ],
-  ])(
-    "links the download without a QR code when the Console %s",
-    async (_, answer, notice) => {
-      const fake = fakeCli();
-      const { deps: d, outputs } = deps(fake.cli, {
-        fetch: vi.fn(answer) as unknown as typeof fetch,
-      });
+  it("removes a pull request's old QR codes once it has none", async () => {
+    const fake = fakeCli();
+    const github = fakeGitHub();
+    await writeQrCodes(github.github, 12, ["hu-sandbox-x://old"]);
+    const { deps: d } = deps(fake.cli, { github: github.github });
 
-      await runAction(d, env(), event);
+    await runAction(d, env({ INPUT_COMMENT: "true" }), event);
 
-      const body = outputs["comment-body"]!;
-      expect(body).not.toContain("<img");
-      expect(body).toContain(
-        "[Download](https://console.example.com/api/native-builds/build-1/download)",
-      );
-      expect(d.log.notice).toHaveBeenCalledWith(notice);
-    },
-  );
+    expect(Object.keys(github.files()!)).toEqual(["README.md"]);
+  });
 
   describe("install and download outputs", () => {
     const reusable = (id: string, platform: string, kind: string): Build => ({
@@ -847,34 +762,6 @@ describe("runAction preview", () => {
     );
   });
 
-  it("writes the comment to the pull request", async () => {
-    const fake = fakeCli();
-    const github = {
-      fetch: vi.fn(),
-      apiUrl: "https://api.github.com",
-      repository: "o/r",
-      token: "t",
-    };
-    github.fetch
-      // GITHUB_TOKEN can't read GET /user.
-      .mockResolvedValueOnce(new Response("", { status: 403 }))
-      .mockResolvedValueOnce(Response.json([]))
-      .mockResolvedValueOnce(Response.json({ id: 5 }, { status: 201 }));
-    const { deps: d, outputs } = deps(fake.cli, {
-      github: github as unknown as Parameters<typeof runAction>[0]["github"],
-    });
-
-    await runAction(d, env({ INPUT_COMMENT: "true" }), event);
-
-    expect(github.fetch).toHaveBeenLastCalledWith(
-      "https://api.github.com/repos/o/r/issues/12/comments",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ body: outputs["comment-body"] }),
-      }),
-    );
-  });
-
   it("skips everything for a pull request from a fork, which gets no secrets", async () => {
     const fake = fakeCli();
     const { deps: d } = deps(fake.cli);
@@ -890,29 +777,14 @@ describe("runAction preview", () => {
 describe("runAction cleanup", () => {
   const closed = { ...event, action: "closed" };
 
-  it("deletes the closed pull request's channel and edits its comment", async () => {
+  it("deletes the closed pull request's channel, edits its comment, and removes its QR codes", async () => {
     const fake = fakeCli();
-    const github = {
-      fetch: vi.fn(),
-      apiUrl: "https://api.github.com",
-      repository: "o/r",
-      token: "t",
-    };
-    github.fetch
-      .mockResolvedValueOnce(new Response("", { status: 403 }))
-      .mockResolvedValueOnce(
-        Response.json([
-          {
-            id: 9,
-            body: `${COMMENT_MARKER}\n\n### Preview`,
-            user: { login: "github-actions[bot]", type: "Bot" },
-          },
-        ]),
-      )
-      .mockResolvedValueOnce(Response.json({ id: 9 }));
-    const { deps: d, outputs } = deps(fake.cli, {
-      github: github as unknown as Parameters<typeof runAction>[0]["github"],
-    });
+    const github = fakeGitHub();
+    const preview = deps(fakeCli().cli, { github: github.github });
+    await runAction(preview.deps, env({ INPUT_COMMENT: "true" }), event);
+    await writeQrCodes(github.github, 12, ["hu-sandbox-x://pr-12"]);
+    await writeQrCodes(github.github, 13, ["hu-sandbox-x://pr-13"]);
+    const { deps: d, outputs } = deps(fake.cli, { github: github.github });
 
     await runAction(d, env({ INPUT_COMMENT: "true" }), closed);
 
@@ -922,10 +794,12 @@ describe("runAction cleanup", () => {
     expect(outputs["comment-body"]).toContain(
       "its channel `pr-12`, its 2 bundles, and its 1 native build are deleted.",
     );
-    expect(github.fetch).toHaveBeenLastCalledWith(
-      "https://api.github.com/repos/o/r/issues/comments/9",
-      expect.objectContaining({ method: "PATCH" }),
-    );
+    expect(github.comments).toHaveLength(1);
+    expect(github.comment()).toBe(outputs["comment-body"]);
+    expect(Object.keys(github.files()!).sort()).toEqual([
+      "README.md",
+      qrPath("hu-sandbox-x://pr-13").replace("pr-12", "pr-13"),
+    ]);
   });
 
   it("needs no scheme, and comments nothing on a pull request it never previewed", async () => {
@@ -935,18 +809,8 @@ describe("runAction cleanup", () => {
         json: { channel: "pr-12", deleted: false, reason: "not_found" },
       },
     });
-    const github = {
-      fetch: vi.fn(),
-      apiUrl: "https://api.github.com",
-      repository: "o/r",
-      token: "t",
-    };
-    github.fetch
-      .mockResolvedValueOnce(new Response("", { status: 403 }))
-      .mockResolvedValueOnce(Response.json([]));
-    const { deps: d, outputs } = deps(fake.cli, {
-      github: github as unknown as Parameters<typeof runAction>[0]["github"],
-    });
+    const github = fakeGitHub();
+    const { deps: d, outputs } = deps(fake.cli, { github: github.github });
 
     await runAction(
       d,
@@ -955,10 +819,8 @@ describe("runAction cleanup", () => {
     );
 
     expect(outputs["comment-body"]).toContain("is already deleted");
-    expect(github.fetch).toHaveBeenCalledTimes(2);
-    expect(
-      github.fetch.mock.calls.map(([, init]) => init?.method ?? "GET"),
-    ).toEqual(["GET", "GET"]);
+    expect(github.comments).toEqual([]);
+    expect(github.calls.filter((call) => !call.startsWith("GET"))).toEqual([]);
   });
 
   it("fails when the channel is kept, after saying so", async () => {

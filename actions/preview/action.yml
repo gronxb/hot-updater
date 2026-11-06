@@ -2,18 +2,20 @@ name: hot-updater preview
 description: >-
   Deploys a pull request's bundle to its own channel, builds a native build
   that embeds that channel, which Hot Updater tracks, only when the registry
-  has none for the project's fingerprint there, and comments the build's
-  download and the QR code of an APK's download. When the pull request
-  closes, it deletes the channel with its bundles and native builds.
+  has none for the project's fingerprint there, and comments how to install
+  the build and, on a sandbox build, the QR code that opens the pull request,
+  which it writes to the hot-updater-preview branch. When the pull request
+  closes, it deletes the channel with its bundles and native builds, and the
+  pull request's QR codes.
 author: gronxb
 
 inputs:
   console-url:
     description: >-
-      The Console's URL, which the comment's download links and QR code
-      point at. The CLI reads its credentials through the config's
-      secrets adapter, the job's environment by default. A pull request from
-      a fork, which gets no secrets, is skipped.
+      The Console's URL, which the comment's install links point at. The CLI
+      reads its credentials through the config's secrets adapter, the job's
+      environment by default. A pull request from a fork, which gets no
+      secrets, is skipped.
     required: true
   platforms:
     description: The platforms to preview, comma-separated. iOS needs a macOS runner.
@@ -53,7 +55,10 @@ inputs:
     description: Whether the comment ends with "Preview by hot-updater".
     default: "true"
   comment:
-    description: Whether to write the pull request comment. The comment-body output has it either way.
+    description: >-
+      Whether to write the pull request comment, and its sandbox QR codes to
+      the hot-updater-preview branch. Without it, the comment-body output has the
+      comment's links and no QR code.
     default: "true"
   mode:
     description: auto (preview, or cleanup when the pull request closed), preview, or cleanup.
@@ -65,7 +70,11 @@ inputs:
     description: The command that runs the project's hot-updater CLI.
     default: npx --no-install hot-updater
   github-token:
-    description: The token that writes the comment.
+    description: >-
+      The token that writes the comment, with pull-requests: write, and the
+      QR codes on the hot-updater-preview branch, with contents: write. A
+      personal access token's push there starts the repository's push
+      workflows.
     default: ${{ github.token }}
 
 outputs:

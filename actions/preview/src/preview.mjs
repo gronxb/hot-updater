@@ -14,16 +14,14 @@ import {
   STORES,
 } from "../../shared/nativeBuild.mjs";
 import {
-  consoleLink,
-  nativeBuildDownloadLink,
   nativeBuildInstallUrl,
-  nativeBuildPageLink,
   previewLink,
-  previewQrLink,
+  qrCodeValues,
   renderClosedComment,
   renderPreviewComment,
 } from "./comment.mjs";
 import { findComment, updateComment, upsertComment } from "./github.mjs";
+import { removeQrCodes, writeQrCodes } from "./qrBranch.mjs";
 
 export { parseJsonOutput };
 
@@ -69,7 +67,6 @@ export { parseJsonOutput };
  *   command's output and throws when the command fails; with it, it returns
  *   the output and the exit code.
  * @property {import("../../shared/cli.mjs").BuildLogs} buildLogs
- * @property {typeof fetch} fetch
  * @property {import("./github.mjs").GitHubContext | null} github
  * @property {(name: string, value: string) => void} setOutput
  * @property {{ info: (message: string) => void, notice: (message: string) => void, group: <T>(name: string, run: () => Promise<T>) => Promise<T> }} log
@@ -604,32 +601,6 @@ const deployOnNativeBuild = async (
 };
 
 /**
- * Whether the Console serves a QR code that holds `expected` to the runner.
- * GitHub fetches a comment's images from the internet, so a private Console,
- * such as one on a VPN, is out of reach, and the comment keeps only the links.
- *
- * @param {Deps} deps
- * @param {string} url
- * @param {string} header The response header that says what the image holds.
- * @param {string} expected
- */
-const servesQr = async (deps, url, header, expected) => {
-  let cause;
-  try {
-    const response = await deps.fetch(url, { method: "HEAD" });
-    const held = response.headers.get(header);
-    if (response.ok && held === expected) return true;
-    cause = response.ok
-      ? `the QR code at ${url} holds ${held}, not ${expected}`
-      : `the Console answered ${response.status} to ${url}`;
-  } catch (error) {
-    cause = `the Console is unreachable from the runner (${error instanceof Error ? error.message : String(error)})`;
-  }
-  deps.log.notice(`No QR code in the comment: ${cause}.`);
-  return false;
-};
-
-/**
  * @param {Deps} deps
  * @param {Inputs} inputs
  * @param {PullRequestEvent} event
@@ -647,54 +618,29 @@ export const runPreview = async (deps, inputs, event) => {
       ),
     );
   }
-  /** @type {string[]} */
-  const qrCodes = [];
-  /** @type {Platform[]} */
-  const previewQrCodes = [];
-  for (const { platform, nativeBuild, target, sandbox, store } of previews) {
-    if (sandbox) {
-      if (
-        sandbox.link !== null &&
-        (await servesQr(
-          deps,
-          previewQrLink(inputs.consoleUrl, {
-            appId: sandbox.appId,
-            channel: inputs.channel,
-            fingerprintHash: /** @type {string} */ (target.fingerprintHash),
-          }),
-          "x-hot-updater-preview-link",
-          sandbox.link,
-        ))
-      ) {
-        previewQrCodes.push(platform);
-      }
-      continue;
-    }
-    // An IPA's holds its page, where an iPhone checks whether it can install.
-    const page = nativeBuild.artifactKind === "ipa";
-    if (
-      (nativeBuild.artifactKind === "apk" || (page && !store)) &&
-      (await servesQr(
-        deps,
-        consoleLink(inputs.consoleUrl, "_hot-updater/native-builds/qr", {
-          build: nativeBuild.id,
-          ...(page ? { target: "page" } : {}),
-        }),
-        "x-hot-updater-download-url",
-        page
-          ? nativeBuildPageLink(inputs.consoleUrl, nativeBuild.id)
-          : nativeBuildDownloadLink(inputs.consoleUrl, nativeBuild.id),
-      ))
-    ) {
-      qrCodes.push(nativeBuild.id);
+  // The comment's QR codes live on a branch of the repository, which shows
+  // them to anyone who can read it, whatever network the Console is on.
+  /** @type {Record<string, string>} */
+  let qrImages = {};
+  /** @type {unknown} */
+  let qrError;
+  if (inputs.comment && deps.github) {
+    try {
+      qrImages = await writeQrCodes(
+        deps.github,
+        event.number,
+        qrCodeValues(previews),
+      );
+    } catch (error) {
+      // The comment still gets its links; the run fails after it.
+      qrError = error;
     }
   }
   const body = renderPreviewComment({
     consoleUrl: inputs.consoleUrl,
     channel: inputs.channel,
     previews,
-    qrCodes,
-    previewQrCodes,
+    qrImages,
     headSha: event.headSha,
     credit: inputs.credit,
   });
@@ -720,6 +666,7 @@ export const runPreview = async (deps, inputs, event) => {
   if (inputs.comment && deps.github) {
     await upsertComment(deps.github, event.number, body);
   }
+  if (qrError) throw qrError;
   return { previews: outputs, body };
 };
 
@@ -768,6 +715,8 @@ export const runCleanup = async (deps, inputs, event) => {
   if (inputs.comment && deps.github) {
     const existing = await findComment(deps.github, event.number);
     if (existing) await updateComment(deps.github, existing.id, body);
+    // The closed comment has no QR code.
+    await removeQrCodes(deps.github, event.number);
   }
   if (outcome === "kept") {
     throw new Error(

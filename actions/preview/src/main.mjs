@@ -41,9 +41,12 @@ const readEvent = () => {
 };
 
 maskCredentials(env);
-const cli = createCli({ env });
+// The token may write the repository's contents: only this process calls
+// GitHub, and the project's CLI, its builds, and their scripts never see it.
+const { INPUT_GITHUB_TOKEN: githubInput, ...cliEnv } = env;
+const cli = createCli({ env: cliEnv });
 
-const githubToken = env["INPUT_GITHUB_TOKEN"]?.trim();
+const githubToken = githubInput?.trim();
 const repository = env["GITHUB_REPOSITORY"];
 
 try {
@@ -51,12 +54,12 @@ try {
     {
       cli,
       buildLogs: createBuildLogs(),
-      fetch,
       github:
         githubToken && repository
           ? {
               fetch,
               apiUrl: env["GITHUB_API_URL"] ?? "https://api.github.com",
+              serverUrl: env["GITHUB_SERVER_URL"] ?? "https://github.com",
               repository,
               token: githubToken,
             }

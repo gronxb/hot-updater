@@ -76,12 +76,12 @@ signing_key="$(node -e '
   echo $! >"$log_dir/console.pid"
 )
 for _ in $(seq 60); do
-  if curl -s -o /dev/null "$console_url/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-000000000001"; then
+  if curl -s -o /dev/null "$console_url/"; then
     break
   fi
   sleep 1
 done
-curl -s -o /dev/null "$console_url/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-000000000001"
+curl -s -o /dev/null "$console_url/"
 
 echo "HOT_UPDATER_ANDROID_KEYSTORE=$keystore"
 echo "HOT_UPDATER_BUNDLE_SIGNING_KEY=$signing_key"

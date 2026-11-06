@@ -187,7 +187,7 @@ describe("guardLocalConsoleRequest", () => {
 
   it("asks for the session on the /_hot-updater/ routes too", () => {
     const path =
-      "/_hot-updater/native-builds/qr?build=019a0000-0000-7000-8000-00000000b001";
+      "/_hot-updater/native-builds/019a0000-0000-7000-8000-00000000b001/manifest.plist";
     expect(
       guardLocalConsoleRequest(request(`http://localhost:1422${path}`), OPTIONS)
         ?.status,

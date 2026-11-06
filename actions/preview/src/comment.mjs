@@ -55,15 +55,6 @@ const platformLabel = (kind) =>
   })[kind];
 
 /**
- * A link under the Console, whose URL may have a path of its own.
- * @param {string} consoleUrl
- * @param {string} path
- * @param {Record<string, string>} query
- */
-export const consoleLink = (consoleUrl, path, query) =>
-  `${consolePath(consoleUrl, path)}?${new URLSearchParams(query)}`;
-
-/**
  * A path under the Console, whose URL may have a path of its own.
  * @param {string} consoleUrl
  * @param {string} path
@@ -90,14 +81,6 @@ export const nativeBuildDownloadLink = (consoleUrl, id) =>
  */
 export const nativeBuildPageLink = (consoleUrl, id) =>
   consolePath(consoleUrl, `native-builds/${encodeURIComponent(id)}`);
-
-/**
- * The Console's links of a native build: its download and its page.
- * @param {string} consoleUrl
- * @param {string} id
- */
-const nativeBuildLinks = (consoleUrl, id) =>
-  `[Download](${nativeBuildDownloadLink(consoleUrl, id)}) · [Details](${nativeBuildPageLink(consoleUrl, id)})`;
 
 /**
  * The command that downloads a simulator build, installs it on the booted
@@ -129,19 +112,14 @@ export const previewLink = ({ appId, channel, fingerprintHash }) =>
   `hu-sandbox-${appId.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}://hot-updater/preview?channel=${encodeURIComponent(channel)}&fingerprint=${encodeURIComponent(fingerprintHash)}`;
 
 /**
- * The Console's image of that link's QR code.
- * @param {string} consoleUrl
- * @param {{ appId: string, channel: string, fingerprintHash: string }} link
+ * What each QR code of the comment holds: a sandbox build's link, which opens
+ * the pull request's bundle in the sandbox app. Native builds get links, not
+ * QR codes.
+ *
+ * @param {PlatformPreview[]} previews
  */
-export const previewQrLink = (
-  consoleUrl,
-  { appId, channel, fingerprintHash },
-) =>
-  consoleLink(consoleUrl, "_hot-updater/native-builds/preview-qr", {
-    app: appId,
-    channel,
-    fingerprint: fingerprintHash,
-  });
+export const qrCodeValues = (previews) =>
+  previews.flatMap(({ sandbox }) => (sandbox?.link ? [sandbox.link] : []));
 
 /** Each store's name in the comment, and what its testers do. */
 const STORE_NAMES = {
@@ -162,23 +140,46 @@ const STORE_STATES = {
 };
 
 /**
- * A store build's cell: its store's page, its version and state, and its page
- * in the Console.
+ * How a person installs a native build, as one line of links: its store, or
+ * its Console download and page. A simulator build installs with the command
+ * under the comment.
+ *
  * @param {string} consoleUrl
- * @param {{ id: string }} nativeBuild
- * @param {import("../../shared/nativeBuild.mjs").StoreStatus} store
+ * @param {PlatformPreview} preview
  */
-const storeBuildLinks = (consoleUrl, { id }, store) =>
-  [
-    store.url
-      ? `[${STORE_NAMES[store.destination]}](${store.url})`
-      : STORE_NAMES[store.destination],
-    ...(store.version ? [code(store.version)] : []),
-    ...(store.state && STORE_STATES[store.state]
-      ? [STORE_STATES[store.state]]
-      : []),
-    `[Details](${consolePath(consoleUrl, `native-builds/${encodeURIComponent(id)}`)})`,
-  ].join(" · ");
+const installLinks = (
+  consoleUrl,
+  { nativeBuild: { id, artifactKind }, store },
+) => {
+  const download = nativeBuildDownloadLink(consoleUrl, id);
+  const details = `[Details](${nativeBuildPageLink(consoleUrl, id)})`;
+  if (store) {
+    return [
+      store.url
+        ? `[${STORE_NAMES[store.destination]}](${store.url})`
+        : STORE_NAMES[store.destination],
+      ...(store.version ? [code(store.version)] : []),
+      ...(store.state && STORE_STATES[store.state]
+        ? [STORE_STATES[store.state]]
+        : []),
+      details,
+    ].join(" · ");
+  }
+  return {
+    apk: `[Download APK](${download}) · ${details}`,
+    aab: `[Download AAB](${download}) · ${details}`,
+    ipa: `[Install on iPhone](${nativeBuildPageLink(consoleUrl, id)}) · [Download IPA](${download}) · registered devices only`,
+    app: `${details} · install with the command below`,
+  }[artifactKind];
+};
+
+/** @param {PlatformPreview} preview */
+const installLabel = ({ platform, nativeBuild, store }) =>
+  store
+    ? platform === "ios"
+      ? "iOS"
+      : "Android"
+    : platformLabel(nativeBuild.artifactKind);
 
 /** @param {string} text */
 const code = (text) => `\`${text}\``;
@@ -246,91 +247,11 @@ const installCommands = (allPreviews) => {
 };
 
 /**
- * What a preview on a sandbox build adds: each link and its QR code, whether
- * the bundle runs on the build, and what a new sandbox build asks of the others.
- *
- * @param {string} consoleUrl
- * @param {string} channel
+ * The rows of the collapsed Builds table: each platform's native build, the
+ * fingerprint or app version it was matched by, and the deployed bundle.
  * @param {PlatformPreview[]} previews
- * @param {Platform[]} previewQrCodes The platforms whose QR code the Console serves.
  */
-const sandboxSections = (consoleUrl, channel, previews, previewQrCodes) => {
-  const sandboxes = previews.filter(({ sandbox }) => sandbox);
-  if (sandboxes.length === 0) return [];
-  const linked = sandboxes.filter(({ sandbox }) => sandbox?.link);
-  const older = sandboxes.filter(
-    ({ sandbox, bundleId }) =>
-      sandbox?.minBundleId && bundleId < sandbox.minBundleId,
-  );
-  return [
-    ...(linked.length === 0
-      ? []
-      : [
-          "Scan with a phone that has the sandbox build to open this pull request. A sandbox build with other native code refuses the link.",
-          ...linked.map(({ platform, target, sandbox }) => {
-            const link = /** @type {string} */ (sandbox?.link);
-            return [
-              `**${platform === "ios" ? "iOS" : "Android"}**`,
-              ...(previewQrCodes.includes(platform)
-                ? [
-                    `<img src="${escapeHtml(
-                      previewQrLink(consoleUrl, {
-                        appId: /** @type {string} */ (sandbox?.appId),
-                        channel,
-                        fingerprintHash: /** @type {string} */ (
-                          target.fingerprintHash
-                        ),
-                      }),
-                    )}" alt="${escapeHtml(`QR code of the sandbox link of ${channel}`)}" width="180" height="180">`,
-                  ]
-                : []),
-              code(link),
-            ].join("\n\n");
-          }),
-        ]),
-    ...older.map(
-      ({ bundleId, nativeBuild }) =>
-        `Bundle ${code(bundleId)} is older than sandbox build ${code(nativeBuild.id)} accepts. Push again.`,
-    ),
-    ...(older.length === sandboxes.length
-      ? []
-      : [
-          "This pull request's bundle runs on the sandbox build above. A newer sandbox build won't run it: push again.",
-        ]),
-    ...(sandboxes.some(({ built }) => built)
-      ? [
-          "This run made a new sandbox build, which other open pull requests' bundles may not run on. Push those pull requests again.",
-        ]
-      : []),
-  ];
-};
-
-/**
- * The comment of a pull request whose bundles were deployed: each
- * platform's native build, which embeds the pull request's channel, with
- * its Console download and page, and the QR code of an APK's download or an
- * IPA's page.
- *
- * @param {object} input
- * @param {string} input.consoleUrl
- * @param {string} input.channel The pull request's channel.
- * @param {PlatformPreview[]} input.previews
- * @param {string[]} input.qrCodes The builds whose QR code the Console serves
- *   to the internet, which GitHub fetches a comment's images from.
- * @param {Platform[]} [input.previewQrCodes] The platforms whose sandbox link's
- *   QR code the Console serves the same way.
- * @param {string} input.headSha
- * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
- */
-export const renderPreviewComment = ({
-  consoleUrl,
-  channel,
-  previews,
-  qrCodes,
-  previewQrCodes = [],
-  headSha,
-  credit,
-}) => {
+const buildsTable = (previews) => {
   const strategies = new Set(
     previews.map(({ target }) =>
       target.fingerprintHash === null ? "App version" : "Fingerprint",
@@ -339,86 +260,108 @@ export const renderPreviewComment = ({
   // A config can pick each platform's strategy.
   const targetHeading =
     strategies.size === 1 ? [...strategies][0] : "Fingerprint or app version";
-  const rows = previews.map(({ target, nativeBuild, built, bundleId, store }) =>
-    [
-      store
-        ? nativeBuild.artifactKind === "ipa"
-          ? "iOS"
-          : "Android"
-        : platformLabel(nativeBuild.artifactKind),
-      `${store ? storeBuildLinks(consoleUrl, nativeBuild, store) : nativeBuildLinks(consoleUrl, nativeBuild.id)} · ${built ? "built for this commit" : "reused"}`,
-      code(
-        target.fingerprintHash === null
-          ? String(target.appVersion)
-          : target.fingerprintHash.slice(0, 12),
-      ),
-      code(bundleId),
-    ].join(" | "),
+  return [
+    "<details>",
+    "<summary>Builds</summary>",
+    "",
+    `| Platform | Native build | ${targetHeading} | Bundle |`,
+    "| --- | --- | --- | --- |",
+    ...previews.map(
+      (preview) =>
+        `| ${installLabel(preview)} | ${code(preview.nativeBuild.id)} · ${preview.built ? "built for this commit" : "reused"} | ${code(
+          preview.target.fingerprintHash === null
+            ? String(preview.target.appVersion)
+            : preview.target.fingerprintHash.slice(0, 12),
+        )} | ${code(preview.bundleId)} |`,
+    ),
+    "",
+    "</details>",
+  ].join("\n");
+};
+
+/**
+ * The comment of a pull request whose bundles were deployed, in the order a
+ * tester works: install the app, then, on a sandbox build, scan the QR code
+ * of the sandbox link, which opens this pull request's bundle. Native builds
+ * get links only; the sandbox link is the only QR code.
+ *
+ * @param {object} input
+ * @param {string} input.consoleUrl
+ * @param {string} input.channel The pull request's channel.
+ * @param {PlatformPreview[]} input.previews
+ * @param {Record<string, string>} [input.qrImages] The image of each sandbox
+ *   link's QR code that the action wrote, by the link; a link without one is
+ *   shown as text only.
+ * @param {string} input.headSha
+ * @param {boolean} input.credit Whether to end with "Preview by hot-updater".
+ */
+export const renderPreviewComment = ({
+  consoleUrl,
+  channel,
+  previews,
+  qrImages = {},
+  headSha,
+  credit,
+}) => {
+  /** @param {PlatformPreview} preview */
+  const line = (preview) =>
+    `- **${installLabel(preview)}**: ${installLinks(consoleUrl, preview)}`;
+  const sandboxes = previews.filter(({ sandbox }) => sandbox);
+  const own = previews.filter(({ sandbox }) => !sandbox);
+  const linked = sandboxes.filter(({ sandbox }) => sandbox?.link);
+  const older = sandboxes.filter(
+    ({ sandbox, bundleId }) =>
+      sandbox?.minBundleId && bundleId < sandbox.minBundleId,
   );
-  const qrBuilds = previews.flatMap(({ nativeBuild }) =>
-    qrCodes.includes(nativeBuild.id) ? [nativeBuild] : [],
+  const scannable = linked.some(
+    ({ sandbox }) => qrImages[/** @type {string} */ (sandbox?.link)],
   );
-  const qr = qrBuilds
-    .filter(({ artifactKind }) => artifactKind !== "ipa")
-    .map(
-      ({ id, fileName }) =>
-        `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/native-builds/qr", { build: id }))}" alt="${escapeHtml(`QR code of the download of ${fileName}`)}" width="180" height="180">`,
-    );
-  const iphoneQr = qrBuilds
-    .filter(({ artifactKind }) => artifactKind === "ipa")
-    .map(
-      ({ id, fileName }) =>
-        `<img src="${escapeHtml(consoleLink(consoleUrl, "_hot-updater/native-builds/qr", { build: id, target: "page" }))}" alt="${escapeHtml(`QR code of the page of ${fileName}`)}" width="180" height="180">`,
-    );
-  const ipa = previews.some(
-    ({ nativeBuild, store }) => !store && nativeBuild.artifactKind === "ipa",
-  );
-  const stores = [
-    ...new Set(previews.flatMap(({ store }) => store?.destination ?? [])),
-  ];
   return [
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
-    [
-      `| Platform | Native build | ${targetHeading} | Bundle |`,
-      "| --- | --- | --- | --- |",
-      ...rows.map((row) => `| ${row} |`),
-    ].join("\n"),
-    ...(previews.every(({ store, sandbox }) => store || sandbox)
+    ...(sandboxes.length === 0
       ? []
       : [
-          `This pull request's native builds embed the ${code(channel)} channel, so they open its bundle on their first launch.`,
+          `**${linked.length === 0 ? "" : "1. "}Install the sandbox app** once. Pull requests with the same native code share it.`,
+          sandboxes.map(line).join("\n"),
+          ...(sandboxes.some(({ built }) => built)
+            ? [
+                "This run made a new sandbox build: push the other open pull requests again.",
+              ]
+            : []),
         ]),
-    ...(stores.length === 0
+    ...(linked.length === 0
       ? []
       : [
-          `Testers install the sandbox build from ${stores.map((store) => STORE_NAMES[store]).join(" and ")}, which pull requests with the same native code share. This pull request's bundle is on ${code(channel)}.`,
+          scannable
+            ? "**2. Scan to open this pull request** with the sandbox app."
+            : "**2. Open this pull request**: open the link on the phone with the sandbox app.",
+          ...linked.map(({ platform, sandbox }) => {
+            const link = /** @type {string} */ (sandbox?.link);
+            return [
+              `**${platform === "ios" ? "iOS" : "Android"}**`,
+              ...(qrImages[link]
+                ? [
+                    `<img src="${escapeHtml(qrImages[link])}" alt="${escapeHtml(`QR code of the sandbox link of ${channel}`)}" width="180" height="180">`,
+                  ]
+                : []),
+              code(link),
+            ].join("\n\n");
+          }),
         ]),
-    ...previews.flatMap(({ platform, fallbackScheme }) =>
-      fallbackScheme
-        ? [
-            `${platform === "ios" ? "iOS" : "Android"}: this pull request's native code differs from the sandbox builds', so it has its own native build and no sandbox QR code.`,
-          ]
-        : [],
+    ...older.map(
+      ({ bundleId }) =>
+        `Bundle ${code(bundleId)} is older than the sandbox build accepts: push again.`,
     ),
-    ...sandboxSections(consoleUrl, channel, previews, previewQrCodes),
-    ...(qr.length === 0
+    ...(own.length === 0
       ? []
       : [
-          "Scan with an Android phone to download the APK. The phone signs in to the Console first, and for a private Console it has to be on the Console's network.",
-          qr.join(" "),
+          sandboxes.length === 0
+            ? "**Install this pull request's build.** It opens this pull request on its first launch."
+            : "**This pull request's own build** opens this pull request on its first launch.",
+          own.map(line).join("\n"),
         ]),
-    ...(iphoneQr.length === 0
-      ? []
-      : [
-          "Scan with an iPhone to open the build's page, which checks whether the IPA includes it and installs it. The phone signs in to the Console first.",
-          iphoneQr.join(" "),
-        ]),
-    ...(ipa
-      ? [
-          `An IPA installs on registered devices; for testers without one, upload it to TestFlight with ${code("npx hot-updater testflight")}.`,
-        ]
-      : []),
+    buildsTable(previews),
     ...installCommands(previews),
     ...footer([`Deployed ${code(headSha.slice(0, 7))}`], credit),
   ].join("\n\n");
