@@ -22,6 +22,21 @@
     ** mJSExceptionHandler;
 }
 
+# A runtime's host, read by reflection to hook a named instance's JavaScript
+# errors: Kotlin (reactHost) and Java before React Native 0.80 (mReactHost)
+-keepclassmembers class com.facebook.react.runtime.BridgelessReactContext {
+    ** reactHost;
+    ** mReactHost;
+}
+
+# The root view tag counter, looked up by class name and read by reflection
+# to tell which runtime shows a screen: Kotlin object (nextRootViewTag) and
+# Java static before React Native 0.80 (sNextRootViewTag)
+-keep class com.facebook.react.uimanager.ReactRootViewTagGenerator {
+    int nextRootViewTag;
+    int sNextRootViewTag;
+}
+
 # Preserve the Brotli decoder and its embedded static dictionary
 # (DictionaryData). R8 otherwise strips the dictionary's static init, causing
 # per-file Brotli decompression to fail at runtime with:
