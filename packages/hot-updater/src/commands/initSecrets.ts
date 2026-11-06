@@ -72,9 +72,8 @@ export const openInitTeamSecrets = async ({
       cwd,
     });
   } catch (error) {
-    throw new InitError(
-      `Couldn't read the ${adapter.name} secrets adapter.\n${message(error)}`,
-    );
+    // It names the secrets and the adapter already.
+    throw new InitError(message(error));
   }
   return { adapter, names, secretsEnv };
 };

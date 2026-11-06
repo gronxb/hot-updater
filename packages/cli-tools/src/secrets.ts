@@ -283,8 +283,10 @@ export const getConfiguredSecrets = (): SecretsAdapter =>
 
 /**
  * `names` from `secrets` in one `get`. A read that fails names the secrets
- * and the adapter, with the adapter's own error on the next line, such as
- * `EACCES: permission denied, open '<file>'`.
+ * and the adapter, with the adapter's own error in full on the lines after
+ * it: what went wrong, such as `EACCES: permission denied, open '<file>'`,
+ * and the step that fixes it, which adapters put on the lines that follow,
+ * such as the command that signs in.
  */
 export const readSecrets = async (
   secrets: SecretsAdapter,
@@ -306,7 +308,7 @@ const secretReadError = (
   new Error(
     fitMessage([
       `Couldn't read ${list(names)} from the ${secrets.name} secrets adapter.`,
-      (error instanceof Error ? error.message : String(error)).split("\n")[0]!,
+      error instanceof Error ? error.message : String(error),
     ]),
     { cause: error },
   );

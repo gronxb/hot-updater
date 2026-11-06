@@ -393,7 +393,7 @@ export const handleSecretsPut = async (
     if (found !== undefined) registerCredentialValue(found.value);
     const refuseReplacing = () =>
       new Error(
-        `${found!.source} already holds another ${kind}.\nBack it up, then run the same command with --replace.`,
+        `${found!.source.replace(/^the /u, "The ")} already holds another ${kind}.\nBack it up, then run the same command with --replace.`,
       );
     // A keystore's value needs its passwords: refused before they are asked.
     if (found !== undefined && !given.replace && asksKeystore) {

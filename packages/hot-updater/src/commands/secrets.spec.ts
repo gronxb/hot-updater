@@ -451,6 +451,40 @@ describe("hot-updater secrets put", () => {
   });
 });
 
+describe("hot-updater secrets put over an adapter that can't be read", () => {
+  it("prints the adapter's whole error, with the step on its later lines", async () => {
+    const cause = new Error(
+      [
+        "hot-updater/bundle-signing-key is scheduled for deletion. Restore it, or wait until it is gone:",
+        "aws secretsmanager restore-secret --secret-id hot-updater/bundle-signing-key",
+      ].join("\n"),
+    );
+    const store = {
+      name: "secretsManager",
+      get: vi.fn(async () => {
+        throw cause;
+      }),
+      set: vi.fn(async () => {}),
+    } satisfies SecretsAdapter;
+    configure(store);
+    const pem = path.join(directory, "key.pem");
+    await fs.writeFile(pem, rsaKey(2048, "pkcs8").pem);
+
+    await handleSecretsPut("bundle-signing-key", { file: pem });
+
+    expect(store.set).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      [
+        "Couldn't read bundle-signing-key from the secretsManager secrets adapter.",
+        "hot-updater/bundle-signing-key is scheduled for deletion. Restore it, or",
+        "wait until it is gone:",
+        "aws secretsmanager restore-secret --secret-id hot-updater/bundle-signing-key",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("hot-updater secrets put over a stored value", () => {
   const ascKey = async (keyId: string) => {
     const p8 = path.join(directory, `AuthKey_${keyId}.p8`);
@@ -471,6 +505,21 @@ describe("hot-updater secrets put over a stored value", () => {
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
       "spec://asc-api-key already holds another asc-api-key.\nBack it up, then run the same command with --replace.",
+    );
+  });
+
+  it('starts the refusal with a capital when the adapter names "the secret"', async () => {
+    const { store } = writableStore({ "asc-api-key": ascValue("OLDKEY1") });
+    Object.assign(store, {
+      describe: (name: string) =>
+        `the secret "hot-updater/${name}" in AWS Secrets Manager (us-east-1)`,
+    });
+
+    await handleSecretsPut("asc-api-key", await ascKey("NEWKEY1"));
+
+    expect(store.set).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      'The secret "hot-updater/asc-api-key" in AWS Secrets Manager (us-east-1) already holds another asc-api-key.\nBack it up, then run the same command with --replace.',
     );
   });
 

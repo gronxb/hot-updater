@@ -343,7 +343,7 @@ describe("secretManager get", () => {
         },
         { status: 403 },
       ),
-      "Enable the Secret Manager API in the project:\ngcloud services enable secretmanager.googleapis.com --project <project>",
+      "Enable the Secret Manager API in the project:\ngcloud services enable secretmanager.googleapis.com --project demo-project",
     ],
     [
       googleError(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),

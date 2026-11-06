@@ -237,6 +237,34 @@ describe("hot-updater secrets import", () => {
     );
   });
 
+  it("prints the adapter's whole read error, with the step on its later lines", async () => {
+    const { store } = teamStore();
+    store.get.mockRejectedValueOnce(
+      new Error(
+        [
+          "secretManager found no Google credentials.",
+          "Sign in:",
+          "gcloud auth application-default login",
+        ].join("\n"),
+      ),
+    );
+    configure(store, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
+
+    await handleSecretsImport();
+
+    expect(process.exitCode).toBe(1);
+    expect(store.set).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      [
+        "Couldn't read HOT_UPDATER_CLOUDFLARE_API_TOKEN and HOT_UPDATER_API_KEY",
+        "from the teamStore secrets adapter.",
+        "secretManager found no Google credentials.",
+        "Sign in:",
+        "gcloud auth application-default login",
+      ].join("\n"),
+    );
+  });
+
   it("refuses without a team store", async () => {
     configure(undefined, ["HOT_UPDATER_CLOUDFLARE_API_TOKEN"]);
 
