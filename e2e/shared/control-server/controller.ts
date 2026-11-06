@@ -648,6 +648,16 @@ let archiveFailureMode: ArchiveFailureMode | null = null;
 let archiveFailuresRemaining = 0;
 // Interrupted archives by proxy path, kept to answer their resumed requests.
 const archiveInterruptions = new Map<string, ArchiveInterruption>();
+type PrefetchedResponse = {
+  readonly body: Uint8Array;
+  readonly headers: readonly [string, string][];
+  readonly status: number;
+  readonly statusText: string;
+};
+// Upstream responses fetched before the app asks for them, by upstream URL,
+// so the proxy answers those requests at once whatever the backend's latency.
+const prefetchedResponses = new Map<string, PrefetchedResponse>();
+let prefetchedResponsesServed = 0;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
   string,
@@ -3557,18 +3567,21 @@ function rewriteRemoteAssetUrl(
     return value;
   }
 
-  if (/^https?:\/\//.test(value)) {
-    return toAppReachableProxyUrl(value, metadata);
-  }
+  const url = resolveRemoteAssetUrl(value);
+  return url === null ? value : toAppReachableProxyUrl(url, metadata);
+}
 
+/**
+ * The upstream URL the proxy fetches for an asset URL an update response
+ * names: an absolute URL, or a client-relative storage path on the update
+ * server. Null for any other value, which the proxy passes on unchanged.
+ */
+function resolveRemoteAssetUrl(value: string) {
+  if (/^https?:\/\//.test(value)) return value;
   if (value.startsWith("/storage/")) {
-    return toAppReachableProxyUrl(
-      `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
-      metadata,
-    );
+    return `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`;
   }
-
-  return value;
+  return null;
 }
 
 function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
@@ -3979,6 +3992,98 @@ function captureCatalogResponse(
   capturedCatalogResponses.set(pathname, generations);
 }
 
+/**
+ * Fetches an upstream response and keeps it for the app's request. The body
+ * is already decoded, so its encoding and length headers are dropped.
+ */
+async function prefetchUpstreamResponse(url: string, headers?: Headers) {
+  const response = await fetch(url, { headers, method: "GET" });
+  if (!response.ok) {
+    throw createEndpointError("Upstream response to prefetch was not served", {
+      status: response.status,
+      target: url,
+    });
+  }
+  const kept = new Headers(response.headers);
+  kept.delete("content-encoding");
+  kept.delete("content-length");
+  const entry: PrefetchedResponse = {
+    body: new Uint8Array(await response.arrayBuffer()),
+    headers: [...kept.entries()],
+    status: response.status,
+    statusText: response.statusText,
+  };
+  prefetchedResponses.set(url, entry);
+  return entry;
+}
+
+/** The prefetched response for a whole-body GET of an upstream URL, if any. */
+function takePrefetchedResponse(url: string, request: Request) {
+  if (request.method !== "GET" || request.headers.has("range")) return null;
+  const entry = prefetchedResponses.get(url);
+  if (!entry) return null;
+  prefetchedResponsesServed += 1;
+  logE2eFixture("served prefetched response", {
+    bytes: entry.body.byteLength,
+    source: new URL(request.url).pathname,
+  });
+  return new Response(entry.body.slice(), {
+    headers: entry.headers,
+    status: entry.status,
+    statusText: entry.statusText,
+  });
+}
+
+/**
+ * Fetches the artifact response of an update from one Bundle to another, and
+ * the manifest and archive it names, so the proxy serves the app's requests
+ * for them from memory. iOS suspends an app soon after it leaves the
+ * foreground: a download the app starts then reaches the background session,
+ * and its injected failure reaches the app, before that only if no backend
+ * round trip stands in the way.
+ */
+async function prefetchUpdateArtifact(input: {
+  currentBundleId: string;
+  targetBundleId: string;
+}) {
+  const targetUrl = new URL(getControllerReachableAppBaseUrl());
+  targetUrl.pathname = rewriteProxiedUpdatePath(
+    `/hot-updater/artifacts/v2/${encodeURIComponent(input.targetBundleId)}/from/${encodeURIComponent(input.currentBundleId)}`,
+  );
+  targetUrl.search = "";
+  targetUrl.hash = "";
+  const artifact = await prefetchUpstreamResponse(
+    targetUrl.toString(),
+    getHotUpdaterClientRequestHeaders(),
+  );
+  const payload = JSON.parse(new TextDecoder().decode(artifact.body)) as {
+    archiveUrl?: unknown;
+    manifestUrl?: unknown;
+  };
+  const assetUrls = [payload.manifestUrl, payload.archiveUrl].map((value) =>
+    typeof value === "string" ? resolveRemoteAssetUrl(value) : null,
+  );
+  if (assetUrls.some((url) => url === null)) {
+    throw createEndpointError(
+      "The artifact response names no manifest and archive to prefetch",
+      input,
+    );
+  }
+  for (const url of assetUrls) await prefetchUpstreamResponse(url!);
+  logE2eFixture("prefetched update artifact", {
+    ...input,
+    responses: assetUrls.length + 1,
+  });
+  return { prefetchedResponses: assetUrls.length + 1 };
+}
+
+export function startPrefetchUpdateArtifactJob(input: {
+  currentBundleId: string;
+  targetBundleId: string;
+}) {
+  return createJob(() => prefetchUpdateArtifact(input));
+}
+
 function summarizeArchiveInterruption(entry: ArchiveInterruption | undefined) {
   return {
     bytes: entry?.body.byteLength ?? 0,
@@ -4014,6 +4119,10 @@ export function handleProxyState() {
     },
     pathCardinality: proxyPathCounts.size,
     pathCounts: Object.fromEntries(proxyPathCounts),
+    prefetched: {
+      responses: prefetchedResponses.size,
+      served: prefetchedResponsesServed,
+    },
     requestCounts: { ...proxyRequestCounts },
     remoteTransfers: [...remoteAssetProxyTargets].map(([targetId, target]) => {
       const proxyPath = `/e2e/proxy-url/${targetId}`;
@@ -4059,6 +4168,8 @@ export function handleConfigureProxy(input: {
     archiveFailureMode = null;
     archiveFailuresRemaining = 0;
     archiveInterruptions.clear();
+    prefetchedResponses.clear();
+    prefetchedResponsesServed = 0;
     updateServerUnreachable = false;
   }
   if (input.updateServerUnreachable !== undefined) {
@@ -4501,11 +4612,13 @@ export async function handleProxyUpdateRequest(request: Request) {
       ? undefined
       : await request.arrayBuffer();
 
-  const response = await fetch(targetUrl, {
-    body: requestBody,
-    headers,
-    method: request.method,
-  });
+  const response =
+    takePrefetchedResponse(targetUrl.toString(), request) ??
+    (await fetch(targetUrl, {
+      body: requestBody,
+      headers,
+      method: request.method,
+    }));
 
   if (requestKind === "artifact") await waitForArtifactRelease();
   if (requestKind === "artifact" && artifactResponseDelayMs > 0) {
@@ -4648,21 +4761,27 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     archiveFailuresRemaining -= 1;
     headers.delete("range");
     headers.delete("if-range");
-    const origin = await fetch(targetUrl, { headers, method: "GET" });
-    if (!origin.ok) {
-      throw createEndpointError("Archive to interrupt was not served", {
-        source: requestUrl.pathname,
-        status: origin.status,
-      });
+    const prefetched = prefetchedResponses.get(target.url)?.body;
+    let body = prefetched;
+    if (body) {
+      prefetchedResponsesServed += 1;
+    } else {
+      const origin = await fetch(targetUrl, { headers, method: "GET" });
+      if (!origin.ok) {
+        throw createEndpointError("Archive to interrupt was not served", {
+          source: requestUrl.pathname,
+          status: origin.status,
+        });
+      }
+      body = new Uint8Array(await origin.arrayBuffer());
     }
-    const entry = createArchiveInterruption(
-      new Uint8Array(await origin.arrayBuffer()),
-    );
+    const entry = createArchiveInterruption(body.slice());
     archiveInterruptions.set(requestUrl.pathname, entry);
     const interrupted = interruptArchive(entry);
     transfer.bytes += interrupted.sentBytes;
     logE2eFixture("interrupting archive download", {
       bytes: entry.body.byteLength,
+      prefetched: prefetched !== undefined,
       sentBytes: interrupted.sentBytes,
       source: requestUrl.pathname,
     });
@@ -4684,14 +4803,16 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
             status: 200,
           });
   } else {
-    response = await fetch(targetUrl, {
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : await request.arrayBuffer(),
-      headers,
-      method: request.method,
-    });
+    response =
+      takePrefetchedResponse(target.url, request) ??
+      (await fetch(targetUrl, {
+        body:
+          request.method === "GET" || request.method === "HEAD"
+            ? undefined
+            : await request.arrayBuffer(),
+        headers,
+        method: request.method,
+      }));
   }
 
   if (artifactResponseDelayMs > 0) await sleep(artifactResponseDelayMs);
