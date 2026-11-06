@@ -288,6 +288,36 @@ describe("init with a team secrets store", () => {
     },
   );
 
+  it("stops on a store it can't read with the adapter's whole error, under one head line", async () => {
+    const { adapter } = teamStore();
+    adapter.get.mockRejectedValue(
+      new Error(
+        [
+          "secretsManager found no AWS credentials.",
+          "Sign in, then set AWS_PROFILE:",
+          "aws sso login --profile <profile>",
+        ].join("\n"),
+      ),
+    );
+    mocks.loadTeamSecrets.mockResolvedValue(adapter);
+
+    const error = await openInitTeamSecrets({
+      provider: PROVIDER,
+      env: {},
+      cwd: directory,
+    }).then(
+      () => new Error("Expected a rejection."),
+      (thrown: unknown) => thrown as Error,
+    );
+
+    expect(error.message.match(/Couldn't read/gu)).toHaveLength(1);
+    expect(error.message.split("\n").slice(-3)).toEqual([
+      "secretsManager found no AWS credentials.",
+      "Sign in, then set AWS_PROFILE:",
+      "aws sso login --profile <profile>",
+    ]);
+  });
+
   it("does nothing with localSecrets()", async () => {
     mocks.loadTeamSecrets.mockResolvedValue(undefined);
 

@@ -23,6 +23,7 @@ import {
   getLocalSecretsStore,
   localSecrets,
   parseSecretReference,
+  readSecrets,
   readSecretWithSource,
   type SecretsScope,
   secret,
@@ -377,6 +378,38 @@ describe("readSecretWithSource", () => {
 
     expect(error.message).toBe(
       "Couldn't read asc-api-key from the sharedDir secrets adapter.\nEACCES: permission denied, open '/team/asc-api-key.json'",
+    );
+    expect(error.cause).toBe(cause);
+  });
+
+  it("keeps every line of an adapter's read error, where its next step is", async () => {
+    const cause = new Error(
+      [
+        "secretsManager found no AWS credentials.",
+        "Sign in, then set AWS_PROFILE:",
+        "aws sso login --profile <profile>",
+      ].join("\n"),
+    );
+    const secrets: SecretsAdapter = {
+      name: "secretsManager",
+      get: async () => {
+        throw cause;
+      },
+      set: async () => {},
+    };
+
+    const error = await readSecrets(secrets, ["asc-api-key"], directory).then(
+      () => new Error("Expected a rejection."),
+      (thrown: unknown) => thrown as Error,
+    );
+
+    expect(error.message).toBe(
+      [
+        "Couldn't read asc-api-key from the secretsManager secrets adapter.",
+        "secretsManager found no AWS credentials.",
+        "Sign in, then set AWS_PROFILE:",
+        "aws sso login --profile <profile>",
+      ].join("\n"),
     );
     expect(error.cause).toBe(cause);
   });

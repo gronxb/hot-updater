@@ -166,12 +166,13 @@ const hint = (
   response: GoogleResponse,
   permission: string,
   signIn: readonly string[],
+  projectId: string,
 ): string[] => {
   const { status, error } = response;
   if (error.details?.some((detail) => detail.reason === "SERVICE_DISABLED")) {
     return [
       "Enable the Secret Manager API in the project:",
-      "gcloud services enable secretmanager.googleapis.com --project <project>",
+      `gcloud services enable secretmanager.googleapis.com --project ${projectId}`,
     ];
   }
   if (status === 401) {
@@ -193,6 +194,7 @@ const hint = (
  */
 const requestErrorOf = (
   signIn: readonly string[],
+  projectId: string,
   action: string,
   resource: string,
   response: GoogleResponse,
@@ -200,7 +202,7 @@ const requestErrorOf = (
   notes: readonly string[] = [],
 ) => {
   const { status, message } = response.error;
-  const fix = hint(response, permission, signIn);
+  const fix = hint(response, permission, signIn, projectId);
   // A rejected token isn't about this secret: every request gets the same.
   if (response.status === 401 && notes.length === 0) return failure(fix);
   return failure([
@@ -339,6 +341,7 @@ export const secretManager = ({
   ) =>
     requestErrorOf(
       signInHint(credentials),
+      projectId,
       action,
       resource,
       response,

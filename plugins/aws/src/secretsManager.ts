@@ -57,6 +57,16 @@ const MAX_SECRET_ID_LENGTH = 512;
 /** AWS's limit on a `SecretString`, in bytes. */
 const MAX_SECRET_BYTES = 65_536;
 const REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * How long `set` waits, between reads, for a read to return the version it
+ * wrote: Secrets Manager's reads are eventually consistent. About 30 seconds.
+ */
+const VERSION_RETRY_DELAYS_MS = [250, 500, 1000, 2000, 4000, 8000, 15_000];
+
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 /** Errors of credentials AWS no longer takes: signing in again fixes them. */
 const EXPIRED_CREDENTIAL_ERRORS = new Set([
@@ -184,10 +194,11 @@ const checkCredentials = async (
  * Secrets from AWS Secrets Manager: each name is the secret
  * `<prefix><name>`, its `SecretString`, or its `SecretBinary` as base64.
  * `set` puts a new version of the secret, and creates the secret when it
- * does not exist; AWS keeps the versions labeled `AWSCURRENT` and
- * `AWSPREVIOUS`, and removes the older ones itself. The AWS SDK loads on
- * the first read or write, so a config that only uses `s3Storage` never
- * loads it.
+ * does not exist, then waits until a read returns that version, so a `get`
+ * after it reads the new value; AWS keeps the versions labeled
+ * `AWSCURRENT` and `AWSPREVIOUS`, and removes the older ones itself. The
+ * AWS SDK loads on the first read or write, so a config that only uses
+ * `s3Storage` never loads it.
  *
  * @example
  * secrets: secretsManager({ region: "us-east-1" })
@@ -329,10 +340,11 @@ export const secretsManager = ({
     );
   };
 
-  const read = async (
+  /** The secret's `AWSCURRENT` version and value; undefined without one. */
+  const readCurrent = async (
     { sdk, client }: Client,
     id: string,
-  ): Promise<string | undefined> => {
+  ): Promise<{ version?: string; value?: string } | undefined> => {
     let output: GetSecretValueCommandOutput;
     try {
       output = await client.send(
@@ -349,7 +361,27 @@ export const secretsManager = ({
         ? undefined
         : Buffer.from(output.SecretBinary).toString("base64"));
     await mask([value]);
-    return value;
+    return { version: output.VersionId, value };
+  };
+
+  /**
+   * Waits until a read of `id` returns `version`, the one `set` wrote, for
+   * about 30 seconds: until then, a read may return the previous version,
+   * or nothing for a secret just created.
+   */
+  const waitForVersion = async (
+    client: Client,
+    id: string,
+    version: string,
+  ) => {
+    for (const ms of [0, ...VERSION_RETRY_DELAYS_MS]) {
+      if (ms > 0) await delay(ms);
+      if ((await readCurrent(client, id))?.version === version) return;
+    }
+    throw failure([
+      `AWS Secrets Manager doesn't return the new version of ${id} yet.`,
+      "Run the same command again.",
+    ]);
   };
 
   return {
@@ -363,7 +395,9 @@ export const secretsManager = ({
       const result: Record<string, string | undefined> = Object.create(null);
       if (unique.length === 0) return result;
       const client = await open();
-      const values = await Promise.all(ids.map((id) => read(client, id)));
+      const values = await Promise.all(
+        ids.map(async (id) => (await readCurrent(client, id))?.value),
+      );
       unique.forEach((name, index) => {
         result[name] = values[index];
       });
@@ -381,8 +415,10 @@ export const secretsManager = ({
         ]);
       }
       await mask([value]);
-      const { sdk, client } = await open();
-      // The same token on a retry makes the write idempotent.
+      const opened = await open();
+      const { sdk, client } = opened;
+      // The same token on a retry makes the write idempotent, and names the
+      // version it writes.
       const token = randomUUID();
       const put = () =>
         client.send(
@@ -392,40 +428,44 @@ export const secretsManager = ({
             SecretString: value,
           }),
         );
-      try {
-        await put();
-        return;
-      } catch (error) {
-        if (!(error instanceof sdk.ResourceNotFoundException)) {
-          throw describeFailure(
-            "write",
-            id,
-            error,
-            "secretsmanager:PutSecretValue",
-          );
+      /** The version the write made. */
+      const write = async (): Promise<string | undefined> => {
+        try {
+          return (await put()).VersionId;
+        } catch (error) {
+          if (!(error instanceof sdk.ResourceNotFoundException)) {
+            throw describeFailure(
+              "write",
+              id,
+              error,
+              "secretsmanager:PutSecretValue",
+            );
+          }
         }
-      }
-      try {
-        await client.send(
-          new sdk.CreateSecretCommand({
-            ClientRequestToken: token,
-            Description: "Stored by Hot Updater.",
-            Name: id,
-            SecretString: value,
-          }),
-        );
-      } catch (error) {
-        if (!(error instanceof sdk.ResourceExistsException)) {
-          throw describeFailure(
-            "create",
-            id,
-            error,
-            "secretsmanager:CreateSecret",
-          );
+        try {
+          return (
+            await client.send(
+              new sdk.CreateSecretCommand({
+                ClientRequestToken: token,
+                Description: "Stored by Hot Updater.",
+                Name: id,
+                SecretString: value,
+              }),
+            )
+          ).VersionId;
+        } catch (error) {
+          if (!(error instanceof sdk.ResourceExistsException)) {
+            throw describeFailure(
+              "create",
+              id,
+              error,
+              "secretsmanager:CreateSecret",
+            );
+          }
         }
         // Another run created it first: put the value on it.
         try {
-          await put();
+          return (await put()).VersionId;
         } catch (retryError) {
           throw describeFailure(
             "write",
@@ -434,7 +474,8 @@ export const secretsManager = ({
             "secretsmanager:PutSecretValue",
           );
         }
-      }
+      };
+      await waitForVersion(opened, id, (await write()) ?? token);
     },
     describe: (name) =>
       `the secret ${JSON.stringify(`${prefix}${name}`)} in AWS Secrets Manager (${region})`,

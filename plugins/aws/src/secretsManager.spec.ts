@@ -52,6 +52,67 @@ const rejectionOf = async (promise: Promise<unknown> | undefined) => {
   throw new Error("expected a rejection");
 };
 
+/** Reads that return the version the last write made, as AWS names it. */
+const servesWhatItWrote = () =>
+  sm.on(GetSecretValueCommand).callsFake(() => {
+    const writes = [
+      ...sm.commandCalls(PutSecretValueCommand),
+      ...sm.commandCalls(CreateSecretCommand),
+    ];
+    return {
+      VersionId: writes.at(-1)?.args[0].input.ClientRequestToken,
+    };
+  });
+
+/**
+ * Secrets Manager as AWS serves it: a write's version is read only after
+ * `lag` more reads, which go on returning what the secret held before, or
+ * ResourceNotFoundException for a secret just created.
+ */
+const laggingSecretsManager = ({
+  lag,
+  held,
+}: {
+  readonly lag: number;
+  readonly held?: string;
+}) => {
+  let served =
+    held === undefined ? undefined : { VersionId: "v-old", SecretString: held };
+  let pending:
+    | { VersionId: string; SecretString: string; readsLeft: number }
+    | undefined;
+  const write = (input: {
+    ClientRequestToken?: string;
+    SecretString?: string;
+  }) => {
+    pending = {
+      VersionId: input.ClientRequestToken!,
+      SecretString: input.SecretString!,
+      readsLeft: lag,
+    };
+    return { VersionId: input.ClientRequestToken };
+  };
+  sm.on(PutSecretValueCommand)
+    .callsFake((input) => {
+      if (served === undefined && pending === undefined) throw notFound();
+      return write(input);
+    })
+    .on(CreateSecretCommand)
+    .callsFake(write)
+    .on(GetSecretValueCommand)
+    .callsFake(() => {
+      if (pending && pending.readsLeft-- <= 0) {
+        served = {
+          VersionId: pending.VersionId,
+          SecretString: pending.SecretString,
+        };
+        pending = undefined;
+      }
+      if (served === undefined) throw notFound();
+      return { ...served };
+    });
+};
+
 beforeEach(() => {
   sm.reset();
   vi.stubEnv("AWS_ACCESS_KEY_ID", "");
@@ -364,7 +425,10 @@ describe("secretsManager get", () => {
 
 describe("secretsManager set", () => {
   it("puts a new version of an existing secret", async () => {
-    sm.on(PutSecretValueCommand).resolves({ VersionId: "v2" });
+    sm.on(PutSecretValueCommand)
+      .resolves({ VersionId: "v2" })
+      .on(GetSecretValueCommand)
+      .resolves({ VersionId: "v2" });
 
     await secretsManager({ region: REGION }).set?.(
       "asc-api-key",
@@ -387,6 +451,7 @@ describe("secretsManager set", () => {
       .rejects(notFound())
       .on(CreateSecretCommand)
       .resolves({});
+    servesWhatItWrote();
 
     await secretsManager({ region: REGION }).set?.("asc-api-key", "v", context);
 
@@ -411,6 +476,7 @@ describe("secretsManager set", () => {
           message: "The operation failed because the secret already exists.",
         }),
       );
+    servesWhatItWrote();
 
     await secretsManager({ region: REGION }).set?.("asc-api-key", "v", context);
 
@@ -460,6 +526,82 @@ describe("secretsManager set", () => {
       "hot-updater/asc-api-key is scheduled for deletion. Restore it, or wait until it is gone:\naws secretsmanager restore-secret --secret-id hot-updater/asc-api-key",
     );
     expect(sm.commandCalls(CreateSecretCommand)).toHaveLength(0);
+  });
+
+  it("waits until Secrets Manager serves the version it wrote, so a read after it gets the new value", async () => {
+    laggingSecretsManager({ lag: 3, held: "old-value" });
+    const adapter = secretsManager({ region: REGION });
+
+    vi.useFakeTimers();
+    try {
+      const set = adapter.set?.("asc-api-key", "new-value", context);
+      await vi.runAllTimersAsync();
+      await set;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(await adapter.get(["asc-api-key"], context)).toEqual({
+      "asc-api-key": "new-value",
+    });
+  });
+
+  it("waits for a secret it created to be found", async () => {
+    laggingSecretsManager({ lag: 2 });
+    const adapter = secretsManager({ region: REGION });
+
+    vi.useFakeTimers();
+    try {
+      const set = adapter.set?.("asc-api-key", "new-value", context);
+      await vi.runAllTimersAsync();
+      await set;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(sm.commandCalls(CreateSecretCommand)).toHaveLength(1);
+    expect(await adapter.get(["asc-api-key"], context)).toEqual({
+      "asc-api-key": "new-value",
+    });
+  });
+
+  it("says when Secrets Manager never serves the version it wrote", async () => {
+    laggingSecretsManager({ lag: Number.POSITIVE_INFINITY, held: "old-value" });
+
+    vi.useFakeTimers();
+    try {
+      const set = secretsManager({ region: REGION })
+        .set?.("asc-api-key", "new-value", context)
+        .then(
+          () => undefined,
+          (error: unknown) => error as Error,
+        );
+      await vi.runAllTimersAsync();
+      expect((await set)?.message).toBe(
+        [
+          "AWS Secrets Manager doesn't return the new version of hot-updater/asc-api-key yet.",
+          "Run the same command again.",
+        ].join("\n"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the permission a refused read needs while it waits", async () => {
+    sm.on(PutSecretValueCommand)
+      .resolves({ VersionId: "v2" })
+      .on(GetSecretValueCommand)
+      .rejects(awsError("AccessDeniedException", "not authorized"));
+
+    await expect(
+      secretsManager({ region: REGION }).set?.("asc-api-key", "v", context),
+    ).rejects.toThrow(
+      [
+        "AWS Secrets Manager refused to read hot-updater/asc-api-key.",
+        "The identity needs secretsmanager:GetSecretValue on it.",
+      ].join("\n"),
+    );
   });
 
   it("refuses an empty or oversized value before any request", async () => {

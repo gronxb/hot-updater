@@ -610,6 +610,32 @@ describe("hot-updater secrets pull", () => {
     await expect(fs.stat(envFile())).rejects.toThrow(/ENOENT/u);
   });
 
+  it("prints the adapter's whole read error, with the step on its later lines", async () => {
+    const { store } = teamStore();
+    store.get.mockRejectedValueOnce(
+      new Error(
+        [
+          "AWS Secrets Manager refused to read hot-updater/TOKEN.",
+          "arn:aws:sts::123456789012:assumed-role/dev/me needs secretsmanager:GetSecretValue on it.",
+        ].join("\n"),
+      ),
+    );
+    configure(store, { deploy: ["TOKEN"] });
+
+    await handleSecretsPull({ only: ["TOKEN"] });
+
+    expect(process.exitCode).toBe(1);
+    expect(stripVTControlCharacters(String(log.error.mock.calls[0]?.[0]))).toBe(
+      [
+        "Couldn't read TOKEN from the teamStore secrets adapter.",
+        "AWS Secrets Manager refused to read hot-updater/TOKEN.",
+        "arn:aws:sts::123456789012:assumed-role/dev/me needs",
+        "secretsmanager:GetSecretValue on it.",
+      ].join("\n"),
+    );
+    await expect(fs.stat(envFile())).rejects.toThrow(/ENOENT/u);
+  });
+
   it("fits long names on an 80-column terminal, in each message", async () => {
     const long = (letter: string) => `HOT_UPDATER_${letter.repeat(52)}`;
     const names = [long("A"), long("B"), long("C")];
