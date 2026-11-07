@@ -11,6 +11,8 @@ import android.os.Looper
 import android.os.Process
 import android.util.Log
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,7 +120,7 @@ internal object HotUpdaterSandbox {
  * Takes the launcher entry and the sandbox's links, so the app's JavaScript waits
  * until `ReactActivity` runs. Anything else addressed to the app passes through.
  */
-class HotUpdaterSandboxActivity : Activity() {
+class HotUpdaterSandboxActivity : ComponentActivity() {
     internal companion object {
         /** The sandbox's own start over a running app, which only it can send. */
         const val EXTRA_OVER_APP = "com.hotupdater.sandbox.OVER_APP"
@@ -169,6 +171,8 @@ class HotUpdaterSandboxActivity : Activity() {
         val coordinator = HotUpdaterSandbox.coordinator(this)
         HotUpdaterSandbox.attach(this)
         if (screen == null) {
+            // Drawn under the system bars, with the keyboard's insets for the screen to avoid.
+            enableEdgeToEdge()
             @Suppress("DEPRECATION")
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this))

@@ -220,6 +220,41 @@ describe("the sandbox template", () => {
     );
   });
 
+  it("compiles its screen with Compose, and carries Geist, only in a sandbox build", () => {
+    const gradle = read("android/build.gradle");
+    // What's left once the guarded blocks are gone names neither.
+    const unguarded = gradle
+      .replace(
+        /if \(project\.hasProperty\("hotUpdaterSandbox"\)[^{]*\{[^}]*\}/gu,
+        "",
+      )
+      .replace(/if \(isSandboxBuild\(\)\) \{(?:[^{}]|\{[^{}]*\})*\}/gu, "");
+    expect(gradle).toContain("compose-compiler-gradle-plugin");
+    expect(gradle).toContain(
+      'apply plugin: "org.jetbrains.kotlin.plugin.compose"',
+    );
+    expect(unguarded).not.toMatch(/compose/iu);
+    const script = read("android/src/sandbox/hot-updater-sandbox.gradle");
+    expect(script).toContain("android.buildFeatures.compose = true");
+    expect(script).toMatch(
+      /implementation "androidx\.compose\.foundation:foundation:/u,
+    );
+    // No Material library: the design draws its own components.
+    expect(script).not.toMatch(/material/iu);
+    expect(
+      fs.readdirSync(path.join(SDK, "android/src/sandbox/res/font")),
+    ).toContain("hot_updater_sandbox_geist_regular.ttf");
+    expect(fs.existsSync(path.join(SDK, "android/src/main/res/font"))).toBe(
+      false,
+    );
+    // iOS has no resources to ship: the fonts are bytes in a sandbox source.
+    const podspec = read("HotUpdater.podspec");
+    expect(podspec).not.toMatch(/\.resources?\b|resource_bundles/u);
+    expect(read(`${IOS_SANDBOX}/HotUpdaterSandboxFonts.swift`)).toContain(
+      "CTFontManagerRegisterGraphicsFont",
+    );
+  });
+
   it("replaces HotUpdaterImpl only through what the generator reads", () => {
     const script = read("android/src/sandbox/hot-updater-sandbox.gradle");
     const generator = read(

@@ -26,4 +26,9 @@ process being alive is what tells a relaunch from an icon tap.
 
 `HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
 words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
-the screen knows of dev-server mode.
+the screen knows of dev-server mode. The screen is Compose, with the primitives in
+`HotUpdaterSandboxDesign.kt` and no Material library, drawn from
+`SANDBOX_DESIGN.md` at the package root in the repository, the design iOS's SwiftUI screen shares. Only
+`hot-updater-sandbox.gradle` and the guarded lines of `build.gradle` bring in
+Compose, its compiler, and `androidx.window`; `res/font` holds Geist, under
+`Geist-OFL.txt`.
