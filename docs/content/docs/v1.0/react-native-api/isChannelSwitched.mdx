@@ -1,0 +1,60 @@
+---
+title: "isChannelSwitched"
+description: "The `hotUpdater.isChannelSwitched()` function returns whether a runtime channel switch is currently active."
+icon: GitBranch
+---
+
+## Usage
+
+Use `hotUpdater.isChannelSwitched()` to determine whether the selected channel
+differs from the build-time default. It can become `true` after staging, before
+the app reloads into the selected code.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+if (hotUpdater.isChannelSwitched()) {
+  console.log("Using a runtime channel switch");
+}
+```
+
+## Return value
+
+Returns `true` when:
+
+- A transition to another channel was successfully staged
+- The runtime channel switch has not been cleared with `hotUpdater.resetChannel()`
+
+Returns `false` when:
+
+- The app is still on its build-time default channel
+- `hotUpdater.resetChannel()` has already cleared the runtime channel switch
+
+## Example
+
+After [initializing Hot Updater](/docs/v1.0/react-native-api/init), check for a
+staging update. This example assumes the build-time default channel is
+`production`.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+const updateInfo = await hotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+  channel: "staging", // [!code ++]
+});
+
+if (updateInfo) {
+  const didUpdate = await updateInfo.updateBundle();
+  if (didUpdate) {
+    console.log(hotUpdater.isChannelSwitched()); // true
+    await hotUpdater.reload();
+  }
+}
+```
+
+## Related APIs
+
+- [`hotUpdater.getChannel()`](/docs/v1.0/react-native-api/getChannel)
+- [`hotUpdater.checkForUpdate()`](/docs/v1.0/react-native-api/checkForUpdate)
+- [`hotUpdater.resetChannel()`](/docs/v1.0/react-native-api/resetChannel)

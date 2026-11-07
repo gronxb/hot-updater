@@ -38,6 +38,27 @@ describe("EventBundleTransition", () => {
     ).toContain(builtin.slice(0, 8));
   });
 
+  it.each([
+    ["iOS", "019a0000-0000-7000-8000-01a1b2c3d4e5"],
+    ["Android", "019a0000-0000-7000-8000-02a1b2c3d4e5"],
+  ])(
+    "marks a built-in bundle of an earlier CLI %s build, with a platform byte, by its ID when the report names no minBundleId",
+    (_platform, bundleId) => {
+      render(
+        <EventBundleTransition
+          event={{
+            type: "UNCHANGED",
+            fromBundleId: null,
+            toBundleId: bundleId,
+          }}
+        />,
+      );
+      expect(
+        screen.getByText("Built-in bundle").closest("dd")?.textContent,
+      ).toContain(bundleId.slice(0, 8));
+    },
+  );
+
   it("marks no deployed bundle, whose ID has random bits", () => {
     render(
       <EventBundleTransition

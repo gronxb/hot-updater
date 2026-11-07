@@ -6,6 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface HashValueDisplayProps {
   value: string;
+  /** What the pill shows, shortened, when it isn't `value`; `value` is copied. */
+  display?: string;
   maxLength?: number;
   className?: string;
   buttonClassName?: string;
@@ -18,12 +20,13 @@ export const shortenIdentifier = (value: string, maxLength = 12) =>
 
 export function HashValueDisplay({
   value,
+  display = value,
   maxLength = 12,
   className,
   buttonClassName,
 }: HashValueDisplayProps) {
-  const isTruncated = value.length > maxLength;
-  const truncated = shortenIdentifier(value, maxLength);
+  const isTruncated = display !== value || display.length > maxLength;
+  const truncated = shortenIdentifier(display, maxLength);
 
   const copyValue = async () => {
     try {
@@ -71,7 +74,7 @@ export function HashValueDisplay({
             aria-label={`Copy full value: ${value}`}
             translate="no"
             className={cn(
-              "ring-ring/30 bg-muted/40 border-border/70 inline-flex min-w-0 max-w-full cursor-pointer items-center rounded-md border px-1.5 py-0.5 align-top shadow-xs outline-none transition-[background-color,border-color,transform,box-shadow]",
+              "ring-ring/30 bg-muted/40 border-border/70 relative inline-flex min-w-0 after:absolute after:inset-x-0 after:-inset-y-3 sm:after:hidden max-w-full cursor-pointer items-center rounded-md border px-1.5 py-0.5 align-top shadow-xs outline-none transition-[background-color,border-color,transform,box-shadow]",
               "hover:bg-muted/70 active:scale-[0.98] active:bg-muted/85 focus-visible:ring-[2px]",
               "touch-manipulation select-none motion-reduce:transition-none motion-reduce:active:scale-100",
               !isTruncated && "cursor-copy",

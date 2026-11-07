@@ -1,0 +1,72 @@
+---
+title: "Vercel Blob"
+description: Store your Hot Updater bundles in a private Vercel Blob store.
+icon: vercel
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/vercel --save-dev
+```
+
+For a deployed server, install the package as a runtime dependency instead
+of a development dependency.
+
+## Setup
+
+For a complete provider deployment, follow the [Vercel setup](/docs/v1.0/managed/vercel#step-2-configure-vercel).
+The store must be private. For an existing private store or a custom server,
+use the storage configuration
+below; you do not need to provision the provider's database and Function to use
+this adapter.
+
+## Configuration
+
+```typescript
+interface VercelBlobStorageConfig {
+  token: string; // The store's read-write token (vercel_blob_rw_...)
+  basePath?: string; // Optional base path within the store
+  signedUrlExpiresIn?: number; // Download URLs, at most 604800 (7 days). Default: 3600 seconds
+}
+```
+
+The token is the `BLOB_READ_WRITE_TOKEN`, or `<prefix>_READ_WRITE_TOKEN`, that
+Vercel adds to a project when you connect the store with a read-write token.
+
+## Usage
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { vercelBlobStorage } from "@hot-updater/vercel"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... build, database, plugins, and updateStrategy
+  storage: vercelBlobStorage({ // [!code ++]
+    token: process.env.BLOB_READ_WRITE_TOKEN!, // [!code ++]
+    basePath: "bundles", // Optional // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Protocol
+
+`vercel-blob://store_id/encoded/key`
+
+For example,
+`vercel-blob://store_AbC123/releases/1.0.0/bundle%20ios.zip` is stored in the
+`storageUri` field. The bucket is the store ID the token belongs to. Keys retain
+their slash hierarchy and encode each segment.
+
+## Capabilities
+
+`vercelBlobStorage` implements upload, read, download URL, existence-check,
+exact-delete, listing, and batch-delete operations. It works with a private
+store only: a download URL is a presigned Blob URL that expires after
+`signedUrlExpiresIn`, which the adapter presigns locally from one read
+delegation it renews daily, so the bundles never sit at a public address.
+
+Vercel Blob misreads `#`, `?`, `%`, and `\` in an object's pathname, so the
+adapter stores those characters, and `!`, as `!` followed by the two hex digits
+of each UTF-8 byte, such as `#` as `!23`. The storage URI keeps the original
+key. Deploy's keys contain none of these characters and are stored as they are.

@@ -52,15 +52,19 @@ const serverFunctions = () =>
     const source = readFileSync(file, "utf8");
     return [...source.matchAll(/export const (\w+) = createServerFn\(/g)].map(
       (match) => {
-        let index = (match.index ?? 0) + match[0].length;
+        const start = (match.index ?? 0) + match[0].length;
+        let index = start;
         for (let depth = 1; depth > 0; index += 1) {
           if (source[index] === "(") depth += 1;
           if (source[index] === ")") depth -= 1;
         }
+        const end = source.indexOf(".handler(", index);
         return {
           name: match[1]!,
           file: path.relative(import.meta.dirname, file),
+          options: source.slice(start, index - 1),
           chain: source.slice(index).trimStart(),
+          beforeHandler: source.slice(index, end === -1 ? undefined : end),
         };
       },
     );
@@ -78,6 +82,14 @@ describe("console access before input", () => {
     expect(
       functions.filter(({ name }) => PUBLIC_SERVER_FUNCTIONS.has(name)),
     ).toHaveLength(PUBLIC_SERVER_FUNCTIONS.size);
+  });
+
+  it("validates the input of every server function that changes something", () => {
+    const unvalidated = serverFunctions()
+      .filter(({ options }) => /method:\s*"POST"/u.test(options))
+      .filter(({ beforeHandler }) => !beforeHandler.includes(".validator("))
+      .map(({ name, file }) => `${file}: ${name}`);
+    expect(unvalidated).toEqual([]);
   });
 
   it("refuses an unauthorized caller before the function reads its input", async () => {

@@ -1,5 +1,227 @@
 # @hot-updater/rnef
 
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- Updated dependencies [69225c7]
+  - @hot-updater/cli-tools@1.2.0-rc.24
+  - @hot-updater/plugin-core@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.23
+  - @hot-updater/plugin-core@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/cli-tools@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- Updated dependencies [1e72e05]
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/cli-tools@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- Updated dependencies [42f5b23]
+  - @hot-updater/plugin-core@1.2.0-rc.18
+  - @hot-updater/cli-tools@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [a8da20c]
+- Updated dependencies [e9edd9f]
+  - @hot-updater/cli-tools@1.2.0-rc.17
+  - @hot-updater/plugin-core@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [29bc1e6]
+  - @hot-updater/cli-tools@1.2.0-rc.16
+  - @hot-updater/plugin-core@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [effac38]
+  - @hot-updater/cli-tools@1.2.0-rc.15
+  - @hot-updater/plugin-core@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- Updated dependencies [cc31804]
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Patch Changes
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [ad99046]
+- Updated dependencies [a5daa89]
+- Updated dependencies [1e85609]
+- Updated dependencies [20006f2]
+- Updated dependencies [ef790db]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- Updated dependencies [4c10736]
+  - @hot-updater/cli-tools@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- Updated dependencies [41444fa]
+- Updated dependencies [fd2aa7e]
+  - @hot-updater/cli-tools@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- Updated dependencies [12ff126]
+  - @hot-updater/cli-tools@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- Updated dependencies [8a440e3]
+- Updated dependencies [2e3f250]
+- Updated dependencies [21cfeec]
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - @hot-updater/cli-tools@1.2.0-rc.8
+  - @hot-updater/plugin-core@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies [f3989de]
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [dd7db4b]
+- Updated dependencies [709997a]
+- Updated dependencies [5d4d977]
+- Updated dependencies [2fd1c83]
+  - @hot-updater/cli-tools@1.2.0-rc.5
+  - @hot-updater/plugin-core@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies [3c00e7a]
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [6276804]
+- Updated dependencies [d7f02a6]
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [e97d063]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [f5cffc0]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [b78660b]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+  - @hot-updater/cli-tools@1.2.0-rc.0
+  - @hot-updater/plugin-core@1.2.0-rc.0
+
 ## 1.1.8
 
 ### Patch Changes

@@ -213,8 +213,11 @@ const getIOSVersionFromXcodeProject = async (
  */
 export const resolveIOSAppVersion = async (
   scope?: IOSAppVersionScope,
+  baseVersion?: string,
 ): Promise<ResolvedAppVersion> => {
-  const plistVersion = await getIOSVersionFromInfoPlist();
+  // A prebuild writes the base version into the app's Info.plist, which is
+  // read before the Xcode project.
+  const plistVersion = baseVersion ?? (await getIOSVersionFromInfoPlist());
   if (plistVersion) {
     return {
       version: plistVersion,

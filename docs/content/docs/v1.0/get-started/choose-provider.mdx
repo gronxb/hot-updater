@@ -1,0 +1,75 @@
+---
+title: Choose infrastructure
+description: Choose a provider preset or connect Hot Updater to your existing backend.
+icon: Server
+---
+
+## Choose your infrastructure
+
+Choose where your OTA metadata, bundles, and update server will run. Start with
+an account your team already operates. An agent can inspect the app and existing
+resources before asking for an unresolved provider or deployment target.
+
+Hot Updater's **provider presets** provision resources in your cloud account.
+You own those resources. A **custom server** lets you compose the database,
+storage, framework and hosting in an existing backend.
+
+## Choose a path
+
+| Path | Resources | Use it when | Catalog delivery |
+| --- | --- | --- | --- |
+| [Cloudflare](/docs/v1.0/managed/cloudflare) | D1, R2, Worker | You want the supplied Worker deployment or already use Cloudflare. | Shared cache in front of Worker execution. |
+| [Supabase](/docs/v1.0/managed/supabase) | Postgres, Storage, Edge Function | You want the supplied Supabase deployment or already operate a Supabase project. | Direct Edge Function URL; each check invokes the Function. |
+| [Firebase](/docs/v1.0/managed/firebase) | Firestore, Storage, Function | You want the supplied Firebase deployment or already operate a Firebase project. | Direct Function URL; each check invokes the Function. |
+| [Vercel](/docs/v1.0/managed/vercel) | Postgres, Blob, Function | You want the supplied Vercel deployment or already use Vercel. | Vercel's CDN caches each catalog per API key in front of the Function. |
+| [Azure](/docs/v1.0/managed/azure) | Cosmos DB, Blob Storage, Function App | You want the supplied Azure deployment or already use an Azure subscription. | Direct Function App URL; each check invokes the Function. |
+| [AWS](/docs/v1.0/managed/aws) | DynamoDB, S3, Lambda@Edge, CloudFront | You want the supplied AWS deployment and use AWS accounts and IAM. | CloudFront shared catalog cache. |
+| [Custom server](/docs/v1.0/custom/overview) | Your database, storage and host | You need to use your own ORM, server framework or deployment process. | Depends on your hosting and cache configuration. |
+
+All paths use the same Release Catalog protocol. A provider preset runs the
+official server plugins, Insights, API keys, and Remote Config; a custom server
+runs the ones
+you choose. Shared cache behavior differs by provider; a successful origin-only
+deployment does not imply a shared CDN cache hit. Each provider guide documents
+its resource, access and operating requirements.
+
+## Set up a provider preset
+
+1. [Install packages](/docs/v1.0/get-started/installation), including your app's
+   build adapter and the chosen provider package.
+2. Open the provider guide above and choose **AI agent** or **Terminal**.
+   An agent discovers or creates resources; interactive init walks you through
+   the provider's supported choices.
+3. Record the verified client base URL and the location of the client API key.
+   Continue with [Set up your app](/docs/v1.0/get-started/app-setup).
+4. [Test an OTA update](/docs/v1.0/get-started/test-ota) in a release build and verify
+   the changed code runs after restart.
+
+For an agent-assisted setup, install the
+[Hot Updater skill](/docs/v1.0/guides/ai-agents) and ask it to inspect the project,
+prepare the chosen provider, wire the app, and complete that verification.
+Account login, missing access, billing activation and unresolved deployment
+choices may need your input. Resource IDs and settings that the agent can
+inspect are part of setup work.
+
+## Use an existing backend
+
+Follow the [custom-server quick start](/docs/v1.0/custom/quick-start) for one complete
+Hono, SQLite and R2 example, or use the
+[custom-server overview](/docs/v1.0/custom/overview) to select the adapter, framework
+and host that fit your stack.
+
+A custom server requires schema setup, an explicit client access policy and
+protected admin routes. Its CLI connection uses `standaloneRepository`, and
+lists the server's plugins; the server itself uses a direct database adapter.
+Storage and database adapters can be selected independently; see
+[Adapters and Plugins](/docs/v1.0/concepts/plugin-system).
+
+## Add operations after the first update
+
+The Console is a separate operator interface. After the app successfully
+receives an update, use the [Console guide](/docs/v1.0/guides/console) for local
+management or [host the Console](/docs/v1.0/guides/console-deployment) with the same
+provider resources. For a signed deployment, configure
+[bundle signing](/docs/v1.0/guides/bundle-signing) before building the native app
+that will verify those signatures.

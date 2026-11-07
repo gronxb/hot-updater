@@ -152,8 +152,8 @@ storage credentials: follow the scaffold's bounded read/list check using the sam
 credential chain as the local storage adapter. Do not substitute an MCP session or
 server runtime credentials, or claim write/OTA verification from read access.
 
-A doctor `fixability: "blocked"` issue needs external context/access beyond local
-repairs. With an existing setup/upgrade request and the required provider access,
+A doctor issue whose resolution needs provider work needs external context and
+access. With an existing setup/upgrade request and the required provider access,
 continue through the generated instructions; pause only the step with an actual
 unresolved prerequisite, unknown remote state, or unapproved consequential change.
 

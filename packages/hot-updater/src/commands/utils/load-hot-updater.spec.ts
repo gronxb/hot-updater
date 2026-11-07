@@ -17,11 +17,24 @@ const mockCli = vi.hoisted(() => ({
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   // How tooling reads a definition, and the output's colors, stay real.
-  const { colors, isServerDefinition, serverDefinitionOf } =
-    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  const {
+    colors,
+    displayWidth,
+    fitText,
+    isCommandLine,
+    isServerDefinition,
+    MESSAGE_WIDTH,
+    serverDefinitionOf,
+    withProviderMessages,
+  } = await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     colors,
+    displayWidth,
+    fitText,
+    isCommandLine,
     isServerDefinition,
+    MESSAGE_WIDTH,
+    withProviderMessages,
     loadConfig: mockCli.loadConfig,
     p: {
       log: mockCli.log,

@@ -322,6 +322,18 @@ function buildNextPatchState({
   return orderedPatches;
 }
 
+/**
+ * The base's Hermes bundle is the target's: there is nothing to patch, and
+ * an install of the base downloads only the files that changed.
+ */
+export class UnchangedHermesBundleError extends Error {
+  override readonly name = "UnchangedHermesBundleError";
+
+  constructor() {
+    super("Hermes bundle is unchanged; no diff patch is required");
+  }
+}
+
 export async function createBundleDiff(
   { baseBundleId, bundleId }: CreateBundleDiffInput,
   deps: CreateBundleDiffDependencies,
@@ -376,7 +388,7 @@ export async function createBundleDiff(
   }
 
   if (baseAssetHash === targetAssetHash) {
-    throw new Error("Hermes bundle is unchanged; no diff patch is required");
+    throw new UnchangedHermesBundleError();
   }
 
   const [baseBytes, targetBytes] = await Promise.all([

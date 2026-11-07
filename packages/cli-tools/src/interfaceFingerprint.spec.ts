@@ -5,10 +5,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  autolinkingConfigCommand,
   createInterfaceFingerprint,
   INTERFACE_FINGERPRINT_ENGINE,
   isCodegenSpecFile,
   type NativeInterface,
+  reactNativeConfigCommand,
   readReactNativeInterface,
 } from "./interfaceFingerprint";
 
@@ -630,6 +632,7 @@ describe("readReactNativeInterface", () => {
       runtime: "react-native@0.85.2",
       dependencies: [{ name: "both", root: "/both" }],
       settings: {},
+      autolinking: { reactNative: config, expoModules: null },
     });
   });
 
@@ -980,6 +983,872 @@ describe("readReactNativeInterface", () => {
       (await read("android", { "expo.jsEngine": "jsc" })).settings,
     ).toEqual({
       "expo.jsEngine": "jsc",
+    });
+  });
+});
+
+describe("reactNativeConfigCommand", () => {
+  let project: string;
+
+  const writeManifest = async (name: string, version: string) => {
+    const dir = path.join(project, "node_modules", name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name, version }),
+    );
+  };
+
+  beforeEach(async () => {
+    project = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-expo-fp-")),
+    );
+    await writeManifest("react-native", "0.76.0");
+    await writeManifest("expo", "52.0.0");
+  });
+
+  afterEach(async () => {
+    await fs.rm(project, { recursive: true, force: true });
+  });
+
+  const reactNativeCli = () => [
+    path.join(project, "node_modules/react-native/cli.js"),
+    "config",
+  ];
+
+  it("lists React Native packages with Expo's autolinking from 1.12", async () => {
+    await writeManifest("expo-modules-autolinking", "2.0.8");
+
+    expect(reactNativeConfigCommand(project, "ios", {})).toEqual([
+      path.join(
+        project,
+        "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      ),
+      "react-native-config",
+      "--platform",
+      "ios",
+      "--json",
+    ]);
+  });
+
+  it("uses React Native CLI before 1.12, such as SDK 50", async () => {
+    await writeManifest("expo-modules-autolinking", "1.10.3");
+
+    expect(reactNativeConfigCommand(project, "ios", {})).toEqual(
+      reactNativeCli(),
+    );
+  });
+
+  it("uses React Native CLI when EXPO_USE_COMMUNITY_AUTOLINKING=1", async () => {
+    await writeManifest("expo-modules-autolinking", "2.0.8");
+
+    expect(
+      reactNativeConfigCommand(project, "ios", {
+        EXPO_USE_COMMUNITY_AUTOLINKING: "1",
+      }),
+    ).toEqual(reactNativeCli());
+  });
+});
+
+describe("autolinkingConfigCommand", () => {
+  let project: string;
+
+  beforeEach(async () => {
+    project = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-autolinking-")),
+    );
+    for (const [name, version] of [
+      ["react-native", "0.85.0"],
+      ["expo", "54.0.0"],
+      ["expo-modules-autolinking", "3.0.0"],
+    ]) {
+      const dir = path.join(project, "node_modules", name!);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name, version }),
+      );
+    }
+  });
+
+  afterEach(async () => {
+    await fs.rm(project, { recursive: true, force: true });
+  });
+
+  it("runs what each build adapter's native project runs", () => {
+    expect(
+      autolinkingConfigCommand(project, "android", { buildAdapter: "rock" }),
+    ).toEqual({ command: "npx", args: ["rock", "config", "-p", "android"] });
+    expect(
+      autolinkingConfigCommand(project, "ios", { buildAdapter: "bare" }),
+    ).toEqual({
+      command: process.execPath,
+      args: [path.join(project, "node_modules/react-native/cli.js"), "config"],
+    });
+    expect(
+      autolinkingConfigCommand(project, "ios", {
+        buildAdapter: "expo",
+        env: {},
+      }),
+    ).toEqual({
+      command: process.execPath,
+      args: [
+        path.join(
+          project,
+          "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+        ),
+        "react-native-config",
+        "--platform",
+        "ios",
+        "--json",
+      ],
+    });
+  });
+});
+
+describe("local native modules", () => {
+  const expoModule = async (
+    dir: string,
+    { packageJson }: { packageJson?: Record<string, unknown> } = {},
+  ) => {
+    await write(
+      path.join(dir, "expo-module.config.json"),
+      JSON.stringify({
+        platforms: ["apple", "android"],
+        apple: { modules: ["LocalModule"] },
+        android: { modules: ["expo.local.LocalModule"] },
+      }),
+    );
+    await write(path.join(dir, "ios/Local.podspec"), "Pod::Spec.new");
+    await write(
+      path.join(dir, "ios/LocalModule.swift"),
+      'Function("hello") { "ios" }',
+    );
+    await write(path.join(dir, "android/build.gradle"), "apply plugin");
+    await write(
+      path.join(dir, "android/src/main/java/LocalModule.kt"),
+      'Function("hello") { "android" }',
+    );
+    if (packageJson) {
+      await write(path.join(dir, "package.json"), manifest(packageJson));
+    }
+  };
+
+  /** A module as `expo-modules-autolinking resolve` prints it. */
+  const resolved = (dir: string, packageName: string, packageVersion = "") => ({
+    ios: {
+      packageName,
+      packageVersion,
+      pods: [{ podspecDir: path.join(dir, "ios") }],
+    },
+    android: {
+      packageName,
+      packageVersion,
+      projects: [{ sourceDir: path.join(dir, "android") }],
+    },
+  });
+
+  /** Runs the real reader over what autolinking prints for this platform. */
+  const readInterface = async (
+    platform: "ios" | "android",
+    {
+      modules = [],
+      dependencies = {},
+      expoDependencies = {},
+      expoConfigFails = false,
+      settings,
+    }: {
+      modules?: ReturnType<typeof resolved>[];
+      dependencies?: Record<string, unknown>;
+      /** What Expo's `react-native-config` prints beyond React Native CLI. */
+      expoDependencies?: Record<string, unknown>;
+      expoConfigFails?: boolean;
+      settings?: Record<string, string>;
+    },
+    cwd: string,
+  ) => {
+    const output = {
+      modules: modules.map((module) => module[platform]),
+      dependencies: expoDependencies,
+    };
+    await write(
+      path.join(root, "node_modules/expo/package.json"),
+      manifest({ name: "expo", version: "57.0.0" }),
+    );
+    await write(
+      path.join(root, "node_modules/expo-modules-autolinking/package.json"),
+      manifest({ name: "expo-modules-autolinking", version: "57.0.0" }),
+    );
+    await write(
+      path.join(
+        root,
+        "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      ),
+      `${expoConfigFails ? 'if (process.argv.includes("react-native-config")) process.exit(1);' : ""}console.log(${JSON.stringify(JSON.stringify(output))});`,
+    );
+    const config = {
+      dependencies: {
+        ...(modules.length > 0
+          ? {
+              expo: {
+                name: "expo",
+                root: path.join(root, "node_modules/expo"),
+                platforms: { ios: {}, android: {} },
+              },
+            }
+          : {}),
+        ...dependencies,
+      },
+    };
+    return readReactNativeInterface({
+      cwd,
+      command: process.execPath,
+      args: ["-e", `console.log(${JSON.stringify(JSON.stringify(config))})`],
+      platform,
+      ...(settings ? { settings } : {}),
+    });
+  };
+
+  type Linked = Parameters<typeof readInterface>[1];
+
+  const fingerprint = async (
+    platform: "ios" | "android",
+    linked: Linked,
+    cwd: string = app,
+  ) =>
+    createInterfaceFingerprint(
+      cwd,
+      { platform },
+      await readInterface(platform, linked, cwd),
+    );
+
+  const hashes = async (linked: Linked) => ({
+    ios: (await fingerprint("ios", linked)).hash,
+    android: (await fingerprint("android", linked)).hash,
+  });
+
+  const fileSources = async (platform: "ios" | "android", linked: Linked) =>
+    (await fingerprint(platform, linked)).sources.flatMap((source) =>
+      source.type === "file" ? [source.filePath] : [],
+    );
+
+  const contentIds = async (platform: "ios" | "android", linked: Linked) =>
+    (await fingerprint(platform, linked)).sources.flatMap((source) =>
+      source.type === "contents" ? [source.id] : [],
+    );
+
+  describe.each([
+    ["an Expo app", { settings: { "expo.jsEngine": "hermes" } }],
+    ["a bare app with Expo modules", {}],
+  ])("a stock local Expo module without package.json on %s", (_, host) => {
+    const dir = () => path.join(app, "modules/my-module");
+    const linked = (): Linked => ({
+      ...host,
+      modules: [resolved(dir(), "my-module")],
+    });
+
+    it("hashes its native files and registration, not `name@`", async () => {
+      await expoModule(dir());
+
+      expect(await fileSources("ios", linked())).toEqual(
+        expect.arrayContaining([
+          "modules/my-module/ios/Local.podspec",
+          "modules/my-module/ios/LocalModule.swift",
+        ]),
+      );
+      expect(await fileSources("android", linked())).toEqual(
+        expect.arrayContaining([
+          "modules/my-module/android/build.gradle",
+          "modules/my-module/android/src/main/java/LocalModule.kt",
+        ]),
+      );
+      const ids = await contentIds("ios", linked());
+      expect(ids).toContain("expo-module-config:my-module");
+      expect(ids).not.toContain("dependency:my-module");
+    });
+
+    it("moves only the fingerprint of the platform whose source changed", async () => {
+      await expoModule(dir());
+      const before = await hashes(linked());
+
+      await write(
+        path.join(dir(), "ios/LocalModule.swift"),
+        'Function("renamed") { "ios" }',
+      );
+      const iosRenamed = await hashes(linked());
+      expect(iosRenamed.ios).not.toBe(before.ios);
+      expect(iosRenamed.android).toBe(before.android);
+
+      await write(
+        path.join(dir(), "android/src/main/java/LocalModule.kt"),
+        'Function("hello") { "edited body" }',
+      );
+      const androidEdited = await hashes(linked());
+      expect(androidEdited.ios).toBe(iosRenamed.ios);
+      expect(androidEdited.android).not.toBe(iosRenamed.android);
+
+      await write(
+        path.join(dir(), "expo-module.config.json"),
+        JSON.stringify({
+          platforms: ["apple", "android"],
+          apple: { modules: ["LocalModule"] },
+          android: { modules: ["expo.local.OtherModule"] },
+        }),
+      );
+      const registered = await hashes(linked());
+      expect(registered.ios).toBe(androidEdited.ios);
+      expect(registered.android).not.toBe(androidEdited.android);
+    });
+
+    it("ignores what builds and installs write inside it", async () => {
+      await expoModule(dir());
+      const before = await hashes(linked());
+
+      for (const file of [
+        "android/build/generated/Gen.kt",
+        "android/.gradle/cache.kts",
+        "android/.cxx/Gen.cpp",
+        "ios/build/Gen.swift",
+        "ios/Pods/Gen.swift",
+        "ios/DerivedData/Gen.swift",
+        "node_modules/dep/ios/Dep.swift",
+        "node_modules/dep/android/Dep.kt",
+        "ios/Tests/LocalModuleTests.swift",
+        "android/src/androidTest/LocalTest.kt",
+      ]) {
+        await write(path.join(dir(), file), "generated");
+      }
+
+      expect(await hashes(linked())).toEqual(before);
+    });
+
+    it("hashes what the same module hashes once it has a package.json", async () => {
+      await expoModule(dir());
+      const without = await fingerprint("ios", linked());
+
+      await write(
+        path.join(dir(), "package.json"),
+        manifest({ name: "my-module", version: "1.0.0" }),
+      );
+      const withManifest = await fingerprint("ios", {
+        ...host,
+        modules: [resolved(dir(), "my-module", "1.0.0")],
+      });
+
+      expect(withManifest.sources).toEqual(without.sources);
+      expect(withManifest.hash).toBe(without.hash);
+    });
+  });
+
+  it("is the same in any checkout, with its files in order", async () => {
+    const checkout = async (base: string) => {
+      const dir = path.join(base, "shared/my-module");
+      await expoModule(dir);
+      await write(path.join(dir, "ios/Z.swift"), "final class Z {}");
+      await write(path.join(dir, "ios/A.swift"), "final class A {}");
+      await write(path.join(base, "app/package.json"), manifest({ name: "a" }));
+      return fingerprint(
+        "ios",
+        { modules: [resolved(dir, "my-module")] },
+        path.join(base, "app"),
+      );
+    };
+
+    const here = await checkout(path.join(root, "one"));
+    const there = await checkout(path.join(root, "two/deeper"));
+
+    expect(there).toEqual(here);
+    const files = here.sources.flatMap((source) =>
+      source.type === "file" ? [source.filePath] : [],
+    );
+    expect(files).toEqual([
+      "../shared/my-module/ios/A.swift",
+      "../shared/my-module/ios/Local.podspec",
+      "../shared/my-module/ios/LocalModule.swift",
+      "../shared/my-module/ios/Z.swift",
+    ]);
+  });
+
+  it.each([
+    ["SDK 52's unversioned shape", "my-module", "UNVERSIONED"],
+    ["a scoped folder", "@scope/my-module", ""],
+    ["a lowercased mixed-case folder", "my-module", ""],
+  ])("tracks %s", async (_, packageName, packageVersion) => {
+    const dir = path.join(app, "modules", packageName);
+    await expoModule(dir);
+    const linked: Linked = {
+      modules: [resolved(dir, packageName, packageVersion)],
+    };
+    const before = await fingerprint("ios", linked);
+    expect(await contentIds("ios", linked)).not.toContain(
+      `dependency:${packageName}`,
+    );
+
+    await write(path.join(dir, "ios/LocalModule.swift"), "renamed");
+    expect((await fingerprint("ios", linked)).hash).not.toBe(before.hash);
+  });
+
+  it("tracks a module in a monorepo sibling folder by a relative path", async () => {
+    const dir = path.join(root, "shared/my-module");
+    await expoModule(dir);
+    const linked: Linked = { modules: [resolved(dir, "my-module")] };
+
+    expect(await fileSources("ios", linked)).toContain(
+      "../shared/my-module/ios/LocalModule.swift",
+    );
+    const before = await hashes(linked);
+    await write(path.join(dir, "ios/LocalModule.swift"), "renamed");
+    expect((await hashes(linked)).ios).not.toBe(before.ios);
+  });
+
+  it("tracks a local module whose package.json has no name", async () => {
+    // Expo 57 and 58 print `packageName: ""` for it, and still link it.
+    const dir = path.join(app, "modules/my-module");
+    await expoModule(dir, { packageJson: { version: "1.0.0" } });
+    const linked: Linked = { modules: [resolved(dir, "", "1.0.0")] };
+
+    expect(await contentIds("ios", linked)).toContain(
+      "expo-module-config:my-module",
+    );
+    const before = await fingerprint("ios", linked);
+    await write(path.join(dir, "ios/LocalModule.swift"), "renamed");
+    expect((await fingerprint("ios", linked)).hash).not.toBe(before.hash);
+  });
+
+  it("tracks a local module whose package.json names something else", async () => {
+    const dir = path.join(app, "modules/my-module");
+    await expoModule(dir, { packageJson: { name: "other", version: "1.0.0" } });
+    const linked: Linked = { modules: [resolved(dir, "my-module", "1.0.0")] };
+    const before = await fingerprint("ios", linked);
+
+    await write(path.join(dir, "ios/LocalModule.swift"), "renamed");
+    expect((await fingerprint("ios", linked)).hash).not.toBe(before.hash);
+  });
+
+  it("reads a module named like its app from the module's folder", async () => {
+    await write(path.join(app, "package.json"), manifest({ name: "my-app" }));
+    const dir = path.join(app, "modules/my-app");
+    await expoModule(dir);
+    const linked: Linked = { modules: [resolved(dir, "my-app")] };
+    const before = await hashes(linked);
+
+    // The app's own folders stay out of the hash.
+    await write(path.join(app, "ios/AppDelegate.swift"), "hand written");
+    await write(path.join(app, "android/app/Main.kt"), "hand written");
+    expect(await hashes(linked)).toEqual(before);
+
+    await write(
+      path.join(dir, "expo-module.config.json"),
+      JSON.stringify({ apple: { modules: ["OtherModule"] } }),
+    );
+    expect((await hashes(linked)).ios).not.toBe(before.ios);
+  });
+
+  it("keeps a module installed in node_modules by name and version", async () => {
+    const installed = path.join(app, "node_modules/expo-font");
+    await expoModule(installed, {
+      packageJson: { name: "expo-font", version: "13.3.2" },
+    });
+    // An alias: autolinking's name matches no package.json above the module.
+    const aliased = path.join(app, "node_modules/font-alias");
+    await expoModule(aliased, {
+      packageJson: { name: "expo-other", version: "2.0.0" },
+    });
+    const nameless = path.join(app, "node_modules/nameless");
+    await expoModule(nameless, { packageJson: { version: "3.0.0" } });
+    const linked: Linked = {
+      modules: [
+        resolved(installed, "expo-font", "13.3.2"),
+        resolved(aliased, "font-alias", "2.0.0"),
+        resolved(nameless, "", "3.0.0"),
+      ],
+    };
+
+    expect(
+      (await fingerprint("ios", linked)).sources.flatMap((source) =>
+        source.type === "contents" && source.id.startsWith("dependency:")
+          ? [`${source.id}=${String(source.contents)}`]
+          : [],
+      ),
+    ).toEqual([
+      "dependency:expo=expo@57.0.0",
+      "dependency:expo-font=expo-font@13.3.2",
+      "dependency:font-alias=font-alias@2.0.0",
+    ]);
+    expect(await fileSources("ios", linked)).toEqual([
+      "src/specs/NativeDevice.ts",
+    ]);
+  });
+
+  describe("linked through react-native.config.js", () => {
+    const rnPackage = async (
+      dir: string,
+      { packageJson }: { packageJson?: Record<string, unknown> } = {},
+    ) => {
+      await write(path.join(dir, "local.podspec"), "Pod::Spec.new");
+      await write(path.join(dir, "ios/Local.m"), "RCT_EXPORT_METHOD(hello)");
+      await write(path.join(dir, "android/build.gradle"), "apply plugin");
+      await write(path.join(dir, "android/src/Local.kt"), "@ReactMethod hello");
+      if (packageJson) {
+        await write(path.join(dir, "package.json"), manifest(packageJson));
+      }
+    };
+    const iosOf = (podspecDir: string) => ({
+      podspecPath: path.join(podspecDir, "local.podspec"),
+    });
+    const androidOf = (sourceDir: string) => ({ sourceDir });
+
+    it.each([
+      ["with a package.json", { name: "local", version: "1.0.0" }],
+      ["without a package.json", undefined],
+    ])("tracks a `root` %s", async (_, packageJson) => {
+      const dir = path.join(app, "local/local");
+      await rnPackage(dir, packageJson ? { packageJson } : {});
+      const linked: Linked = {
+        dependencies: {
+          local: {
+            name: "local",
+            root: dir,
+            platforms: {
+              ios: iosOf(dir),
+              android: androidOf(path.join(dir, "android")),
+            },
+          },
+        },
+      };
+      const before = await hashes(linked);
+
+      await write(path.join(dir, "ios/Local.m"), "RCT_EXPORT_METHOD(renamed)");
+      const ios = await hashes(linked);
+      expect(ios.ios).not.toBe(before.ios);
+      expect(ios.android).toBe(before.android);
+
+      await write(
+        path.join(dir, "android/src/Local.kt"),
+        "@ReactMethod renamed",
+      );
+      const android = await hashes(linked);
+      expect(android.ios).toBe(ios.ios);
+      expect(android.android).not.toBe(ios.android);
+    });
+
+    it.each([
+      ["with a package.json", { name: "local", version: "1.0.0" }],
+      ["without a package.json", undefined],
+    ])(
+      "tracks a `root` %s whose platforms point elsewhere",
+      async (_, packageJson) => {
+        const dir = path.join(app, "local/local");
+        const native = path.join(app, "local/native");
+        await write(
+          path.join(dir, packageJson ? "package.json" : "README.md"),
+          packageJson ? manifest(packageJson) : "docs",
+        );
+        await rnPackage(native);
+        const linked: Linked = {
+          dependencies: {
+            local: {
+              name: "local",
+              root: dir,
+              platforms: {
+                ios: iosOf(native),
+                android: androidOf(path.join(native, "android")),
+              },
+            },
+          },
+        };
+        const before = await hashes(linked);
+
+        await write(
+          path.join(native, "ios/Local.m"),
+          "RCT_EXPORT_METHOD(renamed)",
+        );
+        const ios = await hashes(linked);
+        expect(ios.ios).not.toBe(before.ios);
+        expect(ios.android).toBe(before.android);
+      },
+    );
+
+    it("tracks platform source paths with no `root`, which React Native CLI prints with no name", async () => {
+      const native = path.join(app, "local/native");
+      await rnPackage(native);
+      const linked: Linked = {
+        dependencies: {
+          local: {
+            platforms: { ios: iosOf(native), android: androidOf(native) },
+          },
+        },
+      };
+      expect(await fileSources("ios", linked)).toContain(
+        "local/native/ios/Local.m",
+      );
+      const before = await hashes(linked);
+
+      await write(
+        path.join(native, "ios/Local.m"),
+        "RCT_EXPORT_METHOD(renamed)",
+      );
+      expect((await hashes(linked)).ios).not.toBe(before.ios);
+    });
+
+    it("leaves out platform source paths in node_modules or nowhere, with no `root`", async () => {
+      const installed = path.join(app, "node_modules/hoisted");
+      await rnPackage(installed);
+      const linked: Linked = {
+        dependencies: {
+          hoisted: { platforms: { ios: iosOf(installed) } },
+          gone: { platforms: { ios: iosOf(path.join(app, "gone")) } },
+        },
+      };
+
+      expect(await contentIds("ios", linked)).toEqual([
+        "codegen-config:.",
+        "runtime",
+      ]);
+    });
+
+    it("hashes a package with a codegen spec by its spec, not its native files", async () => {
+      const dir = path.join(app, "local/spec");
+      await rnPackage(dir, {
+        packageJson: {
+          name: "spec",
+          version: "1.0.0",
+          codegenConfig: { jsSrcsDir: "src" },
+        },
+      });
+      await write(
+        path.join(dir, "src/NativeSpec.ts"),
+        "export interface Spec { hello(): void }",
+      );
+      const linked: Linked = {
+        dependencies: {
+          spec: {
+            name: "spec",
+            root: dir,
+            platforms: { ios: iosOf(dir) },
+          },
+        },
+      };
+      const before = await hashes(linked);
+
+      await write(path.join(dir, "ios/Local.m"), "RCT_EXPORT_METHOD(body)");
+      expect((await hashes(linked)).ios).toBe(before.ios);
+
+      await write(
+        path.join(dir, "src/NativeSpec.ts"),
+        "export interface Spec { renamed(): void }",
+      );
+      expect((await hashes(linked)).ios).not.toBe(before.ios);
+    });
+  });
+
+  describe("on a bare app whose native project links through Expo's react-native-config", () => {
+    const dir = () => path.join(app, "modules/rn-package");
+    const native = () => ({
+      platforms: {
+        ios: { podspecPath: path.join(dir(), "rn.podspec") },
+        android: { sourceDir: path.join(dir(), "android") },
+      },
+    });
+    const expoModule_ = () => resolved(path.join(app, "modules/any"), "any");
+    const write_ = async () => {
+      await expoModule(path.join(app, "modules/any"));
+      await write(
+        path.join(dir(), "package.json"),
+        manifest({ name: "rn-package", version: "1.0.0" }),
+      );
+      await write(path.join(dir(), "rn.podspec"), "Pod::Spec.new");
+      await write(path.join(dir(), "ios/Rn.m"), "RCT_EXPORT_METHOD(hello)");
+      await write(path.join(dir(), "android/Rn.kt"), "@ReactMethod hello");
+    };
+
+    it("tracks a local package only Expo's autolinking finds", async () => {
+      await write_();
+      const linked: Linked = {
+        modules: [expoModule_()],
+        expoDependencies: {
+          "rn-package": { name: "rn-package", root: dir(), ...native() },
+        },
+      };
+      expect(await fileSources("ios", linked)).toContain(
+        "modules/rn-package/ios/Rn.m",
+      );
+      const before = await hashes(linked);
+
+      await write(path.join(dir(), "ios/Rn.m"), "RCT_EXPORT_METHOD(renamed)");
+      const after = await hashes(linked);
+      expect(after.ios).not.toBe(before.ios);
+      expect(after.android).toBe(before.android);
+    });
+
+    it("leaves out what Expo finds in node_modules, and what React Native CLI lists already", async () => {
+      await write_();
+      const transitive = path.join(app, "node_modules/transitive");
+      await write(
+        path.join(transitive, "package.json"),
+        manifest({ name: "transitive", version: "1.0.0" }),
+      );
+      const base: Linked = {
+        modules: [expoModule_()],
+        dependencies: {
+          "rn-package": { name: "rn-package", root: dir(), ...native() },
+        },
+      };
+      const expected = await fingerprint("ios", base);
+
+      expect(
+        await fingerprint("ios", {
+          ...base,
+          expoDependencies: {
+            transitive: {
+              name: "transitive",
+              root: transitive,
+              platforms: { ios: {}, android: {} },
+            },
+            "rn-package": { name: "rn-package", root: dir(), ...native() },
+          },
+        }),
+      ).toEqual(expected);
+    });
+
+    it("still computes when Expo's react-native-config fails", async () => {
+      await write_();
+      const base: Linked = { modules: [expoModule_()] };
+      const expected = await fingerprint("ios", base);
+
+      expect(
+        await fingerprint("ios", { ...base, expoConfigFails: true }),
+      ).toEqual(expected);
+    });
+  });
+
+  describe("installed through package.json", () => {
+    const withDependency = async (spec: string) =>
+      write(
+        path.join(app, "package.json"),
+        manifest({
+          name: "app",
+          codegenConfig: { jsSrcsDir: "src" },
+          dependencies: { foo: spec },
+        }),
+      );
+    const fooFiles = async (dir: string) => {
+      await write(
+        path.join(dir, "package.json"),
+        manifest({ name: "foo", version: "1.0.0" }),
+      );
+      await write(path.join(dir, "foo.podspec"), "Pod::Spec.new");
+      await write(path.join(dir, "ios/Foo.m"), "RCT_EXPORT_METHOD(hello)");
+      await write(path.join(dir, "android/Foo.kt"), "@ReactMethod hello");
+    };
+    const rn = (dir: string): Linked => ({
+      dependencies: {
+        foo: {
+          name: "foo",
+          root: dir,
+          platforms: {
+            ios: { podspecPath: path.join(dir, "foo.podspec") },
+            android: { sourceDir: path.join(dir, "android") },
+          },
+        },
+      },
+    });
+
+    it.each([
+      ["link:", "link:../foo"],
+      ["workspace:", "workspace:*"],
+      ["file: as npm links it", "file:../foo"],
+    ])("tracks %s, a symlink to the source folder", async (_, spec) => {
+      const source = path.join(root, "foo");
+      await fooFiles(source);
+      await withDependency(spec);
+      await fs.mkdir(path.join(app, "node_modules"), { recursive: true });
+      await fs.symlink(source, path.join(app, "node_modules/foo"));
+      const linked = rn(path.join(app, "node_modules/foo"));
+
+      expect(await fileSources("ios", linked)).toContain("../foo/ios/Foo.m");
+      const before = await hashes(linked);
+      await write(path.join(source, "ios/Foo.m"), "renamed");
+      const after = await hashes(linked);
+      expect(after.ios).not.toBe(before.ios);
+      expect(after.android).toBe(before.android);
+    });
+
+    it.each([
+      ["Yarn or Bun", "node_modules/foo"],
+      ["pnpm", "node_modules/.pnpm/foo@file+..+foo/node_modules/foo"],
+    ])("tracks a file: folder %s copies into node_modules", async (_, copy) => {
+      await fooFiles(path.join(root, "foo"));
+      await withDependency("file:../foo");
+      const installed = path.join(app, copy);
+      await fooFiles(installed);
+      const linked = rn(installed);
+
+      const ids = await contentIds("ios", linked);
+      expect(ids).not.toContain("dependency:foo");
+      expect(await fileSources("ios", linked)).toContain(`${copy}/ios/Foo.m`);
+      const before = await hashes(linked);
+
+      await write(path.join(installed, "ios/Foo.m"), "renamed");
+      const after = await hashes(linked);
+      expect(after.ios).not.toBe(before.ios);
+      expect(after.android).toBe(before.android);
+    });
+
+    it.each([
+      ["a file: tarball", "file:../foo-1.0.0.tgz"],
+      ["a registry version", "^1.0.0"],
+      ["a git url", "github:someone/foo#abc"],
+    ])("keeps %s by name and version", async (_, spec) => {
+      await write(path.join(root, "foo-1.0.0.tgz"), "tarball");
+      await withDependency(spec);
+      const installed = path.join(app, "node_modules/foo");
+      await fooFiles(installed);
+      const linked = rn(installed);
+
+      expect(await contentIds("ios", linked)).toContain("dependency:foo");
+      const before = await hashes(linked);
+      await write(path.join(installed, "ios/Foo.m"), "edited");
+      expect(await hashes(linked)).toEqual(before);
+    });
+  });
+
+  it("keeps a project with no untracked local module byte for byte", async () => {
+    // Computed by the code before local modules were tracked, on this fixture:
+    // the engine name and every other input are part of this hash.
+    const registry = path.join(app, "node_modules/expo-font");
+    await expoModule(registry, {
+      packageJson: { name: "expo-font", version: "13.3.2" },
+    });
+    const withManifest = path.join(app, "modules/with-manifest");
+    await expoModule(withManifest, {
+      packageJson: { name: "with-manifest", version: "1.0.0" },
+    });
+    const rnLocal = path.join(root, "packages/local-module");
+    const linked: Linked = {
+      settings: { "expo.jsEngine": "hermes" },
+      modules: [
+        resolved(registry, "expo-font", "13.3.2"),
+        resolved(withManifest, "with-manifest", "1.0.0"),
+      ],
+      dependencies: {
+        "local-module": {
+          name: "local-module",
+          root: rnLocal,
+          platforms: { ios: {}, android: {} },
+        },
+        "react-native-screens": {
+          name: "react-native-screens",
+          root: path.join(app, "node_modules/react-native-screens"),
+          platforms: { ios: {}, android: {} },
+        },
+      },
+    };
+
+    expect(await hashes(linked)).toEqual({
+      ios: "6fc37df35ef74be7dcabdfe7c9a2b9abb1cc59e78214a9f6141d5ce40db11fc1",
+      android:
+        "9b1c6f3807dccb57dfda9c0c54efe879b134ff47bc3a77b3c750114b18e9581a",
     });
   });
 });

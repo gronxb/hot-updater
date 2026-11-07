@@ -18,6 +18,7 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
@@ -451,10 +452,14 @@ const selectDatabaseUrl = async ({
   );
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
@@ -642,12 +647,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     clientPlugins: server.clientPlugins,
   });
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // What init asks for and checks before `runInit`.

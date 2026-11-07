@@ -1,0 +1,82 @@
+---
+title: "isUpdateDownloaded"
+description: "Returns whether an update bundle has finished downloading in the current app session and is ready to be applied on reload."
+icon: CheckCircle
+---
+
+## Usage
+
+- Returns `true` when the download `progress` has reached `1.0`.
+- Returns `false` while downloading or before any download starts.
+- Resets to `false` automatically when a new download starts.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+async function maybeApplyUpdate() {
+  if (hotUpdater.isUpdateDownloaded()) {
+    await hotUpdater.reload();
+  }
+}
+```
+
+### Skip `checkForUpdate` when a download already exists
+
+If a bundle has already finished downloading in this session, you can skip `checkForUpdate()` and just prompt the user to reload.
+
+```tsx
+import { hotUpdater } from "./hotUpdater";
+
+async function checkAndUpdate() {
+  // Avoid network call if an update is already downloaded and awaiting reload
+  if (hotUpdater.isUpdateDownloaded()) {
+    // e.g., show a "Restart to update" CTA or reload immediately
+    return;
+  }
+
+  const updateInfo = await hotUpdater.checkForUpdate({
+    updateStrategy: "appVersion", // or "fingerprint"
+    // requestHeaders: { "x-api-key": "<your-api-key>" },
+  });
+
+  if (!updateInfo) return;
+
+  const ok = await updateInfo.updateBundle();
+  if (!ok) return;
+
+  if (updateInfo.shouldForceUpdate) {
+    await hotUpdater.reload();
+  }
+}
+```
+
+## Details
+
+- This value is derived from the internal `progress` state managed by `useHotUpdaterStore()`.
+- It is session-scoped: it does not persist across app restarts.
+- Transitions that need no download, `USE_BUILTIN` and `ADOPT_RELEASE`, leave
+  it `false`. Use the result of the selected `updateBundle()` helper to
+  confirm those transitions succeeded.
+- Use this when you need to decide whether to show a "Restart to update" UI or trigger a controlled reload.
+
+```tsx
+import { useHotUpdaterStore } from "@hot-updater/react-native";
+import { Button } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
+
+export function UpdateButton() {
+  const { progress, isUpdateDownloaded } = useHotUpdaterStore();
+  return (
+    <Button
+      title={
+        isUpdateDownloaded
+          ? "Restart to update"
+          : `Updating... ${Math.round(progress * 100)}%`
+      }
+      onPress={() => hotUpdater.reload()}
+      disabled={!isUpdateDownloaded}
+    />
+  );
+}
+```

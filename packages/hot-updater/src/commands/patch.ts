@@ -14,6 +14,7 @@ import { loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
+import { reportUnexpectedError } from "../utils/reportUnexpectedError";
 
 export interface PatchOptions {
   baseBundleId: string;
@@ -49,12 +50,12 @@ export const createPatch = async (options: PatchOptions) => {
     const storageAdapter = server.storage;
     assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
     p.note(
-      [
+      ui.block("", [
         ui.kv("Channel", ui.channel(options.channel)),
         ui.kv("Platform", ui.platform(platform)),
         ui.kv("Base artifact ID", ui.id(options.baseBundleId)),
         ui.kv("Target artifact ID", ui.id(options.bundleId)),
-      ].join("\n"),
+      ]),
       "Patch",
     );
 
@@ -65,7 +66,9 @@ export const createPatch = async (options: PatchOptions) => {
       },
       {
         core: server.core,
-        signingPublicKey: await getBundleSigningPublicKey(config.signing),
+        signingPublicKey: await getBundleSigningPublicKey(config.signing, {
+          secrets: config.secrets,
+        }),
         storageAdapter,
       },
       {
@@ -75,7 +78,7 @@ export const createPatch = async (options: PatchOptions) => {
 
     p.outro("Patch ready.");
   } catch (error) {
-    console.error(error);
+    reportUnexpectedError(error);
     process.exit(1);
   } finally {
     await server.dispose();

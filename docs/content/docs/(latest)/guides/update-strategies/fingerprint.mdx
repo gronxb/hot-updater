@@ -27,17 +27,45 @@ your project declares. It covers:
   with Expo, `jsEngine` and `newArchEnabled` in the app config;
 - each native package autolinking links, Expo modules included, by name and
   version, so installing, removing, or upgrading one changes the fingerprint;
-- the codegen specs of your app and of local native packages, with their
-  `codegenConfig`, or the native files of a local package without specs;
+- the codegen specs of your app and of
+  [local native modules](#local-native-modules), with their `codegenConfig`,
+  or the native files of a local module without specs;
 - patches to those packages, in `patches/` or wherever pnpm, Bun, or Yarn
   record them;
 - `fingerprint.nativeVersion` and `fingerprint.extraSources`.
 
-Version and build numbers, native implementation edits, build settings, Expo
-config plugins, JavaScript-only dependencies, and files an install or `expo prebuild`
+Version and build numbers, native implementation edits in your app's own
+folders and in packages with specs, build settings, Expo config plugins,
+JavaScript-only dependencies, and files an install or `expo prebuild`
 generates, such as `Podfile.lock`, leave it unchanged, so every store build
 with the same native interface receives the same updates, and every machine
 computes the same fingerprint.
+
+### Local Native Modules
+
+A native module in your project's folders keeps its version while its code
+changes, so the fingerprint follows its files instead, on every build adapter.
+It counts as local however it is linked:
+
+- an Expo module autolinking finds in `modules/`, `nativeModulesDir`, or
+  `expo.autolinking.searchPaths`, with or without a `package.json`, or a React
+  Native package it finds there, in an Expo app or a bare app with Expo modules
+  installed;
+- a package listed in `react-native.config.js` `dependencies`, by `root` or by
+  platform source paths such as `podspecPath` and `sourceDir`;
+- a dependency in your app's `package.json` from `link:`, `workspace:`, or a
+  `file:` folder, including a sibling folder in a monorepo. pnpm, Yarn, and Bun
+  copy a `file:` folder into `node_modules`: the fingerprint follows that copy,
+  so run your install after editing the folder, and use one package manager
+  across machines.
+
+For each one the fingerprint hashes the platform's native files, by their
+paths relative to the app, and its `expo-module.config.json` when it has one. It
+leaves out `build`, `Pods`, `.gradle`, `.cxx`, `DerivedData`, `node_modules`, and
+tests. An edit to `ios/` moves only the iOS fingerprint, and an edit to
+`android/` only Android's. A module with codegen specs is followed by its specs:
+renaming a method in a spec moves the fingerprint, and editing only its native
+files doesn't.
 
 ### How the Fingerprint Stays Stable
 
@@ -58,8 +86,13 @@ computes the same fingerprint.
 
 ### Enable the Fingerprint Strategy
 
-App Version is the default strategy. If you explicitly configured it, replace
-that setting with `fingerprint`:
+New projects use Fingerprint: `init` writes `updateStrategy: "fingerprint"`
+and, for a project without one, `fingerprint.json`. If it can't compute the
+fingerprint, it names `npx hot-updater fingerprint create` as the next step.
+
+A config that sets no `updateStrategy`, or sets `appVersion`, uses
+[App Version](/docs/guides/update-strategies/app-version). To switch it, set
+`fingerprint`:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -70,6 +103,11 @@ export default defineConfig({
 });
 ```
 
+Then run `npx hot-updater fingerprint create`, commit `fingerprint.json`, and
+release new native builds. Builds made before the switch embed no fingerprint
+and keep checking by app version, so they receive no update deployed by
+fingerprint.
+
 <a id="include-additional-files-optional" />
 <a id="include-app-owned-native-inputs" />
 
@@ -77,9 +115,11 @@ export default defineConfig({
 
 When JavaScript starts to depend on a native change the list above doesn't
 cover, change `nativeVersion`. Examples: a native module without a codegen
-spec, a changed return value, a new permission or `Info.plist` key, a manually
-linked library, moving a native package installed from Git to another commit
-while its version stays the same, or an iOS engine or architecture choice
+spec registered by hand in your app's own `ios/` or `android/`, a changed
+return value in a module with specs, a new permission or `Info.plist` key, a
+manually linked library, moving a native package installed from Git or a
+`file:` tarball to other code while its version stays the same, or an iOS
+engine or architecture choice
 made by an environment variable at `pod install`, such as Hermes V1, JSC on
 React Native versions that ship it in core, or the New Architecture before
 React Native made it the only architecture.
@@ -111,10 +151,10 @@ differs only in where it reads two inputs, so `fingerprint create` before
 
 - **Native packages** come from Expo's autolinking, as the native build links
   them: Expo modules from `expo-modules-autolinking resolve`, and React Native
-  packages from its `react-native-config` (from SDK 52), or from React Native
-  CLI on earlier SDKs or with
+  packages from its `react-native-config`, or from React Native CLI with
   `EXPO_USE_COMMUNITY_AUTOLINKING=1`. In a monorepo, a module is linked when it
-  is listed in the app's `dependencies`. Set `EXPO_USE_COMMUNITY_AUTOLINKING`
+  is listed in the app's `dependencies` or found in
+  `expo.autolinking.searchPaths`. Set `EXPO_USE_COMMUNITY_AUTOLINKING`
   the same way where you run `fingerprint create` and where you build.
 - **The JavaScript engine and architecture** come from `jsEngine` (Hermes when
   left out) and `newArchEnabled` in the app config, with per-platform
@@ -127,8 +167,9 @@ adds: like edits to a bare app's `ios/` and `android/`, they mostly write
 permissions, `Info.plist` keys, and Gradle settings, which don't change what
 JavaScript can call. When a config plugin change does change that interface,
 bump `nativeVersion`. For custom native code, prefer a local Expo module in
-`modules/`: autolinking links it, so the fingerprint follows it like any
-native package.
+`modules/`: autolinking links it, so the fingerprint follows its native files,
+and a renamed function or an edited native body asks for a new build. See
+[Local Native Modules](#local-native-modules).
 
 ## Workflow
 
@@ -154,7 +195,7 @@ it was built from and warns that `fingerprint.json` is stale. The build embeds
 no fingerprint when the app root has no `fingerprint.json`, so delete it when
 you switch a project to App Version: an app with a fingerprint reports the
 fingerprint strategy. Under App Version, `doctor` reports a leftover
-`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and `doctor --fix` deletes it,
+`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and says to delete it,
 `deploy` warns about it, the native build commands refuse to build, and the
 Expo config plugin removes it at prebuild.
 Keep `hot-updater` and `@hot-updater/react-native` on the same version: the
@@ -169,8 +210,16 @@ Example `fingerprint.json` (sources shortened):
     "engine": "hot-updater/interface@1",
     "hash": "af69cc634ddceb474dfd73469f46361be584787cd8046a186c24f9b393ba170b",
     "sources": [
-      { "type": "contents", "id": "runtime", "contents": "react-native@0.85.2" },
-      { "type": "contents", "id": "dependency:react-native-screens", "contents": "react-native-screens@4.25.2" },
+      {
+        "type": "contents",
+        "id": "runtime",
+        "contents": "react-native@0.85.2"
+      },
+      {
+        "type": "contents",
+        "id": "dependency:react-native-screens",
+        "contents": "react-native-screens@4.25.2"
+      },
       { "type": "file", "filePath": "src/specs/NativeDevice.ts" }
     ]
   },
@@ -182,6 +231,12 @@ Example `fingerprint.json` (sources shortened):
   "inputs": { "adapter": "bare", "nativeVersion": 2 }
 }
 ```
+
+Commands rewrite `fingerprint.json` only when the data it records changes, so
+your formatter can format it and an equal file is never rewritten. A rewritten
+`fingerprint.json` keeps the file's indentation and line endings. When two
+branches change native inputs, `fingerprint.json` conflicts on each platform's
+`hash`: resolve the package files, then run `npx hot-updater fingerprint create`.
 
 **Step 2: Build and Submit**
 
@@ -214,8 +269,7 @@ npx hot-updater doctor
 
 Doctor compares `fingerprint.json` with the project's fingerprint now. When
 they differ, it reports `FINGERPRINT_JSON_STALE` and lists the sources that
-changed. Create a new fingerprint then, or run `doctor --fix`, which does the
-same:
+changed, with the command that creates a new one:
 
 ```package-install
 npx hot-updater fingerprint create
@@ -293,8 +347,9 @@ inputs are unchanged, the fingerprint check permits deployment.
 ### Native Changes Require a Rebuild
 
 Installing, removing, or upgrading a native package, upgrading React Native,
-changing the JavaScript engine, a spec, or a patch, and a new `nativeVersion`
-change the fingerprint and require a new binary. A native change the
+changing the JavaScript engine, a spec, a patch, or a local native module's
+native files, and a new `nativeVersion` change the fingerprint and require a
+new binary. A native change the
 fingerprint doesn't see, such as an Expo config plugin change that alters what
 JavaScript can call, needs a `nativeVersion` bump. Deploy detects
 the hash mismatch and exits:

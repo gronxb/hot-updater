@@ -417,7 +417,7 @@ describe("createKvAdapter", () => {
     const engine = createDatabaseEngine({
       adapter: createKvAdapter({ store }),
       schema: resolveSchema([module, aggregateBatchingModule]),
-      batching: { mode: "log", windowMs: 60_000 },
+      batching: { windowMs: 60_000 },
       now: () => 10 * DAY,
     });
     const db = engine.database(module);

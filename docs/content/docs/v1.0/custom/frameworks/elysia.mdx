@@ -1,0 +1,132 @@
+---
+title: "Elysia"
+description: Build a self-hosted Hot Updater server with Elysia framework.
+icon: elysia
+---
+
+## Installation
+
+This recipe runs on Node.js. Install Elysia, its Node adapter and bearer token
+plugin.
+
+```package-install
+npm install elysia @elysiajs/node @elysiajs/bearer
+```
+
+```package-install
+npm install --save-dev tsx
+```
+
+## Setup and security
+
+Set up a [database adapter](/docs/v1.0/custom/database/drizzle), generate its Hot Updater
+schema, and apply the schema before starting the server. Define the
+server in `src/hotUpdater.ts` with `createHotUpdater`, as in the
+[quick start](/docs/v1.0/custom/quick-start#define-the-server).
+
+The recommended self-hosted setup runs the `apiKeys()` plugin, which requires
+an API key on update-check, Insights ingestion, and plugin client routes.
+Always protect admin routes with framework middleware scoped to the admin
+handler. Update-check routes are usually exposed for React Native clients, but
+that is a deployment choice:
+
+- Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
+- Optional public diagnostics: `/hot-updater/version`
+- Protected admin API: `/hot-updater/admin/*`
+
+Mounting `handlers.admin` opts the server into the admin API;
+`handlers.client` never serves those routes. This example requires a nonempty
+token and scopes the authentication hook to an admin sub-app:
+
+```typescript title="src/index.ts"
+import { Elysia } from "elysia";
+import { node } from "@elysiajs/node";
+import { bearer } from "@elysiajs/bearer"; // [!code ++]
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
+
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+}
+
+const adminApp = new Elysia() // [!code ++]
+  .use(bearer()) // [!code ++]
+  .onBeforeHandle(({ bearer }) => { // [!code ++]
+    if (bearer !== adminToken) { // [!code ++]
+      return new Response("Unauthorized", { status: 401 }); // [!code ++]
+    } // [!code ++]
+  }) // [!code ++]
+  .mount("/", hotUpdater.handlers.admin); // [!code ++]
+
+new Elysia({ adapter: node() })
+  .mount("/hot-updater/admin", adminApp) // [!code ++]
+  .mount("/hot-updater", hotUpdater.handlers.client) // [!code ++]
+  .listen(3000);
+```
+
+Start the server with the database and storage variables available, and export
+your admin token in the same shell:
+
+```bash
+export HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
+npx tsx src/index.ts
+```
+
+Configure the CLI to include the auth token when deploying bundles, beside
+the config's storage and plugins; see
+[CLI Configuration](/docs/v1.0/custom/cli-configuration):
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+}
+
+export default defineConfig({
+  // ... build, storage, plugins, and updateStrategy
+  database: standaloneRepository({ // [!code ++]
+    baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${adminToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+## Handler boundaries
+
+With `insights()` in `plugins`, `handlers.client` accepts Insights events and
+`handlers.admin` serves Insights queries; without it, the server has no such
+routes, and they answer `404`. Apps send reports with the
+[Insights client plugin](/docs/v1.0/react-native-api/insights).
+[Server plugin](/docs/v1.0/custom/server-plugins) endpoints mount on the same two
+handlers. The client API key protects catalog reads, artifact resolution,
+Insights ingestion, and plugin client routes; it does not protect or authorize
+the admin handler.
+
+See the [shared handler boundary](/docs/v1.0/custom/overview#runtime-policy) for route
+groups and the [repository server contract](/docs/v1.0/database-adapters/standalone#server-contract)
+for exact management requests. Keep the framework-specific authentication and
+mount ordering shown above.
+
+Before connecting the app, verify that `/hot-updater/version` responds and an
+admin request without the expected token is rejected. Then use
+[CLI configuration](/docs/v1.0/custom/cli-configuration#verify-the-connection) to
+verify authenticated management access.
+
+## React Native setup
+
+[Create a client API key](/docs/v1.0/custom/api-key-authentication#bootstrap-a-self-hosted-client)
+against the prepared database, then follow [Set up your app](/docs/v1.0/get-started/app-setup).
+Use the client root as `baseURL` and send the key through `x-api-key`. Never
+put the admin token in the app.
+
+For local connectivity checks, `localhost` reaches the host from the iOS
+Simulator on the same Mac and `10.0.2.2` does so from the Android Emulator.
+Before a release-build OTA test, expose the server through a reachable HTTPS
+endpoint and use it in the app; changing the host address does not enable
+cleartext HTTP. Complete [Test an OTA update](/docs/v1.0/get-started/test-ota)
+against that HTTPS endpoint.

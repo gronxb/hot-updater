@@ -3,11 +3,17 @@ import path from "node:path";
 
 import { parse as parseToml } from "@iarna/toml";
 
+import {
+  getRequiredUpdateTarget,
+  isInfrastructureUpdateRequired,
+} from "../doctorInfrastructureTargets";
 import type { InfraClientAuth } from "../infra/clientAuth";
 import {
+  findInfraTemplateChanges,
   getInfraFiles,
   INFRA_BUILDS,
   type InfraManifest,
+  type InfraTemplate,
   readInfraTemplate,
 } from "../infra/scaffold";
 import { isInitProvider } from "../initProviders";
@@ -35,6 +41,87 @@ export async function readScaffoldFile(root: string, file: string) {
   return readFile(resolved, "utf8");
 }
 
+/** The command that generates `manifest`'s scaffold of this CLI. */
+const upgradeCommand = (manifest: InfraManifest) =>
+  manifest.operation === "scaffold"
+    ? `npx hot-updater infra scaffold --provider ${manifest.provider}`
+    : `npx hot-updater agent infra upgrade --provider ${manifest.provider} --build ${manifest.build}`;
+
+/**
+ * Why a scaffold another CLI generated can't serve this one, before its
+ * files are compared: another infrastructure generation, or a server older
+ * than the release whose schema and API this CLI needs. Null when neither:
+ * then only a change to the files' content blocks it.
+ */
+const checkTemplateVersions = (
+  manifest: InfraManifest,
+  template: InfraTemplate,
+): DoctorCheck | null => {
+  const upgrade = (message: string): DoctorCheck => ({
+    code: "INFRA_TEMPLATE_VERSION_MISMATCH",
+    status: "blocked",
+    message,
+    paths: ["manifest.json"],
+    resolution: [
+      "Generate an upgrade scaffold and apply its upgrades/README.md:",
+      upgradeCommand(manifest),
+    ].join("\n"),
+  });
+  if (manifest.infrastructureGeneration !== template.infrastructureGeneration) {
+    return upgrade(
+      `The scaffold is infrastructure generation ${String(manifest.infrastructureGeneration)}; this CLI's templates are generation ${template.infrastructureGeneration}.`,
+    );
+  }
+  const required = getRequiredUpdateTarget(template.cliVersion);
+  let outdated: boolean;
+  try {
+    outdated = isInfrastructureUpdateRequired({
+      serverVersion: String(manifest.serverVersion),
+      requiredVersion: required.version,
+      acceptsPrerelease: required.acceptsPrerelease,
+    });
+  } catch {
+    outdated = true;
+  }
+  return outdated
+    ? upgrade(
+        `The scaffold targets server ${String(manifest.serverVersion)}; this CLI needs ${required.version}+. ${required.note}.`,
+      )
+    : null;
+};
+
+/**
+ * The files of a scaffold another CLI generated that differ from this
+ * CLI's templates beyond their versions, as a blocked check; null when
+ * none does.
+ */
+const checkTemplateContent = async (
+  source: string,
+  template: InfraTemplate,
+  manifest: InfraManifest,
+): Promise<DoctorCheck | null> => {
+  // What the deployment reads: instructions and references never reach it,
+  // and the Worker's README records when it was built.
+  const changed = await findInfraTemplateChanges({
+    source,
+    template,
+    manifest,
+    include: isDeploymentInput,
+  });
+  if (changed.length === 0) return null;
+  return {
+    code: "INFRA_TEMPLATE_VERSION_MISMATCH",
+    status: "blocked",
+    message: `The scaffold ${String(manifest.cliVersion)} generated differs from this CLI's templates beyond their versions.`,
+    paths: changed,
+    resolution: [
+      "Generate a fresh upgrade scaffold, then deploy it:",
+      upgradeCommand(manifest),
+      "Do not rewrite the manifest to bypass verification.",
+    ].join("\n"),
+  };
+};
+
 export async function checkScaffold(infraDir: string): Promise<{
   checks: DoctorCheck[];
   manifest?: InfraManifest;
@@ -53,7 +140,6 @@ export async function checkScaffold(infraDir: string): Promise<{
       status: "fail",
       message,
       paths: [file],
-      fixability: "auto",
       resolution,
     });
   let manifest: InfraManifest;
@@ -85,26 +171,34 @@ export async function checkScaffold(infraDir: string): Promise<{
   }
 
   const { source, template } = await readInfraTemplate(manifest.provider);
-  if (
+  // A scaffold another CLI generated passes when it differs only in its
+  // versions and its server is the one this CLI needs.
+  const fromAnotherCli =
     manifest.cliVersion !== template.cliVersion ||
     manifest.providerVersion !== template.providerVersion ||
     manifest.serverVersion !== template.serverVersion ||
-    manifest.infrastructureGeneration !== template.infrastructureGeneration
-  ) {
-    checks.push({
-      code: "INFRA_TEMPLATE_VERSION_MISMATCH",
-      status: "blocked",
-      message: "Scaffold versions do not match this CLI's packaged templates.",
-      paths: ["manifest.json"],
-      fixability: "command",
-      resolution:
-        "Run the CLI version that generated this scaffold, or generate a fresh upgrade scaffold. Do not rewrite the manifest to bypass verification.",
-    });
-    return { checks };
+    manifest.infrastructureGeneration !== template.infrastructureGeneration;
+  if (fromAnotherCli) {
+    const blocked =
+      checkTemplateVersions(manifest, template) ??
+      (await checkTemplateContent(source, template, manifest));
+    if (blocked !== null) {
+      checks.push(blocked);
+      return { checks };
+    }
   }
 
   if (manifest.operation !== "scaffold") {
     const packages = manifest.packages;
+    // This CLI's package versions, as the scaffold's: a scaffold that
+    // differs only in its versions targets its own.
+    const scaffoldVersions = new Map([
+      [template.cliVersion, manifest.cliVersion],
+      [template.providerVersion, manifest.providerVersion],
+      [template.serverVersion, manifest.serverVersion],
+    ]);
+    const asScaffold = (version: string) =>
+      scaffoldVersions.get(version) ?? version;
     const expectedPackages = Object.entries(template.packages).filter(
       ([name]) =>
         !INFRA_BUILDS.some(
@@ -114,7 +208,9 @@ export async function checkScaffold(infraDir: string): Promise<{
     );
     if (
       !isObject(packages) ||
-      expectedPackages.some(([name, version]) => packages[name] !== version) ||
+      expectedPackages.some(
+        ([name, version]) => packages[name] !== asScaffold(version),
+      ) ||
       INFRA_BUILDS.some(
         (build) =>
           build !== manifest.build &&
@@ -134,8 +230,9 @@ export async function checkScaffold(infraDir: string): Promise<{
     checks.push({
       code: "INFRA_MANIFEST",
       status: "pass",
-      message:
-        "Provider, build and target versions match the packaged scaffold.",
+      message: fromAnotherCli
+        ? `Provider and build match the packaged scaffold, which differs from ${String(manifest.cliVersion)}'s only in its versions.`
+        : "Provider, build and target versions match the packaged scaffold.",
     });
   }
   // The expected file set comes from the installed CLI, not the editable

@@ -29,6 +29,8 @@ export type RuntimeSnapshot = {
   readonly catalogId: string | null;
   readonly baseURL: string;
   readonly bundleId: string;
+  /** What the public `getBundleId()` reports, which an app shows its users. */
+  readonly reportedBundleId: string;
   readonly channel: string;
   readonly cohort: string;
   readonly crashHistory: readonly string[];
@@ -105,6 +107,7 @@ export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   catalogId: null,
   baseURL: fallbackHotUpdaterBaseURL,
   bundleId: hotUpdater.getManifest().bundleId,
+  reportedBundleId: hotUpdater.getBundleId(),
   channel: hotUpdater.getChannel(),
   cohort: hotUpdater.getCohort(),
   crashHistory: hotUpdater.getCrashHistory(),

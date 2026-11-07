@@ -35,7 +35,7 @@ async function checkAndUpdate() {
   }
 
   const updateInfo = await hotUpdater.checkForUpdate({
-    updateStrategy: "appVersion", // or "fingerprint"
+    updateStrategy: "fingerprint", // or "appVersion"
     // requestHeaders: { "x-api-key": "<your-api-key>" },
   });
 

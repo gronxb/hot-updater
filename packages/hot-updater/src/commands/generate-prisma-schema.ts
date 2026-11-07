@@ -4,6 +4,7 @@ import path from "path";
 import { p } from "@hot-updater/cli-tools";
 
 import { ui } from "../utils/cli-ui";
+import { canPrompt } from "../utils/prompt";
 import { requestGenerateExit } from "./utils/generate-command-control";
 import { mergePrismaSchema } from "./utils/prisma-schema-merger";
 
@@ -44,6 +45,7 @@ export async function generatePrismaSchema(
   }
 
   if (!skipConfirm) {
+    if (!canPrompt(message)) requestGenerateExit(1);
     const shouldContinue = await p.confirm({
       message,
       initialValue: true,

@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 
-import type { ConfigResponse } from "@hot-updater/cli-tools";
+import {
+  type ConfigResponse,
+  readBundleSigningState,
+} from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
 import { AndroidConfigParser } from "../configParser/androidParser";
@@ -62,7 +65,7 @@ export async function validateSigningConfig(
     readonly platform?: Platform;
   } = {},
 ): Promise<SigningValidationResult> {
-  const signingEnabled = config.signing !== undefined;
+  const signingEnabled = readBundleSigningState(config.signing).status === "on";
 
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
   const androidParser = new AndroidConfigParser(
@@ -84,13 +87,15 @@ export async function validateSigningConfig(
   ]);
 
   const usesExternalNativeConfig = Object.hasOwn(options, "nativePublicKey");
-  if (!iosExists && !androidExists && usesExternalNativeConfig) {
+  // A platform without native files reads the Expo app config, even when a
+  // build of the other platform generated its own native files.
+  if (usesExternalNativeConfig) {
     const externalResult = {
       value: options.nativePublicKey ?? null,
       paths: ["Expo app config"],
     };
-    iosResult = externalResult;
-    androidResult = externalResult;
+    if (!iosExists) iosResult = externalResult;
+    if (!androidExists) androidResult = externalResult;
   }
 
   const issues: SigningConfigIssue[] = [];
@@ -164,7 +169,7 @@ export async function validateSigningConfig(
         message:
           "The iOS public key does not match the configured bundle signer",
         resolution:
-          "Export the configured public key, then rebuild and release the iOS app before deploying.",
+          "Run `npx hot-updater keys export-public`, then rebuild and release the iOS app before deploying. Apps already installed keep the previous key and reject bundles signed with the configured one.",
       });
     }
     if (
@@ -180,7 +185,7 @@ export async function validateSigningConfig(
         message:
           "The Android public key does not match the configured bundle signer",
         resolution:
-          "Export the configured public key, then rebuild and release the Android app before deploying.",
+          "Run `npx hot-updater keys export-public`, then rebuild and release the Android app before deploying. Apps already installed keep the previous key and reject bundles signed with the configured one.",
       });
     }
   } else {

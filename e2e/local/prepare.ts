@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -319,17 +319,22 @@ export async function runLocal(
     await fs.writeFile(config, localAppConfig("fingerprint", target));
     const cliCommand = (args: string[], cwd = profile!.appDir) =>
       command(process.execPath, [cli, ...args], cwd, profile!.env);
-    const keyDir = path.join(runDir, "keys");
-    await cliCommand(["keys", "generate", "--output", keyDir]);
+    // A new signing key pair each run, which the config reads with 1.1's
+    // privateKeyPath (localAppConfig) and the app embeds.
+    const keyPair = generateKeyPairSync("rsa", {
+      modulusLength: 4096,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
     await fs.mkdir(path.join(profile.appDir, "keys"), { recursive: true });
-    for (const key of ["private-key.pem", "public-key.pem"]) {
-      await fs.rm(path.join(profile.appDir, "keys", key), { force: true });
-      await fs.copyFile(
-        path.join(keyDir, key),
-        path.join(profile.appDir, "keys", key),
-      );
+    for (const [key, contents, mode] of [
+      ["private-key.pem", keyPair.privateKey, 0o600],
+      ["public-key.pem", keyPair.publicKey, 0o644],
+    ] as const) {
+      const file = path.join(profile.appDir, "keys", key);
+      await fs.rm(file, { force: true });
+      await fs.writeFile(file, contents, { mode });
     }
-    await fs.chmod(path.join(profile.appDir, "keys/private-key.pem"), 0o600);
     await cliCommand(["keys", "export-public", "--yes"]);
     const builds = createNativeBuildPlan(
       {

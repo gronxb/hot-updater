@@ -237,7 +237,8 @@ describe("Firebase project creation", () => {
   });
 
   it("collects all inputs and consent before creating the project", async () => {
-    await runInit({ build: "bare" });
+    // Init stops once it creates the project, so nothing closes it.
+    await expect(runInit({ build: "bare" })).resolves.toBeNull();
 
     expect(mocks.events).toEqual([
       "project",
@@ -417,11 +418,19 @@ describe("Firebase project creation", () => {
     };
 
     // When
-    await runInit({ build: "bare" });
+    const result = await runInit({ build: "bare" });
 
-    // Then
-    expect(p.log.message).toHaveBeenCalledWith(
-      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+    // Then: init's closing prints them, after every step
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
+        ),
+        "Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+      ],
+    });
+    expect(p.log.message).not.toHaveBeenCalledWith(
+      expect.stringContaining("Next step"),
     );
     expect(printAppSetup).toHaveBeenCalledWith({
       baseURL: "https://hot-updater.example.com",

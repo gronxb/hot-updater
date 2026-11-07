@@ -3,7 +3,6 @@ export interface DoctorCheck {
   status: "pass" | "fail" | "blocked";
   message: string;
   paths?: string[];
-  fixability?: "auto" | "command" | "blocked";
   resolution?: string;
 }
 

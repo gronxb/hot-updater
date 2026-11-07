@@ -1,11 +1,11 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, nonInteractiveReason, p } from "@hot-updater/cli-tools";
 import type { ReleaseRow } from "@hot-updater/plugin-core";
 
 import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
-import { withPublicBundleErrors } from "../utils/publicBundleError";
+import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
 
 export type PromoteAction = "copy" | "move";
 
@@ -66,15 +66,19 @@ export const handlePromote = async (
       core.listChannels(),
     ]);
     if (source === null) {
-      p.log.error(`No bundle with ID ${sourceReleaseId}.`);
-      process.exit(1);
+      return await failBundleCommand(
+        core,
+        sourceReleaseId,
+        notFoundError(sourceReleaseId),
+        { outcome: "promoted" },
+      );
     }
     const sourceChannel =
       channels.find(({ id }) => id === source.channel_id)?.name ??
       source.channel_id;
     p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
-      if (!process.stdin.isTTY) {
+      if (nonInteractiveReason() !== undefined) {
         p.log.error(
           "Cannot prompt in a non-interactive shell. Re-run with -y.",
         );
@@ -89,14 +93,19 @@ export const handlePromote = async (
         process.exit(2);
       }
     }
-    const result = await withPublicBundleErrors(() =>
-      core.promoteRelease({
+    let result: Awaited<ReturnType<typeof core.promoteRelease>>;
+    try {
+      result = await core.promoteRelease({
         action,
         expectedRevision: source.revision,
         releaseId: source.id,
         targetChannel,
-      }),
-    );
+      });
+    } catch (error) {
+      return await failBundleCommand(core, sourceReleaseId, error, {
+        outcome: "promoted",
+      });
+    }
     const promoted = result.target.release;
     if (promoted === null)
       throw new Error("Promoted bundle was not persisted.");
@@ -105,7 +114,7 @@ export const handlePromote = async (
         ? `Promoted bundle to ${targetChannel}.`
         : `Moved bundle to ${targetChannel}.`,
     );
-    p.log.info(ui.kv("ID", ui.id(promoted.id)));
+    p.log.info(ui.block("", [ui.kv("ID", ui.id(promoted.id))]));
   } finally {
     await safeDispose(server);
   }

@@ -235,6 +235,57 @@ describe("handleStoragePrune", () => {
     expect(mockDatabase.dispose).toHaveBeenCalledOnce();
   });
 
+  it("keeps a native build's artifact and its built-in bundle's files", async () => {
+    const builtInId = "0195a408-8f13-7000-8000-01aabbccddee";
+    const builtInHash = "f".repeat(64);
+    const artifactKey = `native-builds/ios/0195a409-0000-7000-8000-000000000001/App.ipa`;
+    // Core lists a native build's built-in bundle with the other bundles.
+    mockDatabase.bundlePages.mockResolvedValue([
+      liveBundle,
+      {
+        ...liveBundle,
+        id: builtInId,
+        manifestStorageUri: `s3://bucket/bundles/${builtInId}/manifest.json`,
+      },
+    ]);
+    mockStorageNode.get.mockImplementation(
+      async ({ storageUri }: { storageUri: string }) => ({
+        response: new Response(
+          JSON.stringify(
+            storageUri.includes(builtInId)
+              ? {
+                  bundleId: builtInId,
+                  assets: { "index.ios.bundle": { fileHash: builtInHash } },
+                }
+              : {
+                  bundleId: LIVE_BUNDLE_ID,
+                  assets: {
+                    "images/logo.png": { fileHash: IMAGE_HASH },
+                    "index.ios.bundle": { fileHash: BUNDLE_HASH },
+                  },
+                },
+          ),
+        ),
+      }),
+    );
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(`assets/sha256/${IMAGE_HASH.slice(0, 2)}/${IMAGE_HASH}.png`, old),
+      object(`assets/sha256/${BUNDLE_HASH.slice(0, 2)}/${BUNDLE_HASH}.br`, old),
+      object(`assets/sha256/${builtInHash.slice(0, 2)}/${builtInHash}.br`, old),
+      object(`bundles/${LIVE_BUNDLE_ID}/manifest.json`, old),
+      object(`bundles/${builtInId}/manifest.json`, old),
+      object(artifactKey, old, 1_000_000),
+      object(`bundles/${DEAD_BUNDLE_ID}/manifest.json`, old, 50),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
+      `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
+    ]);
+  });
+
   it("preserves the exact transferred payload referenced by downloadFileHash", async () => {
     mockStorageNode.get.mockImplementation(async () => ({
       response: new Response(

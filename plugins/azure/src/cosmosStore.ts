@@ -294,7 +294,8 @@ export const assertCosmosContainerReusable = async (
 };
 
 export interface CosmosStoreOptions {
-  readonly client: CosmosClient;
+  /** The account's client, or what creates it on the store's first request. */
+  readonly client: CosmosClient | (() => CosmosClient | Promise<CosmosClient>);
   readonly databaseId: string;
   /** The one container every item lives in. */
   readonly containerId: string;
@@ -369,9 +370,22 @@ export const createCosmosStore = ({
   engine,
   nativePageSize,
 }: CosmosStoreOptions): KeyValueStore => {
-  const container: Container = client
-    .database(databaseId)
-    .container(containerId);
+  let opened:
+    | Promise<{ client: CosmosClient; container: Container }>
+    | undefined;
+  // Opened on the first request, so a config loads without the connection.
+  const open = () =>
+    (opened ??= (async () => {
+      const account = typeof client === "function" ? await client() : client;
+      return {
+        client: account,
+        container: account.database(databaseId).container(containerId),
+      };
+    })().catch((error: unknown) => {
+      opened = undefined;
+      throw error;
+    }));
+  const container = async () => (await open()).container;
 
   /**
    * The state of the items `ids` names, by id, with the rows of `rowIds`;
@@ -387,7 +401,9 @@ export const createCosmosStore = ({
       [ids.filter((id) => rowIds.has(id)), ", c.row"],
     ] as const) {
       for (let at = 0; at < group.length; at += GET_BATCH) {
-        const { resources } = await container.items
+        const { resources } = await (
+          await container()
+        ).items
           .query<{
             id: string;
             etag: string;
@@ -599,7 +615,9 @@ export const createCosmosStore = ({
       const found = new Map<string, StoredRow>();
       const ids = [...new Set(keys.map(cosmosItemId))];
       for (let at = 0; at < ids.length; at += GET_BATCH) {
-        const { resources } = await container.items
+        const { resources } = await (
+          await container()
+        ).items
           .query<{ id: string; row: unknown }>(
             `SELECT c.id, c.row FROM c WHERE c.id IN (${idList(ids.slice(at, at + GET_BATCH))})`,
             { partitionKey: COSMOS_PARTITION },
@@ -631,7 +649,9 @@ export const createCosmosStore = ({
         filters.push(order === "asc" ? "c.sk > @after" : "c.sk < @after");
         parameters.push({ name: "@after", value: after });
       }
-      const { resources } = await container.items
+      const { resources } = await (
+        await container()
+      ).items
         .query<{ sk: string; row: unknown }>(
           {
             query: `SELECT TOP @size c.sk, c.row FROM c WHERE ${filters.join(
@@ -707,7 +727,9 @@ export const createCosmosStore = ({
         }
         let results: readonly { readonly statusCode: number }[];
         try {
-          const response = await container.items.batch(
+          const response = await (
+            await container()
+          ).items.batch(
             planned.map(({ operation }) => operation),
             COSMOS_PARTITION,
           );
@@ -748,7 +770,9 @@ export const createCosmosStore = ({
     async deleteConsumed(keys) {
       let remaining = [...new Set(keys.map(cosmosItemId))];
       for (let attempt = 0; remaining.length > 0; attempt += 1) {
-        const results = await container.items
+        const results = await (
+          await container()
+        ).items
           .executeBulkOperations(
             remaining.map(
               (id): OperationInput => ({
@@ -782,9 +806,11 @@ export const createCosmosStore = ({
       /** Creates the database and the container when they are missing. */
       async apply() {
         if (engine !== undefined) {
-          await assertCosmosContainerReusable(container, engine);
+          await assertCosmosContainerReusable(await container(), engine);
         }
-        const { database } = await client.databases.createIfNotExists({
+        const { database } = await (
+          await open()
+        ).client.databases.createIfNotExists({
           id: databaseId,
         });
         const { resource } = await database.containers.createIfNotExists({

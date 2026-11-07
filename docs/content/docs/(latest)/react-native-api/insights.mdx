@@ -31,9 +31,9 @@ verifying reports and reading them.
 
 ## Options
 
-| Option  | Type      | Default | Description                                                  |
-| ------- | --------- | ------- | ------------------------------------------------------------ |
-| `debug` | `boolean` | `false` | Also report from debug builds, where `__DEV__` is `true`.    |
+| Option  | Type      | Default | Description                                               |
+| ------- | --------- | ------- | --------------------------------------------------------- |
+| `debug` | `boolean` | `false` | Also report from debug builds, where `__DEV__` is `true`. |
 
 A debug build sends nothing by default, so development sessions stay out of
 production Insights. To test reporting from one, create the plugin with
@@ -66,13 +66,13 @@ ID. Choose an ID that fits your data policy; see
 
 ## What it reports
 
-| Report              | Sent when                                                                                                                  |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `UNCHANGED`         | The app launched without applying or recovering an update, or an update check found nothing to install.                    |
-| `UPDATE_DOWNLOADED` | The SDK downloaded, verified, and staged a bundle. The app runs the previous bundle until it restarts.                      |
-| `UPDATE_APPLIED`    | A staged update became active at launch.                                                                                   |
-| `RECOVERED`         | Native crash recovery rolled back a failed update at launch.                                                               |
-| `UPDATE_FAILED`     | An update check, download, or install failed.                                                                              |
+| Report              | Sent when                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `UNCHANGED`         | The app launched without applying or recovering an update, or an update check found nothing to install. |
+| `UPDATE_DOWNLOADED` | The SDK downloaded, verified, and staged a bundle. The app runs the previous bundle until it restarts.  |
+| `UPDATE_APPLIED`    | A staged update became active at launch.                                                                |
+| `RECOVERED`         | Native crash recovery rolled back a failed update at launch.                                            |
+| `UPDATE_FAILED`     | An update check, download, or install failed.                                                           |
 
 A same-bundle Release adoption, which needs no download, is also reported as
 `UNCHANGED`, with the Release it replaced as `fromReleaseId`.
@@ -120,16 +120,16 @@ and Insights' own requests are left out.
 [`onUpdateError`](/docs/react-native-api/client-plugins#onupdateerror) details
 the SDK knows:
 
-| Detail                | Values                                                                                                             |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `stage`               | `check`: the Release Catalog request. `download`: transferring and verifying files. `install`: patching, extracting, and moving them into place. |
-| `reason`              | `network`, `http`, `invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`.   |
-| `errorMessage`        | The original error message. JSON-encoded text is capped at 2 KiB. |
-| `errorStack`          | The original stack trace, when available. JSON-encoded text is capped at 4 KiB. |
-| `resource`            | `catalog`, `artifact`, `manifest`, `file`, `patch`, or `archive`.                                                  |
-| `httpStatus`          | The response status of an `http` failure.                                                                          |
-| `originCode`          | The storage origin's error code of an `http` failure, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`.      |
-| `transport`           | Why no response arrived: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                        |
+| Detail         | Values                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stage`        | `check`: the Release Catalog request. `download`: transferring and verifying files. `install`: patching, extracting, and moving them into place. |
+| `reason`       | `network`, `http`, `invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`.                                |
+| `errorMessage` | The original error message. JSON-encoded text is capped at 2 KiB.                                                                                |
+| `errorStack`   | The original stack trace, when available. JSON-encoded text is capped at 4 KiB.                                                                  |
+| `resource`     | `catalog`, `artifact`, `manifest`, `file`, `patch`, or `archive`.                                                                                |
+| `httpStatus`   | The response status of an `http` failure.                                                                                                        |
+| `originCode`   | The storage origin's error code of an `http` failure, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`.                                    |
+| `transport`    | Why no response arrived: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                                                       |
 
 - An installation reports each combination of stage, reason, target
   bundle, and error message at most once per UTC day.
@@ -213,19 +213,19 @@ field:
 }
 ```
 
-| Field                           | Value                                                                                                                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `userId`                        | The ID from `setUser`; absent without one.                                                                                                                             |
-| `minBundleId`                   | The bundle identifier embedded in the native build. |
+| Field                           | Value                                                                                                                                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `userId`                        | The ID from `setUser`; absent without one.                                                                                                                                                                                 |
+| `minBundleId`                   | The bundle identifier embedded in the native build.                                                                                                                                                                        |
 | `fromBundleId`, `fromReleaseId` | The bundle and Release the app ran before the transition; for `UPDATE_FAILED`, the ones it runs. For `UNCHANGED`, `fromBundleId` is `null`, and `fromReleaseId` is the Release a same-bundle adoption replaced, or `null`. |
-| `toBundleId`, `toReleaseId`     | The bundle and Release the transition moved to; for `UNCHANGED`, the ones the app runs; for `UPDATE_FAILED`, the update's target, or the running bundle for a failed check. `toReleaseId` is `null` without a Release. |
-| `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED`.                                                                                                                 |
-| `metadata`                      | Optional `httpResponse` snapshot for any report, plus details by report type below.                                                                                 |
+| `toBundleId`, `toReleaseId`     | The bundle and Release the transition moved to; for `UNCHANGED`, the ones the app runs; for `UPDATE_FAILED`, the update's target, or the running bundle for a failed check. `toReleaseId` is `null` without a Release.     |
+| `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED`.                                                                                                                                                                     |
+| `metadata`                      | Optional `httpResponse` snapshot for any report, plus details by report type below.                                                                                                                                        |
 
-| Report              | `metadata`                                                                                                                                                  |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Report              | `metadata`                                                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UPDATE_DOWNLOADED` | `delivery`: `patch`, `manifest`, or `archive`, as in [`onBundleDownloaded`](/docs/react-native-api/client-plugins#onbundledownloaded); `patchFallback: true` when a patch was tried but a file or the archive was downloaded instead. |
-| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, and `transport` when known.                              |
+| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, and `transport` when known.                                                                                               |
 
 See [how the server accepts reports](/docs/guides/insights#how-the-server-accepts-reports)
 for its size limit and status codes.

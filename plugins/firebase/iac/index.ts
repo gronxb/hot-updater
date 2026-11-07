@@ -18,6 +18,7 @@ import {
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
+  type RunInitResult,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
@@ -453,9 +454,17 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+    secretsEnv,
+  );
   const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
@@ -553,7 +562,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     });
     await makeEnv(persistedInputs);
     await removeTmpDir();
-    return;
+    return null;
   }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
@@ -613,7 +622,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
       )
     : applicationDefault();
-  const existingApps = new Set(getApps());
+  // Loading hot-updater.config.ts for its secrets adapter ran the config's
+  // adapters, which bound the default app to the config's project and
+  // credential, in an environment init has restored since. The database
+  // takes the default app when one exists, so init's runs on its own.
+  await Promise.all(getApps().map((app) => deleteApp(app)));
   const databaseConfig = {
     credential,
     databaseId: initializeVariable.databaseId,
@@ -640,11 +653,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }
   } finally {
     await database.dispose?.();
-    await Promise.all(
-      getApps()
-        .filter((app) => !existingApps.has(app))
-        .map((app) => deleteApp(app)),
-    );
+    await Promise.all(getApps().map((app) => deleteApp(app)));
   }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
@@ -741,17 +750,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   await removeTmpDir();
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  if (!applicationCredentials) {
-    p.log.message(
-      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
-    );
-  }
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
+      ),
+      ...(applicationCredentials
+        ? []
+        : [
+            "Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+          ]),
+    ],
+  };
 };
 
 // What init asks for and checks before `runInit`.

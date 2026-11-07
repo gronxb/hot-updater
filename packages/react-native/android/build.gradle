@@ -11,7 +11,11 @@ buildscript {
     classpath "com.android.tools.build:gradle:7.2.1"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-
+    if (project.hasProperty("hotUpdaterSandbox") && kotlin_version != null && !kotlin_version.toString().startsWith("1.")) {
+      // A sandbox build's screen is Compose. From Kotlin 2.0 its compiler is a Kotlin
+      // Gradle plugin, which only a sandbox build puts on the classpath.
+      classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+    }
   }
 }
 
@@ -28,8 +32,27 @@ def isNewArchitectureEnabled() {
   return !project.hasProperty("newArchEnabled") || project.property("newArchEnabled").toString().toBoolean()
 }
 
+// Only the CLI passes -PhotUpdaterSandbox=<scheme>, for a nativeBuild scheme with
+// `sandbox: true`. Any other build never compiles src/sandbox.
+def isSandboxBuild() {
+  return project.hasProperty("hotUpdaterSandbox")
+}
+
+// Each build's MIN_BUNDLE_ID is a new value in a generated Java class. Kotlin 2's
+// incremental compile then rejects this module's own `internal` classes ("it is
+// internal in file"), and nothing could reuse it anyway: compile from scratch.
+// The Kotlin plugin reads this property, and overwrites the task's own setting.
+project.ext.set("kotlin.incremental", "false")
+
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
+if (isSandboxBuild()) {
+  // The Kotlin this build compiles with, which picks how the screen's Compose compiles.
+  project.ext.hotUpdaterKotlinPluginVersion = org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt.getKotlinPluginVersion(project)
+  if (!project.ext.hotUpdaterKotlinPluginVersion.startsWith("1.")) {
+    apply plugin: "org.jetbrains.kotlin.plugin.compose"
+  }
+}
 apply from: "$projectDir/react-native-helpers.gradle"
 apply from: "$projectDir/hot-updater-builtin-assets.gradle"
 
@@ -72,6 +95,9 @@ android {
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
     consumerProguardFiles 'proguard-rules.pro'
+    if (isSandboxBuild()) {
+      consumerProguardFiles 'src/sandbox/proguard-rules.pro'
+    }
 
     ndk {
       abiFilters(*reactNativeArchitectures())
@@ -107,8 +133,20 @@ android {
     targetCompatibility JavaVersion.VERSION_1_8
   }
 
+  // A build type or flavor gets the source set of its name, and that one's default
+  // directories. A project that gives every library one called `sandbox` must not
+  // compile the sandbox layer, which only the property below attaches.
+  sourceSets.matching { it.name == "sandbox" }.all {
+    java.srcDirs = []
+    res.srcDirs = []
+  }
+
   sourceSets {
     main {
+      if (isSandboxBuild()) {
+        java.srcDirs += ["src/sandbox/java"]
+        res.srcDirs += ["src/sandbox/res"]
+      }
       if (!isNewArchitectureEnabled()) {
         java.srcDirs += ["src/oldarch"]
       } else {
@@ -131,6 +169,9 @@ android {
 
 apply from: "$projectDir/hot-updater-min-bundle-id.gradle"
 apply from: "$projectDir/hot-updater-fingerprint.gradle"
+if (isSandboxBuild()) {
+  apply from: "$projectDir/src/sandbox/hot-updater-sandbox.gradle"
+}
 
 repositories {
   mavenCentral()

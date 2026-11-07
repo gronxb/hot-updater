@@ -1,4 +1,4 @@
-import { createHash, createPublicKey } from "node:crypto";
+import { createPublicKey } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -8,18 +8,16 @@ import {
   getCwd,
   loadConfig,
   p,
+  readBundleSigningPublicKeyFile,
+  readBundleSigningState,
 } from "@hot-updater/cli-tools";
 
-import { ui } from "../utils/cli-ui";
+import { type Row, ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
 import { warnIfExpoCNG } from "../utils/expoDetection";
-import { appendToProjectRootGitignore } from "../utils/git";
-import {
-  generateKeyPair,
-  getPrivateKeyGitignorePath,
-  saveKeyPair,
-} from "../utils/signing";
+import { canPrompt } from "../utils/prompt";
+import { spkiFingerprint } from "../utils/signing/bundleSigningKey";
 
 export const ANDROID_KEY = "com.hotupdater.PUBLIC_KEY";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
@@ -48,10 +46,7 @@ const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
 const getPublicKeyIdentity = (publicKeyPem: string) => {
   const publicKey = createPublicKey(canonicalizeRsaSpkiPublicKey(publicKeyPem));
   const der = publicKey.export({ format: "der", type: "spki" });
-  return {
-    der,
-    fingerprint: `sha256:${createHash("sha256").update(der).digest("hex")}`,
-  };
+  return { der, fingerprint: spkiFingerprint(der) };
 };
 
 const getTrustAnchorChange = (
@@ -70,73 +65,30 @@ const getTrustAnchorChange = (
   }
 };
 
-export interface KeysGenerateOptions {
-  output?: string;
-  keySize?: 2048 | 4096;
-}
-
 /**
- * Generate RSA key pair for code signing.
- * Usage: npx hot-updater keys:generate [--output ./keys] [--key-size 4096]
+ * Whether the Expo plugin's `publicKeyPath` file, relative to `cwd`, holds
+ * `publicKey`, read as Expo prebuild reads it (`readBundleSigningPublicKeyFile`)
+ * and compared as a key: `"missing"` without the file, and `"different"` for
+ * another key or one prebuild can't read.
  */
-export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
-  const cwd = getCwd();
-  const outputDir = options.output
-    ? path.isAbsolute(options.output)
-      ? options.output
-      : path.join(cwd, options.output)
-    : path.join(cwd, "keys");
-
-  const keySize = options.keySize ?? 4096;
-
-  const spinner = p.spinner();
-  spinner.start(`Generating ${keySize}-bit RSA keys`);
-
+const readTrustAnchorFile = async (
+  cwd: string,
+  publicKeyPath: string,
+  publicKey: ReturnType<typeof getPublicKeyIdentity>,
+): Promise<"same" | "missing" | "different"> => {
   try {
-    const keyPair = await generateKeyPair(keySize);
-    await saveKeyPair(keyPair, outputDir);
-
-    spinner.stop("Keys generated");
-
-    // The public key is safe to commit and is required by native builds.
-    const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
-    const gitignoreUpdated = privateKeyGitignorePath
-      ? appendToProjectRootGitignore({
-          cwd,
-          globLines: [privateKeyGitignorePath],
-        })
-      : false;
-
-    p.log.message(
-      ui.block("Keys", [
-        ui.kv("Private", ui.path(path.join(outputDir, "private-key.pem"))),
-        ui.kv("Public", ui.path(path.join(outputDir, "public-key.pem"))),
-        ui.kv(
-          "Gitignore",
-          privateKeyGitignorePath === null
-            ? "outside project"
-            : gitignoreUpdated
-              ? privateKeyGitignorePath
-              : "unchanged",
-        ),
-      ]),
-    );
-    p.log.message(
-      ui.block("Config", [
-        ui.kv(
-          "Code",
-          ui.code(
-            'signing: {\n  enabled: true,\n  privateKeyPath: "./keys/private-key.pem",\n}',
-          ),
-        ),
-        ui.kv("Run", ui.command("hot-updater keys export-public")),
-      ]),
-    );
-    p.log.warn("Keep private key secure.");
+    await fs.access(path.resolve(cwd, publicKeyPath));
   } catch (error) {
-    spinner.error("Failed to generate keys");
-    p.log.error((error as Error).message);
-    process.exit(1);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw error;
+  }
+  try {
+    const pem = await readBundleSigningPublicKeyFile(publicKeyPath, { cwd });
+    return getPublicKeyIdentity(pem).der.equals(publicKey.der)
+      ? "same"
+      : "different";
+  } catch {
+    return "different";
   }
 };
 
@@ -257,14 +209,19 @@ function printPublicKeyInstructions(publicKeyPEM: string): void {
   );
 }
 
-const formatNativeTarget = (
+/** One row per native file, the platform on its first. */
+const nativeTargetRows = (
   platform: "android" | "ios",
   paths: string[],
-): string =>
-  ui.block(
-    platform,
-    paths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
-  );
+): Row[] =>
+  paths.map((targetPath, index) => [
+    index === 0 ? platform : "",
+    ui.path(ui.fitPath(targetPath)),
+  ]);
+
+/** `sha256:91c83d6cf355997d…`: enough of a key's fingerprint to tell it apart. */
+const shortFingerprint = (fingerprint: string) =>
+  fingerprint.length > 23 ? `${fingerprint.slice(0, 23)}…` : fingerprint;
 
 /**
  * Export public key for embedding in native configuration.
@@ -283,13 +240,16 @@ export const keysExportPublic = async (
 
   const config = await loadConfig(null);
   try {
-    if (!config.signing) {
+    // A value signing doesn't take is refused below, with its next step.
+    const { status } = readBundleSigningState(config.signing);
+    if (status === "off" || status === "unsigned") {
       throw new Error(
-        "Bundle signing is not configured. Configure signing in hot-updater.config.ts first.",
+        'hot-updater.config.ts signs no bundles.\nSet signing: secret("bundle-signing-key") first.',
       );
     }
     const publicKeyPEM = (await getBundleSigningPublicKey(config.signing, {
       cwd,
+      secrets: config.secrets,
     }))!;
 
     if (options.output && options.printOnly) {
@@ -306,7 +266,9 @@ export const keysExportPublic = async (
         canonicalizeRsaSpkiPublicKey(publicKeyPEM),
         { flag: "wx", mode: 0o644 },
       );
-      p.log.success(ui.line(["Public key", ui.path(outputPath)]));
+      p.log.success(
+        ui.line(["Public key written to", ui.path(ui.fitPath(outputPath))]),
+      );
       return;
     }
 
@@ -316,7 +278,7 @@ export const keysExportPublic = async (
       return;
     }
 
-    warnIfExpoCNG();
+    const expoCng = await warnIfExpoCNG({ config, publicKey: true });
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];
@@ -329,6 +291,34 @@ export const keysExportPublic = async (
     const iosExists = await iosParser.exists();
 
     if (!androidExists && !iosExists) {
+      // Expo CNG without native folders: prebuild embeds the plugin's
+      // publicKeyPath, and the warning above says how to set it.
+      if (expoCng?.publicKeyPath) {
+        const { publicKeyPath } = expoCng;
+        const state = await readTrustAnchorFile(
+          cwd,
+          publicKeyPath,
+          getPublicKeyIdentity(publicKeyPEM),
+        );
+        if (state === "same") {
+          p.log.success(`npx expo prebuild embeds ${publicKeyPath}.`);
+          return;
+        }
+        const writeIt = `npx hot-updater keys export-public --output ${publicKeyPath}`;
+        p.log.error(
+          state === "missing"
+            ? ui.withCommand(
+                `${publicKeyPath} doesn't exist. Write it:`,
+                writeIt,
+              )
+            : ui.withCommand(
+                `${publicKeyPath} holds a different key than the signing key, so prebuild would embed a key that rejects new bundles. Delete it, then write it:`,
+                writeIt,
+              ),
+        );
+        return process.exit(1);
+      }
+      if (expoCng) return process.exit(1);
       p.log.error("No native configuration files found.");
       p.log.info(
         "Tip: Use --print-only to display the key for manual configuration.",
@@ -336,15 +326,16 @@ export const keysExportPublic = async (
       process.exit(1);
     }
 
-    p.log.message(ui.title("Native files"));
-    if (androidExists) {
-      p.log.message(formatNativeTarget("android", androidManifestPaths));
-    }
-    if (iosExists) {
-      p.log.message(
-        formatNativeTarget("ios", config.platform.ios.infoPlistPaths),
-      );
-    }
+    p.log.step(
+      ui.block("Native files", [
+        ...(androidExists
+          ? nativeTargetRows("android", androidManifestPaths)
+          : []),
+        ...(iosExists
+          ? nativeTargetRows("ios", config.platform.ios.infoPlistPaths)
+          : []),
+      ]),
+    );
 
     const [androidPublicKey, iosPublicKey] = await Promise.all([
       androidExists
@@ -360,28 +351,32 @@ export const keysExportPublic = async (
 
     if (trustAnchorChanges.length > 0) {
       p.log.warn(
-        "Replacing a native bundle signing key is not a transparent rotation.",
-      );
-      p.log.message(
-        ui.block("Trust anchor change", [
-          ui.kv("New", nextPublicKey.fingerprint),
-          ...trustAnchorChanges.map(({ platform, fingerprint }) =>
-            ui.kv(platform, fingerprint),
-          ),
-        ]),
-      );
-      p.log.warn(
-        "Installed apps using the previous key will reject bundles signed by the new key.",
+        [
+          ui.block("This replaces the native bundle signing key", [
+            ui.kv("New", shortFingerprint(nextPublicKey.fingerprint)),
+            ...trustAnchorChanges.map(
+              ({ platform, fingerprint }): Row => [
+                platform,
+                shortFingerprint(fingerprint),
+              ],
+            ),
+          ]),
+          "Installed apps reject bundles signed with the new key.",
+        ].join("\n"),
       );
     }
 
     // Confirmation prompt (unless --yes)
     if (!options.yes) {
+      const message =
+        trustAnchorChanges.length > 0
+          ? "Replace the existing public key?"
+          : "Write public key?";
+      if (!canPrompt(message, "Re-run with -y to write it or -p to print it")) {
+        process.exit(1);
+      }
       const shouldContinue = await p.confirm({
-        message:
-          trustAnchorChanges.length > 0
-            ? "Replace the existing public key?"
-            : "Write public key?",
+        message,
         initialValue: trustAnchorChanges.length === 0,
       });
 
@@ -418,7 +413,10 @@ export const keysExportPublic = async (
       process.exit(1);
     }
   } catch (error) {
-    p.log.error(`Failed to export public key: ${(error as Error).message}`);
+    // The cause on lines of its own: a secrets adapter's says what to do.
+    p.log.error(
+      `Public key not exported.\n${ui.prose(error instanceof Error ? error.message : String(error))}`,
+    );
     process.exit(1);
   }
 };
@@ -575,7 +573,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
       : Promise.resolve({ value: null, paths: [] }),
   ]);
 
-  const foundKeys: string[] = [];
+  const foundKeys: Row[] = [];
   if (iosKey.value) {
     foundKeys.push(
       ui.kv(
@@ -598,12 +596,14 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     return;
   }
 
-  p.log.message(ui.block("Public keys", foundKeys));
+  p.log.step(ui.block("Public keys", foundKeys));
 
   // Confirmation prompt (unless --yes)
   if (!options.yes) {
+    const message = "Remove public keys from these files?";
+    if (!canPrompt(message)) return;
     const shouldContinue = await p.confirm({
-      message: "Remove public keys from these files?",
+      message,
       initialValue: false,
     });
 

@@ -13,9 +13,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 
 import type { BuildType } from "@hot-updater/cli-tools";
+import { fitText, withProviderMessages } from "@hot-updater/cli-tools";
 
 import { ui } from "../../utils/cli-ui";
 import type { InitProvider } from "../initProviders";
@@ -159,6 +161,201 @@ export async function getInfraFiles(
     .map((file) => file.replace(`.config.${build}.ts`, ".config.ts"));
 }
 
+/**
+ * Writes the files `operation` extracts from `template` for `build` into
+ * the empty directory `staging`: every file the manifest records, before
+ * manifest.json and deployment.json. `scaffoldInfra` and doctor both render
+ * with it, so doctor compares a scaffold with exactly what this CLI writes.
+ */
+export async function renderInfraScaffold(
+  {
+    source,
+    template,
+    operation,
+    build,
+  }: {
+    source: string;
+    template: InfraTemplate;
+    operation: InfraOperation;
+    build?: BuildType;
+  },
+  staging: string,
+) {
+  const forAgent = operation !== "scaffold";
+  const appDir = path.join(staging, "app");
+  await cp(source, staging, { recursive: true });
+  if (forAgent) {
+    for (const choice of INFRA_BUILDS) {
+      const file = path.join(appDir, `hot-updater.config.${choice}.ts`);
+      if (choice === build)
+        await rename(file, path.join(appDir, "hot-updater.config.ts"));
+      else await rm(file);
+    }
+  } else {
+    for (const file of AGENT_FILES)
+      await rm(path.join(staging, file), { recursive: true });
+  }
+  await rm(path.join(staging, "template.json"));
+  await writeFile(
+    path.join(staging, ".gitignore"),
+    `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
+  );
+  if (forAgent) {
+    // Every variable the app's TypeScript reads, by `process.env` or
+    // `secret()`: the config, the credential helper's server definition,
+    // and Firestore's migration.
+    const appSources = await Promise.all(
+      (await readdir(appDir))
+        .filter((file) => file.endsWith(".ts"))
+        .sort()
+        .map((file) => readFile(path.join(appDir, file), "utf8")),
+    );
+    const { clientAuth, inputs } = template;
+    const keys = new Set([
+      ...inputs.map(({ envKey }) => envKey),
+      ...appSources.flatMap((text) =>
+        [
+          ...text.matchAll(
+            /process\.env\.([A-Z_0-9]+)|\bsecret\("([A-Z_0-9]+)"\)/g,
+          ),
+        ].map((match) => (match[1] ?? match[2])!),
+      ),
+      ...(clientAuth === null ? [] : [clientAuth.credential.env]),
+    ]);
+    const envExample = [...keys]
+      .map((key) => {
+        const input = inputs.find(({ envKey }) => envKey === key);
+        const help =
+          input?.help ??
+          EXTRA_INPUT_HELP[key] ??
+          (clientAuth !== null && key === clientAuth.credential.env
+            ? credentialHelp(clientAuth)
+            : undefined);
+        if (!help) throw new Error(`Missing environment guidance for ${key}.`);
+        return `# ${help}\n${key}=\n`;
+      })
+      .join("\n");
+    await writeFile(
+      path.join(staging, "env.example"),
+      "# Read ENVIRONMENT.md for purpose, required/optional conditions, and secure sources.\n# Set only applicable values in your ignored local environment file.\n# Do not paste credentials into chat or copy unused empty credential fields.\n\n" +
+        envExample,
+    );
+  }
+}
+
+/** The sha256 of each file in `dir`, as manifest.json records them. */
+export async function hashInfraFiles(
+  dir: string,
+): Promise<Record<string, string>> {
+  return Object.fromEntries(
+    await Promise.all(
+      (await listFiles(dir)).map(async (file) => [
+        file,
+        createHash("sha256")
+          .update(await readFile(path.join(dir, file)))
+          .digest("hex"),
+      ]),
+    ),
+  );
+}
+
+/**
+ * `version` where it stands as a whole version in `text`, not as part of a
+ * longer number or prerelease, such as 1.2.0 in 11.2.0 or 1.2.0-rc.1.
+ */
+const versionPattern = (version: string) =>
+  `(?<![0-9.])${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![0-9]|[.+-][0-9A-Za-z])`;
+
+/**
+ * The files of the scaffold `manifest` records that differ from what this
+ * CLI's `template` extracts for its operation and build, once this CLI's
+ * versions read as the manifest's: none when the two differ only in their
+ * versions. The manifest's hashes are of the files as extracted, before an
+ * agent filled them in. A version string that also stands for something
+ * else in a file can only make a file differ, never hide a change.
+ */
+export async function findInfraTemplateChanges({
+  source,
+  template,
+  manifest,
+  include = () => true,
+}: {
+  source: string;
+  template: InfraTemplate;
+  manifest: InfraManifest;
+  /** The files to compare, such as only what a deployment reads. */
+  include?: (file: string) => boolean;
+}): Promise<string[]> {
+  const versions = new Map<string, string>();
+  const pairs: [string | undefined, unknown][] = [
+    [template.cliVersion, manifest.cliVersion],
+    [template.providerVersion, manifest.providerVersion],
+    [template.serverVersion, manifest.serverVersion],
+    ...Object.entries(template.packages).map(
+      ([name, version]): [string, unknown] => [
+        version,
+        manifest.packages?.[name],
+      ],
+    ),
+  ];
+  for (const [from, to] of pairs) {
+    if (to === undefined) continue;
+    // One of this CLI's versions can't read as two of the manifest's.
+    if (typeof from !== "string" || typeof to !== "string") {
+      return ["manifest.json"];
+    }
+    if ((versions.get(from) ?? to) !== to) return ["manifest.json"];
+    versions.set(from, to);
+  }
+  const changes = [...versions].filter(([from, to]) => from !== to);
+  const pattern =
+    changes.length === 0
+      ? null
+      : new RegExp(
+          [...changes]
+            .map(([from]) => from)
+            // The longest first, so 1.2.0-rc.1 is not read as 1.2.0.
+            .sort((a, b) => b.length - a.length)
+            .map(versionPattern)
+            .join("|"),
+          "g",
+        );
+  const staging = await mkdtemp(path.join(os.tmpdir(), "hot-updater-infra-"));
+  try {
+    await renderInfraScaffold(
+      {
+        source,
+        template,
+        operation: manifest.operation,
+        build: manifest.build,
+      },
+      staging,
+    );
+    if (pattern !== null) {
+      for (const file of await listFiles(staging)) {
+        const absolute = path.join(staging, file);
+        // latin1 keeps every byte: the versions are ASCII.
+        const text = await readFile(absolute, "latin1");
+        const replaced = text.replace(
+          pattern,
+          (version) => versions.get(version) ?? version,
+        );
+        if (replaced !== text) await writeFile(absolute, replaced, "latin1");
+      }
+    }
+    const expected = await hashInfraFiles(staging);
+    const recorded = isRecord(manifest.files) ? manifest.files : {};
+    return [...new Set([...Object.keys(expected), ...Object.keys(recorded)])]
+      .filter((file) => include(file) && expected[file] !== recorded[file])
+      .sort();
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export async function scaffoldInfra(
   operation: InfraOperation,
   options: Required<Pick<InfraOptions, "provider">> & InfraOptions,
@@ -274,74 +471,9 @@ export async function scaffoldInfra(
   const staging = await mkdtemp(
     path.join(path.dirname(output), ".hot-updater-infra-"),
   );
-  const appDir = path.join(staging, "app");
   try {
-    await cp(source, staging, { recursive: true });
-    if (forAgent) {
-      for (const choice of INFRA_BUILDS) {
-        const file = path.join(appDir, `hot-updater.config.${choice}.ts`);
-        if (choice === build)
-          await rename(file, path.join(appDir, "hot-updater.config.ts"));
-        else await rm(file);
-      }
-    } else {
-      for (const file of AGENT_FILES)
-        await rm(path.join(staging, file), { recursive: true });
-    }
-    await rm(path.join(staging, "template.json"));
-    await writeFile(
-      path.join(staging, ".gitignore"),
-      `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
-    );
-    if (forAgent) {
-      // Every variable the app's TypeScript reads: the config, the
-      // credential helper's server definition, and Firestore's migration.
-      const appSources = await Promise.all(
-        (await readdir(appDir))
-          .filter((file) => file.endsWith(".ts"))
-          .sort()
-          .map((file) => readFile(path.join(appDir, file), "utf8")),
-      );
-      const { clientAuth, inputs } = template;
-      const keys = new Set([
-        ...inputs.map(({ envKey }) => envKey),
-        ...appSources.flatMap((text) =>
-          [...text.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
-            (match) => match[1]!,
-          ),
-        ),
-        ...(clientAuth === null ? [] : [clientAuth.credential.env]),
-      ]);
-      const envExample = [...keys]
-        .map((key) => {
-          const input = inputs.find(({ envKey }) => envKey === key);
-          const help =
-            input?.help ??
-            EXTRA_INPUT_HELP[key] ??
-            (clientAuth !== null && key === clientAuth.credential.env
-              ? credentialHelp(clientAuth)
-              : undefined);
-          if (!help)
-            throw new Error(`Missing environment guidance for ${key}.`);
-          return `# ${help}\n${key}=\n`;
-        })
-        .join("\n");
-      await writeFile(
-        path.join(staging, "env.example"),
-        "# Read ENVIRONMENT.md for purpose, required/optional conditions, and secure sources.\n# Set only applicable values in your ignored local environment file.\n# Do not paste credentials into chat or copy unused empty credential fields.\n\n" +
-          envExample,
-      );
-    }
-    const files = Object.fromEntries(
-      await Promise.all(
-        (await listFiles(staging)).map(async (file) => [
-          file,
-          createHash("sha256")
-            .update(await readFile(path.join(staging, file)))
-            .digest("hex"),
-        ]),
-      ),
-    );
+    await renderInfraScaffold({ source, template, operation, build }, staging);
+    const files = await hashInfraFiles(staging);
     // The inputs are for env.example and `init --help`, not the manifest.
     const { inputs: _inputs, ...recorded } = template;
     const manifest: InfraManifest = {
@@ -401,36 +533,43 @@ export async function handleInfraScaffold(
       build: options.build,
     });
     if (options.json) console.log(JSON.stringify(result, null, 2));
-    else
+    else {
+      // The templates' directory relative to the project or with `~`, and
+      // each file in it relative to it, whole: each is a file to open.
+      const file = (value: string) =>
+        ui.path(
+          value === result.output
+            ? ui.fitPath(value, Number.POSITIVE_INFINITY)
+            : path.relative(result.output, value),
+        );
       console.log(
-        ui.block(
-          operation === "scaffold"
-            ? "Infrastructure scaffold"
-            : `Infrastructure ${operation} scaffold`,
-          [
-            ui.kv("Status", result.status),
-            ui.kv("Provider", result.provider),
-            ui.kv("Templates", ui.path(result.output)),
-            ui.kv("Manifest", ui.path(result.manifest)),
-            ...(result.instructions
-              ? [ui.kv("Read", ui.path(result.instructions))]
-              : []),
-            ...(result.commonInstructions
-              ? [ui.kv("Common", ui.path(result.commonInstructions))]
-              : []),
-            ...(result.deployment
-              ? [ui.kv("State", ui.path(result.deployment))]
-              : []),
-            ...(result.environment
-              ? [ui.kv("Environment", ui.path(result.environment))]
-              : []),
-            ui.kv("Upgrades", ui.path(result.upgradeGuide)),
+        fitText(
+          ui.block(
             operation === "scaffold"
-              ? "Fill the template inputs and deploy with your provider tools."
-              : "Read the instructions, apply the templates with provider tools, and verify each step.",
-          ],
+              ? "Infrastructure scaffold"
+              : `Infrastructure ${operation} scaffold`,
+            [
+              ui.kv("Status", result.status),
+              ui.kv("Provider", result.provider),
+              ui.kv("Templates", file(result.output)),
+              ui.kv("Manifest", file(result.manifest)),
+              result.instructions && ui.kv("Read", file(result.instructions)),
+              result.commonInstructions &&
+                ui.kv("Common", file(result.commonInstructions)),
+              result.deployment && ui.kv("State", file(result.deployment)),
+              result.environment &&
+                ui.kv("Environment", file(result.environment)),
+              // An upgrade's instructions are the upgrade guide: named once.
+              result.upgradeGuide !== result.instructions &&
+                ui.kv("Upgrades", file(result.upgradeGuide)),
+              operation === "scaffold"
+                ? "Fill the template inputs and deploy with your provider tools."
+                : "Apply the templates as Read says, and verify each step.",
+            ],
+          ),
         ),
       );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (options.json)
@@ -439,7 +578,11 @@ export async function handleInfraScaffold(
       );
     else
       console.error(
-        ui.block("Scaffolding failed", [ui.line([ui.danger(message)])]),
+        fitText(
+          withProviderMessages(
+            ui.block("Scaffolding failed", [ui.line([ui.danger(message)])]),
+          ),
+        ),
       );
     process.exitCode = 1;
   }

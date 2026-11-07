@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { fitText, loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   HotUpdaterCoreApi,
   ReleaseFilter,
@@ -10,6 +10,8 @@ import { loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
+import { canPrompt } from "../utils/prompt";
+import { failBundleCommand, notFoundError } from "../utils/publicBundleError";
 
 const DEFAULT_LIMIT = 20;
 
@@ -37,7 +39,7 @@ export interface ReleaseUpdateOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: {
+export const safeDispose = async (database: {
   readonly dispose?: () => Promise<void>;
 }) => {
   try {
@@ -138,30 +140,32 @@ const printUpdatePreview = (
   console.log(
     options.json
       ? JSON.stringify(result, null, 2)
-      : ui.block("Bundle update dry run (not saved)", [
-          ui.kv("Current bytes", String(result.currentCatalog?.byte_size ?? 0)),
-          ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
-          ui.kv("Maximum bytes", String(256 * 1024)),
-          ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
-          ui.kv("Intervals", String(result.diagnostics.segmentCount)),
-          ui.kv(
-            "Named cohorts",
-            String(result.diagnostics.distinctTargetCohortCount),
-          ),
-          ui.kv("Next generation", String(result.catalog.generation)),
-        ]),
+      : fitText(
+          ui.block("Bundle update dry run (not saved)", [
+            ui.kv(
+              "Current bytes",
+              String(result.currentCatalog?.byte_size ?? 0),
+            ),
+            ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
+            ui.kv("Maximum bytes", String(256 * 1024)),
+            ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
+            ui.kv("Intervals", String(result.diagnostics.segmentCount)),
+            ui.kv(
+              "Named cohorts",
+              String(result.diagnostics.distinctTargetCohortCount),
+            ),
+            ui.kv("Next generation", String(result.catalog.generation)),
+          ]),
+        ),
   );
 };
 
-const confirmMutation = async (
+export const confirmMutation = async (
   message: string,
   yes: boolean | undefined,
 ): Promise<void> => {
   if (yes) return;
-  if (!process.stdin.isTTY) {
-    p.log.error(`${message} Re-run with -y in a non-interactive shell.`);
-    process.exit(1);
-  }
+  if (!canPrompt(message)) process.exit(1);
   const confirmed = await p.confirm({ initialValue: false, message });
   if (p.isCancel(confirmed) || !confirmed) process.exit(2);
 };
@@ -243,7 +247,7 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
     console.log(
       options.json
         ? JSON.stringify(releases, null, 2)
-        : releaseTable(releases, channels),
+        : fitText(releaseTable(releases, channels)),
     );
   } finally {
     await safeDispose(server);
@@ -269,9 +273,11 @@ export const handleReleaseShow = async (
     console.log(
       options.json
         ? JSON.stringify(release, null, 2)
-        : releaseSummary(
-            release,
-            channels.get(release.channel_id) ?? release.channel_id,
+        : fitText(
+            releaseSummary(
+              release,
+              channels.get(release.channel_id) ?? release.channel_id,
+            ),
           ),
     );
   } finally {
@@ -329,18 +335,28 @@ export const handleReleaseUpdate = async (
       patch,
       releaseId,
     };
-    if (options.dryRun) {
-      printUpdatePreview(await core.preflightReleasePolicy(target), options);
-      return;
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      if (options.dryRun) {
+        printUpdatePreview(await core.preflightReleasePolicy(target), options);
+        return;
+      }
+      result = await core.updateReleasePolicy(target);
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
     }
-    const result = await core.updateReleasePolicy(target);
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block("Bundle updated", [
-            ui.kv("ID", ui.id(releaseId)),
-            ui.kv("Revision", String(result.release?.revision ?? "")),
-          ]),
+        : fitText(
+            ui.block("Bundle updated", [
+              ui.kv("ID", ui.id(releaseId)),
+              ui.kv("Revision", String(result.release?.revision ?? "")),
+            ]),
+          ),
     );
   } finally {
     await safeDispose(server);
@@ -364,8 +380,12 @@ export const handleReleaseEnablement = async (
     if (!enabled) {
       const release = await core.getRelease(releaseId);
       if (release === null) {
-        p.log.error(`No bundle with ID ${releaseId}.`);
-        process.exit(1);
+        return await failBundleCommand(
+          core,
+          releaseId,
+          notFoundError(releaseId),
+          { json: options.json, outcome: "updated" },
+        );
       }
       expectedRevision ??= release.revision;
 
@@ -404,17 +424,27 @@ export const handleReleaseEnablement = async (
       `${enabled ? "Enable" : "Disable"} this bundle?`,
       options.yes,
     );
-    const result = await core.updateReleasePolicy({
-      ...(expectedRevision === undefined ? {} : { expectedRevision }),
-      patch: { enabled },
-      releaseId,
-    });
+    let result: Awaited<ReturnType<typeof core.updateReleasePolicy>>;
+    try {
+      result = await core.updateReleasePolicy({
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
+        patch: { enabled },
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "updated",
+      });
+    }
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block(enabled ? "Bundle enabled" : "Bundle disabled", [
-            ui.kv("ID", ui.id(releaseId)),
-          ]),
+        : fitText(
+            ui.block(enabled ? "Bundle enabled" : "Bundle disabled", [
+              ui.kv("ID", ui.id(releaseId)),
+            ]),
+          ),
     );
   } finally {
     await safeDispose(server);
@@ -437,14 +467,34 @@ export const handleReleaseDelete = async (
   const server = await loadServer(await loadConfig(null));
   try {
     const core = server.core;
+    const release = await core.getRelease(releaseId);
+    if (release === null) {
+      return await failBundleCommand(
+        core,
+        releaseId,
+        notFoundError(releaseId),
+        {
+          json: options.json,
+          outcome: "deleted",
+        },
+      );
+    }
     // Core deletes the artifact with the last bundle on it.
-    const artifactId = (await core.getRelease(releaseId))?.bundle_id ?? null;
-    const result = await core.deleteRelease({
-      ...(options.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: options.expectedRevision }),
-      releaseId,
-    });
+    const artifactId = release.bundle_id;
+    let result: Awaited<ReturnType<typeof core.deleteRelease>>;
+    try {
+      result = await core.deleteRelease({
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: options.expectedRevision }),
+        releaseId,
+      });
+    } catch (error) {
+      return await failBundleCommand(core, releaseId, error, {
+        json: options.json,
+        outcome: "deleted",
+      });
+    }
     const deletedArtifactId =
       artifactId !== null && (await core.getBundle(artifactId)) === null
         ? artifactId
@@ -453,7 +503,9 @@ export const handleReleaseDelete = async (
       console.log(JSON.stringify({ ...result, deletedArtifactId }, null, 2));
       return;
     }
-    console.log(ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]));
+    console.log(
+      fitText(ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))])),
+    );
     if (deletedArtifactId !== null) {
       p.log.info(
         "No other bundle used its files, so their artifact record was deleted too. The stored files stay until `hot-updater storage prune` deletes them.",

@@ -1,0 +1,152 @@
+---
+title: "AWS S3 Storage"
+description: Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
+icon: aws
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+For a custom server, install the runtime dependency in the server project:
+
+```package-install
+npm install @hot-updater/server @hot-updater/aws
+```
+
+## Setup
+
+For a complete provider deployment, follow the [AWS setup](/docs/v1.0/managed/aws#step-2-configure-aws).
+For an existing bucket or a custom server, use the storage configuration below;
+you do not need to provision the provider's database and server to use this adapter.
+
+## Configuration
+
+```typescript
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+
+interface S3StorageConfig extends S3ClientConfig {
+  bucketName: string; // S3 bucket name
+  basePath?: string; // Optional base path within bucket
+  getDownloadUrl?: (input: { storageUri: string }) => Promise<{ url: string }>;
+}
+```
+
+The inherited AWS SDK options include `region`, `endpoint`, and `credentials`
+(including credential providers and temporary session tokens). If `credentials`
+is omitted, the AWS SDK default credential chain is used. This lets you rely
+on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or other
+standard AWS credential sources.
+
+## Usage
+
+### AWS S3
+
+```typescript title="hot-updater.config.ts (excerpt)"
+import { s3Storage } from "@hot-updater/aws"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... build, database, plugins, and updateStrategy
+  storage: s3Storage({ // [!code ++]
+    region: "us-east-1", // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+    bucketName: "my-hot-updater-bucket", // [!code ++]
+  }), // [!code ++]
+});
+```
+
+### Cloudflare R2
+
+Use [`r2Storage`](/docs/v1.0/storage-adapters/cloudflare) for R2, including the
+managed Cloudflare Worker. It records `r2://` locations that the Worker can
+resolve. `s3Storage` always records `s3://` locations, even with an R2 endpoint,
+so it requires a server that registers an `s3` storage adapter.
+
+## Protocol
+
+`s3://bucket/encoded/key`
+
+For example, `s3://my-bucket/releases/1.0.0/bundle%20ios.zip` is stored in the
+`storageUri` field. Keys retain their slash hierarchy and encode each segment.
+
+## Capabilities
+
+`s3Storage` implements streaming upload, streaming Web-response reads,
+existence checks, exact deletion, and download URLs. A download URL is an S3
+presigned URL that expires in an hour, signed with the adapter's credentials:
+devices download from the bucket, which stays private. Pass `getDownloadUrl`
+to return another URL instead.
+
+For CloudFront delivery, pass `cloudFrontDownloadUrl(...)` as `getDownloadUrl`:
+
+```typescript title="src/hotUpdater.ts (excerpt)"
+import { cloudFrontDownloadUrl, s3Storage } from "@hot-updater/aws"; // [!code ++]
+
+const storage = s3Storage({
+  region: process.env.AWS_REGION!,
+  bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
+  getDownloadUrl: cloudFrontDownloadUrl({ // [!code ++]
+    publicBaseUrl: "https://updates.example.com", // [!code ++]
+    keyPairId: process.env.CLOUDFRONT_KEY_PAIR_ID!, // [!code ++]
+    ssmRegion: process.env.AWS_REGION!, // [!code ++]
+    ssmParameterName: process.env.CLOUDFRONT_PRIVATE_KEY_PARAMETER!, // [!code ++]
+  }), // [!code ++]
+});
+```
+
+An update check returns a URL for every file of its Bundle, hundreds for an
+app with many assets. `cloudFrontDownloadUrl` signs one custom policy for a
+Bundle's files (`bundles/<bundleId>/*`) and one for the shared,
+content-addressed assets (`assets/*`), and reuses each until half of
+`expiresSeconds` (one year by default) has passed. A URL holder can therefore
+read any shared asset whose SHA-256 name it knows, which no one can list
+without a manifest that names it.
+
+Use the CloudFront distribution's artifact domain and public key ID. The SSM
+parameter stores JSON containing `privateKey`; grant the server role permission
+to read and decrypt it. These settings and the private key remain on the
+server. If your secret store is elsewhere, provide
+`getPrivateKey: async () => privateKeyPem` instead of the two SSM options.
+Managed AWS initialization configures its CloudFront delivery path for you.
+
+## Maintenance
+
+`s3Storage` provides the object listing and exact deletion capabilities used by
+`hot-updater storage prune`. Follow the [Storage Cleanup](/docs/v1.0/guides/storage-cleanup)
+guide to remove unreferenced bundle objects and shared assets safely.
+
+Use a separate `basePath` for every database or environment that shares a
+bucket. Pruning assumes that the configured database owns every object below
+its storage prefix; without `basePath`, that is the whole bucket. Do not run
+`hot-updater storage prune --yes` while another active Hot Updater database
+uses the same bucket and prefix.
+
+## Custom server usage
+
+Use `s3Storage` with `createHotUpdater` for self-hosted servers:
+
+```typescript title="src/hotUpdater.ts"
+import { s3Storage } from "@hot-updater/aws"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
+
+const hotUpdater = createHotUpdater({
+  database,
+  plugins: [insights(), apiKeys()],
+  storage: s3Storage({ // [!code ++]
+    region: process.env.AWS_REGION!, // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+    bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
+  }), // [!code ++]
+  // ... other options
+});
+```

@@ -9,6 +9,9 @@
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
+  "store-install-patches-from-built-in",
+  "store-install-built-in-mismatch-downloads",
+  "store-install-patches-from-marked-build",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",
@@ -21,6 +24,7 @@
   "fingerprint-initial-install",
   "catalog-only-no-update",
   "same-bundle-release-adoption",
+  "ota-after-going-back-to-a-build",
   "size-aware-artifact-selection",
   "asset-heavy-ota-uses-archive",
   "stale-catalog-after-newer-generation",
@@ -33,5 +37,6 @@
   "post-content-crash-native-rollback",
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
-  "remote-config-fetch-activate"
+  "remote-config-fetch-activate",
+  "foreign-signing-key-refused"
 ]

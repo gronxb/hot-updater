@@ -16,13 +16,13 @@ import { Text, View } from "react-native";
 import { hotUpdater } from "./hotUpdater";
 
 function App() {
-	const appVersion = hotUpdater.getAppVersion();
+  const appVersion = hotUpdater.getAppVersion();
 
-	return (
-		<View>
-			<Text>App Version: {appVersion ?? "unknown"}</Text>
-		</View>
-	);
+  return (
+    <View>
+      <Text>App Version: {appVersion ?? "unknown"}</Text>
+    </View>
+  );
 }
 
 export default App;
@@ -41,8 +41,8 @@ getAppVersion(): string | null
 
 - `getAppVersion()` is synchronous.
 - The value is sourced from native app metadata:
-	- iOS: `CFBundleShortVersionString` in `Info.plist`
-	- Android: `PackageInfo.versionName`
+  - iOS: `CFBundleShortVersionString` in `Info.plist`
+  - Android: `PackageInfo.versionName`
 - The native module then exposes this as `APP_VERSION`, and
-	`hotUpdater.getAppVersion()` returns that bridged value.
+  `hotUpdater.getAppVersion()` returns that bridged value.
 - It does not make a network request.

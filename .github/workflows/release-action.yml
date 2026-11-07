@@ -1,0 +1,293 @@
+on:
+  pull_request:
+    paths:
+      - "actions/release/**"
+      - "actions/native-build/**"
+      - "actions/shared/**"
+      - "examples-server/preview-action/**"
+      - "examples/v0.85.0/**"
+      # The app examples/v0.85.0 bundles and links natively.
+      - "examples/e2e-app/**"
+      - "packages/hot-updater/src/commands/buildNative.ts"
+      - "packages/hot-updater/src/commands/deploy.ts"
+      - "packages/hot-updater/src/commands/nativeBuild.ts"
+      - "packages/hot-updater/src/utils/native/**"
+      - ".github/workflows/release-action.yml"
+
+name: Release Action
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-action-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# The release action (actions/release) on examples/v0.85.0's Android .aab,
+# against Postgres and MinIO started in the job and a fake Google Play the CLI
+# loads with `node --import`, so the CLI's real upload runs and no real store
+# is reached. Each step changes the app in a known way, and
+# release-proof.ts holds what must happen by hand: it reads Postgres, the
+# stored artifact, the fake store's record, and the commands that ran, and only
+# checks the action's result against them. After a JS-only and a native change,
+# it also runs the other change's check, which must fail, so a check that
+# passes anything can't turn this job green. iOS shares the decision and is
+# built on macOS outside this job: its lookup runs here, in the partial run.
+jobs:
+  proof:
+    name: Release action (fake store)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PROOF_CHANNEL: proof-release
+      PROOF_LOG: /tmp/release-proof.log
+      PROOF_COMMANDS: /tmp/release-proof-commands.log
+      PROOF_PLAY_LOG: /tmp/release-proof-store.jsonl
+      PROOF_APP_CONFIG: release.config.ts
+      # pnpm links the workspace CLI's bin only when its dist exists at
+      # install time, which is before this job builds it.
+      PROOF_CLI: node ../../examples-server/preview-action/scripts/record-cli.mjs node --import ../../examples-server/preview-action/scripts/fake-play.mjs ../../packages/hot-updater/dist/index.mjs
+      # One ABI. The build stays what a store takes: not debuggable, and signed
+      # with the scheme's keystore, which the proof checks on what the store got.
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      # ubuntu-latest's default JDK is 25 on Ubuntu 26.04, whose restricted
+      # method warning fails AGP's CMake configure. React Native builds with
+      # JDK 17, which every Ubuntu image ships.
+      - name: Use JDK 17
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - run: pnpm install
+      - name: Build
+        run: pnpm build
+
+      - name: Start Postgres and MinIO
+        run: bash examples-server/preview-action/scripts/backend.sh release-action > "$RUNNER_TEMP/backend.env"
+      - name: Seed the backend, the release keystore, and the Play service account
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          bash examples-server/preview-action/scripts/native-build-seed.sh "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
+          keystore="$(grep '^HOT_UPDATER_RELEASE_KEYSTORE=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
+          echo "::add-mask::$keystore"
+          # The job's environment is where the CLI reads every credential first.
+          cat "$RUNNER_TEMP/backend.env" "$RUNNER_TEMP/seed.env" >> "$GITHUB_ENV"
+          service_account="$(node -e '
+            const { generateKeyPairSync } = require("node:crypto");
+            const { privateKey } = generateKeyPairSync("rsa", {
+              modulusLength: 2048,
+              privateKeyEncoding: { type: "pkcs8", format: "pem" },
+              publicKeyEncoding: { type: "spki", format: "pem" },
+            });
+            process.stdout.write(JSON.stringify({
+              type: "service_account",
+              project_id: "hot-updater-proof",
+              client_email: "uploader@hot-updater-proof.iam.gserviceaccount.com",
+              private_key: privateKey,
+            }));
+          ')"
+          echo "::add-mask::$service_account"
+          echo "HOT_UPDATER_PLAY_SERVICE_ACCOUNT=$service_account" >> "$GITHUB_ENV"
+          : > "$PROOF_COMMANDS"
+          : > "$PROOF_PLAY_LOG"
+
+      - name: Release on a sandbox channel input
+        id: sandbox-input
+        continue-on-error: true
+        uses: ./actions/release
+        with:
+          platforms: android
+          android-scheme: release
+          channel: sandbox-release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it refused before running the CLI
+        run: |
+          test "${{ steps.sandbox-input.outcome }}" = failure
+          test ! -s "$PROOF_COMMANDS"
+      - name: Set a sandbox channel in the native project
+        working-directory: examples/v0.85.0
+        run: |
+          $PROOF_CLI channel set sandbox-release
+          : > "$PROOF_COMMANDS"
+      - name: Release on the native project's sandbox channel
+        id: sandbox-channel
+        continue-on-error: true
+        uses: ./actions/release
+        with:
+          platforms: android
+          android-scheme: release
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it decided nothing and ran nothing else
+        env:
+          PROOF_OUTCOME: ${{ steps.sandbox-channel.outcome }}
+          PROOF_RESULT: ${{ steps.sandbox-channel.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts sandbox-channel
+
+      - name: Decide with nothing tracked
+        id: first-dry-run
+        uses: ./actions/release
+        with: &dry-run
+          platforms: android
+          android-scheme: release
+          channel: ${{ env.PROOF_CHANNEL }}
+          dry-run: true
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that it decided a native build, and ran nothing else
+        env:
+          PROOF_OUTCOME: ${{ steps.first-dry-run.outcome }}
+          PROOF_RESULT: ${{ steps.first-dry-run.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts first-dry-run
+
+      - name: Build, then fail at the store
+        id: first-upload-fails
+        continue-on-error: true
+        uses: ./actions/release
+        env:
+          PROOF_PLAY_FAIL: commit
+        with: &release
+          platforms: android
+          android-scheme: release
+          channel: ${{ env.PROOF_CHANNEL }}
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that the run failed with the build tracked and nothing in the store
+        env:
+          PROOF_OUTCOME: ${{ steps.first-upload-fails.outcome }}
+          PROOF_RESULT: ${{ steps.first-upload-fails.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts first-upload-fails
+
+      - name: Decide again, with the build tracked but not in the store
+        id: rerun-dry-run
+        uses: ./actions/release
+        with: *dry-run
+      - name: Check that it still decided a native build
+        env:
+          PROOF_OUTCOME: ${{ steps.rerun-dry-run.outcome }}
+          PROOF_RESULT: ${{ steps.rerun-dry-run.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts rerun-dry-run
+
+      - name: Rerun the failed release
+        id: rerun
+        uses: ./actions/release
+        with: *release
+      - name: Check that the store took the rerun's build
+        env:
+          PROOF_OUTCOME: ${{ steps.rerun.outcome }}
+          PROOF_RESULT: ${{ steps.rerun.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts rerun
+
+      - name: Change only JavaScript
+        run: echo 'globalThis.__hotUpdaterReleaseProof = "js-only";' >> examples/v0.85.0/App.tsx
+      - name: Decide the JS-only change
+        id: js-dry-run
+        uses: ./actions/release
+        with: *dry-run
+      - name: Check that it decided a bundle, and ran nothing else
+        env:
+          PROOF_OUTCOME: ${{ steps.js-dry-run.outcome }}
+          PROOF_RESULT: ${{ steps.js-dry-run.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts js-dry-run
+      - name: Release the JS-only change
+        id: js-deployed
+        uses: ./actions/release
+        with: *release
+      - name: Check that only a bundle was deployed
+        env:
+          PROOF_OUTCOME: ${{ steps.js-deployed.outcome }}
+          PROOF_RESULT: ${{ steps.js-deployed.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts js-deployed
+      - name: Check that the native change's check refuses this run
+        env:
+          PROOF_OUTCOME: ${{ steps.js-deployed.outcome }}
+          PROOF_RESULT: ${{ steps.js-deployed.outputs.result }}
+        run: "! node examples-server/preview-action/release-proof.ts native-submitted"
+
+      - name: Change a declared native input
+        run: echo "// The release action's proof changes the fingerprint." >> examples/v0.85.0/android/brownfieldlib/build.gradle.kts
+      - name: Decide the native change
+        id: native-dry-run
+        uses: ./actions/release
+        with: *dry-run
+      - name: Check that it decided a native build, and ran nothing else
+        env:
+          PROOF_OUTCOME: ${{ steps.native-dry-run.outcome }}
+          PROOF_RESULT: ${{ steps.native-dry-run.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts native-dry-run
+      - name: Release the native change with a version code the store has
+        id: native-refused
+        continue-on-error: true
+        uses: ./actions/release
+        with: *release
+      - name: Check that the run failed, with the store's build untouched
+        env:
+          PROOF_OUTCOME: ${{ steps.native-refused.outcome }}
+          PROOF_RESULT: ${{ steps.native-refused.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts native-refused
+      - name: Raise the version code
+        run: sed -i 's/versionCode 1$/versionCode 2/' examples/v0.85.0/android/app/build.gradle
+      - name: Release the native change with the new version code
+        id: native-submitted
+        uses: ./actions/release
+        env:
+          PROOF_PLAY_VERSION_CODE: "2"
+        with: *release
+      - name: Check that the store took the new build, and no bundle was deployed
+        env:
+          PROOF_OUTCOME: ${{ steps.native-submitted.outcome }}
+          PROOF_RESULT: ${{ steps.native-submitted.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts native-submitted
+      - name: Check that the JS-only change's check refuses this run
+        env:
+          PROOF_OUTCOME: ${{ steps.native-submitted.outcome }}
+          PROOF_RESULT: ${{ steps.native-submitted.outputs.result }}
+        run: "! node examples-server/preview-action/release-proof.ts js-deployed"
+
+      - name: Release with the registry down
+        id: lookup-fails
+        continue-on-error: true
+        uses: ./actions/release
+        env:
+          HOT_UPDATER_DATABASE_URL: postgres://postgres:wrong@127.0.0.1:1/postgres
+        with: *release
+      - name: Check that a failed lookup ran nothing and failed the run
+        env:
+          PROOF_OUTCOME: ${{ steps.lookup-fails.outcome }}
+          PROOF_RESULT: ${{ steps.lookup-fails.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts lookup-fails
+
+      - name: Release two platforms, one of which fails
+        id: partial
+        continue-on-error: true
+        uses: ./actions/release
+        with:
+          platforms: android,ios
+          android-scheme: release
+          ios-scheme: not-a-scheme
+          channel: ${{ env.PROOF_CHANNEL }}
+          working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
+      - name: Check that the result shows both, and the run failed
+        env:
+          PROOF_OUTCOME: ${{ steps.partial.outcome }}
+          PROOF_RESULT: ${{ steps.partial.outputs.result }}
+        run: node examples-server/preview-action/release-proof.ts partial
+
+      - name: Print the seed's logs
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/logs/*.log; do
+            echo "::group::$log"
+            cat "$log"
+            echo "::endgroup::"
+          done

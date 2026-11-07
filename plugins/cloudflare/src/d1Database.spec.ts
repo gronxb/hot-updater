@@ -175,7 +175,7 @@ it("generates a wrangler migration with a server's plugin tables", async () => {
   expect(migration.path).toMatch(/^migrations\/\d{14}_hot-updater\.sql$/u);
   // The fence names the plugin and how to create its tables.
   await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-    'The tables of plugin "notes" are not migrated on d1Database: schema setting "schema.notes" is missing; expected "1". Run `hot-updater db migrate`',
+    'The tables of plugin "notes" are not migrated on d1Database: schema setting "schema.notes" is missing; expected "1". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, run `hot-updater db migrate`.',
   );
 
   state.database!.db.exec(migration.code);

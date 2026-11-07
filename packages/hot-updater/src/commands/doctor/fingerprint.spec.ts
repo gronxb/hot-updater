@@ -71,7 +71,6 @@ describe("checkFingerprintJson", () => {
           "The iOS fingerprint changed since fingerprint.json was created.",
         resolution:
           "Run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
-        fixability: "command",
         commands: ["npx hot-updater fingerprint create"],
         paths: ["fingerprint.json"],
         changes: {
@@ -147,7 +146,6 @@ describe("checkFingerprintJson", () => {
           "The iOS fingerprint changed because fingerprint.json was created with @expo/fingerprint@0.20.14 and the project now uses @expo/fingerprint@0.21.5. Native inputs may be unchanged.",
         resolution:
           "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
-        fixability: "blocked",
         paths: ["fingerprint.json"],
       },
     ]);
@@ -180,7 +178,6 @@ describe("checkFingerprintJson", () => {
           "fingerprint.json doesn't record the engine behind the iOS fingerprint, which @expo/fingerprint@0.21.5 computes unchanged.",
         resolution:
           "Run `npx hot-updater fingerprint create` to record it, so doctor and deploy can tell an engine upgrade from a native change. The fingerprint stays the same.",
-        fixability: "command",
         commands: ["npx hot-updater fingerprint create"],
         paths: ["fingerprint.json"],
       },
@@ -257,7 +254,6 @@ describe("checkUnusedFingerprintJson", () => {
         {
           platform: "project",
           code: "FINGERPRINT_JSON_UNUSED",
-          fixability: "auto",
           paths: ["fingerprint.json"],
         },
       ]);

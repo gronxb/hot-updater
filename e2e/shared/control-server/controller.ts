@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "child_process";
-import { createHash, randomUUID } from "crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import os from "os";
@@ -14,11 +14,13 @@ import type {
   HotUpdaterCoreApi,
   ReleaseCatalogRow,
   ReleaseRow,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
 import type { InsightsModel } from "@hot-updater/plugin-insights/server";
 import type { RemoteConfigApi } from "@hot-updater/plugin-remote-config/server";
 import type { Bundle } from "@hot-updater/protocol";
 
+import { BUILT_IN_MIN_BUNDLE_ID_SUFFIX } from "../built-in-bundle-id.ts";
 import {
   ConsoleInsightsQaError,
   readObservedInsightsEvent,
@@ -34,7 +36,16 @@ import {
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
-import { currentE2eTarget } from "../targets.ts";
+import {
+  currentE2eTarget,
+  nativeAppPath,
+  otherNativeAppPath,
+} from "../targets.ts";
+import {
+  readUntilComplete,
+  readWithRetries,
+  waitSync,
+} from "./android-file-read.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -74,9 +85,24 @@ import {
   type FairFileLock,
 } from "./fair-file-lock.ts";
 import {
+  deleteChannelReleases,
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
+import {
+  PROJECT_SIGNING_KEY_VARIABLE,
+  refusedForMissingSigningSecret,
+  withForeignSigning,
+  withSecretSigning,
+} from "./foreign-signing.ts";
+import {
+  assertDependenciesInCheckout,
+  NATIVE_BUILD_CHANNEL_PREFIX,
+  nativeBuildChannel,
+  parseNativeBuildImportOutput,
+  parseNativeBuildMarkOutput,
+  readArtifactMinBundleId,
+} from "./native-build-registration.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
@@ -209,6 +235,13 @@ type DeployBundleRequest = {
   patchMaxBaseBundles?: number;
   rollout?: number;
   safeBundleIds: string[];
+  /**
+   * `foreign`: the deploy signs its bundle with a key generated for it, not
+   * the one whose public key the app embeds. `secret`: the deploy reads the
+   * project's key as `secret("bundle-signing-key")` from its environment
+   * variable, with the key file moved away and an empty localSecrets() store.
+   */
+  signingKey?: "foreign" | "secret";
   strategy?: "appVersion" | "fingerprint";
   targetAppVersion: string;
   targetCohorts?: string[];
@@ -263,7 +296,6 @@ const HOT_UPDATER_ENV_FILE = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH
   ? path.resolve(REPO_DIR, process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH)
   : path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
-const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
@@ -542,7 +574,10 @@ const channelNamespace =
   process.env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || null;
 
 function getFixtureChannel(channel: string) {
-  return channelNamespace ? `${channelNamespace}-${channel}` : channel;
+  // A native build's channel is its binary's own across jobs.
+  return channelNamespace && !channel.startsWith(NATIVE_BUILD_CHANNEL_PREFIX)
+    ? `${channelNamespace}-${channel}`
+    : channel;
 }
 
 function getFixtureResetChannels() {
@@ -613,12 +648,23 @@ let archiveFailureMode: ArchiveFailureMode | null = null;
 let archiveFailuresRemaining = 0;
 // Interrupted archives by proxy path, kept to answer their resumed requests.
 const archiveInterruptions = new Map<string, ArchiveInterruption>();
+type PrefetchedResponse = {
+  readonly body: Uint8Array;
+  readonly headers: readonly [string, string][];
+  readonly status: number;
+  readonly statusText: string;
+};
+// Upstream responses fetched before the app asks for them, by upstream URL,
+// so the proxy answers those requests at once whatever the backend's latency.
+const prefetchedResponses = new Map<string, PrefetchedResponse>();
+let prefetchedResponsesServed = 0;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
   string,
   Map<number, CapturedProxyResponse>
 >();
 let catalogProxyMode: "freeze" | "live" | "replay" = "live";
+let updateServerUnreachable = false;
 let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
@@ -869,10 +915,15 @@ function stripAnsi(value: string) {
   );
 }
 
+/**
+ * The release ID deploy's outro prints in its `ID  <uuid>` row. The harness
+ * deploys one platform at a time with the workspace CLI, so no `iOS ID` or
+ * `Android ID` row, or a released CLI's `ID:`, is ever read here.
+ */
 function extractDeployReleaseId(output: string) {
   const plainOutput = stripAnsi(output);
   const match = plainOutput.match(
-    /^[ \t│]*ID:[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
+    /^[ \t│]*ID[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
   );
 
   return match?.[1] ?? null;
@@ -1499,11 +1550,12 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-/** The server the example's config describes: its database, core on it, and the plugins it runs. */
+/** The server the example's config describes: its database, core on it, the plugins it runs, and its storage. */
 type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
   readonly database: ConfiguredDatabase;
   readonly plugins: readonly AnyHotUpdaterPlugin[];
+  readonly storage: StorageAdapter | undefined;
 };
 
 async function withConfiguredDatabase<T>(
@@ -1514,7 +1566,7 @@ async function withConfiguredDatabase<T>(
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const { database, plugins } = await loadConfig(null);
+      const { database, plugins, storage } = await loadConfig(null);
       if (database === undefined) {
         throw new Error(
           "The example's hot-updater.config.ts sets no database.",
@@ -1528,6 +1580,7 @@ async function withConfiguredDatabase<T>(
           core: assembleServer({ database }).core,
           database,
           plugins,
+          storage,
         });
       } finally {
         await database.dispose?.();
@@ -2046,47 +2099,43 @@ function androidRunAsReadablePath(remotePath: string) {
 
 function readAndroidFileBuffer(remotePath: string) {
   const runAsPath = androidRunAsReadablePath(remotePath);
-  const readAttempts = [
+  return readWithRetries(
     [
-      "-s",
-      deviceId as string,
-      "exec-out",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
+      // A large file read over exec-out can fail fast once: read it again
+      // before falling back.
+      {
+        args: [
+          "-s",
+          deviceId as string,
+          "exec-out",
+          "run-as",
+          fixtureSession.appId,
+          "cat",
+          runAsPath,
+        ],
+        retries: 1,
+      },
+      {
+        args: [
+          "-s",
+          deviceId as string,
+          "shell",
+          "run-as",
+          fixtureSession.appId,
+          "cat",
+          runAsPath,
+        ],
+      },
+      { args: ["-s", deviceId as string, "shell", "cat", remotePath] },
     ],
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
-    ],
-    ["-s", deviceId as string, "shell", "cat", remotePath],
-  ];
-  const readErrors: string[] = [];
-
-  for (const args of readAttempts) {
-    const result = spawnSync("adb", args, {
-      // Final-file assertions also read multi-megabyte Hermes bundles.
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status === 0) {
-      return { fileBuffer: result.stdout, readError: null };
-    }
-
-    readErrors.push(
-      result.stderr.toString().trim() ||
-        result.error?.message ||
-        `adb exited ${String(result.status)}`,
-    );
-  }
-
-  return { fileBuffer: null, readError: readErrors.join(" | ") };
+    (args) =>
+      spawnSync("adb", args, {
+        // Final-file assertions also read multi-megabyte Hermes bundles.
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    waitSync,
+  );
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {
@@ -2925,7 +2974,11 @@ function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
 
 function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
   const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
-  const result = readAndroidFileBuffer(remotePath);
+  const result = readUntilComplete(
+    () => readAndroidFileBuffer(remotePath),
+    readAndroidFileByteSize(remotePath),
+    waitSync,
+  );
   if (!result.fileBuffer) {
     return {
       exists: false,
@@ -2942,8 +2995,29 @@ function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
     exists: true,
     fileHash,
     path: remotePath,
-    readError: null,
+    readError: result.readError,
   };
+}
+
+/** The file's size on the device, or null when it can't be read. */
+function readAndroidFileByteSize(remotePath: string): number | null {
+  const result = spawnSync(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "stat",
+      "-c",
+      "%s",
+      androidRunAsReadablePath(remotePath),
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const size = result.status === 0 ? Number(result.stdout.trim()) : Number.NaN;
+  return Number.isSafeInteger(size) ? size : null;
 }
 
 function readBundleAssetFileHash(bundleId: string, assetPath: string) {
@@ -3493,18 +3567,21 @@ function rewriteRemoteAssetUrl(
     return value;
   }
 
-  if (/^https?:\/\//.test(value)) {
-    return toAppReachableProxyUrl(value, metadata);
-  }
+  const url = resolveRemoteAssetUrl(value);
+  return url === null ? value : toAppReachableProxyUrl(url, metadata);
+}
 
+/**
+ * The upstream URL the proxy fetches for an asset URL an update response
+ * names: an absolute URL, or a client-relative storage path on the update
+ * server. Null for any other value, which the proxy passes on unchanged.
+ */
+function resolveRemoteAssetUrl(value: string) {
+  if (/^https?:\/\//.test(value)) return value;
   if (value.startsWith("/storage/")) {
-    return toAppReachableProxyUrl(
-      `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
-      metadata,
-    );
+    return `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`;
   }
-
-  return value;
+  return null;
 }
 
 function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
@@ -3915,6 +3992,98 @@ function captureCatalogResponse(
   capturedCatalogResponses.set(pathname, generations);
 }
 
+/**
+ * Fetches an upstream response and keeps it for the app's request. The body
+ * is already decoded, so its encoding and length headers are dropped.
+ */
+async function prefetchUpstreamResponse(url: string, headers?: Headers) {
+  const response = await fetch(url, { headers, method: "GET" });
+  if (!response.ok) {
+    throw createEndpointError("Upstream response to prefetch was not served", {
+      status: response.status,
+      target: url,
+    });
+  }
+  const kept = new Headers(response.headers);
+  kept.delete("content-encoding");
+  kept.delete("content-length");
+  const entry: PrefetchedResponse = {
+    body: new Uint8Array(await response.arrayBuffer()),
+    headers: [...kept.entries()],
+    status: response.status,
+    statusText: response.statusText,
+  };
+  prefetchedResponses.set(url, entry);
+  return entry;
+}
+
+/** The prefetched response for a whole-body GET of an upstream URL, if any. */
+function takePrefetchedResponse(url: string, request: Request) {
+  if (request.method !== "GET" || request.headers.has("range")) return null;
+  const entry = prefetchedResponses.get(url);
+  if (!entry) return null;
+  prefetchedResponsesServed += 1;
+  logE2eFixture("served prefetched response", {
+    bytes: entry.body.byteLength,
+    source: new URL(request.url).pathname,
+  });
+  return new Response(entry.body.slice(), {
+    headers: entry.headers,
+    status: entry.status,
+    statusText: entry.statusText,
+  });
+}
+
+/**
+ * Fetches the artifact response of an update from one Bundle to another, and
+ * the manifest and archive it names, so the proxy serves the app's requests
+ * for them from memory. iOS suspends an app soon after it leaves the
+ * foreground: a download the app starts then reaches the background session,
+ * and its injected failure reaches the app, before that only if no backend
+ * round trip stands in the way.
+ */
+async function prefetchUpdateArtifact(input: {
+  currentBundleId: string;
+  targetBundleId: string;
+}) {
+  const targetUrl = new URL(getControllerReachableAppBaseUrl());
+  targetUrl.pathname = rewriteProxiedUpdatePath(
+    `/hot-updater/artifacts/v2/${encodeURIComponent(input.targetBundleId)}/from/${encodeURIComponent(input.currentBundleId)}`,
+  );
+  targetUrl.search = "";
+  targetUrl.hash = "";
+  const artifact = await prefetchUpstreamResponse(
+    targetUrl.toString(),
+    getHotUpdaterClientRequestHeaders(),
+  );
+  const payload = JSON.parse(new TextDecoder().decode(artifact.body)) as {
+    archiveUrl?: unknown;
+    manifestUrl?: unknown;
+  };
+  const assetUrls = [payload.manifestUrl, payload.archiveUrl].map((value) =>
+    typeof value === "string" ? resolveRemoteAssetUrl(value) : null,
+  );
+  if (assetUrls.some((url) => url === null)) {
+    throw createEndpointError(
+      "The artifact response names no manifest and archive to prefetch",
+      input,
+    );
+  }
+  for (const url of assetUrls) await prefetchUpstreamResponse(url!);
+  logE2eFixture("prefetched update artifact", {
+    ...input,
+    responses: assetUrls.length + 1,
+  });
+  return { prefetchedResponses: assetUrls.length + 1 };
+}
+
+export function startPrefetchUpdateArtifactJob(input: {
+  currentBundleId: string;
+  targetBundleId: string;
+}) {
+  return createJob(() => prefetchUpdateArtifact(input));
+}
+
 function summarizeArchiveInterruption(entry: ArchiveInterruption | undefined) {
   return {
     bytes: entry?.body.byteLength ?? 0,
@@ -3925,6 +4094,7 @@ function summarizeArchiveInterruption(entry: ArchiveInterruption | undefined) {
 
 export function handleProxyState() {
   return {
+    updateServerUnreachable,
     archiveAvailable,
     archiveFailureMode,
     archiveFailuresRemaining,
@@ -3949,6 +4119,10 @@ export function handleProxyState() {
     },
     pathCardinality: proxyPathCounts.size,
     pathCounts: Object.fromEntries(proxyPathCounts),
+    prefetched: {
+      responses: prefetchedResponses.size,
+      served: prefetchedResponsesServed,
+    },
     requestCounts: { ...proxyRequestCounts },
     remoteTransfers: [...remoteAssetProxyTargets].map(([targetId, target]) => {
       const proxyPath = `/e2e/proxy-url/${targetId}`;
@@ -3968,6 +4142,7 @@ export function handleProxyState() {
 }
 
 export function handleConfigureProxy(input: {
+  updateServerUnreachable?: boolean;
   archiveAvailable?: boolean;
   archiveFailureMode?: ArchiveFailureMode | null;
   archiveFailures?: number;
@@ -3993,6 +4168,12 @@ export function handleConfigureProxy(input: {
     archiveFailureMode = null;
     archiveFailuresRemaining = 0;
     archiveInterruptions.clear();
+    prefetchedResponses.clear();
+    prefetchedResponsesServed = 0;
+    updateServerUnreachable = false;
+  }
+  if (input.updateServerUnreachable !== undefined) {
+    updateServerUnreachable = input.updateServerUnreachable;
   }
   if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
   if (input.replayGeneration !== undefined) {
@@ -4245,6 +4426,25 @@ export function handleAssertBundleArtifactTransfers(input: {
     transferBytesPresent &&
     (finalFiles === null || finalFiles.ok);
   if (!matches) {
+    // The evidence a failure needs, such as the file whose read failed and
+    // its readError, as the success path keeps it.
+    fs.writeFileSync(
+      path.join(
+        fixtureSession.resultsDir,
+        `artifact-transfers-${input.targetBundleId}-failed.json`,
+      ),
+      JSON.stringify(
+        {
+          currentBundleId: input.currentBundleId,
+          expected: input,
+          observed,
+          platform: fixtureSession.platform,
+          targetBundleId: input.targetBundleId,
+        },
+        null,
+        2,
+      ),
+    );
     throw new ProxyAssertionError("Unexpected Bundle artifact transfers", {
       expected: input,
       observed,
@@ -4290,12 +4490,48 @@ export function handleAssertProxy(input: {
   artifactRequests?: number;
   catalogRequests?: number;
   maxPathCardinality?: number;
+  minArtifactRequests?: number;
+  minCatalogRequests?: number;
+  minDownloadedBytes?: number;
 }) {
+  const downloadedBytes = [...remoteAssetTransfers.values()].reduce(
+    (total, transfer) => total + transfer.bytes,
+    0,
+  );
   const observed = {
     artifactFailuresRemaining,
+    downloadedBytes,
     pathCardinality: proxyPathCounts.size,
     requestCounts: { ...proxyRequestCounts },
+    requestPaths: Object.fromEntries(proxyPathCounts),
   };
+  if (
+    input.minCatalogRequests !== undefined &&
+    proxyRequestCounts.catalog < input.minCatalogRequests
+  ) {
+    throw new ProxyAssertionError("Too few catalog requests", {
+      expectedMinimum: input.minCatalogRequests,
+      observed,
+    });
+  }
+  if (
+    input.minArtifactRequests !== undefined &&
+    proxyRequestCounts.artifact < input.minArtifactRequests
+  ) {
+    throw new ProxyAssertionError("The app requested no artifact", {
+      expectedMinimum: input.minArtifactRequests,
+      observed,
+    });
+  }
+  if (
+    input.minDownloadedBytes !== undefined &&
+    downloadedBytes < input.minDownloadedBytes
+  ) {
+    throw new ProxyAssertionError("The app downloaded no bundle file", {
+      expectedMinimum: input.minDownloadedBytes,
+      observed,
+    });
+  }
   if (
     input.artifactFailuresRemaining !== undefined &&
     artifactFailuresRemaining !== input.artifactFailuresRemaining
@@ -4335,6 +4571,17 @@ export function handleAssertProxy(input: {
   return handleProxyState();
 }
 
+/**
+ * Whether the app's update server is down. The request still counts: the log
+ * shows the app tried. The route drops its connection.
+ */
+export function recordUnreachableUpdateRequest(request: Request): boolean {
+  if (!updateServerUnreachable) return false;
+  const { pathname } = new URL(request.url);
+  recordProxyRequest(classifyProxiedUpdatePath(pathname), pathname);
+  return true;
+}
+
 export async function handleProxyUpdateRequest(request: Request) {
   const requestUrl = new URL(request.url);
   const requestKind = classifyProxiedUpdatePath(requestUrl.pathname);
@@ -4365,11 +4612,13 @@ export async function handleProxyUpdateRequest(request: Request) {
       ? undefined
       : await request.arrayBuffer();
 
-  const response = await fetch(targetUrl, {
-    body: requestBody,
-    headers,
-    method: request.method,
-  });
+  const response =
+    takePrefetchedResponse(targetUrl.toString(), request) ??
+    (await fetch(targetUrl, {
+      body: requestBody,
+      headers,
+      method: request.method,
+    }));
 
   if (requestKind === "artifact") await waitForArtifactRelease();
   if (requestKind === "artifact" && artifactResponseDelayMs > 0) {
@@ -4512,21 +4761,27 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     archiveFailuresRemaining -= 1;
     headers.delete("range");
     headers.delete("if-range");
-    const origin = await fetch(targetUrl, { headers, method: "GET" });
-    if (!origin.ok) {
-      throw createEndpointError("Archive to interrupt was not served", {
-        source: requestUrl.pathname,
-        status: origin.status,
-      });
+    const prefetched = prefetchedResponses.get(target.url)?.body;
+    let body = prefetched;
+    if (body) {
+      prefetchedResponsesServed += 1;
+    } else {
+      const origin = await fetch(targetUrl, { headers, method: "GET" });
+      if (!origin.ok) {
+        throw createEndpointError("Archive to interrupt was not served", {
+          source: requestUrl.pathname,
+          status: origin.status,
+        });
+      }
+      body = new Uint8Array(await origin.arrayBuffer());
     }
-    const entry = createArchiveInterruption(
-      new Uint8Array(await origin.arrayBuffer()),
-    );
+    const entry = createArchiveInterruption(body.slice());
     archiveInterruptions.set(requestUrl.pathname, entry);
     const interrupted = interruptArchive(entry);
     transfer.bytes += interrupted.sentBytes;
     logE2eFixture("interrupting archive download", {
       bytes: entry.body.byteLength,
+      prefetched: prefetched !== undefined,
       sentBytes: interrupted.sentBytes,
       source: requestUrl.pathname,
     });
@@ -4548,14 +4803,16 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
             status: 200,
           });
   } else {
-    response = await fetch(targetUrl, {
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : await request.arrayBuffer(),
-      headers,
-      method: request.method,
-    });
+    response =
+      takePrefetchedResponse(target.url, request) ??
+      (await fetch(targetUrl, {
+        body:
+          request.method === "GET" || request.method === "HEAD"
+            ? undefined
+            : await request.arrayBuffer(),
+        headers,
+        method: request.method,
+      }));
   }
 
   if (artifactResponseDelayMs > 0) await sleep(artifactResponseDelayMs);
@@ -6454,13 +6711,27 @@ async function deployFixtureBundle(
       // shard's builds, reads them.
       return withDeployProcessLock(signal, async () => {
         const deployStartedAt = Date.now();
-        const output = await runLoggedCommand("node", args, {
-          cwd: fixtureSession.exampleDir,
-          env: getHotUpdaterControlEnv(),
-          logPath: deployLogPath,
-          signal,
-          onInterrupted: context?.markQuiescenceUncertain,
-        });
+        const deploy = (
+          options: {
+            allowFailure?: boolean;
+            env?: NodeJS.ProcessEnv;
+            logPath?: string;
+          } = {},
+        ) =>
+          runLoggedCommand("node", args, {
+            allowFailure: options.allowFailure,
+            cwd: fixtureSession.exampleDir,
+            env: { ...getHotUpdaterControlEnv(), ...options.env },
+            logPath: options.logPath ?? deployLogPath,
+            signal,
+            onInterrupted: context?.markQuiescenceUncertain,
+          });
+        const output =
+          request.signingKey === "foreign"
+            ? await withForeignSigningKey(() => deploy())
+            : request.signingKey === "secret"
+              ? await withSecretSigningKey(deploy, deployLogPath)
+              : await deploy();
         deployDurationMs = Date.now() - deployStartedAt;
         return output;
       });
@@ -6507,6 +6778,16 @@ async function deployFixtureBundle(
     };
   }
   let bundle = await fetchProviderBundleById(bundleId);
+  // A refused foreign-key bundle proves the app checks the key only when
+  // the bundle carries a signature at all.
+  if (
+    request.signingKey !== undefined &&
+    !bundle.manifestFileHash?.startsWith("sig:")
+  ) {
+    throw new Error(
+      `The ${request.signingKey}-key deploy's bundle ${bundleId} carries no signature: its manifest hash is ${bundle.manifestFileHash}.`,
+    );
+  }
   if (shouldWaitForUpdateCheckVisibility(request)) {
     await waitForReleaseCatalogVisibility({
       bundleId,
@@ -7448,7 +7729,236 @@ async function resetRemoteBundles() {
   return {};
 }
 
+/**
+ * Registers the installed app binary as a native build with the real CLI,
+ * `hot-updater native-build import <binary> --channel <its channel> --json`:
+ * the simulator `.app` or the `.apk` the run installed. The channel is the
+ * binary's own, which the scenario switches the app to at runtime, so
+ * `--channel` names it; the binary keeps compiling in its default channel,
+ * which the other scenarios run on. A binary an earlier run imported is
+ * reported as `alreadyImported`, and the job succeeds. The MIN_BUNDLE_ID is
+ * read from the binary's bytes here, apart from the CLI, and must be the
+ * one the CLI registered. Its channel is the binary's own, so this deletes
+ * the releases a failed earlier run left there.
+ */
+async function registerNativeBuildFixture(input: {
+  appVersion: string;
+  /** The other build goes on the channel of a run's build. */
+  build?: "run" | "other";
+  channel?: string;
+}) {
+  await assertDependenciesInCheckout({
+    checkoutDir: REPO_DIR,
+    projectDir: EXAMPLE_DIR,
+  });
+  const platform = fixtureSession.platform;
+  const build = input.build ?? "run";
+  const artifactPath = (build === "run" ? nativeAppPath : otherNativeAppPath)(
+    currentE2eTarget(),
+    platform,
+    REPO_DIR,
+    process.env,
+  );
+  const minBundleId = await readArtifactMinBundleId(artifactPath, platform);
+  const channel = input.channel ?? nativeBuildChannel(minBundleId);
+  const logPath = path.join(
+    fixtureSession.resultsDir,
+    `native-build-import-${channel}-${build}.log`,
+  );
+  const output = await runLoggedCommand(
+    "node",
+    [
+      HOT_UPDATER_CLI_PATH,
+      "native-build",
+      "import",
+      artifactPath,
+      "--channel",
+      channel,
+      "--json",
+    ],
+    {
+      allowFailure: true,
+      cwd: fixtureSession.exampleDir,
+      env: getHotUpdaterControlEnv(),
+      logPath,
+    },
+  );
+  const result = parseNativeBuildImportOutput(output);
+  const nativeBuild = result.nativeBuild;
+  if (!result.ok || nativeBuild === null) {
+    throw new Error(
+      [
+        "hot-updater native-build import refused the installed binary:",
+        ...(result.problems ?? []).map(({ message }) => `- ${message}`),
+        `See ${path.relative(REPO_DIR, logPath)}`,
+      ].join("\n"),
+    );
+  }
+  if (nativeBuild.min_bundle_id !== minBundleId) {
+    throw new Error(
+      `hot-updater native-build import registered built-in bundle ${nativeBuild.min_bundle_id}, but ${artifactPath} compiled in ${minBundleId}.`,
+    );
+  }
+  if (nativeBuild.app_version !== input.appVersion) {
+    throw new Error(
+      `hot-updater native-build import registered app version ${nativeBuild.app_version}, but the scenario's build is ${input.appVersion}.`,
+    );
+  }
+  await withConfiguredDatabase(({ core }) =>
+    deleteChannelReleases({ core, channels: [channel], platform }),
+  );
+  // A scenario that registered a newer build on this channel, and may have
+  // stopped midway, leaves it: the run's build must be the scope's only one.
+  if (build === "run") {
+    await clearNativeBuildScope({
+      appVersion: input.appVersion,
+      channel,
+      keepId: nativeBuild.id,
+    });
+  }
+  logE2eFixture("native build imported", {
+    alreadyImported: result.alreadyImported === true,
+    artifactPath,
+    build,
+    channel,
+    minBundleId,
+    nativeBuildId: nativeBuild.id,
+    platform,
+  });
+  return {
+    nativeBuildChannel: channel,
+    nativeBuildId: nativeBuild.id,
+    nativeBuildMinBundleId: minBundleId,
+    nativeBuildRegistered: result.alreadyImported !== true,
+  };
+}
+
+/**
+ * Deletes the builds of a scope newer than the one to keep, with the real CLI
+ * so their artifacts go too, and clears a mark it holds.
+ */
+async function clearNativeBuildScope(input: {
+  appVersion: string;
+  channel: string;
+  keepId: string;
+}) {
+  const scope = {
+    platform: fixtureSession.platform,
+    channel: input.channel,
+    fingerprintHash: null,
+    appVersion: input.appVersion,
+  };
+  for (;;) {
+    const newest = await withConfiguredDatabase(({ core }) =>
+      core.findNativeBuild(scope),
+    );
+    if (newest === null || newest.id === input.keepId) break;
+    await runLoggedCommand(
+      "node",
+      [
+        HOT_UPDATER_CLI_PATH,
+        "native-build",
+        "delete",
+        newest.id,
+        "--yes",
+        "--json",
+      ],
+      {
+        cwd: fixtureSession.exampleDir,
+        env: getHotUpdaterControlEnv(),
+        logPath: path.join(
+          fixtureSession.resultsDir,
+          `native-build-delete-${newest.id}.log`,
+        ),
+      },
+    );
+  }
+  await withConfiguredDatabase(({ core }) =>
+    core.markNativeBuild(input.keepId, { storeBuild: false }),
+  );
+}
+
+/** `hot-updater native-build mark <id> --json`: the store build of its scope. */
+async function markNativeBuildFixture(input: { id: string }) {
+  const logPath = path.join(
+    fixtureSession.resultsDir,
+    `native-build-mark-${input.id}.log`,
+  );
+  const output = await runLoggedCommand(
+    "node",
+    [HOT_UPDATER_CLI_PATH, "native-build", "mark", input.id, "--json"],
+    {
+      cwd: fixtureSession.exampleDir,
+      env: getHotUpdaterControlEnv(),
+      logPath,
+    },
+  );
+  const { nativeBuild } = parseNativeBuildMarkOutput(output);
+  if (nativeBuild?.id !== input.id || !nativeBuild.is_store_build) {
+    throw new Error(
+      `hot-updater native-build mark didn't mark ${input.id}. See ${path.relative(REPO_DIR, logPath)}`,
+    );
+  }
+  return {};
+}
+
+/** Deletes the releases of a native build's channel. */
+async function resetNativeBuildChannel(input: { channel: string }) {
+  if (!input.channel.startsWith(NATIVE_BUILD_CHANNEL_PREFIX)) {
+    throw new Error(`${input.channel} is no native build's channel.`);
+  }
+  const clearedReleaseIds = await withConfiguredDatabase(({ core }) =>
+    deleteChannelReleases({
+      core,
+      channels: [input.channel],
+      platform: fixtureSession.platform,
+    }),
+  );
+  logE2eFixture("native build channel reset", {
+    channel: input.channel,
+    clearedReleaseIds,
+    platform: fixtureSession.platform,
+  });
+  return {};
+}
+
+/**
+ * Gives a bundle's patch from `baseBundleId` a base file hash no file has:
+ * what a device sees when its built-in bundle is not the bytes the native
+ * build registered, such as after store processing rewrote them.
+ */
+async function mismatchPatchBaseFileHash(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  const bundle = await fetchProviderBundleById(input.bundleId);
+  const patches = getBundlePatches(bundle);
+  if (!patches.some((patch) => patch.baseBundleId === input.baseBundleId)) {
+    throw createEndpointError("The bundle has no patch from this base", {
+      ...input,
+      observedBaseBundleIds: patches.map((patch) => patch.baseBundleId),
+    });
+  }
+  await withConfiguredDatabase(({ core }) =>
+    core.updateBundle(input.bundleId, {
+      patches: patches.map((patch) =>
+        patch.baseBundleId === input.baseBundleId
+          ? { ...patch, baseFileHash: "0".repeat(64) }
+          : patch,
+      ),
+    }),
+  );
+  logE2eFixture("patch base file hash mismatched", {
+    ...input,
+    platform: fixtureSession.platform,
+  });
+  return {};
+}
+
 async function resetLocalAppState() {
+  // What an earlier scenario that stopped midway left behind.
+  updateServerUnreachable = false;
+  if (otherNativeBuildInstalled) installNativeBuild("run");
   resetE2eScreenState();
   fixtureSession.observedInsightsEvents = [];
   if (fixtureSession.platform === "ios") {
@@ -7714,6 +8224,124 @@ async function writeSummary({
   return {};
 }
 
+/**
+ * Runs a deploy whose bundle is signed with a key generated for it, which
+ * the app's embedded public key does not match: the config signs with that
+ * key and reads no native public key (see `withForeignSigning`). The
+ * checkout's own key is untouched, and the config is restored when the
+ * deploy ends.
+ */
+async function withForeignSigningKey(deploy: () => Promise<string>) {
+  const keyDir = await fsPromises.mkdtemp(
+    path.join(fixtureSession.resultsDir, "foreign-signing-key-"),
+  );
+  const privateKeyPath = path.join(keyDir, "private-key.pem");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  await fsPromises.writeFile(privateKeyPath, privateKey, { mode: 0o600 });
+  const configSource = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
+  try {
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withForeignSigning(configSource, privateKeyPath),
+    );
+    return await deploy();
+  } finally {
+    await fsPromises.writeFile(fixtureSession.configSourceFile, configSource);
+    await fsPromises.rm(keyDir, { force: true, recursive: true });
+  }
+}
+
+/**
+ * Runs a deploy that reads the project's private key as
+ * `secret("bundle-signing-key")` from its variable, with the key file moved
+ * away and HOT_UPDATER_HOME at an empty directory, so neither a path nor
+ * localSecrets()'s store can supply it. A deploy without the variable
+ * must first be refused for it,
+ * and the deploy with it must sign with the key the app embeds, which the
+ * CLI checks against the native files and the app checks on install. The
+ * config and the key file are restored when the deploy ends.
+ */
+async function withSecretSigningKey(
+  deploy: (options?: {
+    allowFailure?: boolean;
+    env?: NodeJS.ProcessEnv;
+    logPath?: string;
+  }) => Promise<string>,
+  deployLogPath: string,
+) {
+  const privateKeyPath = path.join(
+    fixtureSession.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+  const privateKey = await fsPromises.readFile(privateKeyPath, "utf8");
+  const privateKeyAside = `${privateKeyPath}.e2e-secret`;
+  const configSource = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
+  // Each input is restored only once changed, and even when another fails
+  // to restore, so no later deploy of this checkout runs without its key.
+  const restores: Array<() => Promise<void>> = [];
+  try {
+    restores.push(() =>
+      fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
+    );
+    // No key a developer stored on this machine answers for the variable.
+    const keyStoreHome = await fsPromises.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-e2e-home-"),
+    );
+    restores.push(() =>
+      fsPromises.rm(keyStoreHome, { force: true, recursive: true }),
+    );
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withSecretSigning(configSource),
+    );
+    await fsPromises.rename(privateKeyPath, privateKeyAside);
+    restores.push(() => fsPromises.rename(privateKeyAside, privateKeyPath));
+
+    const refusedLogPath = deployLogPath.replace(/\.log$/u, "-no-secret.log");
+    const refused = await deploy({
+      allowFailure: true,
+      env: {
+        [PROJECT_SIGNING_KEY_VARIABLE]: "",
+        HOT_UPDATER_HOME: keyStoreHome,
+      },
+      logPath: refusedLogPath,
+    });
+    if (
+      !refusedForMissingSigningSecret(refused) ||
+      extractDeployReleaseId(refused)
+    ) {
+      throw new Error(
+        `A deploy without ${PROJECT_SIGNING_KEY_VARIABLE} was not refused for the missing signing secret. See ${refusedLogPath}`,
+      );
+    }
+
+    return await deploy({
+      env: {
+        [PROJECT_SIGNING_KEY_VARIABLE]: privateKey,
+        HOT_UPDATER_HOME: keyStoreHome,
+      },
+    });
+  } finally {
+    const restored = await Promise.allSettled(
+      restores.map((restore) => restore()),
+    );
+    const failed = restored.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
+  }
+}
+
 async function cleanup() {
   remoteAssetProxyTargets.clear();
   if (!fixtureSession.appBackupPath) {
@@ -7807,6 +8435,97 @@ export function startSeedCrashedBundleFrontierJob(input: {
 
 export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
+}
+
+/**
+ * The two builds' MIN_BUNDLE_IDs, read from their compiled code. A device that
+ * has both must see two isolation keys, or nothing here tests a key change.
+ */
+async function readNativeBuilds() {
+  const { platform } = fixtureSession;
+  const target = currentE2eTarget();
+  const paths = {
+    run: nativeAppPath(target, platform, REPO_DIR, process.env),
+    other: otherNativeAppPath(target, platform, REPO_DIR, process.env),
+  };
+  const missing = Object.values(paths).filter((file) => !fs.existsSync(file));
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing native build: ${missing.join(", ")}. \`pnpm -w e2e:build\` writes both, and a binary cache must keep both.`,
+    );
+  }
+  const run = await readArtifactMinBundleId(paths.run, platform);
+  const other = await readArtifactMinBundleId(paths.other, platform);
+  if (run === other) {
+    throw new Error(`Both native builds have MIN_BUNDLE_ID ${run}`);
+  }
+  return {
+    runBuildMinBundleId: run,
+    otherBuildMinBundleId: other,
+  };
+}
+
+/** The other build, when a scenario left it on the device. */
+let otherNativeBuildInstalled = false;
+
+/** Installs over the app, as an update does: its data stays. */
+function installNativeBuild(build: "run" | "other") {
+  const { platform, appId } = fixtureSession;
+  const target = currentE2eTarget();
+  const file = (build === "run" ? nativeAppPath : otherNativeAppPath)(
+    target,
+    platform,
+    REPO_DIR,
+    process.env,
+  );
+  // Set first: if the install fails, the next reset installs the run's build.
+  otherNativeBuildInstalled = true;
+  if (platform === "ios") {
+    captureCommand(
+      "xcrun",
+      ["simctl", "terminate", deviceId as string, appId],
+      {
+        allowFailure: true,
+      },
+    );
+    captureCommand("xcrun", ["simctl", "install", deviceId as string, file]);
+  } else {
+    captureCommand("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "force-stop",
+      appId,
+    ]);
+    captureCommand("adb", ["-s", deviceId as string, "install", "-r", file]);
+  }
+  otherNativeBuildInstalled = build === "other";
+  return { build };
+}
+
+export function startReadNativeBuildsJob() {
+  return createJob(() => readNativeBuilds());
+}
+
+export function startInstallNativeBuildJob(build: "run" | "other") {
+  return createJob(async () => installNativeBuild(build));
+}
+
+export function startRegisterNativeBuildJob(input: {
+  appVersion: string;
+  build?: "run" | "other";
+  channel?: string;
+}) {
+  return createJob(() => registerNativeBuildFixture(input));
+}
+
+export function startMarkNativeBuildJob(input: { id: string }) {
+  return createJob(() => markNativeBuildFixture(input));
+}
+
+export function startResetNativeBuildChannelJob(input: { channel: string }) {
+  return createJob(() => resetNativeBuildChannel(input));
 }
 
 export function startSetNativeCheckJob(input: {
@@ -7945,6 +8664,13 @@ export async function handleResetRemoteBundles() {
 
 export async function handleResetLocalAppState() {
   return resetLocalAppState();
+}
+
+export async function handleMismatchPatchBaseFileHash(args: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  return mismatchPatchBaseFileHash(args);
 }
 
 export async function handleAssertBundlePatchBases(args: {

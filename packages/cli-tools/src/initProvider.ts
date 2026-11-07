@@ -39,6 +39,13 @@ export type InitProviderDefinition<
 > = {
   readonly inputs: TInputs;
   readonly label: string;
+  /**
+   * The variables of the credentials the config init writes reads with
+   * `secret()`, such as an API token. With a team `secrets` adapter, init
+   * stores them there with the app's API key, and reads one the
+   * environment and the env file lack from it.
+   */
+  readonly secrets?: readonly string[];
 };
 
 export const defineInitProvider = <

@@ -16,6 +16,7 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   shouldAutoSelectOnlyInitResource,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
@@ -168,10 +169,14 @@ const resolveName = async ({
   );
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile, secretsEnv);
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
     nonInteractive,
@@ -449,22 +454,33 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with Azure settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
-    cwd,
-    settings: "Azure",
-  });
+  const cosmosEndpoint = /AccountEndpoint=([^;]+)/iu.exec(
+    cosmosConnectionString,
+  )?.[1];
+  await writeHotUpdaterFiles(
+    getConfigScaffold(
+      build,
+      cosmosEndpoint === undefined ? {} : { cosmosEndpoint },
+    ),
+    {
+      cwd,
+      settings: "Azure",
+    },
+  );
 
   printAppSetup({
     baseURL,
     ...(credential === undefined ? {} : { credential }),
     clientPlugins: server.clientPlugins,
   });
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/azure#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/azure#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
 // The Function package the infrastructure scaffold ships.

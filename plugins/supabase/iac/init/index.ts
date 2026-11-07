@@ -120,4 +120,5 @@ export const initProvider = {
       },
     },
   },
+  secrets: ["HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"],
 } as const satisfies InitProviderDefinition;

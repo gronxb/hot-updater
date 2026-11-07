@@ -13,9 +13,8 @@ required plugins using the commands below. Commit the resulting lockfile to
 reproduce the installed versions.
 
 <Callout type="warn">
-  For an existing v0 installation, start with
-  [Move from v0 to v1](/docs/guides/upgrade-to-v1) before installing or changing
-  infrastructure.
+  For an existing v0 installation, start with [Move from v0 to
+  v1](/docs/guides/upgrade-to-v1) before installing or changing infrastructure.
 </Callout>
 
 ## Prerequisites
@@ -70,8 +69,9 @@ npm install @hot-updater/rock --save-dev
 npm install @hot-updater/expo --save-dev
 ```
 
-Keep `@hot-updater/react-native` as the runtime SDK. `@hot-updater/expo` supplies
-the build and native config plugins; configure it during
+`@hot-updater/expo` needs Expo SDK 55 or later. Keep
+`@hot-updater/react-native` as the runtime SDK. `@hot-updater/expo` supplies the
+build and native config plugins; configure it during
 [app setup](/docs/get-started/app-setup#build-configuration).
 
   </Tab>

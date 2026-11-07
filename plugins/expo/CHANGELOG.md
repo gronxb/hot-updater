@@ -1,5 +1,327 @@
 # @hot-updater/expo
 
+## 1.2.0-rc.24
+
+### Patch Changes
+
+- Updated dependencies [69225c7]
+  - @hot-updater/cli-tools@1.2.0-rc.24
+  - hot-updater@1.2.0-rc.24
+  - @hot-updater/bare@1.2.0-rc.24
+  - @hot-updater/plugin-core@1.2.0-rc.24
+
+## 1.2.0-rc.23
+
+### Patch Changes
+
+- Updated dependencies [6d1b0c6]
+  - hot-updater@1.2.0-rc.23
+  - @hot-updater/cli-tools@1.2.0-rc.23
+  - @hot-updater/bare@1.2.0-rc.23
+  - @hot-updater/plugin-core@1.2.0-rc.23
+
+## 1.2.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [a823198]
+  - hot-updater@1.2.0-rc.22
+  - @hot-updater/plugin-core@1.2.0-rc.22
+  - @hot-updater/cli-tools@1.2.0-rc.22
+  - @hot-updater/bare@1.2.0-rc.22
+
+## 1.2.0-rc.21
+
+### Patch Changes
+
+- Updated dependencies [af5bc7a]
+  - hot-updater@1.2.0-rc.21
+  - @hot-updater/cli-tools@1.2.0-rc.21
+  - @hot-updater/bare@1.2.0-rc.21
+  - @hot-updater/plugin-core@1.2.0-rc.21
+
+## 1.2.0-rc.20
+
+### Patch Changes
+
+- 1e72e05: Fix `hot-updater fingerprint create`'s output.
+  - When `fingerprint.json` already records the fingerprint, it prints only that the file is up to date. It no longer prints `Created fingerprint.json` first.
+  - When `fingerprint.json` isn't valid JSON, as a merge conflict leaves it, it says it rewrote the file. It no longer says the file changed or asks for a rebuild.
+  - An Expo project whose `app.json` or `app.config.*` lists `@hot-updater/expo` no longer gets the Expo CNG warning from `fingerprint create`. Without the plugin, the warning shows the `plugins` entry intact.
+  - `hot-updater keys export-public` warns an Expo CNG project unless the `@hot-updater/expo` plugin sets `publicKeyPath`: without it, the next prebuild removes the key the command writes into the native files. The warning shows the plugin entry with `publicKeyPath`. Build adapters' `getNativeProjectValues` can report that file as `publicKeyPath`.
+
+- Updated dependencies [1e72e05]
+  - hot-updater@1.2.0-rc.20
+  - @hot-updater/plugin-core@1.2.0-rc.20
+  - @hot-updater/cli-tools@1.2.0-rc.20
+  - @hot-updater/bare@1.2.0-rc.20
+
+## 1.2.0-rc.19
+
+### Patch Changes
+
+- Updated dependencies [65efc2e]
+  - hot-updater@1.2.0-rc.19
+  - @hot-updater/cli-tools@1.2.0-rc.19
+  - @hot-updater/bare@1.2.0-rc.19
+  - @hot-updater/plugin-core@1.2.0-rc.19
+
+## 1.2.0-rc.18
+
+### Patch Changes
+
+- Updated dependencies [42f5b23]
+- Updated dependencies [a57d2e8]
+  - hot-updater@1.2.0-rc.18
+  - @hot-updater/plugin-core@1.2.0-rc.18
+  - @hot-updater/cli-tools@1.2.0-rc.18
+  - @hot-updater/bare@1.2.0-rc.18
+
+## 1.2.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [a8da20c]
+- Updated dependencies [e9edd9f]
+  - hot-updater@1.2.0-rc.17
+  - @hot-updater/cli-tools@1.2.0-rc.17
+  - @hot-updater/bare@1.2.0-rc.17
+  - @hot-updater/plugin-core@1.2.0-rc.17
+
+## 1.2.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [29bc1e6]
+  - hot-updater@1.2.0-rc.16
+  - @hot-updater/cli-tools@1.2.0-rc.16
+  - @hot-updater/bare@1.2.0-rc.16
+  - @hot-updater/plugin-core@1.2.0-rc.16
+
+## 1.2.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [effac38]
+  - hot-updater@1.2.0-rc.15
+  - @hot-updater/cli-tools@1.2.0-rc.15
+  - @hot-updater/bare@1.2.0-rc.15
+  - @hot-updater/plugin-core@1.2.0-rc.15
+
+## 1.2.0-rc.14
+
+### Patch Changes
+
+- Updated dependencies [56fb167]
+- Updated dependencies [11ee65d]
+- Updated dependencies [cc31804]
+  - hot-updater@1.2.0-rc.14
+  - @hot-updater/cli-tools@1.2.0-rc.14
+  - @hot-updater/bare@1.2.0-rc.14
+  - @hot-updater/plugin-core@1.2.0-rc.14
+
+## 1.2.0-rc.13
+
+### Minor Changes
+
+- 7d6a7c9: The minimum Expo SDK is now 55, in the `expo` peer range of `@hot-updater/expo` and in the docs.
+  - A project on an earlier SDK upgrades Expo first with `npx expo install expo@^55.0.0 --fix`, then runs `npx expo prebuild --clean` and releases a new native build.
+  - On an earlier SDK, `expo prebuild` with the config plugin and the Expo build adapter's bundle build stop with that command. Both read the `expo` the project installs.
+  - `hot-updater doctor` reports an Expo project below SDK 55 as an error, `EXPO_SDK_UNSUPPORTED`, from the installed `expo`, or from the declared range when Expo isn't installed.
+
+### Patch Changes
+
+- Updated dependencies [b54eddc]
+- Updated dependencies [a40da17]
+- Updated dependencies [ad99046]
+- Updated dependencies [7d6a7c9]
+- Updated dependencies [a5daa89]
+- Updated dependencies [64fe8d8]
+- Updated dependencies [1e85609]
+- Updated dependencies [c6e18f9]
+- Updated dependencies [818c27d]
+- Updated dependencies [a1ae453]
+- Updated dependencies [1ed1acd]
+- Updated dependencies [20006f2]
+- Updated dependencies [3d95e55]
+- Updated dependencies [ea52563]
+- Updated dependencies [eafdc72]
+- Updated dependencies [68d6347]
+- Updated dependencies [ef790db]
+- Updated dependencies [21fea57]
+  - @hot-updater/plugin-core@1.2.0-rc.13
+  - hot-updater@1.2.0-rc.13
+  - @hot-updater/cli-tools@1.2.0-rc.13
+  - @hot-updater/bare@1.2.0-rc.13
+
+## 1.2.0-rc.12
+
+### Patch Changes
+
+- Updated dependencies [67a4892]
+  - hot-updater@1.2.0-rc.12
+  - @hot-updater/cli-tools@1.2.0-rc.12
+  - @hot-updater/bare@1.2.0-rc.12
+  - @hot-updater/plugin-core@1.2.0-rc.12
+
+## 1.2.0-rc.11
+
+### Patch Changes
+
+- Updated dependencies [4c10736]
+  - hot-updater@1.2.0-rc.11
+  - @hot-updater/cli-tools@1.2.0-rc.11
+  - @hot-updater/bare@1.2.0-rc.11
+  - @hot-updater/plugin-core@1.2.0-rc.11
+
+## 1.2.0-rc.10
+
+### Patch Changes
+
+- Updated dependencies [41444fa]
+- Updated dependencies [fd2aa7e]
+  - @hot-updater/cli-tools@1.2.0-rc.10
+  - hot-updater@1.2.0-rc.10
+  - @hot-updater/bare@1.2.0-rc.10
+  - @hot-updater/plugin-core@1.2.0-rc.10
+
+## 1.2.0-rc.9
+
+### Patch Changes
+
+- Updated dependencies [12ff126]
+  - hot-updater@1.2.0-rc.9
+  - @hot-updater/cli-tools@1.2.0-rc.9
+  - @hot-updater/bare@1.2.0-rc.9
+  - @hot-updater/plugin-core@1.2.0-rc.9
+
+## 1.2.0-rc.8
+
+### Patch Changes
+
+- 21cfeec: `native-build ios` and `native-build android` print a few lines with live progress. One `Preparing` line covers the prebuild, the app version or fingerprint, codegen, Ruby gems, and pods, showing the current sub-step, and ends as `Prepared iOS 1.7.0 · prebuild · codegen · pods` with its duration. The cache result is one line with its reason, such as `Cache miss · engine changed`. Archive, export, and Gradle each show one live line with the phase read from the tool's output (`Compiling React-Core · 412 files`, `Linking`, `Signing`, `Bundling JavaScript`, or Gradle's current task) and the elapsed time, and each ends as one line with its duration. Registering the build and uploading it to TestFlight or Google Play are also one line each. The run ends with a summary: the artifact's path and size, the version and build number, the MIN_BUNDLE_ID, the channel, the total time, and the build log. The xcodebuild or Gradle command line, the full native build key, and what changed since the cached build go to the build log, so credential file paths stay off the terminal. iOS writes the archive and its export to one log. In CI and without a terminal, no spinner runs: each finished step prints one line. A failure ends its step's line as failed, then prints up to 20 of the tool's error lines (an export's errors with the lines that explain them), or else its last 15 lines, and the log's path on stderr. A failed `pod install`, `bundle install`, or codegen names the command and the last lines of its output. `xcbeautify` is no longer used. `expo prebuild` now reports done after it finishes, not before it starts. `@hot-updater/cli-tools` exports `startStep`, `createStep`, `withStep`, `failActiveStep`, `formatDuration`, and `withDuration`; while a step runs, `p` spinners and info lines become its detail, and other logs print after its line. `BuildLogger` takes a `createPhaseReader` instead of `importantLogPatterns` and `progressStages`.
+- Updated dependencies [8a440e3]
+- Updated dependencies [297f916]
+- Updated dependencies [2e3f250]
+- Updated dependencies [21cfeec]
+- Updated dependencies [c463534]
+- Updated dependencies [5358377]
+  - hot-updater@1.2.0-rc.8
+  - @hot-updater/cli-tools@1.2.0-rc.8
+  - @hot-updater/plugin-core@1.2.0-rc.8
+  - @hot-updater/bare@1.2.0-rc.8
+
+## 1.2.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies [5b13b16]
+- Updated dependencies [f3989de]
+  - hot-updater@1.2.0-rc.7
+  - @hot-updater/cli-tools@1.2.0-rc.7
+  - @hot-updater/bare@1.2.0-rc.7
+  - @hot-updater/plugin-core@1.2.0-rc.7
+
+## 1.2.0-rc.6
+
+### Patch Changes
+
+- Updated dependencies [755bde5]
+  - hot-updater@1.2.0-rc.6
+  - @hot-updater/cli-tools@1.2.0-rc.6
+  - @hot-updater/bare@1.2.0-rc.6
+  - @hot-updater/plugin-core@1.2.0-rc.6
+
+## 1.2.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies [dd7db4b]
+- Updated dependencies [1489a30]
+- Updated dependencies [709997a]
+- Updated dependencies [5d4d977]
+- Updated dependencies [2fd1c83]
+  - hot-updater@1.2.0-rc.5
+  - @hot-updater/cli-tools@1.2.0-rc.5
+  - @hot-updater/plugin-core@1.2.0-rc.5
+  - @hot-updater/bare@1.2.0-rc.5
+
+## 1.2.0-rc.4
+
+### Patch Changes
+
+- Updated dependencies [ebb223a]
+  - hot-updater@1.2.0-rc.4
+  - @hot-updater/cli-tools@1.2.0-rc.4
+  - @hot-updater/bare@1.2.0-rc.4
+  - @hot-updater/plugin-core@1.2.0-rc.4
+
+## 1.2.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies [3c00e7a]
+  - hot-updater@1.2.0-rc.3
+  - @hot-updater/cli-tools@1.2.0-rc.3
+  - @hot-updater/bare@1.2.0-rc.3
+  - @hot-updater/plugin-core@1.2.0-rc.3
+
+## 1.2.0-rc.2
+
+### Patch Changes
+
+- Updated dependencies [76090c3]
+  - hot-updater@1.2.0-rc.2
+  - @hot-updater/cli-tools@1.2.0-rc.2
+  - @hot-updater/bare@1.2.0-rc.2
+  - @hot-updater/plugin-core@1.2.0-rc.2
+
+## 1.2.0-rc.1
+
+### Patch Changes
+
+- Updated dependencies [939651e]
+- Updated dependencies [cd5fa07]
+- Updated dependencies [bcc239a]
+  - hot-updater@1.2.0-rc.1
+  - @hot-updater/cli-tools@1.2.0-rc.1
+  - @hot-updater/bare@1.2.0-rc.1
+  - @hot-updater/plugin-core@1.2.0-rc.1
+
+## 1.2.0-rc.0
+
+### Patch Changes
+
+- 8c675a2: CLI prompts refuse to ask without a terminal instead of waiting: `keys export-public` names `-y` and `-p`, `keys remove`, `db migrate`, `db generate`, and `native-build ios|android` without `--scheme` name the option that skips the prompt, and every other prompt fails with an error. `native-build find` no longer runs the build adapter's prebuild, so a lookup leaves `ios/` and `android/` as they are: the Expo adapter reports the app version and channel `expo prebuild` would write from the Expo config (`nativeBuild.getNativeProjectValues`), and other adapters' native projects are read as they are. `hot-updater native-build delete <id>` deletes a registered native build, its built-in bundle, and its stored artifact, through core's new `deleteNativeBuild` and the admin API's `DELETE /native-builds/:id`.
+- Updated dependencies [6276804]
+- Updated dependencies [3462a9a]
+- Updated dependencies [d7f02a6]
+- Updated dependencies [8c675a2]
+- Updated dependencies [28dfe97]
+- Updated dependencies [e97d063]
+- Updated dependencies [84b21f0]
+- Updated dependencies [0050ff3]
+- Updated dependencies [43b0a61]
+- Updated dependencies [fbe5798]
+- Updated dependencies [1ad0ebe]
+- Updated dependencies [89cd5ce]
+- Updated dependencies [f5cffc0]
+- Updated dependencies [288f6a9]
+- Updated dependencies [79c81f6]
+- Updated dependencies [4d8e0d2]
+- Updated dependencies [ed37acf]
+- Updated dependencies [6f9313b]
+- Updated dependencies [bcc6f20]
+- Updated dependencies [b78660b]
+- Updated dependencies [4e4ddfb]
+- Updated dependencies [f017e61]
+- Updated dependencies [5e7a045]
+- Updated dependencies [32de3ce]
+  - hot-updater@1.2.0-rc.0
+  - @hot-updater/cli-tools@1.2.0-rc.0
+  - @hot-updater/plugin-core@1.2.0-rc.0
+  - @hot-updater/bare@1.2.0-rc.0
+
 ## 1.1.8
 
 ### Patch Changes

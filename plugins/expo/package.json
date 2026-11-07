@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/expo",
-  "version": "1.1.8",
+  "version": "1.2.0-rc.24",
   "description": "Hot Updater build and config plugin for Expo",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "expo": "^50.0.0",
+    "expo": "^55.0.0",
     "execa": "catalog:tools",
     "hot-updater": "workspace:*",
     "vitest": "catalog:"
@@ -54,7 +54,7 @@
     "./package.json": "./package.json"
   },
   "peerDependencies": {
-    "expo": ">=50.0.0",
+    "expo": ">=55.0.0",
     "hot-updater": "*"
   },
   "peerDependenciesMeta": {

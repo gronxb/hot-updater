@@ -779,5 +779,118 @@ describe("createBundleDiff", () => {
       );
       expect(upload).not.toHaveBeenCalled();
     });
+
+    describe("a native build's built-in bundle as the base", () => {
+      const minBundleId = "01900000-0000-7000-8000-000000000000";
+      const targetBundleId = "01900000-0000-7000-8000-000000000001";
+
+      /**
+       * A signed target, and the built-in bundle of a registered native
+       * build: registration records its manifest's SHA-256, never a
+       * signature, as `native-build ios|android` does.
+       */
+      const setupBuiltIn = async (builtInManifest?: string) => {
+        const baseAsset = createAsset([1, 2, 3]);
+        const targetAsset = createAsset([1, 9, 3]);
+        const targetBundle = createBundle(targetBundleId, {
+          manifestFileHash: signedManifestHash(
+            manifestJson(targetBundleId, hermesAssets(targetAsset)),
+          ),
+        });
+        const core = await createCore([targetBundle]);
+        await core.registerNativeBuild({
+          id: "01900000-0000-7000-8000-00000000b001",
+          platform: "ios",
+          channel: "production",
+          fingerprintHash: "fingerprint-hash",
+          appVersion: null,
+          minBundleId,
+          gitCommitHash: null,
+          buildKey: null,
+          artifact: {
+            kind: "ipa",
+            storageUri: "s3://test-bucket/native-builds/ios/b001",
+            byteSize: 1_024,
+          },
+          embeddedBundle: {
+            manifestStorageUri: `s3://test-bucket/releases/bundles/${minBundleId}/manifest.json`,
+            manifestFileHash: sha256(
+              manifestJson(minBundleId, hermesAssets(baseAsset)),
+            ),
+            assetBaseStorageUri: "s3://test-bucket/releases/assets",
+          },
+        });
+        const fetchMock = vi.fn(async (input: Request | URL | string) => {
+          const url = String(input);
+          if (url.endsWith(`${minBundleId}/manifest.json`)) {
+            return new Response(
+              builtInManifest ??
+                manifestJson(minBundleId, hermesAssets(baseAsset)),
+            );
+          }
+          if (url.endsWith(`${targetBundleId}/manifest.json`)) {
+            return new Response(
+              manifestJson(targetBundleId, hermesAssets(targetAsset)),
+            );
+          }
+          for (const asset of [baseAsset, targetAsset]) {
+            if (url.endsWith(asset.compressedPath)) {
+              return new Response(asset.compressed as BodyInit);
+            }
+          }
+          return new Response("not found", { status: 404 });
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+          async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+        );
+        return { baseAsset, core, fetchMock, upload };
+      };
+
+      it("patches a signed bundle from it with the configured public key", async () => {
+        const { core, upload } = await setupBuiltIn();
+
+        await createBundleDiff(
+          { baseBundleId: minBundleId, bundleId: targetBundleId },
+          {
+            core,
+            signingPublicKey: publicKey,
+            storageAdapter: createStorageAdapter(upload),
+          },
+        );
+
+        expect(upload).toHaveBeenCalledOnce();
+        expect(
+          (await storedBundle(core, targetBundleId))?.patches?.map(
+            (patch) => patch.baseBundleId,
+          ),
+        ).toEqual([minBundleId]);
+      });
+
+      it("rejects its manifest when it does not match the registered hash, before reading its assets", async () => {
+        const { baseAsset, core, fetchMock, upload } = await setupBuiltIn(
+          manifestJson(minBundleId, hermesAssets(createAsset([7, 7, 7]))),
+        );
+
+        await expect(
+          createBundleDiff(
+            { baseBundleId: minBundleId, bundleId: targetBundleId },
+            {
+              core,
+              signingPublicKey: publicKey,
+              storageAdapter: createStorageAdapter(upload),
+            },
+          ),
+        ).rejects.toThrow(
+          `Manifest of bundle ${minBundleId} does not match its hash`,
+        );
+        expect(
+          fetchMock.mock.calls.some(([input]) =>
+            String(input).endsWith(baseAsset.compressedPath),
+          ),
+        ).toBe(false);
+        expect(upload).not.toHaveBeenCalled();
+      });
+    });
   });
 });

@@ -277,13 +277,13 @@ describe("E2E navigation contract", () => {
     expect(sharedScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/cohort-action-result",
     );
-    expect(openScreenBody).toContain("await this.options.device.openLink(");
+    expect(openScreenBody).toContain("await this.openRouteLink(");
     expect(openScreenBody).toContain("E2E_SCREEN_URLS");
     expect(openScreenBody).toContain('this.options.platform === "android"');
     expect(
       openScreenBody.indexOf("await this.openApp({ relaunch: false })"),
     ).toBeLessThan(
-      openScreenBody.indexOf("await this.options.device.openLink("),
+      openScreenBody.indexOf("await this.openRouteLink("),
     );
     expect(openScreenBody).not.toContain("waitForActiveScreen");
     expect(openScreenBody).not.toContain(".tap()");

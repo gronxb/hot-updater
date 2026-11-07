@@ -1,0 +1,39 @@
+{
+  "name": "@examples/expo-55",
+  "version": "1.1.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "fingerprint:create": "hot-updater fingerprint create"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.12",
+    "@hot-updater/react-native": "workspace:*",
+    "expo": "~55.0.32",
+    "expo-asset": "~55.0.20",
+    "expo-dev-client": "~55.0.41",
+    "expo-font": "~55.0.8",
+    "expo-status-bar": "~55.0.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-web": "~0.21.0",
+    "react-native-webview": "13.16.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/runtime": "^7.25.2",
+    "@hot-updater/expo": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "@types/react": "~19.2.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "babel-preset-expo": "~55.0.25",
+    "expo-modules-autolinking": "55.0.28",
+    "hot-updater": "workspace:*",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "private": true
+}

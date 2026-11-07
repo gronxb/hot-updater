@@ -186,6 +186,15 @@ export interface Spec extends TurboModule {
   resetChannel(): Promise<boolean>;
 
   /**
+   * Clears the runtime channel and restores the original bundle, as
+   * `resetChannel` does, only while the Release selection `params` names is
+   * current: native checks the catalog and resets in one step. Resolves
+   * false for a stale selection. Native built from an earlier SDK has no
+   * such method; JavaScript checks for it.
+   */
+  resetChannelIfSelectionCurrent(params: UnsafeObject): Promise<boolean>;
+
+  /**
    * Gets the base URL for the current active bundle directory.
    * Returns the file:// URL to the bundle directory without trailing slash.
    * This is used for Expo DOM components to construct full asset paths.

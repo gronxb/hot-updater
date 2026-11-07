@@ -5,6 +5,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { CoreApi } from "./core/api";
+import { createApi } from "./handler.testFixtures";
 import { createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import type { HandlerAPI } from "./handlerTypes";
@@ -179,5 +180,177 @@ describe("admin API protocol 2 routes", () => {
       ),
     ).rejects.toBeInstanceOf(HandlerBadRequestError);
     expect(listReleases).not.toHaveBeenCalled();
+  });
+
+  it("finds a native build by scope, answering a scope without one with null data", async () => {
+    const findNativeBuild = vi.fn(async () => null);
+
+    const response = await routes.findNativeBuild!(
+      {},
+      new Request(
+        `${BASE}/native-builds/latest?platform=android&channel=beta&appVersion=1.2.0`,
+      ),
+      apiWith({ findNativeBuild }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: null });
+    expect(findNativeBuild).toHaveBeenCalledWith({
+      platform: "android",
+      channel: "beta",
+      fingerprintHash: null,
+      appVersion: "1.2.0",
+    });
+  });
+
+  it.each([
+    "platform=ios&channel=production",
+    "platform=ios&channel=production&fingerprintHash=f&appVersion=1.0.0",
+    "platform=web&channel=production&fingerprintHash=f",
+    "platform=ios&fingerprintHash=f",
+  ])("refuses the native build lookup %s", async (query) => {
+    const findNativeBuild = vi.fn();
+
+    await expect(
+      routes.findNativeBuild!(
+        {},
+        new Request(`${BASE}/native-builds/latest?${query}`),
+        apiWith({ findNativeBuild }),
+      ),
+    ).rejects.toBeInstanceOf(HandlerBadRequestError);
+    expect(findNativeBuild).not.toHaveBeenCalled();
+  });
+
+  it("registers a well-formed native build, and refuses one with both targets", async () => {
+    const registration = {
+      id: "01900000-0000-7000-8000-000000000002",
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "f",
+      appVersion: null,
+      minBundleId: "01900000-0000-7000-8000-000000000001",
+      gitCommitHash: null,
+      buildKey: null,
+      artifact: { kind: "ipa", storageUri: "s3://bucket/App.ipa", byteSize: 1 },
+      embeddedBundle: {
+        manifestStorageUri: "s3://bucket/manifest.json",
+        manifestFileHash: "hash",
+        assetBaseStorageUri: "s3://bucket/assets",
+      },
+    };
+    const registerNativeBuild = vi.fn(async () => ({ id: registration.id }));
+
+    const response = await routes.registerNativeBuild!(
+      {},
+      post("/native-builds", registration),
+      apiWith({ registerNativeBuild } as unknown as Partial<CoreApi>),
+    );
+
+    expect(response.status).toBe(201);
+    expect(registerNativeBuild).toHaveBeenCalledWith(registration);
+    await expect(
+      routes.registerNativeBuild!(
+        {},
+        post("/native-builds", { ...registration, appVersion: "1.0.0" }),
+        apiWith({ registerNativeBuild } as unknown as Partial<CoreApi>),
+      ),
+    ).rejects.toBeInstanceOf(HandlerBadRequestError);
+    expect(registerNativeBuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes a native build, answering an unknown ID with 200 so a 404 means no route", async () => {
+    const deleteNativeBuild = vi.fn(async (id: string) =>
+      id === "build-1"
+        ? { deleted: true, nativeBuild: { id } }
+        : { deleted: false, reason: "not_found" },
+    );
+    const api = apiWith({ deleteNativeBuild } as unknown as Partial<CoreApi>);
+
+    const deleted = await routes.deleteNativeBuild!(
+      { id: "build-1" },
+      new Request(`${BASE}/native-builds/build-1`, { method: "DELETE" }),
+      api,
+    );
+    const missing = await routes.deleteNativeBuild!(
+      { id: "build-2" },
+      new Request(`${BASE}/native-builds/build-2`, { method: "DELETE" }),
+      api,
+    );
+
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toEqual({
+      data: { deleted: true, nativeBuild: { id: "build-1" } },
+    });
+    expect(missing.status).toBe(200);
+    await expect(missing.json()).resolves.toEqual({
+      data: { deleted: false, reason: "not_found" },
+    });
+  });
+
+  it("refuses an app version whose scope key overflows, as a bad request", async () => {
+    await expect(
+      routes.findNativeBuild!(
+        {},
+        new Request(
+          `${BASE}/native-builds/latest?platform=ios&channel=production&appVersion=${encodeURIComponent("한".repeat(300))}`,
+        ),
+        createApi(),
+      ),
+    ).rejects.toThrow("longer than 2048 characters");
+  });
+
+  it.each([" production", "a".repeat(256)])(
+    "refuses the native build channel %j, as a bad request",
+    async (channel) => {
+      const api = createApi();
+      await expect(
+        routes.findNativeBuild!(
+          {},
+          new Request(
+            `${BASE}/native-builds/latest?platform=ios&channel=${encodeURIComponent(channel)}&fingerprintHash=f`,
+          ),
+          api,
+        ),
+      ).rejects.toBeInstanceOf(HandlerBadRequestError);
+      await expect(
+        routes.registerNativeBuild!(
+          {},
+          post("/native-builds", {
+            id: "01900000-0000-7000-8000-000000000002",
+            platform: "ios",
+            channel,
+            fingerprintHash: "f",
+            appVersion: null,
+            minBundleId: "01900000-0000-7000-8000-000000000001",
+            gitCommitHash: null,
+            buildKey: null,
+            artifact: {
+              kind: "ipa",
+              storageUri: "s3://bucket/App.ipa",
+              byteSize: 1,
+            },
+            embeddedBundle: {
+              manifestStorageUri: "s3://bucket/manifest.json",
+              manifestFileHash: "hash",
+              assetBaseStorageUri: "s3://bucket/assets",
+            },
+          }),
+          api,
+        ),
+      ).rejects.toBeInstanceOf(HandlerBadRequestError);
+      await expect(api.core.listChannels()).resolves.toEqual([]);
+    },
+  );
+
+  it("refuses a fingerprint core cannot key, as a bad request", async () => {
+    await expect(
+      routes.findNativeBuild!(
+        {},
+        new Request(
+          `${BASE}/native-builds/latest?platform=ios&channel=production&fingerprintHash=${encodeURIComponent("a/b")}`,
+        ),
+        createApi(),
+      ),
+    ).rejects.toBeInstanceOf(HandlerBadRequestError);
   });
 });

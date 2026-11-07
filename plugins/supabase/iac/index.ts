@@ -19,6 +19,7 @@ import {
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  type RunInitResult,
   resolvePackageVersion,
   transformEnv,
   writeHotUpdaterFiles,
@@ -29,7 +30,10 @@ import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { supabaseDatabase } from "../src/supabaseDatabase";
-import { getConfigScaffold } from "./configTemplate";
+import {
+  getConfigScaffold,
+  type SupabaseConfigResources,
+} from "./configTemplate";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
   isSupabaseFunctionName,
@@ -441,7 +445,7 @@ export const selectProject = async (
   } catch (err) {
     spinner.stop();
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`Failed to fetch Supabase projects: ${message}`);
+    p.log.error(`Failed to fetch Supabase projects: ${message}`);
     process.exit(1);
   }
 
@@ -729,9 +733,9 @@ const deployEdgeFunction = async (
               "functions",
               "deploy",
               functionName,
-              "--project-ref",
-              projectId,
+              `--remote=${projectId}`,
               "--no-verify-jwt",
+              "--yes",
               "--workdir",
               workdir,
             ],
@@ -838,8 +842,7 @@ export const getSupabaseProjectAccess = async ({
         SUPABASE_CLI,
         "projects",
         "api-keys",
-        "--project-ref",
-        project.id,
+        `--remote=${project.id}`,
         "--output",
         "json",
       ],
@@ -922,9 +925,14 @@ export const withSupabaseCliMetadataCleanup = async <Result>(
 const runInitWithoutCliMetadata = async ({
   build,
   envFile,
-}: RunInitOptions) => {
+  secretsEnv,
+}: RunInitOptions): Promise<RunInitResult> => {
   const nonInteractive = envFile !== undefined;
-  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const initEnvSources = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+    secretsEnv,
+  );
   const { inputEnv, managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
@@ -1047,6 +1055,7 @@ const runInitWithoutCliMetadata = async ({
   );
   let credential: ProvisionedClientCredential | undefined;
   let clientPlugins: readonly PluginClientPlugin[] = [];
+  let resources: SupabaseConfigResources | undefined;
   try {
     // Staged first, so a function that cannot be staged stops init before it
     // creates a project, a bucket, or a table.
@@ -1107,6 +1116,10 @@ const runInitWithoutCliMetadata = async ({
       [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
       HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
     });
+    resources = {
+      supabaseUrl: `https://${project.id}.supabase.co`,
+      bucketName: bucket.name,
+    };
 
     await linkSupabase(tmpDir, {
       accessToken,
@@ -1147,7 +1160,7 @@ const runInitWithoutCliMetadata = async ({
   }
 
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
-  await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build, resources), {
     cwd: process.cwd(),
     settings: "Supabase",
   });
@@ -1159,15 +1172,16 @@ const runInitWithoutCliMetadata = async ({
   });
   reportSupabaseOriginCatalogReady();
 
-  p.log.message(
-    `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
-    )}`,
-  );
-  p.log.success("Done! 🎉");
+  return {
+    nextSteps: [
+      link(
+        "https://hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
+      ),
+    ],
+  };
 };
 
-export const runInit = (options: RunInitOptions): Promise<void> =>
+export const runInit = (options: RunInitOptions): Promise<RunInitResult> =>
   withSupabaseCliMetadataCleanup(process.cwd(), () =>
     runInitWithoutCliMetadata(options),
   );

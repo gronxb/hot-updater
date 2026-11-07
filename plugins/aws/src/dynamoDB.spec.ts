@@ -63,6 +63,22 @@ const mockDynamoDB = () =>
 const mockCloudFront = () =>
   vi.spyOn(CloudFrontClient.prototype, "send").mockResolvedValue({} as never);
 
+describe("dynamoDB's credentials", () => {
+  it("takes access keys whose fields are lazy, and reads none when the config loads", async () => {
+    const accessKeyId = vi.fn(async () => "lazy-access-key-id");
+    const secretAccessKey = vi.fn(async () => "lazy-secret-access-key");
+
+    const database = dynamoDB({
+      ...config,
+      credentials: { accessKeyId, secretAccessKey },
+    });
+
+    expect(accessKeyId).not.toHaveBeenCalled();
+    expect(secretAccessKey).not.toHaveBeenCalled();
+    await database.dispose?.();
+  });
+});
+
 describe("dynamoDB CloudFront invalidation", () => {
   afterEach(() => {
     vi.useRealTimers();

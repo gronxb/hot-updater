@@ -639,9 +639,18 @@ describe("Cloudflare init discovery", () => {
     mocks.provisionClientCredential.mockResolvedValue(credential);
 
     // When
-    await runInit({ build: "bare" });
+    const result = await runInit({ build: "bare" });
 
     // Then
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
     expect(commands).toEqual([
       ["d1", "migrations", "apply", "ota", "--remote"],
       ["deploy", "--name", "hot-updater"],
@@ -655,7 +664,7 @@ describe("Cloudflare init discovery", () => {
       ["secret-access-key"],
     ]);
     // The prebuilt Worker on the resources init chose, and the package's
-    // migration, which creates the tables of core and the Worker's plugins.
+    // migrations, which create the tables of core and the Worker's plugins.
     expect(deployed.config).toMatchObject({
       main: "./dist/index.js",
       d1_databases: [
@@ -664,9 +673,15 @@ describe("Cloudflare init discovery", () => {
       r2_buckets: [{ binding: "BUCKET", bucket_name: "bundles" }],
       vars: { ACCOUNT_ID: "account-id", BUCKET_NAME: "bundles" },
     });
-    expect(Object.keys(deployed.migrations ?? {})).toEqual([
-      "0001_hot-updater_1.0.0.sql",
-    ]);
+    expect(Object.keys(deployed.migrations ?? {}).sort()).toEqual(
+      (
+        await fs.readdir(
+          path.resolve(import.meta.dirname, "../worker/migrations"),
+        )
+      )
+        .filter((name) => name.endsWith(".sql"))
+        .sort(),
+    );
     expect(deployed.migrations?.["0001_hot-updater_1.0.0.sql"]).toContain(
       "'schema.apiKeys'",
     );
@@ -689,8 +704,14 @@ describe("Cloudflare init discovery", () => {
     expect(mocks.makeEnv).toHaveBeenLastCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",
     });
+    // The config names the resources init chose, and reads the credentials
+    // with secret().
     expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledWith(
-      getConfigScaffold("bare"),
+      getConfigScaffold("bare", {
+        accountId: "account-id",
+        bucketName: "bundles",
+        d1DatabaseId: "database-id",
+      }),
       { cwd: project, settings: "Cloudflare" },
     );
     const [scaffold] = mocks.writeHotUpdaterFiles.mock.calls.at(-1)!;

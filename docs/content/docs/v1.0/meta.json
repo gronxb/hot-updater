@@ -1,0 +1,32 @@
+{
+  "title": "v1.0",
+  "description": "Hot Updater 1.0 documentation",
+  "icon": "Book",
+  "root": true,
+  "pagesIndex": "[v1.0](/docs/v1.0/get-started/introduction)",
+  "pages": [
+    "get-started",
+    "concepts",
+    "---Hosting---",
+    "managed",
+    "custom",
+    "---Workflows---",
+    "deliver-updates",
+    "operate",
+    "security",
+    "---Guides---",
+    "guides/brownfield",
+    "---Adapters and Plugins---",
+    "concepts/plugin-system",
+    "build-adapters",
+    "storage-adapters",
+    "database-adapters",
+    "guides/signing",
+    "integration-plugins",
+    "adapters",
+    "plugins",
+    "plugins/publish",
+    "---Reference---",
+    "react-native-api"
+  ]
+}

@@ -15,6 +15,8 @@ import {
 const COSMOS_IMAGE =
   "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907";
 const AZURITE_IMAGE = "mcr.microsoft.com/azure-storage/azurite:3.37.0";
+/** Lowkey Vault, a Key Vault emulator. */
+const LOWKEY_VAULT_IMAGE = "nagyesta/lowkey-vault:7.3.112";
 
 /** The emulators' well-known account keys, public and accepted only by them. */
 const COSMOS_EMULATOR_KEY =
@@ -145,6 +147,45 @@ export const startAzurite = async () => {
   );
   return {
     connectionString,
+    stop: () => stopRuntime(runtime.child),
+  };
+};
+
+/**
+ * Lowkey Vault in Docker, serving one vault on the loopback port it
+ * listens on. Its certificate is self-signed, so the caller turns off
+ * certificate checks while it runs (`NODE_TLS_REJECT_UNAUTHORIZED=0`).
+ */
+export const startLowkeyVault = async () => {
+  assertDockerDaemonAvailable(
+    "Key Vault integration specs need a running Docker daemon.",
+  );
+  const port = await findOpenPort();
+  const runtime = spawnRuntime({
+    command: "docker",
+    args: [
+      "run",
+      "--rm",
+      "-p",
+      `127.0.0.1:${port}:${port}`,
+      "-e",
+      // The vault's URL must be the one requests name, port included.
+      `LOWKEY_ARGS=--server.port=${port}`,
+      LOWKEY_VAULT_IMAGE,
+    ],
+    cwd: process.cwd(),
+  });
+  const vaultUrl = `https://127.0.0.1:${port}`;
+  await waitFor(
+    async () => {
+      const response = await fetch(`${vaultUrl}/ping`);
+      if (!response.ok) throw new Error(`ping answered ${response.status}`);
+    },
+    runtime,
+    "Lowkey Vault",
+  );
+  return {
+    vaultUrl,
     stop: () => stopRuntime(runtime.child),
   };
 };

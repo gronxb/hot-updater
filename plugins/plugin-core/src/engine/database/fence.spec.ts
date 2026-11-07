@@ -105,7 +105,7 @@ describe("schema fence", () => {
     ).rejects.toMatchObject({
       plugins: [],
       message:
-        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `hot-updater db migrate`.',
+        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.',
     });
   });
 
@@ -135,6 +135,64 @@ describe("schema fence", () => {
     await fenced.get(SETTINGS_TABLE, [["x"]]);
     // one fence read, then the two reads themselves
     expect(calls.gets).toBe(3);
+  });
+
+  it("lists core's and the plugins' settings in one read when a plugin fence wraps core's", async () => {
+    const memory = createMemoryAdapter();
+    await migrateSchema(memory, "memory", [], {
+      ...settings,
+      "schema.core": "0.9.0",
+    });
+    const { adapter, calls } = counted(memory);
+    const core = withSchemaFence(adapter, "memory", settings);
+    const plugins = withSchemaFence(
+      core,
+      "memory",
+      { "schema.insights": "1", "schema.notes": "2" },
+      "Run the migration.",
+    );
+
+    const error = await plugins
+      .get(SETTINGS_TABLE, [["x"]])
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
+    expect(error).toMatchObject({
+      setting: { key: "schema.core", expected: "1.0.0", found: "0.9.0" },
+      settings: [
+        { key: "schema.core", expected: "1.0.0", found: "0.9.0" },
+        { key: "schema.insights", expected: "1", found: null },
+        { key: "schema.notes", expected: "2", found: null },
+      ],
+      plugins: ["insights", "notes"],
+      message:
+        'Hot Updater schema settings for memory are not migrated: "schema.core" is "0.9.0"; expected "1.0.0", and "schema.insights" is missing; expected "1", and "schema.notes" is missing; expected "2". Run `npx hot-updater doctor` in the project whose hot-updater.config.ts names this database: it names the command that migrates it. In a server project, `hot-updater db migrate` migrates the database its server file names.',
+    });
+    // A refusal costs the one read, as core's alone did.
+    expect(calls.gets).toBe(1);
+
+    // Once core is current, the plugins' settings keep their own message.
+    await migrateSchema(memory, "memory", [], settings);
+    await expect(plugins.get(SETTINGS_TABLE, [["x"]])).rejects.toMatchObject({
+      settings: [
+        { key: "schema.insights", expected: "1", found: null },
+        { key: "schema.notes", expected: "2", found: null },
+      ],
+      message: expect.stringMatching(
+        /^The tables of plugins "insights" and "notes" are not migrated on memory: .* Run the migration\.$/u,
+      ),
+    });
+
+    await migrateSchema(memory, "memory", [], {
+      ...settings,
+      "schema.insights": "1",
+      "schema.notes": "2",
+    });
+    calls.gets = 0;
+    await plugins.get(SETTINGS_TABLE, [["x"]]);
+    await plugins.get(SETTINGS_TABLE, [["x"]]);
+    // The plugins' fence read, core's, then the two reads: as before the
+    // plugins' fence read core's settings too.
+    expect(calls.gets).toBe(4);
   });
 
   it("rewrites only changed settings", async () => {

@@ -1,0 +1,97 @@
+// Applied by build.gradle only with -PhotUpdaterSandbox, which only the CLI passes.
+// A sandbox build compiles a generated HotUpdaterImpl in place of the packaged one,
+// so a dev server's JavaScript runs under this SDK's own getters, and draws its
+// screen with Compose. No other build reads this file, and its output isn't a
+// source of any other build.
+
+// Compose 1.7, the last that compiles against compileSdk 34. Before Kotlin 2.0,
+// AGP adds the Compose compiler that matches the Kotlin version; from 2.0,
+// build.gradle applies the Compose compiler plugin, which must be the version
+// of the Kotlin Gradle plugin this build loads.
+def kotlinPluginVersion = project.ext.hotUpdaterKotlinPluginVersion
+android.buildFeatures.compose = true
+if (kotlinPluginVersion.startsWith("1.")) {
+  def composeCompilers = ["1.9.22": "1.5.10", "1.9.23": "1.5.13", "1.9.24": "1.5.14", "1.9.25": "1.5.15"]
+  def composeCompiler = composeCompilers[kotlinPluginVersion]
+  if (composeCompiler == null) {
+    throw new GradleException("A sandbox build needs Kotlin 1.9.22 or later for its screen, and this build loads Kotlin ${kotlinPluginVersion}.")
+  }
+  android.composeOptions.kotlinCompilerExtensionVersion = composeCompiler
+} else if ((rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["HotUpdater_kotlinVersion"])?.toString() != kotlinPluginVersion) {
+  throw new GradleException("A sandbox build compiles its screen with the Kotlin Gradle plugin's version, ${kotlinPluginVersion}: set ext.kotlinVersion = \"${kotlinPluginVersion}\" in the root build.gradle.")
+}
+
+dependencies {
+  implementation "androidx.compose.ui:ui:1.7.6"
+  implementation "androidx.compose.foundation:foundation:1.7.6"
+  implementation "androidx.compose.animation:animation:1.7.6"
+  implementation "androidx.activity:activity-compose:1.9.3"
+  // Where a foldable's hinge is, so neither pane sits on it.
+  implementation "androidx.window:window:1.3.0"
+}
+
+@CacheableTask
+abstract class GenerateHotUpdaterSandboxImpl extends DefaultTask {
+  @InputFile
+  @PathSensitive(PathSensitivity.NONE)
+  abstract RegularFileProperty getSource()
+
+  @InputFile
+  @PathSensitive(PathSensitivity.NONE)
+  abstract RegularFileProperty getGenerator()
+
+  @OutputDirectory
+  abstract DirectoryProperty getOutputDirectory()
+
+  @TaskAction
+  void generate() {
+    def source = getSource().get().asFile
+    def generator = new GroovyClassLoader(getClass().classLoader).parseClass(getGenerator().get().asFile)
+    def output = getOutputDirectory().file("com/hotupdater/HotUpdaterImplSandbox.kt").get().asFile
+    output.parentFile.mkdirs()
+    try {
+      output.setText(generator.generate(source.getText("UTF-8"), source.path), "UTF-8")
+    } catch (IllegalStateException refusal) {
+      throw new GradleException(refusal.message)
+    }
+  }
+}
+
+def replaced = "**/com/hotupdater/HotUpdaterImpl.kt"
+def generatedDirectory = layout.buildDirectory.dir("generated/hotUpdaterSandbox")
+def generateImpl = tasks.register("generateHotUpdaterSandboxImpl", GenerateHotUpdaterSandboxImpl) {
+  source = file("src/main/java/com/hotupdater/HotUpdaterImpl.kt")
+  generator = file("src/sandbox/HotUpdaterSandboxImplGenerator.groovy")
+  outputDirectory = generatedDirectory
+}
+
+android.sourceSets.main.java.srcDir(generatedDirectory.get().asFile)
+
+tasks.configureEach { task ->
+  def type = task.class.name
+  if (type.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile")) {
+    // The compile task's own filter: a Java source set's never reaches Kotlin.
+    task.exclude(replaced)
+    task.dependsOn(generateImpl)
+    // A test compile holds the tests alone, and reads the rest from this one's output.
+    def isTest = task.name.contains("UnitTest") || task.name.contains("AndroidTest")
+    task.doFirst {
+      def names = task.sources.files.findAll { it.path.contains("com/hotupdater/".replace("/", File.separator)) }*.name
+      def originals = names.count { it == "HotUpdaterImpl.kt" }
+      def replacements = names.count { it == "HotUpdaterImplSandbox.kt" }
+      if (originals != 0 || (!isTest && replacements != 1)) {
+        throw new GradleException(
+          "A sandbox build must compile the generated HotUpdaterImpl alone, and ${task.path} has ${originals} packaged and ${replacements} generated.\n" +
+            "Remove what adds sources to @hot-updater/react-native for this build.",
+        )
+      }
+    }
+  } else if (task.name.toLowerCase().contains("lint") || task.name.toLowerCase().contains("sources")) {
+    // They read the source set, which holds the generated directory.
+    if (task != generateImpl.get()) task.dependsOn(generateImpl)
+  }
+}
+
+// The CLI's init script refuses a build in which this never ran: an app that takes
+// the SDK as a prebuilt AAR has nothing to replace.
+rootProject.ext.hotUpdaterSandboxSdkProject = project.path

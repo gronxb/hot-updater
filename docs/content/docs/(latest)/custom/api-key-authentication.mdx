@@ -36,13 +36,13 @@ no `clientAccess`. Setting both fails to type-check and throws
 
 ## Terminology
 
-| Surface                           | Canonical name                         |
-| --------------------------------- | -------------------------------------- |
-| User-facing credential            | API key                                |
-| Server plugin and its API         | `apiKeys()`, `hotUpdater.api.apiKeys`  |
-| CLI namespace                     | `hot-updater api-key`                  |
-| Default HTTP request header       | `x-api-key`                            |
-| Managed init environment variable | `HOT_UPDATER_API_KEY`                  |
+| Surface                           | Canonical name                        |
+| --------------------------------- | ------------------------------------- |
+| User-facing credential            | API key                               |
+| Server plugin and its API         | `apiKeys()`, `hotUpdater.api.apiKeys` |
+| CLI namespace                     | `hot-updater api-key`                 |
+| Default HTTP request header       | `x-api-key`                           |
+| Managed init environment variable | `HOT_UPDATER_API_KEY`                 |
 
 ## Use another header
 
@@ -85,7 +85,8 @@ import { HotUpdater } from "@hot-updater/react-native";
 
 export const hotUpdater = HotUpdater.init({
   baseURL: "https://example.com/hot-updater",
-  requestHeaders: { // [!code ++]
+  requestHeaders: {
+    // [!code ++]
     "x-api-key": "<API key printed by api-key create>", // [!code ++]
   }, // [!code ++]
 });
@@ -110,7 +111,7 @@ database lookup.
 - **Keep the shared TTL short.** Honor the server's
   `Cache-Control: public, max-age=0, s-maxage=5`, or, on a CDN that reads it,
   `CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5,
-  stale-if-error=0`. Do not extend the five-second shared TTL or the
+stale-if-error=0`. Do not extend the five-second shared TTL or the
   five-second stale window. A revoked key can still receive a previously
   cached catalog until that entry expires: up to 5 seconds under
   `Cache-Control`, and up to 10 under `CDN-Cache-Control`.

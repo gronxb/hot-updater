@@ -6,8 +6,12 @@ const mocks = vi.hoisted(() => ({
   ensureInstallPackages: vi.fn(),
   group: vi.fn(),
   isProjectFileTracked: vi.fn(() => false),
+  loadTeamSecrets: vi.fn(),
   logError: vi.fn(),
+  logMessage: vi.fn(),
+  logSuccess: vi.fn(),
   makeEnv: vi.fn(),
+  prepareInitFingerprint: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
   runSupabaseInit: vi.fn(),
@@ -22,6 +26,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       env: Readonly<Record<string, string>>,
       key: string,
     ) => env[key],
+    loadTeamSecrets: mocks.loadTeamSecrets,
     makeEnv: mocks.makeEnv,
     p: {
       ...actual.p,
@@ -30,6 +35,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         ...actual.p.log,
         error: mocks.logError,
         info: vi.fn(),
+        message: mocks.logMessage,
+        success: mocks.logSuccess,
       },
     },
     readHotUpdaterInitEnv: mocks.readHotUpdaterInitEnv,
@@ -43,6 +50,10 @@ vi.mock("@/utils/ensureInstallPackages", () => ({
 vi.mock("@/utils/git", () => ({
   appendToProjectRootGitignore: mocks.appendToProjectRootGitignore,
   isProjectFileTracked: mocks.isProjectFileTracked,
+}));
+
+vi.mock("./initFingerprint", () => ({
+  prepareInitFingerprint: mocks.prepareInitFingerprint,
 }));
 
 vi.mock("@/utils/printBanner", () => ({
@@ -76,8 +87,10 @@ describe("init choices", () => {
     mocks.ensureInstallPackages.mockResolvedValue(undefined);
     mocks.isProjectFileTracked.mockReturnValue(false);
     mocks.makeEnv.mockResolvedValue("");
-    mocks.runAwsInit.mockResolvedValue(undefined);
-    mocks.runSupabaseInit.mockResolvedValue(undefined);
+    mocks.runAwsInit.mockResolvedValue({ nextSteps: [] });
+    mocks.runSupabaseInit.mockResolvedValue({ nextSteps: [] });
+    mocks.loadTeamSecrets.mockResolvedValue(undefined);
+    mocks.prepareInitFingerprint.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -132,6 +145,12 @@ describe("init choices", () => {
       build: "bare",
       envFile: undefined,
     });
+    // Once the provider wrote the config, a fingerprint project gets its
+    // fingerprint.json.
+    expect(mocks.prepareInitFingerprint).toHaveBeenCalledOnce();
+    expect(mocks.runAwsInit.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.prepareInitFingerprint.mock.invocationCallOrder[0] ?? -Infinity,
+    );
   });
 
   it("collects missing build and provider in one prompt group", async () => {
@@ -281,6 +300,40 @@ describe("init choices", () => {
     });
   });
 
+  it("reads from a team store only the credentials the saved .env.hotupdater lacks, interactive or not", async () => {
+    // Given: interactive init, whose saved file holds every AWS credential
+    // and the API key, and a store it can't read
+    const get = vi.fn(async () => {
+      throw new Error("store unreachable");
+    });
+    mocks.loadTeamSecrets.mockResolvedValue({
+      name: "teamStore",
+      get,
+      set: vi.fn(),
+    });
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {},
+      managedEnv: {
+        HOT_UPDATER_INIT_BUILD: "expo",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+        HOT_UPDATER_S3_ACCESS_KEY_ID: "saved-key-id",
+        HOT_UPDATER_S3_SECRET_ACCESS_KEY: "saved-secret",
+        HOT_UPDATER_API_KEY: "saved-app-key",
+      },
+    });
+
+    // When
+    await init({ build: "expo", provider: "aws" });
+
+    // Then: init runs on the saved values, without asking the store
+    expect(get).not.toHaveBeenCalled();
+    expect(mocks.logError).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).toHaveBeenCalledWith({
+      build: "expo",
+      secretsEnv: {},
+    });
+  });
+
   it("stops before editing any file when the installed provider package has no init for this CLI, naming the version to install", async () => {
     // Given: a provider package whose ./init has the provider's definition
     // but no runInit.
@@ -343,5 +396,77 @@ describe("init choices", () => {
     // Then
     expect(mocks.logError).toHaveBeenCalledWith(providerError.message);
     expect(process.exitCode).toBe(1);
+    expect(mocks.prepareInitFingerprint).not.toHaveBeenCalled();
+    expect(mocks.logSuccess).not.toHaveBeenCalledWith("Done! 🎉");
+  });
+
+  it("closes once every step printed: the provider's, fingerprint.json, then the next steps and Done", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    const output: string[] = [];
+    mocks.runAwsInit.mockImplementation(async () => {
+      output.push("provider steps");
+      return { nextSteps: ["https://hot-updater.dev/docs/managed/aws"] };
+    });
+    mocks.prepareInitFingerprint.mockImplementation(async () => {
+      output.push("fingerprint.json");
+      return ["npx hot-updater fingerprint create"];
+    });
+    mocks.logMessage.mockImplementation((message: string) => {
+      output.push(message);
+    });
+    mocks.logSuccess.mockImplementation((message: string) => {
+      output.push(message);
+    });
+
+    // When
+    await init({ build: "bare", provider: "aws" });
+
+    // Then
+    expect(output).toEqual([
+      "provider steps",
+      "fingerprint.json",
+      "Next step: https://hot-updater.dev/docs/managed/aws",
+      "Next step: npx hot-updater fingerprint create",
+      "Done! 🎉",
+    ]);
+  });
+
+  it("still writes fingerprint.json after a provider on the previous contract, which closed itself", async () => {
+    // Given: a provider package from before init's shared closing, which
+    // printed its own next step and Done and returns nothing
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    mocks.runAwsInit.mockResolvedValue(undefined);
+    mocks.prepareInitFingerprint.mockResolvedValue([
+      "npx hot-updater fingerprint create",
+    ]);
+
+    // When
+    await expect(
+      init({ build: "bare", provider: "aws" }),
+    ).resolves.toBeUndefined();
+
+    // Then: the step the fingerprint left, and no second Done
+    expect(mocks.prepareInitFingerprint).toHaveBeenCalledOnce();
+    expect(mocks.logMessage.mock.calls).toEqual([
+      ["Next step: npx hot-updater fingerprint create"],
+    ]);
+    expect(mocks.logSuccess).not.toHaveBeenCalledWith("Done! 🎉");
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("closes nothing when the provider stopped before setting the project up", async () => {
+    // Given: Firebase stops once it creates a project
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    mocks.runAwsInit.mockResolvedValue(null);
+
+    // When
+    await init({ build: "bare", provider: "aws" });
+
+    // Then
+    expect(mocks.prepareInitFingerprint).not.toHaveBeenCalled();
+    expect(mocks.logMessage).not.toHaveBeenCalled();
+    expect(mocks.logSuccess).not.toHaveBeenCalledWith("Done! 🎉");
+    expect(process.exitCode).toBeUndefined();
   });
 });

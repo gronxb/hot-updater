@@ -1,0 +1,402 @@
+import { isUUIDv7 } from "../uuid";
+import {
+  parseBinaryManifest,
+  parseProtoManifest,
+  readAndroidManifest,
+  type ManifestValue,
+} from "./androidManifest";
+import { type ByteSource, NativeArtifactError } from "./byteSource";
+import { parsePlist } from "./plist";
+import {
+  isSandboxUrlScheme,
+  SANDBOX_ACTIVITY,
+  SANDBOX_CODE_MARKER,
+  SANDBOX_INFO_PLIST_KEY,
+  SANDBOX_META_DATA,
+} from "./sandbox";
+import { readDexStrings, readMachOStrings } from "./strings";
+import {
+  filterZipEntries,
+  findZipEntry,
+  readZipDirectory,
+  readZipEntry,
+  readZipEntryRange,
+  type ZipEntry,
+  type ZipReadBudget,
+} from "./zip";
+
+const MiB = 1024 * 1024;
+/** The most a manifest or an Info.plist holds. */
+const METADATA_BYTES = 16 * MiB;
+/** The most one dex file holds. */
+const DEX_BYTES = 256 * MiB;
+/** The most reading one artifact inflates, across every entry it reads. */
+const READ_BUDGET_BYTES = 2048 * MiB;
+/** How long reading one artifact may take. */
+const DEFAULT_TIMEOUT_MS = 120_000;
+
+/**
+ * The kinds of artifact a build made elsewhere can be imported from: the
+ * store artifacts, and a simulator `.app` as one zip archive (`.app.zip`,
+ * the `.app` directory at its root, as Finder and `ditto` archive it).
+ */
+export type NativeArtifactKind = "ipa" | "aab" | "apk" | "app";
+
+/** A value the artifact holds as something import can't read exactly. */
+export interface UnreadableValue {
+  readonly unreadable: string;
+}
+
+/**
+ * What a store artifact compiled in, read from the artifact alone: what its
+ * app reports at runtime, and the built-in bundle it ships.
+ */
+export interface NativeArtifactInfo {
+  readonly platform: "ios" | "android";
+  readonly kind: NativeArtifactKind;
+  /** The bundle identifier or application ID. */
+  readonly appId: string | null;
+  /** `CFBundleShortVersionString` or `versionName`. */
+  readonly appVersion: string | UnreadableValue | null;
+  /** `CFBundleVersion` or `versionCode`. */
+  readonly buildNumber: string | null;
+  /**
+   * `HOT_UPDATER_CHANNEL` or the `com.hotupdater.CHANNEL` meta-data: null
+   * without one, which the native SDK reports as `production`.
+   */
+  readonly channel: string | UnreadableValue | null;
+  /**
+   * The UUIDv7 string literals in the app's code. MIN_BUNDLE_ID is one: the
+   * native SDK's build step compiles it in.
+   */
+  readonly minBundleIdCandidates: readonly string[];
+  /**
+   * The SHA-256 hex string literals in the app's code. A build of an app
+   * with fingerprint.json compiles its fingerprint in as one.
+   */
+  readonly fingerprintCandidates: readonly string[];
+  /**
+   * The sandbox layer in the artifact: `code` when the app's code holds its
+   * literal, and `declared` when the Info.plist or the manifest says so. A
+   * sandbox build has both, and a normal build neither.
+   */
+  readonly sandbox: { readonly code: boolean; readonly declared: boolean };
+  /**
+   * How the app is entered, which a sandbox build changes: its launcher
+   * components (empty on iOS), and the sandbox URL scheme it registers.
+   */
+  readonly entry: {
+    readonly launchers: readonly string[];
+    readonly sandboxUrlScheme: string | null;
+  };
+  /** The JavaScript bundle the build packed, the built-in bundle. */
+  readonly builtInBundle: {
+    readonly path: string;
+    readonly byteSize: number;
+  } | null;
+}
+
+/** Where each kind of artifact packs its built-in bundle. */
+export const builtInBundlePathOf = (
+  kind: NativeArtifactKind,
+  appDirectory = kind === "app" ? "<App>.app/" : "Payload/<App>.app/",
+): string =>
+  kind === "aab"
+    ? "base/assets/index.android.bundle"
+    : kind === "apk"
+      ? "assets/index.android.bundle"
+      : `${appDirectory}main.jsbundle`;
+
+/** The kind of artifact a file name names, or null. */
+export const nativeArtifactKindOf = (
+  fileName: string,
+): NativeArtifactKind | null => {
+  if (/\.app\.zip$/iu.test(fileName)) return "app";
+  const extension = /\.([^./\\]+)$/u.exec(fileName)?.[1]?.toLowerCase();
+  return extension === "ipa" || extension === "aab" || extension === "apk"
+    ? extension
+    : null;
+};
+
+const UUID_LENGTH = 36;
+const SHA256_HEX = /^[0-9a-f]{64}$/u;
+const LENGTHS: ReadonlySet<number> = new Set([
+  UUID_LENGTH,
+  64,
+  SANDBOX_CODE_MARKER.length,
+]);
+
+const unique = (values: Iterable<string>) => [...new Set(values)].sort();
+
+const candidatesOf = (strings: Iterable<string>) => {
+  const all = [...strings];
+  return {
+    minBundleIds: unique(all.filter(isUUIDv7)),
+    fingerprints: unique(all.filter((value) => SHA256_HEX.test(value))),
+  };
+};
+
+const literalOf = (
+  value: ManifestValue | null | undefined,
+  what: string,
+): string | UnreadableValue | null => {
+  if (value === null || value === undefined) return null;
+  if (value.type === "string") return value.value;
+  if (value.type === "int") return String(value.value);
+  return {
+    unreadable:
+      value.type === "reference"
+        ? `${what} is a resource reference (${value.name ?? `@0x${value.id.toString(16)}`}), not a literal`
+        : `${what} is not a string`,
+  };
+};
+
+/**
+ * The channel an Android app reports from its `com.hotupdater.CHANNEL`
+ * meta-data, as the SDK reads it (`NativeConfigUtils`): the value as a
+ * string, and none when it is empty, which the SDK reports as `production`.
+ */
+const androidChannelOf = (
+  value: ManifestValue | undefined,
+): string | UnreadableValue | null => {
+  if (value === undefined) return null;
+  if (value.type === "boolean") return String(value.value);
+  const channel = literalOf(value, "The com.hotupdater.CHANNEL meta-data");
+  return channel === "" ? null : channel;
+};
+
+const readAndroid = async (
+  source: ByteSource,
+  kind: "aab" | "apk",
+  entries: readonly ZipEntry[],
+  budget: ZipReadBudget,
+): Promise<NativeArtifactInfo> => {
+  const manifestEntry = findZipEntry(
+    entries,
+    kind === "aab"
+      ? "base/manifest/AndroidManifest.xml"
+      : "AndroidManifest.xml",
+  );
+  if (manifestEntry === undefined) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      `The ${kind === "aab" ? ".aab has no base/manifest/AndroidManifest.xml" : ".apk has no AndroidManifest.xml"}.`,
+    );
+  }
+  const manifestBytes = await readZipEntry(
+    source,
+    manifestEntry,
+    METADATA_BYTES,
+    budget,
+  );
+  const manifest = readAndroidManifest(
+    kind === "aab"
+      ? parseProtoManifest(manifestBytes)
+      : parseBinaryManifest(manifestBytes),
+  );
+  const strings: string[] = [];
+  const dexes = filterZipEntries(entries, (name) =>
+    kind === "aab"
+      ? /^base\/dex\/classes\d*\.dex$/u.test(name)
+      : /^classes\d*\.dex$/u.test(name),
+  );
+  for (const entry of dexes) {
+    strings.push(
+      ...readDexStrings(
+        await readZipEntry(source, entry, DEX_BYTES, budget),
+        LENGTHS,
+      ),
+    );
+  }
+  const { minBundleIds, fingerprints } = candidatesOf(strings);
+  const bundle = findZipEntry(entries, builtInBundlePathOf(kind));
+  return {
+    platform: "android",
+    kind,
+    appId: manifest.packageName,
+    appVersion: literalOf(manifest.versionName, "versionName"),
+    buildNumber:
+      manifest.versionCode === null ? null : String(manifest.versionCode),
+    channel: androidChannelOf(manifest.metaData.get("com.hotupdater.CHANNEL")),
+    minBundleIdCandidates: minBundleIds,
+    fingerprintCandidates: fingerprints,
+    sandbox: {
+      code: strings.includes(SANDBOX_CODE_MARKER),
+      declared: manifest.metaData.has(SANDBOX_META_DATA),
+    },
+    entry: {
+      launchers: manifest.launchers,
+      sandboxUrlScheme:
+        manifest.urlSchemes.get(SANDBOX_ACTIVITY)?.find(isSandboxUrlScheme) ??
+        null,
+    },
+    builtInBundle:
+      bundle === undefined
+        ? null
+        : { path: bundle.name, byteSize: bundle.uncompressedSize },
+  };
+};
+
+/** The sandbox URL scheme in an Info.plist's `CFBundleURLTypes`, or null. */
+const sandboxUrlSchemeIn = (info: Record<string, unknown>): string | null => {
+  const types = info["CFBundleURLTypes"];
+  if (!Array.isArray(types)) return null;
+  for (const type of types) {
+    const schemes = (type as { CFBundleURLSchemes?: unknown } | null)
+      ?.CFBundleURLSchemes;
+    if (!Array.isArray(schemes)) continue;
+    for (const scheme of schemes) {
+      if (typeof scheme === "string" && isSandboxUrlScheme(scheme)) {
+        return scheme;
+      }
+    }
+  }
+  return null;
+};
+
+const stringValue = (value: unknown): string | null =>
+  typeof value === "string" && value !== "" ? value : null;
+
+const readIos = async (
+  source: ByteSource,
+  kind: "ipa" | "app",
+  entries: readonly ZipEntry[],
+  budget: ZipReadBudget,
+): Promise<NativeArtifactInfo> => {
+  const infoPlist =
+    kind === "ipa"
+      ? /^Payload\/[^/]+\.app\/Info\.plist$/u
+      : /^[^/]+\.app\/Info\.plist$/u;
+  const plistEntry = findZipEntry(entries, (name) => infoPlist.test(name));
+  if (plistEntry === undefined) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      kind === "ipa"
+        ? "The .ipa has no Payload/<App>.app/Info.plist."
+        : "The .app.zip has no <App>.app/Info.plist at its root.",
+    );
+  }
+  const appDirectory = plistEntry.name.slice(0, -"Info.plist".length);
+  const plist = parsePlist(
+    await readZipEntry(source, plistEntry, METADATA_BYTES, budget),
+  );
+  if (plist === null || typeof plist !== "object" || Array.isArray(plist)) {
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      "The app's Info.plist is not a dictionary.",
+    );
+  }
+  const info = plist as Record<string, unknown>;
+  const machO = (entry: ZipEntry) =>
+    readMachOStrings(
+      (start, end) => readZipEntryRange(source, entry, start, end, budget),
+      LENGTHS,
+    );
+  // The SDK compiles MIN_BUNDLE_ID and the fingerprint into its own code:
+  // HotUpdater's framework when the app links frameworks dynamically, which
+  // then decides alone, whatever other code holds; else the app's
+  // executable; else, under another framework's name, every framework,
+  // whose candidates together must be one.
+  const frameworks = filterZipEntries(entries, (name) => {
+    const match = new RegExp(
+      `^${appDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}Frameworks/([^/]+)\\.framework/([^/]+)$`,
+      "u",
+    ).exec(name);
+    return match !== null && match[1] === match[2];
+  });
+  const sdk = frameworks.find(({ name }) => name.endsWith("/HotUpdater"));
+  const executable = stringValue(info["CFBundleExecutable"]);
+  const executableEntry =
+    executable === null
+      ? undefined
+      : findZipEntry(entries, `${appDirectory}${executable}`);
+  let strings = sdk === undefined ? [] : await machO(sdk);
+  if (!strings.some(isUUIDv7) && executableEntry !== undefined) {
+    strings = await machO(executableEntry);
+  }
+  if (!strings.some(isUUIDv7)) {
+    for (const framework of frameworks) {
+      if (framework !== sdk) strings.push(...(await machO(framework)));
+    }
+  }
+  const { minBundleIds, fingerprints } = candidatesOf(strings);
+  const bundle = findZipEntry(entries, builtInBundlePathOf(kind, appDirectory));
+  const channel = info["HOT_UPDATER_CHANNEL"];
+  return {
+    platform: "ios",
+    kind,
+    appId: stringValue(info["CFBundleIdentifier"]),
+    appVersion: stringValue(info["CFBundleShortVersionString"]),
+    buildNumber: stringValue(info["CFBundleVersion"]),
+    channel:
+      channel === undefined || channel === ""
+        ? null
+        : typeof channel === "string"
+          ? channel
+          : { unreadable: "HOT_UPDATER_CHANNEL is not a string" },
+    minBundleIdCandidates: minBundleIds,
+    fingerprintCandidates: fingerprints,
+    sandbox: {
+      code: strings.includes(SANDBOX_CODE_MARKER),
+      declared: info[SANDBOX_INFO_PLIST_KEY] !== undefined,
+    },
+    entry: { launchers: [], sandboxUrlScheme: sandboxUrlSchemeIn(info) },
+    builtInBundle:
+      bundle === undefined
+        ? null
+        : { path: bundle.name, byteSize: bundle.uncompressedSize },
+  };
+};
+
+/**
+ * Reads a store artifact (`.ipa`, `.aab` or `.apk`) by its file name's
+ * extension: what its app reports at runtime, and its built-in bundle. It
+ * reads the archive's directory, the manifest or Info.plist, and the app's
+ * code, but not the built-in bundle, so a large artifact is never held
+ * whole. Whether the result can be imported is `checkNativeArtifact`'s.
+ */
+export const readNativeArtifact = async (
+  source: ByteSource,
+  fileName: string,
+  { timeoutMs = DEFAULT_TIMEOUT_MS }: { readonly timeoutMs?: number } = {},
+): Promise<NativeArtifactInfo> => {
+  const kind = nativeArtifactKindOf(fileName);
+  if (kind === null) {
+    throw new NativeArtifactError(
+      "UNSUPPORTED_FILE",
+      `${fileName} is not an .ipa, .aab, .apk or a simulator .app. Import the artifact of a release build.`,
+    );
+  }
+  // An upload is untrusted: every read counts against one budget and one
+  // deadline, and whatever a crafted file breaks is a refusal, not a crash.
+  const budget: ZipReadBudget = {
+    remaining: READ_BUDGET_BYTES,
+    deadline: Date.now() + timeoutMs,
+  };
+  const timed: ByteSource = {
+    size: source.size,
+    read(offset, length) {
+      if (Date.now() > budget.deadline) {
+        return Promise.reject(
+          new NativeArtifactError(
+            "UNREADABLE",
+            "Reading the artifact took too long.",
+          ),
+        );
+      }
+      return source.read(offset, length);
+    },
+  };
+  try {
+    const entries = await readZipDirectory(timed);
+    return await (kind === "ipa" || kind === "app"
+      ? readIos(timed, kind, entries, budget)
+      : readAndroid(timed, kind, entries, budget));
+  } catch (error) {
+    if (error instanceof NativeArtifactError) throw error;
+    throw new NativeArtifactError(
+      "UNREADABLE",
+      `The artifact is malformed: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
+};

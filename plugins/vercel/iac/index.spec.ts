@@ -157,7 +157,17 @@ describe("Vercel init", () => {
   it("replays saved inputs: creates the project and Blob store, migrates, deploys, and writes the config", async () => {
     givenInitEnv(replayEnv);
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    const result = await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Init's closing prints the next steps and Done, after every step.
+    expect(result).toEqual({
+      nextSteps: [
+        expect.stringContaining(
+          "hot-updater.dev/docs/managed/vercel#step-3-add-hotupdater-to-your-project",
+        ),
+      ],
+    });
+    expect(mocks.log.success).not.toHaveBeenCalledWith("Done! 🎉");
 
     expect(mocks.createVercelApi).toHaveBeenCalledWith({
       teamId: "team_1",

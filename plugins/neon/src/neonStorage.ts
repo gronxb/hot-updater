@@ -2,6 +2,7 @@ import type { StorageAdapterWith } from "@hot-updater/plugin-core";
 import {
   createS3Storage,
   type S3ClientConfig,
+  type S3CredentialsOption,
   type S3StorageOperations,
 } from "@hot-updater/storage-s3";
 
@@ -19,9 +20,10 @@ export interface NeonStorageConfig extends Omit<
   bucketName: string;
   /**
    * A storage credential of the project: the `AWS_ACCESS_KEY_ID` and
-   * `AWS_SECRET_ACCESS_KEY` that `neon env pull` writes.
+   * `AWS_SECRET_ACCESS_KEY` that `neon env pull` writes. Each field may be
+   * lazy, such as `secret("<name>")` in `hot-updater.config.ts`.
    */
-  credentials: NonNullable<S3ClientConfig["credentials"]>;
+  credentials: NonNullable<S3CredentialsOption>;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
   /**

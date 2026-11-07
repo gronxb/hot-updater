@@ -1,0 +1,131 @@
+---
+title: "checkForUpdate"
+description: "Select a compatible transition from the Release Catalog and return a helper to stage it."
+icon: Search
+---
+
+## Usage
+
+Use `checkForUpdate` to check whether an update bundle is available. The function
+reuses the update source configured in [`HotUpdater.init`](/docs/v1.0/react-native-api/init).
+Call it when your app is ready to check, then use the returned helper to
+download and stage the selected update.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+// Configure the client once at module scope
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<client-api-key>",
+  },
+  onError: (error) => console.error("Hot Updater:", error),
+});
+
+async function checkForAppUpdate() {
+  try {
+    const updateInfo = await hotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    if (!updateInfo) {
+      return;
+    }
+
+    // The helper resolves the artifact and preserves the selected transition.
+    const didUpdate = await updateInfo.updateBundle();
+
+    if (!didUpdate) {
+      throw new Error("Could not prepare the update");
+    }
+
+    if (updateInfo.shouldForceUpdate) {
+      await hotUpdater.reload();
+    }
+  } catch (error) {
+    console.error("Could not prepare update:", error);
+  }
+}
+```
+
+<span id="important-hotupdaterwrap-or-hotupdaterinit-required" />
+
+## Initialize before checking
+
+`checkForUpdate` is a method of the instance `HotUpdater.init()` returns, so
+the client is configured before any check. Call `init` once at module scope; it
+connects update requests and client plugins to your server without starting a
+check. See [custom update flows](/docs/v1.0/guides/custom-update) for a complete
+integration, or [`hotUpdater.wrap`](/docs/v1.0/react-native-api/wrap) to check when
+the app's root mounts.
+
+## Parameters
+
+`checkForUpdate` accepts these parameters:
+
+| Parameter        | Type                              | Required | Description                                                 |
+| ---------------- | --------------------------------- | -------- | ----------------------------------------------------------- |
+| `updateStrategy` | `"appVersion"` \| `"fingerprint"` | ✅       | Update detection strategy for this check.                   |
+| `channel`        | `string`                          | ❌       | Channel to check. Defaults to the currently active channel. |
+| `requestHeaders` | `Record<string, string>`          | ❌       | Optional headers to include in the update request.          |
+| `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
+| `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
+
+The update source is always from `HotUpdater.init()`; it cannot be overridden
+in `checkForUpdate`. Per-check `requestHeaders` merge with the headers from
+`init`, overriding matching keys. An omitted `requestTimeout` uses the value
+from `init`, or 5000 ms when neither call sets one.
+
+A requested channel switch is persisted only after the returned update applies
+successfully. If a different runtime channel is already active, call
+`resetChannel()` first; that conflict rejects instead of returning `null`.
+
+## How it works
+
+The client fetches a shared Release Catalog and evaluates it on the device.
+When installation is needed, the returned `updateBundle()` helper resolves the
+selected artifact when called:
+
+- App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
+- Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
+- Artifact resolution: `GET {baseURL}/artifacts/v2/:targetBundleId/from/:currentBundleId`,
+  then `POST {baseURL}/artifacts/v2/:targetBundleId/files` for the files the
+  device downloads one by one. When an older server answers `404`, or the
+  app's native code predates these routes, the client asks
+  `GET {baseURL}/artifacts/v1/:targetBundleId/from/:currentBundleId`.
+
+`:channelKey` is the base64url-encoded channel name.
+
+## Return value
+
+The function returns `null` when no transition is selected, when checks are
+skipped in development, or after a check fails and calls `onError`. Do not
+interpret `null` alone as a successful up-to-date check. Use the shared
+`init.onError` reporter for check failures and `try/catch` for rejected
+operations. A per-check `onError` is an optional override; it is not needed in
+the normal flow.
+
+When a transition is selected, the result includes its ID from the console,
+status, message, and an `updateBundle()` helper. The helper resolves the
+artifact lazily when needed.
+
+| Result field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `string` | Selected update ID shown in the Console. |
+| `status` | `"UPDATE" \| "ROLLBACK"` | Selected transition direction. |
+| `shouldForceUpdate` | `boolean` | Whether the caller should apply the transition immediately, including an update that skips a forced bundle; the helper does not reload. |
+| `message` | `string \| null` | Release message. |
+| `rolloutCohortCount` | `number` | Numeric cohort count selected by the Release policy. |
+| `targetCohorts` | `string[]` | Explicit cohort targets in that policy. |
+| `releaseId` | `string \| null \| undefined` | Release identifier when present. |
+| `transitionKind` | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied. |
+| `updateBundle` | `() => Promise<boolean>` | Stage or commit this selection; resolves with whether it succeeded. |
+
+A different Release can reference the same artifact. `ADOPT_RELEASE` commits
+that policy selection without downloading the artifact. It does not force a
+reload when the app already runs that artifact. When the artifact is staged for
+the next launch instead, and the Release skips a forced bundle, the result has
+`shouldForceUpdate: true`: commit with `updateBundle()`, then reload to run the
+staged bundle. The built-in transition also does not require an artifact
+download.

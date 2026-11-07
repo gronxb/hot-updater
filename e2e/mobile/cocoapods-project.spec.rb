@@ -1,4 +1,5 @@
-# From examples/v0.85.0 after the native build installs gems:
+# From an example (examples/v0.74.1, v0.85.0 or v0.88.0) after the native
+# build installs its gems, against that example's CocoaPods:
 # BUNDLE_PATH=vendor/bundle BUNDLE_FROZEN=1 \
 #   bundle exec ruby ../../e2e/mobile/cocoapods-project.spec.rb
 require 'cocoapods'
@@ -7,7 +8,7 @@ require 'minitest/autorun'
 require 'tmpdir'
 
 OriginalProjectGroupMethod = Pod::Project.instance_method(:group_for_path_in_group)
-require_relative '../../examples/v0.85.0/ios/cocoapods_pathname'
+require File.expand_path('ios/cocoapods_pathname', Dir.pwd)
 
 class CocoaPodsPathnameTest < Minitest::Test
   def setup
