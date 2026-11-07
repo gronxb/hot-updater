@@ -113,7 +113,7 @@ describe("renderPreviewComment", () => {
 
 **1. Install the sandbox app** once. Pull requests with the same native code share it.
 
-- **Android**: [Download APK](${C}/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b001)
+- **Android**: [Download APK](${C}/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b001) · allow "Install unknown apps" when Android asks
 - **iOS**: [TestFlight](https://appstoreconnect.apple.com/apps/6764/testflight/ios) · \`1.7.0 (66)\` · processing · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b003)
 
 This run made a new sandbox build: push the other open pull requests again.
@@ -164,7 +164,7 @@ adb install -r app-release.apk
 
 **Install this pull request's build.** It opens this pull request on its first launch.
 
-- **Android**: [Download APK](${C}/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b001)
+- **Android**: [Download APK](${C}/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b001) · allow "Install unknown apps" when Android asks
 - **iOS Simulator**: [Details](${C}/native-builds/019a0000-0000-7000-8000-00000000b002) · install with the command below
 
 <details>
@@ -280,7 +280,7 @@ npx hot-updater native-build install 019a0000-0000-7000-8000-00000000b002
     });
 
     expect(body).toContain(
-      "[Download APK](https://example.com/console/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](https://example.com/console/native-builds/019a0000-0000-7000-8000-00000000b001)",
+      '[Download APK](https://example.com/console/api/native-builds/019a0000-0000-7000-8000-00000000b001/download) · [Details](https://example.com/console/native-builds/019a0000-0000-7000-8000-00000000b001) · allow "Install unknown apps" when Android asks',
     );
   });
 
