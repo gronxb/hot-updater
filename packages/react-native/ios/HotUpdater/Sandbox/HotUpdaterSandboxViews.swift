@@ -4,6 +4,17 @@ import UIKit
 
 private let helpURL = URL(string: "https://hot-updater.dev/docs/native-builds/sandbox")!
 
+/// The questions a person asks for: they confirm before anything destructive.
+enum HotUpdaterSandboxConfirm: Hashable {
+    case clear, bannerReset, infoReset
+}
+
+enum HotUpdaterSandboxSheet: Hashable, Identifiable {
+    case scanner, license
+
+    var id: Self { self }
+}
+
 /// The screen's two forms.
 enum HotUpdaterSandboxEntry: Hashable {
     case url, channel
@@ -29,8 +40,13 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
     @Published var expanded: HotUpdaterSandboxEntry?
     @Published var urlText = ""
     @Published var channelText = ""
-    /// The scanner sheet hangs off the root, so a fold that lays the panes out again keeps it up.
-    @Published var isScanning = false
+    /// Info pushed over Home, the question a person asked for, the sheet, and where
+    /// each page is scrolled to: all here, so a fold that lays the panes out again keeps them.
+    @Published var showsInfo = false
+    @Published var confirming: HotUpdaterSandboxConfirm?
+    @Published var sheet: HotUpdaterSandboxSheet?
+    @Published var homeAnchor: String?
+    @Published var infoAnchor: String?
     private var scanned: URL?
     /// Whatever goes, a question waiting behind it comes next, once that alert has left.
     @Published var prompt: Prompt? {
@@ -111,22 +127,26 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
         if question.kind == .confirm { SandboxHaptic.warning() } else { SandboxHaptic.error() }
     }
 
-    func scan() {
+    func present(_ next: HotUpdaterSandboxSheet) {
         isSheetUp = true
-        isScanning = true
+        sheet = next
     }
 
     func scanned(_ url: URL) {
         scanned = url
-        isScanning = false
+        sheet = nil
     }
 
     /// A scanned link is handed over once the sheet is gone, so its question can present.
-    func scannerClosed() {
+    func sheetClosed() {
         isSheetUp = false
         guard let url = scanned else { return }
         scanned = nil
         coordinator.receiveLink(url.absoluteString)
+    }
+
+    func isConfirming(_ which: HotUpdaterSandboxConfirm) -> Binding<Bool> {
+        Binding(get: { self.confirming == which }, set: { if !$0, self.confirming == which { self.confirming = nil } })
     }
 
     func closeIfOverApp() {
@@ -182,8 +202,11 @@ struct HotUpdaterSandboxRootView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .tint(SandboxColor.accent)
-        .sheet(isPresented: $model.isScanning, onDismiss: model.scannerClosed) {
-            HotUpdaterSandboxScanSheet(onLink: model.scanned)
+        .sheet(item: $model.sheet, onDismiss: model.sheetClosed) { sheet in
+            switch sheet {
+            case .scanner: HotUpdaterSandboxScanSheet(onLink: model.scanned)
+            case .license: HotUpdaterSandboxLicenseSheet()
+            }
         }
         .alert(
             promptTitle,
@@ -295,9 +318,6 @@ private struct HomeScreen: View {
 
     @ObservedObject var model: HotUpdaterSandboxScreenModel
     let showsInfoLink: Bool
-    @State private var confirmsClear = false
-    @State private var confirmsReset = false
-    @State private var showsInfo = false
     @FocusState private var focus: Entry?
     @Environment(\.openURL) private var openURL
 
@@ -307,26 +327,38 @@ private struct HomeScreen: View {
             ScrollViewReader { scroll in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
-                        HotUpdaterSandboxHeader()
-                        if let status = home.status { statusCard(status) }
-                        if let banner = home.banner { bannerCard(banner) }
-                        primary(home)
-                        devServer(home)
-                        previews(home)
-                        if !home.previews.isEmpty { history(home) }
+                        HotUpdaterSandboxHeader().id("header")
+                        if let status = home.status { statusCard(status).id("status") }
+                        if let banner = home.banner { bannerCard(banner).id("banner") }
+                        primary(home).id("primary")
+                        devServer(home).id("devServer")
+                        previews(home).id("previews")
+                        if !home.previews.isEmpty { history(home).id("history") }
                         Text(HotUpdaterSandboxHomeModel.hint)
                             .font(SandboxFont.footnote)
                             .foregroundColor(SandboxColor.textSecondary)
                             .frame(maxWidth: .infinity)
                             .multilineTextAlignment(.center)
+                            .id("hint")
                     }
+                    .sandboxScrollTargets()
                     .padding(16)
                     .frame(maxWidth: 640)
                     .frame(maxWidth: .infinity)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .sandboxScrollPosition($model.homeAnchor)
                 .modifier(SandboxStatusBarBackdrop())
                 .background(SandboxColor.background.ignoresSafeArea())
+                .onAppear {
+                    // A pane laid out again by a fold goes back to where it was, and
+                    // gets back the field that had focus.
+                    if let anchor = model.homeAnchor {
+                        DispatchQueue.main.async { scroll.scrollTo(anchor, anchor: .top) }
+                    }
+                    guard let entry = model.expanded else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { focus = entry }
+                }
                 .onChange(of: focus) { entry in
                     guard let entry else { return }
                     // After the keyboard's own motion, the whole form comes into view.
@@ -340,7 +372,7 @@ private struct HomeScreen: View {
             .toolbar { toolbar }
             // The header names the app, so the bar shows only when it holds an item.
             .toolbar(model.isOverApp() || showsInfoLink ? .visible : .hidden, for: .navigationBar)
-            .navigationDestination(isPresented: $showsInfo) { InfoScreen(model: model, isPushed: true) }
+            .navigationDestination(isPresented: $model.showsInfo) { InfoScreen(model: model, isPushed: true) }
         }
     }
 
@@ -358,7 +390,7 @@ private struct HomeScreen: View {
         }
         if showsInfoLink {
             ToolbarItem(placement: .primaryAction) {
-                Button { showsInfo = true } label: { Label("Info", systemImage: "info.circle") }
+                Button { model.showsInfo = true } label: { Label("Info", systemImage: "info.circle") }
             }
         }
     }
@@ -401,9 +433,9 @@ private struct HomeScreen: View {
             if banner.offersReset {
                 SandboxDivider(leading: false)
                 SandboxDestructiveRow(title: "Reset to built-in bundle", isEnabled: !home.isBusy) {
-                    confirmsReset = true
+                    model.confirming = .bannerReset
                 }
-                .resetDialog(isPresented: $confirmsReset, model: model)
+                .resetDialog(.bannerReset, model: model)
             }
         }
     }
@@ -488,7 +520,7 @@ private struct HomeScreen: View {
                 SandboxRow(lead: .icon("qrcode.viewfinder"), title: "Scan QR code", isEnabled: !home.isBusy) {
                     SandboxHaptic.tap()
                     focus = nil
-                    model.scan()
+                    model.present(.scanner)
                 }
                 SandboxDivider()
                 accordion(
@@ -507,7 +539,7 @@ private struct HomeScreen: View {
     }
 
     private func history(_ home: HotUpdaterSandboxHomeModel) -> some View {
-        SandboxSection(title: "Recent", action: ("Clear", { confirmsClear = true })) {
+        SandboxSection(title: "Recent", action: ("Clear", { model.confirming = .clear })) {
             SandboxCard {
                 ForEach(Array(home.previews.enumerated()), id: \.element.channel) { index, preview in
                     if index > 0 { SandboxDivider() }
@@ -526,7 +558,7 @@ private struct HomeScreen: View {
                 }
             }
         }
-        .confirmationDialog("Clear recent previews?", isPresented: $confirmsClear, titleVisibility: .visible) {
+        .confirmationDialog("Clear recent previews?", isPresented: model.isConfirming(.clear), titleVisibility: .visible) {
             Button("Clear", role: .destructive) { model.coordinator.clearHistory() }
         } message: {
             Text("They're only listed on this device. Nothing else changes.")
@@ -595,7 +627,6 @@ private struct HomeScreen: View {
 private struct InfoScreen: View {
     @ObservedObject var model: HotUpdaterSandboxScreenModel
     var isPushed = false
-    @State private var confirmsReset = false
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -607,6 +638,16 @@ private struct InfoScreen: View {
     }
 
     private var content: some View {
+        ScrollViewReader { scroll in
+            page.onAppear {
+                // A pane laid out again by a fold goes back to where it was.
+                guard let anchor = model.infoAnchor else { return }
+                DispatchQueue.main.async { scroll.scrollTo(anchor, anchor: .top) }
+            }
+        }
+    }
+
+    private var page: some View {
         let info = model.info
         return ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -615,21 +656,31 @@ private struct InfoScreen: View {
                     .foregroundColor(SandboxColor.text)
                     .accessibilityAddTraits(.isHeader)
                     .padding(.horizontal, 16)
-                group("Build", info.build)
-                group("Bundle", info.bundle)
+                    .id("title")
+                group("Build", info.build).id("build")
+                group("Bundle", info.bundle).id("bundle")
                 SandboxSection(title: nil, footer: HotUpdaterSandboxHomeModel.resetNote) {
                     SandboxCard {
                         SandboxDestructiveRow(title: "Reset to built-in bundle", isEnabled: model.canReset) {
-                            confirmsReset = true
+                            model.confirming = .infoReset
                         }
                     }
                 }
-                .resetDialog(isPresented: $confirmsReset, model: model)
+                .resetDialog(.infoReset, model: model)
+                .id("reset")
+                SandboxSection(title: "Licenses") {
+                    SandboxCard {
+                        SandboxRow(lead: nil, title: HotUpdaterSandboxFonts.licenseTitle) { model.present(.license) }
+                    }
+                }
+                .id("licenses")
             }
+            .sandboxScrollTargets()
             .padding(16)
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
+        .sandboxScrollPosition($model.infoAnchor)
         .modifier(SandboxStatusBarBackdrop())
         .background(SandboxColor.background.ignoresSafeArea())
         .navigationTitle("Info")
@@ -691,14 +742,55 @@ private struct InfoScreen: View {
 
 @available(iOS 16.0, *)
 private extension View {
-    func resetDialog(isPresented: Binding<Bool>, model: HotUpdaterSandboxScreenModel) -> some View {
-        confirmationDialog("Reset to built-in bundle?", isPresented: isPresented, titleVisibility: .visible) {
+    func resetDialog(_ which: HotUpdaterSandboxConfirm, model: HotUpdaterSandboxScreenModel) -> some View {
+        confirmationDialog("Reset to built-in bundle?", isPresented: model.isConfirming(which), titleVisibility: .visible) {
             Button("Reset", role: .destructive) {
                 SandboxHaptic.tap()
                 model.coordinator.resetToBuiltIn()
             }
         } message: {
             Text(HotUpdaterSandboxHomeModel.resetNote)
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+private extension View {
+    /// Where a page is scrolled to lives in the model from iOS 17, so a fold that
+    /// lays the panes out again keeps it.
+    @ViewBuilder
+    func sandboxScrollTargets() -> some View {
+        if #available(iOS 17.0, *) { scrollTargetLayout() } else { self }
+    }
+
+    @ViewBuilder
+    func sandboxScrollPosition(_ anchor: Binding<String?>) -> some View {
+        if #available(iOS 17.0, *) { scrollPosition(id: anchor, anchor: .top) } else { self }
+    }
+}
+
+@available(iOS 16.0, *)
+private struct HotUpdaterSandboxLicenseSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(HotUpdaterSandboxFonts.license)
+                    .font(SandboxFont.footnote)
+                    .foregroundColor(SandboxColor.textSecondary)
+                    .textSelection(.enabled)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(SandboxColor.surface.ignoresSafeArea())
+            .navigationTitle("Geist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: { Label("Done", systemImage: "checkmark") }
+                }
+            }
         }
     }
 }

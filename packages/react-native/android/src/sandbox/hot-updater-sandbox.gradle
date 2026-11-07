@@ -17,7 +17,7 @@ if (kotlinPluginVersion.startsWith("1.")) {
     throw new GradleException("A sandbox build needs Kotlin 1.9.22 or later for its screen, and this build loads Kotlin ${kotlinPluginVersion}.")
   }
   android.composeOptions.kotlinCompilerExtensionVersion = composeCompiler
-} else if ((rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["HotUpdater_kotlinVersion"]).toString() != kotlinPluginVersion) {
+} else if ((rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["HotUpdater_kotlinVersion"])?.toString() != kotlinPluginVersion) {
   throw new GradleException("A sandbox build compiles its screen with the Kotlin Gradle plugin's version, ${kotlinPluginVersion}: set ext.kotlinVersion = \"${kotlinPluginVersion}\" in the root build.gradle.")
 }
 

@@ -103,7 +103,6 @@ let package = Package(
             path: "Sandbox",
             exclude: [
                 "README.md",
-                "HotUpdaterSandboxFonts-OFL.md",
                 "HotUpdaterSandboxBridge.swift",
                 "HotUpdaterSandboxDesign.swift",
                 "HotUpdaterSandboxDevOverride.m",
@@ -135,7 +134,6 @@ let package = Package(
             path: "Sandbox",
             exclude: [
                 "README.md",
-                "HotUpdaterSandboxFonts-OFL.md",
                 "HotUpdaterSandboxBridge.swift",
                 "HotUpdaterSandboxCoordinator.swift",
                 "HotUpdaterSandboxDesign.swift",

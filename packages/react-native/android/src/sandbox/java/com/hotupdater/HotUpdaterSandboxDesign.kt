@@ -32,12 +32,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -613,6 +615,34 @@ internal fun SandboxDialog(
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
                 if (dismiss != null) DialogButton(dismiss, colors.textSecondary, onDismiss)
                 DialogButton(confirm, if (destructive) colors.danger else colors.accent, onConfirm)
+            }
+        }
+    }
+}
+
+/** A long text to read, such as a license, in the design's card: it scrolls, and Back closes it. */
+@Composable
+internal fun SandboxTextDialog(
+    title: String,
+    text: String,
+    onClose: () -> Unit,
+) {
+    val colors = LocalSandboxColors.current
+    Dialog(onDismissRequest = onClose) {
+        Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(colors.surface)
+                .padding(top = 24.dp, start = 24.dp, end = 24.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SandboxText(title, SandboxType.headline, modifier = Modifier.semantics { heading() })
+            Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                SandboxText(text, SandboxType.footnote, colors.textSecondary)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                DialogButton("Close", colors.accent, onClose)
             }
         }
     }

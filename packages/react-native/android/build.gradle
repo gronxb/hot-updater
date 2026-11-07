@@ -11,7 +11,7 @@ buildscript {
     classpath "com.android.tools.build:gradle:7.2.1"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    if (project.hasProperty("hotUpdaterSandbox") && !kotlin_version.toString().startsWith("1.")) {
+    if (project.hasProperty("hotUpdaterSandbox") && kotlin_version != null && !kotlin_version.toString().startsWith("1.")) {
       // A sandbox build's screen is Compose. From Kotlin 2.0 its compiler is a Kotlin
       // Gradle plugin, which only a sandbox build puts on the classpath.
       classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"

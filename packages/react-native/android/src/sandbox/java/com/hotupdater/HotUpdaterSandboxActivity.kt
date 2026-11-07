@@ -131,19 +131,20 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handle(intent, restored = savedInstanceState != null)
+        handle(intent, savedInstanceState)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handle(intent, restored = false)
+        handle(intent, null)
     }
 
     private fun handle(
         intent: Intent,
-        restored: Boolean,
+        saved: Bundle?,
     ) {
+        val restored = saved != null
         val decision =
             HotUpdaterSandboxStart.decide(
                 HotUpdaterSandboxStartFacts(
@@ -175,7 +176,7 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
             enableEdgeToEdge()
             @Suppress("DEPRECATION")
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this))
+            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this), saved)
             screen = shown
             setContentView(shown.view)
             stopObserving = coordinator.observe(shown::render)
@@ -225,6 +226,11 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         startActivity(copy)
         overridePendingTransition(0, 0)
         finish()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        screen?.save(outState)
     }
 
     override fun onDestroy() {

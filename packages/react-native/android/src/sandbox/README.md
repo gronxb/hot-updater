@@ -30,5 +30,5 @@ the screen knows of dev-server mode. The screen is Compose, with the primitives 
 `HotUpdaterSandboxDesign.kt` and no Material library, drawn from
 `SANDBOX_DESIGN.md` at the package root in the repository, the design iOS's SwiftUI screen shares. Only
 `hot-updater-sandbox.gradle` and the guarded lines of `build.gradle` bring in
-Compose, its compiler, and `androidx.window`; `res/font` holds Geist, under
-`Geist-OFL.txt`.
+Compose, its compiler, and `androidx.window`; `res/font` holds Geist, and
+`res/raw` the license it ships under, which Info shows.

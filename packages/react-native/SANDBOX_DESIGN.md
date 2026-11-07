@@ -156,16 +156,18 @@ accordion, and the history list under **Recent**. The hint to shake the device
 ends the page.
 
 **Info.** The title, the Build and Bundle cards of name and value rows, and the
-destructive row **Reset to built-in bundle** with the note under it. At the
-largest text sizes, the name and value stack.
+destructive row **Reset to built-in bundle** with the note under it, and
+**Licenses**, whose row "Geist, SIL Open Font License 1.1" opens the license
+the fonts ship with. At the largest text sizes, the name and value stack.
 
 **Wide windows.** From 600 points wide (dp on Android), such as an
 open foldable, a tablet, or a phone on its side, Home and Info sit side by side
 with no tabs. On a foldable neither sits on the fold: iOS lays them out with
 `ArrangementView` and its split style from iOS 27.1, and Android splits at the
 hinge `androidx.window` reports, beside it or, on a table, above and below it.
-Folding, unfolding, and rotating resize the screen in place, and what's typed
-stays. Each page stays at most 640 wide.
+Folding, unfolding, rotating, and a new text size keep what a person is in the
+middle of: the tab, the open form and what's typed, an open question or sheet,
+and, from iOS 17 on iOS, where each page is scrolled. Each page stays at most 640 wide.
 
 ## Platform behavior
 

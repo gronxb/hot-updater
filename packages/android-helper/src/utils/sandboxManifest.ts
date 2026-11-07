@@ -228,7 +228,7 @@ export const sandboxManifestOverlay = ({
   <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic">
     <meta-data android:name="com.hotupdater.CHANNEL" android:value="${xml(channel)}" tools:replace="android:value" />
     <meta-data android:name="${SANDBOX_META_DATA}" android:value="true" />
-    <activity android:name="${SANDBOX_ACTIVITY}" android:exported="true" android:launchMode="singleTop" android:theme="@style/HotUpdaterSandboxTheme" android:configChanges="density|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" android:enableOnBackInvokedCallback="true"${optional("label", launcher.label)}${optional("icon", launcher.icon)}${optional("roundIcon", launcher.roundIcon)}>
+    <activity android:name="${SANDBOX_ACTIVITY}" android:exported="true" android:launchMode="singleTop" android:theme="@style/HotUpdaterSandboxTheme" android:configChanges="density|fontScale|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" android:enableOnBackInvokedCallback="true"${optional("label", launcher.label)}${optional("icon", launcher.icon)}${optional("roundIcon", launcher.roundIcon)}>
 ${filterXml(launcher.filter)}
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />

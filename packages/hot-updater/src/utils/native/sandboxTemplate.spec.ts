@@ -250,9 +250,14 @@ describe("the sandbox template", () => {
     // iOS has no resources to ship: the fonts are bytes in a sandbox source.
     const podspec = read("HotUpdater.podspec");
     expect(podspec).not.toMatch(/\.resources?\b|resource_bundles/u);
-    expect(read(`${IOS_SANDBOX}/HotUpdaterSandboxFonts.swift`)).toContain(
-      "CTFontManagerRegisterGraphicsFont",
-    );
+    const fonts = read(`${IOS_SANDBOX}/HotUpdaterSandboxFonts.swift`);
+    expect(fonts).toContain("CTFontManagerRegisterGraphicsFont");
+    // The fonts' license goes wherever they go: in the same source, and in the res
+    // only a sandbox build attaches.
+    expect(fonts).toContain("SIL OPEN FONT LICENSE Version 1.1");
+    expect(
+      read("android/src/sandbox/res/raw/hot_updater_sandbox_geist_ofl.txt"),
+    ).toContain("SIL OPEN FONT LICENSE Version 1.1");
   });
 
   it("replaces HotUpdaterImpl only through what the generator reads", () => {

@@ -5,12 +5,14 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +37,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -76,6 +77,12 @@ import kotlinx.coroutines.delay
 
 private const val TAG = "HotUpdaterSandbox"
 private const val HELP_URL = "https://hot-updater.dev/docs/native-builds/sandbox"
+private const val GEIST_LICENSE = "Geist, SIL Open Font License 1.1"
+private const val CONFIRM_CLEAR = "clear"
+private const val CONFIRM_RESET = "reset"
+private const val SAVED_TAB = "hotUpdaterSandboxTab"
+private const val SAVED_EXPANDED = "hotUpdaterSandboxExpanded"
+private const val SAVED_TYPED = "hotUpdaterSandboxTyped"
 private val CODE_ROWS = setOf("Fingerprint", "Built-in bundle", "Default channel", "Channel", "Current", "Pending")
 
 /** What a phase asks, in the same words on every screen that asks it. */
@@ -157,6 +164,7 @@ internal class HotUpdaterSandboxScreen(
     private val activity: HotUpdaterSandboxActivity,
     private val coordinator: HotUpdaterSandboxCoordinator,
     private val devServer: HotUpdaterSandboxDevServer,
+    saved: Bundle?,
 ) {
     private var state by mutableStateOf(coordinator.state)
     private var devServerRevision by mutableIntStateOf(0)
@@ -166,9 +174,18 @@ internal class HotUpdaterSandboxScreen(
      * each. They live here, not in a pane, so a fold or a rotation that lays the
      * panes out again keeps them.
      */
-    private var tab by mutableIntStateOf(0)
-    private var expanded by mutableStateOf<String?>(null)
-    private val typed = mutableStateMapOf<String, String>()
+    private var tab by mutableIntStateOf(saved?.getInt(SAVED_TAB) ?: 0)
+    private var expanded by mutableStateOf(saved?.getString(SAVED_EXPANDED))
+    private val typed =
+        mutableStateMapOf<String, String>().apply {
+            saved?.getBundle(SAVED_TYPED)?.let { bundle -> bundle.keySet().forEach { put(it, bundle.getString(it).orEmpty()) } }
+        }
+
+    /** The question a person asked for, Clear or Reset, and the license, open across a new layout. */
+    private var confirming by mutableStateOf<String?>(null)
+    private var showsLicense by mutableStateOf(false)
+    private val homeScroll = ScrollState(0)
+    private val infoScroll = ScrollState(0)
 
     /** A dev server that didn't answer, or a phone with no camera app: a title and what to do. */
     private var notice by mutableStateOf<Pair<String, String>?>(null)
@@ -190,6 +207,13 @@ internal class HotUpdaterSandboxScreen(
 
     init {
         devServer.onDevServerChange = { devServerRevision++ }
+    }
+
+    /** What a recreated activity, such as after a font size change, gets back. */
+    fun save(out: Bundle) {
+        out.putInt(SAVED_TAB, tab)
+        out.putString(SAVED_EXPANDED, expanded)
+        out.putBundle(SAVED_TYPED, Bundle().apply { typed.forEach { (id, text) -> putString(id, text) } })
     }
 
     fun render(next: HotUpdaterSandboxState) {
@@ -311,7 +335,10 @@ internal class HotUpdaterSandboxScreen(
 
     /** A pane's scrolling page: off the status bar, the cutout and the keyboard, and no wider than reads well. */
     @Composable
-    private fun Page(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    private fun Page(
+        scroll: ScrollState,
+        content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+    ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -322,7 +349,7 @@ internal class HotUpdaterSandboxScreen(
                 Modifier
                     .widthIn(max = 640.dp)
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scroll)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(28.dp),
                 content = content,
@@ -340,14 +367,12 @@ internal class HotUpdaterSandboxScreen(
         val focus = LocalFocusManager.current
         // Reading the revision redraws this pane when the dev server changes.
         val home = remember(state, devServerRevision) { home(state) }
-        var confirmsClear by remember { mutableStateOf(false) }
-        var confirmsReset by remember { mutableStateOf(false) }
         // Back closes an open form first.
         BackHandler(enabled = expanded != null) {
             focus.clearFocus()
             expanded = null
         }
-        Page {
+        Page(homeScroll) {
             Header(showsClose)
             home.status?.let { StatusCard(it) }
             home.banner?.let { banner ->
@@ -359,7 +384,7 @@ internal class HotUpdaterSandboxScreen(
                     }
                     if (banner.offersReset) {
                         SandboxDivider(leading = false)
-                        SandboxDestructiveRow("Reset to built-in bundle", enabled = !home.isBusy) { confirmsReset = true }
+                        SandboxDestructiveRow("Reset to built-in bundle", enabled = !home.isBusy) { confirming = CONFIRM_RESET }
                     }
                 }
             }
@@ -464,7 +489,7 @@ internal class HotUpdaterSandboxScreen(
                 }
             }
             if (home.previews.isNotEmpty()) {
-                SandboxSection("Recent", "Clear" to { confirmsClear = true }) {
+                SandboxSection("Recent", "Clear" to { confirming = CONFIRM_CLEAR }) {
                     SandboxCard {
                         home.previews.forEachIndexed { index, preview ->
                             key(preview.channel) {
@@ -494,22 +519,6 @@ internal class HotUpdaterSandboxScreen(
                 textAlign = TextAlign.Center,
             )
         }
-        if (confirmsClear) {
-            SandboxDialog(
-                title = "Clear recent previews?",
-                dismissible = true,
-                message = "They're only listed on this device. Nothing else changes.",
-                confirm = "Clear",
-                destructive = true,
-                dismiss = "Cancel",
-                onConfirm = {
-                    confirmsClear = false
-                    coordinator.clearHistory()
-                },
-                onDismiss = { confirmsClear = false },
-            )
-        }
-        if (confirmsReset) ResetDialog { confirmsReset = false }
     }
 
     @OptIn(ExperimentalFoundationApi::class)
@@ -671,8 +680,7 @@ internal class HotUpdaterSandboxScreen(
                 HotUpdaterSandboxInfoModel.of(state, version, configuration, activity.isOverApp, devServer.runningDevServerHost)
             }
         val canReset = state.hasServerConfig && state.phase !is HotUpdaterSandboxPhase.Working
-        var confirmsReset by remember { mutableStateOf(false) }
-        Page {
+        Page(infoScroll) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 SandboxText("Info", SandboxType.title, modifier = Modifier.weight(1f).semantics { heading() })
                 if (showsClose && activity.isOverApp) CloseButton()
@@ -681,11 +689,15 @@ internal class HotUpdaterSandboxScreen(
             InfoGroup("Bundle", info.bundle)
             SandboxSection(null, footer = HotUpdaterSandboxHomeModel.RESET_NOTE) {
                 SandboxCard {
-                    SandboxDestructiveRow("Reset to built-in bundle", enabled = canReset) { confirmsReset = true }
+                    SandboxDestructiveRow("Reset to built-in bundle", enabled = canReset) { confirming = CONFIRM_RESET }
+                }
+            }
+            SandboxSection("Licenses") {
+                SandboxCard {
+                    SandboxRow(null, GEIST_LICENSE) { showsLicense = true }
                 }
             }
         }
-        if (confirmsReset) ResetDialog { confirmsReset = false }
     }
 
     @Composable
@@ -748,6 +760,33 @@ internal class HotUpdaterSandboxScreen(
     @Composable
     private fun Questions() {
         val haptics = LocalView.current
+        when (confirming) {
+            CONFIRM_CLEAR ->
+                SandboxDialog(
+                    title = "Clear recent previews?",
+                    message = "They're only listed on this device. Nothing else changes.",
+                    confirm = "Clear",
+                    destructive = true,
+                    dismiss = "Cancel",
+                    dismissible = true,
+                    onConfirm = {
+                        confirming = null
+                        coordinator.clearHistory()
+                    },
+                    onDismiss = { confirming = null },
+                )
+            CONFIRM_RESET -> ResetDialog { confirming = null }
+        }
+        if (showsLicense) {
+            val text =
+                remember {
+                    activity.resources
+                        .openRawResource(R.raw.hot_updater_sandbox_geist_ofl)
+                        .bufferedReader()
+                        .use { it.readText() }
+                }
+            SandboxTextDialog(GEIST_LICENSE, text) { showsLicense = false }
+        }
         val question = HotUpdaterSandboxQuestion.of(state.phase)
         LaunchedEffect(question) {
             if (question != null && question.kind != HotUpdaterSandboxQuestion.Kind.CONFIRM) SandboxHaptic.error(haptics)
