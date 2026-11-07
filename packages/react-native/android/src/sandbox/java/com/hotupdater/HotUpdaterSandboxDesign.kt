@@ -611,7 +611,11 @@ internal fun SandboxDialog(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SandboxText(title, SandboxType.headline, modifier = Modifier.semantics { heading() })
-            SandboxText(message, SandboxType.subhead, colors.textSecondary)
+            // A long message scrolls, so the buttons always have room: a question
+            // the coordinator waits on can't be dismissed any other way.
+            Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                SandboxText(message, SandboxType.subhead, colors.textSecondary)
+            }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
                 if (dismiss != null) DialogButton(dismiss, colors.textSecondary, onDismiss)
                 DialogButton(confirm, if (destructive) colors.danger else colors.accent, onConfirm)
