@@ -166,7 +166,7 @@ const installLinks = (
     ].join(" · ");
   }
   return {
-    apk: `[Download APK](${download}) · ${details}`,
+    apk: `[Download APK](${download}) · ${details} · allow "Install unknown apps" when Android asks`,
     aab: `[Download AAB](${download}) · ${details}`,
     ipa: `[Install on iPhone](${nativeBuildPageLink(consoleUrl, id)}) · [Download IPA](${download}) · registered devices only`,
     app: `${details} · install with the command below`,

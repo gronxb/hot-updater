@@ -281,7 +281,7 @@ describe("runAction preview", () => {
       },
     ]);
     expect(outputs["comment-body"]).toContain(
-      "- **Android**: [Download APK](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1)",
+      '- **Android**: [Download APK](https://console.example.com/api/native-builds/build-1/download) · [Details](https://console.example.com/native-builds/build-1) · allow "Install unknown apps" when Android asks',
     );
     expect(outputs["comment-body"]).toContain(
       "| Android | `build-1` · built for this commit |",
@@ -322,7 +322,7 @@ describe("runAction preview", () => {
       built: false,
     });
     expect(outputs["comment-body"]).toContain(
-      "- **Android**: [Download APK](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0)",
+      '- **Android**: [Download APK](https://console.example.com/api/native-builds/build-0/download) · [Details](https://console.example.com/native-builds/build-0) · allow "Install unknown apps" when Android asks',
     );
     expect(outputs["comment-body"]).toContain(
       "| Android | `build-0` · reused |",
@@ -542,7 +542,7 @@ describe("runAction preview", () => {
     expect(github.files()).toBeNull();
     const body = outputs["comment-body"]!;
     expect(body).toContain(
-      `- **Android**: [Download APK](${console}/api/native-builds/build-1/download) · [Details](${console}/native-builds/build-1)\n- **iOS**: [Install on iPhone](${console}/native-builds/build-ipa) · [Download IPA](${console}/api/native-builds/build-ipa/download) · registered devices only`,
+      `- **Android**: [Download APK](${console}/api/native-builds/build-1/download) · [Details](${console}/native-builds/build-1) · allow "Install unknown apps" when Android asks\n- **iOS**: [Install on iPhone](${console}/native-builds/build-ipa) · [Download IPA](${console}/api/native-builds/build-ipa/download) · registered devices only`,
     );
     expect(body).not.toContain("<img");
     expect(body).not.toContain("Scan");

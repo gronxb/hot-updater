@@ -280,7 +280,7 @@ describe("no sandbox scheme", () => {
         COMMENT_MARKER,
         "### Preview on `pr-12`",
         "**Install this pull request's build.** It opens this pull request on its first launch.",
-        `- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID})`,
+        `- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
         [
           "<details>",
           "<summary>Builds</summary>",
@@ -395,7 +395,7 @@ describe("a sandbox build that has the fingerprint", () => {
     );
 
     expect(body).toContain(
-      `**1. Install the sandbox app** once. Pull requests with the same native code share it.\n\n- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID})`,
+      `**1. Install the sandbox app** once. Pull requests with the same native code share it.\n\n- **Android**: [Download APK](${DOWNLOAD}) · [Details](${CONSOLE}/native-builds/${BUILD_ID}) · allow "Install unknown apps" when Android asks`,
     );
     expect(body).toContain(
       `**2. Scan to open this pull request** with the sandbox app.\n\n**Android**\n\n<img src="${QR}" alt="QR code of the sandbox link of pr-12" width="180" height="180">\n\n\`${LINK}\``,
