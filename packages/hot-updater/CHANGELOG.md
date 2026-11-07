@@ -1,5 +1,32 @@
 # hot-updater
 
+## 1.2.0-rc.25
+
+### Minor Changes
+
+- 740048a: The preview comment works in two steps: install the app, then, on a sandbox build, scan the QR code that opens the pull request.
+  - Each platform's native build gets one line of install links: Download APK, Install on iPhone, or its own store's link and state, then Details. Native builds have no QR code. Build IDs, fingerprints, and bundles move into a collapsed Builds table.
+  - The sandbox link's QR code is the only QR code. The action draws it and commits it to the repository's `hot-updater-preview` branch, so a Console on a VPN or Tailscale gets one too. The workflow needs `permissions: contents: write`; without it, the action writes the comment with the link and no QR code, then fails with the permission to add. With `comment: false`, it writes none.
+  - "Scan" appears only above a QR code.
+  - The project's CLI and its builds no longer get the action's GitHub token.
+
+### Patch Changes
+
+- 39631b5: `deploy` and `doctor` read an Expo app's `publicKeyPath` for each platform that has no native files, even when a build of the other platform generated its own. Before, an Expo project whose `android/` folder a sandbox build had just generated failed `deploy -p ios` with "Signing is enabled but @hot-updater/expo publicKeyPath is missing", because the Expo app config was read only when both `ios/` and `android/` were missing.
+- ffbda89: The preview comment's APK line reminds testers to allow "Install unknown apps" when Android asks, since the download opens Android's install prompt from the browser.
+- 5427f56: `secrets put`, `secrets import`, and `secrets pull` print a secrets adapter's whole read error, with the step that fixes it, such as the command that signs in, the permission the identity needs, or `aws secretsmanager restore-secret`: they printed only its first line. Init prints the adapter's error under one head line instead of two. `secretsManager()`'s `set` waits until a read returns the version it wrote, so `secrets import --replace` no longer fails with "did not read back" while Secrets Manager still serves the previous version, and an issued key isn't revoked over a stale read. `secretManager()` names the configured project in the command that enables the Secret Manager API. A refusal to replace a stored secret starts with a capital.
+- Updated dependencies [740048a]
+- Updated dependencies [8a045f4]
+- Updated dependencies [5427f56]
+  - @hot-updater/console@1.2.0-rc.25
+  - @hot-updater/android-helper@1.2.0-rc.25
+  - @hot-updater/cli-tools@1.2.0-rc.25
+  - @hot-updater/apple-helper@1.2.0-rc.25
+  - @hot-updater/bsdiff@1.2.0-rc.25
+  - @hot-updater/protocol@1.2.0-rc.25
+  - @hot-updater/server@1.2.0-rc.25
+  - @hot-updater/plugin-core@1.2.0-rc.25
+
 ## 1.2.0-rc.24
 
 ### Patch Changes
