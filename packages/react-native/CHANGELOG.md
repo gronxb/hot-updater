@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 1.2.0-rc.25
+
+### Patch Changes
+
+- 10281e9: Keep what Android crash recovery reads by reflection from R8: `BridgelessReactContext`'s host, and `ReactRootViewTagGenerator` with its root view tag counter. In a minified release build of an app with named instances, R8 renamed them, so a named instance's fatal JavaScript error on the New Architecture skipped crash recovery, and a crash couldn't be attributed to the instance on screen. Apps need no ProGuard rules of their own: the library's consumer rules cover everything it reads by reflection.
+- 8a045f4: The sandbox screen is native and shares one design on both platforms: SwiftUI on iOS 16 and later, and Jetpack Compose on Android, set in Geist. Expanding and collapsing rows animate smoothly, and the screen keeps its state across folds and rotations. A wide window, such as an open foldable, shows Home and Info side by side, away from the fold. Android gets edge-to-edge drawing and predictive Back. All of it ships only in sandbox builds.
+- @hot-updater/protocol@1.2.0-rc.25
+  - @hot-updater/plugin-insights@1.2.0-rc.25
+  - @hot-updater/plugin-remote-config@1.2.0-rc.25
+
 ## 1.2.0-rc.24
 
 ### Patch Changes
