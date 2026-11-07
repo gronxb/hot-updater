@@ -224,7 +224,7 @@ describe("sandboxManifestOverlay", () => {
     expect(host).not.toContain("android.intent.action.VIEW");
   });
 
-  it("keeps the screen through a fold, a rotation, or a new font size, and lets Back predict", () => {
+  it("keeps the screen through a fold, a rotation, or a text setting, and lets Back predict", () => {
     const overlay = overlayOf(activity());
     const sandbox = overlay.slice(
       overlay.indexOf(
@@ -236,11 +236,12 @@ describe("sandboxManifestOverlay", () => {
       .exec(sandbox)?.[1]
       .split("|");
     // A foldable's other panel changes the density, and the screen resizes in
-    // place, as it does for a new font size or dark mode.
+    // place, as it does for a new font size, bold text, or dark mode.
     expect(changes).toEqual(
       expect.arrayContaining([
         "density",
         "fontScale",
+        "fontWeightAdjustment",
         "orientation",
         "screenLayout",
         "screenSize",

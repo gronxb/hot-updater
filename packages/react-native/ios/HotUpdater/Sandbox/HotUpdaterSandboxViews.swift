@@ -47,6 +47,9 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
     @Published var sheet: HotUpdaterSandboxSheet?
     @Published var homeAnchor: String?
     @Published var infoAnchor: String?
+    /// Whether the arrangement shows Info beside Home: when it shows Home alone,
+    /// such as a closed foldable on its side, Home links to Info.
+    @Published var isInfoPaneShown = false
     private var scanned: URL?
     /// Whatever goes, a question waiting behind it comes next, once that alert has left.
     @Published var prompt: Prompt? {
@@ -235,9 +238,15 @@ struct HotUpdaterSandboxRootView: View {
             // The system places the two around a fold and decides whether the
             // second one fits: when it doesn't, Home links to Info.
             ArrangementView {
-                ArrangedHome(model: model)
+                HomeScreen(model: model, showsInfoLink: !model.isInfoPaneShown)
             } secondary: {
                 InfoScreen(model: model)
+                    .background(GeometryReader { pane in
+                        Color.clear
+                            .onAppear { model.isInfoPaneShown = pane.size.width > 1 }
+                            .onChange(of: pane.size.width) { model.isInfoPaneShown = $0 > 1 }
+                            .onDisappear { model.isInfoPaneShown = false }
+                    })
             }
             .arrangementViewStyle(.split)
         } else {
@@ -296,19 +305,6 @@ private struct SandboxVerticalRule: View {
     }
 }
 
-#if canImport(SwiftUI, _version: 8.1)
-/// Home as the arrangement's first view, linking to Info whenever the system shows
-/// it alone, such as a closed foldable on its side.
-@available(iOS 27.1, *)
-private struct ArrangedHome: View {
-    @ObservedObject var model: HotUpdaterSandboxScreenModel
-    @Environment(\.splitArrangementAxis) private var splitAxis
-
-    var body: some View {
-        HomeScreen(model: model, showsInfoLink: splitAxis == nil)
-    }
-}
-#endif
 
 // MARK: - Home
 
@@ -372,7 +368,13 @@ private struct HomeScreen: View {
             .toolbar { toolbar }
             // The header names the app, so the bar shows only when it holds an item.
             .toolbar(model.isOverApp() || showsInfoLink ? .visible : .hidden, for: .navigationBar)
-            .navigationDestination(isPresented: $model.showsInfo) { InfoScreen(model: model, isPushed: true) }
+            // Info is pushed only while it has no pane of its own: once a fold or a
+            // rotation gives it one, or takes Home's link away, the push goes.
+            .navigationDestination(
+                isPresented: Binding(get: { showsInfoLink && model.showsInfo }, set: { model.showsInfo = $0 })
+            ) { InfoScreen(model: model, isPushed: true) }
+            .onAppear { if !showsInfoLink { model.showsInfo = false } }
+            .onChange(of: showsInfoLink) { linked in if !linked { model.showsInfo = false } }
         }
     }
 
