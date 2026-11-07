@@ -11,7 +11,11 @@ buildscript {
     classpath "com.android.tools.build:gradle:7.2.1"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-
+    if (project.hasProperty("hotUpdaterSandbox") && kotlin_version != null && !kotlin_version.toString().startsWith("1.")) {
+      // A sandbox build's screen is Compose. From Kotlin 2.0 its compiler is a Kotlin
+      // Gradle plugin, which only a sandbox build puts on the classpath.
+      classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+    }
   }
 }
 
@@ -42,6 +46,13 @@ project.ext.set("kotlin.incremental", "false")
 
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
+if (isSandboxBuild()) {
+  // The Kotlin this build compiles with, which picks how the screen's Compose compiles.
+  project.ext.hotUpdaterKotlinPluginVersion = org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt.getKotlinPluginVersion(project)
+  if (!project.ext.hotUpdaterKotlinPluginVersion.startsWith("1.")) {
+    apply plugin: "org.jetbrains.kotlin.plugin.compose"
+  }
+}
 apply from: "$projectDir/react-native-helpers.gradle"
 apply from: "$projectDir/hot-updater-builtin-assets.gradle"
 

@@ -11,6 +11,8 @@ import android.os.Looper
 import android.os.Process
 import android.util.Log
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,7 +120,7 @@ internal object HotUpdaterSandbox {
  * Takes the launcher entry and the sandbox's links, so the app's JavaScript waits
  * until `ReactActivity` runs. Anything else addressed to the app passes through.
  */
-class HotUpdaterSandboxActivity : Activity() {
+class HotUpdaterSandboxActivity : ComponentActivity() {
     internal companion object {
         /** The sandbox's own start over a running app, which only it can send. */
         const val EXTRA_OVER_APP = "com.hotupdater.sandbox.OVER_APP"
@@ -129,19 +131,20 @@ class HotUpdaterSandboxActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handle(intent, restored = savedInstanceState != null)
+        handle(intent, savedInstanceState)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handle(intent, restored = false)
+        handle(intent, null)
     }
 
     private fun handle(
         intent: Intent,
-        restored: Boolean,
+        saved: Bundle?,
     ) {
+        val restored = saved != null
         val decision =
             HotUpdaterSandboxStart.decide(
                 HotUpdaterSandboxStartFacts(
@@ -169,9 +172,11 @@ class HotUpdaterSandboxActivity : Activity() {
         val coordinator = HotUpdaterSandbox.coordinator(this)
         HotUpdaterSandbox.attach(this)
         if (screen == null) {
+            // Drawn under the system bars, with the keyboard's insets for the screen to avoid.
+            enableEdgeToEdge()
             @Suppress("DEPRECATION")
             window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this))
+            val shown = HotUpdaterSandboxScreen(this, coordinator, HotUpdaterSandbox.devServer(this), saved)
             screen = shown
             setContentView(shown.view)
             stopObserving = coordinator.observe(shown::render)
@@ -221,6 +226,11 @@ class HotUpdaterSandboxActivity : Activity() {
         startActivity(copy)
         overridePendingTransition(0, 0)
         finish()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        screen?.save(outState)
     }
 
     override fun onDestroy() {

@@ -224,6 +224,35 @@ describe("sandboxManifestOverlay", () => {
     expect(host).not.toContain("android.intent.action.VIEW");
   });
 
+  it("keeps the screen through a fold, a rotation, or a text setting, and lets Back predict", () => {
+    const overlay = overlayOf(activity());
+    const sandbox = overlay.slice(
+      overlay.indexOf(
+        '<activity android:name="com.hotupdater.HotUpdaterSandboxActivity"',
+      ),
+      overlay.indexOf("</activity>"),
+    );
+    const changes = /android:configChanges="([^"]+)"/u
+      .exec(sandbox)?.[1]
+      .split("|");
+    // A foldable's other panel changes the density, and the screen resizes in
+    // place, as it does for a new font size, bold text, or dark mode.
+    expect(changes).toEqual(
+      expect.arrayContaining([
+        "density",
+        "fontScale",
+        "fontWeightAdjustment",
+        "orientation",
+        "screenLayout",
+        "screenSize",
+        "smallestScreenSize",
+        "uiMode",
+      ]),
+    );
+    expect(sandbox).toContain('android:enableOnBackInvokedCallback="true"');
+    expect(sandbox).not.toContain("android:screenOrientation");
+  });
+
   it("removes a filter with an extra category by its whole content, and keeps the category", () => {
     const overlay = overlayOf(
       activity(

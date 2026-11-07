@@ -35,4 +35,9 @@ next start.
 
 `HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
 words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
-the screen knows of dev-server mode.
+the screen knows of dev-server mode. The screen is SwiftUI from iOS 16
+(`HotUpdaterSandboxViews`, on `HotUpdaterSandboxDesign`), drawn from
+`SANDBOX_DESIGN.md` at the package root in the repository, the design Android's Compose screen shares; before
+iOS 16 it's a plain UIKit screen. `HotUpdaterSandboxFonts` holds Geist as bytes,
+so no resource reaches a normal build, with the license it ships under, which
+Info shows: regenerate it from a geist-font release's TTFs with base64.

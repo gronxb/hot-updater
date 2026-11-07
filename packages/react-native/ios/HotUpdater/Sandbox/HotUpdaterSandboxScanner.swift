@@ -2,12 +2,13 @@
 import AVFoundation
 import UIKit
 
-/// The in-app QR scanner. The camera permission is asked for here, on the first
-/// scan, and only a sandbox link closes it: the coordinator checks and confirms
-/// that link like any other.
+/// The in-app QR scanner's camera. The camera permission is asked for here, on
+/// the first scan, and only a sandbox link is passed on: the coordinator checks
+/// and confirms that link like any other. Whoever shows it closes it.
 final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     private let session = AVCaptureSession()
     private let onLink: (URL) -> Void
+    private var preview: AVCaptureVideoPreviewLayer?
     private var isDone = false
 
     init(onLink: @escaping (URL) -> Void) {
@@ -23,17 +24,6 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        let close = UIButton(type: .system)
-        close.setTitle("Close", for: .normal)
-        close.setTitleColor(.white, for: .normal)
-        close.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        close.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        close.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(close)
-        NSLayoutConstraint.activate([
-            close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            close.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-        ])
         AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
             DispatchQueue.main.async {
                 if granted {
@@ -45,13 +35,15 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
         }
     }
 
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        stopSession()
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        preview?.frame = view.bounds
     }
 
-    @objc private func closeTapped() {
-        dismiss(animated: true)
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        let session = session
+        DispatchQueue.global(qos: .userInitiated).async { session.stopRunning() }
     }
 
     private func start() {
@@ -74,13 +66,9 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
         preview.frame = view.bounds
         preview.videoGravity = .resizeAspectFill
         view.layer.insertSublayer(preview, at: 0)
+        self.preview = preview
         let session = session
         DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
-    }
-
-    private func stopSession() {
-        let session = session
-        DispatchQueue.global(qos: .userInitiated).async { session.stopRunning() }
     }
 
     func metadataOutput(
@@ -95,13 +83,15 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
             return
         }
         isDone = true
-        dismiss(animated: true) { self.onLink(url) }
+        onLink(url)
     }
 
     private func showMessage(_ text: String) {
         let message = UILabel()
         message.text = text
         message.textColor = .white
+        message.font = .preferredFont(forTextStyle: .body)
+        message.adjustsFontForContentSizeCategory = true
         message.textAlignment = .center
         message.numberOfLines = 0
         message.translatesAutoresizingMaskIntoConstraints = false
