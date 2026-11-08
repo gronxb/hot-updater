@@ -610,6 +610,7 @@ export const uploadToPlay = async ({
             releases?: {
               versionCodes?: string[];
               userFraction?: number;
+              countryTargeting?: unknown;
               [key: string]: unknown;
             }[];
           }>("Reading the Google Play track", "GET", `${edit}/tracks/${track}`);
@@ -626,7 +627,9 @@ export const uploadToPlay = async ({
       if (status === "inProgress") {
         updatedRelease.userFraction = rollout / 100;
       } else {
+        // Play takes both only on an inProgress release.
         delete updatedRelease.userFraction;
+        delete updatedRelease.countryTargeting;
       }
       await request(
         `Releasing to the ${track} track`,

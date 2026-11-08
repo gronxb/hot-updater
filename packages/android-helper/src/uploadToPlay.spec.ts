@@ -305,7 +305,7 @@ describe("uploadToPlay", () => {
   );
 
   it.each([25, 100])(
-    "preserves country targeting and metadata when updating rollout to %s",
+    "preserves metadata, and country targeting while staged, when updating rollout to %s",
     async (rollout) => {
       const routes = successRoutes();
       const metadata = {
@@ -349,6 +349,8 @@ describe("uploadToPlay", () => {
           {
             versionCodes: ["42"],
             ...metadata,
+            // Play takes countryTargeting only on an inProgress release.
+            ...(rollout < 100 ? {} : { countryTargeting: undefined }),
             status: rollout < 100 ? "inProgress" : "completed",
             ...(rollout < 100 ? { userFraction: 0.25 } : {}),
           },
