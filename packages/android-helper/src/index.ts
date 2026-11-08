@@ -28,3 +28,5 @@ export {
   readBuiltPackageName,
   readBuiltVersionCode,
 } from "./utils/readBuiltApp";
+
+export { PLAY_TRACKS } from "./playTracks";

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
   buildAndroid: vi.fn(async () => ({ logFilePath: null })),
 }));
 vi.mock("@hot-updater/apple-helper", () => ({

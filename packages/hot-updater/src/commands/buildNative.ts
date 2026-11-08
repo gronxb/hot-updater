@@ -1,6 +1,7 @@
 import path from "path";
 
 import {
+  PLAY_TRACKS,
   buildAndroid,
   type EnrichedNativeBuildAndroidScheme,
   findPlayInternalRelease,
@@ -49,7 +50,6 @@ import {
   withCredentialResolver,
   withStep,
 } from "@hot-updater/cli-tools";
-import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type {
   BuildAdapter,
   NativeBuildOptions,
@@ -239,7 +239,11 @@ const buildNativeInternal = async ({
           }) => {
             if (
               rollout !== undefined &&
-              (!upload?.startsWith("play-") || upload === "play-internal")
+              (!Number.isInteger(rollout) ||
+                rollout < 1 ||
+                rollout > 100 ||
+                !upload?.startsWith("play-") ||
+                upload === "play-internal")
             ) {
               throw new NativeBuildFailure(
                 "--rollout takes 1–100 with a Play closed, open, or production submission.",
@@ -550,8 +554,8 @@ const buildNativeInternal = async ({
         if (registered && reused?.source !== "storage" && cache) {
           await rememberTrackedBuild(cache, registered.id);
         }
-        // Stores take a build number once. Recorded Play builds update their
-        // public track release; TestFlight and internal testing skip uploads.
+        // Stores take a build number once. Recorded Play builds promote upward
+        // or update the same public track for an explicit rollout change.
         // Without a record, a store lookup or refusal matches only the build
         // number, so it never authorizes recording this artifact.
         let existingSubmission: ExistingSubmission | null =
@@ -559,8 +563,12 @@ const buildNativeInternal = async ({
           !dryRun &&
           registered &&
           ((upload === "testflight" && registered.submitted_to === upload) ||
-            (upload === "play-internal" &&
-              registered.submitted_to?.startsWith("play-")))
+            (upload.startsWith("play-") &&
+              registered.submitted_to?.startsWith("play-") &&
+              (Object.keys(PLAY_TRACKS).indexOf(registered.submitted_to) >
+                Object.keys(PLAY_TRACKS).indexOf(upload) ||
+                (registered.submitted_to === upload &&
+                  (upload === "play-internal" || rollout === undefined)))))
             ? {
                 destination: registered.submitted_to!,
                 version: registered.submitted_version,
@@ -1193,7 +1201,8 @@ const readVersionName = async (
  * Records on the tracked build that the store took this run's upload of
  * it. An untracked build, such as a Debug one, records nothing. A failed
  * record fails the command, since the Console would not show the
- * submission; the store keeps the build, and a rerun skips its upload.
+ * submission; the store keeps the build. Public-track retries may need
+ * reconciliation with the store before rerunning.
  */
 const recordSubmission = async (
   build: NativeBuildRow | null,
@@ -1210,7 +1219,7 @@ const recordSubmission = async (
       [
         `Couldn't record the ${destination === "testflight" ? "TestFlight" : "Google Play"} upload of ${version} on native build ${build.id}.`,
         error instanceof Error ? error.message : String(error),
-        "The store keeps the build; a rerun skips its upload.",
+        "The store keeps the build; check its submission before rerunning.",
       ].join("\n"),
       { cause: error },
     );

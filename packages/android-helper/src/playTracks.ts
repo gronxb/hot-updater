@@ -1,4 +1,4 @@
-/** Google Play destinations shared by the CLI, server, Console and actions. */
+/** Google Play destinations and their API tracks. */
 export const PLAY_TRACKS = {
   "play-internal": {
     track: "internal",
@@ -20,4 +20,4 @@ export const PLAY_TRACKS = {
     label: "Play production",
     name: "Google Play production",
   },
-};
+} as const;

@@ -79,6 +79,9 @@ vi.mock("@hot-updater/apple-helper", async (importOriginal) => ({
   })),
 }));
 vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  PLAY_TRACKS: (
+    await importOriginal<typeof import("@hot-updater/android-helper")>()
+  ).PLAY_TRACKS,
   PlayVersionCodeUsedError: (
     await importOriginal<typeof import("@hot-updater/android-helper")>()
   ).PlayVersionCodeUsedError,

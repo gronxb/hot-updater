@@ -1,4 +1,5 @@
 import {
+  PLAY_TRACKS,
   playTestingUrl,
   readPlayTrackRelease,
   resolvePlayUploadServiceAccount,
@@ -20,7 +21,6 @@ import {
   readLoadedHotUpdaterEnv,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
-import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type {
   NativeBuildAndroidScheme,
   NativeBuildRow,

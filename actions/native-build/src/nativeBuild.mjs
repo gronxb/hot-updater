@@ -1,6 +1,7 @@
-import { PLAY_TRACKS } from "../../../shared/playTracks.mjs";
 // @ts-check
+
 import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
 
 /**
  * @typedef {"android" | "ios"} Platform
@@ -21,9 +22,9 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  *
  * @typedef {object} NativeBuildJson What `native-build <platform> --json` prints last.
  * @property {{ platform: Platform, scheme: string, artifactPath: string, artifactKind: string, minBundleId: string, channel: string, fingerprintHash: string | null, appVersion: string | null }} build
- * @property {{ id: string } | null} nativeBuild
+ * @property {{ id: string, submitted_to?: import("../../shared/nativeBuild.mjs").StoreStatus["destination"] | null } | null} nativeBuild
  * @property {{ skipped: "debug" | "dry-run" | null }} registration Why the build has no record.
- * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { version: string | null, source: "recorded" | "store" } | null, store?: import("../../shared/nativeBuild.mjs").StoreStatus | null }} submission
+ * @property {{ destination: string | null, skipped: "dry-run" | "already-submitted" | null, existing: { destination?: import("../../shared/nativeBuild.mjs").StoreStatus["destination"], version: string | null, source: "recorded" | "store" } | null, store?: import("../../shared/nativeBuild.mjs").StoreStatus | null }} submission
  *   The store the build went to, the store's build that kept it from uploading,
  *   and what the store says of the build this run submitted.
  */

@@ -559,11 +559,17 @@ export const uploadToPlay = async ({
   /** The first wait before committing again an edit Google is processing. */
   commitRetryDelayMs?: number;
 }): Promise<UploadToPlayResult> => {
-  if (!Number.isInteger(rollout) || rollout < 1 || rollout > 100) {
-    throw new Error("Rollout must be an integer from 1 to 100.");
-  }
-  if (track === "internal" && rollout < 100) {
-    throw new Error("Play internal testing does not support staged rollout.");
+  if (
+    !Number.isInteger(rollout) ||
+    rollout < 1 ||
+    rollout > 100 ||
+    (track === "internal" && rollout < 100)
+  ) {
+    throw new Error(
+      track === "internal" && rollout < 100
+        ? "Play internal testing does not support staged rollout."
+        : "Rollout must be an integer from 1 to 100.",
+    );
   }
   const { app, authorization, request } = createPlayClient({
     json,
@@ -597,6 +603,20 @@ export const uploadToPlay = async ({
         fetch,
       }));
 
+    const current =
+      existingVersionCode === undefined
+        ? undefined
+        : await request<{
+            releases?: {
+              versionCodes?: string[];
+              name?: string;
+              releaseNotes?: { language: string; text: string }[];
+            }[];
+          }>("Reading the Google Play track", "GET", `${edit}/tracks/${track}`);
+    const existingRelease = current?.releases?.find((release) =>
+      release.versionCodes?.includes(String(versionCode)),
+    );
+
     const release = async (status: UploadToPlayResult["status"]) => {
       await request(
         `Releasing to the ${track} track`,
@@ -606,7 +626,15 @@ export const uploadToPlay = async ({
           track,
           releases: [
             {
-              versionCodes: [String(versionCode)],
+              ...(existingRelease?.name === undefined
+                ? {}
+                : { name: existingRelease.name }),
+              ...(existingRelease?.releaseNotes === undefined
+                ? {}
+                : { releaseNotes: existingRelease.releaseNotes }),
+              versionCodes: existingRelease?.versionCodes ?? [
+                String(versionCode),
+              ],
               status,
               ...(status === "inProgress"
                 ? { userFraction: rollout / 100 }

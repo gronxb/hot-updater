@@ -1,6 +1,5 @@
 import {
   DatabaseConstraintError,
-  NATIVE_BUILD_SUBMISSION_DESTINATIONS,
   isUUIDv7,
   type HotUpdaterCoreApi,
   type KeysetInput,
@@ -13,6 +12,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
+import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./nativeBuildDestinations";
 import { after, type CoreDatabase } from "./reads";
 import { insertChannel, type CoreTransaction } from "./writes";
 
@@ -357,6 +357,15 @@ export const createNativeBuildApi = (
       ) {
         throw new NativeBuildInputError(
           `Invalid native build submission: an ${build.platform} build is submitted to ${NATIVE_BUILD_SUBMISSION_DESTINATIONS[build.platform].join(" or ")}, not ${destination}.`,
+        );
+      }
+      if (
+        build.is_sandbox &&
+        destination !== "testflight" &&
+        destination !== "play-internal"
+      ) {
+        throw new NativeBuildInputError(
+          "A sandbox build can submit only to TestFlight or Play internal testing.",
         );
       }
       const set = {

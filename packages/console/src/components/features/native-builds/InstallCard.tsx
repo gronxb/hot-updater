@@ -1,4 +1,3 @@
-import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import { AlertTriangle, Download, ExternalLink } from "lucide-react";
@@ -22,6 +21,7 @@ import type { NativeBuildDownloadLinkResult } from "@/lib/server/nativeBuildDown
 
 import { CopyableText } from "./CopyableText";
 import { IosInstall, useIosDevice } from "./IosInstall";
+import { PLAY_TRACKS } from "./playTracks";
 import { isSubmitted, type Submitted } from "./StoreSubmission";
 
 /**

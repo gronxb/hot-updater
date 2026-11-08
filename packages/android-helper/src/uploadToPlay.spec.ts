@@ -114,6 +114,8 @@ const successRoutes = (): Record<string, Reply | Reply[]> => ({
   [`PUT ${LOCATION}`]: {
     json: { versionCode: 42, sha256: "abc" },
   },
+  [`GET ${EDIT}/tracks/internal`]: { json: { releases: [] } },
+  [`GET ${EDIT}/tracks/production`]: { json: { releases: [] } },
   [`PUT ${EDIT}/tracks/internal`]: { json: { track: "internal" } },
   [`POST ${EDIT}:commit`]: { json: { id: "edit-1" } },
 });
@@ -275,6 +277,7 @@ describe("uploadToPlay", () => {
     async (track) => {
       const routes = successRoutes();
       routes[`PUT ${EDIT}/tracks/${track}`] = { json: { track } };
+      routes[`GET ${EDIT}/tracks/${track}`] = { json: { releases: [] } };
       const { fetch, requests } = createRecordingFetch(routes);
       await expect(
         uploadToPlay({
@@ -288,7 +291,9 @@ describe("uploadToPlay", () => {
         }),
       ).resolves.toEqual({ versionCode: 42, status: "inProgress" });
       expect(
-        requests.find((r) => r.url === `${EDIT}/tracks/${track}`)?.body,
+        requests.find(
+          (r) => r.method === "PUT" && r.url === `${EDIT}/tracks/${track}`,
+        )?.body,
       ).toEqual({
         track,
         releases: [
@@ -296,6 +301,56 @@ describe("uploadToPlay", () => {
         ],
       });
       expect(requests.some((r) => r.url.includes("/upload"))).toBe(false);
+    },
+  );
+
+  it.each([25, 100])(
+    "preserves metadata when updating rollout to %s",
+    async (rollout) => {
+      const routes = successRoutes();
+      const metadata = {
+        name: "Release 42",
+        releaseNotes: [{ language: "en-US", text: "Fixes" }],
+      };
+      routes[`GET ${EDIT}/tracks/production`] = {
+        json: {
+          releases: [
+            { versionCodes: ["41"], name: "Older" },
+            {
+              versionCodes: ["42"],
+              status: "halted",
+              userFraction: 0.1,
+              ...metadata,
+            },
+          ],
+        },
+      };
+      routes[`PUT ${EDIT}/tracks/production`] = { json: {} };
+      const { fetch, requests } = createRecordingFetch(routes);
+      await uploadToPlay({
+        aabPath,
+        packageName: "com.example.app",
+        serviceAccount: { json: serviceAccountJson },
+        fetch,
+        track: "production",
+        rollout,
+        existingVersionCode: 42,
+      });
+      expect(
+        requests.find(
+          (r) => r.method === "PUT" && r.url === `${EDIT}/tracks/production`,
+        )?.body,
+      ).toEqual({
+        track: "production",
+        releases: [
+          {
+            versionCodes: ["42"],
+            ...metadata,
+            status: rollout < 100 ? "inProgress" : "completed",
+            ...(rollout < 100 ? { userFraction: 0.25 } : {}),
+          },
+        ],
+      });
     },
   );
 

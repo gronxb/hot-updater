@@ -11,7 +11,8 @@ const {
   readPlayTrackRelease: vi.fn(),
 }));
 
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
   playTestingUrl: (name: string) => `https://play.test/${name}`,
   readPlayTrackRelease,
   resolvePlayUploadServiceAccount: () => ({

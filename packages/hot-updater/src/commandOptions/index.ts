@@ -1,4 +1,4 @@
-import { InvalidArgumentError, Option } from "@commander-js/extra-typings";
+import { Option } from "@commander-js/extra-typings";
 import type { Platform } from "@hot-updater/plugin-core";
 
 export const PLATFORMS: readonly Platform[] = ["ios", "android"];
@@ -51,11 +51,7 @@ export const playSubmitCommandOption = new Option(
 export const playRolloutCommandOption = new Option(
   "--rollout <percentage>",
   "staged rollout percentage, 1–100 (default: 100)",
-).argParser((value) => {
-  if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 100)
-    throw new InvalidArgumentError("Rollout must be an integer from 1 to 100.");
-  return Number(value);
-});
+).argParser(Number);
 
 export const nativeBuildDryRunCommandOption = new Option(
   "--dry-run",

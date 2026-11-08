@@ -274,6 +274,20 @@ describe("runAction", () => {
     );
   });
 
+  it("reports the recorded higher track after a cached build", async () => {
+    const fake = fakeCli({
+      built: {
+        nativeBuild: { id: "nb-new", submitted_to: "play-production" },
+        submission: {
+          skipped: "already-submitted",
+          existing: { source: "recorded", destination: "play-production" },
+        },
+      },
+    });
+    const { result } = await run(fake);
+    expect(result.platforms[0].submittedTo).toBe("play-production");
+  });
+
   it("builds and submits, and deploys nothing, when no build has the fingerprint", async () => {
     const fake = fakeCli();
     const { error, result } = await run(fake);

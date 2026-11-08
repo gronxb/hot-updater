@@ -1,6 +1,5 @@
 import {
   DatabaseBundleNotFoundError,
-  NATIVE_BUILD_SUBMISSION_DESTINATIONS,
   type NativeBuildSubmissionDestination,
   DatabaseConstraintError,
   ReleaseCatalogMutationError,
@@ -16,6 +15,7 @@ import {
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./core/nativeBuildDestinations";
 import { NativeBuildInputError } from "./core/nativeBuilds";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {

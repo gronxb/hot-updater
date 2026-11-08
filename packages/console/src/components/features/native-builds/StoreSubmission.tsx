@@ -1,10 +1,11 @@
-import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+
+import { PLAY_TRACKS } from "./playTracks";
 
 dayjs.extend(relativeTime);
 

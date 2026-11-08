@@ -70,6 +70,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - A config-time adapter loads its SDK and `@hot-updater/cli-tools` inside its methods, never at import, so a server that imports the storage adapter from the same root loads neither. The runtime builds import single source files and never include it.
 - Dependencies are cut cleanly:
   - No package has an `/internal` entry or a deep import. Every cross-package import uses the other package's public API.
+  - Native build destinations use `testflight` and `play-{internal,closed,open,production}`. Plugin-core declares the row union; server validates its own list; android-helper owns Play API track mapping; Console and actions keep local display maps.
   - A shared convention is implemented in each package and documented here, not imported. An example is the official-plugin brand key `Symbol.for("@hot-updater/server/official-plugin")`.
   - Each managed provider's database factory (`d1Database`, `supabaseDatabase`, `dynamoDB`, `firebaseDatabase`, `postgres`, `cosmosDatabase`) marks the resource it reaches, without credentials, under `Symbol.for("@hot-updater/database-target")`, such as `d1/<databaseId>`. Doctor compares it with the target init's saved inputs describe (`INIT_PROVIDER_PACKAGES[provider].target`) before it names init replay.
 - Subpaths are the exception. Add one only to isolate something optional (an adapter's dependency, a built-in plugin, a runtime build), never as a back door.

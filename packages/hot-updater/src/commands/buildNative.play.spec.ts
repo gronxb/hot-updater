@@ -7,7 +7,8 @@ const events: string[] = [];
 
 const serviceAccount = { json: '{"client_email":"uploader@example.com"}' };
 
-vi.mock("@hot-updater/android-helper", () => ({
+vi.mock("@hot-updater/android-helper", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/android-helper")>()),
   readBuiltVersionCode: vi.fn(async () => 42),
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.7.0" })),
   PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
@@ -315,7 +316,7 @@ describe("native-build android --submit play-internal", () => {
     ["play-open", "beta"],
     ["play-production", "production"],
   ] as const)(
-    "updates an existing %s release on every rerun",
+    "updates an existing %s release with an explicit rollout",
     async (submit, track) => {
       for (const rollout of [10, 50, 100]) {
         vi.mocked(registerNativeBuild).mockResolvedValueOnce({
@@ -335,6 +336,31 @@ describe("native-build android --submit play-internal", () => {
           }),
         );
       }
+    },
+  );
+
+  it.each([
+    ["play-closed", "play-closed"],
+    ["play-open", "play-open"],
+    ["play-production", "play-production"],
+    ["play-production", "play-closed"],
+    ["play-production", "play-open"],
+    ["play-open", "play-closed"],
+  ] as const)(
+    "keeps recorded %s when requesting %s",
+    async (recorded, submit) => {
+      vi.mocked(registerNativeBuild).mockResolvedValueOnce({
+        id: "nb1",
+        submitted_to: recorded,
+        submitted_version: null,
+        submitted_at_ms: null,
+      } as never);
+      await handleNativeBuildCreate("android", { scheme: "release", submit });
+      expect(uploadToPlay).not.toHaveBeenCalled();
+      expect(recordNativeBuildSubmission).not.toHaveBeenCalled();
+      expect(vi.mocked(p.log.step).mock.calls.flat().join("\n")).toContain(
+        "Already on",
+      );
     },
   );
 

@@ -245,8 +245,3 @@ export {
   type ToolingDatabase,
   type ToolingTarget,
 } from "./engine/db/types";
-
-/** Google Play tracks represented by native build submission records. */
-export { PLAY_TRACKS } from "../../../shared/playTracks.mjs";
-
-export { NATIVE_BUILD_SUBMISSION_DESTINATIONS } from "./types/databaseRows";

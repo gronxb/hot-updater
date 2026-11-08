@@ -182,6 +182,9 @@ For a normal scheme, choose `--submit play-internal`, `play-closed`,
 `alpha` and `beta` tracks. Production requires the service account's
 **Release to production** permission.
 
+A staged production rollout requires an existing production release: Play supports
+staged rollouts only for app updates.
+
 ```bash
 npx hot-updater native-build android --scheme release --submit play-production --rollout 10
 ```
@@ -194,9 +197,9 @@ Console.
 
 A build with a recorded Play submission can go to another track without
 uploading its artifact again. Without that record, the CLI uploads the artifact
-and refuses a version code Play already holds. Closed, open, and production
-submissions always update the requested track, including reruns on the same
-track: `--rollout 50` sets 50%, and `--rollout 100` (the default) completes it.
-Internal submissions keep their existing skip. Play Console can also promote
+and refuses a version code Play already holds. A rerun on the same track skips
+unless `--rollout` is explicit: `--rollout 50` sets 50%, and `--rollout 100`
+completes it. Requests for a lower track also skip and keep the recorded track.
+Tracks rank internal, closed, open, then production. Play Console can also promote
 builds. Sandbox schemes can submit only to internal testing. Actions have no
 rollout input; use the CLI for staged rollout.

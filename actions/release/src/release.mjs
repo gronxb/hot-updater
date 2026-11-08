@@ -1,6 +1,5 @@
 // @ts-check
 
-import { PLAY_TRACKS } from "../../../shared/playTracks.mjs";
 import {
   assertBuildRunner,
   runNativeBuild,
@@ -14,6 +13,7 @@ import {
   refreshFingerprint,
   STORES,
 } from "../../shared/nativeBuild.mjs";
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
 
 /**
  * @typedef {import("../../shared/nativeBuild.mjs").Platform} Platform
@@ -240,7 +240,9 @@ const buildPlatform = async (deps, inputs, env, result, channel) => {
       `${store.name} already has ${existing.version ?? "this build number"}, which may be another build. Raise the build number and push again.`,
     );
   }
-  result.submittedTo = inputs.submit ? store.id : null;
+  result.submittedTo = inputs.submit
+    ? (existing?.destination ?? built.nativeBuild.submitted_to ?? store.id)
+    : null;
   result.outcome = "built";
 };
 
