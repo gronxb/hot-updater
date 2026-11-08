@@ -3,9 +3,20 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { reactNativeCliFingerprint } from "@hot-updater/cli-tools";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ONE_NATIVE_SOURCES, one, readOneNativeApp } from "./one";
+import {
+  findOneNativeSources,
+  one,
+  oneFingerprint,
+  readOneNativeApp,
+} from "./one";
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  reactNativeCliFingerprint: vi.fn(async () => ({ hash: "h", sources: [] })),
+}));
 
 const tempDirs: string[] = [];
 
@@ -176,16 +187,15 @@ describe("one", () => {
   });
 });
 
-describe("ONE_NATIVE_SOURCES", () => {
-  it("matches the app's Swift and Kotlin sources, not the generated projects", async () => {
-    const { default: fg } = await import("fast-glob");
+describe("findOneNativeSources", () => {
+  it("finds the app's Swift and Kotlin sources, not the generated projects", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-one-src-"));
     tempDirs.push(cwd);
     const files = [
       "native/Device.kt",
       "native/Showcase/Package.swift",
       "native/Showcase/Device.swift",
-      "features/Camera.kt",
+      "features/Camera [beta].kt",
       "ios/App/AppDelegate.swift",
       "android/app/src/main/java/MainApplication.kt",
       "dist/Copied.swift",
@@ -196,18 +206,41 @@ describe("ONE_NATIVE_SOURCES", () => {
       await mkdir(path.dirname(path.join(cwd, file)), { recursive: true });
       await writeFile(path.join(cwd, file), "");
     }
-    const match = (platform: "ios" | "android") =>
-      fg(ONE_NATIVE_SOURCES[platform], { cwd, dot: true }).then((found) =>
-        found.sort(),
-      );
 
-    await expect(match("ios")).resolves.toEqual([
+    await expect(findOneNativeSources(cwd, "ios")).resolves.toEqual([
       "native/Showcase/Device.swift",
       "native/Showcase/Package.swift",
     ]);
-    await expect(match("android")).resolves.toEqual([
-      "features/Camera.kt",
+    // Escaped, since the fingerprint reads extra sources as globs.
+    await expect(findOneNativeSources(cwd, "android")).resolves.toEqual([
+      "features/Camera \\[beta\\].kt",
       "native/Device.kt",
     ]);
+  });
+});
+
+describe("oneFingerprint", () => {
+  it("keeps the config's own sources, even in folders One's sources skip", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-one-fp-"));
+    tempDirs.push(cwd);
+    await mkdir(path.join(cwd, "native"));
+    await writeFile(path.join(cwd, "native/Device.kt"), "");
+
+    await oneFingerprint(cwd, {
+      platform: "android",
+      extraSources: { android: [".keys/public.pem", "scripts/native.txt"] },
+    });
+
+    expect(vi.mocked(reactNativeCliFingerprint)).toHaveBeenCalledWith(
+      cwd,
+      expect.objectContaining({
+        extraSources: [
+          ".keys/public.pem",
+          "scripts/native.txt",
+          "native/Device.kt",
+        ],
+      }),
+      undefined,
+    );
   });
 });

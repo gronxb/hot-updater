@@ -78,6 +78,8 @@ Then embed the public key and release the app:
 1. Run `npx hot-updater keys export-public` for React Native CLI projects.
    For Expo, export it to a file and set `publicKeyPath` in the
    `@hot-updater/expo` app plugin ([Expo and EAS Build](#expo-and-eas-build)).
+   For One, export it to a file and set `publicKeyPath` in `hotUpdaterPatches`
+   ([One](#one)).
 2. Release the native app, then begin signed OTA deployments.
 
 ### Read the Key from a File
@@ -181,6 +183,29 @@ public key file is included in the build input.
 
 Build and release the native app before deploying its first signed OTA bundle.
 
+## One
+
+`one prebuild` regenerates `ios/` and `android/`, so a One app embeds the
+public key through `hotUpdaterPatches`. Export the public key to a file as for
+Expo, then reference it in `vite.config.ts`:
+
+```ts title="vite.config.ts (excerpt)"
+native: {
+  app: {
+    patches: hotUpdaterPatches({
+      channel: "production",
+      publicKeyPath: "./keys/public-key.pem", // [!code ++]
+    }),
+  },
+},
+```
+
+Run `npx one prebuild` after configuring the public key. `publicKeyPath` is
+relative to the app root. The patches validate the RSA SPKI key and write it
+into `Info.plist` and `AndroidManifest.xml`, the key file counts in both native
+fingerprints, and deploy and doctor compare it with the signing key's public
+key, as for Expo.
+
 ## Manual Public Key Configuration
 
 For React Native CLI projects, export the signing key's public key into the
@@ -253,6 +278,8 @@ npx hot-updater keys remove [--yes]
 For Expo, remove `publicKeyPath` from the `@hot-updater/expo` app plugin and
 run `npx expo prebuild`. The plugin removes the embedded keys; `keys remove`
 alone does not change the Expo configuration and prebuild would restore them.
+For One, remove `publicKeyPath` from `hotUpdaterPatches` and run
+`npx one prebuild` the same way.
 
 Removing the key from local native files does not change already installed
 apps; they still require signed bundles. To disable verification for a future
@@ -377,6 +404,7 @@ key, rebuild the native app, and release it before deploying signed bundles.
 ### Signature Verification Failed
 
 The signing key's public key and the embedded native public key must match.
-If using Expo, verify `publicKeyPath` in the `@hot-updater/expo` app plugin.
+If using Expo, verify `publicKeyPath` in the `@hot-updater/expo` app plugin,
+and with One, in `hotUpdaterPatches`.
 Compare its SPKI SHA-256 fingerprint with the one `secrets issue` or
 `secrets put` printed for the signing key.

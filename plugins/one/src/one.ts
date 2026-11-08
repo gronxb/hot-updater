@@ -17,6 +17,7 @@ import type {
   Platform,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
+import fg from "fast-glob";
 
 import {
   findHotUpdaterPatchesOptions,
@@ -117,24 +118,29 @@ const runOnePrebuild = async ({
 };
 
 // The folders `one prebuild` skips when it collects an app's own Swift and
-// Kotlin sources, at any depth, and the folders it generates.
-const ONE_SKIPPED_DIRS =
-  "{node_modules,ios,android,dist,types,build,tests,__tests__,scripts,evidence}";
+// Kotlin sources, at any depth, the folders it generates, and dot folders.
+const ONE_SKIPPED_DIRS = [
+  "**/{node_modules,ios,android,dist,types,build,tests,__tests__,scripts,evidence}/**",
+  "**/.*/**",
+];
 
 /**
  * The app's own native sources, which `one prebuild` compiles into the app:
- * the Swift packages (a folder with a `Package.swift`) and the Kotlin files
- * outside the generated folders. They have no codegen spec, so their native
- * files are their interface, as a local package's are.
+ * the Swift files of its Swift packages and the Kotlin files outside the
+ * generated folders, as glob-escaped paths relative to `cwd`. They have no
+ * codegen spec, so their native files are their interface, as a local
+ * package's are.
  */
-export const ONE_NATIVE_SOURCES: Readonly<Record<Platform, string[]>> = {
-  ios: [
-    "**/Package.swift",
-    "**/*.swift",
-    `!**/${ONE_SKIPPED_DIRS}/**`,
-    "!**/.*/**",
-  ],
-  android: ["**/*.kt", `!**/${ONE_SKIPPED_DIRS}/**`, "!**/.*/**"],
+export const findOneNativeSources = async (
+  cwd: string,
+  platform: Platform,
+): Promise<string[]> => {
+  const files = await fg(platform === "ios" ? "**/*.swift" : "**/*.kt", {
+    cwd,
+    dot: true,
+    ignore: ONE_SKIPPED_DIRS,
+  });
+  return files.sort().map((file) => fg.escapePath(file));
 };
 
 /**
@@ -169,9 +175,11 @@ export const oneFingerprint = async (
   const own = Array.isArray(extraSources)
     ? extraSources
     : (extraSources?.[platform] ?? []);
+  // Found here, so One's exclusions don't apply to the config's own sources.
+  const sources = [...own, ...(await findOneNativeSources(cwd, platform))];
   return reactNativeCliFingerprint(
     cwd,
-    { ...options, extraSources: [...own, ...ONE_NATIVE_SOURCES[platform]] },
+    { ...options, extraSources: sources },
     platform === "android" ? await readOneGradleFlags(cwd) : undefined,
   );
 };

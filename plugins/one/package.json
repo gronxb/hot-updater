@@ -27,13 +27,13 @@
   "dependencies": {
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "fast-glob": "3.3.3"
   },
   "devDependencies": {
     "@hot-updater/native-patches": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
-    "fast-glob": "3.3.3",
     "vitest": "catalog:"
   },
   "exports": {
