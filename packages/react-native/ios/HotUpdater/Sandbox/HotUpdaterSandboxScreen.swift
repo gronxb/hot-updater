@@ -27,61 +27,6 @@ struct HotUpdaterSandboxApp {
     }
 }
 
-/// What a phase asks, in the same words on every screen that asks it.
-struct HotUpdaterSandboxQuestion: Equatable {
-    enum Kind: Equatable {
-        case confirm, refused, failed
-    }
-
-    let kind: Kind
-    let title: String
-    let message: String
-    let accept: String
-    let decline: String?
-
-    init?(phase: HotUpdaterSandboxPhase) {
-        switch phase {
-        case .confirming(let link):
-            kind = .confirm
-            title = "Open \(link.channel)?"
-            message = "This replaces the running bundle and deletes downloaded bundles."
-            accept = "Open"
-            decline = "Cancel"
-        case .refused(let refusal):
-            kind = .refused
-            switch refusal {
-            case .unreadable:
-                title = "This link can't be read"
-                message = "It isn't a preview link for this app."
-            case .invalidChannel(let channel):
-                title = "That isn't a channel name"
-                message = "Check \"\(channel)\" and try again."
-            case .otherFingerprint(let link, _):
-                title = "\(link.channel) needs another build"
-                message = "Its native code differs from this build. Install the sandbox build for that fingerprint."
-            }
-            accept = "OK"
-            decline = nil
-        case .failed(_, let target, _, let failure, let selection):
-            kind = .failed
-            let reason: String
-            switch failure {
-            case .noBundle: reason = "\(target) has no bundle for this build."
-            case .resetFailed: reason = "Downloaded bundles couldn't be removed."
-            case .superseded: reason = "Another update check changed the selection first."
-            case .error(let text): reason = text
-            }
-            let bundle = selection.isBuiltIn ? "built-in bundle" : "bundle \(selection.bundleId)"
-            title = "Couldn't open \(target)"
-            message = "\(reason)\n\nSelected now: \(selection.channel), \(bundle)."
-            accept = "Retry"
-            decline = "Close"
-        default:
-            return nil
-        }
-    }
-}
-
 /// The first screen, and the same screen over a running app. It renders
 /// `HotUpdaterSandboxState` and calls the coordinator's actions. Reads only:
 /// opening it sends the update server nothing.
@@ -206,7 +151,7 @@ private final class HotUpdaterSandboxFallbackScreen: UIViewController {
         let home = HotUpdaterSandboxHomeModel(state: next, isOverApp: isOverApp(), nowMs: Date().timeIntervalSince1970 * 1000)
         open.setTitle(home.bigRow.title, for: .normal)
         open.isEnabled = !home.isBusy
-        ask(HotUpdaterSandboxQuestion(phase: next.phase))
+        ask(HotUpdaterSandboxQuestion(phase: next.phase, isOverApp: isOverApp()))
     }
 
     @objc private func openTapped() {

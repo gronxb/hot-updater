@@ -1472,6 +1472,54 @@ struct HotUpdaterSandboxHomeModelTests {
         #expect(info.bundle.first { $0.name == "Current" }?.value == "019a3f…c2")
         #expect(info.bundle.first { $0.name == "Pending" }?.value == "019a3f…c2")
     }
+
+    @Test
+    func aLinkSaysItReplacesTheRunningBundleOnlyOverTheApp() {
+        let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
+        let over = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: true)
+        let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false)
+        #expect(over?.message == "This replaces the running bundle and deletes downloaded bundles.")
+        #expect(before?.message == HotUpdaterSandboxHomeModel.switchNote)
+    }
+
+    @Test
+    func theScannerSendsOnlyADeniedCameraToSettings() {
+        #expect(HotUpdaterSandboxScannerContent(access: .denied)
+            == .message("Allow camera access to scan QR codes.", opensSettings: true))
+        #expect(HotUpdaterSandboxScannerContent(access: .restricted)
+            == .message("Camera access is restricted on this device.", opensSettings: false))
+        #expect(HotUpdaterSandboxScannerContent(access: .allowed) == .camera)
+        #expect(HotUpdaterSandboxScannerContent(access: .allowed, problem: "No camera on this device.")
+            == .message("No camera on this device.", opensSettings: false))
+        #expect(HotUpdaterSandboxScannerContent(access: .undetermined) == .waiting)
+    }
+
+    @Test
+    func licenseReflowsIntoParagraphs() {
+        let text = """
+        Copyright 2024 The Authors
+
+        -----------------------------------------------------------
+        SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+        -----------------------------------------------------------
+
+        PREAMBLE
+        The goals of the Open Font License (OFL) are to stimulate\u{20}
+        worldwide development.
+
+        DISCLAIMER
+        THE FONT SOFTWARE IS PROVIDED "AS IS",
+        WITHOUT WARRANTY OF ANY KIND.
+        """
+        #expect(HotUpdaterSandboxInfoModel.reflow(text) == [
+            "Copyright 2024 The Authors",
+            "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007",
+            "PREAMBLE",
+            "The goals of the Open Font License (OFL) are to stimulate worldwide development.",
+            "DISCLAIMER",
+            "THE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.",
+        ].joined(separator: "\n\n"))
+    }
 }
 
 struct HotUpdaterSandboxDevHostTests {

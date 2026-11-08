@@ -174,9 +174,10 @@ and, from iOS 17 on iOS, where each page is scrolled. Each page stays at most 64
 Each platform keeps its own:
 
 - **iOS:** system alerts for questions, a confirmation dialog before anything
-  destructive, the scanner as a sheet, `NavigationStack` bars whose items have
-  an icon and a title, haptics through `UIFeedbackGenerator`,
-  Dynamic Type, and VoiceOver labels. The screen needs iOS 16. Older systems
+  destructive, the scanner as a sheet (with camera access off, one line takes
+  the viewfinder's place, and **Open Settings** follows unless the camera is
+  restricted), `NavigationStack` bars whose items have an icon and a title,
+  haptics through `UIFeedbackGenerator`, Dynamic Type, and VoiceOver labels. The screen needs iOS 16. Older systems
   get a plain screen that opens the app and takes a channel.
 - **Android:** system back and predictive back, edge-to-edge with insets, the
   pressed state above, haptics through `performHapticFeedback`, the font scale,

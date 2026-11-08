@@ -224,6 +224,37 @@ internal data class HotUpdaterSandboxInfoModel(
     )
 
     companion object {
+        /**
+         * A license file's text as paragraphs that wrap to the screen: the file's
+         * hard line breaks and dashed rules go, and a heading in capitals keeps its
+         * own line.
+         */
+        fun reflow(text: String): String {
+            val paragraphs = mutableListOf<String>()
+            val block = mutableListOf<String>()
+
+            fun flush() {
+                if (block.isEmpty()) return
+                val first = block.first()
+                if (block.size > 1 && first.lowercase() != first && first.uppercase() == first) {
+                    paragraphs += first
+                    block.removeAt(0)
+                }
+                paragraphs += block.joinToString(" ")
+                block.clear()
+            }
+            for (line in text.replace("\r\n", "\n").split("\n")) {
+                val trimmed = line.trim()
+                when {
+                    trimmed.isEmpty() -> flush()
+                    trimmed.all { it == '-' } -> Unit
+                    else -> block += trimmed
+                }
+            }
+            flush()
+            return paragraphs.joinToString("\n\n")
+        }
+
         fun of(
             state: HotUpdaterSandboxState,
             version: String,

@@ -1,4 +1,5 @@
 #if HOT_UPDATER_SANDBOX_LAYER
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -119,7 +120,7 @@ final class HotUpdaterSandboxScreenModel: ObservableObject {
     /// place of a shown one waits for that alert to leave.
     func showQuestion() {
         guard !isSheetUp else { return }
-        let question = HotUpdaterSandboxQuestion(phase: state.phase)
+        let question = HotUpdaterSandboxQuestion(phase: state.phase, isOverApp: isOverApp())
         if prompt == question.map(Prompt.question) { return }
         if prompt != nil {
             if case .question = prompt { prompt = nil }
@@ -357,10 +358,12 @@ private struct HomeScreen: View {
                 }
                 .onChange(of: focus) { entry in
                     guard let entry else { return }
-                    // After the keyboard's own motion, the whole form comes into view.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        withAnimation(SandboxMotion.spring) { scroll.scrollTo(entry, anchor: .bottom) }
-                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { reveal(entry, scroll) }
+                }
+                // Once the keyboard is up, the page's inset is its height: before
+                // that, the page can't scroll far enough for the form to clear it.
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+                    if let entry = focus { reveal(entry, scroll) }
                 }
             }
             .navigationTitle(HotUpdaterSandboxApp.current.name)
@@ -376,6 +379,13 @@ private struct HomeScreen: View {
             .onAppear { if !showsInfoLink { model.showsInfo = false } }
             .onChange(of: showsInfoLink) { linked in if !linked { model.showsInfo = false } }
         }
+    }
+
+    /// The whole form in view: its bottom, the button, goes to the bottom of
+    /// what the keyboard leaves.
+    private func reveal(_ entry: Entry, _ scroll: ScrollViewProxy) {
+        guard focus == entry else { return }
+        withAnimation(SandboxMotion.spring) { scroll.scrollTo(entry, anchor: .bottom) }
     }
 
     @ToolbarContentBuilder
@@ -778,7 +788,7 @@ private struct HotUpdaterSandboxLicenseSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(HotUpdaterSandboxFonts.license)
+                Text(HotUpdaterSandboxInfoModel.reflow(HotUpdaterSandboxFonts.license))
                     .font(SandboxFont.footnote)
                     .foregroundColor(SandboxColor.textSecondary)
                     .textSelection(.enabled)
@@ -868,46 +878,110 @@ private struct HotUpdaterSandboxHeader: View {
 private struct HotUpdaterSandboxScanSheet: View {
     let onLink: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @State private var access = AVCaptureDevice.authorizationStatus(for: .video)
+    /// Why the camera can't scan though access is allowed, such as a simulator's missing camera.
+    @State private var problem: String?
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ScannerCamera(onLink: onLink).ignoresSafeArea()
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 3)
-                    .frame(width: 240, height: 240)
-                    .accessibilityHidden(true)
-                VStack {
-                    Spacer()
-                    Text("Point the camera at a preview's QR code.")
-                        .font(SandboxFont.subhead)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.black.opacity(0.55), in: Capsule())
-                        .padding(24)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.ignoresSafeArea())
+                .navigationTitle("Scan QR code")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: { Label("Cancel", systemImage: "xmark") }
+                            .tint(.white)
+                    }
                 }
-            }
-            .background(Color.black.ignoresSafeArea())
-            .navigationTitle("Scan QR code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Label("Cancel", systemImage: "xmark") }
-                        .tint(.white)
-                }
-            }
         }
         .preferredColorScheme(.dark)
+        .onAppear(perform: askForAccess)
+        // Access can change in Settings while the app is away: read it again on return.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            access = AVCaptureDevice.authorizationStatus(for: .video)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch HotUpdaterSandboxScannerContent(access: Self.access(access), problem: problem) {
+        case .camera:
+            viewfinder
+        case let .message(text, opensSettings):
+            message(text, opensSettings: opensSettings)
+        case .waiting:
+            Color.clear
+        }
+    }
+
+    private static func access(_ status: AVAuthorizationStatus) -> HotUpdaterSandboxCameraAccess {
+        switch status {
+        case .authorized: return .allowed
+        case .denied: return .denied
+        case .restricted: return .restricted
+        default: return .undetermined
+        }
+    }
+
+    private var viewfinder: some View {
+        ZStack {
+            ScannerCamera(onLink: onLink) { text in
+                DispatchQueue.main.async { problem = text }
+            }
+            .ignoresSafeArea()
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.9), lineWidth: 3)
+                .frame(width: 240, height: 240)
+                .accessibilityHidden(true)
+            VStack {
+                Spacer()
+                Text("Point the camera at a preview's QR code.")
+                    .font(SandboxFont.subhead)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.black.opacity(0.55), in: Capsule())
+                    .padding(24)
+            }
+        }
+    }
+
+    /// What stands in for the camera while it can't scan: no viewfinder, and no
+    /// hint to aim it.
+    private func message(_ text: String, opensSettings: Bool) -> some View {
+        VStack(spacing: 20) {
+            Text(text)
+                .font(SandboxFont.body)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if opensSettings, let settings = URL(string: UIApplication.openSettingsURLString) {
+                Button("Open Settings") { openURL(settings) }
+                    .buttonStyle(SandboxPrimaryButtonStyle())
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: 400)
+    }
+
+    private func askForAccess() {
+        guard access == .notDetermined else { return }
+        AVCaptureDevice.requestAccess(for: .video) { _ in
+            DispatchQueue.main.async { access = AVCaptureDevice.authorizationStatus(for: .video) }
+        }
     }
 
     private struct ScannerCamera: UIViewControllerRepresentable {
         let onLink: (URL) -> Void
+        let onUnavailable: (String) -> Void
 
         func makeUIViewController(context: Context) -> HotUpdaterSandboxScanner {
-            HotUpdaterSandboxScanner(onLink: onLink)
+            HotUpdaterSandboxScanner(onLink: onLink, onUnavailable: onUnavailable)
         }
 
         func updateUIViewController(_ controller: HotUpdaterSandboxScanner, context: Context) {}

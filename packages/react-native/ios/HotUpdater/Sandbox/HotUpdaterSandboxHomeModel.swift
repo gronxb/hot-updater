@@ -269,5 +269,121 @@ struct HotUpdaterSandboxInfoModel: Equatable {
             Row(name: "Pending", value: details?.pendingBundleId.map(HotUpdaterSandboxHomeModel.shortId) ?? "None"),
         ]
     }
+
+    /// A license file's text as paragraphs that wrap to the screen: the file's
+    /// hard line breaks and dashed rules go, and a heading in capitals keeps its
+    /// own line.
+    static func reflow(_ text: String) -> String {
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var paragraphs: [String] = []
+        var block: [String] = []
+        func flush() {
+            guard !block.isEmpty else { return }
+            if block.count > 1, let first = block.first, first.lowercased() != first, first.uppercased() == first {
+                paragraphs.append(first)
+                block.removeFirst()
+            }
+            paragraphs.append(block.joined(separator: " "))
+            block = []
+        }
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                flush()
+            } else if !trimmed.allSatisfy({ $0 == "-" }) {
+                block.append(trimmed)
+            }
+        }
+        flush()
+        return paragraphs.joined(separator: "\n\n")
+    }
+}
+
+/// What a phase asks, in the same words on every screen that asks it.
+struct HotUpdaterSandboxQuestion: Equatable {
+    enum Kind: Equatable {
+        case confirm, refused, failed
+    }
+
+    let kind: Kind
+    let title: String
+    let message: String
+    let accept: String
+    let decline: String?
+
+    /// `isOverApp`: whether a bundle runs behind the screen for a link to replace.
+    init?(phase: HotUpdaterSandboxPhase, isOverApp: Bool) {
+        switch phase {
+        case .confirming(let link):
+            kind = .confirm
+            title = "Open \(link.channel)?"
+            message = isOverApp
+                ? "This replaces the running bundle and deletes downloaded bundles."
+                : HotUpdaterSandboxHomeModel.switchNote
+            accept = "Open"
+            decline = "Cancel"
+        case .refused(let refusal):
+            kind = .refused
+            switch refusal {
+            case .unreadable:
+                title = "This link can't be read"
+                message = "It isn't a preview link for this app."
+            case .invalidChannel(let channel):
+                title = "That isn't a channel name"
+                message = "Check \"\(channel)\" and try again."
+            case .otherFingerprint(let link, _):
+                title = "\(link.channel) needs another build"
+                message = "Its native code differs from this build. Install the sandbox build for that fingerprint."
+            }
+            accept = "OK"
+            decline = nil
+        case .failed(_, let target, _, let failure, let selection):
+            kind = .failed
+            let reason: String
+            switch failure {
+            case .noBundle: reason = "\(target) has no bundle for this build."
+            case .resetFailed: reason = "Downloaded bundles couldn't be removed."
+            case .superseded: reason = "Another update check changed the selection first."
+            case .error(let text): reason = text
+            }
+            let bundle = selection.isBuiltIn ? "built-in bundle" : "bundle \(selection.bundleId)"
+            title = "Couldn't open \(target)"
+            message = "\(reason)\n\nSelected now: \(selection.channel), \(bundle)."
+            accept = "Retry"
+            decline = "Close"
+        default:
+            return nil
+        }
+    }
+}
+
+/// Camera access as the system reports it.
+enum HotUpdaterSandboxCameraAccess: Equatable {
+    case undetermined, allowed, denied, restricted
+}
+
+/// What the QR scanner's sheet shows for the camera access it has.
+enum HotUpdaterSandboxScannerContent: Equatable {
+    /// The system is asking for access.
+    case waiting
+    case camera
+    /// A line in place of the camera, and whether Settings can change it: a person
+    /// can turn access back on there, but not lift a restriction a parent or an
+    /// organization set.
+    case message(String, opensSettings: Bool)
+
+    /// `problem`: why an allowed camera can't scan, such as a simulator's missing one.
+    init(access: HotUpdaterSandboxCameraAccess, problem: String? = nil) {
+        switch access {
+        case .undetermined:
+            self = .waiting
+        case .allowed:
+            self = problem.map { .message($0, opensSettings: false) } ?? .camera
+        case .denied:
+            self = .message("Allow camera access to scan QR codes.", opensSettings: true)
+        case .restricted:
+            self = .message("Camera access is restricted on this device.", opensSettings: false)
+        }
+    }
 }
 #endif
