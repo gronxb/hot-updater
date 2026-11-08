@@ -273,7 +273,8 @@ final class HotUpdaterSandboxCoordinator {
     /// Reads what storage holds, and asks about the oldest unanswered link.
     /// Sends no request: opening the screen costs the update server nothing.
     func refresh() async {
-        shelf.reconcile()
+        // A switch may be copying into the shelf: its partial copy isn't listed yet.
+        if case .working = state.phase {} else { shelf.reconcile() }
         let selection = await readSelection()
         publish(reading(selection, launched: await host.launchBundleId()))
         pump()

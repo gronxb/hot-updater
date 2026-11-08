@@ -316,7 +316,8 @@ internal class HotUpdaterSandboxCoordinator(
      * Sends no request: opening the screen costs the update server nothing.
      */
     fun refresh() {
-        shelf.reconcile()
+        // A switch may be copying into the shelf: its partial copy isn't listed yet.
+        if (state.phase !is HotUpdaterSandboxPhase.Working) shelf.reconcile()
         scope.launch {
             val selection = readSelection()
             publish(reading(selection, host.launchBundleId()))

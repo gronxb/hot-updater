@@ -1361,6 +1361,22 @@ struct HotUpdaterSandboxScreenStateTests {
     }
 
     @Test
+    func aRefreshDuringASwitchLeavesItsCopyAlone() async throws {
+        let fixture = Fixture()
+        let partial = fixture.shelf.root.appendingPathComponent("ota.tmp")
+        try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: true)
+        fixture.host.stageGate = Gate()
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        await fixture.coordinator.refresh()
+        #expect(FileManager.default.fileExists(atPath: partial.path))
+        fixture.host.stageGate?.finish(.success(.update(bundleId: "ota")))
+        await settle()
+        await fixture.coordinator.refresh()
+        #expect(!FileManager.default.fileExists(atPath: partial.path))
+    }
+
+    @Test
     func clearAndDeleteKeepTheRunningBundle() async {
         let fixture = Fixture()
         install("other", in: fixture.shelf.source)

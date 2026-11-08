@@ -503,6 +503,19 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a refresh during a switch leaves its copy alone`() {
+        val fixture = Fixture()
+        val partial = java.io.File(fixture.shelf.root, "ota.tmp").apply { mkdirs() }
+        fixture.host.stageGate = CompletableDeferred()
+        fixture.coordinator.switchTo("pr-1")
+        fixture.coordinator.refresh()
+        assertTrue(partial.exists())
+        fixture.host.stageGate?.complete(HotUpdaterSandboxStaged.Update("ota"))
+        fixture.coordinator.refresh()
+        assertFalse(partial.exists())
+    }
+
+    @Test
     fun `clear and delete keep the running bundle`() {
         val fixture = Fixture()
         installTestBundle(fixture.shelf.source, "other")
