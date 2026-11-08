@@ -296,7 +296,8 @@ describe("the sandbox template", () => {
       impl
         .split("\n")
         .filter(
-          (text) => text === "        val launchSelection = currentLaunchSelection",
+          (text) =>
+            text === "        val launchSelection = currentLaunchSelection",
         ),
     ).toHaveLength(3);
     // Its insertions hold for main only.
@@ -308,7 +309,7 @@ describe("the sandbox template", () => {
     );
     expect(
       read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxDev.kt"),
-    ).toContain('environment?.isMain == true');
+    ).toContain("environment?.isMain == true");
     expect(generator).toContain(
       "if (environment.isMain && HotUpdaterSandboxDev.relaunch(reactContext))",
     );
@@ -376,7 +377,9 @@ describe("the sandbox template", () => {
   it("stores bundles only where the store app's container can't hold them", () => {
     // iOS: only a sandbox with its own bundle ID, in the caches directory.
     const host = read("ios/HotUpdater/Sandbox/HotUpdaterSandboxLiveHost.swift");
-    expect(host).toContain('Bundle.main.bundleIdentifier?.hasSuffix(".sandbox") == true');
+    expect(host).toContain(
+      'Bundle.main.bundleIdentifier?.hasSuffix(".sandbox") == true',
+    );
     expect(host).toContain("for: .cachesDirectory");
     // Android: always the `.sandbox` app's own cache directory.
     expect(
