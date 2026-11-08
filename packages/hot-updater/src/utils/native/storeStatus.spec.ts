@@ -4,16 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   applyTestFlightGroup,
   readTestFlightBuildStatus,
-  readPlayInternalRelease,
+  readPlayTrackRelease,
 } = vi.hoisted(() => ({
   applyTestFlightGroup: vi.fn(),
   readTestFlightBuildStatus: vi.fn(),
-  readPlayInternalRelease: vi.fn(),
+  readPlayTrackRelease: vi.fn(),
 }));
 
 vi.mock("@hot-updater/android-helper", () => ({
   playTestingUrl: (name: string) => `https://play.test/${name}`,
-  readPlayInternalRelease,
+  readPlayTrackRelease,
   resolvePlayUploadServiceAccount: () => ({
     kind: "play-service-account",
     name: "play-service-account",
@@ -150,7 +150,7 @@ describe("readStoreStatus", () => {
   ])(
     "maps Google Play's release %s to %s",
     async (release, state, reusable) => {
-      readPlayInternalRelease.mockResolvedValue(release);
+      readPlayTrackRelease.mockResolvedValue(release);
       await expect(
         read(
           "android",
@@ -167,7 +167,7 @@ describe("readStoreStatus", () => {
         expiresAtMs: null,
         reusable,
       });
-      expect(readPlayInternalRelease).toHaveBeenCalledWith(
+      expect(readPlayTrackRelease).toHaveBeenCalledWith(
         expect.objectContaining({
           versionCode: 42,
           packageName: "com.example.app.sandbox",
@@ -175,6 +175,19 @@ describe("readStoreStatus", () => {
       );
     },
   );
+
+  it("omits the tester opt-in URL for a production release", async () => {
+    readPlayTrackRelease.mockResolvedValue("completed");
+    await expect(
+      read(
+        "android",
+        row({
+          submitted_to: "play-production",
+          submitted_version: "1.7.0 (42)",
+        }),
+      ).status,
+    ).resolves.toMatchObject({ url: null });
+  });
 
   it("falls back on the record, and says why, when the store can't be read", async () => {
     const failure = new Error("App Store Connect refused the API key.");

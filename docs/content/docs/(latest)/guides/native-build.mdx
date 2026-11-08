@@ -539,8 +539,9 @@ A reused build has the same build number (`CFBundleVersion` or
 once. So with `--submit`, as in `testflight` and `google-play upload`, a
 reused build is uploaded only when the store doesn't have it yet:
 
-- A tracked build already submitted to that destination is skipped without asking
-  the store:
+- A tracked build already submitted to TestFlight or Play internal testing is
+  skipped without asking the store. An internal submission also skips a build
+  already recorded on a higher Play track:
 
   ```txt
   ◇  Already on TestFlight
@@ -553,8 +554,13 @@ reused build is uploaded only when the store doesn't have it yet:
   version code Google Play's internal track releases, is skipped the same
   way. Nothing is recorded: the store matched the build number, not the
   artifact.
-- A cached Android build whose version code Play already holds can be promoted
-  to another track without uploading again. The new destination is recorded.
+- An Android build with a recorded Play submission can be promoted without
+  uploading its artifact again. Closed, open, and production submissions always
+  PUT the requested track release, even on the same track: `--rollout 50` sets
+  50%, and `--rollout 100` (the default) completes the release. The destination
+  is recorded after Play accepts it. Without a recorded Play submission, the
+  artifact is uploaded; matching a version code alone never authorizes promotion.
+  Staged rollout is available through the CLI; actions have no rollout input.
 - When the store refuses the build number anyway, because a build with that
   number came from another upload or tool, the CLI skips the same way instead
   of printing the store's error, adds `Bump the build number to upload this

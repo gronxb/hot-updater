@@ -192,6 +192,11 @@ Internal testing does not support staged rollout. Draft apps still get draft
 releases. If Play saves changes without review, send them for review in Play
 Console.
 
-A cached build whose version code Play already holds can go to another track
-without another upload. Play Console can also promote builds. Sandbox schemes
-can submit only to internal testing.
+A build with a recorded Play submission can go to another track without
+uploading its artifact again. Without that record, the CLI uploads the artifact
+and refuses a version code Play already holds. Closed, open, and production
+submissions always update the requested track, including reruns on the same
+track: `--rollout 50` sets 50%, and `--rollout 100` (the default) completes it.
+Internal submissions keep their existing skip. Play Console can also promote
+builds. Sandbox schemes can submit only to internal testing. Actions have no
+rollout input; use the CLI for staged rollout.

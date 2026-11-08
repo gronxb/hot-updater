@@ -1,5 +1,5 @@
+import { PLAY_TRACKS } from "../../../shared/playTracks.mjs";
 // @ts-check
-
 import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 
 /**
@@ -29,13 +29,13 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  */
 
 /** The store each platform submits to. */
-const SUBMITS = /** @type {const} */ ({
-  testflight: "ios",
-  "play-internal": "android",
-  "play-closed": "android",
-  "play-open": "android",
-  "play-production": "android",
-});
+const SUBMITS =
+  /** @type {Record<NonNullable<Inputs["submit"]>, Platform>} */ ({
+    testflight: "ios",
+    ...Object.fromEntries(
+      Object.keys(PLAY_TRACKS).map((key) => [key, "android"]),
+    ),
+  });
 
 /**
  * Refuses an iOS build on a runner that has no Xcode.
@@ -187,9 +187,8 @@ export const runAction = async (deps, inputs) => {
       inputs.submit === "testflight"
         ? "TestFlight"
         : inputs.submit?.startsWith("play-")
-          ? inputs.submit === "play-internal"
-            ? "Google Play internal testing"
-            : `Google Play ${inputs.submit.slice(5)}`
+          ? PLAY_TRACKS[/** @type {keyof typeof PLAY_TRACKS} */ (inputs.submit)]
+              .name
           : "no store",
     ],
   ];

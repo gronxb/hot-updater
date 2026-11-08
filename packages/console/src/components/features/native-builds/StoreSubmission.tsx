@@ -1,3 +1,4 @@
+import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type { NativeBuildRow } from "@hot-updater/plugin-core";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -10,14 +11,10 @@ dayjs.extend(relativeTime);
 /** Each store track's name as the stores call it. */
 export const storeTrackLabels = {
   testflight: "TestFlight",
-  "play-internal": "Play internal",
-  "play-closed": "Play closed",
-  "play-open": "Play open",
-  "play-production": "Play production",
-} as const satisfies Record<
-  NonNullable<NativeBuildRow["submitted_to"]>,
-  string
->;
+  ...Object.fromEntries(
+    Object.entries(PLAY_TRACKS).map(([key, value]) => [key, value.label]),
+  ),
+} as Record<NonNullable<NativeBuildRow["submitted_to"]>, string>;
 
 export type Submitted = NativeBuildRow & {
   readonly submitted_to: NonNullable<NativeBuildRow["submitted_to"]>;

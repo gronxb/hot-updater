@@ -544,7 +544,7 @@ describe("native-build android --submit play-internal", () => {
     });
 
     expect(stepped()).toContain(
-      "Already on Google Play internal testing\nVersion  1.7.0 (66)\nBump the build number to upload this build.",
+      "Already on Google Play\nVersion  1.7.0 (66)\nBump the build number to upload this build.",
     );
     expect(submission(await stored())).toEqual(NONE);
   });

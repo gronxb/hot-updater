@@ -31,7 +31,7 @@ import {
   playTestingUrl,
   PlayVersionCodeUsedError,
   readPlayHighestVersionCode,
-  readPlayInternalRelease,
+  readPlayTrackRelease,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "./uploadToPlay";
@@ -200,7 +200,7 @@ describe("uploadToPlay", () => {
     routes[`DELETE ${EDIT}`] = { status: 204 };
     const { fetch } = createRecordingFetch(routes);
     await expect(
-      readPlayInternalRelease({
+      readPlayTrackRelease({
         packageName: "com.example.app",
         serviceAccount: { json: serviceAccountJson },
         versionCode: 42,
@@ -630,7 +630,7 @@ describe("uploadToPlay", () => {
     const { fetch } = createRecordingFetch(routes);
 
     await expect(upload(fetch)).rejects.toThrow(
-      "The Play service account can't release com.example.app.\nInvite its email in Play Console (Users and permissions)",
+      "Release to production for production",
     );
   });
 
@@ -713,9 +713,9 @@ describe("resolvePlayUploadServiceAccount", () => {
   });
 });
 
-describe("readPlayInternalRelease", () => {
+describe("readPlayTrackRelease", () => {
   const read = (fetch: typeof globalThis.fetch, versionCode: number) =>
-    readPlayInternalRelease({
+    readPlayTrackRelease({
       versionCode,
       packageName: "com.example.app",
       serviceAccount: { json: serviceAccountJson },

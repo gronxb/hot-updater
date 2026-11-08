@@ -1,5 +1,6 @@
 import {
   DatabaseConstraintError,
+  NATIVE_BUILD_SUBMISSION_DESTINATIONS,
   isUUIDv7,
   type HotUpdaterCoreApi,
   type KeysetInput,
@@ -77,15 +78,6 @@ const OLDER_BUILDS_PAGE = 20;
 
 /** How many times a mark runs again after losing its scope's mark to another. */
 const MARK_ATTEMPTS = 8;
-
-/** The store track each platform's builds are submitted to. */
-const SUBMISSION_DESTINATIONS = {
-  android: ["play-internal", "play-closed", "play-open", "play-production"],
-  ios: ["testflight"],
-} as const satisfies Record<
-  NativeBuildRow["platform"],
-  readonly NonNullable<NativeBuildRow["submitted_to"]>[]
->;
 
 /** `native_builds.build_number`'s bound in core's schema. */
 const BUILD_NUMBER_MAX_LENGTH = 64;
@@ -358,11 +350,13 @@ export const createNativeBuildApi = (
       const build = pick(row);
       if (
         !(
-          SUBMISSION_DESTINATIONS[build.platform] as readonly string[]
+          NATIVE_BUILD_SUBMISSION_DESTINATIONS[
+            build.platform
+          ] as readonly string[]
         ).includes(destination)
       ) {
         throw new NativeBuildInputError(
-          `Invalid native build submission: an ${build.platform} build is submitted to ${SUBMISSION_DESTINATIONS[build.platform].join(" or ")}, not ${destination}.`,
+          `Invalid native build submission: an ${build.platform} build is submitted to ${NATIVE_BUILD_SUBMISSION_DESTINATIONS[build.platform].join(" or ")}, not ${destination}.`,
         );
       }
       const set = {

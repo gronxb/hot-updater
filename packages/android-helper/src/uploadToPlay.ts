@@ -173,7 +173,7 @@ const explain = (error: unknown, packageName: string): unknown => {
       [
         `The Play service account can't release ${packageName}.`,
         "Invite its email in Play Console (Users and permissions) to release to",
-        "testing tracks, and enable the Google Play Android Developer API.",
+        "testing tracks (Release to production for production), and enable the Google Play Android Developer API.",
       ].join("\n"),
       { cause: error },
     );
@@ -424,7 +424,7 @@ const readInEdit = async <T>(
  * `completed` or `draft`, or null when the track doesn't hold it: never
  * uploaded, or replaced by a newer release, which testers get instead.
  */
-export const readPlayInternalRelease = ({
+export const readPlayTrackRelease = ({
   versionCode,
   track = INTERNAL_TRACK,
   packageName,
@@ -462,7 +462,7 @@ export const findPlayInternalRelease = async (options: {
   packageName: string;
   serviceAccount: Credentials["play-service-account"];
   fetch?: typeof globalThis.fetch;
-}): Promise<boolean> => (await readPlayInternalRelease(options)) !== null;
+}): Promise<boolean> => (await readPlayTrackRelease(options)) !== null;
 
 /**
  * The highest version code Google Play has taken for the app, on any track,
@@ -484,25 +484,6 @@ export const readPlayHighestVersionCode = ({
     const codes = bundles.flatMap(({ versionCode }) => versionCode ?? []);
     return codes.length > 0 ? Math.max(...codes) : null;
   });
-
-/** Whether an existing bundle can be promoted without uploading it again. */
-export const hasPlayVersionCode = (options: {
-  packageName: string;
-  serviceAccount: Credentials["play-service-account"];
-  versionCode: number;
-  fetch?: typeof globalThis.fetch;
-}): Promise<boolean> =>
-  readInEdit(
-    { ...options, fetch: options.fetch ?? globalThis.fetch },
-    async (request, edit) => {
-      const { bundles = [] } = await request<{
-        bundles?: { versionCode: number }[];
-      }>("Reading the app's bundles", "GET", `${edit}/bundles`);
-      return bundles.some(
-        (bundle) => bundle.versionCode === options.versionCode,
-      );
-    },
-  );
 
 /**
  * The link that opts a tester in to the app's testing tracks. A build on the
@@ -550,39 +531,6 @@ export interface UploadToPlayResult {
   /** The release's status: `draft` on an app Play Console has not published. */
   status: "completed" | "draft" | "inProgress";
 }
-
-/** Updates a track inside an open edit; the caller controls validation or commit. */
-export const setPlayTrackRelease = async ({
-  request,
-  edit,
-  track,
-  versionCode,
-  status,
-  rollout,
-}: {
-  request: PlayRequest;
-  edit: string;
-  track: string;
-  versionCode: number;
-  status: UploadToPlayResult["status"];
-  rollout: number;
-}): Promise<void> => {
-  await request(
-    `Releasing to the ${track} track`,
-    "PUT",
-    `${edit}/tracks/${track}`,
-    {
-      track,
-      releases: [
-        {
-          versionCodes: [String(versionCode)],
-          status,
-          ...(status === "inProgress" ? { userFraction: rollout / 100 } : {}),
-        },
-      ],
-    },
-  );
-};
 
 /**
  * Uploads or promotes an `.aab` to a Google Play track with the Google
@@ -650,14 +598,23 @@ export const uploadToPlay = async ({
       }));
 
     const release = async (status: UploadToPlayResult["status"]) => {
-      await setPlayTrackRelease({
-        request,
-        edit,
-        track,
-        versionCode,
-        status,
-        rollout,
-      });
+      await request(
+        `Releasing to the ${track} track`,
+        "PUT",
+        `${edit}/tracks/${track}`,
+        {
+          track,
+          releases: [
+            {
+              versionCodes: [String(versionCode)],
+              status,
+              ...(status === "inProgress"
+                ? { userFraction: rollout / 100 }
+                : {}),
+            },
+          ],
+        },
+      );
       await commit({ request, edit, retryDelayMs: commitRetryDelayMs });
     };
 

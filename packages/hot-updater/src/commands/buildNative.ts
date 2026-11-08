@@ -4,7 +4,6 @@ import {
   buildAndroid,
   type EnrichedNativeBuildAndroidScheme,
   findPlayInternalRelease,
-  hasPlayVersionCode,
   assertPlaySigned,
   PlayVersionCodeUsedError,
   readBuiltApp,
@@ -50,6 +49,7 @@ import {
   withCredentialResolver,
   withStep,
 } from "@hot-updater/cli-tools";
+import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type {
   BuildAdapter,
   NativeBuildOptions,
@@ -239,11 +239,7 @@ const buildNativeInternal = async ({
           }) => {
             if (
               rollout !== undefined &&
-              (!Number.isInteger(rollout) ||
-                rollout < 1 ||
-                rollout > 100 ||
-                !upload?.startsWith("play-") ||
-                upload === "play-internal")
+              (!upload?.startsWith("play-") || upload === "play-internal")
             ) {
               throw new NativeBuildFailure(
                 "--rollout takes 1–100 with a Play closed, open, or production submission.",
@@ -554,16 +550,19 @@ const buildNativeInternal = async ({
         if (registered && reused?.source !== "storage" && cache) {
           await rememberTrackedBuild(cache, registered.id);
         }
-        // A reused build may be in the store already, which takes a build
-        // number once: it is not submitted again.
-        // A store takes a build number once: a build it already has is not
-        // uploaded again. The tracked build's record says so first; a
-        // reused build without one is looked up in the store; and the
-        // store's own refusal of the build number says so last.
+        // Stores take a build number once. Recorded Play builds update their
+        // public track release; TestFlight and internal testing skip uploads.
+        // Without a record, a store lookup or refusal matches only the build
+        // number, so it never authorizes recording this artifact.
         let existingSubmission: ExistingSubmission | null =
-          upload && !dryRun && registered?.submitted_to === upload
+          upload &&
+          !dryRun &&
+          registered &&
+          ((upload === "testflight" && registered.submitted_to === upload) ||
+            (upload === "play-internal" &&
+              registered.submitted_to?.startsWith("play-")))
             ? {
-                destination: upload,
+                destination: registered.submitted_to!,
                 version: registered.submitted_version,
                 submittedAtMs: registered.submitted_at_ms,
                 source: "recorded",
@@ -698,23 +697,14 @@ const buildNativeInternal = async ({
               await readVersionName(result, androidProjectPath),
               versionCode,
             );
-          if (reused) {
+          if (registered?.submitted_to?.startsWith("play-") || reused) {
             const versionCode = result.buildNumber
               ? Number(result.buildNumber)
               : await readBuiltVersionCode({
                   artifactPath: result.artifactPath,
                   androidProjectPath,
                 });
-            if (
-              versionCode !== undefined &&
-              (await reportUploadFailure(() =>
-                hasPlayVersionCode({
-                  versionCode,
-                  packageName,
-                  serviceAccount: playServiceAccount,
-                }),
-              ))
-            ) {
+            if (registered?.submitted_to?.startsWith("play-")) {
               existingVersionCode = versionCode;
             }
             if (
@@ -767,7 +757,7 @@ const buildNativeInternal = async ({
                               track:
                                 PLAY_TRACKS[
                                   playDestination as keyof typeof PLAY_TRACKS
-                                ],
+                                ].track,
                             }),
                         ...(rollout === undefined ? {} : { rollout: rollout }),
                         ...(existingVersionCode === undefined
@@ -1121,11 +1111,10 @@ interface ExistingSubmission {
 
 const STORE_NAMES = {
   testflight: "TestFlight",
-  "play-internal": "Google Play internal testing",
-  "play-closed": "Google Play closed testing",
-  "play-open": "Google Play open testing",
-  "play-production": "Google Play production",
-} as const;
+  ...Object.fromEntries(
+    Object.entries(PLAY_TRACKS).map(([key, value]) => [key, value.name]),
+  ),
+} as Record<NativeBuildSubmissionDestination, string>;
 
 /** `2026-10-27 04:02 UTC`. */
 const formatUtc = (ms: number) =>
@@ -1142,12 +1131,15 @@ const logAlreadySubmitted = (
 ) =>
   p.log.step(
     [
-      ui.block(`Already on ${STORE_NAMES[existing.destination]}`, [
-        existing.version !== null && ui.kv("Version", existing.version),
-        existing.submittedAtMs !== null &&
-          ui.kv("Since", formatUtc(existing.submittedAtMs)),
-        url !== undefined && ui.kv("Open", url),
-      ]),
+      ui.block(
+        `Already on ${refused && existing.destination.startsWith("play-") ? "Google Play" : STORE_NAMES[existing.destination]}`,
+        [
+          existing.version !== null && ui.kv("Version", existing.version),
+          existing.submittedAtMs !== null &&
+            ui.kv("Since", formatUtc(existing.submittedAtMs)),
+          url !== undefined && ui.kv("Open", url),
+        ],
+      ),
       refused ? "Bump the build number to upload this build." : undefined,
     ]
       .filter(Boolean)
@@ -1376,9 +1368,3 @@ export const handleNativeBuildCreate = async (
   platform: Platform,
   options: NativeBuildCreateOptions,
 ): Promise<NativeBuildResult> => buildNativeInternal({ options, platform });
-
-const PLAY_TRACKS = {
-  "play-closed": "alpha",
-  "play-open": "beta",
-  "play-production": "production",
-} as const;

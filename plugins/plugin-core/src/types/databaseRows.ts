@@ -1,5 +1,7 @@
 import type { Platform } from "@hot-updater/protocol";
 
+import { PLAY_TRACKS } from "../../../../shared/playTracks.mjs";
+
 export type DatabaseJsonValue =
   | boolean
   | number
@@ -84,12 +86,13 @@ export interface ChannelRow {
 export type NativeBuildArtifactKind = "apk" | "aab" | "ipa" | "app";
 
 /** The store track a native build was submitted to. */
+export const NATIVE_BUILD_SUBMISSION_DESTINATIONS = {
+  android: Object.keys(PLAY_TRACKS) as (keyof typeof PLAY_TRACKS)[],
+  ios: ["testflight"],
+} as const;
+
 export type NativeBuildSubmissionDestination =
-  | "testflight"
-  | "play-internal"
-  | "play-closed"
-  | "play-open"
-  | "play-production";
+  (typeof NATIVE_BUILD_SUBMISSION_DESTINATIONS)[keyof typeof NATIVE_BUILD_SUBMISSION_DESTINATIONS][number];
 
 /**
  * A registered native build: its artifact in storage, the scope it serves,

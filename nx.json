@@ -22,7 +22,12 @@
       "outputs": [
         "{projectRoot}/dist"
       ],
-      "cache": true
+      "cache": true,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/shared/**/*"
+      ]
     },
     "test": {
       "dependsOn": [

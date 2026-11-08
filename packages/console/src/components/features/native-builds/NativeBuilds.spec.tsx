@@ -1110,6 +1110,9 @@ describe("a submitted build's page", () => {
       render(
         <InstallCard build={build({ artifact_kind: "aab", submitted_to })} />,
       );
+      if (submitted_to === "play-production") {
+        expect(screen.queryByText(/Testers get it once/)).toBeNull();
+      }
       expect(
         screen
           .getByRole("link", { name: /Open Play Console/ })

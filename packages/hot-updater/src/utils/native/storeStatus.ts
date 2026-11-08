@@ -1,6 +1,6 @@
 import {
   playTestingUrl,
-  readPlayInternalRelease,
+  readPlayTrackRelease,
   resolvePlayUploadServiceAccount,
 } from "@hot-updater/android-helper";
 import {
@@ -20,6 +20,7 @@ import {
   readLoadedHotUpdaterEnv,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
+import { PLAY_TRACKS } from "@hot-updater/plugin-core";
 import type {
   NativeBuildAndroidScheme,
   NativeBuildRow,
@@ -275,17 +276,10 @@ export const readStoreStatus = async (
         const serviceAccount = await credentials.resolve(
           resolvePlayUploadServiceAccount({ scheme, androidScheme }),
         );
-        const release = await readPlayInternalRelease({
+        const release = await readPlayTrackRelease({
           versionCode: Number(buildNumber),
-          track: (
-            {
-              "play-internal": "internal",
-              "play-closed": "alpha",
-              "play-open": "beta",
-              "play-production": "production",
-              testflight: "internal",
-            } as const
-          )[build.submitted_to!],
+          track:
+            PLAY_TRACKS[build.submitted_to as keyof typeof PLAY_TRACKS].track,
           packageName,
           serviceAccount,
           ...(fetch ? { fetch } : {}),
@@ -298,7 +292,10 @@ export const readStoreStatus = async (
               : "ready";
         return {
           destination: build.submitted_to!,
-          url: playTestingUrl(packageName),
+          url:
+            build.submitted_to === "play-production"
+              ? null
+              : playTestingUrl(packageName),
           version: build.submitted_version,
           state,
           expiresAtMs: null,

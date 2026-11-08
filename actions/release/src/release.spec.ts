@@ -200,6 +200,14 @@ describe("decide", () => {
   it.each([
     ["no build", null, true, "build"],
     ["a submitted build", row(), true, "ota"],
+    ["a closed build", row({ submitted_to: "play-closed" }), true, "ota"],
+    ["an open build", row({ submitted_to: "play-open" }), true, "ota"],
+    [
+      "a production build",
+      row({ submitted_to: "play-production" }),
+      true,
+      "ota",
+    ],
     ["a build with no submission", row({ submitted_to: null }), true, "build"],
     [
       "an imported build",

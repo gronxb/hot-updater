@@ -1,5 +1,6 @@
 // @ts-check
 
+import { PLAY_TRACKS } from "../../../shared/playTracks.mjs";
 import {
   assertBuildRunner,
   runNativeBuild,
@@ -128,10 +129,14 @@ export const decide = (found, { submit }) => {
   if (!submit || (build.build_key ?? null) === null) {
     return { decision: "ota", reason: `native build ${build.id} is tracked` };
   }
-  return build.submitted_to === store.id
+  return (
+    found.platform === "android"
+      ? build.submitted_to?.startsWith("play-")
+      : build.submitted_to === store.id
+  )
     ? {
         decision: "ota",
-        reason: `native build ${build.id} is on ${store.name}`,
+        reason: `native build ${build.id} is on ${found.platform === "android" ? (PLAY_TRACKS[/** @type {keyof typeof PLAY_TRACKS} */ (build.submitted_to)]?.name ?? "Google Play") : store.name}`,
       }
     : {
         decision: "build",
