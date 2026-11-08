@@ -41,8 +41,8 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
             return
         }
         val stored = intent.getStringExtra(EXTRA_STORED_BUNDLE)
-        // Only a request that wins its handoff goes on: one the screen called off, or a copy of one
-        // already taken, does nothing.
+        // Only a request that takes its handoff goes on: one the screen called off, or a copy of one
+        // already taken, does nothing. The claim is the first and only thing it does with the file.
         if (stored != null && !HotUpdaterSandboxDev.filesOf(this).claimHandoff(intent.getStringExtra(EXTRA_HANDOFF))) {
             Log.i(TAG, "dropped a stored session's relaunch the screen called off")
             finish()

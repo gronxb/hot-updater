@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 
@@ -72,16 +73,20 @@ internal interface HotUpdaterSandboxHost {
         get() = null
 
     /**
-     * Hands a stored bundle to a new process, which replaces this one. Returns
-     * whether the handoff went out. A cold launch is back on the normal selection.
+     * Hands a stored bundle to a new process, which replaces this one, under
+     * [handoff]: a nonce the relaunch and [abandonStoredSession] each try to take.
+     * Returns whether the handoff went out. A cold launch is back on the normal selection.
      */
-    fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean = false
+    fun startStoredSession(
+        bundle: HotUpdaterSandboxStoredBundle,
+        handoff: String,
+    ): Boolean = false
 
     /**
-     * Calls off the handoff this process sent, if the relaunch hasn't taken it yet.
-     * True when nothing went out or the call-off won, false when the relaunch is under way.
+     * Calls off [handoff] by taking it. True when the call-off took it, so nothing
+     * relaunches; false when the relaunch took it first, now or on any later call.
      */
-    fun abandonStoredSession(): Boolean = true
+    fun abandonStoredSession(handoff: String): Boolean = true
 
     /** Ends the session: a new process, on the first screen. */
     fun exitSession() = Unit
@@ -292,6 +297,12 @@ internal class HotUpdaterSandboxCoordinator(
      * one is. A screen back in front while it's pending means the handoff didn't happen.
      */
     private var pendingStoredBundleId: String? = null
+
+    /**
+     * The nonce of the handoff that went out for [pendingStoredBundleId]. It stays
+     * until the call-off takes it: a relaunch that took it is replacing this process.
+     */
+    private var sentHandoff: String? = null
 
     /** Bumped when a handoff is called off, so a check still in flight hands nothing off. */
     private var handoff = 0L
@@ -529,7 +540,9 @@ internal class HotUpdaterSandboxCoordinator(
             acknowledgeLastLaunch()
             publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
             log("opening stored ${entry.channel} $bundleId")
-            if (!host.startStoredSession(bundle)) letGoOfHandoff()
+            val nonce = UUID.randomUUID().toString()
+            sentHandoff = nonce
+            if (!host.startStoredSession(bundle, nonce)) letGoOfHandoff()
         }
         return true
     }
@@ -541,8 +554,11 @@ internal class HotUpdaterSandboxCoordinator(
      */
     fun resumed() {
         if (pendingStoredBundleId == null) return
-        // The relaunch took its handoff first: it's replacing this process, so the guard stays.
-        if (!host.abandonStoredSession()) {
+        // The relaunch took its handoff first: it's replacing this process, so the guard
+        // stays, on this resume and every later one. A handoff not sent yet is called off
+        // by the bump below, which its check in flight sees.
+        val sent = sentHandoff
+        if (sent != null && !host.abandonStoredSession(sent)) {
             log("a stored session's relaunch is under way")
             return
         }
@@ -553,6 +569,7 @@ internal class HotUpdaterSandboxCoordinator(
 
     private fun letGoOfHandoff() {
         pendingStoredBundleId = null
+        sentHandoff = null
         publish(listed(state))
         pump()
     }

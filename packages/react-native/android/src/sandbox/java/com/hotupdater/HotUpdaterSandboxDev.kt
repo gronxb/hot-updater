@@ -69,24 +69,28 @@ internal class HotUpdaterSandboxDevFiles(
     val claim: File get() = File(root, CLAIM)
 
     /**
-     * A stored session's relaunch, on its way: a file named by its token. Only the
-     * request with that token may act, and only once.
+     * A stored session's relaunch, on its way: one file named by its nonce, which
+     * the helper that relaunches and the screen that calls it off each try to take.
+     * Another handoff's file is never touched: a helper still holding its nonce
+     * must keep losing.
      */
-    fun writeHandoff(token: String) {
+    fun writeHandoff(nonce: String) {
         root.mkdirs()
-        root.listFiles()?.filter { it.name.startsWith(HANDOFF) || it.name.startsWith(HANDOFF_WON) }?.forEach { it.delete() }
-        check(File(root, "$HANDOFF$token").createNewFile()) { "Couldn't write the relaunch's handoff" }
+        check(File(root, "$HANDOFF$nonce").createNewFile()) { "Couldn't write the relaunch's handoff" }
     }
 
     /**
-     * Takes the handoff of [token], once, for whichever side asks first: the helper
-     * that relaunches, or the screen that calls it off. An exclusive create succeeds
-     * for one caller only, across processes, so the two can't both win.
+     * Takes the handoff of [nonce] for whichever side asks first, by one rename that
+     * succeeds for one caller only, across processes. Nothing is checked before it
+     * and nothing is created after it, so a side that lost can't win later. Not a
+     * delete: on APFS, two deletes of one file can both report success.
      */
-    fun claimHandoff(token: String?): Boolean =
-        token != null &&
-            File(root, "$HANDOFF$token").exists() &&
-            runCatching { File(root, "$HANDOFF_WON$token").createNewFile() }.getOrDefault(false)
+    fun claimHandoff(nonce: String?): Boolean = nonce != null && File(root, "$HANDOFF$nonce").renameTo(File(root, "$HANDOFF$nonce$TAKEN"))
+
+    /** What earlier processes' handoffs left, taken or not: cleared as the main process starts, before it sends one. */
+    fun clearHandoffs() {
+        root.listFiles()?.filter { it.name.startsWith(HANDOFF) }?.forEach { it.delete() }
+    }
 
     val keyValueFile: File get() = File(root, KEY_VALUE)
 
@@ -167,7 +171,7 @@ internal class HotUpdaterSandboxDevFiles(
     companion object {
         private const val CLAIM = "claim.json"
         private const val HANDOFF = "handoff-"
-        private const val HANDOFF_WON = "won-"
+        private const val TAKEN = ".taken"
         private const val KEY_VALUE = "storage.json"
         private const val SESSIONS = "sessions"
         private const val TRASH = "trash"
@@ -258,6 +262,7 @@ internal object HotUpdaterSandboxDev {
                             SystemClock.elapsedRealtime(),
                             { shelf(context).listedAtStart(it) },
                         )
+                    files.clearHandoffs()
                     val retired = files.retireStale(session)
                     if (retired.isNotEmpty()) {
                         Thread { retired.forEach(File::deleteRecursively) }.start()
@@ -390,11 +395,13 @@ internal object HotUpdaterSandboxDev {
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_SESSION, relaunch.sessionId)
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HOST, relaunch.host)
             is HotUpdaterSandboxRelaunch.Stored -> {
-                // Recorded before the request goes out, so the screen can call it off.
-                filesOf(context).writeHandoff(relaunch.token)
+                // Recorded before the request goes out, so the screen can call it off, and
+                // after this process's start cleared what earlier ones left.
+                session(context)
+                filesOf(context).writeHandoff(relaunch.nonce)
                 intent
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_BUNDLE, relaunch.bundleId)
-                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HANDOFF, relaunch.token)
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HANDOFF, relaunch.nonce)
             }
             HotUpdaterSandboxRelaunch.FirstScreen -> Unit
         }
@@ -417,8 +424,8 @@ internal sealed class HotUpdaterSandboxRelaunch {
 
     data class Stored(
         val bundleId: String,
-        /** What the screen can call off: see [HotUpdaterSandboxDevFiles.claimHandoff]. */
-        val token: String,
+        /** The handoff's nonce, which the helper and the screen each try to take: see [HotUpdaterSandboxDevFiles.claimHandoff]. */
+        val nonce: String,
     ) : HotUpdaterSandboxRelaunch()
 
     object FirstScreen : HotUpdaterSandboxRelaunch()

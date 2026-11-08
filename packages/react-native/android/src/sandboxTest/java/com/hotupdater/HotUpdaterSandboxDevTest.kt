@@ -168,12 +168,27 @@ class HotUpdaterSandboxDevTest {
         files.writeHandoff("second")
         assertTrue(files.claimHandoff("second"))
         assertFalse(files.claimHandoff("second"))
-        // Only the latest handoff, and never one without a token.
+        // A new handoff leaves another's alone: one taken stays taken, one pending stays its own.
         files.writeHandoff("third")
+        assertTrue(files.claimHandoff("third"))
         files.writeHandoff("fourth")
+        files.writeHandoff("fifth")
         assertFalse(files.claimHandoff("third"))
         assertFalse(files.claimHandoff(null))
         assertTrue(files.claimHandoff("fourth"))
+        assertTrue(files.claimHandoff("fifth"))
+    }
+
+    @Test
+    fun `a starting process clears what earlier handoffs left, and nothing else`() {
+        val files = files().withSession("one")
+        files.writeHandoff("taken")
+        assertTrue(files.claimHandoff("taken"))
+        files.writeHandoff("pending")
+        files.writeClaim(claim())
+        files.clearHandoffs()
+        assertEquals(listOf("claim.json", "sessions"), files.root.list()?.sorted())
+        assertFalse(files.claimHandoff("pending"))
     }
 
     @Test

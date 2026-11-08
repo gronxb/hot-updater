@@ -11,6 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.coroutines.EmptyCoroutineContext
@@ -50,21 +51,30 @@ private class FakeHost : HotUpdaterSandboxHost {
     /** Handoffs the screen called off. */
     var abandoned = 0
 
-    /** Whether the relaunch took its handoff before the screen could call it off. */
-    var relaunchTookHandoff = false
+    /** The handoffs' files, as the live host writes and takes them. */
+    val handoffFiles = HotUpdaterSandboxDevFiles(Files.createTempDirectory("sandbox-dev").toFile())
 
-    override fun abandonStoredSession(): Boolean {
-        if (relaunchTookHandoff) return false
-        abandoned += 1
-        return true
-    }
+    /** The nonces of the handoffs that went out, oldest first. */
+    val handoffs = ArrayList<String>()
+
+    /** As the live host: the call-off is the same claim the relaunch's helper makes. */
+    override fun abandonStoredSession(handoff: String): Boolean =
+        handoffFiles.claimHandoff(handoff).also { tookIt -> if (tookIt) abandoned += 1 }
 
     /** As the live host: the session's ID changes only in the process that replaces this one. */
-    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean {
+    override fun startStoredSession(
+        bundle: HotUpdaterSandboxStoredBundle,
+        handoff: String,
+    ): Boolean {
         if (handoffFails) return false
+        handoffFiles.writeHandoff(handoff)
+        handoffs += handoff
         startedStored += bundle.bundleId
         return true
     }
+
+    /** The relaunch's helper for the handoff [index] went out as: whether it may relaunch. */
+    fun helperClaims(index: Int = handoffs.lastIndex) = handoffFiles.claimHandoff(handoffs[index])
 
     override fun exitSession() {
         exits += 1
@@ -529,19 +539,52 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
-    fun `a screen back while the relaunch has taken its handoff keeps the guard`() {
+    fun `a screen back while the relaunch has taken its handoff keeps the guard, every time`() {
         val fixture = Fixture()
         fixture.coordinator.switchTo("pr-1")
         assertTrue(fixture.coordinator.openDownloaded("ota"))
         fixture.coordinator.receiveLink(link("pr-new"))
-        fixture.host.relaunchTookHandoff = true
-        fixture.coordinator.resumed()
-        // The relaunch is replacing this process: nothing else starts, and the link waits for the new one.
-        assertEquals(0, fixture.host.abandoned)
-        assertFalse(fixture.coordinator.openDownloaded("ota"))
-        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
-        assertEquals(1, fixture.coordinator.state.queuedLinks)
+        assertTrue(fixture.host.helperClaims())
+        // The relaunch is replacing this process: on the first resume and the next, nothing
+        // else starts, and the link waits for the new one.
+        repeat(2) {
+            fixture.coordinator.resumed()
+            assertEquals(0, fixture.host.abandoned)
+            assertFalse(fixture.coordinator.openDownloaded("ota"))
+            assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+            assertEquals(1, fixture.coordinator.state.queuedLinks)
+            fixture.coordinator.clearDownloaded()
+            assertNotNull(fixture.shelf.stored("ota"))
+        }
         assertEquals(listOf("ota"), fixture.host.startedStored)
+    }
+
+    @Test
+    fun `a helper that asks after the screen called its handoff off doesn't relaunch`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        // The helper has its request but hasn't claimed it; the screen comes back first.
+        fixture.coordinator.resumed()
+        assertEquals(1, fixture.host.abandoned)
+        assertFalse(fixture.host.helperClaims())
+        assertFalse(fixture.host.helperClaims())
+    }
+
+    @Test
+    fun `a called-off helper can't claim after another row opens`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        installTestBundle(fixture.shelf.source, "other")
+        fixture.shelf.add("other", "pr-2", null, 0)
+        fixture.coordinator.refresh()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.resumed()
+        assertTrue(fixture.coordinator.openDownloaded("other"))
+        // The first row's helper, late, loses for good; the second row's goes on.
+        assertFalse(fixture.host.helperClaims(0))
+        assertTrue(fixture.host.helperClaims(1))
+        assertFalse(fixture.host.helperClaims(0))
     }
 
     @Test

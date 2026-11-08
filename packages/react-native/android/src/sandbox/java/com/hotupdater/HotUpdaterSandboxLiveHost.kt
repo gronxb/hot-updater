@@ -7,7 +7,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
 
 /**
  * The coordinator's view of the SDK: main's native state, and its server as the
@@ -43,29 +42,23 @@ internal class HotUpdaterSandboxLiveHost(
     override val storedSessionBundleId: String?
         get() = HotUpdaterSandboxDev.storedBundle(context)?.bundleId
 
-    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean =
+    override fun startStoredSession(
+        bundle: HotUpdaterSandboxStoredBundle,
+        handoff: String,
+    ): Boolean =
         try {
             // Leaving the normal launch, so its "started" mark doesn't read as a crash.
             if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
-            val token = UUID.randomUUID().toString()
-            handoffToken = token
-            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, token))
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, handoff))
             true
         } catch (error: Exception) {
             Log.w("HotUpdaterSandbox", "couldn't relaunch into ${bundle.bundleId}: ${error.message}")
-            abandonStoredSession()
+            // Taken here, so no helper can act on it.
+            runCatching { abandonStoredSession(handoff) }
             false
         }
 
-    /** The handoff this process sent, until the relaunch replaces it or the screen calls it off. */
-    @Volatile
-    private var handoffToken: String? = null
-
-    override fun abandonStoredSession(): Boolean {
-        val token = handoffToken ?: return true
-        handoffToken = null
-        return HotUpdaterSandboxDev.filesOf(context).claimHandoff(token)
-    }
+    override fun abandonStoredSession(handoff: String): Boolean = HotUpdaterSandboxDev.filesOf(context).claimHandoff(handoff)
 
     override fun exitSession() = HotUpdaterSandbox.devServer(context).exitDevServer()
 
