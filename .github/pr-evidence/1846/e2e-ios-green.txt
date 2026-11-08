@@ -1,0 +1,20 @@
+== sandbox-stored-bundle-opens-offline ios green 2026-11-08T06:33:44Z
+binary /Volumes/SSD_2TB/tmp/sbl-proof/bin/green-own.app
+PASS 0 the built-in bundle's check gave the sandbox its server
+deploy A1 to pr-a-ios-green-1794119629: release 01a1b9dd-27ed-7ee0-98b0-9153bd747ba0
+PASS 1 A1 runs from its link, bundle 01a1b9dd-01ff-74fe-abdf-f0e5f4ba1bf2
+deploy A2 to pr-a-ios-green-1794119629: release 01a1b9dd-8d16-7d92-bbf9-424c0b536a1a
+PASS 2 the A1 row runs A1 as a stored bundle: 01a1b9dd-01ff-74fe-abdf-f0e5f4ba1bf2|hot-updater-sandbox-stored-bundle|file:///Users/gronxb/Library/Developer/CoreSimulator/Devices/4198532C-6951-435C-9C76-CC3AEB3E11F2/data/Containers/Data/Application/1AB18EDF-AC34-4B2E-BE43-1BDF7333E158/Library/Caches/hot-updater-sandbox/bundles/01a1b9dd-01ff-74fe-abdf-f0e5f4ba1bf2
+PASS 2 the app's check asked the stored bundle's channel
+PASS 2 no catalog or artifact request for pr-a-ios-green-1794119629 or any other channel
+PASS 2 the app's own check found nothing to install
+PASS 2 no onError online
+deploy B1 to pr-b-ios-green-1794119629: release 01a1b9dd-f39c-72bf-b175-ddf81ef89fcf
+PASS 3 B1 runs from its link, bundle 01a1b9dd-cd96-713e-80a5-e394742d6014
+update server offline: catalog, artifact and file requests are dropped
+PASS 4 offline, the A1 row runs A1 and its asset loads: 01a1b9dd-01ff-74fe-abdf-f0e5f4ba1bf2|hot-updater-sandbox-stored-bundle|file:///Users/gronxb/Library/Developer/CoreSimulator/Devices/4198532C-6951-435C-9C76-CC3AEB3E11F2/data/Containers/Data/Application/1AB18EDF-AC34-4B2E-BE43-1BDF7333E158/Library/Caches/hot-updater-sandbox/bundles/01a1b9dd-01ff-74fe-abdf-f0e5f4ba1bf2
+note: offline, onError fired as on any offline launch: Network request failed
+PASS 4 offline, the B1 row runs B1 and its asset loads: 01a1b9dd-cd96-713e-80a5-e394742d6014|hot-updater-sandbox-stored-bundle|file:///Users/gronxb/Library/Developer/CoreSimulator/Devices/4198532C-6951-435C-9C76-CC3AEB3E11F2/data/Containers/Data/Application/1AB18EDF-AC34-4B2E-BE43-1BDF7333E158/Library/Caches/hot-updater-sandbox/bundles/01a1b9dd-cd96-713e-80a5-e394742d6014
+note: offline, onError fired as on any offline launch: Network request failed
+PASS 5 a cold start runs the selected B1 on pr-b-ios-green-1794119629: 01a1b9dd-f39c-72bf-b175-ddf81ef89fcf|pr-b-ios-green-1794119629|file:///Users/gronxb/Library/Developer/CoreSimulator/Devices/4198532C-6951-435C-9C76-CC3AEB3E11F2/data/Containers/Data/Application/1AB18EDF-AC34-4B2E-BE43-1BDF7333E158/Documents/bundle-store/01a1b9dd-cd96-713e-80a5-e394742d6014
+== 11 passed, 0 failed

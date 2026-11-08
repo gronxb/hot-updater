@@ -1,0 +1,14 @@
+== sandbox-stored-bundle-opens-offline ios red 2026-11-08T06:38:22Z
+binary /Volumes/SSD_2TB/tmp/sbl-proof/bin/red-own.app
+PASS 0 the built-in bundle's check gave the sandbox its server
+deploy A1 to pr-a-ios-red-1794119907: release 01a1b9e1-6373-7556-a74c-0e83780a4dc6
+PASS 1 A1 runs from its link, bundle 01a1b9e1-3d15-75a6-8650-952c2063a22a
+deploy A2 to pr-a-ios-red-1794119907: release 01a1b9e1-c863-7025-b1cc-c17cfc128939
+FAIL 2 no row for A1 on the screen (the selected bundle isn't listed)
+deploy B1 to pr-b-ios-red-1794119907: release 01a1b9e2-27bb-7d1c-a8cb-424fa3027f31
+PASS 3 B1 runs from its link, bundle 01a1b9e2-037f-7bc4-ae98-26738f06813e
+update server offline: catalog, artifact and file requests are dropped
+FAIL 4 offline, no row for A1: its channel's row checks the server instead (Couldn't open pr-a-ios-red-1794119907)
+FAIL 4 offline, no row for B1
+PASS 5 a cold start runs the selected B1 on pr-b-ios-red-1794119907: 01a1b9e2-27bb-7d1c-a8cb-424fa3027f31|pr-b-ios-red-1794119907|file:///Users/gronxb/Library/Developer/CoreSimulator/Devices/4198532C-6951-435C-9C76-CC3AEB3E11F2/data/Containers/Data/Application/69FB5CC2-7700-4A8E-87FD-3A09E4FEBC91/Documents/bundle-store/01a1b9e2-037f-7bc4-ae98-26738f06813e
+== 4 passed, 3 failed
