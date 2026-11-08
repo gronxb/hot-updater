@@ -140,6 +140,14 @@ internal class HotUpdaterSandboxShelf(
      */
     fun stored(bundleId: String): HotUpdaterSandboxStoredBundle? = if (isName(bundleId)) check(directory(bundleId), bundleId) else null
 
+    /**
+     * At a session's start, before anything else runs: a listed bundle whose
+     * manifest and JavaScript are there. Every asset was checked just before the
+     * handoff, off the main thread.
+     */
+    fun listedAtStart(bundleId: String): HotUpdaterSandboxStoredBundle? =
+        if (isName(bundleId) && entries.any { it.bundleId == bundleId }) check(directory(bundleId), bundleId, everyAsset = false) else null
+
     fun remove(bundleId: String) {
         if (!isName(bundleId)) return
         val trash =
@@ -236,11 +244,13 @@ internal class HotUpdaterSandboxShelf(
 
         /**
          * The manifest names the bundle, each asset it lists is a regular file inside
-         * the directory, and exactly one of them is the JavaScript.
+         * the directory, and exactly one of them is the JavaScript. Without
+         * [everyAsset], only the JavaScript is looked at.
          */
         fun check(
             directory: File,
             bundleId: String,
+            everyAsset: Boolean = true,
         ): HotUpdaterSandboxStoredBundle? {
             val manifest = runCatching { JSONObject(File(directory, "manifest.json").readText()) }.getOrNull() ?: return null
             if (manifest.optString("bundleId").trim() != bundleId) return null
@@ -248,6 +258,8 @@ internal class HotUpdaterSandboxShelf(
             val root = directory.canonicalFile
             val bundles = mutableListOf<File>()
             for (path in assets.keys()) {
+                // At a session's start, only the JavaScript: the rest was checked before the handoff.
+                if (!everyAsset && !path.endsWith(".android.bundle")) continue
                 val relative = RelativePathResolver.normalizeRelativePath(path) ?: return null
                 val file = File(directory, relative)
                 // A link resolves elsewhere, so it is never the regular file listed.

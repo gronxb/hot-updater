@@ -2,6 +2,7 @@ package com.hotupdater
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -41,11 +42,16 @@ internal class HotUpdaterSandboxLiveHost(
     override val storedSessionBundleId: String?
         get() = HotUpdaterSandboxDev.storedBundle(context)?.bundleId
 
-    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle) {
-        // Leaving the normal launch, so its "started" mark doesn't read as a crash.
-        if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
-        HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId))
-    }
+    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean =
+        try {
+            // Leaving the normal launch, so its "started" mark doesn't read as a crash.
+            if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId))
+            true
+        } catch (error: Exception) {
+            Log.w("HotUpdaterSandbox", "couldn't relaunch into ${bundle.bundleId}: ${error.message}")
+            false
+        }
 
     override fun exitSession() = HotUpdaterSandbox.devServer(context).exitDevServer()
 

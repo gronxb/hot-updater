@@ -71,8 +71,11 @@ internal interface HotUpdaterSandboxHost {
     val storedSessionBundleId: String?
         get() = null
 
-    /** Runs a stored bundle in a new process. A cold launch is back on the normal selection. */
-    fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle) = Unit
+    /**
+     * Hands a stored bundle to a new process, which replaces this one. Returns
+     * whether the handoff went out. A cold launch is back on the normal selection.
+     */
+    fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean = false
 
     /** Ends the session: a new process, on the first screen. */
     fun exitSession() = Unit
@@ -277,8 +280,9 @@ internal class HotUpdaterSandboxCoordinator(
     private var downloadedBytes = 0L
 
     /**
-     * A row's stored bundle being checked, before its session starts: Clear and
-     * Delete leave it alone, as they do the running one.
+     * A row's stored bundle being checked, then handed to the process that replaces
+     * this one: Clear and Delete leave it alone, as they do the running one, and
+     * nothing else starts until this process ends.
      */
     private var openingBundleId: String? = null
 
@@ -497,16 +501,21 @@ internal class HotUpdaterSandboxCoordinator(
         scope.launch {
             // The files are checked off the main thread.
             val bundle = withContext(shelfContext) { shelf.stored(bundleId) }
-            openingBundleId = null
             if (bundle == null) {
+                openingBundleId = null
                 switchTo(entry.channel)
                 return@launch
             }
-            if (!canStart() || lock.holder != null) return@launch
+            val phase = state.phase
+            if (lock.holder != null || (phase !is HotUpdaterSandboxPhase.Idle && phase !is HotUpdaterSandboxPhase.Failed)) {
+                openingBundleId = null
+                return@launch
+            }
             acknowledgeLastLaunch()
             publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
             log("opening stored ${entry.channel} $bundleId")
-            host.startStoredSession(bundle)
+            // The guard stays until this process is replaced, unless the handoff never went out.
+            if (!host.startStoredSession(bundle)) openingBundleId = null
         }
         return true
     }

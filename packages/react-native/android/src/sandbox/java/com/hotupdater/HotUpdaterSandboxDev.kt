@@ -233,7 +233,7 @@ internal object HotUpdaterSandboxDev {
                         files.takeSession(
                             { isWitnessAlive(context, it) },
                             SystemClock.elapsedRealtime(),
-                            { shelf(context).stored(it) },
+                            { shelf(context).listedAtStart(it) },
                         )
                     val retired = files.retireStale(session)
                     if (retired.isNotEmpty()) {

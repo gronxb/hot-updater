@@ -44,9 +44,14 @@ private class FakeHost : HotUpdaterSandboxHost {
 
     override val storedSessionBundleId get() = storedBundleId
 
-    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle) {
+    /** Whether the relaunch's intent can't go out. */
+    var handoffFails = false
+
+    /** As the live host: the session's ID changes only in the process that replaces this one. */
+    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean {
+        if (handoffFails) return false
         startedStored += bundle.bundleId
-        storedBundleId = bundle.bundleId
+        return true
     }
 
     override fun exitSession() {
@@ -463,10 +468,46 @@ class HotUpdaterSandboxCoordinatorTest {
         assertTrue(fixture.coordinator.openDownloaded("ota"))
         assertTrue(fixture.host.calls.isEmpty())
         assertEquals(listOf("ota"), fixture.host.startedStored)
-        // Reload runs the same stored bundle again.
-        fixture.coordinator.reloadApp()
-        assertEquals(listOf("ota", "ota"), fixture.host.startedStored)
-        assertTrue(fixture.host.calls.isEmpty())
+
+        // In the stored session's process, Reload runs the same stored bundle again.
+        val session = Fixture()
+        session.host.storedBundleId = "ota"
+        session.shelf.add("ota", "pr-1", null, 0, null)
+        session.coordinator.refresh()
+        session.coordinator.reloadApp()
+        assertEquals(listOf("ota"), session.host.startedStored)
+        assertTrue(session.host.calls.isEmpty())
+    }
+
+    @Test
+    fun `a handoff keeps its bundle and its guard until the process is replaced`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        installTestBundle(fixture.shelf.source, "other")
+        fixture.shelf.add("other", "pr-2", null, 0, null)
+        fixture.coordinator.refresh()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        // The relaunch is on its way: a second tap, Delete, Clear, or a switch changes nothing of it.
+        assertFalse(fixture.coordinator.openDownloaded("ota"))
+        assertFalse(fixture.coordinator.openDownloaded("other"))
+        assertFalse(fixture.coordinator.switchTo("pr-2"))
+        fixture.coordinator.deleteDownloaded("ota")
+        fixture.coordinator.clearDownloaded()
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        assertNotNull(fixture.shelf.stored("ota"))
+        assertNull(fixture.shelf.stored("other"))
+    }
+
+    @Test
+    fun `a handoff that never goes out lets go`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        fixture.host.handoffFails = true
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.host.handoffFails = false
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(listOf("ota"), fixture.host.startedStored)
     }
 
     @Test

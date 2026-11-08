@@ -153,6 +153,23 @@ class HotUpdaterSandboxShelfTest {
     }
 
     @Test
+    fun `a session's start looks only at a listed bundle's manifest and JavaScript`() {
+        val shelf = testShelf()
+        installTestBundle(shelf.source, "a")
+        installTestBundle(shelf.source, "unlisted")
+        shelf.add("a", "pr-1", null, 0, null)
+        File(shelf.source, "unlisted").copyRecursively(File(shelf.root, "unlisted"))
+        // An image gone since the handoff's full check doesn't stop the start.
+        File(shelf.root, "a/drawable-mdpi/logo.png").delete()
+        assertNull(shelf.stored("a"))
+        assertEquals(File(shelf.root, "a/index.android.bundle"), shelf.listedAtStart("a")?.bundle)
+        // Not listed, or without its JavaScript: the normal selection runs.
+        assertNull(shelf.listedAtStart("unlisted"))
+        File(shelf.root, "a/index.android.bundle").delete()
+        assertNull(shelf.listedAtStart("a"))
+    }
+
+    @Test
     fun `a link or a path outside the bundle fails the check`() {
         val root = Files.createTempDirectory("sandbox-shelf").toFile()
         installTestBundle(root, "x")
