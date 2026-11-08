@@ -207,6 +207,52 @@ private func install(_ bundleId: String, in store: URL, skipping: String? = nil)
     }
 }
 
+/// Runs `work` on a thread of its own while `turn` repeats here, a pause between
+/// turns, as a person's taps have: a lock isn't fair, and a loop that takes it back
+/// at once can starve the work. A thread of its own always runs; work sent to a
+/// global queue can wait for one for as long as the test runner keeps every
+/// thread busy, as on a three-core CI runner, and a loop waiting for it then
+/// never ends. The loop gives up after 30 s instead of hanging the run.
+private func race(
+    _ work: @escaping () -> Void,
+    against turn: () -> Void,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    let done = DispatchSemaphore(value: 0)
+    let thread = Thread {
+        work()
+        done.signal()
+    }
+    thread.start()
+    let deadline = Date().addingTimeInterval(30)
+    repeat {
+        turn()
+        guard Date() < deadline else {
+            Issue.record("the work didn't finish within 30 s", sourceLocation: sourceLocation)
+            return
+        }
+    } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
+}
+
+/// A queue held until the test lets it go, once, even when the test ends early:
+/// a queue released while suspended crashes the run, and one never resumed
+/// holds every test waiting on it.
+private final class Suspended {
+    private let queue: DispatchQueue
+    private var isSuspended = true
+
+    init(_ queue: DispatchQueue) {
+        self.queue = queue
+        queue.suspend()
+    }
+
+    func resume() {
+        guard isSuspended else { return }
+        isSuspended = false
+        queue.resume()
+    }
+}
+
 private func makeShelf(_ root: URL, key: String = "key", storesBundles: Bool = true) -> HotUpdaterSandboxShelf {
     HotUpdaterSandboxShelf(
         root: root.appendingPathComponent("shelf", isDirectory: true),
@@ -1541,14 +1587,7 @@ struct HotUpdaterSandboxShelfTests {
         for round in 0 ..< 40 {
             let shelf = makeShelf(temporaryDirectory())
             install("b\(round)", in: shelf.source)
-            let done = DispatchSemaphore(value: 0)
-            DispatchQueue.global().async {
-                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0)
-                done.signal()
-            }
-            // A pause between turns, as a person's refreshes have: a lock isn't fair,
-            // and a loop that takes it back at once can starve the copy.
-            repeat { shelf.reconcile() } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
+            race({ shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0) }, against: { shelf.reconcile() })
             expectAgreement(shelf, round)
             #expect(shelf.entries.map(\.bundleId) == ["b\(round)"], "round \(round)")
         }
@@ -1561,12 +1600,7 @@ struct HotUpdaterSandboxShelfTests {
             install("old", in: shelf.source)
             shelf.add(bundleId: "old", channel: "pr-0", message: nil, nowMs: 0)
             install("b\(round)", in: shelf.source)
-            let done = DispatchSemaphore(value: 0)
-            DispatchQueue.global().async {
-                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1)
-                done.signal()
-            }
-            repeat { shelf.clear(keeping: []) } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
+            race({ shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1) }, against: { shelf.clear(keeping: []) })
             expectAgreement(shelf, round)
         }
     }
@@ -1589,14 +1623,15 @@ struct HotUpdaterSandboxShelfTests {
         let fixture = Fixture(shelfQueue: shelfQueue)
         fixture.coordinator.switchTo("pr-1")
         await settle()
-        shelfQueue.suspend()
+        let slow = Suspended(shelfQueue)
+        defer { slow.resume() }
         #expect(fixture.coordinator.openDownloaded("ota"))
         fixture.coordinator.receiveLink(link("pr-new"))
         #expect(fixture.coordinator.state.phase == .idle)
         #expect(fixture.coordinator.state.queuedLinks == 1)
         fixture.coordinator.confirmLink()
         fixture.host.calls = []
-        shelfQueue.resume()
+        slow.resume()
         await settle()
         // The session started first, then the link is asked about.
         #expect(fixture.host.startedStored == ["ota"])
@@ -1616,7 +1651,8 @@ struct HotUpdaterSandboxShelfTests {
         // The shelf is busy for as long as the test says: a slow disk.
         install("other", in: fixture.shelf.source)
         fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 0)
-        shelfQueue.suspend()
+        let slow = Suspended(shelfQueue)
+        defer { slow.resume() }
         #expect(fixture.coordinator.openDownloaded("ota"))
         // The bundle being opened stays whole through Delete and Clear.
         fixture.coordinator.deleteDownloaded("ota")
@@ -1624,7 +1660,7 @@ struct HotUpdaterSandboxShelfTests {
         await settle()
         #expect(fixture.host.startedStored.isEmpty)
         #expect(fixture.shelf.stored("ota") != nil)
-        shelfQueue.resume()
+        slow.resume()
         await settle()
         #expect(fixture.host.startedStored == ["ota"])
         #expect(fixture.shelf.stored("ota") != nil)
