@@ -50,8 +50,13 @@ private class FakeHost : HotUpdaterSandboxHost {
     /** Handoffs the screen called off. */
     var abandoned = 0
 
-    override fun abandonStoredSession() {
+    /** Whether the relaunch took its handoff before the screen could call it off. */
+    var relaunchTookHandoff = false
+
+    override fun abandonStoredSession(): Boolean {
+        if (relaunchTookHandoff) return false
         abandoned += 1
+        return true
     }
 
     /** As the live host: the session's ID changes only in the process that replaces this one. */
@@ -521,6 +526,22 @@ class HotUpdaterSandboxCoordinatorTest {
         val idle = Fixture()
         idle.coordinator.resumed()
         assertEquals(0, idle.host.abandoned)
+    }
+
+    @Test
+    fun `a screen back while the relaunch has taken its handoff keeps the guard`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.receiveLink(link("pr-new"))
+        fixture.host.relaunchTookHandoff = true
+        fixture.coordinator.resumed()
+        // The relaunch is replacing this process: nothing else starts, and the link waits for the new one.
+        assertEquals(0, fixture.host.abandoned)
+        assertFalse(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(1, fixture.coordinator.state.queuedLinks)
+        assertEquals(listOf("ota"), fixture.host.startedStored)
     }
 
     @Test

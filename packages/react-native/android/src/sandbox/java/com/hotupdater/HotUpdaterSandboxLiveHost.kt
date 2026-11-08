@@ -47,14 +47,25 @@ internal class HotUpdaterSandboxLiveHost(
         try {
             // Leaving the normal launch, so its "started" mark doesn't read as a crash.
             if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
-            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, UUID.randomUUID().toString()))
+            val token = UUID.randomUUID().toString()
+            handoffToken = token
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, token))
             true
         } catch (error: Exception) {
             Log.w("HotUpdaterSandbox", "couldn't relaunch into ${bundle.bundleId}: ${error.message}")
+            abandonStoredSession()
             false
         }
 
-    override fun abandonStoredSession() = HotUpdaterSandboxDev.filesOf(context).clearHandoff()
+    /** The handoff this process sent, until the relaunch replaces it or the screen calls it off. */
+    @Volatile
+    private var handoffToken: String? = null
+
+    override fun abandonStoredSession(): Boolean {
+        val token = handoffToken ?: return true
+        handoffToken = null
+        return HotUpdaterSandboxDev.filesOf(context).claimHandoff(token)
+    }
 
     override fun exitSession() = HotUpdaterSandbox.devServer(context).exitDevServer()
 

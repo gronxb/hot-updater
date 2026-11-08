@@ -67,26 +67,26 @@ internal class HotUpdaterSandboxDevFiles(
     val root: File,
 ) {
     val claim: File get() = File(root, CLAIM)
-    private val handoff: File get() = File(root, HANDOFF)
 
-    /** A stored session's relaunch, on its way: only the request with this token may act. */
+    /**
+     * A stored session's relaunch, on its way: a file named by its token. Only the
+     * request with that token may act, and only once.
+     */
     fun writeHandoff(token: String) {
         root.mkdirs()
-        handoff.writeText(token)
+        root.listFiles()?.filter { it.name.startsWith(HANDOFF) || it.name.startsWith(HANDOFF_WON) }?.forEach { it.delete() }
+        check(File(root, "$HANDOFF$token").createNewFile()) { "Couldn't write the relaunch's handoff" }
     }
 
-    /** Whether [token] is the handoff on its way, which it then takes: a later copy of the request does nothing. */
-    fun takeHandoff(token: String?): Boolean {
-        val current = runCatching { handoff.readText() }.getOrNull()
-        if (token == null || current != token) return false
-        handoff.delete()
-        return true
-    }
-
-    /** A relaunch that didn't happen: a late request for it does nothing. */
-    fun clearHandoff() {
-        handoff.delete()
-    }
+    /**
+     * Takes the handoff of [token], once, for whichever side asks first: the helper
+     * that relaunches, or the screen that calls it off. An exclusive create succeeds
+     * for one caller only, across processes, so the two can't both win.
+     */
+    fun claimHandoff(token: String?): Boolean =
+        token != null &&
+            File(root, "$HANDOFF$token").exists() &&
+            runCatching { File(root, "$HANDOFF_WON$token").createNewFile() }.getOrDefault(false)
 
     val keyValueFile: File get() = File(root, KEY_VALUE)
 
@@ -166,7 +166,8 @@ internal class HotUpdaterSandboxDevFiles(
 
     companion object {
         private const val CLAIM = "claim.json"
-        private const val HANDOFF = "handoff"
+        private const val HANDOFF = "handoff-"
+        private const val HANDOFF_WON = "won-"
         private const val KEY_VALUE = "storage.json"
         private const val SESSIONS = "sessions"
         private const val TRASH = "trash"
@@ -416,7 +417,7 @@ internal sealed class HotUpdaterSandboxRelaunch {
 
     data class Stored(
         val bundleId: String,
-        /** What the screen can call off: see [HotUpdaterSandboxDevFiles.takeHandoff]. */
+        /** What the screen can call off: see [HotUpdaterSandboxDevFiles.claimHandoff]. */
         val token: String,
     ) : HotUpdaterSandboxRelaunch()
 

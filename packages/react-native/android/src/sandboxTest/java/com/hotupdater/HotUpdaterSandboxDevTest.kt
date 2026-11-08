@@ -158,16 +158,44 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
-    fun `a stored session's request acts once, and not at all once the screen called it off`() {
+    fun `a handoff goes to whichever side claims it first, and only once`() {
         val files = files()
+        // The relaunch's helper first: the screen's call-off loses, so its guard stays.
         files.writeHandoff("first")
-        files.clearHandoff()
-        assertFalse(files.takeHandoff("first"))
+        assertTrue(files.claimHandoff("first"))
+        assertFalse(files.claimHandoff("first"))
+        // The screen first: the helper's late request loses and does nothing.
         files.writeHandoff("second")
-        assertFalse(files.takeHandoff("first"))
-        assertFalse(files.takeHandoff(null))
-        assertTrue(files.takeHandoff("second"))
-        assertFalse(files.takeHandoff("second"))
+        assertTrue(files.claimHandoff("second"))
+        assertFalse(files.claimHandoff("second"))
+        // Only the latest handoff, and never one without a token.
+        files.writeHandoff("third")
+        files.writeHandoff("fourth")
+        assertFalse(files.claimHandoff("third"))
+        assertFalse(files.claimHandoff(null))
+        assertTrue(files.claimHandoff("fourth"))
+    }
+
+    @Test
+    fun `of two sides claiming a handoff at once, exactly one wins`() {
+        val files = files()
+        repeat(200) { round ->
+            files.writeHandoff("t$round")
+            val start = java.util.concurrent.CyclicBarrier(2)
+            val wins =
+                java.util.concurrent.atomic
+                    .AtomicInteger()
+            val sides =
+                List(2) {
+                    Thread {
+                        start.await()
+                        if (files.claimHandoff("t$round")) wins.incrementAndGet()
+                    }
+                }
+            sides.forEach(Thread::start)
+            sides.forEach(Thread::join)
+            assertEquals("round $round", 1, wins.get())
+        }
     }
 
     @Test

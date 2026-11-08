@@ -77,6 +77,22 @@ class HotUpdaterSandboxShelfTest {
     }
 
     @Test
+    fun `an eleventh bundle evicts the oldest one not kept, never the pending one`() {
+        val shelf = testShelf()
+        for (index in 0 until HotUpdaterSandboxShelf.LIMIT) {
+            installTestBundle(shelf.source, "b$index")
+            shelf.add("b$index", "pr-$index", null, index.toLong())
+        }
+        installTestBundle(shelf.source, "eleventh")
+        // b0, the oldest, is the stored session a row is handing off.
+        shelf.add("eleventh", "pr-11", null, 99, kept = setOf("b0"))
+        assertNotNull(shelf.stored("b0"))
+        assertNull(shelf.stored("b1"))
+        assertEquals(HotUpdaterSandboxShelf.LIMIT, shelf.entries.size)
+        assertFalse(shelf.entries.any { it.bundleId == "b1" })
+    }
+
+    @Test
     fun `another build's entries and stray files go`() {
         val root = Files.createTempDirectory("sandbox-shelf").toFile()
         val old = testShelf(root, "old-build")

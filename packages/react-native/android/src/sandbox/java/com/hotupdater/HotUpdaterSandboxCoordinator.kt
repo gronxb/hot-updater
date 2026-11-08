@@ -77,8 +77,11 @@ internal interface HotUpdaterSandboxHost {
      */
     fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean = false
 
-    /** The handoff didn't happen: a late request for it does nothing. */
-    fun abandonStoredSession() = Unit
+    /**
+     * Calls off the handoff this process sent, if the relaunch hasn't taken it yet.
+     * True when nothing went out or the call-off won, false when the relaunch is under way.
+     */
+    fun abandonStoredSession(): Boolean = true
 
     /** Ends the session: a new process, on the first screen. */
     fun exitSession() = Unit
@@ -538,8 +541,12 @@ internal class HotUpdaterSandboxCoordinator(
      */
     fun resumed() {
         if (pendingStoredBundleId == null) return
+        // The relaunch took its handoff first: it's replacing this process, so the guard stays.
+        if (!host.abandonStoredSession()) {
+            log("a stored session's relaunch is under way")
+            return
+        }
         handoff++
-        host.abandonStoredSession()
         log("a stored session's relaunch didn't happen")
         letGoOfHandoff()
     }
