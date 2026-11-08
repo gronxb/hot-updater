@@ -2,9 +2,10 @@ package com.hotupdater
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 
 /** What a check of the target channel did. */
@@ -268,9 +269,16 @@ internal class HotUpdaterSandboxCoordinator(
     private val log: (String) -> Unit = {},
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val lock: HotUpdaterSandboxLock = HotUpdaterSandboxLock.process,
-    /** Where a copy to the shelf runs: off the main thread. */
-    private val copyContext: CoroutineContext = Dispatchers.IO,
+    /** Where the shelf's file work runs, in order, off the main thread. */
+    private val shelfContext: CoroutineContext = Executors.newSingleThreadExecutor().asCoroutineDispatcher(),
 ) {
+    /** The Downloaded list as the shelf last reported it: the screen reads only this. */
+    private var downloaded = emptyList<HotUpdaterSandboxShelfEntry>()
+    private var downloadedBytes = 0L
+
+    /** A row's stored bundle being checked, before its session starts. */
+    private var opening = false
+
     private val listeners = LinkedHashSet<(HotUpdaterSandboxState) -> Unit>()
     private val queue = ArrayList(store.pendingLinks)
     private var nextOperationId = 1L
@@ -317,8 +325,9 @@ internal class HotUpdaterSandboxCoordinator(
      */
     fun refresh() {
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
-        if (state.phase !is HotUpdaterSandboxPhase.Working) shelf.reconcile()
+        val reconciling = state.phase !is HotUpdaterSandboxPhase.Working
         scope.launch {
+            relist(reconciling)
             val selection = readSelection()
             publish(reading(selection, host.launchBundleId()))
             pump()
@@ -478,12 +487,22 @@ internal class HotUpdaterSandboxCoordinator(
      */
     fun openDownloaded(bundleId: String): Boolean {
         if (!canStart() || lock.holder != null) return false
-        val entry = shelf.entries.firstOrNull { it.bundleId == bundleId } ?: return false
-        val bundle = shelf.stored(bundleId) ?: return switchTo(entry.channel)
-        acknowledgeLastLaunch()
-        publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
-        log("opening stored ${entry.channel} $bundleId")
-        host.startStoredSession(bundle)
+        val entry = downloaded.firstOrNull { it.bundleId == bundleId } ?: return false
+        opening = true
+        scope.launch {
+            // The files are checked off the main thread.
+            val bundle = withContext(shelfContext) { shelf.stored(bundleId) }
+            opening = false
+            if (bundle == null) {
+                switchTo(entry.channel)
+                return@launch
+            }
+            if (!canStart() || lock.holder != null) return@launch
+            acknowledgeLastLaunch()
+            publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
+            log("opening stored ${entry.channel} $bundleId")
+            host.startStoredSession(bundle)
+        }
         return true
     }
 
@@ -497,8 +516,10 @@ internal class HotUpdaterSandboxCoordinator(
     /** Removes a row and its files. The running one stays. */
     fun deleteDownloaded(bundleId: String) {
         if (bundleId == host.storedSessionBundleId) return
-        shelf.remove(bundleId)
-        publish(listed(state))
+        scope.launch {
+            withContext(shelfContext) { shelf.remove(bundleId) }
+            relist(reconciling = false)
+        }
     }
 
     /** A person moved on from what the last launch left, so it's not told again. */
@@ -511,16 +532,31 @@ internal class HotUpdaterSandboxCoordinator(
 
     /** Removes every row and its files but the running one: they're only on this device. */
     fun clearDownloaded() {
-        shelf.clear(host.storedSessionBundleId)
+        val running = host.storedSessionBundleId
+        scope.launch {
+            withContext(shelfContext) { shelf.clear(running) }
+            relist(reconciling = false)
+        }
+    }
+
+    /** Takes the shelf's list and size from its thread, and shows them. */
+    private suspend fun relist(reconciling: Boolean) {
+        val (entries, bytes) =
+            withContext(shelfContext) {
+                if (reconciling) shelf.reconcile()
+                shelf.entries to shelf.totalBytes()
+            }
+        downloaded = entries
+        downloadedBytes = bytes
         publish(listed(state))
     }
 
-    /** The Downloaded list as the shelf holds it. */
+    /** The Downloaded list as the shelf last reported it. */
     private fun listed(base: HotUpdaterSandboxState): HotUpdaterSandboxState {
-        val entries = shelf.entries
+        val entries = downloaded
         return base.copy(
             downloaded = entries,
-            downloadedBytes = shelf.totalBytes(),
+            downloadedBytes = downloadedBytes,
             storedSessionBundleId = host.storedSessionBundleId,
             selectedMessage = entries.firstOrNull { it.bundleId == base.selection?.bundleId }?.message,
             runningMessage = entries.firstOrNull { it.bundleId == base.runningBundleId }?.message,
@@ -555,7 +591,7 @@ internal class HotUpdaterSandboxCoordinator(
         store.recordOpened(selection)
     }
 
-    private fun canStart() = state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed
+    private fun canStart() = !opening && (state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed)
 
     private fun begin(target: String) {
         val operationId = nextOperationId++
@@ -679,7 +715,8 @@ internal class HotUpdaterSandboxCoordinator(
     ) {
         val running = host.storedSessionBundleId
         val now = nowMs()
-        withContext(copyContext) { shelf.add(bundleId, channel, message, now, running) }
+        withContext(shelfContext) { shelf.add(bundleId, channel, message, now, running) }
+        relist(reconciling = false)
     }
 
     private suspend fun finish(operationId: Long) {

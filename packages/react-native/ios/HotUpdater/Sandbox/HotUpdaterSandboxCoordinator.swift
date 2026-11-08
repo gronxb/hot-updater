@@ -209,6 +209,13 @@ final class HotUpdaterSandboxCoordinator {
     private let host: HotUpdaterSandboxHost
     private let store: HotUpdaterSandboxStore
     private let shelf: HotUpdaterSandboxShelf
+    /// Where the shelf's file work runs, in order, off the main thread.
+    private let shelfQueue: DispatchQueue
+    /// The Downloaded list as the shelf last reported it: the screen reads only this.
+    private var downloaded: [HotUpdaterSandboxShelfEntry] = []
+    private var downloadedBytes: Int64 = 0
+    /// A row's stored bundle being checked, before its session starts.
+    private var isOpening = false
     /// Opens the app: on `open()` with `switched` false, or after a switch.
     /// `fixed` is true when this process had already fixed its launch, so only a
     /// reload can apply the switch.
@@ -247,8 +254,10 @@ final class HotUpdaterSandboxCoordinator {
         openApp: @escaping (_ switched: Bool, _ fixed: Bool) -> Void,
         log: @escaping (String) -> Void = { _ in },
         now: @escaping () -> Date = Date.init,
-        lock: HotUpdaterSandboxLock = .shared
+        lock: HotUpdaterSandboxLock = .shared,
+        shelfQueue: DispatchQueue = DispatchQueue(label: "hot-updater-sandbox.shelf")
     ) {
+        self.shelfQueue = shelfQueue
         self.now = now
         self.lock = lock
         self.host = host
@@ -274,7 +283,11 @@ final class HotUpdaterSandboxCoordinator {
     /// Sends no request: opening the screen costs the update server nothing.
     func refresh() async {
         // A switch may be copying into the shelf: its partial copy isn't listed yet.
-        if case .working = state.phase {} else { shelf.reconcile() }
+        if case .working = state.phase {
+            await relist(reconciling: false)
+        } else {
+            await relist(reconciling: true)
+        }
         let selection = await readSelection()
         publish(reading(selection, launched: await host.launchBundleId()))
         pump()
@@ -431,15 +444,24 @@ final class HotUpdaterSandboxCoordinator {
     @discardableResult
     func openDownloaded(_ bundleId: String) -> Bool {
         guard canStart, lock.holder == nil,
-              let entry = shelf.entries.first(where: { $0.bundleId == bundleId }) else { return false }
-        guard let bundle = shelf.stored(bundleId) else {
-            return switchTo(entry.channel)
+              let entry = downloaded.first(where: { $0.bundleId == bundleId }) else { return false }
+        isOpening = true
+        let shelf = shelf
+        Task { @MainActor in
+            // The files are checked off the main thread.
+            let bundle = await onShelf { shelf.stored(bundleId) }
+            isOpening = false
+            guard let bundle else {
+                switchTo(entry.channel)
+                return
+            }
+            guard canStart, lock.holder == nil else { return }
+            acknowledgeLastLaunch()
+            setPhase(.idle)
+            log("opening stored \(entry.channel) \(bundleId)")
+            host.startStoredSession(bundle)
+            publish(reading(state))
         }
-        acknowledgeLastLaunch()
-        setPhase(.idle)
-        log("opening stored \(entry.channel) \(bundleId)")
-        host.startStoredSession(bundle)
-        publish(reading(state))
         return true
     }
 
@@ -453,8 +475,11 @@ final class HotUpdaterSandboxCoordinator {
     /// Removes a row and its files. The running one stays.
     func deleteDownloaded(_ bundleId: String) {
         guard bundleId != host.storedSessionBundleId else { return }
-        shelf.remove(bundleId)
-        publish(reading(state))
+        let shelf = shelf
+        Task { @MainActor in
+            await onShelf { shelf.remove(bundleId) }
+            await relist(reconciling: false)
+        }
     }
 
     /// A person moved on from what the last launch left, so it's not told again.
@@ -469,15 +494,38 @@ final class HotUpdaterSandboxCoordinator {
 
     /// Removes every row and its files but the running one: they're only on this device.
     func clearDownloaded() {
-        shelf.clear(keeping: host.storedSessionBundleId)
+        let shelf = shelf
+        let running = host.storedSessionBundleId
+        Task { @MainActor in
+            await onShelf { shelf.clear(keeping: running) }
+            await relist(reconciling: false)
+        }
+    }
+
+    /// Runs the shelf's file work in order on its queue, so the main thread never waits for it.
+    private func onShelf<T>(_ work: @escaping () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            shelfQueue.async { continuation.resume(returning: work()) }
+        }
+    }
+
+    /// Takes the shelf's list and size from its queue, and shows them.
+    private func relist(reconciling: Bool) async {
+        let shelf = shelf
+        let (entries, bytes) = await onShelf { () -> ([HotUpdaterSandboxShelfEntry], Int64) in
+            if reconciling { shelf.reconcile() }
+            return (shelf.entries, shelf.totalBytes())
+        }
+        downloaded = entries
+        downloadedBytes = bytes
         publish(reading(state))
     }
 
-    /// The Downloaded list as the shelf holds it.
+    /// The Downloaded list as the shelf last reported it.
     private func reading(_ base: HotUpdaterSandboxState) -> HotUpdaterSandboxState {
         var next = base
-        next.downloaded = shelf.entries
-        next.downloadedBytes = shelf.totalBytes()
+        next.downloaded = downloaded
+        next.downloadedBytes = downloadedBytes
         next.storedSessionBundleId = host.storedSessionBundleId
         next.selectedMessage = next.selection.flatMap { message(of: $0.bundleId) }
         next.runningMessage = next.runningBundleId.flatMap(message(of:))
@@ -485,7 +533,7 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     private func message(of bundleId: String) -> String? {
-        shelf.entries.first { $0.bundleId == bundleId }?.message
+        downloaded.first { $0.bundleId == bundleId }?.message
     }
 
     /// What storage says now, with no request.
@@ -513,6 +561,7 @@ final class HotUpdaterSandboxCoordinator {
     }
 
     private var canStart: Bool {
+        if isOpening { return false }
         switch state.phase {
         case .idle, .failed:
             return true
@@ -611,9 +660,10 @@ final class HotUpdaterSandboxCoordinator {
         let shelf = shelf
         let nowMs = now().timeIntervalSince1970 * 1000
         let running = host.storedSessionBundleId
-        await Task.detached {
+        await onShelf {
             shelf.add(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running)
-        }.value
+        }
+        await relist(reconciling: false)
     }
 
     private func finish(_ operationId: Int) async {

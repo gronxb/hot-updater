@@ -3,6 +3,7 @@ package com.hotupdater
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -10,6 +11,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import kotlin.coroutines.EmptyCoroutineContext
 
 private const val FINGERPRINT = "abc"
@@ -121,6 +124,7 @@ private class FakeStore(
 
 private class Fixture(
     pendingLinks: List<String> = emptyList(),
+    shelfContext: kotlin.coroutines.CoroutineContext = EmptyCoroutineContext,
 ) {
     val host = FakeHost()
     val store = FakeStore(pendingLinks)
@@ -137,7 +141,7 @@ private class Fixture(
             openApp = { switched, fixed -> opens += switched to fixed },
             nowMs = { 1_000_000L },
             lock = lock,
-            copyContext = EmptyCoroutineContext,
+            shelfContext = shelfContext,
         )
 
     val phase get() = coordinator.state.phase
@@ -546,6 +550,28 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `the main thread never waits for the shelf's files`() {
+        val shelfThread = Executors.newSingleThreadExecutor()
+        val fixture = Fixture(shelfContext = shelfThread.asCoroutineDispatcher())
+        // Work on the shelf's thread can queue more of it: let it all run.
+        val drain = { repeat(10) { shelfThread.submit {}.get() } }
+        fixture.coordinator.switchTo("pr-1")
+        drain()
+        // The shelf is busy for as long as the test says: a slow disk.
+        val disk = CountDownLatch(1)
+        shelfThread.submit { disk.await() }
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.clearDownloaded()
+        assertTrue(fixture.host.startedStored.isEmpty())
+        assertNotNull(fixture.shelf.stored("ota"))
+        disk.countDown()
+        drain()
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        assertTrue(fixture.shelf.entries.isEmpty())
+        shelfThread.shutdown()
+    }
+
+    @Test
     fun `clear and delete keep the running bundle`() {
         val fixture = Fixture()
         installTestBundle(fixture.shelf.source, "other")
@@ -601,7 +627,14 @@ class HotUpdaterSandboxCoordinatorTest {
             }
         val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
-        HotUpdaterSandboxCoordinator(host, store, testShelf(), CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        HotUpdaterSandboxCoordinator(
+            host,
+            store,
+            testShelf(),
+            CoroutineScope(Dispatchers.Unconfined),
+            { a, b -> opens += a to b },
+            shelfContext = EmptyCoroutineContext,
+        ).open()
         assertEquals("ota-0", store.opened)
         assertEquals(listOf(false to false), opens)
     }
@@ -615,7 +648,14 @@ class HotUpdaterSandboxCoordinatorTest {
             }
         val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
-        HotUpdaterSandboxCoordinator(host, store, testShelf(), CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        HotUpdaterSandboxCoordinator(
+            host,
+            store,
+            testShelf(),
+            CoroutineScope(Dispatchers.Unconfined),
+            { a, b -> opens += a to b },
+            shelfContext = EmptyCoroutineContext,
+        ).open()
         assertEquals("built-in", store.opened)
         assertEquals(listOf(false to true), opens)
     }

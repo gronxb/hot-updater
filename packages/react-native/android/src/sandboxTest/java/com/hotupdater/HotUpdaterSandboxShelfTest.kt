@@ -141,16 +141,15 @@ class HotUpdaterSandboxShelfTest {
     }
 
     @Test
-    fun `a list that can't be saved loses the row, not the switch`() {
-        val shelf = testShelf()
+    fun `a list that can't be saved keeps the switch, and lasts this process`() {
+        val root = Files.createTempDirectory("sandbox-shelf").toFile()
+        val shelf = testShelf(root)
         installTestBundle(shelf.source, "a")
         // The list's temporary file can't be written: a directory holds its name.
         File(shelf.root, "index.json.tmp").mkdirs()
         shelf.add("a", "pr-1", null, 0, null)
-        assertTrue(shelf.entries.isEmpty())
-        // The copy nothing lists goes at the next refresh.
-        shelf.reconcile()
-        assertFalse(File(shelf.root, "a").exists())
+        assertEquals(listOf("a"), shelf.entries.map { it.bundleId })
+        assertTrue(testShelf(root).entries.isEmpty())
     }
 
     @Test

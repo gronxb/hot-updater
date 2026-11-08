@@ -4,6 +4,7 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 /** A bundle a sandbox switch downloaded, as the Downloaded list keeps it. */
 internal data class HotUpdaterSandboxShelfEntry(
@@ -31,11 +32,11 @@ internal data class HotUpdaterSandboxStoredBundle(
  * directory of the `.sandbox` app. Main's store is only read. A row whose files
  * are gone checks its channel instead.
  *
- * Every read and write runs under one lock, held briefly: a copy runs off the
- * main thread into a partial directory the lock marks as in progress, so the
- * main thread never waits for it, and a refresh or a Clear never sees half of
- * one. Checking, moving in and listing a copy happen together under the lock.
- * The process holds one shelf.
+ * The list lives in memory behind one lock, held only to read it, to change it
+ * with the renames that go with the change, and to write it. Copying, checking,
+ * measuring and deleting files run outside the lock: a copy goes to a partial
+ * directory the shelf marks as in progress, and what goes is first renamed
+ * aside. The process holds one shelf and calls it off the main thread.
  */
 internal class HotUpdaterSandboxShelf(
     /** The shelf's directory. */
@@ -46,15 +47,19 @@ internal class HotUpdaterSandboxShelf(
 ) {
     private val lock = Any()
 
+    /** The list, read from disk once. */
+    private var cached: List<HotUpdaterSandboxShelfEntry>? = null
+
     /** Bundles being copied, whose partial directories reconciliation leaves alone. */
     private val copying = HashSet<String>()
 
     /** Newest first. */
     val entries: List<HotUpdaterSandboxShelfEntry>
-        get() = synchronized(lock) { readEntries() }
+        get() = synchronized(lock) { list() }
 
-    private fun readEntries(): List<HotUpdaterSandboxShelfEntry> =
-        runCatching {
+    /** Under the lock. */
+    private fun list(): List<HotUpdaterSandboxShelfEntry> =
+        cached ?: runCatching {
             val items = JSONArray(File(root, INDEX).readText())
             (0 until items.length()).map { index ->
                 val item = items.getJSONObject(index)
@@ -66,7 +71,7 @@ internal class HotUpdaterSandboxShelf(
                     downloadedAtMs = item.getLong("downloadedAtMs"),
                 )
             }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).also { cached = it }
 
     /**
      * Lists a bundle main just installed, with a copy. Best effort: a copy that
@@ -82,104 +87,118 @@ internal class HotUpdaterSandboxShelf(
     ) {
         if (!isName(bundleId)) return
         val partial = File(root, "$bundleId$PARTIAL")
-        synchronized(lock) {
-            copying += bundleId
-            partial.deleteRecursively()
-        }
-        // Outside the lock: a copy can take a while, and reads mustn't wait for it.
+        synchronized(lock) { copying += bundleId }
+        partial.deleteRecursively()
         val copied =
             try {
                 File(source, bundleId).copyRecursively(partial, overwrite = true)
-                true
+                (check(partial, bundleId) != null).also { if (!it) Log.w(TAG, "didn't keep $bundleId: it isn't a whole bundle") }
             } catch (error: Exception) {
                 Log.w(TAG, "didn't keep $bundleId: ${error.message}")
                 false
             }
-        synchronized(lock) {
-            copying -= bundleId
-            if (copied && promote(partial, bundleId)) list(bundleId, channel, message, nowMs, running)
-            partial.deleteRecursively()
-        }
+        val trash =
+            synchronized(lock) {
+                copying -= bundleId
+                if (!copied) return@synchronized emptyList()
+                val aside = listOfNotNull(setAside(bundleId))
+                if (!partial.renameTo(directory(bundleId))) {
+                    Log.w(TAG, "didn't keep $bundleId: it couldn't be moved in")
+                    return@synchronized aside
+                }
+                aside + publish(bundleId, channel, message, nowMs, running)
+            }
+        delete(trash + partial)
     }
 
-    /** Checks a whole copy and moves it in, under the lock. */
-    private fun promote(
-        partial: File,
-        bundleId: String,
-    ): Boolean {
-        if (check(partial, bundleId) == null) {
-            Log.w(TAG, "didn't keep $bundleId: it isn't a whole bundle")
-            return false
-        }
-        directory(bundleId).deleteRecursively()
-        return partial.renameTo(directory(bundleId)).also { if (!it) Log.w(TAG, "didn't keep $bundleId: it couldn't be moved in") }
-    }
-
-    private fun list(
+    /** Under the lock: the new list, and what its change set aside. */
+    private fun publish(
         bundleId: String,
         channel: String,
         message: String?,
         nowMs: Long,
         running: String?,
-    ) {
+    ): List<File> {
         val next =
             (
                 listOf(HotUpdaterSandboxShelfEntry(bundleId, channel, message, isolationKey, nowMs)) +
-                    readEntries().filter { it.bundleId != bundleId }
+                    list().filter { it.bundleId != bundleId }
             ).toMutableList()
+        val trash = mutableListOf<File>()
         while (next.size > LIMIT) {
             val oldest = next.filter { it.bundleId != running }.minByOrNull { it.downloadedAtMs } ?: break
             next.remove(oldest)
-            directory(oldest.bundleId).deleteRecursively()
+            setAside(oldest.bundleId)?.let(trash::add)
         }
         write(next)
+        return trash
     }
 
-    /** The bundle's files when they're all on this device, checked as main checks a launch. */
-    fun stored(bundleId: String): HotUpdaterSandboxStoredBundle? =
-        if (isName(bundleId)) synchronized(lock) { check(directory(bundleId), bundleId) } else null
+    /**
+     * The bundle's files when they're all on this device, checked as main checks a
+     * launch. Read outside the lock: a bundle removed meanwhile reads as gone.
+     */
+    fun stored(bundleId: String): HotUpdaterSandboxStoredBundle? = if (isName(bundleId)) check(directory(bundleId), bundleId) else null
 
     fun remove(bundleId: String) {
         if (!isName(bundleId)) return
-        synchronized(lock) {
-            directory(bundleId).deleteRecursively()
-            write(readEntries().filter { it.bundleId != bundleId })
-        }
+        val trash =
+            synchronized(lock) {
+                write(list().filter { it.bundleId != bundleId })
+                setAside(bundleId)
+            }
+        delete(listOfNotNull(trash))
     }
 
     /** Everything but what runs. */
-    fun clear(running: String?): Unit =
-        synchronized(lock) {
-            val all = readEntries()
-            all.filter { it.bundleId != running }.forEach { directory(it.bundleId).deleteRecursively() }
-            write(all.filter { it.bundleId == running })
-        }
-
-    /** Another build's entries go, and so do partial copies and files no entry names. */
-    fun reconcile(): Unit = synchronized(lock) { reconcileHolding() }
-
-    private fun reconcileHolding() {
-        val all = readEntries()
-        val kept = all.filter { it.isolationKey == isolationKey }
-        if (kept.size != all.size) write(kept)
-        val names = kept.map { it.bundleId }.toSet()
-        val inProgress = copying.map { "$it$PARTIAL" }.toSet()
-        root
-            .listFiles()
-            ?.filter { it.name != INDEX && it.name !in names && it.name !in inProgress }
-            ?.forEach { it.deleteRecursively() }
+    fun clear(running: String?) {
+        val trash =
+            synchronized(lock) {
+                val all = list()
+                write(all.filter { it.bundleId == running })
+                all.filter { it.bundleId != running }.mapNotNull { setAside(it.bundleId) }
+            }
+        delete(trash)
     }
 
-    /** What the stored copies take, in bytes. */
+    /** Another build's entries go, and so do partial copies and files no entry names. */
+    fun reconcile() {
+        val trash =
+            synchronized(lock) {
+                val all = list()
+                val kept = all.filter { it.isolationKey == isolationKey }
+                if (kept.size != all.size) write(kept)
+                val names = kept.map { it.bundleId }.toSet()
+                val inProgress = copying.map { "$it$PARTIAL" }.toSet()
+                root
+                    .listFiles()
+                    .orEmpty()
+                    .filter { it.name != INDEX && it.name !in names && it.name !in inProgress }
+                    // Leftover trash goes as it is.
+                    .mapNotNull { if (it.name.startsWith(TRASH)) it else setAside(it.name) }
+            }
+        delete(trash)
+    }
+
+    /** What the stored copies take, in bytes. Measured outside the lock. */
     fun totalBytes(): Long =
-        synchronized(lock) { readEntries() }.sumOf { entry ->
+        entries.sumOf { entry ->
             directory(entry.bundleId).walkTopDown().filter { it.isFile }.sumOf { it.length() }
         }
 
-    private fun directory(bundleId: String) = File(root, bundleId)
+    private fun directory(name: String) = File(root, name)
 
-    /** Best effort, like the copies: a full cache loses the list, never the switch. */
+    /** Under the lock: moves a directory out of the list's way by one rename, for deleting after the lock. */
+    private fun setAside(name: String): File? {
+        val trash = File(root, "$TRASH${UUID.randomUUID()}")
+        return trash.takeIf { directory(name).renameTo(it) }
+    }
+
+    private fun delete(files: List<File>) = files.forEach { it.deleteRecursively() }
+
+    /** Under the lock. Best effort, like the copies: a full cache loses the list, never the switch. */
     private fun write(entries: List<HotUpdaterSandboxShelfEntry>) {
+        cached = entries
         runCatching { writeIndex(entries) }.onFailure { Log.w(TAG, "didn't save the list: ${it.message}") }
     }
 
@@ -209,6 +228,7 @@ internal class HotUpdaterSandboxShelf(
         private const val TAG = "HotUpdaterSandbox"
         private const val INDEX = "index.json"
         private const val PARTIAL = ".tmp"
+        private const val TRASH = ".trash-"
 
         /** A bundle ID that names one directory of the shelf. */
         private fun isName(bundleId: String) =

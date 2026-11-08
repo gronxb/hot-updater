@@ -164,7 +164,7 @@ private class ScreenFixture(
             openApp = { switched, fixed -> opens += switched to fixed },
             nowMs = { 1_000_000L },
             lock = HotUpdaterSandboxLock(),
-            copyContext = EmptyCoroutineContext,
+            shelfContext = EmptyCoroutineContext,
         )
 }
 

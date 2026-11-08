@@ -231,7 +231,7 @@ private struct Fixture {
         var opens: [(Bool, Bool)] = []
     }
 
-    init(pendingLinks: [String] = [], storesBundles: Bool = true) {
+    init(pendingLinks: [String] = [], storesBundles: Bool = true, shelfQueue: DispatchQueue = DispatchQueue(label: "test.shelf")) {
         store.pendingLinks = pendingLinks
         let box = box
         shelf = makeShelf(files, storesBundles: storesBundles)
@@ -243,7 +243,8 @@ private struct Fixture {
             shelf: shelf,
             openApp: { box.opens.append(($0, $1)) },
             now: { Date(timeIntervalSince1970: 1000) },
-            lock: lock
+            lock: lock,
+            shelfQueue: shelfQueue
         )
     }
 }
@@ -1294,11 +1295,13 @@ struct HotUpdaterSandboxScreenStateTests {
         await settle()
         fixture.host.calls = []
         #expect(fixture.coordinator.openDownloaded("ota"))
+        await settle()
         #expect(fixture.host.calls.isEmpty)
         #expect(fixture.host.startedStored == ["ota"])
         #expect(fixture.coordinator.state.storedSessionBundleId == "ota")
         // Reload runs the same stored bundle again.
         fixture.coordinator.reloadApp()
+        await settle()
         #expect(fixture.host.startedStored == ["ota", "ota"])
         #expect(fixture.host.calls.isEmpty)
     }
@@ -1423,11 +1426,15 @@ struct HotUpdaterSandboxScreenStateTests {
         fixture.shelf.add(bundleId: "third", channel: "pr-3", message: nil, nowMs: 2, running: nil)
         fixture.host.storedBundleId = "ota"
         fixture.coordinator.deleteDownloaded("ota")
+        await settle()
         #expect(fixture.shelf.stored("ota") != nil)
         fixture.coordinator.deleteDownloaded("third")
+        await settle()
         #expect(fixture.shelf.entries.map(\.bundleId) == ["other", "ota"])
         fixture.coordinator.clearDownloaded()
+        await settle()
         #expect(fixture.shelf.entries.map(\.bundleId) == ["ota"])
+        #expect(fixture.coordinator.state.downloaded.map(\.bundleId) == ["ota"])
         #expect(fixture.shelf.stored("other") == nil)
         #expect(fixture.host.calls.isEmpty)
     }
@@ -1565,13 +1572,34 @@ struct HotUpdaterSandboxShelfTests {
     }
 
     @Test
-    func aListThatCantBeSavedLosesTheRowNotTheSwitch() throws {
-        let shelf = makeShelf(temporaryDirectory())
+    func aListThatCantBeSavedKeepsTheSwitchAndLastsThisProcess() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
         install("a", in: shelf.source)
         // The list can't be written: a directory holds its name.
         try FileManager.default.createDirectory(at: shelf.root.appendingPathComponent("index.json"), withIntermediateDirectories: true)
         shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
-        #expect(shelf.entries.isEmpty)
+        #expect(shelf.entries.map(\.bundleId) == ["a"])
+        #expect(makeShelf(files).entries.isEmpty)
+    }
+
+    @Test @MainActor
+    func theMainActorNeverWaitsForTheShelfsFiles() async {
+        let shelfQueue = DispatchQueue(label: "test.slow-shelf")
+        let fixture = Fixture(shelfQueue: shelfQueue)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        // The shelf is busy for as long as the test says: a slow disk.
+        shelfQueue.suspend()
+        #expect(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.clearDownloaded()
+        await settle()
+        #expect(fixture.host.startedStored.isEmpty)
+        #expect(fixture.shelf.stored("ota") != nil)
+        shelfQueue.resume()
+        await settle()
+        #expect(fixture.host.startedStored == ["ota"])
+        #expect(fixture.coordinator.state.downloaded.isEmpty)
     }
 
     @Test
