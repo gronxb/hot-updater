@@ -1,5 +1,7 @@
 package com.hotupdater
 
+import android.content.Context
+import android.content.ContextWrapper
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +12,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
@@ -22,6 +25,18 @@ private fun link(
     channel: String,
     fingerprintHash: String = FINGERPRINT,
 ) = "hu-sandbox-app://hot-updater/preview?channel=$channel&fingerprint=$fingerprintHash"
+
+/**
+ * An application context whose only real part is its files directory: all the live
+ * host's handoff path reads. The rest is the unit tests' stubbed Android.
+ */
+private class TestAppContext(
+    private val files: File,
+) : ContextWrapper(null) {
+    override fun getApplicationContext(): Context = this
+
+    override fun getFilesDir(): File = files
+}
 
 private class FakeHost : HotUpdaterSandboxHost {
     var fingerprint: String? = FINGERPRINT
@@ -51,15 +66,26 @@ private class FakeHost : HotUpdaterSandboxHost {
     /** Handoffs the screen called off. */
     var abandoned = 0
 
-    /** The handoffs' files, as the live host writes and takes them. */
-    val handoffFiles = HotUpdaterSandboxDevFiles(Files.createTempDirectory("sandbox-dev").toFile())
+    /** An app whose files directory is a temporary one, for the live host's handoff path. */
+    private val app = TestAppContext(Files.createTempDirectory("sandbox-app").toFile())
+
+    /** The live host itself calls each handoff off, as on a device. */
+    private val live = HotUpdaterSandboxLiveHost(app)
+
+    /** The handoffs' files, where the live host and the relaunch's helper take them. */
+    val handoffFiles get() = HotUpdaterSandboxDev.filesOf(app)
 
     /** The nonces of the handoffs that went out, oldest first. */
     val handoffs = ArrayList<String>()
 
-    /** As the live host: the call-off is the same claim the relaunch's helper makes. */
+    /** What each of the live host's call-offs returned, in order. */
+    val callOffs = ArrayList<Boolean>()
+
     override fun abandonStoredSession(handoff: String): Boolean =
-        handoffFiles.claimHandoff(handoff).also { tookIt -> if (tookIt) abandoned += 1 }
+        live.abandonStoredSession(handoff).also { tookIt ->
+            callOffs += tookIt
+            if (tookIt) abandoned += 1
+        }
 
     /** As the live host: the session's ID changes only in the process that replaces this one. */
     override fun startStoredSession(
@@ -67,6 +93,7 @@ private class FakeHost : HotUpdaterSandboxHost {
         handoff: String,
     ): Boolean {
         if (handoffFails) return false
+        // What the live host's relaunch records before its intent goes out.
         handoffFiles.writeHandoff(handoff)
         handoffs += handoff
         startedStored += bundle.bundleId
@@ -547,8 +574,10 @@ class HotUpdaterSandboxCoordinatorTest {
         assertTrue(fixture.host.helperClaims())
         // The relaunch is replacing this process: on the first resume and the next, nothing
         // else starts, and the link waits for the new one.
-        repeat(2) {
+        repeat(2) { round ->
             fixture.coordinator.resumed()
+            // The live host's call-off loses, this time and the next.
+            assertEquals(List(round + 1) { false }, fixture.host.callOffs)
             assertEquals(0, fixture.host.abandoned)
             assertFalse(fixture.coordinator.openDownloaded("ota"))
             assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
