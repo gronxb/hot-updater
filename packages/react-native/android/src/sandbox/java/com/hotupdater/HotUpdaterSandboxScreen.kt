@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -56,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -96,13 +99,21 @@ internal data class HotUpdaterSandboxQuestion(
     enum class Kind { CONFIRM, REFUSED, FAILED }
 
     companion object {
-        fun of(phase: HotUpdaterSandboxPhase): HotUpdaterSandboxQuestion? =
+        /** [isOverApp]: whether a bundle runs behind the screen for a link to replace. */
+        fun of(
+            phase: HotUpdaterSandboxPhase,
+            isOverApp: Boolean,
+        ): HotUpdaterSandboxQuestion? =
             when (phase) {
                 is HotUpdaterSandboxPhase.Confirming ->
                     HotUpdaterSandboxQuestion(
                         Kind.CONFIRM,
                         "Open ${phase.link.channel}?",
-                        "This replaces the running bundle and deletes downloaded bundles.",
+                        if (isOverApp) {
+                            "This replaces the running bundle and deletes downloaded bundles."
+                        } else {
+                            HotUpdaterSandboxHomeModel.SWITCH_NOTE
+                        },
                         "Open",
                         "Cancel",
                     )
@@ -291,20 +302,25 @@ internal class HotUpdaterSandboxScreen(
     @Composable
     private fun Tabs() {
         val colors = LocalSandboxColors.current
+        var barHeight by remember { mutableIntStateOf(0) }
         Column(Modifier.fillMaxSize()) {
-            // The tab bar below takes the navigation bar's inset.
-            Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.navigationBars)) {
+            // The tab bar below takes the navigation bar's inset, and the keyboard
+            // covers the whole bar: the pane avoids only what reaches above it.
+            val bar = with(LocalDensity.current) { barHeight.toDp() }
+            Box(Modifier.weight(1f).consumeWindowInsets(PaddingValues(bottom = bar))) {
                 if (tab == 0) HomePane(showsClose = true) else InfoPane(showsClose = true)
             }
-            Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.separator))
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(colors.surface)
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            ) {
-                TabItem("Home", R.drawable.hot_updater_sandbox_home, tab == 0) { tab = 0 }
-                TabItem("Info", R.drawable.hot_updater_sandbox_info, tab == 1) { tab = 1 }
+            Column(Modifier.onSizeChanged { barHeight = it.height }) {
+                Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.separator))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(colors.surface)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
+                ) {
+                    TabItem("Home", R.drawable.hot_updater_sandbox_home, tab == 0) { tab = 0 }
+                    TabItem("Info", R.drawable.hot_updater_sandbox_info, tab == 1) { tab = 1 }
+                }
             }
         }
     }
@@ -551,6 +567,14 @@ internal class HotUpdaterSandboxScreen(
             delay(400)
             reveal.bringIntoView()
         }
+        // The keyboard's own motion restarts this at each step, so the form comes
+        // into view once the keyboard rests and the page has its final height.
+        val keyboard = WindowInsets.ime.getBottom(LocalDensity.current)
+        LaunchedEffect(isOpen, keyboard) {
+            if (!isOpen || keyboard == 0) return@LaunchedEffect
+            delay(100)
+            reveal.bringIntoView()
+        }
         val send = {
             val value = text.trim()
             if (value.isNotEmpty()) {
@@ -783,11 +807,11 @@ internal class HotUpdaterSandboxScreen(
                     activity.resources
                         .openRawResource(R.raw.hot_updater_sandbox_geist_ofl)
                         .bufferedReader()
-                        .use { it.readText() }
+                        .use { HotUpdaterSandboxInfoModel.reflow(it.readText()) }
                 }
             SandboxTextDialog(GEIST_LICENSE, text) { showsLicense = false }
         }
-        val question = HotUpdaterSandboxQuestion.of(state.phase)
+        val question = HotUpdaterSandboxQuestion.of(state.phase, activity.isOverApp)
         LaunchedEffect(question) {
             if (question != null && question.kind != HotUpdaterSandboxQuestion.Kind.CONFIRM) SandboxHaptic.error(haptics)
         }

@@ -2,17 +2,20 @@
 import AVFoundation
 import UIKit
 
-/// The in-app QR scanner's camera. The camera permission is asked for here, on
-/// the first scan, and only a sandbox link is passed on: the coordinator checks
-/// and confirms that link like any other. Whoever shows it closes it.
+/// The in-app QR scanner's camera, shown once camera access is allowed: the
+/// sheet around it asks for access. Only a sandbox link is passed on: the
+/// coordinator checks and confirms that link like any other. Whoever shows it
+/// closes it.
 final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     private let session = AVCaptureSession()
     private let onLink: (URL) -> Void
+    private let onUnavailable: (String) -> Void
     private var preview: AVCaptureVideoPreviewLayer?
     private var isDone = false
 
-    init(onLink: @escaping (URL) -> Void) {
+    init(onLink: @escaping (URL) -> Void, onUnavailable: @escaping (String) -> Void) {
         self.onLink = onLink
+        self.onUnavailable = onUnavailable
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -24,15 +27,7 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-            DispatchQueue.main.async {
-                if granted {
-                    self?.start()
-                } else {
-                    self?.showMessage("Allow camera access in Settings to scan.")
-                }
-            }
-        }
+        start()
     }
 
     override func viewDidLayoutSubviews() {
@@ -50,13 +45,13 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
         guard let camera = AVCaptureDevice.default(for: .video),
               let input = try? AVCaptureDeviceInput(device: camera),
               session.canAddInput(input) else {
-            showMessage("No camera on this device.")
+            onUnavailable("No camera on this device.")
             return
         }
         session.addInput(input)
         let output = AVCaptureMetadataOutput()
         guard session.canAddOutput(output) else {
-            showMessage("This camera can't read QR codes.")
+            onUnavailable("This camera can't read QR codes.")
             return
         }
         session.addOutput(output)
@@ -84,23 +79,6 @@ final class HotUpdaterSandboxScanner: UIViewController, AVCaptureMetadataOutputO
         }
         isDone = true
         onLink(url)
-    }
-
-    private func showMessage(_ text: String) {
-        let message = UILabel()
-        message.text = text
-        message.textColor = .white
-        message.font = .preferredFont(forTextStyle: .body)
-        message.adjustsFontForContentSizeCategory = true
-        message.textAlignment = .center
-        message.numberOfLines = 0
-        message.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(message)
-        NSLayoutConstraint.activate([
-            message.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            message.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            message.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-        ])
     }
 }
 #endif

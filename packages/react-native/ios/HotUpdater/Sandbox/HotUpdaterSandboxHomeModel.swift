@@ -269,5 +269,33 @@ struct HotUpdaterSandboxInfoModel: Equatable {
             Row(name: "Pending", value: details?.pendingBundleId.map(HotUpdaterSandboxHomeModel.shortId) ?? "None"),
         ]
     }
+
+    /// A license file's text as paragraphs that wrap to the screen: the file's
+    /// hard line breaks and dashed rules go, and a heading in capitals keeps its
+    /// own line.
+    static func reflow(_ text: String) -> String {
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var paragraphs: [String] = []
+        var block: [String] = []
+        func flush() {
+            guard !block.isEmpty else { return }
+            if block.count > 1, let first = block.first, first.lowercased() != first, first.uppercased() == first {
+                paragraphs.append(first)
+                block.removeFirst()
+            }
+            paragraphs.append(block.joined(separator: " "))
+            block = []
+        }
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                flush()
+            } else if !trimmed.allSatisfy({ $0 == "-" }) {
+                block.append(trimmed)
+            }
+        }
+        flush()
+        return paragraphs.joined(separator: "\n\n")
+    }
 }
 #endif

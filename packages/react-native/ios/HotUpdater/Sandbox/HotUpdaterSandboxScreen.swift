@@ -39,12 +39,15 @@ struct HotUpdaterSandboxQuestion: Equatable {
     let accept: String
     let decline: String?
 
-    init?(phase: HotUpdaterSandboxPhase) {
+    /// `isOverApp`: whether a bundle runs behind the screen for a link to replace.
+    init?(phase: HotUpdaterSandboxPhase, isOverApp: Bool) {
         switch phase {
         case .confirming(let link):
             kind = .confirm
             title = "Open \(link.channel)?"
-            message = "This replaces the running bundle and deletes downloaded bundles."
+            message = isOverApp
+                ? "This replaces the running bundle and deletes downloaded bundles."
+                : HotUpdaterSandboxHomeModel.switchNote
             accept = "Open"
             decline = "Cancel"
         case .refused(let refusal):
@@ -206,7 +209,7 @@ private final class HotUpdaterSandboxFallbackScreen: UIViewController {
         let home = HotUpdaterSandboxHomeModel(state: next, isOverApp: isOverApp(), nowMs: Date().timeIntervalSince1970 * 1000)
         open.setTitle(home.bigRow.title, for: .normal)
         open.isEnabled = !home.isBusy
-        ask(HotUpdaterSandboxQuestion(phase: next.phase))
+        ask(HotUpdaterSandboxQuestion(phase: next.phase, isOverApp: isOverApp()))
     }
 
     @objc private func openTapped() {

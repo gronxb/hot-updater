@@ -573,6 +573,37 @@ class HotUpdaterSandboxHomeModelTest {
         assertEquals("019a3f…c2", info.bundle.first { it.name == "Current" }.value)
         assertEquals("019a3f…c2", info.bundle.first { it.name == "Pending" }.value)
     }
+
+    @Test
+    fun `the license reflows into paragraphs`() {
+        val text =
+            listOf(
+                "Copyright 2024 The Authors",
+                "",
+                "-----------------------------------------------------------",
+                "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007",
+                "-----------------------------------------------------------",
+                "",
+                "PREAMBLE",
+                "The goals of the Open Font License (OFL) are to stimulate ",
+                "worldwide development.",
+                "",
+                "DISCLAIMER",
+                "THE FONT SOFTWARE IS PROVIDED \"AS IS\",",
+                "WITHOUT WARRANTY OF ANY KIND.",
+            ).joinToString("\n")
+        assertEquals(
+            listOf(
+                "Copyright 2024 The Authors",
+                "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007",
+                "PREAMBLE",
+                "The goals of the Open Font License (OFL) are to stimulate worldwide development.",
+                "DISCLAIMER",
+                "THE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.",
+            ).joinToString("\n\n"),
+            HotUpdaterSandboxInfoModel.reflow(text),
+        )
+    }
 }
 
 class HotUpdaterSandboxCrashMarkerFileTest {
