@@ -539,7 +539,7 @@ A reused build has the same build number (`CFBundleVersion` or
 once. So with `--submit`, as in `testflight` and `google-play upload`, a
 reused build is uploaded only when the store doesn't have it yet:
 
-- A tracked build already submitted to that store is skipped without asking
+- A tracked build already submitted to that destination is skipped without asking
   the store:
 
   ```txt
@@ -553,6 +553,8 @@ reused build is uploaded only when the store doesn't have it yet:
   version code Google Play's internal track releases, is skipped the same
   way. Nothing is recorded: the store matched the build number, not the
   artifact.
+- A cached Android build whose version code Play already holds can be promoted
+  to another track without uploading again. The new destination is recorded.
 - When the store refuses the build number anyway, because a build with that
   number came from another upload or tool, the CLI skips the same way instead
   of printing the store's error, adds `Bump the build number to upload this
@@ -844,6 +846,10 @@ and uploads with. [TestFlight](/docs/native-builds/testflight) and
 | `-o, --output-path <dir>`   | Where to copy the build output                                                                     |
 | `--submit testflight`       | `ios`: upload the `.ipa` to App Store Connect for TestFlight                                       |
 | `--submit play-internal`    | `android`: release the `.aab` to Google Play's internal testing track                              |
+| `--submit play-closed` | `android`: release to Closed testing (`alpha`) |
+| `--submit play-open` | `android`: release to Open testing (`beta`) |
+| `--submit play-production` | `android`: release to Production; requires Release to production permission |
+| `--rollout <percentage>` | Play staged rollout, integer 1–100, default 100; unavailable on internal |
 | `--testflight-group <name>` | `ios`, a sandbox scheme's `--submit testflight`: the internal TestFlight group to add the build to |
 | `--what-to-test <text>`     | `ios`, a sandbox scheme's `--submit testflight`: the build's What to Test in TestFlight            |
 | `--udid <udid>`             | `ios`: say whether the `.ipa` includes this iPhone; repeat it for each                             |

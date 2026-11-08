@@ -1,4 +1,4 @@
-import { Option } from "@commander-js/extra-typings";
+import { InvalidArgumentError, Option } from "@commander-js/extra-typings";
 import type { Platform } from "@hot-updater/plugin-core";
 
 export const PLATFORMS: readonly Platform[] = ["ios", "android"];
@@ -45,8 +45,17 @@ export const whatToTestCommandOption = new Option(
 
 export const playSubmitCommandOption = new Option(
   "--submit <destination>",
-  "submit the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",
-).choices(["play-internal"]);
+  "release the .aab to a Google Play track with the play-service-account secret",
+).choices(["play-internal", "play-closed", "play-open", "play-production"]);
+
+export const playRolloutCommandOption = new Option(
+  "--rollout <percentage>",
+  "staged rollout percentage, 1–100 (default: 100)",
+).argParser((value) => {
+  if (!/^[0-9]+$/.test(value) || Number(value) < 1 || Number(value) > 100)
+    throw new InvalidArgumentError("Rollout must be an integer from 1 to 100.");
+  return Number(value);
+});
 
 export const nativeBuildDryRunCommandOption = new Option(
   "--dry-run",

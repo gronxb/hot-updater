@@ -3,7 +3,7 @@ description: >-
   Builds a native app with hot-updater native-build ios or native-build
   android, signed with the credentials the config's secrets adapter reads,
   the job's environment by default, tracks the build in Hot Updater, and
-  submits it to TestFlight or Google Play's internal track. It never signs in to an Apple or Google
+  submits it to TestFlight or a Google Play track. It never signs in to an Apple or Google
   account: it reads what hot-updater apple login or secrets put stored.
 author: gronxb
 inputs:
@@ -15,7 +15,7 @@ inputs:
     required: true
   submit:
     description: >-
-      Where to submit the build: testflight for ios, play-internal for
+      Where to submit the build: testflight for ios; play-internal, play-closed, play-open or play-production for
       android, or empty to only build. Every build but a Debug one is tracked
       in Hot Updater.
   working-directory:

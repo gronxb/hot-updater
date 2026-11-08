@@ -84,7 +84,12 @@ export interface ChannelRow {
 export type NativeBuildArtifactKind = "apk" | "aab" | "ipa" | "app";
 
 /** The store track a native build was submitted to. */
-export type NativeBuildSubmissionDestination = "testflight" | "play-internal";
+export type NativeBuildSubmissionDestination =
+  | "testflight"
+  | "play-internal"
+  | "play-closed"
+  | "play-open"
+  | "play-production";
 
 /**
  * A registered native build: its artifact in storage, the scope it serves,

@@ -52,6 +52,12 @@ const deps = (
 };
 
 describe("parseInputs", () => {
+  it.each(["play-closed", "play-open", "play-production"])(
+    "accepts %s",
+    (submit) => {
+      expect(parseInputs(env({ INPUT_SUBMIT: submit })).submit).toBe(submit);
+    },
+  );
   it("reads a build that submits to Google Play", () => {
     expect(parseInputs(env())).toEqual({
       platform: "android",
@@ -85,7 +91,7 @@ describe("parseInputs", () => {
     ],
     [
       { INPUT_SUBMIT: "app-store" },
-      "submit takes testflight or play-internal, or is empty, not app-store.",
+      "submit takes testflight, play-internal, play-closed, play-open or play-production, or is empty, not app-store.",
     ],
     [
       { INPUT_SUBMIT: "testflight" },

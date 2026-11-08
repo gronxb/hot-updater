@@ -11,6 +11,9 @@ dayjs.extend(relativeTime);
 export const storeTrackLabels = {
   testflight: "TestFlight",
   "play-internal": "Play internal",
+  "play-closed": "Play closed",
+  "play-open": "Play open",
+  "play-production": "Play production",
 } as const satisfies Record<
   NonNullable<NativeBuildRow["submitted_to"]>,
   string

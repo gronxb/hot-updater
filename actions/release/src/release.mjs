@@ -50,7 +50,7 @@ import {
  * @property {"deployed" | "built" | "decided" | "failed"} outcome
  * @property {string | null} nativeBuildId
  * @property {string | null} bundleId
- * @property {"testflight" | "play-internal" | null} submittedTo
+ * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production" | null} submittedTo
  * @property {string | null} error
  */
 

@@ -154,10 +154,12 @@ const installLinks = (
   const download = nativeBuildDownloadLink(consoleUrl, id);
   const details = `[Details](${nativeBuildPageLink(consoleUrl, id)})`;
   if (store) {
+    const storeName =
+      store.destination === "testflight"
+        ? STORE_NAMES.testflight
+        : STORE_NAMES["play-internal"];
     return [
-      store.url
-        ? `[${STORE_NAMES[store.destination]}](${store.url})`
-        : STORE_NAMES[store.destination],
+      store.url ? `[${storeName}](${store.url})` : storeName,
       ...(store.version ? [code(store.version)] : []),
       ...(store.state && STORE_STATES[store.state]
         ? [STORE_STATES[store.state]]

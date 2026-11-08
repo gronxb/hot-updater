@@ -195,7 +195,13 @@ describe("CLI commands", () => {
       expect(build).toContain("-s, --scheme <scheme>");
       expect(build).toContain("-o, --output-path <outputPath>");
       expect(flat).toContain(`--submit <destination>`);
-      expect(flat).toContain(`(choices: "${destination}")`);
+      expect(flat).toContain(
+        platform === "ios"
+          ? `(choices: "${destination}")`
+          : '(choices: "play-internal", "play-closed", "play-open", "play-production")',
+      );
+      if (platform === "android")
+        expect(flat).toContain("--rollout <percentage>");
       expect(flat).toContain(
         "--dry-run Build, but record and submit nothing: no Hot Updater tracking, no store submission (like npm publish --dry-run)",
       );

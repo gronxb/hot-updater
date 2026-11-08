@@ -539,6 +539,35 @@ describe("the native build registry", () => {
     ]);
   });
 
+  it.each(["play-closed", "play-open", "play-production"] as const)(
+    "records promotion to %s",
+    async (destination) => {
+      const core = setup();
+      const build = await core.registerNativeBuild(
+        registration(1, {
+          platform: "android",
+          artifact: {
+            kind: "aab",
+            storageUri: "storage://app.aab",
+            byteSize: 1,
+          },
+        }),
+      );
+      await core.recordNativeBuildSubmission(build.id, {
+        destination: "play-internal",
+        version: "1.7.0 (63)",
+      });
+      await core.recordNativeBuildSubmission(build.id, {
+        destination,
+        version: "1.7.0 (63)",
+      });
+      await expect(core.getNativeBuild(build.id)).resolves.toMatchObject({
+        submitted_to: destination,
+        submitted_version: "1.7.0 (63)",
+      });
+    },
+  );
+
   it("stores the build number the artifact reports, and none for a registration without one", async () => {
     const core = setup();
     const numbered = await core.registerNativeBuild(

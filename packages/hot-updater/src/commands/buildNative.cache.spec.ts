@@ -45,6 +45,7 @@ vi.mock("@hot-updater/android-helper", () => ({
   PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
   readBuiltApp: vi.fn(async () => undefined),
   buildAndroid: vi.fn(async () => ({ logFilePath: null })),
+  hasPlayVersionCode: vi.fn(async () => false),
   findPlayInternalRelease: vi.fn(async () => {
     events.push("find on Play");
     return true;

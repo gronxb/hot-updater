@@ -8,7 +8,7 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
  * @typedef {object} Inputs
  * @property {Platform} platform
  * @property {string} scheme
- * @property {"testflight" | "play-internal" | null} submit
+ * @property {"testflight" | "play-internal" | "play-closed" | "play-open" | "play-production" | null} submit
  * @property {boolean} [noCache] Builds even when a build could be reused.
  * @property {string[]} [extraArgs] More `native-build` arguments.
  *
@@ -32,6 +32,9 @@ import { parseJsonOutput, reportBuildLogs } from "../../shared/cli.mjs";
 const SUBMITS = /** @type {const} */ ({
   testflight: "ios",
   "play-internal": "android",
+  "play-closed": "android",
+  "play-open": "android",
+  "play-production": "android",
 });
 
 /**
@@ -78,7 +81,7 @@ export const parseInputs = (env) => {
   const submit = input("SUBMIT");
   if (submit !== "" && !(submit in SUBMITS)) {
     throw new Error(
-      `submit takes testflight or play-internal, or is empty, not ${submit}.`,
+      `submit takes testflight, play-internal, play-closed, play-open or play-production, or is empty, not ${submit}.`,
     );
   }
   const store = /** @type {keyof typeof SUBMITS | ""} */ (submit);
@@ -183,8 +186,10 @@ export const runAction = async (deps, inputs) => {
       "Submitted to",
       inputs.submit === "testflight"
         ? "TestFlight"
-        : inputs.submit === "play-internal"
-          ? "Google Play internal testing"
+        : inputs.submit?.startsWith("play-")
+          ? inputs.submit === "play-internal"
+            ? "Google Play internal testing"
+            : `Google Play ${inputs.submit.slice(5)}`
           : "no store",
     ],
   ];

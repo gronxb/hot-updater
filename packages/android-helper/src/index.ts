@@ -14,6 +14,7 @@ export {
   type PlayAccess,
   PlayVersionCodeUsedError,
   readPlayHighestVersionCode,
+  hasPlayVersionCode,
   readPlayInternalRelease,
   resolvePlayUploadServiceAccount,
   type UploadToPlayResult,

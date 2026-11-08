@@ -1,6 +1,6 @@
 ---
 title: "Google Play"
-description: "Store the Play service account key and the upload keystore once, then build the .aab and release it to Google Play's internal testing track."
+description: "Store the Play service account key and the upload keystore once, then build the .aab and release it to a Google Play track."
 icon: Play
 ---
 
@@ -162,15 +162,36 @@ releases the builds after it.
 
 Google Play takes each version code once: raise `versionCode` for every build
 you upload. On an app Play Console has not published yet, Google Play takes
-only draft releases, so the internal release is a draft that you roll out in
+only draft releases, so the release is a draft that you roll out in
 Play Console. When the app's state requires it, the CLI commits without
 sending the changes for review, and you send them for review in Play Console.
 When an upload fails, the build stays at its output path, and nothing is
 recorded. Once Google Play takes the bundle, the CLI records it on the tracked
 build, and the Console's [Native builds](/docs/guides/native-build#native-builds-in-the-console) tab
-shows it as on Play internal with its version name and code, such as
+shows its selected track with its version name and code, such as
 `1.7.0 (66)`. A version code Google Play already has is skipped with
 `Already on Google Play internal testing` and its version, such as
 `1.7.0 (66)`; see [Reuse a build](/docs/guides/native-build#reuse-a-build).
 [Build and upload from CI](/docs/guides/ci-native-build) uploads from a CI job
 with the stored service account.
+
+## Tracks and staged rollout
+
+For a normal scheme, choose `--submit play-internal`, `play-closed`,
+`play-open`, or `play-production`. Closed and Open testing use the Play API's
+`alpha` and `beta` tracks. Production requires the service account's
+**Release to production** permission.
+
+```bash
+npx hot-updater native-build android --scheme release --submit play-production --rollout 10
+```
+
+`--rollout` takes an integer from 1 to 100 (default 100). Below 100 it starts
+an `inProgress` release with that user fraction; 100 completes the release.
+Internal testing does not support staged rollout. Draft apps still get draft
+releases. If Play saves changes without review, send them for review in Play
+Console.
+
+A cached build whose version code Play already holds can go to another track
+without another upload. Play Console can also promote builds. Sandbox schemes
+can submit only to internal testing.

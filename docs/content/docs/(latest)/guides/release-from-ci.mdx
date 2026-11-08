@@ -227,3 +227,8 @@ else
   npx --no-install hot-updater native-build android --scheme release --submit play-internal
 fi
 ```
+
+For another Play track, use the [native build action](/docs/guides/ci-native-build)
+with `submit: play-closed`, `play-open`, or `play-production`. The release
+action submits Android builds to internal testing. Play Console can promote
+them later. Production requires **Release to production** permission.

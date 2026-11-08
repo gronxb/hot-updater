@@ -19,6 +19,7 @@ import {
   nativeBuildSchemeCommandOption,
   platformCommandOption,
   playSubmitCommandOption,
+  playRolloutCommandOption,
   testFlightGroupCommandOption,
   testFlightSubmitCommandOption,
   whatToTestCommandOption,
@@ -489,6 +490,7 @@ nativeBuildCommand
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildOutputCommandOption)
   .addOption(playSubmitCommandOption)
+  .addOption(playRolloutCommandOption)
   .addOption(nativeBuildDryRunCommandOption)
   .addOption(nativeBuildNoCacheCommandOption)
   .addOption(nativeBuildJsonCommandOption)

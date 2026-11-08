@@ -4,6 +4,7 @@ import {
   buildAndroid,
   type EnrichedNativeBuildAndroidScheme,
   findPlayInternalRelease,
+  hasPlayVersionCode,
   assertPlaySigned,
   PlayVersionCodeUsedError,
   readBuiltApp,
@@ -131,7 +132,8 @@ export interface NativeBuildCreateOptions {
   /** The `nativeBuild` scheme; without it, a prompt at a terminal. */
   readonly scheme?: string;
   readonly outputPath?: string;
-  readonly submit?: "testflight" | "play-internal";
+  readonly submit?: NativeBuildSubmissionDestination;
+  readonly rollout?: number;
   /** A sandbox build's internal TestFlight group, checked before it is built. */
   readonly testflightGroup?: string;
   /** A sandbox build's What to Test in TestFlight. */
@@ -175,6 +177,7 @@ export type NativeBuildTrackingSkip = "debug" | "dry-run";
 const buildNativeInternal = async ({
   options: {
     submit: upload,
+    rollout,
     dryRun = false,
     json = false,
     cache: useCache = true,
@@ -234,6 +237,18 @@ const buildNativeInternal = async ({
             iosScheme,
             androidScheme,
           }) => {
+            if (
+              rollout !== undefined &&
+              (!Number.isInteger(rollout) ||
+                rollout < 1 ||
+                rollout > 100 ||
+                !upload?.startsWith("play-") ||
+                upload === "play-internal")
+            ) {
+              throw new NativeBuildFailure(
+                "--rollout takes 1–100 with a Play closed, open, or production submission.",
+              );
+            }
             secrets = configured;
             await reportUploadFailure(() =>
               assertSandboxBuildAllowed({
@@ -261,15 +276,14 @@ const buildNativeInternal = async ({
                     }),
                   )
                 : undefined;
-            const uploadServiceAccount =
-              upload === "play-internal"
-                ? await reportUploadFailure(async () =>
-                    resolvePlayUploadServiceAccount({
-                      scheme,
-                      androidScheme: androidScheme!,
-                    }),
-                  )
-                : undefined;
+            const uploadServiceAccount = upload?.startsWith("play-")
+              ? await reportUploadFailure(async () =>
+                  resolvePlayUploadServiceAccount({
+                    scheme,
+                    androidScheme: androidScheme!,
+                  }),
+                )
+              : undefined;
             if (uploadServiceAccount) {
               // Everything Google Play needs, each line passed or not,
               // before anything is tracked or built. A dry run builds
@@ -668,6 +682,8 @@ const buildNativeInternal = async ({
         const playServiceAccount =
           dryRun || existingSubmission ? undefined : serviceAccount;
         if (playServiceAccount) {
+          const playDestination = upload!;
+          let existingVersionCode: number | undefined;
           // The artifact's, with the suffixes flavors and build types add.
           const androidProjectPath = path.join(getCwd(), "android");
           const packageName =
@@ -683,11 +699,26 @@ const buildNativeInternal = async ({
               versionCode,
             );
           if (reused) {
-            const versionCode = await readBuiltVersionCode({
-              artifactPath: result.artifactPath,
-              androidProjectPath,
-            });
+            const versionCode = result.buildNumber
+              ? Number(result.buildNumber)
+              : await readBuiltVersionCode({
+                  artifactPath: result.artifactPath,
+                  androidProjectPath,
+                });
             if (
+              versionCode !== undefined &&
+              (await reportUploadFailure(() =>
+                hasPlayVersionCode({
+                  versionCode,
+                  packageName,
+                  serviceAccount: playServiceAccount,
+                }),
+              ))
+            ) {
+              existingVersionCode = versionCode;
+            }
+            if (
+              upload === "play-internal" &&
               versionCode !== undefined &&
               (await reportUploadFailure(() =>
                 findPlayInternalRelease({
@@ -730,9 +761,21 @@ const buildNativeInternal = async ({
                         aabPath: result.artifactPath,
                         packageName,
                         serviceAccount: playServiceAccount,
+                        ...(playDestination === "play-internal"
+                          ? {}
+                          : {
+                              track:
+                                PLAY_TRACKS[
+                                  playDestination as keyof typeof PLAY_TRACKS
+                                ],
+                            }),
+                        ...(rollout === undefined ? {} : { rollout: rollout }),
+                        ...(existingVersionCode === undefined
+                          ? {}
+                          : { existingVersionCode }),
                       }),
                     ({ versionCode, status }) =>
-                      `Uploaded version code ${versionCode} to Google Play${status === "draft" ? " · draft" : ""}`,
+                      `${existingVersionCode === undefined ? "Uploaded" : "Promoted"} version code ${versionCode} to ${STORE_NAMES[playDestination]}${status === "draft" ? " · draft" : status === "inProgress" ? ` · ${rollout}% rollout` : ""}`,
                   ),
                 stays(result.artifactPath),
               ),
@@ -743,7 +786,7 @@ const buildNativeInternal = async ({
                       code === null ? null : playVersionLabel(code),
                     )
                   : undefined,
-              "play-internal",
+              playDestination,
             );
             if ("refused" in uploaded) {
               existingSubmission = uploaded.refused;
@@ -760,11 +803,11 @@ const buildNativeInternal = async ({
                   reusable: isStoreBuildReusable(state, null),
                 };
               }
-              // Google Play took the bundle on the internal track, as a draft
+              // Google Play released the bundle on the selected track, as a draft
               // release when the app is not published yet.
               registered = await recordSubmission(
                 registered,
-                "play-internal",
+                playDestination,
                 () => playVersionLabel(versionCode),
               );
             }
@@ -1079,6 +1122,9 @@ interface ExistingSubmission {
 const STORE_NAMES = {
   testflight: "TestFlight",
   "play-internal": "Google Play internal testing",
+  "play-closed": "Google Play closed testing",
+  "play-open": "Google Play open testing",
+  "play-production": "Google Play production",
 } as const;
 
 /** `2026-10-27 04:02 UTC`. */
@@ -1330,3 +1376,9 @@ export const handleNativeBuildCreate = async (
   platform: Platform,
   options: NativeBuildCreateOptions,
 ): Promise<NativeBuildResult> => buildNativeInternal({ options, platform });
+
+const PLAY_TRACKS = {
+  "play-closed": "alpha",
+  "play-open": "beta",
+  "play-production": "production",
+} as const;

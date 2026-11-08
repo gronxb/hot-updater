@@ -277,6 +277,15 @@ export const readStoreStatus = async (
         );
         const release = await readPlayInternalRelease({
           versionCode: Number(buildNumber),
+          track: (
+            {
+              "play-internal": "internal",
+              "play-closed": "alpha",
+              "play-open": "beta",
+              "play-production": "production",
+              testflight: "internal",
+            } as const
+          )[build.submitted_to!],
           packageName,
           serviceAccount,
           ...(fetch ? { fetch } : {}),
@@ -288,7 +297,7 @@ export const readStoreStatus = async (
               ? "draft"
               : "ready";
         return {
-          destination: "play-internal",
+          destination: build.submitted_to!,
           url: playTestingUrl(packageName),
           version: build.submitted_version,
           state,

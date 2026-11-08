@@ -161,6 +161,15 @@ const STORE_CONSOLES = {
     name: "App Store Connect",
     url: "https://appstoreconnect.apple.com/apps",
   },
+  "play-closed": {
+    name: "Play Console",
+    url: "https://play.google.com/console",
+  },
+  "play-open": { name: "Play Console", url: "https://play.google.com/console" },
+  "play-production": {
+    name: "Play Console",
+    url: "https://play.google.com/console",
+  },
   "play-internal": {
     name: "Play Console",
     url: "https://play.google.com/console",
@@ -265,10 +274,13 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
     case "aab":
       return isSubmitted(build) ? (
         <p className="text-xs text-muted-foreground">
-          Submitted to Google Play internal testing as{" "}
-          <SubmittedVersion build={build} />. Testers get it once its release is
-          rolled out; on an app Play Console hasn't published, the release is a
-          draft you roll out in Play Console.
+          Submitted to{" "}
+          {build.submitted_to === "play-internal"
+            ? "Google Play internal testing"
+            : `Play ${build.submitted_to.slice(5)}`}{" "}
+          as <SubmittedVersion build={build} />. Testers get it once its release
+          is rolled out; on an app Play Console hasn't published, the release is
+          a draft you roll out in Play Console.
         </p>
       ) : (
         <div className="flex min-w-0 flex-col gap-2">

@@ -12,6 +12,7 @@ vi.mock("@hot-updater/android-helper", () => ({
   PlayVersionCodeUsedError: class PlayVersionCodeUsedError extends Error {},
   assertPlaySigned: vi.fn(async () => {}),
   buildAndroid: vi.fn(async () => ({ logFilePath: null })),
+  hasPlayVersionCode: vi.fn(async () => false),
   findPlayInternalRelease: vi.fn(async () => false),
   playTestingUrl: (name: string) => `https://play.test/${name}`,
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.7.0" })),

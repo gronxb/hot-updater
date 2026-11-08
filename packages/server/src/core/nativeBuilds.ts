@@ -80,11 +80,11 @@ const MARK_ATTEMPTS = 8;
 
 /** The store track each platform's builds are submitted to. */
 const SUBMISSION_DESTINATIONS = {
-  android: "play-internal",
-  ios: "testflight",
+  android: ["play-internal", "play-closed", "play-open", "play-production"],
+  ios: ["testflight"],
 } as const satisfies Record<
   NativeBuildRow["platform"],
-  NonNullable<NativeBuildRow["submitted_to"]>
+  readonly NonNullable<NativeBuildRow["submitted_to"]>[]
 >;
 
 /** `native_builds.build_number`'s bound in core's schema. */
@@ -356,9 +356,13 @@ export const createNativeBuildApi = (
       const row = await tx.findOne("native_builds", { id });
       if (row === null) return null;
       const build = pick(row);
-      if (SUBMISSION_DESTINATIONS[build.platform] !== destination) {
+      if (
+        !(
+          SUBMISSION_DESTINATIONS[build.platform] as readonly string[]
+        ).includes(destination)
+      ) {
         throw new NativeBuildInputError(
-          `Invalid native build submission: an ${build.platform} build is submitted to ${SUBMISSION_DESTINATIONS[build.platform]}, not ${destination}.`,
+          `Invalid native build submission: an ${build.platform} build is submitted to ${SUBMISSION_DESTINATIONS[build.platform].join(" or ")}, not ${destination}.`,
         );
       }
       const set = {
