@@ -113,8 +113,11 @@ class HotUpdaterSandboxShelfTest {
             val shelf = testShelf()
             installTestBundle(shelf.source, "b$round")
             val copy = Thread { shelf.add("b$round", "pr-1", null, 0, null) }.apply { start() }
+            // A pause between turns, as a person's refreshes have: a lock isn't fair,
+            // and a loop that takes it back at once can starve the copy.
             do {
                 shelf.reconcile()
+                copy.join(0, 200_000)
             } while (copy.isAlive)
             assertAgreement(shelf, round)
             assertEquals("round $round", listOf("b$round"), shelf.entries.map { it.bundleId })
@@ -131,6 +134,7 @@ class HotUpdaterSandboxShelfTest {
             val copy = Thread { shelf.add("b$round", "pr-1", null, 1, null) }.apply { start() }
             do {
                 shelf.clear(null)
+                copy.join(0, 200_000)
             } while (copy.isAlive)
             assertAgreement(shelf, round)
         }

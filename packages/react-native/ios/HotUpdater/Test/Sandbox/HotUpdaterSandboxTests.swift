@@ -1539,7 +1539,9 @@ struct HotUpdaterSandboxShelfTests {
                 shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0, running: nil)
                 done.signal()
             }
-            repeat { shelf.reconcile() } while done.wait(timeout: .now()) == .timedOut
+            // A pause between turns, as a person's refreshes have: a lock isn't fair,
+            // and a loop that takes it back at once can starve the copy.
+            repeat { shelf.reconcile() } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
             expectAgreement(shelf, round)
             #expect(shelf.entries.map(\.bundleId) == ["b\(round)"], "round \(round)")
         }
@@ -1557,7 +1559,7 @@ struct HotUpdaterSandboxShelfTests {
                 shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1, running: nil)
                 done.signal()
             }
-            repeat { shelf.clear(keeping: nil) } while done.wait(timeout: .now()) == .timedOut
+            repeat { shelf.clear(keeping: nil) } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
             expectAgreement(shelf, round)
         }
     }
