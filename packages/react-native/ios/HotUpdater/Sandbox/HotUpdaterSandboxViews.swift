@@ -330,7 +330,7 @@ private struct HomeScreen: View {
                         primary(home).id("primary")
                         devServer(home).id("devServer")
                         previews(home).id("previews")
-                        if !home.previews.isEmpty { history(home).id("history") }
+                        downloaded(home).id("downloaded")
                         Text(HotUpdaterSandboxHomeModel.hint)
                             .font(SandboxFont.footnote)
                             .foregroundColor(SandboxColor.textSecondary)
@@ -467,6 +467,14 @@ private struct HomeScreen: View {
                     action: model.openOrReload
                 )
                 .accessibilityIdentifier("hot-updater-sandbox-open")
+                if home.bigRow.showsBack {
+                    SandboxDivider()
+                    SandboxRow(lead: .icon("arrow.uturn.backward"), title: "Back to current bundle", showsChevron: false) {
+                        SandboxHaptic.tap()
+                        model.coordinator.leaveStoredSession()
+                        model.onClose()
+                    }
+                }
             }
         }
     }
@@ -550,30 +558,57 @@ private struct HomeScreen: View {
         }
     }
 
-    private func history(_ home: HotUpdaterSandboxHomeModel) -> some View {
-        SandboxSection(title: "Recent", action: ("Clear", { model.confirming = .clear })) {
-            SandboxCard {
-                ForEach(Array(home.previews.enumerated()), id: \.element.channel) { index, preview in
-                    if index > 0 { SandboxDivider() }
-                    SandboxRow(
-                        lead: .icon("clock.arrow.circlepath"),
-                        title: preview.channel,
-                        titleFont: SandboxFont.codeHeadline,
-                        subtitle: preview.message,
-                        detail: preview.opened,
-                        isEnabled: !home.isBusy
-                    ) {
-                        SandboxHaptic.tap()
-                        focus = nil
-                        model.coordinator.switchTo(preview.channel)
+    private func downloaded(_ home: HotUpdaterSandboxHomeModel) -> some View {
+        SandboxSection(
+            title: "Downloaded",
+            action: home.downloaded.contains { !$0.isRunning } ? ("Clear", { model.confirming = .clear }) : nil,
+            footer: home.downloadedFooter
+        ) {
+            if !home.downloaded.isEmpty {
+                SandboxCard {
+                    ForEach(Array(home.downloaded.enumerated()), id: \.element.bundleId) { index, row in
+                        if index > 0 { SandboxDivider() }
+                        downloadedRow(row, isEnabled: !home.isBusy)
                     }
                 }
             }
         }
-        .confirmationDialog("Clear recent previews?", isPresented: model.isConfirming(.clear), titleVisibility: .visible) {
-            Button("Clear", role: .destructive) { model.coordinator.clearHistory() }
+        .confirmationDialog("Clear downloaded bundles?", isPresented: model.isConfirming(.clear), titleVisibility: .visible) {
+            Button("Clear", role: .destructive) { model.coordinator.clearDownloaded() }
         } message: {
-            Text("They're only listed on this device. Nothing else changes.")
+            Text("They're only on this device. The running one stays.")
+        }
+    }
+
+    /// Opens the stored bundle. Pressed and held, it offers a check of its channel and Delete.
+    private func downloadedRow(_ row: HotUpdaterSandboxHomeModel.Downloaded, isEnabled: Bool) -> some View {
+        Button {
+            SandboxHaptic.tap()
+            focus = nil
+            model.coordinator.openDownloaded(row.bundleId)
+        } label: {
+            SandboxRowContent(
+                lead: .icon("shippingbox"),
+                title: row.channel,
+                titleFont: SandboxFont.codeHeadline,
+                subtitle: row.message,
+                detail: row.detail
+            ) {
+                if row.isRunning { SandboxBadge(text: "Running") } else { SandboxChevron() }
+            }
+        }
+        .buttonStyle(SandboxRowStyle())
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
+        .contextMenu {
+            Button { model.coordinator.switchTo(row.channel) } label: {
+                Label("Check \(row.channel) for a newer bundle", systemImage: "arrow.down.circle")
+            }
+            if !row.isRunning {
+                Button(role: .destructive) { model.coordinator.deleteDownloaded(row.bundleId) } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
         }
     }
 

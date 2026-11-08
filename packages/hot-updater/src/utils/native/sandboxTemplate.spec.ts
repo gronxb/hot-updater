@@ -278,6 +278,9 @@ describe("the sandbox template", () => {
       "        this.bundleStorage = bundleStorage",
       "        this.preferences = preferences",
       "        this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))",
+      "    fun getBaseURL(): String? {",
+      "    fun getBundleId(): String? {",
+      "    fun getManifest(): Map<String, Any?> {",
     ]) {
       expect(generator, line).toContain(line.trim());
       expect(
@@ -285,10 +288,27 @@ describe("the sandbox template", () => {
         line,
       ).toHaveLength(1);
     }
+    // A stored session answers each of the three getters before its first statement.
+    expect(generator).toContain(
+      '"val launchSelection = currentLaunchSelection"',
+    );
+    expect(
+      impl
+        .split("\n")
+        .filter(
+          (text) => text === "        val launchSelection = currentLaunchSelection",
+        ),
+    ).toHaveLength(3);
     // Its insertions hold for main only.
     expect(generator).toContain(
       "if (environment.isMain) HotUpdaterSandboxDev.bundleOfThisProcess(context)",
     );
+    expect(generator).toContain(
+      "HotUpdaterSandboxDev.storedBundle(context, environment)",
+    );
+    expect(
+      read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxDev.kt"),
+    ).toContain('environment?.isMain == true');
     expect(generator).toContain(
       "if (environment.isMain && HotUpdaterSandboxDev.relaunch(reactContext))",
     );
@@ -338,14 +358,30 @@ describe("the sandbox template", () => {
     );
   });
 
-  it("gives dev JavaScript a channel without releases, the same on both platforms", () => {
+  it("gives a session's JavaScript a channel without releases, the same on both platforms", () => {
+    const dev = read(
+      "android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxDev.kt",
+    );
+    const override = read(
+      "ios/HotUpdater/Sandbox/HotUpdaterSandboxDevOverride.m",
+    );
     const channel = "hot-updater-sandbox-dev-server";
+    expect(dev).toContain(`DEV_CHANNEL = "${channel}"`);
+    expect(override).toContain(`kDevChannel = @"${channel}"`);
+    const stored = "hot-updater-sandbox-stored-bundle";
+    expect(dev).toContain(`STORED_CHANNEL = "${stored}"`);
+    expect(override).toContain(`kStoredChannel = @"${stored}"`);
+  });
+
+  it("stores bundles only where the store app's container can't hold them", () => {
+    // iOS: only a sandbox with its own bundle ID, in the caches directory.
+    const host = read("ios/HotUpdater/Sandbox/HotUpdaterSandboxLiveHost.swift");
+    expect(host).toContain('Bundle.main.bundleIdentifier?.hasSuffix(".sandbox") == true');
+    expect(host).toContain("for: .cachesDirectory");
+    // Android: always the `.sandbox` app's own cache directory.
     expect(
       read("android/src/sandbox/java/com/hotupdater/HotUpdaterSandboxDev.kt"),
-    ).toContain(`DEV_CHANNEL = "${channel}"`);
-    expect(
-      read("ios/HotUpdater/Sandbox/HotUpdaterSandboxDevOverride.m"),
-    ).toContain(`kDevChannel = @"${channel}"`);
+    ).toContain('File(app.cacheDir, "hot-updater-sandbox-bundles")');
   });
 
   it("isn't named by any normal source, so nothing needs it to compile", () => {

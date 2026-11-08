@@ -138,6 +138,26 @@ class HotUpdaterSandboxDevTest {
     }
 
     @Test
+    fun `a stored claim runs the shelf's bundle once, and a gone bundle arms nothing`() {
+        val shelf = testShelf(folder.newFolder())
+        installTestBundle(shelf.source, "ota")
+        shelf.add("ota", "pr-1", null, 0, null)
+        val files = files()
+        val claim = HotUpdaterSandboxDevClaim("", "", 7, 1_000, "ota")
+        assertEquals(claim, HotUpdaterSandboxDevClaim.parse(claim.toJson()))
+        files.writeClaim(claim)
+        val session = files.takeSession({ it == 7 }, 1_500, shelf::stored)
+        assertEquals("ota", session?.stored?.bundleId)
+        assertEquals(File(shelf.root, "ota/index.android.bundle"), session?.bundle)
+        assertNull(files.takeSession({ it == 7 }, 1_500, shelf::stored))
+
+        shelf.remove("ota")
+        files.writeClaim(claim)
+        assertNull(files.takeSession({ it == 7 }, 1_500, shelf::stored))
+        assertFalse(files.claim.exists())
+    }
+
+    @Test
     fun `the helper lives until the claim is gone, so the claim goes only after the helper is checked`() {
         val files = files().withSession("one")
         files.writeClaim(claim())

@@ -9,6 +9,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.coroutines.EmptyCoroutineContext
 
 private fun selection(
     channel: String = "pr-1",
@@ -136,14 +137,14 @@ private class ScreenStore(
     override var pendingLinks: List<String> = emptyList(),
 ) : HotUpdaterSandboxStore {
     val opened = ArrayList<String>()
-    override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
-    override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
+    val openedBundles = ArrayList<String?>()
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
     override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
 
     override fun recordOpened(selection: HotUpdaterSandboxSelection) {
         opened += selection.channel
+        openedBundles += selection.bundleId
     }
 }
 
@@ -153,13 +154,17 @@ private class ScreenFixture(
     val host = ScreenHost()
     val store = ScreenStore(pendingLinks)
     val opens = ArrayList<Pair<Boolean, Boolean>>()
+    val shelf = testShelf().also { installTestBundle(it.source, "ota") }
     val coordinator =
         HotUpdaterSandboxCoordinator(
             host = host,
             store = store,
+            shelf = shelf,
             scope = CoroutineScope(Dispatchers.Unconfined),
             openApp = { switched, fixed -> opens += switched to fixed },
             nowMs = { 1_000_000L },
+            lock = HotUpdaterSandboxLock(),
+            copyContext = EmptyCoroutineContext,
         )
 }
 
@@ -230,19 +235,21 @@ class HotUpdaterSandboxScreenStateTest {
     }
 
     @Test
-    fun `a switch records one opened entry with the bundle's message`() {
+    fun `a switch lists what it downloaded with its message`() {
         val fixture = ScreenFixture()
         fixture.host.stage = HotUpdaterSandboxStaged.Update("ota", "fix: login")
         fixture.coordinator.switchTo("pr-1")
-        assertEquals(listOf(HotUpdaterSandboxHistoryEntry("pr-1", "ota", "fix: login", 1_000_000L)), fixture.store.history)
+        assertEquals(listOf(HotUpdaterSandboxShelfEntry("ota", "pr-1", "fix: login", "key", 1_000_000L)), fixture.shelf.entries)
+        assertNotNull(fixture.shelf.stored("ota"))
         assertEquals("fix: login", fixture.coordinator.state.selectedMessage)
-        assertEquals(1, fixture.coordinator.state.history.size)
+        assertEquals(1, fixture.coordinator.state.downloaded.size)
     }
 
     @Test
     fun `a message belongs to its bundle, not its channel`() {
         val fixture = ScreenFixture()
-        fixture.store.messages = listOf(HotUpdaterSandboxBundleMessage("older", "old words"))
+        installTestBundle(fixture.shelf.source, "older")
+        fixture.shelf.add("older", "pr-1", "old words", 0, null)
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota"
         fixture.coordinator.refresh()
@@ -255,11 +262,10 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.host.channel = "pr-2"
         fixture.host.bundleId = "staged"
         fixture.host.launchOverride = "running"
-        fixture.store.messages =
-            listOf(
-                HotUpdaterSandboxBundleMessage("running", "what runs"),
-                HotUpdaterSandboxBundleMessage("staged", "what's next"),
-            )
+        installTestBundle(fixture.shelf.source, "running")
+        installTestBundle(fixture.shelf.source, "staged")
+        fixture.shelf.add("running", "pr-2", "what runs", 0, null)
+        fixture.shelf.add("staged", "pr-2", "what's next", 1, null)
         fixture.coordinator.refresh()
         val state = fixture.coordinator.state
         assertEquals("staged", state.selection?.bundleId)
@@ -298,12 +304,7 @@ class HotUpdaterSandboxScreenStateTest {
         over.host.launchOverride = "running"
         over.host.appRunning = true
         over.coordinator.open()
-        assertEquals(
-            "running",
-            over.store.history
-                .first()
-                .bundleId,
-        )
+        assertEquals("running", over.store.openedBundles.last())
         assertEquals(false, over.opens.last().second)
 
         // Before the app starts, a fixed launch's Open restarts into what's selected.
@@ -312,46 +313,18 @@ class HotUpdaterSandboxScreenStateTest {
         before.host.bundleId = "staged"
         before.host.launchOverride = "running"
         before.coordinator.open()
-        assertEquals(
-            "staged",
-            before.store.history
-                .first()
-                .bundleId,
-        )
+        assertEquals("staged", before.store.openedBundles.last())
         assertEquals(true, before.opens.last().second)
     }
 
     @Test
-    fun `a default channel is never listed as a preview`() {
-        val fixture = ScreenFixture()
-        fixture.coordinator.refresh()
-        fixture.coordinator.open()
-        assertEquals(listOf("sandbox-release"), fixture.store.opened)
-        assertTrue(fixture.store.history.isEmpty())
-    }
-
-    @Test
-    fun `the built-in bundle left on a preview channel is not a preview`() {
+    fun `opening lists nothing`() {
         val fixture = ScreenFixture()
         fixture.host.channel = "pr-3"
         fixture.coordinator.refresh()
         fixture.coordinator.open()
         assertEquals(listOf("pr-3"), fixture.store.opened)
-        assertTrue(fixture.store.history.isEmpty())
-    }
-
-    @Test
-    fun `clearing forgets only the list`() {
-        val fixture = ScreenFixture()
-        fixture.store.history = listOf(HotUpdaterSandboxHistoryEntry("pr-1", "a", null, 1))
-        fixture.coordinator.refresh()
-        fixture.coordinator.clearHistory()
-        assertTrue(fixture.store.history.isEmpty())
-        assertTrue(
-            fixture.coordinator.state.history
-                .isEmpty(),
-        )
-        assertTrue(fixture.host.calls.isEmpty())
+        assertTrue(fixture.shelf.entries.isEmpty())
     }
 
     @Test
@@ -369,25 +342,16 @@ class HotUpdaterSandboxScreenStateTest {
     }
 
     @Test
-    fun `the history keeps the ten newest channels`() {
-        var history = emptyList<HotUpdaterSandboxHistoryEntry>()
-        for (index in 0 until 12) {
-            history = HotUpdaterSandboxHistory.adding(HotUpdaterSandboxHistoryEntry("pr-$index", "b", null, index.toLong()), history)
-        }
-        assertEquals(10, history.size)
-        assertEquals("pr-11", history.first().channel)
-        history = HotUpdaterSandboxHistory.adding(HotUpdaterSandboxHistoryEntry("pr-5", "c", null, 99), history)
-        assertEquals(10, history.size)
-        assertEquals("c", history.first().bundleId)
-        assertEquals(1, history.count { it.channel == "pr-5" })
-    }
-
-    @Test
-    fun `opened says when, locally, not what's available`() {
-        val day = 86_400_000L
-        assertEquals("Opened today", HotUpdaterSandboxHistory.openedText(0, day / 2))
-        assertEquals("Opened yesterday", HotUpdaterSandboxHistory.openedText(0, day))
-        assertEquals("Opened 3 days ago", HotUpdaterSandboxHistory.openedText(0, 3 * day))
+    fun `downloaded says when and how much`() {
+        val minute = 60_000L
+        assertEquals("downloaded just now", HotUpdaterSandboxHomeModel.downloadedText(0, 30_000))
+        assertEquals("downloaded 5 min ago", HotUpdaterSandboxHomeModel.downloadedText(0, 5 * minute))
+        assertEquals("downloaded 2 h ago", HotUpdaterSandboxHomeModel.downloadedText(0, 125 * minute))
+        assertEquals("downloaded 1 day ago", HotUpdaterSandboxHomeModel.downloadedText(0, 1500 * minute))
+        assertEquals("downloaded 3 days ago", HotUpdaterSandboxHomeModel.downloadedText(0, 4400 * minute))
+        assertEquals("1 KB", HotUpdaterSandboxHomeModel.sizeText(400))
+        assertEquals("2.3 MB", HotUpdaterSandboxHomeModel.sizeText(2_340_000))
+        assertEquals("120 MB", HotUpdaterSandboxHomeModel.sizeText(120_400_000))
     }
 }
 
@@ -398,7 +362,8 @@ class HotUpdaterSandboxHomeModelTest {
         hasServerConfig: Boolean = true,
         phase: HotUpdaterSandboxPhase = HotUpdaterSandboxPhase.Idle,
         lastLaunch: HotUpdaterSandboxLastLaunch? = null,
-        history: List<HotUpdaterSandboxHistoryEntry> = emptyList(),
+        history: List<HotUpdaterSandboxShelfEntry> = emptyList(),
+        storedSession: String? = null,
         message: String? = null,
     ) = HotUpdaterSandboxState(
         selection = selection,
@@ -407,7 +372,8 @@ class HotUpdaterSandboxHomeModelTest {
         queuedLinks = 0,
         details = HotUpdaterSandboxDetails("built-in", "abc", null),
         lastLaunch = lastLaunch,
-        history = history,
+        downloaded = history,
+        storedSessionBundleId = storedSession,
         selectedMessage = message,
         runningBundleId = running,
     )
@@ -469,7 +435,7 @@ class HotUpdaterSandboxHomeModelTest {
                 state(
                     selection(bundleId = "built-in"),
                     lastLaunch = HotUpdaterSandboxLastLaunch(HotUpdaterSandboxLastLaunch.Kind.CRASHED_BEFORE_CONTENT, "ota", "built-in"),
-                    history = listOf(HotUpdaterSandboxHistoryEntry("pr-9", "ota", null, 0)),
+                    history = listOf(entry("ota", "pr-9")),
                 ),
             ).banner
         assertEquals("pr-9 crashed before its first screen. The device rolled back to the built-in bundle.", rolledBack?.text)
@@ -530,21 +496,46 @@ class HotUpdaterSandboxHomeModelTest {
         assertFalse(hint.contains("Open the app once"))
     }
 
+    private fun entry(
+        bundleId: String,
+        channel: String,
+        message: String? = null,
+    ) = HotUpdaterSandboxShelfEntry(bundleId, channel, message, "key", 0)
+
     @Test
-    fun `the preview list is what's else than the selected channel`() {
+    fun `every downloaded bundle is a row, the selected one too`() {
         val model =
             home(
                 state(
                     selection("pr-1"),
-                    history =
-                        listOf(
-                            HotUpdaterSandboxHistoryEntry("pr-1", "a", null, 0),
-                            HotUpdaterSandboxHistoryEntry("pr-2", "b", "words", 0),
-                        ),
+                    history = listOf(entry("019a3f00aabbc2", "pr-1"), entry("b", "pr-2", "words")),
+                    storedSession = "b",
                 ),
             )
-        assertEquals(listOf(HotUpdaterSandboxHomeModel.Preview("pr-2", "words", "Opened today")), model.previews)
-        assertNull(model.previewHint)
+        assertEquals(
+            listOf(
+                HotUpdaterSandboxHomeModel.Downloaded("019a3f00aabbc2", "pr-1", null, "Bundle 019a3f…c2 · downloaded just now", false),
+                HotUpdaterSandboxHomeModel.Downloaded("b", "pr-2", "words", "Bundle b · downloaded just now", true),
+            ),
+            model.downloaded,
+        )
+        assertEquals("2 of 10", model.downloadedFooter)
+        assertEquals(
+            "Bundles you open from a QR code, a link, or a channel stay here.",
+            home(state(selection())).downloadedFooter,
+        )
+    }
+
+    @Test
+    fun `a stored session says what runs and the way back`() {
+        val current = state(selection(), history = listOf(entry("019a3f00aabbc2", "pr-12")), storedSession = "019a3f00aabbc2")
+        val row = home(current, isOverApp = true).bigRow
+        assertEquals("Running stored pr-12", row.subtitle)
+        assertEquals("Bundle 019a3f…c2", row.detail)
+        assertTrue(row.isReload)
+        assertTrue(row.showsBack)
+        val info = HotUpdaterSandboxInfoModel.of(current, "1", "Release", isOverApp = true)
+        assertEquals("Stored 019a3f…c2", info.bundle.first { it.name == "Current" }.value)
     }
 
     @Test
@@ -581,7 +572,7 @@ class HotUpdaterSandboxHomeModelTest {
                 HotUpdaterSandboxLink("hu-sandbox-app://hot-updater/preview?channel=pr-1", "hu-sandbox-app", "pr-1", "fp"),
             )
         assertEquals(
-            "This replaces the running bundle and deletes downloaded bundles.",
+            "This replaces the running bundle. Downloaded bundles stay listed.",
             HotUpdaterSandboxQuestion.of(phase, isOverApp = true)?.message,
         )
         assertEquals(HotUpdaterSandboxHomeModel.SWITCH_NOTE, HotUpdaterSandboxQuestion.of(phase, isOverApp = false)?.message)

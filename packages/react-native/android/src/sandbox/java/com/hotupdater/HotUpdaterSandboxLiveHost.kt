@@ -35,13 +35,22 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun fingerprintHash(): String? = impl.getFingerprintHash()
 
-    override val isRunningDevServer: Boolean
+    override val isInSession: Boolean
         get() = HotUpdaterSandboxDev.session(context) != null
 
-    override fun exitDevServer() = HotUpdaterSandbox.devServer(context).exitDevServer()
+    override val storedSessionBundleId: String?
+        get() = HotUpdaterSandboxDev.storedBundle(context)?.bundleId
+
+    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle) {
+        // Leaving the normal launch, so its "started" mark doesn't read as a crash.
+        if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
+        HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId))
+    }
+
+    override fun exitSession() = HotUpdaterSandbox.devServer(context).exitDevServer()
 
     override fun hasServerConfig(): Boolean =
-        if (isRunningDevServer) {
+        if (isInSession) {
             // Only the app's own launches leave the normal selection's server.
             RecoveryCheckConfig.parse(KeyValueStorageService.create(context).getItem(RecoveryCheckConfig.KEY)) != null
         } else {
@@ -51,13 +60,13 @@ internal class HotUpdaterSandboxLiveHost(
     override suspend fun selection(): HotUpdaterSandboxSelection =
         withContext(Dispatchers.IO) {
             val builtIn = HotUpdaterImpl.getMinBundleId()
-            // In a dev session, what the next normal launch selects, with nothing settled.
-            val normal = if (isRunningDevServer) HotUpdaterSandboxDev.normalSelection() else null
+            // In a session, what the next normal launch selects, with nothing settled.
+            val normal = if (isInSession) HotUpdaterSandboxDev.normalSelection() else null
             // Read first: before a launch, it settles what the previous process left.
-            val launchBundleId = if (isRunningDevServer) null else impl.getBundleIdForUpdateCheck()
+            val launchBundleId = if (isInSession) null else impl.getBundleIdForUpdateCheck()
             val active = impl.getActiveUpdateState()["activeSelection"] as? Map<*, *>
             val bundleId =
-                if (isRunningDevServer) {
+                if (isInSession) {
                     normal?.first ?: builtIn
                 } else {
                     hotUpdaterSandboxNextLaunchBundleId(
@@ -68,7 +77,7 @@ internal class HotUpdaterSandboxLiveHost(
                     )
                 }
             HotUpdaterSandboxSelection(
-                channel = if (isRunningDevServer) normal?.second ?: impl.getDefaultChannel() else impl.getChannel(),
+                channel = if (isInSession) normal?.second ?: impl.getDefaultChannel() else impl.getChannel(),
                 defaultChannel = impl.getDefaultChannel(),
                 bundleId = bundleId,
                 isBuiltIn = bundleId == builtIn,
@@ -76,8 +85,8 @@ internal class HotUpdaterSandboxLiveHost(
         }
 
     override suspend fun launchBundleId(): String =
-        if (isRunningDevServer) {
-            // The SDK's read answers for the dev session, which runs no bundle.
+        if (isInSession) {
+            // The SDK's read answers for the session, which runs no selected bundle.
             selection().bundleId ?: HotUpdaterImpl.getMinBundleId()
         } else {
             withContext(Dispatchers.IO) { impl.getBundleIdForUpdateCheck() ?: HotUpdaterImpl.getMinBundleId() }
@@ -106,8 +115,8 @@ internal class HotUpdaterSandboxLiveHost(
 
     override fun details(): HotUpdaterSandboxDetails {
         val builtIn = HotUpdaterImpl.getMinBundleId()
-        // A dev session's own view holds nothing pending, and the normal selection's may.
-        val state = (if (isRunningDevServer) HotUpdaterSandboxDev.normalActiveState() else null) ?: impl.getActiveUpdateState()
+        // A session's own view holds nothing pending, and the normal selection's may.
+        val state = (if (isInSession) HotUpdaterSandboxDev.normalActiveState() else null) ?: impl.getActiveUpdateState()
         val active = (state["activeSelection"] as? Map<*, *>)?.get("bundleId") as? String ?: builtIn
         return HotUpdaterSandboxDetails(
             builtInBundleId = builtIn,
@@ -218,40 +227,6 @@ internal class HotUpdaterSandboxPreferences(
 
     override fun recordOpened(selection: HotUpdaterSandboxSelection) = record(OPENED, selection)
 
-    override var history: List<HotUpdaterSandboxHistoryEntry>
-        get() =
-            readArray(HISTORY).mapNotNull { item ->
-                runCatching {
-                    HotUpdaterSandboxHistoryEntry(
-                        channel = item.getString("channel"),
-                        bundleId = item.getString("bundleId"),
-                        message = item.optString("message").takeIf { item.has("message") },
-                        openedAtMs = item.getLong("openedAtMs"),
-                    )
-                }.getOrNull()
-            }
-        set(value) {
-            writeArray(
-                HISTORY,
-                value.map {
-                    JSONObject()
-                        .put("channel", it.channel)
-                        .put("bundleId", it.bundleId)
-                        .put("message", it.message)
-                        .put("openedAtMs", it.openedAtMs)
-                },
-            )
-        }
-
-    override var messages: List<HotUpdaterSandboxBundleMessage>
-        get() =
-            readArray(MESSAGES).mapNotNull { item ->
-                runCatching { HotUpdaterSandboxBundleMessage(item.getString("bundleId"), item.getString("message")) }.getOrNull()
-            }
-        set(value) {
-            writeArray(MESSAGES, value.map { JSONObject().put("bundleId", it.bundleId).put("message", it.message) })
-        }
-
     override var lastLaunch: HotUpdaterSandboxLastLaunch?
         get() {
             val value = preferences.getString(LAST_LAUNCH, null) ?: return null
@@ -276,21 +251,6 @@ internal class HotUpdaterSandboxPreferences(
             preferences.edit().putString(LAST_LAUNCH, item).commit()
         }
 
-    private fun readArray(key: String): List<JSONObject> {
-        val value = preferences.getString(key, null) ?: return emptyList()
-        return runCatching {
-            val items = JSONArray(value)
-            (0 until items.length()).map(items::getJSONObject)
-        }.getOrDefault(emptyList())
-    }
-
-    private fun writeArray(
-        key: String,
-        items: List<JSONObject>,
-    ) {
-        preferences.edit().putString(key, JSONArray(items).toString()).commit()
-    }
-
     private fun record(
         key: String,
         selection: HotUpdaterSandboxSelection,
@@ -310,8 +270,6 @@ internal class HotUpdaterSandboxPreferences(
         const val PENDING_LINKS = "pendingLinks"
         const val SELECTED = "selected"
         const val OPENED = "opened"
-        const val HISTORY = "history"
-        const val MESSAGES = "messages"
         const val LAST_LAUNCH = "lastLaunch"
     }
 }

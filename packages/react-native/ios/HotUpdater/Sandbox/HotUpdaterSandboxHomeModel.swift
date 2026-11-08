@@ -16,12 +16,17 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         let subtitle: String?
         let detail: String?
         let isReload: Bool
+        /// A stored bundle runs: a row under it goes back to the current bundle.
+        var showsBack = false
     }
 
-    struct Preview: Equatable {
+    /// A row of the Downloaded list.
+    struct Downloaded: Equatable {
+        let bundleId: String
         let channel: String
         let message: String?
-        let opened: String
+        let detail: String
+        let isRunning: Bool
     }
 
     struct Status: Equatable {
@@ -34,14 +39,17 @@ struct HotUpdaterSandboxHomeModel: Equatable {
     let bigRow: BigRow
     let status: Status?
     let isBusy: Bool
-    let previews: [Preview]
-    /// In place of an empty list, or above it before a server answered.
+    let downloaded: [Downloaded]
+    /// The count and size, or what the list is for while it's empty.
+    let downloadedFooter: String
+    /// Before a server answered, what previews wait for.
     let previewHint: String?
 
     static let hint = "Shake the device to come back here."
-    /// A row or a typed channel doesn't ask first, so this says it up front.
-    static let switchNote = "Opening a preview deletes downloaded bundles."
-    static let resetNote = "Removes the channel switch and deletes downloaded bundles."
+    /// A typed channel doesn't ask first, so this says it up front.
+    static let switchNote = "Opening a preview from the server replaces the current bundle. Downloaded bundles stay listed."
+    static let resetNote = "Removes the channel switch. Downloaded bundles stay listed."
+    static let emptyDownloaded = "Bundles you open from a QR code, a link, or a channel stay here."
 
     init(
         state: HotUpdaterSandboxState,
@@ -49,7 +57,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         runningDevServerHost: String? = nil,
         nowMs: Double
     ) {
-        let history = state.history
+        let history = state.downloaded
         let selection = state.selection
         banner = state.lastLaunch.flatMap { Self.banner(of: $0, selection: selection, builtInBundleId: state.details?.builtInBundleId, history: history) }
         bigRow = Self.bigRow(
@@ -63,22 +71,44 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         } else {
             isBusy = false
         }
-        previews = history
-            .filter { $0.channel != selection?.channel }
-            .map {
-                Preview(
-                    channel: $0.channel,
-                    message: $0.message,
-                    opened: HotUpdaterSandboxHistory.openedText(openedAtMs: $0.openedAtMs, nowMs: nowMs)
-                )
-            }
-        if !state.hasServerConfig {
-            previewHint = "No update server yet. Previews work once your update server answers one of the app's update checks."
-        } else if previews.isEmpty {
-            previewHint = "Scan a pull request's QR code, or enter its channel. It stays listed here."
-        } else {
-            previewHint = nil
+        downloaded = history.map {
+            Downloaded(
+                bundleId: $0.bundleId,
+                channel: $0.channel,
+                message: $0.message,
+                detail: "Bundle \(Self.shortId($0.bundleId)) · \(Self.downloadedText(atMs: $0.downloadedAtMs, nowMs: nowMs))",
+                isRunning: $0.bundleId == state.storedSessionBundleId
+            )
         }
+        downloadedFooter = history.isEmpty
+            ? Self.emptyDownloaded
+            : "\(history.count) of \(HotUpdaterSandboxShelf.limit)" + (state.downloadedBytes > 0 ? " · \(Self.sizeText(state.downloadedBytes))" : "")
+        previewHint = state.hasServerConfig
+            ? nil
+            : "No update server yet. Previews work once your update server answers one of the app's update checks."
+    }
+
+    static func downloadedText(atMs: Double, nowMs: Double) -> String {
+        let minutes = Int(max(0, nowMs - atMs) / 60_000)
+        switch minutes {
+        case 0: return "downloaded just now"
+        case ..<60: return "downloaded \(minutes) min ago"
+        case ..<1440: return "downloaded \(minutes / 60) h ago"
+        case ..<2880: return "downloaded 1 day ago"
+        default: return "downloaded \(minutes / 1440) days ago"
+        }
+    }
+
+    /// Decimal units, as the system shows file sizes.
+    static func sizeText(_ bytes: Int64) -> String {
+        if bytes < 1_000_000 { return "\(max(1, bytes / 1000)) KB" }
+        let megabytes = Double(bytes) / 1_000_000
+        return megabytes < 10 ? String(format: "%.1f MB", megabytes) : "\(Int(megabytes.rounded())) MB"
+    }
+
+    /// The channel of a stored bundle this device downloaded.
+    private static func channel(of bundleId: String?, in history: [HotUpdaterSandboxShelfEntry]) -> String? {
+        history.first { $0.bundleId == bundleId }?.channel
     }
 
     /// `019a3f…c2`, or the whole ID when it's short.
@@ -94,6 +124,17 @@ struct HotUpdaterSandboxHomeModel: Equatable {
     ) -> BigRow {
         if isOverApp, let host = runningDevServerHost {
             return BigRow(caption: "Running", title: "Reload", subtitle: "Running the dev server", detail: host, isReload: true)
+        }
+        if let stored = state.storedSessionBundleId {
+            let channel = channel(of: stored, in: state.downloaded).map { " \($0)" } ?? ""
+            return BigRow(
+                caption: "Running",
+                title: "Reload",
+                subtitle: "Running stored\(channel)",
+                detail: "Bundle \(shortId(stored))",
+                isReload: true,
+                showsBack: true
+            )
         }
         guard let selection = state.selection else {
             return BigRow(
@@ -160,7 +201,7 @@ struct HotUpdaterSandboxHomeModel: Equatable {
         of lastLaunch: HotUpdaterSandboxLastLaunch,
         selection: HotUpdaterSandboxSelection?,
         builtInBundleId: String?,
-        history: [HotUpdaterSandboxHistoryEntry]
+        history: [HotUpdaterSandboxShelfEntry]
     ) -> Banner? {
         let selectedId = selection?.bundleId
         /// A channel only when this device recorded that bundle on it.
@@ -257,6 +298,8 @@ struct HotUpdaterSandboxInfoModel: Equatable {
         let current: String
         if runningDevServerHost != nil {
             current = "Dev server"
+        } else if let stored = state.storedSessionBundleId {
+            current = "Stored \(HotUpdaterSandboxHomeModel.shortId(stored))"
         // Over the app, what it runs. Before it starts, what opens: the selection.
         } else if let shown = (isOverApp ? state.runningBundleId : nil) ?? selection?.bundleId {
             current = shown == details?.builtInBundleId ? "Built-in" : HotUpdaterSandboxHomeModel.shortId(shown)
@@ -318,7 +361,7 @@ struct HotUpdaterSandboxQuestion: Equatable {
             kind = .confirm
             title = "Open \(link.channel)?"
             message = isOverApp
-                ? "This replaces the running bundle and deletes downloaded bundles."
+                ? "This replaces the running bundle. Downloaded bundles stay listed."
                 : HotUpdaterSandboxHomeModel.switchNote
             accept = "Open"
             decline = "Cancel"
@@ -344,12 +387,13 @@ struct HotUpdaterSandboxQuestion: Equatable {
             case .noBundle: reason = "\(target) has no bundle for this build."
             case .resetFailed: reason = "Downloaded bundles couldn't be removed."
             case .superseded: reason = "Another update check changed the selection first."
+            case .inStoredSession: reason = "A stored bundle is running. Go back to the current bundle, then try again."
             case .error(let text): reason = text
             }
             let bundle = selection.isBuiltIn ? "built-in bundle" : "bundle \(selection.bundleId)"
             title = "Couldn't open \(target)"
             message = "\(reason)\n\nSelected now: \(selection.channel), \(bundle)."
-            accept = "Retry"
+            accept = failure == .inStoredSession ? "Back" : "Retry"
             decline = "Close"
         default:
             return nil

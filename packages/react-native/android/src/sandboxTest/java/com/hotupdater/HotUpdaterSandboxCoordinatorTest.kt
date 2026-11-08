@@ -10,6 +10,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import kotlin.coroutines.EmptyCoroutineContext
 
 private const val FINGERPRINT = "abc"
 
@@ -31,10 +32,21 @@ private class FakeHost : HotUpdaterSandboxHost {
     var stageResult: Result<HotUpdaterSandboxStaged> = Result.success(HotUpdaterSandboxStaged.Update("ota"))
     var progress: ((Double) -> Unit)? = null
     var channelAfterStaging: String? = null
-    override var isRunningDevServer = false
+    var isRunningDevServer = false
+    var storedBundleId: String? = null
+    val startedStored = ArrayList<String>()
     var exits = 0
 
-    override fun exitDevServer() {
+    override val isInSession get() = isRunningDevServer || storedBundleId != null
+
+    override val storedSessionBundleId get() = storedBundleId
+
+    override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle) {
+        startedStored += bundle.bundleId
+        storedBundleId = bundle.bundleId
+    }
+
+    override fun exitSession() {
         exits += 1
     }
 
@@ -96,8 +108,6 @@ private class FakeStore(
 ) : HotUpdaterSandboxStore {
     val selected = ArrayList<String>()
     val opened = ArrayList<String>()
-    override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
-    override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
     override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
     override fun recordSelected(selection: HotUpdaterSandboxSelection) {
@@ -116,15 +126,18 @@ private class Fixture(
     val store = FakeStore(pendingLinks)
     val lock = HotUpdaterSandboxLock()
     val opens = ArrayList<Pair<Boolean, Boolean>>()
+    val shelf = testShelf().also { installTestBundle(it.source, "ota") }
     val coordinator =
         HotUpdaterSandboxCoordinator(
             host = host,
             store = store,
+            shelf = shelf,
             // Each step runs at once on the test's thread; a gate holds one open.
             scope = CoroutineScope(Dispatchers.Unconfined),
             openApp = { switched, fixed -> opens += switched to fixed },
             nowMs = { 1_000_000L },
             lock = lock,
+            copyContext = EmptyCoroutineContext,
         )
 
     val phase get() = coordinator.state.phase
@@ -439,6 +452,76 @@ class HotUpdaterSandboxCoordinatorTest {
     }
 
     @Test
+    fun `a row runs its stored bundle with no request`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        fixture.host.calls.clear()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertTrue(fixture.host.calls.isEmpty())
+        assertEquals(listOf("ota"), fixture.host.startedStored)
+        // Reload runs the same stored bundle again.
+        fixture.coordinator.reloadApp()
+        assertEquals(listOf("ota", "ota"), fixture.host.startedStored)
+        assertTrue(fixture.host.calls.isEmpty())
+    }
+
+    @Test
+    fun `a row whose files are gone checks its channel`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        java.io.File(fixture.shelf.root, "ota").deleteRecursively()
+        fixture.host.calls.clear()
+        fixture.coordinator.openDownloaded("ota")
+        assertTrue(fixture.host.startedStored.isEmpty())
+        assertEquals(listOf("preflight pr-1", "check pr-1"), fixture.host.calls)
+    }
+
+    @Test
+    fun `in a stored session a typed channel is refused with a way back`() {
+        val fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.switchTo("pr-2")
+        val phase = fixture.phase as HotUpdaterSandboxPhase.Failed
+        assertEquals(HotUpdaterSandboxFailure.InStoredSession, phase.failure)
+        assertEquals("Back", HotUpdaterSandboxQuestion.of(phase, isOverApp = true)?.accept)
+        assertTrue(fixture.host.calls.isEmpty())
+        fixture.coordinator.retry()
+        assertEquals(1, fixture.host.exits)
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+    }
+
+    @Test
+    fun `in a stored session a link exits only once confirmed`() {
+        val fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.receiveLink(link("pr-1"))
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
+        assertEquals(0, fixture.host.exits)
+        fixture.coordinator.confirmLink()
+        assertEquals(1, fixture.host.exits)
+        assertTrue(fixture.host.calls.isEmpty())
+    }
+
+    @Test
+    fun `clear and delete keep the running bundle`() {
+        val fixture = Fixture()
+        installTestBundle(fixture.shelf.source, "other")
+        installTestBundle(fixture.shelf.source, "third")
+        fixture.shelf.add("ota", "pr-1", null, 0, null)
+        fixture.shelf.add("other", "pr-2", null, 1, null)
+        fixture.shelf.add("third", "pr-3", null, 2, null)
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.deleteDownloaded("ota")
+        assertNotNull(fixture.shelf.stored("ota"))
+        fixture.coordinator.deleteDownloaded("third")
+        assertEquals(listOf("other", "ota"), fixture.shelf.entries.map { it.bundleId })
+        fixture.coordinator.clearDownloaded()
+        assertEquals(listOf("ota"), fixture.shelf.entries.map { it.bundleId })
+        assertNull(fixture.shelf.stored("other"))
+        assertTrue(fixture.host.calls.isEmpty())
+    }
+
+    @Test
     fun `the next launch is what storage holds once a launch is fixed`() {
         val builtIn = "built-in"
         // Before any launch, the SDK's read is what a launch would pick.
@@ -456,8 +539,6 @@ class HotUpdaterSandboxCoordinatorTest {
     private class OpenedStore : HotUpdaterSandboxStore {
         override var pendingLinks: List<String> = emptyList()
         var opened: String? = null
-        override var history: List<HotUpdaterSandboxHistoryEntry> = emptyList()
-        override var messages: List<HotUpdaterSandboxBundleMessage> = emptyList()
         override var lastLaunch: HotUpdaterSandboxLastLaunch? = null
 
         override fun recordSelected(selection: HotUpdaterSandboxSelection) = Unit
@@ -477,7 +558,7 @@ class HotUpdaterSandboxCoordinatorTest {
             }
         val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
-        HotUpdaterSandboxCoordinator(host, store, CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        HotUpdaterSandboxCoordinator(host, store, testShelf(), CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
         assertEquals("ota-0", store.opened)
         assertEquals(listOf(false to false), opens)
     }
@@ -491,7 +572,7 @@ class HotUpdaterSandboxCoordinatorTest {
             }
         val store = OpenedStore()
         val opens = ArrayList<Pair<Boolean, Boolean>>()
-        HotUpdaterSandboxCoordinator(host, store, CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
+        HotUpdaterSandboxCoordinator(host, store, testShelf(), CoroutineScope(Dispatchers.Unconfined), { a, b -> opens += a to b }).open()
         assertEquals("built-in", store.opened)
         assertEquals(listOf(false to true), opens)
     }

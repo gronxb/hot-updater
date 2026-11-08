@@ -57,16 +57,42 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
         impl.getFingerprintHash()
     }
 
-    var isRunningDevServer: Bool {
+    var isInSession: Bool {
         HotUpdaterSandboxDevState.running != nil
     }
 
-    /// Set by the bridge, which owns the dev server and the screen.
-    @MainActor var exitDevServerAction: () -> Void = {}
+    var storedSessionBundleId: String? {
+        HotUpdaterSandboxDevState.storedBundleId
+    }
 
-    /// The coordinator, on the main actor, is the only caller.
-    func exitDevServerForLink() {
-        MainActor.assumeIsolated { exitDevServerAction() }
+    /// Set by the bridge, which owns the sessions and the screen.
+    @MainActor var exitSessionAction: () -> Void = {}
+    @MainActor var startStoredAction: (HotUpdaterSandboxStoredBundle) -> Void = { _ in }
+
+    /// The coordinator, on the main actor, is the only caller of these three.
+    func exitSessionForLink() {
+        MainActor.assumeIsolated { exitSessionAction() }
+    }
+
+    func exitSession() {
+        MainActor.assumeIsolated { exitSessionAction() }
+    }
+
+    func startStoredSession(_ bundle: HotUpdaterSandboxStoredBundle) {
+        MainActor.assumeIsolated { startStoredAction(bundle) }
+    }
+
+    /// The Downloaded list's shelf, in the caches directory. Only a sandbox with its
+    /// own bundle ID stores bundles: one with the store app's ID leaves nothing
+    /// behind in the store app's container.
+    static func shelf() -> HotUpdaterSandboxShelf {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return HotUpdaterSandboxShelf(
+            root: caches.appendingPathComponent("hot-updater-sandbox/bundles", isDirectory: true),
+            source: URL(fileURLWithPath: HotUpdaterInstanceEnvironment.main.bundleStorePath(documentsPath: FileManagerService().documentsPath())),
+            isolationKey: HotUpdaterImpl.getIsolationKey(),
+            storesBundles: Bundle.main.bundleIdentifier?.hasSuffix(".sandbox") == true
+        )
     }
 
     func hasServerConfig() -> Bool {
@@ -96,8 +122,8 @@ final class HotUpdaterSandboxLiveHost: HotUpdaterSandboxHost {
     }
 
     func launchBundleId() async -> String {
-        // In a dev session this process runs no bundle: it isn't behind the selection.
-        if isRunningDevServer {
+        // In a session this process runs no selected bundle: it isn't behind the selection.
+        if isInSession {
             return await selection().bundleId
         }
         let impl = impl
@@ -238,16 +264,6 @@ final class HotUpdaterSandboxDefaults: HotUpdaterSandboxStore {
 
     func recordOpened(_ selection: HotUpdaterSandboxSelection) {
         record("opened", selection)
-    }
-
-    var history: [HotUpdaterSandboxHistoryEntry] {
-        get { read("history") ?? [] }
-        set { write(newValue, "history") }
-    }
-
-    var messages: [HotUpdaterSandboxBundleMessage] {
-        get { read("messages") ?? [] }
-        set { write(newValue, "messages") }
     }
 
     var lastLaunch: HotUpdaterSandboxLastLaunch? {

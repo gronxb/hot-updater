@@ -17,8 +17,10 @@ internal data class HotUpdaterSandboxHomeModel(
     val bigRow: BigRow,
     val status: Status?,
     val isBusy: Boolean,
-    val previews: List<Preview>,
-    /** In place of an empty list, or above it before a server answered. */
+    val downloaded: List<Downloaded>,
+    /** The count and size, or what the list is for while it's empty. */
+    val downloadedFooter: String,
+    /** Before a server answered, what previews wait for. */
     val previewHint: String?,
 ) {
     data class Banner(
@@ -33,12 +35,17 @@ internal data class HotUpdaterSandboxHomeModel(
         val subtitle: String?,
         val detail: String?,
         val isReload: Boolean,
+        /** A stored bundle runs: a row under it goes back to the current bundle. */
+        val showsBack: Boolean = false,
     )
 
-    data class Preview(
+    /** A row of the Downloaded list. */
+    data class Downloaded(
+        val bundleId: String,
         val channel: String,
         val message: String?,
-        val opened: String,
+        val detail: String,
+        val isRunning: Boolean,
     )
 
     data class Status(
@@ -50,9 +57,10 @@ internal data class HotUpdaterSandboxHomeModel(
     companion object {
         const val HINT = "Shake the device to come back here."
 
-        /** A row or a typed channel doesn't ask first, so this says it up front. */
-        const val SWITCH_NOTE = "Opening a preview deletes downloaded bundles."
-        const val RESET_NOTE = "Removes the channel switch and deletes downloaded bundles."
+        /** A typed channel doesn't ask first, so this says it up front. */
+        const val SWITCH_NOTE = "Opening a preview from the server replaces the current bundle. Downloaded bundles stay listed."
+        const val RESET_NOTE = "Removes the channel switch. Downloaded bundles stay listed."
+        const val EMPTY_DOWNLOADED = "Bundles you open from a QR code, a link, or a channel stay here."
 
         fun of(
             state: HotUpdaterSandboxState,
@@ -60,24 +68,57 @@ internal data class HotUpdaterSandboxHomeModel(
             runningDevServerHost: String? = null,
             nowMs: Long,
         ): HotUpdaterSandboxHomeModel {
-            val previews =
-                state.history
-                    .filter { it.channel != state.selection?.channel }
-                    .map { Preview(it.channel, it.message, HotUpdaterSandboxHistory.openedText(it.openedAtMs, nowMs)) }
+            val history = state.downloaded
             return HotUpdaterSandboxHomeModel(
                 banner = state.lastLaunch?.let { banner(it, state) },
                 bigRow = bigRow(state, isOverApp, runningDevServerHost),
                 status = status(state.phase),
                 isBusy = state.phase is HotUpdaterSandboxPhase.Working,
-                previews = previews,
+                downloaded =
+                    history.map {
+                        Downloaded(
+                            bundleId = it.bundleId,
+                            channel = it.channel,
+                            message = it.message,
+                            detail = "Bundle ${shortId(it.bundleId)} · ${downloadedText(it.downloadedAtMs, nowMs)}",
+                            isRunning = it.bundleId == state.storedSessionBundleId,
+                        )
+                    },
+                downloadedFooter =
+                    if (history.isEmpty()) {
+                        EMPTY_DOWNLOADED
+                    } else {
+                        "${history.size} of ${HotUpdaterSandboxShelf.LIMIT}" +
+                            if (state.downloadedBytes > 0) " · ${sizeText(state.downloadedBytes)}" else ""
+                    },
                 previewHint =
-                    when {
-                        !state.hasServerConfig ->
-                            "No update server yet. Previews work once your update server answers one of the app's update checks."
-                        previews.isEmpty() -> "Scan a pull request's QR code, or enter its channel. It stays listed here."
-                        else -> null
+                    if (state.hasServerConfig) {
+                        null
+                    } else {
+                        "No update server yet. Previews work once your update server answers one of the app's update checks."
                     },
             )
+        }
+
+        fun downloadedText(
+            atMs: Long,
+            nowMs: Long,
+        ): String {
+            val minutes = (nowMs - atMs).coerceAtLeast(0) / 60_000
+            return when {
+                minutes < 1 -> "downloaded just now"
+                minutes < 60 -> "downloaded $minutes min ago"
+                minutes < 1440 -> "downloaded ${minutes / 60} h ago"
+                minutes < 2880 -> "downloaded 1 day ago"
+                else -> "downloaded ${minutes / 1440} days ago"
+            }
+        }
+
+        /** Decimal units, as the system shows file sizes. */
+        fun sizeText(bytes: Long): String {
+            if (bytes < 1_000_000) return "${maxOf(1, bytes / 1000)} KB"
+            val megabytes = bytes / 1_000_000.0
+            return if (megabytes < 10) String.format(java.util.Locale.US, "%.1f MB", megabytes) else "${Math.round(megabytes)} MB"
         }
 
         /** `019a3f…c2`, or the whole ID when it's short. */
@@ -90,6 +131,10 @@ internal data class HotUpdaterSandboxHomeModel(
         ): BigRow {
             if (isOverApp && runningDevServerHost != null) {
                 return BigRow("Running", "Reload", "Running the dev server", runningDevServerHost, isReload = true)
+            }
+            state.storedSessionBundleId?.let { stored ->
+                val channel = state.downloaded.firstOrNull { it.bundleId == stored }?.channel?.let { " $it" }.orEmpty()
+                return BigRow("Running", "Reload", "Running stored$channel", "Bundle ${shortId(stored)}", isReload = true, showsBack = true)
             }
             val selection =
                 state.selection
@@ -164,13 +209,13 @@ internal data class HotUpdaterSandboxHomeModel(
             fun name(bundleId: String): String =
                 when {
                     bundleId == state.details?.builtInBundleId -> "the built-in bundle"
-                    else -> state.history.firstOrNull { it.bundleId == bundleId }?.channel ?: "bundle ${shortId(bundleId)}"
+                    else -> state.downloaded.firstOrNull { it.bundleId == bundleId }?.channel ?: "bundle ${shortId(bundleId)}"
                 }
 
             /** A channel keeps its spelling at the start of a sentence. */
             fun subject(bundleId: String): String {
                 val text = name(bundleId)
-                return if (state.history.any { it.channel == text }) text else text.replaceFirstChar(Char::uppercase)
+                return if (state.downloaded.any { it.channel == text }) text else text.replaceFirstChar(Char::uppercase)
             }
 
             val crashed = subject(lastLaunch.bundleId)
@@ -269,6 +314,7 @@ internal data class HotUpdaterSandboxInfoModel(
             val current =
                 when {
                     runningDevServerHost != null -> "Dev server"
+                    state.storedSessionBundleId != null -> "Stored ${HotUpdaterSandboxHomeModel.shortId(state.storedSessionBundleId)}"
                     shown == null -> ""
                     shown == details?.builtInBundleId -> "Built-in"
                     else -> HotUpdaterSandboxHomeModel.shortId(shown)

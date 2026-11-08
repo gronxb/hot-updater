@@ -2,7 +2,10 @@ package com.hotupdater
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.CoroutineContext
 
 /** What a check of the target channel did. */
 internal sealed class HotUpdaterSandboxStaged {
@@ -56,12 +59,22 @@ internal interface HotUpdaterSandboxHost {
     /** The fingerprint this build embeds, or null without one. */
     fun fingerprintHash(): String?
 
-    /** Whether this process runs a dev server's JavaScript, where nothing can change the normal selection. */
-    val isRunningDevServer: Boolean
+    /**
+     * Whether this process runs a dev server's JavaScript or a stored bundle, where
+     * nothing can change the normal selection.
+     */
+    val isInSession: Boolean
         get() = false
 
-    /** Ends the dev session: a new process, on the first screen. */
-    fun exitDevServer() = Unit
+    /** The stored bundle this process runs, or null. */
+    val storedSessionBundleId: String?
+        get() = null
+
+    /** Runs a stored bundle in a new process. A cold launch is back on the normal selection. */
+    fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle) = Unit
+
+    /** Ends the session: a new process, on the first screen. */
+    fun exitSession() = Unit
 
     /** Whether the app's JavaScript left a server config: a server answered one of its checks. */
     fun hasServerConfig(): Boolean
@@ -105,12 +118,6 @@ internal interface HotUpdaterSandboxStore {
 
     fun recordOpened(selection: HotUpdaterSandboxSelection)
 
-    /** The previews this device opened, newest first. */
-    var history: List<HotUpdaterSandboxHistoryEntry>
-
-    /** Each bundle's deploy message, newest first, by bundle ID. */
-    var messages: List<HotUpdaterSandboxBundleMessage>
-
     /** What the last launch left, until a person moved on from it. */
     var lastLaunch: HotUpdaterSandboxLastLaunch?
 }
@@ -142,6 +149,9 @@ internal sealed class HotUpdaterSandboxFailure {
 
     /** Another check or a reset changed the selection during the switch. */
     object Superseded : HotUpdaterSandboxFailure()
+
+    /** A stored bundle runs: the way back is to the current bundle. */
+    object InStoredSession : HotUpdaterSandboxFailure()
 
     /** A request failed, or the SDK refused. */
     data class Error(
@@ -192,7 +202,12 @@ internal data class HotUpdaterSandboxState(
     val queuedLinks: Int,
     val details: HotUpdaterSandboxDetails? = null,
     val lastLaunch: HotUpdaterSandboxLastLaunch? = null,
-    val history: List<HotUpdaterSandboxHistoryEntry> = emptyList(),
+    /** What the sandbox's switches downloaded, newest first. */
+    val downloaded: List<HotUpdaterSandboxShelfEntry> = emptyList(),
+    /** What the stored copies take. */
+    val downloadedBytes: Long = 0,
+    /** The stored bundle this process runs, or null. */
+    val storedSessionBundleId: String? = null,
     /** The deploy message of the selected bundle, when this device knows it. */
     val selectedMessage: String? = null,
     /** What this process's launch runs, or before one, what it would pick; `selection` is the next launch. */
@@ -242,6 +257,7 @@ internal class HotUpdaterSandboxLock {
 internal class HotUpdaterSandboxCoordinator(
     private val host: HotUpdaterSandboxHost,
     private val store: HotUpdaterSandboxStore,
+    private val shelf: HotUpdaterSandboxShelf,
     private val scope: CoroutineScope,
     /**
      * Opens the app: on [open] with `switched` false, or after a switch. `fixed`
@@ -252,6 +268,8 @@ internal class HotUpdaterSandboxCoordinator(
     private val log: (String) -> Unit = {},
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val lock: HotUpdaterSandboxLock = HotUpdaterSandboxLock.process,
+    /** Where a copy to the shelf runs: off the main thread. */
+    private val copyContext: CoroutineContext = Dispatchers.IO,
 ) {
     private val listeners = LinkedHashSet<(HotUpdaterSandboxState) -> Unit>()
     private val queue = ArrayList(store.pendingLinks)
@@ -298,6 +316,7 @@ internal class HotUpdaterSandboxCoordinator(
      * Sends no request: opening the screen costs the update server nothing.
      */
     fun refresh() {
+        shelf.reconcile()
         scope.launch {
             val selection = readSelection()
             publish(reading(selection, host.launchBundleId()))
@@ -332,8 +351,8 @@ internal class HotUpdaterSandboxCoordinator(
     fun confirmLink() {
         val phase = state.phase as? HotUpdaterSandboxPhase.Confirming ?: return
         // The link stays stored, and the first screen asks about it in the new process.
-        if (host.isRunningDevServer) {
-            host.exitDevServer()
+        if (host.isInSession) {
+            host.exitSession()
             return
         }
         linkInFlight = phase.link.url
@@ -389,7 +408,7 @@ internal class HotUpdaterSandboxCoordinator(
             if (!takeLock(operationId, "")) return@launch
             try {
                 val target = host.selection().defaultChannel
-                if (refuseInDevSession(operationId, target)) return@launch
+                if (refuseInSession(operationId, target)) return@launch
                 publish(state.copy(phase = HotUpdaterSandboxPhase.Working(operationId, target, HotUpdaterSandboxStep.RESET)))
                 val reset = attempt(operationId, target, HotUpdaterSandboxStep.RESET) { host.reset() } ?: return@launch
                 if (!reset) {
@@ -407,6 +426,11 @@ internal class HotUpdaterSandboxCoordinator(
     /** Runs the failed switch again from its preflight. */
     fun retry() {
         val phase = state.phase as? HotUpdaterSandboxPhase.Failed ?: return
+        // A refusal in a stored session offers the way back instead.
+        if (phase.failure == HotUpdaterSandboxFailure.InStoredSession) {
+            leaveStoredSession()
+            return
+        }
         begin(retryTarget ?: phase.target)
     }
 
@@ -418,8 +442,8 @@ internal class HotUpdaterSandboxCoordinator(
             // Over a running app, opening shows what it runs: what's selected waits
             // for its launch. Before the app starts, what's selected is what opens.
             val restarts = launchFixed && !host.isAppRunning()
-            // A dev session runs no bundle, so it says nothing about one.
-            if (!host.isRunningDevServer) {
+            // A session runs no selected bundle, so it says nothing about one.
+            if (!host.isInSession) {
                 recordOpened(
                     if (restarts) {
                         selection
@@ -437,8 +461,47 @@ internal class HotUpdaterSandboxCoordinator(
     /** Runs the app again from the screen over it: the bundle a launch selects now. */
     fun reloadApp() {
         if (!canStart()) return
+        host.storedSessionBundleId?.let {
+            openDownloaded(it)
+            return
+        }
         acknowledgeLastLaunch()
         openApp(true, true)
+    }
+
+    /**
+     * A Downloaded row runs its stored bundle in a new process, offline. A row
+     * whose bundle isn't on this device checks its channel, as a typed one does.
+     * Returns false while a switch runs.
+     */
+    fun openDownloaded(bundleId: String): Boolean {
+        if (!canStart() || lock.holder != null) return false
+        val entry = shelf.entries.firstOrNull { it.bundleId == bundleId } ?: return false
+        val bundle = shelf.stored(bundleId)
+        if (bundle == null) {
+            shelf.remove(bundleId)
+            publish(listed(state))
+            return switchTo(entry.channel)
+        }
+        acknowledgeLastLaunch()
+        publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
+        log("opening stored ${entry.channel} $bundleId")
+        host.startStoredSession(bundle)
+        return true
+    }
+
+    /** Back to what the normal selection runs. */
+    fun leaveStoredSession() {
+        if (host.storedSessionBundleId == null) return
+        if (state.phase is HotUpdaterSandboxPhase.Failed) dismiss()
+        host.exitSession()
+    }
+
+    /** Removes a row and its files. The running one stays. */
+    fun deleteDownloaded(bundleId: String) {
+        if (bundleId == host.storedSessionBundleId) return
+        shelf.remove(bundleId)
+        publish(listed(state))
     }
 
     /** A person moved on from what the last launch left, so it's not told again. */
@@ -449,10 +512,22 @@ internal class HotUpdaterSandboxCoordinator(
         publish(state.copy(lastLaunch = null))
     }
 
-    /** Forgets the previews this device opened: what they list is local, so nothing else changes. */
-    fun clearHistory() {
-        store.history = emptyList()
-        publish(state.copy(history = emptyList()))
+    /** Removes every row and its files but the running one: they're only on this device. */
+    fun clearDownloaded() {
+        shelf.clear(host.storedSessionBundleId)
+        publish(listed(state))
+    }
+
+    /** The Downloaded list as the shelf holds it. */
+    private fun listed(base: HotUpdaterSandboxState): HotUpdaterSandboxState {
+        val entries = shelf.entries
+        return base.copy(
+            downloaded = entries,
+            downloadedBytes = shelf.totalBytes(),
+            storedSessionBundleId = host.storedSessionBundleId,
+            selectedMessage = entries.firstOrNull { it.bundleId == base.selection?.bundleId }?.message,
+            runningMessage = entries.firstOrNull { it.bundleId == base.runningBundleId }?.message,
+        )
     }
 
     /** What storage says now, with no request. */
@@ -460,15 +535,14 @@ internal class HotUpdaterSandboxCoordinator(
         selection: HotUpdaterSandboxSelection,
         launched: String?,
     ): HotUpdaterSandboxState =
-        state.copy(
-            selection = selection,
-            runningBundleId = launched,
-            runningMessage = store.messages.firstOrNull { it.bundleId == launched }?.message,
-            hasServerConfig = host.hasServerConfig(),
-            details = host.details(),
-            history = store.history,
-            selectedMessage = store.messages.firstOrNull { it.bundleId == selection.bundleId }?.message,
-            lastLaunch = settledLastLaunch(launched),
+        listed(
+            state.copy(
+                selection = selection,
+                runningBundleId = launched,
+                hasServerConfig = host.hasServerConfig(),
+                details = host.details(),
+                lastLaunch = settledLastLaunch(launched),
+            ),
         )
 
     /** Reads evidence after the host's reads, which settled the previous launch. */
@@ -480,24 +554,8 @@ internal class HotUpdaterSandboxCoordinator(
         return store.lastLaunch
     }
 
-    /**
-     * One entry per preview channel: a default channel is the big row, not a
-     * preview, and the built-in bundle isn't what a channel holds.
-     */
     private fun recordOpened(selection: HotUpdaterSandboxSelection) {
         store.recordOpened(selection)
-        if (selection.channel == selection.defaultChannel || selection.isBuiltIn) return
-        val bundleId = selection.bundleId ?: return
-        store.history =
-            HotUpdaterSandboxHistory.adding(
-                HotUpdaterSandboxHistoryEntry(
-                    channel = selection.channel,
-                    bundleId = bundleId,
-                    message = store.messages.firstOrNull { it.bundleId == bundleId }?.message,
-                    openedAtMs = nowMs(),
-                ),
-                store.history,
-            )
     }
 
     private fun canStart() = state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed
@@ -525,20 +583,24 @@ internal class HotUpdaterSandboxCoordinator(
     }
 
     /**
-     * A dev process's native state is the dev session's, so a switch waits for its Exit.
+     * A session's native state is the session's, so a switch waits for its end.
      * Asked again after every suspension, before a step that changes the selection.
      */
-    private suspend fun refuseInDevSession(
+    private suspend fun refuseInSession(
         operationId: Long,
         target: String,
         step: HotUpdaterSandboxStep = HotUpdaterSandboxStep.PREFLIGHT,
     ): Boolean {
-        if (!host.isRunningDevServer) return false
+        if (!host.isInSession) return false
         fail(
             operationId,
             target,
             step,
-            HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again."),
+            if (host.storedSessionBundleId != null) {
+                HotUpdaterSandboxFailure.InStoredSession
+            } else {
+                HotUpdaterSandboxFailure.Error("The dev server is running. Exit it, then try again.")
+            },
         )
         return true
     }
@@ -559,7 +621,7 @@ internal class HotUpdaterSandboxCoordinator(
         operationId: Long,
         target: String,
     ) {
-        if (refuseInDevSession(operationId, target)) return
+        if (refuseInSession(operationId, target)) return
         val before = host.selection()
         val toDefault = target == before.defaultChannel
         val hasBundle = attempt(operationId, target, HotUpdaterSandboxStep.PREFLIGHT) { host.preflight(target) } ?: return
@@ -569,7 +631,7 @@ internal class HotUpdaterSandboxCoordinator(
             return
         }
         if (before.channel != target) {
-            if (refuseInDevSession(operationId, target, HotUpdaterSandboxStep.RESET)) return
+            if (refuseInSession(operationId, target, HotUpdaterSandboxStep.RESET)) return
             step(operationId, target, HotUpdaterSandboxStep.RESET)
             val reset = attempt(operationId, target, HotUpdaterSandboxStep.RESET) { host.reset() } ?: return
             if (!reset) {
@@ -577,7 +639,7 @@ internal class HotUpdaterSandboxCoordinator(
                 return
             }
         }
-        if (refuseInDevSession(operationId, target, HotUpdaterSandboxStep.CHECK)) return
+        if (refuseInSession(operationId, target, HotUpdaterSandboxStep.CHECK)) return
         step(operationId, target, HotUpdaterSandboxStep.CHECK)
         val staged =
             attempt(operationId, target, HotUpdaterSandboxStep.CHECK) {
@@ -598,23 +660,29 @@ internal class HotUpdaterSandboxCoordinator(
                 }
             }
             is HotUpdaterSandboxStaged.Update -> {
-                val bundleId = staged.bundleId
-                val message = staged.message
-                if (bundleId != null && message != null) {
-                    store.messages =
-                        HotUpdaterSandboxHistory.remembering(
-                            HotUpdaterSandboxBundleMessage(bundleId, message),
-                            store.messages,
-                        )
-                }
                 // A check from the running app may have switched channels between the SDK's steps.
                 if (host.selection().channel != target) {
                     fail(operationId, target, HotUpdaterSandboxStep.CHECK, HotUpdaterSandboxFailure.Superseded)
                     return
                 }
+                staged.bundleId?.let { shelve(it, target, staged.message) }
             }
         }
         finish(operationId)
+    }
+
+    /**
+     * Keeps a copy of what the switch just installed, off the main thread. Main's
+     * store keeps the bundle it just installed, so the copy reads it in place.
+     */
+    private suspend fun shelve(
+        bundleId: String,
+        channel: String,
+        message: String?,
+    ) {
+        val running = host.storedSessionBundleId
+        val now = nowMs()
+        withContext(copyContext) { shelf.add(bundleId, channel, message, now, running) }
     }
 
     private suspend fun finish(operationId: Long) {
@@ -638,15 +706,14 @@ internal class HotUpdaterSandboxCoordinator(
         if (!switchAwaitsOpen || state.phase !is HotUpdaterSandboxPhase.Idle) return
         switchAwaitsOpen = false
         state.selection?.let(::recordOpened)
-        publish(state.copy(history = store.history))
         openApp(true, launchFixed)
     }
 
     /** What the next launch selects, and with it whether this process's launch runs that. */
     private suspend fun readSelection(): HotUpdaterSandboxSelection {
         val selection = host.selection()
-        // A dev process runs no selection, and only Exit replaces it.
-        launchFixed = !host.isRunningDevServer && host.launchBundleId() != selection.bundleId
+        // A session runs no selection, and only its end replaces it.
+        launchFixed = !host.isInSession && host.launchBundleId() != selection.bundleId
         return selection
     }
 

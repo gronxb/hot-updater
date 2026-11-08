@@ -306,10 +306,10 @@ internal class HotUpdaterSandboxLiveDevServer(
     private var exiting = false
 
     override val isRunningDevServer: Boolean
-        get() = HotUpdaterSandboxDev.session(context) != null
+        get() = HotUpdaterSandboxDev.session(context)?.let { it.stored == null } == true
 
     override val runningDevServerHost: String?
-        get() = HotUpdaterSandboxDev.session(context)?.host?.let(HotUpdaterSandboxDevHost::display)
+        get() = HotUpdaterSandboxDev.session(context)?.takeIf { it.stored == null }?.host?.let(HotUpdaterSandboxDevHost::display)
 
     override val devServerHosts: List<HotUpdaterSandboxDevServerHost>
         get() =
@@ -427,7 +427,8 @@ internal class HotUpdaterSandboxLiveDevServer(
             return null
         }
         remember(url)
-        if (!isRunningDevServer) onLeavingNormalLaunch()
+        // A session left the normal launch already.
+        if (HotUpdaterSandboxDev.session(context) == null) onLeavingNormalLaunch()
         HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Dev(id, url))
         return null
     }
@@ -441,9 +442,9 @@ internal class HotUpdaterSandboxLiveDevServer(
         }
     }
 
-    /** Only here does a dev session end, other than with its process. */
+    /** Only here does a session end, other than with its process. */
     override fun exitDevServer() {
-        if (!isRunningDevServer) return
+        if (HotUpdaterSandboxDev.session(context) == null) return
         exiting = true
         HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.FirstScreen)
     }

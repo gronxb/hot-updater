@@ -14,23 +14,29 @@ import java.util.UUID
 
 private const val TAG = "HotUpdaterSandboxDev"
 
-/** A dev server's files on this device, outside the OTA store. */
+/**
+ * What a session process runs, outside the OTA store: a dev server's files, or
+ * with [stored], a bundle of the Downloaded list.
+ */
 internal data class HotUpdaterSandboxDevSession(
     val id: String,
     val host: String,
     val bundle: File,
+    val stored: HotUpdaterSandboxStoredBundle? = null,
 )
 
 /**
- * A relaunch into a dev session. The relaunch's helper process writes it while
- * it lives and stays until it is read, so a process that finds the helper gone
- * wasn't started by it: a claim alone never arms a launch.
+ * A relaunch into a session: a dev server's, or with [storedBundleId], a stored
+ * bundle's. The relaunch's helper process writes it while it lives and stays
+ * until it is read, so a process that finds the helper gone wasn't started by
+ * it: a claim alone never arms a launch.
  */
 internal data class HotUpdaterSandboxDevClaim(
     val sessionId: String,
     val host: String,
     val witnessPid: Int,
     val elapsedRealtime: Long,
+    val storedBundleId: String? = null,
 ) {
     fun toJson(): String =
         JSONObject()
@@ -38,6 +44,7 @@ internal data class HotUpdaterSandboxDevClaim(
             .put("host", host)
             .put("witnessPid", witnessPid)
             .put("elapsedRealtime", elapsedRealtime)
+            .put("storedBundleId", storedBundleId)
             .toString()
 
     companion object {
@@ -49,6 +56,7 @@ internal data class HotUpdaterSandboxDevClaim(
                     host = json.getString("host"),
                     witnessPid = json.getInt("witnessPid"),
                     elapsedRealtime = json.getLong("elapsedRealtime"),
+                    storedBundleId = json.optString("storedBundleId").takeIf { json.has("storedBundleId") },
                 )
             }.getOrNull()
     }
@@ -81,6 +89,7 @@ internal class HotUpdaterSandboxDevFiles(
     fun takeSession(
         isWitnessAlive: (Int) -> Boolean,
         elapsedRealtime: Long,
+        stored: (String) -> HotUpdaterSandboxStoredBundle? = { null },
     ): HotUpdaterSandboxDevSession? {
         val file = claim
         if (!file.isFile) return null
@@ -90,6 +99,11 @@ internal class HotUpdaterSandboxDevFiles(
             if (age < 0 || age > CLAIM_MAX_AGE_MS || !isWitnessAlive(claim.witnessPid)) {
                 Log.i(TAG, "dropped a claim nobody relaunched this process for")
                 return null
+            }
+            if (claim.storedBundleId != null) {
+                val bundle = stored(claim.storedBundleId)
+                if (bundle == null) Log.w(TAG, "dropped a claim whose stored bundle is gone")
+                return bundle?.let { HotUpdaterSandboxDevSession(claim.sessionId, claim.host, it.bundle, it) }
             }
             val bundle = bundle(claim.sessionId)
             if (!bundle.isFile) {
@@ -148,11 +162,14 @@ internal class HotUpdaterSandboxDevFiles(
  * all a new process. A crash starts nothing: the next process finds no claim.
  *
  * The generated `HotUpdaterImpl` is the only caller of [bundleOfThisProcess],
- * [storage], [preferences], [keyValueFile] and [relaunch].
+ * [storedBundle], [storage], [preferences], [keyValueFile] and [relaunch].
  */
 internal object HotUpdaterSandboxDev {
     /** A channel no release targets, so a check from dev JavaScript finds nothing to apply. */
     const val DEV_CHANNEL = "hot-updater-sandbox-dev-server"
+
+    /** The same for a stored bundle's JavaScript. */
+    const val STORED_CHANNEL = "hot-updater-sandbox-stored-bundle"
 
     @Volatile
     private var settled = false
@@ -212,7 +229,12 @@ internal object HotUpdaterSandboxDev {
             // Another process of the app reads nothing and leaves the claim alone.
             if (isMainProcess(context)) {
                 files(context)?.let { files ->
-                    session = files.takeSession({ isWitnessAlive(context, it) }, SystemClock.elapsedRealtime())
+                    session =
+                        files.takeSession(
+                            { isWitnessAlive(context, it) },
+                            SystemClock.elapsedRealtime(),
+                            { shelf(context).stored(it) },
+                        )
                     val retired = files.retireStale(session)
                     if (retired.isNotEmpty()) {
                         Thread { retired.forEach(File::deleteRecursively) }.start()
@@ -220,12 +242,33 @@ internal object HotUpdaterSandboxDev {
                 }
             }
             settled = true
-            Log.i(TAG, "this process runs ${session?.let { "the dev server's ${it.host}" } ?: "the normal selection"}")
+            Log.i(TAG, "this process runs ${session?.let { it.stored?.let { "stored ${it.bundleId}" } ?: "the dev server's ${it.host}" } ?: "the normal selection"}")
             session
         }
     }
 
     fun bundleOfThisProcess(context: Context): String? = session(context)?.bundle?.absolutePath
+
+    /**
+     * What a stored session runs, for main's `getBundleId`, `getBaseURL` and
+     * `getManifest`. Nullable, so an impl built without its constructor reads null.
+     */
+    fun storedBundle(
+        context: Context?,
+        environment: HotUpdaterInstanceEnvironment?,
+    ): HotUpdaterSandboxStoredBundle? = if (context != null && environment?.isMain == true) storedBundle(context) else null
+
+    fun storedBundle(context: Context): HotUpdaterSandboxStoredBundle? = session(context)?.stored
+
+    /** The Downloaded list's shelf, in the `.sandbox` app's cache directory. */
+    fun shelf(context: Context): HotUpdaterSandboxShelf {
+        val app = context.applicationContext ?: context
+        return HotUpdaterSandboxShelf(
+            root = File(app.cacheDir, "hot-updater-sandbox-bundles"),
+            source = File(app.filesDir, "bundle-store"),
+            isolationKey = HotUpdaterInstanceEnvironment.main.isolationKey(app),
+        )
+    }
 
     fun storage(
         context: Context,
@@ -234,7 +277,12 @@ internal object HotUpdaterSandboxDev {
     ): BundleStorageService {
         if (!environment.isMain) return storage
         normalStorage = storage
-        return if (session(context) != null) HotUpdaterSandboxDevStorage(storage) else storage
+        val running = session(context) ?: return storage
+        return if (running.stored != null) {
+            HotUpdaterSandboxDevStorage(storage, "A stored bundle installs no updates. Go back to the current bundle first.")
+        } else {
+            HotUpdaterSandboxDevStorage(storage)
+        }
     }
 
     fun preferences(
@@ -244,7 +292,8 @@ internal object HotUpdaterSandboxDev {
     ): PreferencesService {
         if (!environment.isMain) return preferences
         normalPreferences = preferences
-        return if (session(context) != null) HotUpdaterSandboxDevPreferences(preferences) else preferences
+        val running = session(context) ?: return preferences
+        return HotUpdaterSandboxDevPreferences(preferences, if (running.stored != null) STORED_CHANNEL else DEV_CHANNEL)
     }
 
     /** A dev session's plugin values and server config stay out of the app's own. */
@@ -280,11 +329,15 @@ internal object HotUpdaterSandboxDev {
      */
     fun relaunch(context: Context): Boolean {
         val running = session(context) ?: return false
-        startRelaunch(context, HotUpdaterSandboxRelaunch.Dev(running.id, running.host))
+        val stored = running.stored
+        startRelaunch(
+            context,
+            if (stored != null) HotUpdaterSandboxRelaunch.Stored(stored.bundleId) else HotUpdaterSandboxRelaunch.Dev(running.id, running.host),
+        )
         return true
     }
 
-    /** Replaces this process: with [HotUpdaterSandboxRelaunch.Dev]'s session, or the first screen. */
+    /** Replaces this process: with a session, or the first screen. */
     fun startRelaunch(
         context: Context,
         relaunch: HotUpdaterSandboxRelaunch,
@@ -293,10 +346,14 @@ internal object HotUpdaterSandboxDev {
             Intent(context.applicationContext, HotUpdaterSandboxRelaunchActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
                 .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_TARGET_PID, Process.myPid())
-        if (relaunch is HotUpdaterSandboxRelaunch.Dev) {
-            intent
-                .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_SESSION, relaunch.sessionId)
-                .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HOST, relaunch.host)
+        when (relaunch) {
+            is HotUpdaterSandboxRelaunch.Dev ->
+                intent
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_SESSION, relaunch.sessionId)
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HOST, relaunch.host)
+            is HotUpdaterSandboxRelaunch.Stored ->
+                intent.putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_BUNDLE, relaunch.bundleId)
+            HotUpdaterSandboxRelaunch.FirstScreen -> Unit
         }
         Log.i(TAG, "relaunching: $relaunch")
         context.applicationContext.startActivity(intent)
@@ -315,6 +372,10 @@ internal sealed class HotUpdaterSandboxRelaunch {
         val host: String,
     ) : HotUpdaterSandboxRelaunch()
 
+    data class Stored(
+        val bundleId: String,
+    ) : HotUpdaterSandboxRelaunch()
+
     object FirstScreen : HotUpdaterSandboxRelaunch()
 }
 
@@ -326,6 +387,7 @@ internal sealed class HotUpdaterSandboxRelaunch {
  */
 internal class HotUpdaterSandboxDevStorage(
     private val normal: BundleStorageService,
+    private val noInstall: String = "A dev session installs no updates. Exit the dev server first.",
 ) : BundleStorageService {
     override fun setBundleURL(localPath: String?): Boolean = false
 
@@ -350,9 +412,9 @@ internal class HotUpdaterSandboxDevStorage(
         selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult =
-        // Any result would make its JavaScript take the request's channel: a dev session
+        // Any result would make its JavaScript take the request's channel: a session
         // installs nothing, so it says so the way a failed download does.
-        throw HotUpdaterException("UNKNOWN_ERROR", "A dev session installs no updates. Exit the dev server first.")
+        throw HotUpdaterException("UNKNOWN_ERROR", noInstall)
 
     override fun acceptReleaseCatalog(
         catalogId: String,
@@ -418,12 +480,12 @@ internal class HotUpdaterSandboxDevStorage(
     ): Boolean = false
 }
 
-/** Main's preferences in a dev session: a channel without releases, and no writes. */
+/** Main's preferences in a session: a channel without releases, and no writes. */
 internal class HotUpdaterSandboxDevPreferences(
     private val normal: PreferencesService,
+    private val channel: String = HotUpdaterSandboxDev.DEV_CHANNEL,
 ) : PreferencesService {
-    override fun getItem(key: String): String? =
-        if (key == HotUpdaterSandboxDev.CHANNEL_STORAGE_KEY) HotUpdaterSandboxDev.DEV_CHANNEL else normal.getItem(key)
+    override fun getItem(key: String): String? = if (key == HotUpdaterSandboxDev.CHANNEL_STORAGE_KEY) channel else normal.getItem(key)
 
     override fun setItem(
         key: String,

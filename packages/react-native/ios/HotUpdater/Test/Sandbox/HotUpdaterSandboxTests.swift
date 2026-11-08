@@ -52,15 +52,33 @@ private final class FakeHost: HotUpdaterSandboxHost {
     var channelAfterStaging: String?
     var runsDevServer = false
     var devExits = 0
+    var storedBundleId: String?
+    var startedStored: [String] = []
 
-    nonisolated var isRunningDevServer: Bool {
-        MainActor.assumeIsolated { runsDevServer }
+    nonisolated var isInSession: Bool {
+        MainActor.assumeIsolated { runsDevServer || storedBundleId != nil }
     }
 
-    nonisolated func exitDevServerForLink() {
+    nonisolated var storedSessionBundleId: String? {
+        MainActor.assumeIsolated { storedBundleId }
+    }
+
+    nonisolated func startStoredSession(_ bundle: HotUpdaterSandboxStoredBundle) {
+        MainActor.assumeIsolated {
+            startedStored.append(bundle.bundleId)
+            storedBundleId = bundle.bundleId
+        }
+    }
+
+    nonisolated func exitSession() {
+        exitSessionForLink()
+    }
+
+    nonisolated func exitSessionForLink() {
         MainActor.assumeIsolated {
             devExits += 1
             runsDevServer = false
+            storedBundleId = nil
         }
     }
 
@@ -145,8 +163,6 @@ private final class FakeStore: HotUpdaterSandboxStore {
     var pendingLinks: [String] = []
     var selected: [String] = []
     var opened: [String] = []
-    var history: [HotUpdaterSandboxHistoryEntry] = []
-    var messages: [HotUpdaterSandboxBundleMessage] = []
     var lastLaunch: HotUpdaterSandboxLastLaunch?
     var openedBundles: [String] = []
 
@@ -160,9 +176,44 @@ private final class FakeStore: HotUpdaterSandboxStore {
     }
 }
 
+/// Lets the coordinator's tasks run, including a copy off the main actor.
 @MainActor
 private func settle() async {
-    for _ in 0 ..< 50 { await Task.yield() }
+    for index in 0 ..< 50 {
+        await Task.yield()
+        if index % 10 == 0 { try? await Task.sleep(nanoseconds: 2_000_000) }
+    }
+}
+
+/// A directory of its own, for each test's files.
+private func temporaryDirectory() -> URL {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("sandbox-shelf-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+/// A bundle as main's store installs it: its manifest, the JavaScript, and an image.
+private func install(_ bundleId: String, in store: URL, skipping: String? = nil) {
+    let directory = store.appendingPathComponent(bundleId, isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory.appendingPathComponent("assets"), withIntermediateDirectories: true)
+    let assets = ["index.ios.bundle", "assets/logo.png"]
+    let manifest: [String: Any] = [
+        "bundleId": bundleId,
+        "assets": Dictionary(uniqueKeysWithValues: assets.map { ($0, ["fileHash": "hash"]) }),
+    ]
+    try? JSONSerialization.data(withJSONObject: manifest).write(to: directory.appendingPathComponent("manifest.json"))
+    for asset in assets where asset != skipping {
+        try? Data("\(bundleId) \(asset)".utf8).write(to: directory.appendingPathComponent(asset))
+    }
+}
+
+private func makeShelf(_ root: URL, key: String = "key", storesBundles: Bool = true) -> HotUpdaterSandboxShelf {
+    HotUpdaterSandboxShelf(
+        root: root.appendingPathComponent("shelf", isDirectory: true),
+        source: root.appendingPathComponent("bundle-store", isDirectory: true),
+        isolationKey: key,
+        storesBundles: storesBundles
+    )
 }
 
 @MainActor
@@ -170,6 +221,8 @@ private struct Fixture {
     let host = FakeHost()
     let store = FakeStore()
     let lock = HotUpdaterSandboxLock()
+    let files = temporaryDirectory()
+    let shelf: HotUpdaterSandboxShelf
     var opens: [(Bool, Bool)] { box.opens }
     private let box = Box()
     let coordinator: HotUpdaterSandboxCoordinator
@@ -181,9 +234,13 @@ private struct Fixture {
     init(pendingLinks: [String] = []) {
         store.pendingLinks = pendingLinks
         let box = box
+        shelf = makeShelf(files)
+        // What the fake check installs.
+        install("ota", in: shelf.source)
         coordinator = HotUpdaterSandboxCoordinator(
             host: host,
             store: store,
+            shelf: shelf,
             openApp: { box.opens.append(($0, $1)) },
             now: { Date(timeIntervalSince1970: 1000) },
             lock: lock
@@ -1133,25 +1190,28 @@ struct HotUpdaterSandboxScreenStateTests {
     }
 
     @Test
-    func aSwitchRecordsOneOpenedEntryWithTheBundlesMessage() async {
+    func aSwitchListsWhatItDownloadedWithItsMessage() async {
         let fixture = Fixture()
         fixture.host.stageResult = .success(.update(bundleId: "ota", message: "fix: login"))
         fixture.coordinator.switchTo("pr-1")
         await settle()
-        #expect(fixture.store.history == [HotUpdaterSandboxHistoryEntry(
-            channel: "pr-1",
+        #expect(fixture.shelf.entries == [HotUpdaterSandboxShelfEntry(
             bundleId: "ota",
+            channel: "pr-1",
             message: "fix: login",
-            openedAtMs: 1_000_000
+            isolationKey: "key",
+            downloadedAtMs: 1_000_000
         )])
+        #expect(fixture.shelf.stored("ota") != nil)
         #expect(fixture.coordinator.state.selectedMessage == "fix: login")
-        #expect(fixture.coordinator.state.history.count == 1)
+        #expect(fixture.coordinator.state.downloaded.count == 1)
     }
 
     @Test
     func aMessageBelongsToItsBundleNotItsChannel() async {
         let fixture = Fixture()
-        fixture.store.messages = [HotUpdaterSandboxBundleMessage(bundleId: "older", message: "old words")]
+        install("older", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "older", channel: "pr-1", message: "old words", nowMs: 0, running: nil)
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota"
         await fixture.coordinator.refresh()
@@ -1164,10 +1224,10 @@ struct HotUpdaterSandboxScreenStateTests {
         fixture.host.channel = "pr-2"
         fixture.host.bundleId = "staged"
         fixture.host.runningBundleId = "running"
-        fixture.store.messages = [
-            HotUpdaterSandboxBundleMessage(bundleId: "running", message: "what runs"),
-            HotUpdaterSandboxBundleMessage(bundleId: "staged", message: "what's next"),
-        ]
+        install("running", in: fixture.shelf.source)
+        install("staged", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "running", channel: "pr-2", message: "what runs", nowMs: 0, running: nil)
+        fixture.shelf.add(bundleId: "staged", channel: "pr-2", message: "what's next", nowMs: 1, running: nil)
         await fixture.coordinator.refresh()
         let state = fixture.coordinator.state
         #expect(state.selection?.bundleId == "staged")
@@ -1204,7 +1264,7 @@ struct HotUpdaterSandboxScreenStateTests {
         over.host.runningBundleId = "running"
         over.host.appRunning = true
         await over.coordinator.open()
-        #expect(over.store.history.first?.bundleId == "running")
+        #expect(over.store.openedBundles.last == "running")
         #expect(over.opens.last?.1 == false)
 
         // Before the app starts, a fixed launch's Open reloads into what's selected.
@@ -1213,37 +1273,109 @@ struct HotUpdaterSandboxScreenStateTests {
         before.host.bundleId = "staged"
         before.host.runningBundleId = "running"
         await before.coordinator.open()
-        #expect(before.store.history.first?.bundleId == "staged")
+        #expect(before.store.openedBundles.last == "staged")
         #expect(before.opens.last?.1 == true)
     }
 
     @Test
-    func aDefaultChannelIsNeverListedAsAPreview() async {
-        let fixture = Fixture()
-        await fixture.coordinator.refresh()
-        await fixture.coordinator.open()
-        #expect(fixture.store.opened == ["sandbox-release"])
-        #expect(fixture.store.history.isEmpty)
-    }
-
-    @Test
-    func theBuiltInBundleLeftOnAPreviewChannelIsNotAPreview() async {
+    func openingListsNothing() async {
         let fixture = Fixture()
         fixture.host.channel = "pr-3"
         await fixture.coordinator.refresh()
         await fixture.coordinator.open()
         #expect(fixture.store.opened == ["pr-3"])
-        #expect(fixture.store.history.isEmpty)
+        #expect(fixture.shelf.entries.isEmpty)
     }
 
     @Test
-    func clearingForgetsOnlyTheList() async {
+    func aRowRunsItsStoredBundleWithNoRequest() async {
         let fixture = Fixture()
-        fixture.store.history = [HotUpdaterSandboxHistoryEntry(channel: "pr-1", bundleId: "a", message: nil, openedAtMs: 1)]
-        await fixture.coordinator.refresh()
-        fixture.coordinator.clearHistory()
-        #expect(fixture.store.history.isEmpty)
-        #expect(fixture.coordinator.state.history.isEmpty)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        fixture.host.calls = []
+        #expect(fixture.coordinator.openDownloaded("ota"))
+        #expect(fixture.host.calls.isEmpty)
+        #expect(fixture.host.startedStored == ["ota"])
+        #expect(fixture.coordinator.state.storedSessionBundleId == "ota")
+        // Reload runs the same stored bundle again.
+        fixture.coordinator.reloadApp()
+        #expect(fixture.host.startedStored == ["ota", "ota"])
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func aRowWhoseFilesAreGoneChecksItsChannel() async {
+        let fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        try? FileManager.default.removeItem(at: fixture.shelf.root.appendingPathComponent("ota"))
+        fixture.host.calls = []
+        fixture.coordinator.openDownloaded("ota")
+        await settle()
+        #expect(fixture.host.startedStored.isEmpty)
+        #expect(fixture.host.calls == ["preflight pr-1", "check pr-1"])
+    }
+
+    @Test
+    func aSameIdBuildListsRowsThatCheckTheirChannel() async {
+        let fixture = Fixture()
+        let shelf = makeShelf(fixture.files, storesBundles: false)
+        install("ota", in: shelf.source)
+        shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        #expect(shelf.entries.map(\.channel) == ["pr-1"])
+        #expect(!FileManager.default.fileExists(atPath: shelf.root.appendingPathComponent("ota").path))
+        #expect(shelf.stored("ota") == nil)
+    }
+
+    @Test
+    func inAStoredSessionATypedChannelIsRefusedWithAWayBack() async {
+        let fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.switchTo("pr-2")
+        await settle()
+        guard case .failed(_, _, _, let failure, _) = fixture.coordinator.state.phase else {
+            Issue.record("expected a refusal")
+            return
+        }
+        #expect(failure == .inStoredSession)
+        #expect(HotUpdaterSandboxQuestion(phase: fixture.coordinator.state.phase, isOverApp: true)?.accept == "Back")
+        #expect(fixture.host.calls.isEmpty)
+        fixture.coordinator.retry()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.coordinator.state.phase == .idle)
+    }
+
+    @Test
+    func inAStoredSessionALinkExitsOnlyOnceConfirmed() async {
+        let fixture = Fixture()
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.receiveLink(link("pr-1"))
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's question")
+            return
+        }
+        #expect(fixture.host.devExits == 0)
+        fixture.coordinator.confirmLink()
+        #expect(fixture.host.devExits == 1)
+        #expect(fixture.host.calls.isEmpty)
+    }
+
+    @Test
+    func clearAndDeleteKeepTheRunningBundle() async {
+        let fixture = Fixture()
+        install("other", in: fixture.shelf.source)
+        install("third", in: fixture.shelf.source)
+        fixture.shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 1, running: nil)
+        fixture.shelf.add(bundleId: "third", channel: "pr-3", message: nil, nowMs: 2, running: nil)
+        fixture.host.storedBundleId = "ota"
+        fixture.coordinator.deleteDownloaded("ota")
+        #expect(fixture.shelf.stored("ota") != nil)
+        fixture.coordinator.deleteDownloaded("third")
+        #expect(fixture.shelf.entries.map(\.bundleId) == ["other", "ota"])
+        fixture.coordinator.clearDownloaded()
+        #expect(fixture.shelf.entries.map(\.bundleId) == ["ota"])
+        #expect(fixture.shelf.stored("other") == nil)
         #expect(fixture.host.calls.isEmpty)
     }
 
@@ -1265,32 +1397,94 @@ struct HotUpdaterSandboxScreenStateTests {
     }
 
     @Test
-    func theHistoryKeepsTenNewestChannels() {
-        var history: [HotUpdaterSandboxHistoryEntry] = []
-        for index in 0 ..< 12 {
-            history = HotUpdaterSandboxHistory.adding(
-                HotUpdaterSandboxHistoryEntry(channel: "pr-\(index)", bundleId: "b", message: nil, openedAtMs: Double(index)),
-                to: history
-            )
-        }
-        #expect(history.count == 10)
-        #expect(history.first?.channel == "pr-11")
-        history = HotUpdaterSandboxHistory.adding(
-            HotUpdaterSandboxHistoryEntry(channel: "pr-5", bundleId: "c", message: nil, openedAtMs: 99),
-            to: history
-        )
-        #expect(history.count == 10)
-        #expect(history.first?.bundleId == "c")
-        #expect(history.filter { $0.channel == "pr-5" }.count == 1)
+    func downloadedSaysWhenAndHowMuch() {
+        let minute = 60_000.0
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 30_000) == "downloaded just now")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 5 * minute) == "downloaded 5 min ago")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 125 * minute) == "downloaded 2 h ago")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 1500 * minute) == "downloaded 1 day ago")
+        #expect(HotUpdaterSandboxHomeModel.downloadedText(atMs: 0, nowMs: 4400 * minute) == "downloaded 3 days ago")
+        #expect(HotUpdaterSandboxHomeModel.sizeText(400) == "1 KB")
+        #expect(HotUpdaterSandboxHomeModel.sizeText(2_340_000) == "2.3 MB")
+        #expect(HotUpdaterSandboxHomeModel.sizeText(120_400_000) == "120 MB")
+    }
+}
+
+struct HotUpdaterSandboxShelfTests {
+    @Test
+    func aPartialCopyListsNothing() {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        install("broken", in: shelf.source, skipping: "assets/logo.png")
+        shelf.add(bundleId: "broken", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        #expect(shelf.entries.isEmpty)
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: shelf.root.path)) ?? []).isEmpty)
     }
 
     @Test
-    func openedSaysWhenLocallyNotWhatsAvailable() {
-        let day = 86_400_000.0
-        #expect(HotUpdaterSandboxHistory.openedText(openedAtMs: 0, nowMs: day / 2) == "Opened today")
-        #expect(HotUpdaterSandboxHistory.openedText(openedAtMs: 0, nowMs: day) == "Opened yesterday")
-        #expect(HotUpdaterSandboxHistory.openedText(openedAtMs: 0, nowMs: 3 * day) == "Opened 3 days ago")
+    func aStoredBundleIsWhatMainAnswers() throws {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        install("a", in: shelf.source)
+        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        let stored = try #require(shelf.stored("a"))
+        #expect(stored.bundleURL.lastPathComponent == "index.ios.bundle")
+        #expect(stored.baseURL == "file://\(shelf.root.appendingPathComponent("a").path)")
+        #expect(stored.manifest["bundleId"] as? String == "a")
+        // Main's store can prune its copy: the shelf's stays.
+        try FileManager.default.removeItem(at: shelf.source.appendingPathComponent("a"))
+        #expect(shelf.stored("a") != nil)
     }
+
+    @Test
+    func theCapDropsTheOldestButNeverTheRunningOne() {
+        let files = temporaryDirectory()
+        let shelf = makeShelf(files)
+        for index in 0 ... HotUpdaterSandboxShelf.limit {
+            install("b\(index)", in: shelf.source)
+            shelf.add(bundleId: "b\(index)", channel: "pr-\(index)", message: nil, nowMs: Double(index), running: "b0")
+        }
+        #expect(shelf.entries.count == HotUpdaterSandboxShelf.limit)
+        #expect(shelf.entries.first?.bundleId == "b10")
+        #expect(shelf.stored("b0") != nil)
+        #expect(shelf.entries.contains { $0.bundleId == "b1" } == false)
+        #expect(shelf.stored("b1") == nil)
+    }
+
+    @Test
+    func anotherBuildsEntriesAndStrayFilesGo() throws {
+        let files = temporaryDirectory()
+        let old = makeShelf(files, key: "old-build")
+        install("a", in: old.source)
+        old.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        try FileManager.default.createDirectory(at: old.root.appendingPathComponent("b.tmp"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: old.root.appendingPathComponent("c"), withIntermediateDirectories: true)
+
+        let new = makeShelf(files, key: "new-build")
+        new.reconcile()
+        #expect(new.entries.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: new.root.path) == ["index.json"])
+    }
+
+    @Test
+    func aLinkOrAPathOutsideTheBundleFailsTheCheck() throws {
+        let files = temporaryDirectory()
+        let directory = files.appendingPathComponent("x")
+        install("x", in: files)
+        let logo = directory.appendingPathComponent("assets/logo.png")
+        try FileManager.default.removeItem(at: logo)
+        try FileManager.default.createSymbolicLink(at: logo, withDestinationURL: directory.appendingPathComponent("index.ios.bundle"))
+        #expect(HotUpdaterSandboxShelf.check(directory, bundleId: "x") == nil)
+
+        let manifest: [String: Any] = ["bundleId": "x", "assets": ["../x/index.ios.bundle": ["fileHash": "h"]]]
+        try JSONSerialization.data(withJSONObject: manifest).write(to: directory.appendingPathComponent("manifest.json"))
+        #expect(HotUpdaterSandboxShelf.check(directory, bundleId: "x") == nil)
+        #expect(HotUpdaterSandboxShelf.check(directory, bundleId: "y") == nil)
+    }
+}
+
+private func entry(_ bundleId: String, _ channel: String, message: String? = nil) -> HotUpdaterSandboxShelfEntry {
+    HotUpdaterSandboxShelfEntry(bundleId: bundleId, channel: channel, message: message, isolationKey: "key", downloadedAtMs: 0)
 }
 
 struct HotUpdaterSandboxHomeModelTests {
@@ -1300,7 +1494,8 @@ struct HotUpdaterSandboxHomeModelTests {
         hasServerConfig: Bool = true,
         phase: HotUpdaterSandboxPhase = .idle,
         lastLaunch: HotUpdaterSandboxLastLaunch? = nil,
-        history: [HotUpdaterSandboxHistoryEntry] = [],
+        history: [HotUpdaterSandboxShelfEntry] = [],
+        storedSession: String? = nil,
         message: String? = nil
     ) -> HotUpdaterSandboxState {
         HotUpdaterSandboxState(
@@ -1314,7 +1509,8 @@ struct HotUpdaterSandboxHomeModelTests {
                 pendingBundleId: nil
             ),
             lastLaunch: lastLaunch,
-            history: history,
+            downloaded: history,
+            storedSessionBundleId: storedSession,
             selectedMessage: message,
             runningBundleId: running
         )
@@ -1386,7 +1582,7 @@ struct HotUpdaterSandboxHomeModelTests {
         let rolledBack = home(state(
             selection: selection(bundleId: "built-in"),
             lastLaunch: HotUpdaterSandboxLastLaunch(kind: .crashedBeforeContent, bundleId: "ota", rolledBackToBundleId: "built-in"),
-            history: [HotUpdaterSandboxHistoryEntry(channel: "pr-9", bundleId: "ota", message: nil, openedAtMs: 0)]
+            history: [entry("ota", "pr-9")]
         )).banner
         #expect(rolledBack?.text == "pr-9 crashed before its first screen. The device rolled back to the built-in bundle.")
         #expect(rolledBack?.offersReset == false)
@@ -1435,16 +1631,42 @@ struct HotUpdaterSandboxHomeModelTests {
     }
 
     @Test
-    func thePreviewListIsWhatsElseThanTheSelectedChannel() {
+    func everyDownloadedBundleIsARowTheSelectedOneToo() {
         let model = home(state(
             selection: selection(channel: "pr-1"),
-            history: [
-                HotUpdaterSandboxHistoryEntry(channel: "pr-1", bundleId: "a", message: nil, openedAtMs: 0),
-                HotUpdaterSandboxHistoryEntry(channel: "pr-2", bundleId: "b", message: "words", openedAtMs: 0),
-            ]
+            history: [entry("019a3f00aabbc2", "pr-1"), entry("b", "pr-2", message: "words")],
+            storedSession: "b"
         ))
-        #expect(model.previews == [HotUpdaterSandboxHomeModel.Preview(channel: "pr-2", message: "words", opened: "Opened today")])
-        #expect(model.previewHint == nil)
+        #expect(model.downloaded == [
+            HotUpdaterSandboxHomeModel.Downloaded(
+                bundleId: "019a3f00aabbc2",
+                channel: "pr-1",
+                message: nil,
+                detail: "Bundle 019a3f…c2 · downloaded just now",
+                isRunning: false
+            ),
+            HotUpdaterSandboxHomeModel.Downloaded(
+                bundleId: "b",
+                channel: "pr-2",
+                message: "words",
+                detail: "Bundle b · downloaded just now",
+                isRunning: true
+            ),
+        ])
+        #expect(model.downloadedFooter == "2 of 10")
+        #expect(home(state(selection: selection())).downloadedFooter == "Bundles you open from a QR code, a link, or a channel stay here.")
+    }
+
+    @Test
+    func aStoredSessionSaysWhatRunsAndTheWayBack() {
+        let current = state(selection: selection(), history: [entry("019a3f00aabbc2", "pr-12")], storedSession: "019a3f00aabbc2")
+        let row = home(current, isOverApp: true).bigRow
+        #expect(row.subtitle == "Running stored pr-12")
+        #expect(row.detail == "Bundle 019a3f…c2")
+        #expect(row.isReload)
+        #expect(row.showsBack)
+        let info = HotUpdaterSandboxInfoModel(state: current, version: "1", configuration: "Release", isOverApp: true)
+        #expect(info.bundle.first { $0.name == "Current" }?.value == "Stored 019a3f…c2")
     }
 
     @Test
@@ -1478,7 +1700,7 @@ struct HotUpdaterSandboxHomeModelTests {
         let link = HotUpdaterSandboxLink(url: "hu-sandbox-app://hot-updater/preview?channel=pr-1&fingerprint=fp")!
         let over = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: true)
         let before = HotUpdaterSandboxQuestion(phase: .confirming(link), isOverApp: false)
-        #expect(over?.message == "This replaces the running bundle and deletes downloaded bundles.")
+        #expect(over?.message == "This replaces the running bundle. Downloaded bundles stay listed.")
         #expect(before?.message == HotUpdaterSandboxHomeModel.switchNote)
     }
 

@@ -1,13 +1,14 @@
 #if HOT_UPDATER_SANDBOX_LAYER
 import UIKit
 
-/// What this process runs while a dev session lasts, read by
-/// `HotUpdaterSandboxDevOverride.m`. It lives and dies with the process: nothing
-/// can arm a later launch, and a crash re-arms nothing.
+/// What this process runs while a session lasts, a dev server's JavaScript or a
+/// stored bundle, read by `HotUpdaterSandboxDevOverride.m`. It lives and dies
+/// with the process: nothing can arm a later launch, and a crash re-arms nothing.
 @objc(HotUpdaterSandboxDevState)
 public final class HotUpdaterSandboxDevState: NSObject {
     private static let lock = NSLock()
     private static var bundleURL: URL?
+    private static var stored: HotUpdaterSandboxStoredBundle?
     private static var storage: [String: String] = [:]
     private static var isInstalled = false
 
@@ -24,6 +25,25 @@ public final class HotUpdaterSandboxDevState: NSObject {
         lock.unlock()
         // Named instances keep their own bundle and their own launch.
         return url != nil && impl === HotUpdaterNativeUpdateBridge.sharedImpl ? url : nil
+    }
+
+    /// A stored session's bundle, nil for a dev session.
+    @objc public static var storedBundleId: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored?.bundleId
+    }
+
+    @objc public static var storedBaseURL: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored?.baseURL
+    }
+
+    @objc public static var storedManifest: NSDictionary? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored?.manifest
     }
 
     @objc public static func storageItem(_ key: String) -> String? {
@@ -50,17 +70,18 @@ public final class HotUpdaterSandboxDevState: NSObject {
         return bundleURL
     }
 
-    static func set(_ url: URL?) {
+    static func set(_ url: URL?, stored bundle: HotUpdaterSandboxStoredBundle? = nil) {
         lock.lock()
         bundleURL = url
+        stored = bundle
         if url == nil { storage = [:] }
         lock.unlock()
     }
 }
 
-/// A process that ran a dev session and died leaves this behind, and any crash
-/// marker it wrote is the dev JavaScript's, never the selected bundle's: the next
-/// process drops it before anything settles it.
+/// A process that ran a session and died leaves this behind, and any crash marker
+/// it wrote is the session's, never the selected bundle's: the next process drops
+/// it before anything settles it.
 enum HotUpdaterSandboxDevLeftover {
     private static var note: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
@@ -135,10 +156,11 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
         self.reload = reload
     }
 
-    var isRunningDevServer: Bool { HotUpdaterSandboxDevState.running != nil }
+    var isRunningDevServer: Bool { HotUpdaterSandboxDevState.running != nil && HotUpdaterSandboxDevState.storedBundleId == nil }
 
     private var runningHostURL: String? {
-        HotUpdaterSandboxDevState.running.flatMap { url in
+        guard isRunningDevServer else { return nil }
+        return HotUpdaterSandboxDevState.running.flatMap { url in
             url.scheme.flatMap { scheme in url.host.map { "\(scheme)://\($0):\(url.port ?? 8081)" } }
         }
     }
@@ -270,12 +292,25 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
 
     private func startSession(host: String, bundle: URL) {
         remember(host)
+        begin(bundle, stored: nil)
+        NSLog("[HotUpdaterSandbox] dev session on %@", host)
+        onDevServerChange?()
+    }
+
+    /// A stored bundle runs as a dev server's JavaScript does: for this process,
+    /// and its crash is the session's. Another row swaps it in place.
+    func startStored(_ bundle: HotUpdaterSandboxStoredBundle) {
+        connector.ended()
+        begin(bundle.bundleURL, stored: bundle)
+        NSLog("[HotUpdaterSandbox] stored session of %@", bundle.bundleId)
+        onDevServerChange?()
+    }
+
+    private func begin(_ url: URL, stored: HotUpdaterSandboxStoredBundle?) {
         let wasPrepared = retireNormalLaunch()
         HotUpdaterSandboxDevLeftover.mark()
-        HotUpdaterSandboxDevState.set(bundle)
-        NSLog("[HotUpdaterSandbox] dev session on %@", host)
+        HotUpdaterSandboxDevState.set(url, stored: stored)
         start(wasPrepared)
-        onDevServerChange?()
     }
 
     /// The launch of the normal selection stops being watched and counted as
@@ -296,9 +331,9 @@ final class HotUpdaterSandboxLiveDevServer: HotUpdaterSandboxDevServer {
         connector.reload(host)
     }
 
-    /// Only here does a dev session end, other than with its process.
+    /// Only here does a session end, other than with its process.
     func exitDevServer() {
-        guard isRunningDevServer else { return }
+        guard HotUpdaterSandboxDevState.running != nil else { return }
         connector.ended()
         HotUpdaterSandboxDevState.set(nil)
         HotUpdaterSandboxDevLeftover.clear()

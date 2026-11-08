@@ -55,9 +55,9 @@ class HotUpdaterSandboxImplGeneratorTest {
     fun `only the generator's lines differ from the source`() {
         val source = packaged.split("\n")
         val generated = generate(packaged).split("\n").drop(1)
-        assertEquals(source.size + 2, generated.size)
+        assertEquals(source.size + 5, generated.size)
         val added = generated.filter { it.contains("HotUpdaterSandboxDev") }
-        assertEquals(5, added.size)
+        assertEquals(8, added.size)
         assertEquals(
             source.filterNot {
                 it.startsWith("        this.bundleStorage =") ||
@@ -66,6 +66,33 @@ class HotUpdaterSandboxImplGeneratorTest {
             },
             generated.filterNot { it.contains("HotUpdaterSandboxDev") },
         )
+    }
+
+    private val storedAnchor = "        val launchSelection = currentLaunchSelection"
+
+    @Test
+    fun `a stored session answers what JavaScript reads of the launched bundle first`() {
+        val lines = generate(packaged).split("\n")
+        for ((function, field) in listOf("getBaseURL" to "baseURL", "getBundleId" to "bundleId", "getManifest" to "manifest")) {
+            val line = "        HotUpdaterSandboxDev.storedBundle(context, environment)?.let { return it.$field }"
+            val at = lines.indexOf(line)
+            assertEquals(1, lines.count { it == line })
+            assertTrue(lines[at - 1].startsWith("    fun $function("))
+            assertEquals(storedAnchor, lines[at + 1])
+        }
+    }
+
+    @Test
+    fun `work moved before a stored getter's anchor refuses`() {
+        val signature = "    fun getBundleId(): String? {"
+        val message = refusal(packaged.replace("$signature\n$storedAnchor", "$signature\n        log()\n$storedAnchor"))
+        assertTrue(message, message.contains("`getBundleId` does something else before"))
+    }
+
+    @Test
+    fun `a renamed stored getter refuses`() {
+        val message = refusal(packaged.replace("    fun getManifest(): Map<String, Any?> {", "    fun getManifest(): Map<String, Any> {"))
+        assertTrue(message, message.contains("fun getManifest(): Map<String, Any?> {"))
     }
 
     @Test

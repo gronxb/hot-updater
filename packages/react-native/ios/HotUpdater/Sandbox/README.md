@@ -33,6 +33,12 @@ it serves, for this process only. Connecting stops watching a launch of the norm
 selection already prepared, and a crash marker a dev process left is dropped at the
 next start.
 
+`HotUpdaterSandboxShelf` keeps a copy of each bundle a switch downloaded, in the
+caches directory, and only when the bundle ID ends in `.sandbox`, so nothing stays
+in a store app that shares the sandbox's ID. A row starts a stored session through
+the same override: `HotUpdaterSandboxDevState` then serves the stored bundle, its
+ID, base URL and manifest, on a channel without releases, for this process only.
+
 `HotUpdaterSandboxScreen` renders `HotUpdaterSandboxHomeModel`, which holds its
 words and has no views, so its specs read them. `HotUpdaterSandboxDevServer` is all
 the screen knows of dev-server mode. The screen is SwiftUI from iOS 16

@@ -50,6 +50,7 @@ internal object HotUpdaterSandbox {
             coordinator ?: HotUpdaterSandboxCoordinator(
                 host = HotUpdaterSandboxLiveHost(context),
                 store = HotUpdaterSandboxPreferences(context),
+                shelf = HotUpdaterSandboxDev.shelf(context),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
                 openApp = { switched, fixed -> open(context.applicationContext, switched, fixed) },
                 log = { Log.i(TAG, it) },

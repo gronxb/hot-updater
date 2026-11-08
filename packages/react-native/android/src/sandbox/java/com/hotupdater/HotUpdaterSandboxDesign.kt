@@ -15,7 +15,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -225,10 +227,12 @@ internal fun SandboxIcon(
 
 /** A pressed state of the design's own: the background turns at once and eases back. */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun Modifier.sandboxPressable(
     enabled: Boolean = true,
     role: Role = Role.Button,
     pressedColor: Color = LocalSandboxColors.current.surfacePressed,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier {
     val source = remember { MutableInteractionSource() }
@@ -240,7 +244,20 @@ internal fun Modifier.sandboxPressable(
     )
     return this
         .background(background)
-        .clickable(interactionSource = source, indication = null, enabled = enabled, role = role, onClick = onClick)
+        .then(
+            if (onLongClick == null) {
+                Modifier.clickable(interactionSource = source, indication = null, enabled = enabled, role = role, onClick = onClick)
+            } else {
+                Modifier.combinedClickable(
+                    interactionSource = source,
+                    indication = null,
+                    enabled = enabled,
+                    role = role,
+                    onLongClick = onLongClick,
+                    onClick = onClick,
+                )
+            },
+        )
 }
 
 /** How large the text is set, from the font scale: the largest sizes stack what sits side by side. */
@@ -418,13 +435,16 @@ internal fun SandboxRow(
     showsChevron: Boolean = true,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    /** In place of the chevron. */
+    badge: String? = null,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val colors = LocalSandboxColors.current
     Box(
         modifier
             .alpha(if (enabled) 1f else 0.4f)
-            .sandboxPressable(enabled = enabled, onClick = onClick),
+            .sandboxPressable(enabled = enabled, onLongClick = onLongClick, onClick = onClick),
     ) {
         SandboxRowContent(
             lead = lead,
@@ -434,10 +454,14 @@ internal fun SandboxRow(
             detail = detail,
             detailStyle = detailStyle,
             trailing =
-                if (showsChevron) {
-                    { SandboxIcon(R.drawable.hot_updater_sandbox_chevron, colors.muted, 18.dp) }
-                } else {
-                    null
+                when {
+                    badge != null -> {
+                        { SandboxBadge(badge) }
+                    }
+                    showsChevron -> {
+                        { SandboxIcon(R.drawable.hot_updater_sandbox_chevron, colors.muted, 18.dp) }
+                    }
+                    else -> null
                 },
         )
     }
@@ -617,9 +641,42 @@ internal fun SandboxDialog(
                 SandboxText(message, SandboxType.subhead, colors.textSecondary)
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
-                if (dismiss != null) DialogButton(dismiss, colors.textSecondary, onDismiss)
-                DialogButton(confirm, if (destructive) colors.danger else colors.accent, onConfirm)
+                if (dismiss != null) DialogButton(dismiss, colors.textSecondary, onClick = onDismiss)
+                DialogButton(confirm, if (destructive) colors.danger else colors.accent, onClick = onConfirm)
             }
+        }
+    }
+}
+
+/** What a row offers when pressed and held, in the design's card: one text button a line, and Cancel. */
+@Composable
+internal fun SandboxActionsDialog(
+    title: String,
+    /** Each action's title, whether it destroys something, and what it does. */
+    actions: List<Triple<String, Boolean, () -> Unit>>,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalSandboxColors.current
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .widthIn(max = 400.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(colors.surface)
+                .padding(top = 24.dp, start = 12.dp, end = 12.dp, bottom = 12.dp),
+        ) {
+            SandboxText(
+                title,
+                SandboxType.codeHeadline,
+                modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp).semantics { heading() },
+            )
+            actions.forEach { (action, destructive, run) ->
+                DialogButton(action, if (destructive) colors.danger else colors.accent, Modifier.fillMaxWidth()) {
+                    onDismiss()
+                    run()
+                }
+            }
+            DialogButton("Cancel", colors.textSecondary, Modifier.fillMaxWidth(), onDismiss)
         }
     }
 }
@@ -646,7 +703,7 @@ internal fun SandboxTextDialog(
                 SandboxText(text, SandboxType.footnote, colors.textSecondary)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                DialogButton("Close", colors.accent, onClose)
+                DialogButton("Close", colors.accent, onClick = onClose)
             }
         }
     }
@@ -656,13 +713,14 @@ internal fun SandboxTextDialog(
 private fun DialogButton(
     title: String,
     color: Color,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     SandboxText(
         title,
         SandboxType.headline,
         color,
-        Modifier
+        modifier
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(10.dp))
             .sandboxPressable(pressedColor = LocalSandboxColors.current.fill, onClick = onClick)
