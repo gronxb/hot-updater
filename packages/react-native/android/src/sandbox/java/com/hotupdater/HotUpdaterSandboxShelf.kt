@@ -31,8 +31,11 @@ internal data class HotUpdaterSandboxStoredBundle(
  * directory of the `.sandbox` app. Main's store is only read. A row whose files
  * are gone checks its channel instead.
  *
- * Every read and write runs under one lock: a copy runs off the main thread, and
- * a refresh or a Clear must never see half of one. The process holds one shelf.
+ * Every read and write runs under one lock, held briefly: a copy runs off the
+ * main thread into a partial directory the lock marks as in progress, so the
+ * main thread never waits for it, and a refresh or a Clear never sees half of
+ * one. Checking, moving in and listing a copy happen together under the lock.
+ * The process holds one shelf.
  */
 internal class HotUpdaterSandboxShelf(
     /** The shelf's directory. */
@@ -42,6 +45,9 @@ internal class HotUpdaterSandboxShelf(
     val isolationKey: String,
 ) {
     private val lock = Any()
+
+    /** Bundles being copied, whose partial directories reconciliation leaves alone. */
+    private val copying = HashSet<String>()
 
     /** Newest first. */
     val entries: List<HotUpdaterSandboxShelfEntry>
@@ -73,19 +79,49 @@ internal class HotUpdaterSandboxShelf(
         message: String?,
         nowMs: Long,
         running: String?,
-    ): Unit =
+    ) {
+        if (!isName(bundleId)) return
+        val partial = File(root, "$bundleId$PARTIAL")
         synchronized(lock) {
-            addHolding(bundleId, channel, message, nowMs, running)
+            copying += bundleId
+            partial.deleteRecursively()
         }
+        // Outside the lock: a copy can take a while, and reads mustn't wait for it.
+        val copied =
+            try {
+                File(source, bundleId).copyRecursively(partial, overwrite = true)
+                true
+            } catch (error: Exception) {
+                Log.w(TAG, "didn't keep $bundleId: ${error.message}")
+                false
+            }
+        synchronized(lock) {
+            copying -= bundleId
+            if (copied && promote(partial, bundleId)) list(bundleId, channel, message, nowMs, running)
+            partial.deleteRecursively()
+        }
+    }
 
-    private fun addHolding(
+    /** Checks a whole copy and moves it in, under the lock. */
+    private fun promote(
+        partial: File,
+        bundleId: String,
+    ): Boolean {
+        if (check(partial, bundleId) == null) {
+            Log.w(TAG, "didn't keep $bundleId: it isn't a whole bundle")
+            return false
+        }
+        directory(bundleId).deleteRecursively()
+        return partial.renameTo(directory(bundleId)).also { if (!it) Log.w(TAG, "didn't keep $bundleId: it couldn't be moved in") }
+    }
+
+    private fun list(
         bundleId: String,
         channel: String,
         message: String?,
         nowMs: Long,
         running: String?,
     ) {
-        if (!isName(bundleId) || !copy(bundleId)) return
         val next =
             (
                 listOf(HotUpdaterSandboxShelfEntry(bundleId, channel, message, isolationKey, nowMs)) +
@@ -127,7 +163,11 @@ internal class HotUpdaterSandboxShelf(
         val kept = all.filter { it.isolationKey == isolationKey }
         if (kept.size != all.size) write(kept)
         val names = kept.map { it.bundleId }.toSet()
-        root.listFiles()?.filter { it.name != INDEX && it.name !in names }?.forEach { it.deleteRecursively() }
+        val inProgress = copying.map { "$it$PARTIAL" }.toSet()
+        root
+            .listFiles()
+            ?.filter { it.name != INDEX && it.name !in names && it.name !in inProgress }
+            ?.forEach { it.deleteRecursively() }
     }
 
     /** What the stored copies take, in bytes. */
@@ -138,26 +178,13 @@ internal class HotUpdaterSandboxShelf(
 
     private fun directory(bundleId: String) = File(root, bundleId)
 
-    /** Copies main's directory beside the shelf, checks it, then renames it in. */
-    private fun copy(bundleId: String): Boolean {
-        val partial = File(root, "$bundleId$PARTIAL")
-        partial.deleteRecursively()
-        return try {
-            root.mkdirs()
-            File(source, bundleId).copyRecursively(partial, overwrite = true)
-            check(check(partial, bundleId) != null) { "it isn't a whole bundle" }
-            directory(bundleId).deleteRecursively()
-            check(partial.renameTo(directory(bundleId))) { "it couldn't be moved in" }
-            true
-        } catch (error: Exception) {
-            partial.deleteRecursively()
-            Log.w(TAG, "didn't keep $bundleId: ${error.message}")
-            false
-        }
+    /** Best effort, like the copies: a full cache loses the list, never the switch. */
+    private fun write(entries: List<HotUpdaterSandboxShelfEntry>) {
+        runCatching { writeIndex(entries) }.onFailure { Log.w(TAG, "didn't save the list: ${it.message}") }
     }
 
-    private fun write(entries: List<HotUpdaterSandboxShelfEntry>) {
-        root.mkdirs()
+    private fun writeIndex(entries: List<HotUpdaterSandboxShelfEntry>) {
+        check(root.isDirectory || root.mkdirs()) { "no shelf directory" }
         val items =
             JSONArray(
                 entries.map {
@@ -171,7 +198,10 @@ internal class HotUpdaterSandboxShelf(
             )
         val partial = File(root, "$INDEX$PARTIAL")
         partial.writeText(items.toString())
-        if (!partial.renameTo(File(root, INDEX))) partial.delete()
+        if (!partial.renameTo(File(root, INDEX))) {
+            partial.delete()
+            error("the list couldn't be moved in")
+        }
     }
 
     companion object {

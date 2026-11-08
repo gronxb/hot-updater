@@ -1563,6 +1563,16 @@ struct HotUpdaterSandboxShelfTests {
     }
 
     @Test
+    func aListThatCantBeSavedLosesTheRowNotTheSwitch() throws {
+        let shelf = makeShelf(temporaryDirectory())
+        install("a", in: shelf.source)
+        // The list can't be written: a directory holds its name.
+        try FileManager.default.createDirectory(at: shelf.root.appendingPathComponent("index.json"), withIntermediateDirectories: true)
+        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        #expect(shelf.entries.isEmpty)
+    }
+
+    @Test
     func aLinkOrAPathOutsideTheBundleFailsTheCheck() throws {
         let files = temporaryDirectory()
         let directory = files.appendingPathComponent("x")

@@ -137,6 +137,19 @@ class HotUpdaterSandboxShelfTest {
     }
 
     @Test
+    fun `a list that can't be saved loses the row, not the switch`() {
+        val shelf = testShelf()
+        installTestBundle(shelf.source, "a")
+        // The list's temporary file can't be written: a directory holds its name.
+        File(shelf.root, "index.json.tmp").mkdirs()
+        shelf.add("a", "pr-1", null, 0, null)
+        assertTrue(shelf.entries.isEmpty())
+        // The copy nothing lists goes at the next refresh.
+        shelf.reconcile()
+        assertFalse(File(shelf.root, "a").exists())
+    }
+
+    @Test
     fun `a link or a path outside the bundle fails the check`() {
         val root = Files.createTempDirectory("sandbox-shelf").toFile()
         installTestBundle(root, "x")

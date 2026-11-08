@@ -26,11 +26,16 @@ struct HotUpdaterSandboxStoredBundle: Equatable {
 /// directory, so the OS may purge them and nothing durable stays behind. Main's
 /// store is only read. A row whose files are gone checks its channel instead.
 ///
-/// Every read and write runs under one lock: a copy runs off the main thread, and
-/// a refresh or a Clear must never see half of one. The app holds one shelf.
+/// Every read and write runs under one lock, held briefly: a copy runs off the
+/// main thread into a partial directory the lock marks as in progress, so the main
+/// thread never waits for it, and a refresh or a Clear never sees half of one.
+/// Checking, moving in and listing a copy happen together under the lock. The app
+/// holds one shelf.
 final class HotUpdaterSandboxShelf {
     static let limit = 10
     private let lock = NSLock()
+    /// Bundles being copied, whose partial directories reconciliation leaves alone.
+    private var copying: Set<String> = []
     private static let indexName = "index.json"
     private static let partialSuffix = ".tmp"
 
@@ -71,12 +76,51 @@ final class HotUpdaterSandboxShelf {
     /// bundles. Best effort: a copy that fails its check lists nothing. The oldest
     /// entry past the cap goes, never `running`'s.
     func add(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) {
-        serially { addSerially(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running) }
+        guard Self.isName(bundleId) else { return }
+        guard storesBundles else {
+            serially { list(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running) }
+            return
+        }
+        let partial = root.appendingPathComponent(bundleId + Self.partialSuffix, isDirectory: true)
+        serially {
+            copying.insert(bundleId)
+            try? fileManager.removeItem(at: partial)
+        }
+        // Outside the lock, so reads never wait for a copy. A clone on APFS.
+        var copied = true
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            try fileManager.copyItem(at: source.appendingPathComponent(bundleId, isDirectory: true), to: partial)
+        } catch {
+            copied = false
+            NSLog("[HotUpdaterSandbox] didn't keep %@: %@", bundleId, error.localizedDescription)
+        }
+        serially {
+            copying.remove(bundleId)
+            if copied && promote(partial, bundleId: bundleId) {
+                list(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running)
+            }
+            try? fileManager.removeItem(at: partial)
+        }
     }
 
-    private func addSerially(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) {
-        guard Self.isName(bundleId) else { return }
-        if storesBundles && !copy(bundleId) { return }
+    /// Checks a whole copy and moves it in, under the lock.
+    private func promote(_ partial: URL, bundleId: String) -> Bool {
+        guard Self.check(partial, bundleId: bundleId) != nil else {
+            NSLog("[HotUpdaterSandbox] didn't keep %@: it isn't a whole bundle", bundleId)
+            return false
+        }
+        try? fileManager.removeItem(at: directory(bundleId))
+        do {
+            try fileManager.moveItem(at: partial, to: directory(bundleId))
+            return true
+        } catch {
+            NSLog("[HotUpdaterSandbox] didn't keep %@: %@", bundleId, error.localizedDescription)
+            return false
+        }
+    }
+
+    private func list(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) {
         let entry = HotUpdaterSandboxShelfEntry(
             bundleId: bundleId,
             channel: channel,
@@ -128,8 +172,9 @@ final class HotUpdaterSandboxShelf {
         let kept = entries.filter { $0.isolationKey == isolationKey }
         if kept.count != entries.count { write(kept) }
         let names = Set(kept.map(\.bundleId))
+        let inProgress = Set(copying.map { $0 + Self.partialSuffix })
         for name in (try? fileManager.contentsOfDirectory(atPath: root.path)) ?? []
-        where name != Self.indexName && !names.contains(name) {
+        where name != Self.indexName && !names.contains(name) && !inProgress.contains(name) {
             try? fileManager.removeItem(at: root.appendingPathComponent(name))
         }
     }
@@ -146,27 +191,6 @@ final class HotUpdaterSandboxShelf {
 
     private func directory(_ bundleId: String) -> URL {
         root.appendingPathComponent(bundleId, isDirectory: true)
-    }
-
-    /// Copies main's directory beside the shelf, checks it, then renames it in.
-    private func copy(_ bundleId: String) -> Bool {
-        let partial = root.appendingPathComponent(bundleId + Self.partialSuffix, isDirectory: true)
-        try? fileManager.removeItem(at: partial)
-        do {
-            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-            // A clone on APFS.
-            try fileManager.copyItem(at: source.appendingPathComponent(bundleId, isDirectory: true), to: partial)
-            guard Self.check(partial, bundleId: bundleId) != nil else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            try? fileManager.removeItem(at: directory(bundleId))
-            try fileManager.moveItem(at: partial, to: directory(bundleId))
-            return true
-        } catch {
-            try? fileManager.removeItem(at: partial)
-            NSLog("[HotUpdaterSandbox] didn't keep %@: %@", bundleId, error.localizedDescription)
-            return false
-        }
     }
 
     private func write(_ entries: [HotUpdaterSandboxShelfEntry]) {
