@@ -67,6 +67,27 @@ internal class HotUpdaterSandboxDevFiles(
     val root: File,
 ) {
     val claim: File get() = File(root, CLAIM)
+    private val handoff: File get() = File(root, HANDOFF)
+
+    /** A stored session's relaunch, on its way: only the request with this token may act. */
+    fun writeHandoff(token: String) {
+        root.mkdirs()
+        handoff.writeText(token)
+    }
+
+    /** Whether [token] is the handoff on its way, which it then takes: a later copy of the request does nothing. */
+    fun takeHandoff(token: String?): Boolean {
+        val current = runCatching { handoff.readText() }.getOrNull()
+        if (token == null || current != token) return false
+        handoff.delete()
+        return true
+    }
+
+    /** A relaunch that didn't happen: a late request for it does nothing. */
+    fun clearHandoff() {
+        handoff.delete()
+    }
+
     val keyValueFile: File get() = File(root, KEY_VALUE)
 
     fun session(id: String): File = File(root, "$SESSIONS/$id")
@@ -145,6 +166,7 @@ internal class HotUpdaterSandboxDevFiles(
 
     companion object {
         private const val CLAIM = "claim.json"
+        private const val HANDOFF = "handoff"
         private const val KEY_VALUE = "storage.json"
         private const val SESSIONS = "sessions"
         private const val TRASH = "trash"
@@ -343,10 +365,8 @@ internal object HotUpdaterSandboxDev {
         val stored = running.stored
         startRelaunch(
             context,
-            if (stored !=
-                null
-            ) {
-                HotUpdaterSandboxRelaunch.Stored(stored.bundleId)
+            if (stored != null) {
+                HotUpdaterSandboxRelaunch.Stored(stored.bundleId, UUID.randomUUID().toString())
             } else {
                 HotUpdaterSandboxRelaunch.Dev(running.id, running.host)
             },
@@ -368,8 +388,13 @@ internal object HotUpdaterSandboxDev {
                 intent
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_SESSION, relaunch.sessionId)
                     .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HOST, relaunch.host)
-            is HotUpdaterSandboxRelaunch.Stored ->
-                intent.putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_BUNDLE, relaunch.bundleId)
+            is HotUpdaterSandboxRelaunch.Stored -> {
+                // Recorded before the request goes out, so the screen can call it off.
+                filesOf(context).writeHandoff(relaunch.token)
+                intent
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_STORED_BUNDLE, relaunch.bundleId)
+                    .putExtra(HotUpdaterSandboxRelaunchActivity.EXTRA_HANDOFF, relaunch.token)
+            }
             HotUpdaterSandboxRelaunch.FirstScreen -> Unit
         }
         Log.i(TAG, "relaunching: $relaunch")
@@ -391,6 +416,8 @@ internal sealed class HotUpdaterSandboxRelaunch {
 
     data class Stored(
         val bundleId: String,
+        /** What the screen can call off: see [HotUpdaterSandboxDevFiles.takeHandoff]. */
+        val token: String,
     ) : HotUpdaterSandboxRelaunch()
 
     object FirstScreen : HotUpdaterSandboxRelaunch()

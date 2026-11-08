@@ -77,6 +77,9 @@ internal interface HotUpdaterSandboxHost {
      */
     fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean = false
 
+    /** The handoff didn't happen: a late request for it does nothing. */
+    fun abandonStoredSession() = Unit
+
     /** Ends the session: a new process, on the first screen. */
     fun exitSession() = Unit
 
@@ -280,13 +283,18 @@ internal class HotUpdaterSandboxCoordinator(
     private var downloadedBytes = 0L
 
     /**
-     * A row's stored bundle being checked, then handed to the process that replaces
-     * this one: Clear and Delete leave it alone, as they do the running one, and
-     * nothing else starts until this process ends.
+     * The stored session a row asked for, from the tap until the process that
+     * replaces this one runs it: its files are checked, then it is handed off.
+     * Nothing else starts meanwhile, links wait, and it is protected as the running
+     * one is. A screen back in front while it's pending means the handoff didn't happen.
      */
-    private var openingBundleId: String? = null
+    private var pendingStoredBundleId: String? = null
 
-    private val protectedBundleIds get() = setOfNotNull(host.storedSessionBundleId, openingBundleId)
+    /** Bumped when a handoff is called off, so a check still in flight hands nothing off. */
+    private var handoff = 0L
+
+    /** What Delete, Clear, and the cap leave alone: what runs, and what is about to. */
+    private val protectedBundleIds get() = setOfNotNull(host.storedSessionBundleId, pendingStoredBundleId)
 
     private val listeners = LinkedHashSet<(HotUpdaterSandboxState) -> Unit>()
     private val queue = ArrayList(store.pendingLinks)
@@ -369,6 +377,8 @@ internal class HotUpdaterSandboxCoordinator(
     /** Accepts the link in [HotUpdaterSandboxPhase.Confirming]. */
     fun confirmLink() {
         val phase = state.phase as? HotUpdaterSandboxPhase.Confirming ?: return
+        // A handoff is on its way: the link waits for it to resolve.
+        if (pendingStoredBundleId != null) return
         // The link stays stored, and the first screen asks about it in the new process.
         if (host.isInSession) {
             host.exitSession()
@@ -497,27 +507,47 @@ internal class HotUpdaterSandboxCoordinator(
     fun openDownloaded(bundleId: String): Boolean {
         if (!canStart() || lock.holder != null) return false
         val entry = downloaded.firstOrNull { it.bundleId == bundleId } ?: return false
-        openingBundleId = bundleId
+        pendingStoredBundleId = bundleId
+        val attempt = ++handoff
         scope.launch {
             // The files are checked off the main thread.
             val bundle = withContext(shelfContext) { shelf.stored(bundleId) }
+            if (attempt != handoff) return@launch
             if (bundle == null) {
-                openingBundleId = null
+                pendingStoredBundleId = null
                 switchTo(entry.channel)
                 return@launch
             }
             val phase = state.phase
             if (lock.holder != null || (phase !is HotUpdaterSandboxPhase.Idle && phase !is HotUpdaterSandboxPhase.Failed)) {
-                openingBundleId = null
+                letGoOfHandoff()
                 return@launch
             }
             acknowledgeLastLaunch()
             publish(state.copy(phase = HotUpdaterSandboxPhase.Idle))
             log("opening stored ${entry.channel} $bundleId")
-            // The guard stays until this process is replaced, unless the handoff never went out.
-            if (!host.startStoredSession(bundle)) openingBundleId = null
+            if (!host.startStoredSession(bundle)) letGoOfHandoff()
         }
         return true
+    }
+
+    /**
+     * The sandbox's screen is in front again, resumed or made anew, in this process:
+     * a handoff still pending didn't happen, such as a relaunch the system kept
+     * from starting. Its row can be tapped again, and links waiting are asked about.
+     */
+    fun resumed() {
+        if (pendingStoredBundleId == null) return
+        handoff++
+        host.abandonStoredSession()
+        log("a stored session's relaunch didn't happen")
+        letGoOfHandoff()
+    }
+
+    private fun letGoOfHandoff() {
+        pendingStoredBundleId = null
+        publish(listed(state))
+        pump()
     }
 
     /** Back to what the normal selection runs. */
@@ -606,7 +636,7 @@ internal class HotUpdaterSandboxCoordinator(
     }
 
     private fun canStart() =
-        openingBundleId == null && (state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed)
+        pendingStoredBundleId == null && (state.phase is HotUpdaterSandboxPhase.Idle || state.phase is HotUpdaterSandboxPhase.Failed)
 
     private fun begin(target: String) {
         val operationId = nextOperationId++
@@ -728,9 +758,9 @@ internal class HotUpdaterSandboxCoordinator(
         channel: String,
         message: String?,
     ) {
-        val running = host.storedSessionBundleId
+        val kept = protectedBundleIds
         val now = nowMs()
-        withContext(shelfContext) { shelf.add(bundleId, channel, message, now, running) }
+        withContext(shelfContext) { shelf.add(bundleId, channel, message, now, kept) }
         relist(reconciling = false)
     }
 
@@ -823,7 +853,10 @@ internal class HotUpdaterSandboxCoordinator(
 
     /** Asks about the oldest link, unless something is already on screen. */
     private fun pump() {
-        if (state.phase !is HotUpdaterSandboxPhase.Idle && state.phase !is HotUpdaterSandboxPhase.WaitingForServer) {
+        // A handoff is on its way: links stay queued until it resolves.
+        if (pendingStoredBundleId != null ||
+            (state.phase !is HotUpdaterSandboxPhase.Idle && state.phase !is HotUpdaterSandboxPhase.WaitingForServer)
+        ) {
             publish(state)
             return
         }

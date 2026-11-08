@@ -37,7 +37,7 @@ class HotUpdaterSandboxShelfTest {
     fun `a partial copy lists nothing`() {
         val shelf = testShelf()
         installTestBundle(shelf.source, "broken", skipping = "drawable-mdpi/logo.png")
-        shelf.add("broken", "pr-1", null, 0, null)
+        shelf.add("broken", "pr-1", null, 0)
         assertTrue(shelf.entries.isEmpty())
         assertTrue(
             shelf.root
@@ -51,7 +51,7 @@ class HotUpdaterSandboxShelfTest {
     fun `a stored bundle is what main answers`() {
         val shelf = testShelf()
         installTestBundle(shelf.source, "a")
-        shelf.add("a", "pr-1", "words", 5, null)
+        shelf.add("a", "pr-1", "words", 5)
         val stored = shelf.stored("a")!!
         assertEquals("index.android.bundle", stored.bundle.name)
         assertEquals("file://${File(shelf.root, "a").absolutePath}", stored.baseURL)
@@ -67,7 +67,7 @@ class HotUpdaterSandboxShelfTest {
         val shelf = testShelf()
         for (index in 0..HotUpdaterSandboxShelf.LIMIT) {
             installTestBundle(shelf.source, "b$index")
-            shelf.add("b$index", "pr-$index", null, index.toLong(), running = "b0")
+            shelf.add("b$index", "pr-$index", null, index.toLong(), kept = setOf("b0"))
         }
         assertEquals(HotUpdaterSandboxShelf.LIMIT, shelf.entries.size)
         assertEquals("b10", shelf.entries.first().bundleId)
@@ -81,7 +81,7 @@ class HotUpdaterSandboxShelfTest {
         val root = Files.createTempDirectory("sandbox-shelf").toFile()
         val old = testShelf(root, "old-build")
         installTestBundle(old.source, "a")
-        old.add("a", "pr-1", null, 0, null)
+        old.add("a", "pr-1", null, 0)
         File(old.root, "b.tmp").mkdirs()
         File(old.root, "c").mkdirs()
 
@@ -112,7 +112,7 @@ class HotUpdaterSandboxShelfTest {
         repeat(40) { round ->
             val shelf = testShelf()
             installTestBundle(shelf.source, "b$round")
-            val copy = Thread { shelf.add("b$round", "pr-1", null, 0, null) }.apply { start() }
+            val copy = Thread { shelf.add("b$round", "pr-1", null, 0) }.apply { start() }
             // A pause between turns, as a person's refreshes have: a lock isn't fair,
             // and a loop that takes it back at once can starve the copy.
             do {
@@ -129,9 +129,9 @@ class HotUpdaterSandboxShelfTest {
         repeat(40) { round ->
             val shelf = testShelf()
             installTestBundle(shelf.source, "old")
-            shelf.add("old", "pr-0", null, 0, null)
+            shelf.add("old", "pr-0", null, 0)
             installTestBundle(shelf.source, "b$round")
-            val copy = Thread { shelf.add("b$round", "pr-1", null, 1, null) }.apply { start() }
+            val copy = Thread { shelf.add("b$round", "pr-1", null, 1) }.apply { start() }
             do {
                 shelf.clear(emptySet())
                 copy.join(0, 200_000)
@@ -147,7 +147,7 @@ class HotUpdaterSandboxShelfTest {
         installTestBundle(shelf.source, "a")
         // The list's temporary file can't be written: a directory holds its name.
         File(shelf.root, "index.json.tmp").mkdirs()
-        shelf.add("a", "pr-1", null, 0, null)
+        shelf.add("a", "pr-1", null, 0)
         assertEquals(listOf("a"), shelf.entries.map { it.bundleId })
         assertTrue(testShelf(root).entries.isEmpty())
     }
@@ -157,7 +157,7 @@ class HotUpdaterSandboxShelfTest {
         val shelf = testShelf()
         installTestBundle(shelf.source, "a")
         installTestBundle(shelf.source, "unlisted")
-        shelf.add("a", "pr-1", null, 0, null)
+        shelf.add("a", "pr-1", null, 0)
         File(shelf.source, "unlisted").copyRecursively(File(shelf.root, "unlisted"))
         // An image gone since the handoff's full check doesn't stop the start.
         File(shelf.root, "a/drawable-mdpi/logo.png").delete()

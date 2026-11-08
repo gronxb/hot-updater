@@ -47,6 +47,13 @@ private class FakeHost : HotUpdaterSandboxHost {
     /** Whether the relaunch's intent can't go out. */
     var handoffFails = false
 
+    /** Handoffs the screen called off. */
+    var abandoned = 0
+
+    override fun abandonStoredSession() {
+        abandoned += 1
+    }
+
     /** As the live host: the session's ID changes only in the process that replaces this one. */
     override fun startStoredSession(bundle: HotUpdaterSandboxStoredBundle): Boolean {
         if (handoffFails) return false
@@ -472,7 +479,7 @@ class HotUpdaterSandboxCoordinatorTest {
         // In the stored session's process, Reload runs the same stored bundle again.
         val session = Fixture()
         session.host.storedBundleId = "ota"
-        session.shelf.add("ota", "pr-1", null, 0, null)
+        session.shelf.add("ota", "pr-1", null, 0)
         session.coordinator.refresh()
         session.coordinator.reloadApp()
         assertEquals(listOf("ota"), session.host.startedStored)
@@ -484,7 +491,7 @@ class HotUpdaterSandboxCoordinatorTest {
         val fixture = Fixture()
         fixture.coordinator.switchTo("pr-1")
         installTestBundle(fixture.shelf.source, "other")
-        fixture.shelf.add("other", "pr-2", null, 0, null)
+        fixture.shelf.add("other", "pr-2", null, 0)
         fixture.coordinator.refresh()
         assertTrue(fixture.coordinator.openDownloaded("ota"))
         assertEquals(listOf("ota"), fixture.host.startedStored)
@@ -497,6 +504,63 @@ class HotUpdaterSandboxCoordinatorTest {
         assertEquals(listOf("ota"), fixture.host.startedStored)
         assertNotNull(fixture.shelf.stored("ota"))
         assertNull(fixture.shelf.stored("other"))
+    }
+
+    @Test
+    fun `a relaunch the system never starts lets go once the screen is back`() {
+        val fixture = Fixture()
+        fixture.coordinator.switchTo("pr-1")
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        // The intent went out, but the system kept the relaunch from starting: the screen comes back.
+        assertFalse(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.resumed()
+        assertEquals(1, fixture.host.abandoned)
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        assertEquals(listOf("ota", "ota"), fixture.host.startedStored)
+        // A screen that comes back with nothing pending calls nothing off.
+        val idle = Fixture()
+        idle.coordinator.resumed()
+        assertEquals(0, idle.host.abandoned)
+    }
+
+    @Test
+    fun `a check still running when the screen comes back hands nothing off`() {
+        val shelfThread = Executors.newSingleThreadExecutor()
+        val fixture = Fixture(shelfContext = shelfThread.asCoroutineDispatcher())
+        val drain = { repeat(10) { shelfThread.submit {}.get() } }
+        fixture.coordinator.switchTo("pr-1")
+        drain()
+        val disk = CountDownLatch(1)
+        shelfThread.submit { disk.await() }
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.resumed()
+        disk.countDown()
+        drain()
+        assertTrue(fixture.host.startedStored.isEmpty())
+        shelfThread.shutdown()
+    }
+
+    @Test
+    fun `a link during a handoff waits, and the pending bundle outlasts the cap`() {
+        val fixture = Fixture()
+        // Ten bundles listed, the one being opened the oldest.
+        fixture.shelf.add("ota", "pr-1", null, 0)
+        for (index in 1 until HotUpdaterSandboxShelf.LIMIT) {
+            installTestBundle(fixture.shelf.source, "b$index")
+            fixture.shelf.add("b$index", "pr-b$index", null, index.toLong())
+        }
+        fixture.coordinator.refresh()
+        assertTrue(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.receiveLink(link("pr-new"))
+        assertEquals(HotUpdaterSandboxPhase.Idle, fixture.phase)
+        assertEquals(1, fixture.coordinator.state.queuedLinks)
+        fixture.coordinator.confirmLink()
+        assertTrue(fixture.host.calls.isEmpty())
+        assertNotNull(fixture.shelf.stored("ota"))
+        assertEquals(HotUpdaterSandboxShelf.LIMIT, fixture.shelf.entries.size)
+        // Once the handoff resolves, the link is asked about.
+        fixture.coordinator.resumed()
+        assertTrue(fixture.phase is HotUpdaterSandboxPhase.Confirming)
     }
 
     @Test
@@ -600,7 +664,7 @@ class HotUpdaterSandboxCoordinatorTest {
         drain()
         // The shelf is busy for as long as the test says: a slow disk.
         installTestBundle(fixture.shelf.source, "other")
-        fixture.shelf.add("other", "pr-2", null, 0, null)
+        fixture.shelf.add("other", "pr-2", null, 0)
         val disk = CountDownLatch(1)
         shelfThread.submit { disk.await() }
         assertTrue(fixture.coordinator.openDownloaded("ota"))
@@ -623,9 +687,9 @@ class HotUpdaterSandboxCoordinatorTest {
         val fixture = Fixture()
         installTestBundle(fixture.shelf.source, "other")
         installTestBundle(fixture.shelf.source, "third")
-        fixture.shelf.add("ota", "pr-1", null, 0, null)
-        fixture.shelf.add("other", "pr-2", null, 1, null)
-        fixture.shelf.add("third", "pr-3", null, 2, null)
+        fixture.shelf.add("ota", "pr-1", null, 0)
+        fixture.shelf.add("other", "pr-2", null, 1)
+        fixture.shelf.add("third", "pr-3", null, 2)
         fixture.host.storedBundleId = "ota"
         fixture.coordinator.deleteDownloaded("ota")
         assertNotNull(fixture.shelf.stored("ota"))

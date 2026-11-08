@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * The coordinator's view of the SDK: main's native state, and its server as the
@@ -46,12 +47,14 @@ internal class HotUpdaterSandboxLiveHost(
         try {
             // Leaving the normal launch, so its "started" mark doesn't read as a crash.
             if (!isInSession) HotUpdaterSandboxDev.clearNormalLaunchStarted(impl.getRunningBundleId())
-            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId))
+            HotUpdaterSandboxDev.startRelaunch(context, HotUpdaterSandboxRelaunch.Stored(bundle.bundleId, UUID.randomUUID().toString()))
             true
         } catch (error: Exception) {
             Log.w("HotUpdaterSandbox", "couldn't relaunch into ${bundle.bundleId}: ${error.message}")
             false
         }
+
+    override fun abandonStoredSession() = HotUpdaterSandboxDev.filesOf(context).clearHandoff()
 
     override fun exitSession() = HotUpdaterSandbox.devServer(context).exitDevServer()
 

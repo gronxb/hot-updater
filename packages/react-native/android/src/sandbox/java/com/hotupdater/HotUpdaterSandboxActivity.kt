@@ -135,6 +135,12 @@ class HotUpdaterSandboxActivity : ComponentActivity() {
         handle(intent, savedInstanceState)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Back in front in this process: a stored session's relaunch still pending didn't happen.
+        if (screen != null) HotUpdaterSandbox.coordinator(this).resumed()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

@@ -24,6 +24,7 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
         const val EXTRA_SESSION = "com.hotupdater.sandbox.SESSION"
         const val EXTRA_HOST = "com.hotupdater.sandbox.HOST"
         const val EXTRA_STORED_BUNDLE = "com.hotupdater.sandbox.STORED_BUNDLE"
+        const val EXTRA_HANDOFF = "com.hotupdater.sandbox.HANDOFF"
         private const val TAG = "HotUpdaterSandboxDev"
         private const val CLAIM_POLL_MS = 50L
         private const val KILL_DELAY_MS = 100L
@@ -39,6 +40,14 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
             Process.killProcess(Process.myPid())
             return
         }
+        val stored = intent.getStringExtra(EXTRA_STORED_BUNDLE)
+        // A stored session's request the screen called off, or a copy of one taken: nothing happens.
+        if (stored != null && !HotUpdaterSandboxDev.filesOf(this).takeHandoff(intent.getStringExtra(EXTRA_HANDOFF))) {
+            Log.i(TAG, "dropped a stored session's relaunch the screen called off")
+            finish()
+            Process.killProcess(Process.myPid())
+            return
+        }
         if (targetPid > 0) Process.killProcess(targetPid)
         // As in the SDK's restart: an activity started while the system still has
         // the old process registered is lost with it.
@@ -50,7 +59,6 @@ class HotUpdaterSandboxRelaunchActivity : Activity() {
 
         val session = intent.getStringExtra(EXTRA_SESSION)
         val host = intent.getStringExtra(EXTRA_HOST)
-        val stored = intent.getStringExtra(EXTRA_STORED_BUNDLE)
         val files = HotUpdaterSandboxDev.filesOf(this)
         val restart = Intent.makeRestartActivityTask(launch).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         if (stored != null) {

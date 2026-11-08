@@ -1212,7 +1212,7 @@ struct HotUpdaterSandboxScreenStateTests {
     func aMessageBelongsToItsBundleNotItsChannel() async {
         let fixture = Fixture()
         install("older", in: fixture.shelf.source)
-        fixture.shelf.add(bundleId: "older", channel: "pr-1", message: "old words", nowMs: 0, running: nil)
+        fixture.shelf.add(bundleId: "older", channel: "pr-1", message: "old words", nowMs: 0)
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota"
         await fixture.coordinator.refresh()
@@ -1227,8 +1227,8 @@ struct HotUpdaterSandboxScreenStateTests {
         fixture.host.runningBundleId = "running"
         install("running", in: fixture.shelf.source)
         install("staged", in: fixture.shelf.source)
-        fixture.shelf.add(bundleId: "running", channel: "pr-2", message: "what runs", nowMs: 0, running: nil)
-        fixture.shelf.add(bundleId: "staged", channel: "pr-2", message: "what's next", nowMs: 1, running: nil)
+        fixture.shelf.add(bundleId: "running", channel: "pr-2", message: "what runs", nowMs: 0)
+        fixture.shelf.add(bundleId: "staged", channel: "pr-2", message: "what's next", nowMs: 1)
         await fixture.coordinator.refresh()
         let state = fixture.coordinator.state
         #expect(state.selection?.bundleId == "staged")
@@ -1361,7 +1361,7 @@ struct HotUpdaterSandboxScreenStateTests {
         let fixture = Fixture()
         let shelf = makeShelf(fixture.files, storesBundles: false)
         install("ota", in: shelf.source)
-        shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0)
         #expect(shelf.entries.map(\.channel) == ["pr-1"])
         #expect(!FileManager.default.fileExists(atPath: shelf.root.appendingPathComponent("ota").path))
         #expect(shelf.stored("ota") == nil)
@@ -1421,9 +1421,9 @@ struct HotUpdaterSandboxScreenStateTests {
         let fixture = Fixture()
         install("other", in: fixture.shelf.source)
         install("third", in: fixture.shelf.source)
-        fixture.shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0, running: nil)
-        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 1, running: nil)
-        fixture.shelf.add(bundleId: "third", channel: "pr-3", message: nil, nowMs: 2, running: nil)
+        fixture.shelf.add(bundleId: "ota", channel: "pr-1", message: nil, nowMs: 0)
+        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 1)
+        fixture.shelf.add(bundleId: "third", channel: "pr-3", message: nil, nowMs: 2)
         fixture.host.storedBundleId = "ota"
         fixture.coordinator.deleteDownloaded("ota")
         await settle()
@@ -1476,7 +1476,7 @@ struct HotUpdaterSandboxShelfTests {
         let files = temporaryDirectory()
         let shelf = makeShelf(files)
         install("broken", in: shelf.source, skipping: "assets/logo.png")
-        shelf.add(bundleId: "broken", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        shelf.add(bundleId: "broken", channel: "pr-1", message: nil, nowMs: 0)
         #expect(shelf.entries.isEmpty)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: shelf.root.path)) ?? []).isEmpty)
     }
@@ -1486,7 +1486,7 @@ struct HotUpdaterSandboxShelfTests {
         let files = temporaryDirectory()
         let shelf = makeShelf(files)
         install("a", in: shelf.source)
-        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0)
         let stored = try #require(shelf.stored("a"))
         #expect(stored.bundleURL.lastPathComponent == "index.ios.bundle")
         #expect(stored.baseURL == "file://\(shelf.root.appendingPathComponent("a").path)")
@@ -1502,7 +1502,7 @@ struct HotUpdaterSandboxShelfTests {
         let shelf = makeShelf(files)
         for index in 0 ... HotUpdaterSandboxShelf.limit {
             install("b\(index)", in: shelf.source)
-            shelf.add(bundleId: "b\(index)", channel: "pr-\(index)", message: nil, nowMs: Double(index), running: "b0")
+            shelf.add(bundleId: "b\(index)", channel: "pr-\(index)", message: nil, nowMs: Double(index), kept: ["b0"])
         }
         #expect(shelf.entries.count == HotUpdaterSandboxShelf.limit)
         #expect(shelf.entries.first?.bundleId == "b10")
@@ -1516,7 +1516,7 @@ struct HotUpdaterSandboxShelfTests {
         let files = temporaryDirectory()
         let old = makeShelf(files, key: "old-build")
         install("a", in: old.source)
-        old.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        old.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0)
         try FileManager.default.createDirectory(at: old.root.appendingPathComponent("b.tmp"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: old.root.appendingPathComponent("c"), withIntermediateDirectories: true)
 
@@ -1543,7 +1543,7 @@ struct HotUpdaterSandboxShelfTests {
             install("b\(round)", in: shelf.source)
             let done = DispatchSemaphore(value: 0)
             DispatchQueue.global().async {
-                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 0)
                 done.signal()
             }
             // A pause between turns, as a person's refreshes have: a lock isn't fair,
@@ -1559,11 +1559,11 @@ struct HotUpdaterSandboxShelfTests {
         for round in 0 ..< 40 {
             let shelf = makeShelf(temporaryDirectory())
             install("old", in: shelf.source)
-            shelf.add(bundleId: "old", channel: "pr-0", message: nil, nowMs: 0, running: nil)
+            shelf.add(bundleId: "old", channel: "pr-0", message: nil, nowMs: 0)
             install("b\(round)", in: shelf.source)
             let done = DispatchSemaphore(value: 0)
             DispatchQueue.global().async {
-                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1, running: nil)
+                shelf.add(bundleId: "b\(round)", channel: "pr-1", message: nil, nowMs: 1)
                 done.signal()
             }
             repeat { shelf.clear(keeping: []) } while done.wait(timeout: .now() + .microseconds(200)) == .timedOut
@@ -1578,9 +1578,33 @@ struct HotUpdaterSandboxShelfTests {
         install("a", in: shelf.source)
         // The list can't be written: a directory holds its name.
         try FileManager.default.createDirectory(at: shelf.root.appendingPathComponent("index.json"), withIntermediateDirectories: true)
-        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0, running: nil)
+        shelf.add(bundleId: "a", channel: "pr-1", message: nil, nowMs: 0)
         #expect(shelf.entries.map(\.bundleId) == ["a"])
         #expect(makeShelf(files).entries.isEmpty)
+    }
+
+    @Test @MainActor
+    func aLinkWaitsWhileARowOpensItsBundle() async {
+        let shelfQueue = DispatchQueue(label: "test.slow-shelf")
+        let fixture = Fixture(shelfQueue: shelfQueue)
+        fixture.coordinator.switchTo("pr-1")
+        await settle()
+        shelfQueue.suspend()
+        #expect(fixture.coordinator.openDownloaded("ota"))
+        fixture.coordinator.receiveLink(link("pr-new"))
+        #expect(fixture.coordinator.state.phase == .idle)
+        #expect(fixture.coordinator.state.queuedLinks == 1)
+        fixture.coordinator.confirmLink()
+        fixture.host.calls = []
+        shelfQueue.resume()
+        await settle()
+        // The session started first, then the link is asked about.
+        #expect(fixture.host.startedStored == ["ota"])
+        #expect(fixture.host.calls.isEmpty)
+        guard case .confirming = fixture.coordinator.state.phase else {
+            Issue.record("expected the link's question once the row opened")
+            return
+        }
     }
 
     @Test @MainActor
@@ -1591,7 +1615,7 @@ struct HotUpdaterSandboxShelfTests {
         await settle()
         // The shelf is busy for as long as the test says: a slow disk.
         install("other", in: fixture.shelf.source)
-        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 0, running: nil)
+        fixture.shelf.add(bundleId: "other", channel: "pr-2", message: nil, nowMs: 0)
         shelfQueue.suspend()
         #expect(fixture.coordinator.openDownloaded("ota"))
         // The bundle being opened stays whole through Delete and Clear.

@@ -141,7 +141,7 @@ class HotUpdaterSandboxDevTest {
     fun `a stored claim runs the shelf's bundle once, and a gone bundle arms nothing`() {
         val shelf = testShelf(folder.newFolder())
         installTestBundle(shelf.source, "ota")
-        shelf.add("ota", "pr-1", null, 0, null)
+        shelf.add("ota", "pr-1", null, 0)
         val files = files()
         val claim = HotUpdaterSandboxDevClaim("", "", 7, 1_000, "ota")
         assertEquals(claim, HotUpdaterSandboxDevClaim.parse(claim.toJson()))
@@ -155,6 +155,19 @@ class HotUpdaterSandboxDevTest {
         files.writeClaim(claim)
         assertNull(files.takeSession({ it == 7 }, 1_500, shelf::stored))
         assertFalse(files.claim.exists())
+    }
+
+    @Test
+    fun `a stored session's request acts once, and not at all once the screen called it off`() {
+        val files = files()
+        files.writeHandoff("first")
+        files.clearHandoff()
+        assertFalse(files.takeHandoff("first"))
+        files.writeHandoff("second")
+        assertFalse(files.takeHandoff("first"))
+        assertFalse(files.takeHandoff(null))
+        assertTrue(files.takeHandoff("second"))
+        assertFalse(files.takeHandoff("second"))
     }
 
     @Test

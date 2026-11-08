@@ -75,15 +75,15 @@ internal class HotUpdaterSandboxShelf(
 
     /**
      * Lists a bundle main just installed, with a copy. Best effort: a copy that
-     * fails its check lists nothing. The oldest entry past the cap goes, never
-     * [running]'s.
+     * fails its check lists nothing. The oldest entry past the cap goes, never one
+     * in [kept]: what runs, or is about to.
      */
     fun add(
         bundleId: String,
         channel: String,
         message: String?,
         nowMs: Long,
-        running: String?,
+        kept: Set<String> = emptySet(),
     ) {
         if (!isName(bundleId)) return
         val partial = File(root, "$bundleId$PARTIAL")
@@ -106,7 +106,7 @@ internal class HotUpdaterSandboxShelf(
                     Log.w(TAG, "didn't keep $bundleId: it couldn't be moved in")
                     return@synchronized aside
                 }
-                aside + publish(bundleId, channel, message, nowMs, running)
+                aside + publish(bundleId, channel, message, nowMs, kept)
             }
         delete(trash + partial)
     }
@@ -117,7 +117,7 @@ internal class HotUpdaterSandboxShelf(
         channel: String,
         message: String?,
         nowMs: Long,
-        running: String?,
+        kept: Set<String>,
     ): List<File> {
         val next =
             (
@@ -126,7 +126,7 @@ internal class HotUpdaterSandboxShelf(
             ).toMutableList()
         val trash = mutableListOf<File>()
         while (next.size > LIMIT) {
-            val oldest = next.filter { it.bundleId != running }.minByOrNull { it.downloadedAtMs } ?: break
+            val oldest = next.filter { it.bundleId !in kept }.minByOrNull { it.downloadedAtMs } ?: break
             next.remove(oldest)
             setAside(oldest.bundleId)?.let(trash::add)
         }

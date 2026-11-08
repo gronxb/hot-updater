@@ -249,7 +249,7 @@ class HotUpdaterSandboxScreenStateTest {
     fun `a message belongs to its bundle, not its channel`() {
         val fixture = ScreenFixture()
         installTestBundle(fixture.shelf.source, "older")
-        fixture.shelf.add("older", "pr-1", "old words", 0, null)
+        fixture.shelf.add("older", "pr-1", "old words", 0)
         fixture.host.channel = "pr-1"
         fixture.host.bundleId = "ota"
         fixture.coordinator.refresh()
@@ -264,8 +264,8 @@ class HotUpdaterSandboxScreenStateTest {
         fixture.host.launchOverride = "running"
         installTestBundle(fixture.shelf.source, "running")
         installTestBundle(fixture.shelf.source, "staged")
-        fixture.shelf.add("running", "pr-2", "what runs", 0, null)
-        fixture.shelf.add("staged", "pr-2", "what's next", 1, null)
+        fixture.shelf.add("running", "pr-2", "what runs", 0)
+        fixture.shelf.add("staged", "pr-2", "what's next", 1)
         fixture.coordinator.refresh()
         val state = fixture.coordinator.state
         assertEquals("staged", state.selection?.bundleId)

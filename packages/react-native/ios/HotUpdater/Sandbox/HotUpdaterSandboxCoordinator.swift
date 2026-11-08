@@ -323,6 +323,8 @@ final class HotUpdaterSandboxCoordinator {
     /// Accepts the link in `.confirming`.
     func confirmLink() {
         guard case .confirming(let link) = state.phase else { return }
+        // A row is opening its stored bundle: the link waits for it.
+        if openingBundleId != nil { return }
         // The link stays stored, and the screen asks about it on the normal selection.
         if host.isInSession {
             host.exitSessionForLink()
@@ -455,17 +457,22 @@ final class HotUpdaterSandboxCoordinator {
         Task { @MainActor in
             // The files are checked off the main thread.
             let bundle = await onShelf { shelf.stored(bundleId) }
-            openingBundleId = nil
             guard let bundle else {
+                openingBundleId = nil
                 switchTo(entry.channel)
+                pump()
                 return
             }
-            guard canStart, lock.holder == nil else { return }
-            acknowledgeLastLaunch()
-            setPhase(.idle)
-            log("opening stored \(entry.channel) \(bundleId)")
-            host.startStoredSession(bundle)
+            // The session is this process's own from here: its ID is the running one at once.
+            openingBundleId = nil
+            if canStart, lock.holder == nil {
+                acknowledgeLastLaunch()
+                setPhase(.idle)
+                log("opening stored \(entry.channel) \(bundleId)")
+                host.startStoredSession(bundle)
+            }
             publish(reading(state))
+            pump()
         }
         return true
     }
@@ -664,9 +671,9 @@ final class HotUpdaterSandboxCoordinator {
     private func shelve(bundleId: String, channel: String, message: String?) async {
         let shelf = shelf
         let nowMs = now().timeIntervalSince1970 * 1000
-        let running = host.storedSessionBundleId
+        let kept = protectedBundleIds
         await onShelf {
-            shelf.add(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running)
+            shelf.add(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept)
         }
         await relist(reconciling: false)
     }
@@ -742,6 +749,11 @@ final class HotUpdaterSandboxCoordinator {
     /// waiting for a server is asked about again from scratch, so its fingerprint
     /// is read again after a restart too.
     private func pump() {
+        // A row is opening its stored bundle: links stay queued until it has.
+        if openingBundleId != nil {
+            publish(state)
+            return
+        }
         switch state.phase {
         case .idle, .waitingForServer:
             break

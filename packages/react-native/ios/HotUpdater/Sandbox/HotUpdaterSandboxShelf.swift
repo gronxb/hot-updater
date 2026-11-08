@@ -81,11 +81,11 @@ final class HotUpdaterSandboxShelf {
 
     /// Lists a bundle main just installed, and copies it when this build stores
     /// bundles. Best effort: a copy that fails its check lists nothing. The oldest
-    /// entry past the cap goes, never `running`'s.
-    func add(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) {
+    /// entry past the cap goes, never one in `kept`: what runs, or is about to.
+    func add(bundleId: String, channel: String, message: String?, nowMs: Double, kept: Set<String> = []) {
         guard Self.isName(bundleId) else { return }
         guard storesBundles else {
-            let trash = serially { publish(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running) }
+            let trash = serially { publish(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept) }
             delete(trash)
             return
         }
@@ -112,14 +112,14 @@ final class HotUpdaterSandboxShelf {
                 NSLog("[HotUpdaterSandbox] didn't keep %@: %@", bundleId, error.localizedDescription)
                 return aside
             }
-            aside += publish(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, running: running)
+            aside += publish(bundleId: bundleId, channel: channel, message: message, nowMs: nowMs, kept: kept)
             return aside
         }
         delete(trash + [partial])
     }
 
     /// Under the lock: the new list, and what its change set aside.
-    private func publish(bundleId: String, channel: String, message: String?, nowMs: Double, running: String?) -> [URL] {
+    private func publish(bundleId: String, channel: String, message: String?, nowMs: Double, kept: Set<String>) -> [URL] {
         let entry = HotUpdaterSandboxShelfEntry(
             bundleId: bundleId,
             channel: channel,
@@ -130,7 +130,7 @@ final class HotUpdaterSandboxShelf {
         // Without a copy, a row checks its channel, so one row per channel is enough.
         var next = [entry] + list.filter { $0.bundleId != bundleId && (storesBundles || $0.channel != channel) }
         var trash: [URL] = []
-        while next.count > Self.limit, let oldest = next.filter({ $0.bundleId != running }).min(by: { $0.downloadedAtMs < $1.downloadedAtMs }) {
+        while next.count > Self.limit, let oldest = next.filter({ !kept.contains($0.bundleId) }).min(by: { $0.downloadedAtMs < $1.downloadedAtMs }) {
             next.removeAll { $0.bundleId == oldest.bundleId }
             if let aside = setAside(oldest.bundleId) { trash.append(aside) }
         }
