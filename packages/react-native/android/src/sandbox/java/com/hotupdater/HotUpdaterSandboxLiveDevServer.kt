@@ -309,7 +309,12 @@ internal class HotUpdaterSandboxLiveDevServer(
         get() = HotUpdaterSandboxDev.session(context)?.let { it.stored == null } == true
 
     override val runningDevServerHost: String?
-        get() = HotUpdaterSandboxDev.session(context)?.takeIf { it.stored == null }?.host?.let(HotUpdaterSandboxDevHost::display)
+        get() =
+            HotUpdaterSandboxDev
+                .session(context)
+                ?.takeIf { it.stored == null }
+                ?.host
+                ?.let(HotUpdaterSandboxDevHost::display)
 
     override val devServerHosts: List<HotUpdaterSandboxDevServerHost>
         get() =

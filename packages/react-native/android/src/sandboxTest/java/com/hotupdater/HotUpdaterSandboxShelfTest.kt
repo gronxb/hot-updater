@@ -39,7 +39,12 @@ class HotUpdaterSandboxShelfTest {
         installTestBundle(shelf.source, "broken", skipping = "drawable-mdpi/logo.png")
         shelf.add("broken", "pr-1", null, 0, null)
         assertTrue(shelf.entries.isEmpty())
-        assertTrue(shelf.root.listFiles().orEmpty().isEmpty())
+        assertTrue(
+            shelf.root
+                .listFiles()
+                .orEmpty()
+                .isEmpty(),
+        )
     }
 
     @Test

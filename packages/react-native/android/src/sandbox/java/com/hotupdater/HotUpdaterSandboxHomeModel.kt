@@ -133,7 +133,12 @@ internal data class HotUpdaterSandboxHomeModel(
                 return BigRow("Running", "Reload", "Running the dev server", runningDevServerHost, isReload = true)
             }
             state.storedSessionBundleId?.let { stored ->
-                val channel = state.downloaded.firstOrNull { it.bundleId == stored }?.channel?.let { " $it" }.orEmpty()
+                val channel =
+                    state.downloaded
+                        .firstOrNull { it.bundleId == stored }
+                        ?.channel
+                        ?.let { " $it" }
+                        .orEmpty()
                 return BigRow("Running", "Reload", "Running stored$channel", "Bundle ${shortId(stored)}", isReload = true, showsBack = true)
             }
             val selection =

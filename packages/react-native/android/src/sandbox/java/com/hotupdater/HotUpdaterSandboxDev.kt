@@ -242,7 +242,12 @@ internal object HotUpdaterSandboxDev {
                 }
             }
             settled = true
-            Log.i(TAG, "this process runs ${session?.let { it.stored?.let { "stored ${it.bundleId}" } ?: "the dev server's ${it.host}" } ?: "the normal selection"}")
+            Log.i(
+                TAG,
+                "this process runs ${session?.let {
+                    it.stored?.let { "stored ${it.bundleId}" } ?: "the dev server's ${it.host}"
+                } ?: "the normal selection"}",
+            )
             session
         }
     }
@@ -332,7 +337,13 @@ internal object HotUpdaterSandboxDev {
         val stored = running.stored
         startRelaunch(
             context,
-            if (stored != null) HotUpdaterSandboxRelaunch.Stored(stored.bundleId) else HotUpdaterSandboxRelaunch.Dev(running.id, running.host),
+            if (stored !=
+                null
+            ) {
+                HotUpdaterSandboxRelaunch.Stored(stored.bundleId)
+            } else {
+                HotUpdaterSandboxRelaunch.Dev(running.id, running.host)
+            },
         )
         return true
     }
