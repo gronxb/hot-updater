@@ -1217,7 +1217,7 @@ const recordSubmission = async (
   } catch (error) {
     throw new NativeBuildFailure(
       [
-        `Couldn't record the ${destination === "testflight" ? "TestFlight" : "Google Play"} upload of ${version} on native build ${build.id}.`,
+        `Couldn't record the ${destination === "testflight" ? "TestFlight upload" : "Google Play release"} of ${version} on native build ${build.id}.`,
         error instanceof Error ? error.message : String(error),
         "The store keeps the build; check its submission before rerunning.",
       ].join("\n"),

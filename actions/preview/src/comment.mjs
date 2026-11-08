@@ -1,5 +1,7 @@
 // @ts-check
 
+import { PLAY_TRACKS } from "../../shared/playTracks.mjs";
+
 /**
  * The first line of the one comment the action keeps on a pull request,
  * which finds it again to edit it in place.
@@ -124,7 +126,6 @@ export const qrCodeValues = (previews) =>
 /** Each store's name in the comment, and what its testers do. */
 const STORE_NAMES = {
   testflight: "TestFlight",
-  "play-internal": "Google Play internal testing",
 };
 
 /**
@@ -157,7 +158,7 @@ const installLinks = (
     const storeName =
       store.destination === "testflight"
         ? STORE_NAMES.testflight
-        : STORE_NAMES["play-internal"];
+        : PLAY_TRACKS[store.destination].name;
     return [
       store.url ? `[${storeName}](${store.url})` : storeName,
       ...(store.version ? [code(store.version)] : []),

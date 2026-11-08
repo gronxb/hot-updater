@@ -609,8 +609,8 @@ export const uploadToPlay = async ({
         : await request<{
             releases?: {
               versionCodes?: string[];
-              name?: string;
-              releaseNotes?: { language: string; text: string }[];
+              userFraction?: number;
+              [key: string]: unknown;
             }[];
           }>("Reading the Google Play track", "GET", `${edit}/tracks/${track}`);
     const existingRelease = current?.releases?.find((release) =>
@@ -618,29 +618,23 @@ export const uploadToPlay = async ({
     );
 
     const release = async (status: UploadToPlayResult["status"]) => {
+      const updatedRelease = {
+        ...existingRelease,
+        versionCodes: existingRelease?.versionCodes ?? [String(versionCode)],
+        status,
+      };
+      if (status === "inProgress") {
+        updatedRelease.userFraction = rollout / 100;
+      } else {
+        delete updatedRelease.userFraction;
+      }
       await request(
         `Releasing to the ${track} track`,
         "PUT",
         `${edit}/tracks/${track}`,
         {
           track,
-          releases: [
-            {
-              ...(existingRelease?.name === undefined
-                ? {}
-                : { name: existingRelease.name }),
-              ...(existingRelease?.releaseNotes === undefined
-                ? {}
-                : { releaseNotes: existingRelease.releaseNotes }),
-              versionCodes: existingRelease?.versionCodes ?? [
-                String(versionCode),
-              ],
-              status,
-              ...(status === "inProgress"
-                ? { userFraction: rollout / 100 }
-                : {}),
-            },
-          ],
+          releases: [updatedRelease],
         },
       );
       await commit({ request, edit, retryDelayMs: commitRetryDelayMs });

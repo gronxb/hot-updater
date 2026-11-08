@@ -22,11 +22,7 @@
       "outputs": [
         "{projectRoot}/dist"
       ],
-      "cache": true,
-      "inputs": [
-        "default",
-        "^default"
-      ]
+      "cache": true
     },
     "test": {
       "dependsOn": [

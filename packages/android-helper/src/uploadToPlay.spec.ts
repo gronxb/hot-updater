@@ -305,11 +305,14 @@ describe("uploadToPlay", () => {
   );
 
   it.each([25, 100])(
-    "preserves metadata when updating rollout to %s",
+    "preserves country targeting and metadata when updating rollout to %s",
     async (rollout) => {
       const routes = successRoutes();
       const metadata = {
         name: "Release 42",
+        countryTargeting: { countries: ["KR"], includeRestOfWorld: false },
+        inAppUpdatePriority: 3,
+        futureField: { value: "preserved" },
         releaseNotes: [{ language: "en-US", text: "Fixes" }],
       };
       routes[`GET ${EDIT}/tracks/production`] = {

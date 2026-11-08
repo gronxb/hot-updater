@@ -539,9 +539,10 @@ A reused build has the same build number (`CFBundleVersion` or
 once. So with `--submit`, as in `testflight` and `google-play upload`, a
 reused build is uploaded only when the store doesn't have it yet:
 
-- A tracked build already submitted to TestFlight or Play internal testing is
-  skipped without asking the store. An internal submission also skips a build
-  already recorded on a higher Play track:
+- A tracked build already submitted to TestFlight is skipped without asking
+  the store. A Play request at or below the recorded track also skips and
+  keeps the record, unless a same-track closed, open, or production rerun
+  explicitly sets `--rollout`:
 
   ```txt
   ◇  Already on TestFlight
@@ -555,11 +556,13 @@ reused build is uploaded only when the store doesn't have it yet:
   way. Nothing is recorded: the store matched the build number, not the
   artifact.
 - An Android build with a recorded Play submission can be promoted without
-  uploading its artifact again. Closed, open, and production submissions always
-  PUT the requested track release, even on the same track: `--rollout 50` sets
-  50%, and `--rollout 100` (the default) completes the release. The destination
-  is recorded after Play accepts it. Without a recorded Play submission, the
-  artifact is uploaded; matching a version code alone never authorizes promotion.
+  uploading its artifact again. On closed, open, or production, a rerun on the
+  same track updates the release only when `--rollout` is explicit:
+  `--rollout 50` sets 50%, and `--rollout 100` completes it. Requests for a
+  lower track skip and keep the recorded track. Tracks rank internal, closed, open, then production. The
+  destination is recorded after Play accepts it. Without a recorded Play
+  submission, the artifact is uploaded; matching a version code alone never
+  authorizes promotion.
   Staged rollout is available through the CLI; actions have no rollout input.
 - When the store refuses the build number anyway, because a build with that
   number came from another upload or tool, the CLI skips the same way instead
