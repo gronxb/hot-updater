@@ -1,8 +1,0 @@
-2026-11-08T06:53:52.903Z GET /hot-updater/release-catalogs/fingerprint/ios/cHItc2lkLWlvcy0xNzk0MTIwNzQ3/6b3b3d76c0a53f30dd2f77bb08f1fc2f5297466ca06591
-2026-11-08T06:53:52.910Z GET /hot-updater/release-catalogs/fingerprint/ios/cHItc2lkLWlvcy0xNzk0MTIwNzQ3/6b3b3d76c0a53f30dd2f77bb08f1fc2f5297466ca06591
-2026-11-08T06:53:52.942Z GET /probe?label=SID1&event=js-start&value=
-2026-11-08T06:53:52.943Z GET /probe?label=SID1&event=identity&value=01a1b9ee-6c6b-7748-8749-26b857a14089%7Cpr-sid-ios-1794120747%7Cfile%3A%2F%2F%2FUse
-2026-11-08T06:53:52.944Z GET /hot-updater/release-catalogs/fingerprint/ios/cHItc2lkLWlvcy0xNzk0MTIwNzQ3/6b3b3d76c0a53f30dd2f77bb08f1fc2f5297466ca06591
-2026-11-08T06:53:52.951Z GET /probe?label=SID1&event=check-answered&value=none
-2026-11-08T06:53:52.955Z GET /probe?label=SID1&event=asset-loaded&value=
-2026-11-08T06:53:52.956Z GET /probe?label=SID1&event=asset-loaded&value=

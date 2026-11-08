@@ -1,3 +1,0 @@
-Normal iOS simulator app (scheme sim), red = origin/next, green = this branch.
-Symbols (nm -U): 16182 each, 0 differ. Sandbox/shelf strings: 0 in both.
-Only __cstring differs in size, from the checkout path each tree embeds; with that path normalized, the only differing string is the build-time MIN_BUNDLE_ID.

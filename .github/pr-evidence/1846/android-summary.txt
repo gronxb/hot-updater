@@ -1,4 +1,0 @@
-Normal Android APK (scheme apk), red = origin/next 8a045f4e6, green = this branch.
-com.hotupdater classes: 489, dexdump -d lines: 126522 each.
-Only difference (dex-diff.txt): the build-time MIN_BUNDLE_ID constant.
-Sandbox/shelf strings in classes*.dex: 0 in both.
