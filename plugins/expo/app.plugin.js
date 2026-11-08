@@ -1,1 +1,1 @@
-module.exports = require("./dist/app.plugin.cjs");
+module.exports = require("./plugin/build/withHotUpdater");

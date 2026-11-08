@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { transformAndroid, transformIOS } from "@hot-updater/native-patches";
 import type { ExpoConfig } from "expo/config";
 import {
   XML,
@@ -14,6 +13,7 @@ import {
 } from "expo/config-plugins";
 
 import pkg from "../../package.json";
+import { transformAndroid, transformIOS } from "./transformers";
 
 const loadCliTools = () => import("@hot-updater/cli-tools");
 const loadHotUpdater = () => import("hot-updater");

@@ -31,7 +31,6 @@
     "fast-glob": "3.3.3"
   },
   "devDependencies": {
-    "@hot-updater/native-patches": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
     "vitest": "catalog:"

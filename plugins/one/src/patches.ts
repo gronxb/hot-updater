@@ -2,8 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { transformAndroid, transformIOS } from "@hot-updater/native-patches";
-
 import { HOT_UPDATER_PATCH, type HotUpdaterPatchesOptions } from "./tag";
 
 export type { HotUpdaterPatchesOptions } from "./tag";
@@ -104,6 +102,73 @@ const setMetaData = (content: string, name: string, value: string) => {
   return `${removed.slice(0, end.index)}\n${indent}<meta-data android:name="${name}" android:value="${escapeXml(value)}"/>${removed.slice(end.index)}`;
 };
 
+// What `one prebuild` generates from One's templates for React Native 0.88.
+const IOS_BUNDLE_URL =
+  'Bundle.main.url(forResource: "main", withExtension: "jsbundle")';
+const IOS_HOT_UPDATER_BUNDLE_URL = "HotUpdater.bundleURL()";
+const ANDROID_IMPORT_ANCHOR = "import com.facebook.react.ReactApplication";
+const ANDROID_IMPORT = "import com.hotupdater.HotUpdater";
+const ANDROID_REACT_HOST_CALL = "getDefaultReactHost(";
+
+/** Makes the release AppDelegate load Hot Updater's bundle. */
+const patchAppDelegate = (content: string) => {
+  let patched = content;
+  if (!patched.includes(IOS_HOT_UPDATER_BUNDLE_URL)) {
+    if (!patched.includes(IOS_BUNDLE_URL)) {
+      return missingAnchor("AppDelegate.swift", IOS_BUNDLE_URL);
+    }
+    patched = patched.replace(IOS_BUNDLE_URL, IOS_HOT_UPDATER_BUNDLE_URL);
+  }
+  if (/^import HotUpdater$/m.test(patched)) return patched;
+  const imports = patched.match(/^import .*$/gm);
+  if (imports === null) return missingAnchor("AppDelegate.swift", "import");
+  const lastImport = imports[imports.length - 1]!;
+  return patched.replace(lastImport, `${lastImport}\nimport HotUpdater`);
+};
+
+/** Passes Hot Updater's bundle to `getDefaultReactHost` in release builds. */
+const patchMainApplication = (content: string) => {
+  let patched = content;
+  if (!patched.includes(ANDROID_IMPORT)) {
+    if (!patched.includes(ANDROID_IMPORT_ANCHOR)) {
+      return missingAnchor("MainApplication.kt", ANDROID_IMPORT_ANCHOR);
+    }
+    patched = patched.replace(
+      ANDROID_IMPORT_ANCHOR,
+      `${ANDROID_IMPORT_ANCHOR}\n${ANDROID_IMPORT}`,
+    );
+  }
+
+  const start = patched.indexOf(ANDROID_REACT_HOST_CALL);
+  if (start === -1) {
+    return missingAnchor("MainApplication.kt", ANDROID_REACT_HOST_CALL);
+  }
+  // The call's closing parenthesis, matched by depth.
+  let depth = 0;
+  let end = start + ANDROID_REACT_HOST_CALL.length - 1;
+  for (; end < patched.length; end += 1) {
+    if (patched[end] === "(") depth += 1;
+    else if (patched[end] === ")" && --depth === 0) break;
+  }
+  const call = patched.slice(start, end);
+  if (call.includes("jsBundleFilePath")) return patched;
+  // Its arguments sit on their own lines, the last one before `)`.
+  const indent = /\(\n([ \t]+)\S/.exec(call)?.[1];
+  const closingLine = patched.lastIndexOf("\n", end);
+  if (end === patched.length || indent === undefined || closingLine < start) {
+    return missingAnchor("MainApplication.kt", ANDROID_REACT_HOST_CALL);
+  }
+  const before = patched.slice(0, closingLine).trimEnd();
+  const argument = [
+    `${indent}jsBundleFilePath = if (BuildConfig.DEBUG) {`,
+    `${indent}  null`,
+    `${indent}} else {`,
+    `${indent}  HotUpdater.getJSBundleFile(applicationContext)`,
+    `${indent}},`,
+  ].join("\n");
+  return `${before}${before.endsWith(",") ? "" : ","}\n${argument}${patched.slice(closingLine)}`;
+};
+
 /**
  * The SPKI PEM in `publicKeyPath`, checked as the CLI checks a bundle signing
  * public key: an RSA key of at least 2048 bits.
@@ -183,15 +248,7 @@ export const hotUpdaterPatches = (
     {
       platform: "ios",
       file: "AppDelegate.swift",
-      patch: (content) => {
-        const patched = transformIOS(content);
-        return patched.includes("HotUpdater.bundleURL()")
-          ? patched
-          : missingAnchor(
-              "AppDelegate.swift",
-              'Bundle.main.url(forResource: "main", withExtension: "jsbundle")',
-            );
-      },
+      patch: patchAppDelegate,
     },
     {
       platform: "ios",
@@ -211,12 +268,7 @@ export const hotUpdaterPatches = (
     {
       platform: "android",
       file: "MainApplication.kt",
-      patch: (content) => {
-        const patched = transformAndroid(content);
-        return patched.includes("HotUpdater.getJSBundleFile")
-          ? patched
-          : missingAnchor("MainApplication.kt", "getDefaultReactHost(");
-      },
+      patch: patchMainApplication,
     },
     {
       platform: "android",

@@ -95,6 +95,16 @@ describe("hotUpdaterPatches", () => {
     },
   );
 
+  it("adds the bundle argument after a last argument without a comma", () => {
+    const content = fixture("MainApplication.kt").replace(
+      "        },\n    )",
+      "        }\n    )",
+    );
+    expect(
+      apply(hotUpdaterPatches(), PATHS["MainApplication.kt"], content),
+    ).toBe(fixture("MainApplication.kt", true));
+  });
+
   it("defaults the channel to production and replaces a previous one", () => {
     const beta = apply(
       hotUpdaterPatches({ channel: "beta" }),
