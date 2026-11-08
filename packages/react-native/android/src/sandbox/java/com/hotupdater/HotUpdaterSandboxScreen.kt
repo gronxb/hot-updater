@@ -558,14 +558,24 @@ internal class HotUpdaterSandboxScreen(
         val text = typed[id].orEmpty()
         val field = remember { FocusRequester() }
         val reveal = remember { BringIntoViewRequester() }
+        val button = remember { BringIntoViewRequester() }
+
+        // The whole form when it fits, and its button always: a form taller than
+        // what the keyboard leaves, such as on a phone on its side, doesn't scroll
+        // as a whole, since it already spans the page's edges.
+        suspend fun showForm() {
+            reveal.bringIntoView()
+            button.bringIntoView()
+        }
+
         LaunchedEffect(isOpen) {
             if (!isOpen) return@LaunchedEffect
-            // The field takes focus once the card has opened, then the whole form
-            // comes into view above the keyboard.
+            // The field takes focus once the card has opened, then the form comes
+            // into view above the keyboard.
             delay(250)
             runCatching { field.requestFocus() }
             delay(400)
-            reveal.bringIntoView()
+            showForm()
         }
         // The keyboard's own motion restarts this at each step, so the form comes
         // into view once the keyboard rests and the page has its final height.
@@ -573,7 +583,7 @@ internal class HotUpdaterSandboxScreen(
         LaunchedEffect(isOpen, keyboard) {
             if (!isOpen || keyboard == 0) return@LaunchedEffect
             delay(100)
-            reveal.bringIntoView()
+            showForm()
         }
         val send = {
             val value = text.trim()
@@ -598,7 +608,9 @@ internal class HotUpdaterSandboxScreen(
                 },
             ) {
                 SandboxField(text, { typed[id] = it }, placeholder, fieldLabel, keyboardType, field, send)
-                SandboxPrimaryButton(action, enabled = text.isNotBlank(), onClick = send)
+                Box(Modifier.bringIntoViewRequester(button)) {
+                    SandboxPrimaryButton(action, enabled = text.isNotBlank(), onClick = send)
+                }
             }
         }
     }
